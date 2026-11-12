@@ -71,11 +71,12 @@ pub(crate) struct Node {
     pub(crate) provider: *mut sys::ArkUI_AccessibilityProvider,
 }
 
-const EVENTS: [i32; 6] = [
+const EVENTS: [i32; 7] = [
     sys::NODE_TOUCH_EVENT,
     sys::NODE_ON_FOCUS,
     sys::NODE_ON_BLUR,
     sys::NODE_ON_HOVER,
+    sys::NODE_ON_MOUSE,
     sys::NODE_ON_AXIS,
     sys::NODE_ON_KEY_EVENT,
 ];
@@ -302,8 +303,37 @@ unsafe extern "C" fn on_event(event: *mut sys::ArkUI_NodeEvent) {
         sys::NODE_ON_FOCUS => host.focus_entered(false),
         sys::NODE_ON_BLUR => host.focus_left(),
         sys::NODE_ON_KEY_EVENT if !input.is_null() => key(host, token, input),
+        sys::NODE_ON_MOUSE if !input.is_null() => mouse(host, input),
+        sys::NODE_ON_HOVER if !hovering(event) => host.hover(None),
         _ => {}
     });
+}
+
+/// A mouse over the page drives `hover:`; presses still arrive as touches.
+fn mouse(host: &pages::Host, input: *mut sys::ArkUI_UIInputEvent) {
+    // SAFETY: the live mouse event of this callback.
+    let (action, x, y) = unsafe {
+        (
+            sys::OH_ArkUI_MouseEvent_GetMouseAction(input),
+            sys::OH_ArkUI_PointerEvent_GetX(input),
+            sys::OH_ArkUI_PointerEvent_GetY(input),
+        )
+    };
+    if action == sys::UI_MOUSE_EVENT_ACTION_CANCEL {
+        host.hover(None);
+        return;
+    }
+    let scale = host.adapter().placement().0;
+    host.hover(Some([x * scale, y * scale]));
+}
+
+/// Whether a hover event says the pointer is over the node rather than leaving it.
+fn hovering(event: *mut sys::ArkUI_NodeEvent) -> bool {
+    // SAFETY: ArkUI's live event; a hover event carries a component event.
+    unsafe {
+        let component = sys::OH_ArkUI_NodeEvent_GetNodeComponentEvent(event);
+        !component.is_null() && (*component).data[0].i32 != 0
+    }
 }
 
 /// A hardware key the View uses; an unmapped key, Back among them, stays with ArkUI.

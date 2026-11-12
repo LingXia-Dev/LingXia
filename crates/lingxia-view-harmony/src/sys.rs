@@ -66,6 +66,7 @@ pub const UI_TOUCH_EVENT_ACTION_CANCEL: i32 = 0;
 pub const UI_TOUCH_EVENT_ACTION_DOWN: i32 = 1;
 pub const UI_TOUCH_EVENT_ACTION_MOVE: i32 = 2;
 pub const UI_TOUCH_EVENT_ACTION_UP: i32 = 3;
+pub const UI_MOUSE_EVENT_ACTION_CANCEL: i32 = 13;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -84,6 +85,11 @@ pub struct ArkUI_AttributeItem {
 }
 
 type EventReceiver = unsafe extern "C" fn(event: *mut ArkUI_NodeEvent);
+
+#[repr(C)]
+pub struct ArkUI_NodeComponentEvent {
+    pub data: [ArkUI_NumberValue; 12],
+}
 
 /// `ArkUI_NativeNodeAPI_1`, declared up to the last member this adapter calls.
 #[repr(C)]
@@ -158,7 +164,11 @@ unsafe extern "C" {
     pub fn OH_ArkUI_NodeEvent_GetUserData(event: *mut ArkUI_NodeEvent) -> *mut c_void;
     pub fn OH_ArkUI_NodeEvent_GetInputEvent(event: *mut ArkUI_NodeEvent)
     -> *mut ArkUI_UIInputEvent;
+    pub fn OH_ArkUI_NodeEvent_GetNodeComponentEvent(
+        event: *mut ArkUI_NodeEvent,
+    ) -> *mut ArkUI_NodeComponentEvent;
     pub fn OH_ArkUI_UIInputEvent_GetAction(event: *const ArkUI_UIInputEvent) -> i32;
+    pub fn OH_ArkUI_MouseEvent_GetMouseAction(event: *const ArkUI_UIInputEvent) -> i32;
     pub fn OH_ArkUI_UIInputEvent_GetEventTime(event: *const ArkUI_UIInputEvent) -> i64;
     pub fn OH_ArkUI_UIInputEvent_GetModifierKeyStates(
         event: *const ArkUI_UIInputEvent,

@@ -170,6 +170,7 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeFocusEntered", "(JZ)V", focus_entered),
         method!("nativeFocusLeft", "(J)V", focus_left),
         method!("nativeExplore", "(JZFF)Z", explore),
+        method!("nativeHover", "(JZFF)V", hover),
         method!(
             "nativeAccessibility",
             "(JIIDLjava/lang/String;)Z",
@@ -715,6 +716,20 @@ extern "system" fn explore<'a>(
 ) -> jboolean {
     run(&mut env, |_| {
         Ok(host(handle)?.explore(active.then_some([x, y])))
+    })
+}
+
+extern "system" fn hover<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    inside: jboolean,
+    x: jfloat,
+    y: jfloat,
+) {
+    run(&mut env, |_| {
+        host(handle)?.hover(inside.then_some([x, y]));
+        Ok(())
     })
 }
 

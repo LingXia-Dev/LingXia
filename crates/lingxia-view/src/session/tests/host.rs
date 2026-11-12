@@ -5431,3 +5431,40 @@ fn the_frame_reply_reports_the_bar_snapshot_the_presented_frame_draws() {
     run_frames(&platform, &host, 4);
     assert_eq!(reported(), Some(generation));
 }
+
+#[test]
+fn hover_styles_follow_the_pointer_and_end_when_the_window_loses_focus_or_the_page_hides() {
+    let worker = ViewWorker::spawn("test-hover-leave").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = source(
+        "function render(){return h('view',{},h('view',{'data-testid':'b',className:'cold hover:hot',style:{width:100,height:40}}))}",
+    )
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureClasses([{name:'cold',style:{backgroundColor:'#0000ff'}},{name:'hover:hot',when:{state:'hover'},style:{backgroundColor:'#ff0000'}}]);__lingxiaPublish(render);",
+    );
+    let host = platform.host(&worker, &page, false);
+    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+        environment.value["pointer"] = "fine".into();
+    }
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let hot = |host: &ViewHost<Fake>| {
+        let rects = host.adapter().log.lock().unwrap().rects.clone();
+        rects.iter().any(|(color, _)| color[..3] == [255, 0, 0])
+    };
+    assert!(!hot(&host));
+    host.hover(Some([20.0, 20.0]));
+    run_frames(&platform, &host, 4);
+    assert!(hot(&host), "the pointer is over the box");
+    host.window_focus(false);
+    run_frames(&platform, &host, 4);
+    assert!(!hot(&host), "the window lost focus");
+    host.hover(Some([20.0, 20.0]));
+    run_frames(&platform, &host, 4);
+    assert!(hot(&host));
+    host.set_visible(false);
+    host.set_visible(true);
+    run_frames(&platform, &host, 4);
+    assert!(!hot(&host), "the page hid");
+}

@@ -681,6 +681,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
     }
 
     pub fn set_visible(&self, visible: bool) {
+        if !visible {
+            self.inner.set_hovered(None);
+        }
         self.inner.set_visible(visible);
     }
 
@@ -1081,6 +1084,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
     pub fn window_focus(&self, focused: bool) {
         if !focused {
             self.cancel();
+            // Not every platform reports the pointer leaving a window that lost focus.
+            self.inner.set_hovered(None);
         }
     }
 

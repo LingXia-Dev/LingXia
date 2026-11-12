@@ -77,6 +77,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native void nativeFocusEntered(long host, boolean backward);
     static native void nativeFocusLeft(long host);
     static native boolean nativeExplore(long host, boolean active, float x, float y);
+    static native void nativeHover(long host, boolean inside, float x, float y);
     static native boolean nativeAccessibility(long host, int id, int action, double number, String argument);
     static native boolean nativeScrollBy(long host, String region, float delta);
     static native boolean nativeCanScrollVertically(long host, int direction);
@@ -1224,7 +1225,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public boolean dispatchHoverEvent(MotionEvent event) {
             android.view.accessibility.AccessibilityManager manager = (android.view.accessibility.AccessibilityManager)getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
             if (!active || destroyed || manager == null || !manager.isEnabled() || !manager.isTouchExplorationEnabled()) {
-                if (!destroyed) nativeExplore(host, false, 0, 0);
+                if (!destroyed) { nativeExplore(host, false, 0, 0); hover(event); }
                 return super.dispatchHoverEvent(event);
             }
             switch (event.getActionMasked()) {
@@ -1232,6 +1233,15 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 case MotionEvent.ACTION_HOVER_MOVE: return nativeExplore(host, true, event.getX(), event.getY());
                 case MotionEvent.ACTION_HOVER_EXIT: nativeExplore(host, false, 0, 0); return true;
                 default: return false;
+            }
+        }
+        // A mouse or stylus over the page drives `hover:`. A press sends HOVER_EXIT with its button down: no leave.
+        private void hover(MotionEvent event) {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_HOVER_ENTER:
+                case MotionEvent.ACTION_HOVER_MOVE: nativeHover(host, active, event.getX(), event.getY()); break;
+                case MotionEvent.ACTION_HOVER_EXIT: if (event.getButtonState() == 0) nativeHover(host, false, 0, 0); break;
+                default: break;
             }
         }
         boolean accessibilityEnabled() {
