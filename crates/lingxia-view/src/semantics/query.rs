@@ -391,7 +391,11 @@ pub fn describe(
         "enabled": semantic.as_ref().is_none_or(|s| s.enabled),
         "editable": input.is_some_and(|i| i.enabled),
         "focused": semantic.as_ref().is_some_and(|s| s.focused),
-        "checked": node.checked,
+        // The states `aria-*` sets, as the semantics tree reads them; null where the element has none.
+        "checked": node.checked.or(node.states[6]),
+        "pressed": node.states[0],
+        "selected": node.states[1],
+        "expanded": node.states[2],
         "text": text,
         "text_truncated": text_truncated,
         "value": value.as_ref().map(|(v, _)| v.clone()),

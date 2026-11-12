@@ -1478,6 +1478,10 @@ export class LiveFixture implements Fixture {
       toBeDisabled: (options?: ExpectOptions) => this.retryLocator(locator, "toBeDisabled", inverted, withMessage(options), true),
       toBeEditable: (options?: ExpectOptions) => this.retryLocator(locator, "toBeEditable", inverted, withMessage(options), true),
       toBeFocused: (options?: ExpectOptions) => this.retryLocator(locator, "toBeFocused", inverted, withMessage(options), true),
+      toBeChecked: (options?: ExpectOptions) => this.retryLocator(locator, "toBeChecked", inverted, withMessage(options), true),
+      toBeSelected: (options?: ExpectOptions) => this.retryLocator(locator, "toBeSelected", inverted, withMessage(options), true),
+      toBeExpanded: (options?: ExpectOptions) => this.retryLocator(locator, "toBeExpanded", inverted, withMessage(options), true),
+      toBePressed: (options?: ExpectOptions) => this.retryLocator(locator, "toBePressed", inverted, withMessage(options), true),
       toHaveText: (expected: string | RegExp, options?: ExpectOptions) =>
         this.retryLocator(locator, "toHaveText", inverted, withMessage(options), expected),
       toContainText: (expected: string | RegExp, options?: ExpectOptions) =>
@@ -1854,12 +1858,22 @@ function locatorActual(matcher: string, resolved: LocatorResolve | undefined, ex
   if (matcher === "toBeDisabled") return resolved.enabled === false;
   if (matcher === "toBeEditable") return resolved.editable;
   if (matcher === "toBeFocused") return resolved.focused === true;
+  const state = stateMatchers[matcher];
+  if (state) return resolved[state] ?? null;
   if (matcher === "toHaveCount") return resolved.count;
   if (matcher === "toHaveText") return resolved.text;
   if (matcher === "toHaveValue") return resolved.value;
   if (matcher === "toBeVisible") return resolved.kind;
   return resolved.kind;
 }
+
+/** State matchers and the match field each reads. */
+const stateMatchers: Record<string, "checked" | "selected" | "expanded" | "pressed"> = {
+  toBeChecked: "checked",
+  toBeSelected: "selected",
+  toBeExpanded: "expanded",
+  toBePressed: "pressed",
+};
 
 function matchLocator(
   locator: Locator,
@@ -1873,6 +1887,19 @@ function matchLocator(
       throw new Error(`Expected one attached element, received ${resolved.count}`);
     }
     applyMatcher("toBe", locatorActual(matcher, resolved), true, inverted);
+    return;
+  }
+  const state = stateMatchers[matcher];
+  if (state) {
+    if (resolved.count !== 1) throw new Error(`Expected one attached element, received ${resolved.count}`);
+    const actual = resolved[state] ?? null;
+    // An element without the state is neither: `not.toBeChecked()` on a plain button is a wrong locator.
+    if (actual === null) {
+      const name = inverted ? `not.${matcher}` : matcher;
+      throw new AssertionError(name, null, !inverted,
+        `Expected an element with a ${state} state\nReceived: an element without one`);
+    }
+    applyMatcher("toBe", actual, true, inverted);
     return;
   }
   if (matcher === "toBeVisible") {

@@ -144,6 +144,31 @@ test('state matchers distinguish absent, hidden, disabled and editable targets',
   assert.equal((await run()).passed, 1);
 });
 
+test('ARIA state matchers read the match and refuse an element without the state', async () => {
+  const world = createWorld();
+  world.add({testId:'agree', checked:true});
+  world.add({testId:'tab', selected:false});
+  world.add({testId:'more', expanded:true});
+  const bold = world.add({testId:'bold', pressed:false});
+  world.add({testId:'plain'});
+  installFakeHost(world);
+  spec('states', async t => {
+    await expect(t.app.view.testId('agree')).toBeChecked();
+    await expect(t.app.view.testId('tab')).not.toBeSelected();
+    await expect(t.app.view.testId('more')).toBeExpanded();
+    setTimeout(() => { bold.pressed = true; }, 50);
+    await expect(t.app.view.testId('bold')).toBePressed();
+  });
+  spec('plain checked', t => expect(t.app.view.testId('plain')).toBeChecked({timeout:200}));
+  spec('plain not checked', t => expect(t.app.view.testId('plain')).not.toBeChecked({timeout:200}));
+  const report = await run();
+  assert.equal(report.passed, 1);
+  assert.equal(report.failed, 2);
+  for (const failed of report.cases.filter(c => c.status === 'failed')) {
+    assert.match(failed.error.message, /with a checked state/);
+  }
+});
+
 test('a native pre-dispatch rejection is retried safely', async () => {
   const world = createWorld();
   const element = world.add({testId:'save'});

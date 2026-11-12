@@ -46,6 +46,14 @@ export interface QueryMatch {
   editable?: boolean;
   /** Holds keyboard focus (`document.activeElement` on a WebView page). */
   focused?: boolean;
+  /** A checkbox, radio or `aria-checked` state; null when the element has none. */
+  checked?: boolean | null;
+  /** `aria-pressed`; null when absent. */
+  pressed?: boolean | null;
+  /** An `<option>`'s or `aria-selected` state; null when the element has none. */
+  selected?: boolean | null;
+  /** `aria-expanded`, or a `<summary>`'s `<details>` open state; null when the element has none. */
+  expanded?: boolean | null;
   /** On a GPU page: `data-testid`, the authored `data-*` props and `aria-invalid`/`-required`/`-describedby`. */
   attributes?: Record<string, string>;
   rect?: {
@@ -59,6 +67,16 @@ export interface QueryMatch {
   /** On a GPU page: the part of `rect` a finger reaches, past scroll clips and host bars; null when none. */
   visibleRect?: { left: number; top: number; width: number; height: number } | null;
   items?: QueryMatch[];
+}
+
+/** The ARIA states a match reports; a host that predates them reports none. */
+function states(match: QueryMatch | undefined): Pick<LocatorResolve, "checked" | "pressed" | "selected" | "expanded"> {
+  return {
+    checked: match?.checked ?? null,
+    pressed: match?.pressed ?? null,
+    selected: match?.selected ?? null,
+    expanded: match?.expanded ?? null,
+  };
 }
 
 export interface PageLike {
@@ -99,6 +117,10 @@ export interface LocatorResolve {
   enabled?: boolean;
   editable?: boolean;
   focused?: boolean;
+  checked?: boolean | null;
+  pressed?: boolean | null;
+  selected?: boolean | null;
+  expanded?: boolean | null;
   rect?: QueryMatch["rect"];
   visibleRect?: QueryMatch["visibleRect"];
   renderer?: "gpu";
@@ -415,6 +437,7 @@ export class PageLocator implements Locator {
         value: items[0]?.value ?? null,
         index: items[0]?.index ?? 0,
         enabled: items[0]?.enabled, editable: items[0]?.editable, focused: items[0]?.focused,
+        ...states(items[0]),
         kind: "hidden",
       };
     } else {
@@ -429,6 +452,7 @@ export class PageLocator implements Locator {
         value: unique.value ?? null,
         index: unique.index ?? items.indexOf(unique),
         enabled: unique.enabled, editable: unique.editable, focused: unique.focused, rect: unique.rect,
+        ...states(unique),
         ...(unique.visibleRect !== undefined ? { visibleRect: unique.visibleRect } : {}),
         ...(unique.renderer ? { renderer: unique.renderer } : {}),
         kind: "unique",

@@ -399,3 +399,36 @@ async function lineRows(t: Fixture, locator: ReturnType<Fixture['app']['view']['
   for (let y = top; y < bottom; y++) if (shot.at(x, y).some((value, i) => Math.abs(value - page[i]) > 40)) rows++;
   return rows;
 }
+
+spec('controls report checked, selected, pressed and expanded as a screen reader announces them', { covers: ['view:switch', 'view:checkbox', 'view:radio', 'view:a11y'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-input').click();
+  const wifi = view.testId('lab-nested-switch');
+  await expect(wifi).toBeChecked();
+  await wifi.click();
+  await expect(wifi).not.toBeChecked();
+  await expect(view.testId('lab-controls-size-m')).toBeChecked();
+  await view.testId('lab-controls-size-l').click();
+  await expect(view.testId('lab-controls-size-l')).toBeChecked();
+  await expect(view.testId('lab-controls-size-m')).not.toBeChecked();
+  await expect(view.getByRole('tab', { name: 'Week' })).toBeSelected();
+  await view.getByRole('tab', { name: 'Day' }).click();
+  await expect(view.getByRole('tab', { name: 'Week' })).not.toBeSelected();
+  const bold = view.testId('lab-tool-bold');
+  await expect(bold).not.toBePressed();
+  await bold.click();
+  await expect(bold).toBePressed();
+  const src = view.testId('lab-tree-src');
+  await expect(src).toBeExpanded();
+  await src.click();
+  await expect(src).not.toBeExpanded();
+  // A plain button has none of these states: asserting one is a wrong locator, not a pass.
+  const refused = await expect(view.testId('lab-tool-copy')).not.toBeChecked({ timeout: 300 }).then(() => '', (error: Error) => error.message);
+  expect(refused).toContain('checked state');
+
+  await view.testId('lab-tab-layout').click();
+  const summary = view.testId('lab-disclosure-licenses-summary');
+  await expect(summary).not.toBeExpanded();
+  await summary.click();
+  await expect(summary).toBeExpanded();
+});

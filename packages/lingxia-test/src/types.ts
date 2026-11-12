@@ -1096,6 +1096,17 @@ export interface LocatorMatchers extends NeedsMatcher<"expect(locator) checks no
   toBeEditable(options?: ExpectOptions): Promise<void>;
   /** The single match holds keyboard focus. */
   toBeFocused(options?: ExpectOptions): Promise<void>;
+  /**
+   * The single match is checked: a checkbox, radio or switch, or `aria-checked`.
+   * Like the three below, it fails either way on an element without that state.
+   */
+  toBeChecked(options?: ExpectOptions): Promise<void>;
+  /** `aria-selected`, or an `<option>`, is true. */
+  toBeSelected(options?: ExpectOptions): Promise<void>;
+  /** `aria-expanded`, or a `<summary>`'s `<details>`, is open. */
+  toBeExpanded(options?: ExpectOptions): Promise<void>;
+  /** `aria-pressed` is true. */
+  toBePressed(options?: ExpectOptions): Promise<void>;
   toHaveText(expected: string | RegExp, options?: ExpectOptions): Promise<void>;
   /** The text contains `expected` (exact substring) or matches the RegExp. */
   toContainText(expected: string | RegExp, options?: ExpectOptions): Promise<void>;

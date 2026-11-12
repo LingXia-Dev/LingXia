@@ -476,6 +476,8 @@ export function createWorld(options = {}) {
       inViewport: element.visible !== false && element.inViewport !== false,
       enabled: element.enabled !== false,
       editable: element.editable !== false,
+      ...Object.fromEntries(["checked", "pressed", "selected", "expanded"]
+        .filter((state) => element[state] !== undefined).map((state) => [state, element[state]])),
       text: element.text ?? "",
       textTruncated: false,
       value: element.value ?? null,

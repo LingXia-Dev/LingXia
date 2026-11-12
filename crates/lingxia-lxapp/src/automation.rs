@@ -1003,6 +1003,13 @@ pub fn build_query_script(
     const hasValue = "value" in el;
     const text = truncate(String(el.innerText || el.textContent || "").replace(/\s+/g, " ").trim());
     const value = hasValue ? truncate(el.value ?? "") : null;
+    // `aria-*` states as the GPU renderer reports them; null where the element has none, "mixed" reads false.
+    const aria = (name) => {{
+      const state = el.getAttribute(name);
+      return state === "true" ? true : state === "false" || state === "mixed" ? false : null;
+    }};
+    const checkable = tag === "input" && (inputType === "checkbox" || inputType === "radio");
+    const details = tag === "summary" ? el.parentElement : null;
     return {{
       exists: true,
       index,
@@ -1019,6 +1026,10 @@ pub fn build_query_script(
       enabled: !disabled,
       editable,
       focused: document.activeElement === el,
+      checked: checkable ? el.checked : aria("aria-checked"),
+      pressed: aria("aria-pressed"),
+      selected: tag === "option" ? el.selected : aria("aria-selected"),
+      expanded: details && details.tagName.toLowerCase() === "details" ? details.open : aria("aria-expanded"),
       text: text.value,
       text_truncated: text.truncated,
       value: value ? value.value : null,

@@ -504,6 +504,9 @@ export interface GpuFrameAutomationElement {
   editable: boolean;
   focused?: boolean | null;
   checked?: boolean | null;
+  pressed?: boolean | null;
+  selected?: boolean | null;
+  expanded?: boolean | null;
   text?: string | null;
   text_truncated?: boolean | null;
   value?: string | null;

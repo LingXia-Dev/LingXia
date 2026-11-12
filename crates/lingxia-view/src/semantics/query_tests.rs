@@ -500,7 +500,26 @@ fn a_details_summary_is_a_button_that_announces_expanded() {
         .automation_query("[data-testid=\"lic-summary\"]", None, false, None)
         .unwrap();
     assert_eq!(summary["role"], "button");
+    assert_eq!(summary["expanded"], false);
     let _ = &mut i;
+}
+
+#[test]
+fn a_match_reports_the_aria_states_a_screen_reader_announces() {
+    let i = interaction(
+        "h('view',{},h('checkbox',{'data-testid':'box',value:true,onChange(){},'aria-label':'Wi-Fi'}),h('button',{'data-testid':'radio',role:'radio','aria-checked':false,onClick(){}},'Daily'),h('button',{'data-testid':'tab',role:'tab','aria-selected':true,onClick(){}},'Week'),h('button',{'data-testid':'bold','aria-pressed':true,onClick(){}},'B'),h('button',{'data-testid':'plain',onClick(){}},'Go'))",
+    );
+    let states = |id: &str| {
+        let m = i
+            .automation_query(&format!("[data-testid=\"{id}\"]"), None, false, None)
+            .unwrap();
+        ["checked", "pressed", "selected", "expanded"].map(|k| m[k].as_bool())
+    };
+    assert_eq!(states("box"), [Some(true), None, None, None]);
+    assert_eq!(states("radio"), [Some(false), None, None, None]);
+    assert_eq!(states("tab"), [None, None, Some(true), None]);
+    assert_eq!(states("bold"), [None, Some(true), None, None]);
+    assert_eq!(states("plain"), [None; 4]);
 }
 
 #[test]

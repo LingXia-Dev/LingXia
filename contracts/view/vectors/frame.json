@@ -17,12 +17,14 @@
         "editable": true,
         "enabled": true,
         "exists": true,
+        "expanded": null,
         "focused": true,
         "id": null,
         "inViewport": true,
         "index": 0,
         "name": null,
         "placeholder": "Name",
+        "pressed": null,
         "rect": {
           "bottom": 62.0,
           "center_x": 50.0,
@@ -37,13 +39,20 @@
         },
         "renderer": "gpu",
         "role": "textbox",
+        "selected": null,
         "tag": "input",
         "text": "",
         "text_truncated": false,
         "type": "text",
         "value": "Ada",
         "value_truncated": false,
-        "visible": true
+        "visible": true,
+        "visibleRect": {
+          "height": 48.0,
+          "left": 0.0,
+          "top": 14.0,
+          "width": 100.0
+        }
       }
     },
     {
@@ -83,12 +92,14 @@
             "editable": true,
             "enabled": true,
             "exists": true,
+            "expanded": null,
             "focused": true,
             "id": null,
             "inViewport": true,
             "index": 0,
             "name": null,
             "placeholder": "Name",
+            "pressed": null,
             "rect": {
               "bottom": 62.0,
               "center_x": 50.0,
@@ -103,13 +114,20 @@
             },
             "renderer": "gpu",
             "role": "textbox",
+            "selected": null,
             "tag": "input",
             "text": "",
             "text_truncated": false,
             "type": "text",
             "value": "Ada",
             "value_truncated": false,
-            "visible": true
+            "visible": true,
+            "visibleRect": {
+              "height": 48.0,
+              "left": 0.0,
+              "top": 14.0,
+              "width": 100.0
+            }
           },
           {
             "aria_label": "Day",
@@ -121,12 +139,14 @@
             "editable": true,
             "enabled": true,
             "exists": true,
+            "expanded": null,
             "focused": false,
             "id": null,
             "inViewport": true,
             "index": 1,
             "name": null,
             "placeholder": null,
+            "pressed": null,
             "rect": {
               "bottom": 110.0,
               "center_x": 50.0,
@@ -141,13 +161,20 @@
             },
             "renderer": "gpu",
             "role": "textbox",
+            "selected": null,
             "tag": "input",
             "text": "",
             "text_truncated": false,
             "type": "text",
             "value": "",
             "value_truncated": false,
-            "visible": true
+            "visible": true,
+            "visibleRect": {
+              "height": 48.0,
+              "left": 0.0,
+              "top": 62.0,
+              "width": 100.0
+            }
           },
           {
             "aria_label": "Level",
@@ -159,12 +186,14 @@
             "editable": false,
             "enabled": true,
             "exists": true,
+            "expanded": null,
             "focused": false,
             "id": null,
             "inViewport": false,
             "index": 2,
             "name": null,
             "placeholder": null,
+            "pressed": null,
             "rect": {
               "bottom": 248.0,
               "center_x": 60.0,
@@ -179,13 +208,15 @@
             },
             "renderer": "gpu",
             "role": "slider",
+            "selected": null,
             "tag": "input",
             "text": "",
             "text_truncated": false,
             "type": "range",
             "value": "3",
             "value_truncated": false,
-            "visible": true
+            "visible": true,
+            "visibleRect": null
           },
           {
             "aria_label": "On",
@@ -197,12 +228,14 @@
             "editable": false,
             "enabled": true,
             "exists": true,
+            "expanded": null,
             "focused": false,
             "id": null,
             "inViewport": false,
             "index": 3,
             "name": null,
             "placeholder": null,
+            "pressed": null,
             "rect": {
               "bottom": 296.0,
               "center_x": 50.0,
@@ -217,13 +250,15 @@
             },
             "renderer": "gpu",
             "role": "checkbox",
+            "selected": null,
             "tag": "input",
             "text": "On",
             "text_truncated": false,
             "type": "checkbox",
             "value": null,
             "value_truncated": false,
-            "visible": true
+            "visible": true,
+            "visibleRect": null
           },
           {
             "aria_label": "Remember",
@@ -235,12 +270,14 @@
             "editable": false,
             "enabled": true,
             "exists": true,
+            "expanded": null,
             "focused": false,
             "id": null,
             "inViewport": false,
             "index": 4,
             "name": null,
             "placeholder": null,
+            "pressed": null,
             "rect": {
               "bottom": 468.0,
               "center_x": 51.0,
@@ -255,13 +292,15 @@
             },
             "renderer": "gpu",
             "role": "checkbox",
+            "selected": null,
             "tag": "input",
             "text": "Remember",
             "text_truncated": false,
             "type": "checkbox",
             "value": null,
             "value_truncated": false,
-            "visible": true
+            "visible": true,
+            "visibleRect": null
           }
         ],
         "renderer": "gpu"
@@ -362,7 +401,12 @@
       },
       "value": {
         "animationFrames": 0,
+        "backdropCache": null,
+        "budget": {
+          "overruns": 0
+        },
         "commit": 1,
+        "composite": null,
         "evalMs": {
           "last": 0,
           "max": 0
@@ -413,12 +457,40 @@
           "windowMs": 0
         },
         "page": "1",
+        "passes": null,
+        "presentUs": null,
+        "profile": "debug",
         "renderer": "gpu",
         "reveal": {
           "deadlines": 0,
           "lastReveal": null,
-          "watchdogs": 0
+          "watchdogs": 0,
+          "windowCovered": false
         },
+        "stagesMs": {
+          "build": 0,
+          "compose": 0,
+          "frames": 0,
+          "gpuEncode": 0,
+          "gpuPresent": 0,
+          "gpuScene": 0,
+          "gpuSubmit": 0,
+          "layout": 0,
+          "layoutPasses": 0,
+          "main": 0,
+          "mainWork": 0,
+          "queue": 0,
+          "text": 0,
+          "total": 0,
+          "view": 0,
+          "viewEval": 0,
+          "viewPasses": 0,
+          "viewPhases": 0,
+          "wait": 0,
+          "worker": 0
+        },
+        "transition": null,
+        "video": null,
         "wakeups": 0,
         "workerQueueUs": {
           "last": 0,
@@ -435,7 +507,12 @@
       },
       "value": {
         "animationFrames": 0,
+        "backdropCache": null,
+        "budget": {
+          "overruns": 0
+        },
         "commit": 1,
+        "composite": null,
         "evalMs": {
           "last": 0,
           "max": 0
@@ -486,12 +563,40 @@
           "windowMs": 0
         },
         "page": "1",
+        "passes": null,
+        "presentUs": null,
+        "profile": "debug",
         "renderer": "gpu",
         "reveal": {
           "deadlines": 0,
           "lastReveal": null,
-          "watchdogs": 0
+          "watchdogs": 0,
+          "windowCovered": false
         },
+        "stagesMs": {
+          "build": 0,
+          "compose": 0,
+          "frames": 0,
+          "gpuEncode": 0,
+          "gpuPresent": 0,
+          "gpuScene": 0,
+          "gpuSubmit": 0,
+          "layout": 0,
+          "layoutPasses": 0,
+          "main": 0,
+          "mainWork": 0,
+          "queue": 0,
+          "text": 0,
+          "total": 0,
+          "view": 0,
+          "viewEval": 0,
+          "viewPasses": 0,
+          "viewPhases": 0,
+          "wait": 0,
+          "worker": 0
+        },
+        "transition": null,
+        "video": null,
         "wakeups": 0,
         "workerQueueUs": {
           "last": 0,
@@ -1393,7 +1498,7 @@
       "viewPasses": 1,
       "viewTransferUs": 0,
       "viewUs": 0,
-      "wireValues": 240
+      "wireValues": 250
     },
     "nodes": [
       {
@@ -1476,13 +1581,13 @@
           "enter_key_hint": "next",
           "geometry": {
             "anchor": [
-              36.91015625,
+              36.910156,
               31.0,
               1.5,
               14.0
             ],
             "caret": [
-              36.91015625,
+              36.910156,
               31.0,
               1.5,
               14.0
@@ -1751,9 +1856,11 @@
           48.0
         ],
         "checked": true,
+        "focus_style": true,
         "identity": "/i:0:5/i:6:10",
         "on_click": 4,
         "order": 7,
+        "pressed_style": true,
         "radius": 0.0,
         "scroll_parent": "/i:0:5",
         "tag": "checkbox",
@@ -1912,14 +2019,14 @@
         "bounds": [
           0.0,
           406.0,
-          60.7099609375,
+          60.70996,
           14.0
         ],
         "hit_rects": [
           [
             0.0,
             406.0,
-            60.7099609375,
+            60.70996,
             14.0
           ]
         ],
@@ -1934,20 +2041,20 @@
         "visible_bounds": [
           0.0,
           406.0,
-          60.7099609375,
+          60.70996,
           0.0
         ]
       },
       {
         "bounds": [
-          60.7099609375,
+          60.70996,
           406.0,
           35.0,
           14.0
         ],
         "hit_rects": [
           [
-            60.7099609375,
+            60.70996,
             406.0,
             35.0,
             14.0
@@ -1962,7 +2069,7 @@
         "test_id": "",
         "text": "terms",
         "visible_bounds": [
-          60.7099609375,
+          60.70996,
           406.0,
           35.0,
           0.0
@@ -1975,7 +2082,7 @@
           100.0,
           48.0
         ],
-        "button_content": "9d21f5c68805211f",
+        "button_content": "bf13a61a63d3be68",
         "identity": "/i:0:5/i:11:3",
         "on_click": 7,
         "order": 14,
@@ -1999,12 +2106,12 @@
           100.0,
           48.0
         ],
-        "identity": "/i:0:5/i:11:3/i:0:1",
+        "identity": "/i:0:5/i:11:3/i:0:0",
         "on_click": null,
         "order": 15,
         "radius": 0.0,
         "scroll_parent": "/i:0:5",
-        "tag": "row",
+        "tag": "column",
         "test_id": "",
         "text": "",
         "visible_bounds": [
@@ -2022,7 +2129,7 @@
           19.0,
           48.0
         ],
-        "identity": "/i:0:5/i:11:3/i:0:1/i:0:2",
+        "identity": "/i:0:5/i:11:3/i:0:0/i:0:2",
         "on_click": null,
         "order": 16,
         "radius": 0.0,
@@ -2046,9 +2153,11 @@
           48.0
         ],
         "checked": true,
-        "identity": "/i:0:5/i:11:3/i:0:1/i:1:10",
+        "focus_style": true,
+        "identity": "/i:0:5/i:11:3/i:0:0/i:1:10",
         "on_click": 8,
         "order": 17,
+        "pressed_style": true,
         "radius": 0.0,
         "scroll_parent": "/i:0:5",
         "tag": "checkbox",
@@ -2097,12 +2206,12 @@
           900.0,
           20.0
         ],
-        "identity": "/i:0:5/i:12:5/i:0:1",
+        "identity": "/i:0:5/i:12:5/i:0:0",
         "on_click": null,
         "order": 19,
         "radius": 0.0,
         "scroll_parent": "/i:0:5/i:12:5",
-        "tag": "row",
+        "tag": "column",
         "test_id": "",
         "text": "",
         "visible_bounds": [
