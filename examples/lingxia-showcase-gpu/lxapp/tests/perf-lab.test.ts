@@ -2,6 +2,7 @@ import { expect, spec, type Fixture, type TestMetrics } from '@lingxia/test';
 import type { PageContract } from '@lingxia/types/page';
 import type { DriveRequest, PerfActions, PerfData } from '../shared/perf-types';
 import { judgeFrames, judgeInput, judgeReveal, REVEAL_P95_MS, TICK_SHARE } from '../shared/perf-judge';
+import { skipWhenCovered } from './covered.js';
 
 type PerfLab = PageContract<PerfData, PerfActions>;
 
@@ -101,6 +102,7 @@ spec('250 springs at once keep pace', { id: 'PERF-ANIM-001' }, async (t) => {
 });
 
 spec('eight translucent, blurred and shadowed layers keep pace', { id: 'PERF-FILL-001' }, async (t) => {
+  await skipWhenCovered(t, 'perf-lab');
   await scene(t, 'fill', 8);
   await expectFrames(t, await runBudget(t, 'fill', 8));
 });

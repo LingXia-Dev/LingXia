@@ -1,7 +1,9 @@
 import { expect, spec } from '@lingxia/test';
 import { decodePng } from './png.js';
+import { skipWhenCovered } from './covered.js';
 
 spec('a video plays in a 16:9 box and under its overlay', { start: { page: 'video' } }, async (t) => {
+  await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const hero = view.testId('video-hero');
   await expect(hero).toBeVisible();
@@ -55,6 +57,7 @@ async function sample(t: Fixture, points: [number, number][], viewport: Viewport
 }
 
 spec('useVideo reports playback and pauses on command', { start: { page: 'video' } }, async (t) => {
+  await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-hero-state');
   const seconds = async () => Number(/([\d.]+)s \//.exec(await state.textContent())?.[1] ?? NaN);
@@ -73,6 +76,7 @@ spec('useVideo reports playback and pauses on command', { start: { page: 'video'
 const seconds = (text: string) => Number(/([\d.]+)s\s*$/.exec(text)?.[1] ?? NaN);
 
 spec('a quality switch keeps the position and the frames moving', { start: { page: 'video' } }, async (t) => {
+  await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-quality-state');
   await expect(state).toContainText('auto · 360p');
@@ -93,6 +97,7 @@ spec('a quality switch keeps the position and the frames moving', { start: { pag
 });
 
 spec('lx.createVideoContext pauses and plays the page player from Logic', { start: { page: 'video' } }, async (t) => {
+  await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-hero-state');
   await expect(state).toContainText('playing');
@@ -103,6 +108,7 @@ spec('lx.createVideoContext pauses and plays the page player from Logic', { star
 });
 
 spec('a page under another holds its videos still and plays the playing ones again on return', { start: { page: 'video' } }, async (t) => {
+  await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-hero-state');
   const at = async () => Number(/([\d.]+)s \//.exec(await state.textContent())?.[1] ?? NaN);
@@ -135,6 +141,7 @@ spec('a page under another holds its videos still and plays the playing ones aga
 
 // Needs the network: the row streams Apple's public HLS test stream, so an unreachable stream skips.
 spec('an HLS source offers its renditions as qualities', { start: { page: 'video' } }, async (t) => {
+  await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-stream-state');
   const offline = () => t.skip('needs the network: the public HLS test stream is unreachable');

@@ -1,4 +1,5 @@
 import { expect, spec } from '@lingxia/test';
+import { skipWhenCovered } from './covered.js';
 
 // GPU-only fixtures read through role and accessible name, the way a screen reader does.
 spec('view lab answers locators by role and name', { start: { page: 'view-lab' } }, async (t) => {
@@ -85,6 +86,7 @@ spec('kit progress reads as a progressbar with its value, and without one while 
 });
 
 spec('kit video controls start a poster video on a tap, then pause, mute and scrub it', { start: { page: 'view-lab' } }, async (t) => {
+  await skipWhenCovered(t, 'view-lab');
   const view = t.app.view;
   await view.testId('lab-tab-media').click();
   const button = (name: string) => view.getByRole('button', { name });
@@ -123,6 +125,7 @@ spec('a finger on any group tab opens its group, wrapped line included', { start
 });
 
 spec('kit video controls show the player full screen and Escape brings it back', { start: { page: 'view-lab' } }, async (t) => {
+  await skipWhenCovered(t, 'view-lab');
   const view = t.app.view;
   await view.testId('lab-tab-media').click();
   await view.testId('lab-video-controls-play').click();
