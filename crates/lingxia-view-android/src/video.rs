@@ -3,7 +3,7 @@
 //! buffer to Vulkan, which samples the same memory. A buffer goes to Vulkan only once the EGL
 //! fence after its GL draw has signalled, a refresh later, so the render thread never waits on
 //! the GPU.
-use jni::objects::{Global, JClass, JDoubleArray, JFloatArray, JObject, JString};
+use jni::objects::{Global, JByteBuffer, JClass, JDoubleArray, JFloatArray, JObject, JString};
 use jni::{Env, JValue, JavaVM, jni_sig, jni_str};
 use lingxia_view::renderer::gpu::video::{Player, import_hardware_buffer, install};
 use lingxia_view::renderer::gpu::wgpu;
@@ -60,6 +60,8 @@ fn open(source: &str) -> Result<Box<dyn Player>, String> {
         next: 0,
         size: [0, 0],
         pending: None,
+        latched: false,
+        posted: false,
     }))
 }
 
@@ -71,6 +73,10 @@ struct Video {
     size: [u32; 2],
     /// The slot drawn last and the fence its draw signals.
     pending: Option<(usize, *mut c_void)>,
+    /// The player has latched a frame of its own.
+    latched: bool,
+    /// Frame 0 decoded at open was drawn, or will not be.
+    posted: bool,
 }
 
 // The GL names and buffers are used on the render thread only; drop defers their GL half.
@@ -98,6 +104,7 @@ impl Player for Video {
                     .z()
             })
             .unwrap_or(false)
+            || (!self.posted && self.poster_size().is_some())
     }
 
     fn next_frame(
@@ -113,9 +120,17 @@ impl Player for Video {
                 .i()?;
             Ok([width.max(0) as u32, height.max(0) as u32])
         })?;
-        if size[0] == 0 || size[1] == 0 {
-            return Ok(None);
-        }
+        // Until the player has a frame, frame 0 decoded at open stands in, in the same slots.
+        let poster = if self.posted {
+            None
+        } else {
+            self.poster_size()
+        };
+        let size = match poster {
+            _ if size[0] != 0 && size[1] != 0 => size,
+            Some(poster) => poster,
+            None => return Ok(None),
+        };
         let _current = egl()?.enter();
         unsafe { collect() };
         if self.gl.is_none() {
@@ -149,8 +164,13 @@ impl Player for Video {
             }
             _ => None,
         };
-        if self.pending.is_none() {
-            self.draw_next(size)?;
+        if self.pending.is_none() && !self.draw_next(size)? && poster.is_some() {
+            if poster == Some(size) {
+                self.draw_poster(size)?;
+            } else {
+                // A frame of another shape would jump when the player's own arrives.
+                self.drop_poster();
+            }
         }
         Ok(ready.map(|slot| {
             (
@@ -316,8 +336,9 @@ impl Video {
 }
 
 impl Video {
-    /// Latches the newest decoded frame and draws it into the next slot, behind a fence.
-    fn draw_next(&mut self, size: [u32; 2]) -> Result<(), String> {
+    /// Latches the newest decoded frame and draws it into the next slot, behind a fence; false
+    /// when the player has none.
+    fn draw_next(&mut self, size: [u32; 2]) -> Result<bool, String> {
         let mut matrix = [0f32; 16];
         let latched = java(|env| {
             let array = env
@@ -331,12 +352,22 @@ impl Video {
             Ok(true)
         })?;
         if !latched {
-            return Ok(());
+            return Ok(false);
+        }
+        if !self.latched {
+            self.latched = true;
+            self.drop_poster();
         }
         let index = self.next;
         self.next = (self.next + 1) % self.slots.len();
         let gl = self.gl.as_ref().ok_or("GpuVideo: no GL")?;
         unsafe { gl.draw(self.slots[index].color, size, &matrix)? };
+        self.fence(index)?;
+        Ok(true)
+    }
+
+    /// The next slot's draw is queued: hand it over once the GPU has run it.
+    fn fence(&mut self, index: usize) -> Result<(), String> {
         let egl = egl()?;
         let sync = unsafe { (egl.create_sync)(egl.display, EGL_SYNC_FENCE_KHR, std::ptr::null()) };
         unsafe { glFlush() };
@@ -345,6 +376,94 @@ impl Video {
         }
         self.pending = Some((index, sync));
         Ok(())
+    }
+
+    /// Frame 0's size once the open has decoded it.
+    fn poster_size(&self) -> Option<[u32; 2]> {
+        java(|env| {
+            let rows = env
+                .call_method(
+                    &*self.java,
+                    jni_str!("poster"),
+                    jni_sig!("()Ljava/nio/ByteBuffer;"),
+                    &[],
+                )?
+                .l()?;
+            if rows.is_null() {
+                return Ok(None);
+            }
+            let width = env
+                .call_method(&*self.java, jni_str!("posterWidth"), jni_sig!("()I"), &[])?
+                .i()?;
+            let height = env
+                .call_method(&*self.java, jni_str!("posterHeight"), jni_sig!("()I"), &[])?
+                .i()?;
+            Ok((width > 0 && height > 0).then_some([width as u32, height as u32]))
+        })
+        .ok()
+        .flatten()
+    }
+
+    /// Uploads frame 0's rows into the next slot. The player's first frame replaces it like any
+    /// later one: only once its own slot's fence has signalled, so nothing blank shows between.
+    fn draw_poster(&mut self, size: [u32; 2]) -> Result<(), String> {
+        let index = self.next;
+        let color = self.slots[index].color;
+        let uploaded = java(|env| {
+            let rows = env
+                .call_method(
+                    &*self.java,
+                    jni_str!("poster"),
+                    jni_sig!("()Ljava/nio/ByteBuffer;"),
+                    &[],
+                )?
+                .l()?;
+            if rows.is_null() {
+                return Ok(false);
+            }
+            let rows = env.cast_local::<JByteBuffer>(rows)?;
+            let length = env.get_direct_buffer_capacity(&rows)?;
+            if length != size[0] as usize * size[1] as usize * 4 {
+                return Ok(false);
+            }
+            let address = env.get_direct_buffer_address(&rows)?;
+            // GL copies the rows during the call, while `rows` keeps them alive.
+            unsafe {
+                glBindTexture(GL_TEXTURE_2D, color);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+                glTexSubImage2D(
+                    GL_TEXTURE_2D,
+                    0,
+                    0,
+                    0,
+                    size[0] as i32,
+                    size[1] as i32,
+                    GL_RGBA,
+                    GL_UNSIGNED_BYTE,
+                    address as *const c_void,
+                );
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+            Ok(true)
+        })?;
+        self.drop_poster();
+        if uploaded {
+            self.next = (self.next + 1) % self.slots.len();
+            self.fence(index)?;
+        }
+        Ok(())
+    }
+
+    /// Frees frame 0's rows; the player shows its own frames from here on.
+    fn drop_poster(&mut self) {
+        if self.posted {
+            return;
+        }
+        self.posted = true;
+        let _ = java(|env| {
+            env.call_method(&*self.java, jni_str!("dropPoster"), jni_sig!("()V"), &[])
+                .map(drop)
+        });
     }
 
     fn release_slots(&mut self) {
@@ -738,6 +857,9 @@ const EGL_CONDITION_SATISFIED_KHR: i32 = 0x30F6;
 
 const GL_TEXTURE_EXTERNAL_OES: u32 = 0x8D65;
 const GL_TEXTURE_2D: u32 = 0x0DE1;
+const GL_UNPACK_ALIGNMENT: u32 = 0x0CF5;
+const GL_RGBA: u32 = 0x1908;
+const GL_UNSIGNED_BYTE: u32 = 0x1401;
 const GL_TEXTURE_MIN_FILTER: u32 = 0x2801;
 const GL_TEXTURE_MAG_FILTER: u32 = 0x2800;
 const GL_TEXTURE_WRAP_S: u32 = 0x2802;
@@ -850,4 +972,16 @@ unsafe extern "C" {
     fn glDrawArrays(mode: u32, first: i32, count: i32);
     fn glFinish();
     fn glFlush();
+    fn glPixelStorei(name: u32, value: i32);
+    fn glTexSubImage2D(
+        target: u32,
+        level: i32,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        format: u32,
+        kind: u32,
+        pixels: *const c_void,
+    );
 }

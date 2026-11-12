@@ -45,6 +45,13 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
     /** An adaptive stream's video heights, highest first, as "720p,360p". */
     private volatile String qualities = "";
     private static final long SAMPLE_MS = 100;
+    /** Frame 0 as RGBA rows, decoded while the player prepares; null until then or with none. */
+    private volatile java.nio.ByteBuffer poster;
+    private volatile int posterWidth;
+    private volatile int posterHeight;
+    private volatile boolean closed;
+    private volatile java.util.concurrent.Future<?> posterTask;
+    private static java.util.concurrent.ExecutorService posters;
 
     static GpuVideo open(String source) {
         return new GpuVideo(source);
@@ -63,6 +70,7 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
         texture.setOnFrameAvailableListener(this, handler);
         Context context = application();
         Uri uri = resolve(context, source);
+        decodePoster(context, uri);
         handler.post(() -> {
             // Built on the handler thread, which becomes the player's application thread.
             player = new ExoPlayer.Builder(context).build();
@@ -223,6 +231,98 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
         return "VIDEO_SOURCE";
     }
 
+    private static synchronized java.util.concurrent.ExecutorService posters() {
+        if (posters == null) {
+            posters = java.util.concurrent.Executors.newSingleThreadExecutor(task -> new Thread(task, "lingxia-video-poster"));
+        }
+        return posters;
+    }
+
+    /** Decodes frame 0 off the player's thread; the first video frame then need not wait for prepare. */
+    private void decodePoster(Context context, Uri uri) {
+        // Only sources read in place: a stream's first frame comes with its first segment, and a
+        // retriever on an http file would download it a second time beside the player.
+        String scheme = uri.getScheme();
+        if (!"file".equals(scheme) && !"content".equals(scheme)) {
+            return;
+        }
+        posterTask = posters().submit(() -> {
+            if (closed) {
+                return;
+            }
+            android.media.MediaMetadataRetriever retriever = new android.media.MediaMetadataRetriever();
+            try {
+                retriever.setDataSource(context, uri);
+                android.graphics.Bitmap frame = retriever.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                if (frame == null || closed) {
+                    return;
+                }
+                frame = upright(frame, retriever);
+                if (frame.getConfig() != android.graphics.Bitmap.Config.ARGB_8888) {
+                    frame = frame.copy(android.graphics.Bitmap.Config.ARGB_8888, false);
+                }
+                java.nio.ByteBuffer rows = java.nio.ByteBuffer.allocateDirect(frame.getByteCount());
+                frame.copyPixelsToBuffer(rows);
+                rows.rewind();
+                int width = frame.getWidth(), height = frame.getHeight();
+                frame.recycle();
+                if (closed) {
+                    return;
+                }
+                posterWidth = width;
+                posterHeight = height;
+                poster = rows;
+            } catch (RuntimeException failure) {
+                Log.d(TAG, "GpuVideo: no early frame: " + failure.getMessage());
+            } finally {
+                try {
+                    retriever.release();
+                } catch (java.io.IOException | RuntimeException ignored) {
+                }
+            }
+        });
+    }
+
+    /** The player shows a rotated video turned upright; a retriever frame may still lie as stored.
+     *  Only a quarter turn shows in the frame's size; newer retrievers apply the rotation themselves. */
+    private static android.graphics.Bitmap upright(android.graphics.Bitmap frame, android.media.MediaMetadataRetriever retriever) {
+        int rotation = parse(retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
+        int stored = parse(retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
+        boolean quarter = rotation == 90 || rotation == 270;
+        if (!quarter || frame.getWidth() != stored) {
+            return frame;
+        }
+        android.graphics.Matrix turn = new android.graphics.Matrix();
+        turn.postRotate(rotation);
+        return android.graphics.Bitmap.createBitmap(frame, 0, 0, frame.getWidth(), frame.getHeight(), turn, true);
+    }
+
+    private static int parse(String value) {
+        try {
+            return value == null ? 0 : Integer.parseInt(value);
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    /** Frame 0's RGBA rows (posterWidth × posterHeight), or null while none is decoded. */
+    java.nio.ByteBuffer poster() {
+        return poster;
+    }
+
+    int posterWidth() {
+        return posterWidth;
+    }
+
+    int posterHeight() {
+        return posterHeight;
+    }
+
+    /** The player has shown its own frame: the early one is not needed again. */
+    void dropPoster() {
+        poster = null;
+    }
+
     @Override
     public void onFrameAvailable(SurfaceTexture ignored) {
         available = true;
@@ -259,6 +359,11 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
     }
 
     void close() {
+        closed = true;
+        poster = null;
+        if (posterTask != null) {
+            posterTask.cancel(true);
+        }
         handler.post(() -> {
             if (player != null) {
                 player.release();
