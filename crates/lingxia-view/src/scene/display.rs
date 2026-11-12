@@ -7,6 +7,7 @@ use std::{collections::HashMap, ops::Range, sync::Arc};
 use vello_cpu::kurbo::Affine;
 
 /// Immutable layout output shared by CPU reference rendering and GPU scene encoding.
+#[derive(Clone)]
 pub struct DisplayList {
     /// Paint spans whose commands change from one animation frame to the next.
     pub(crate) animated: Vec<AnimatedSpan>,

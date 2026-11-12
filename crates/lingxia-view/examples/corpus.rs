@@ -1,5 +1,6 @@
 //! Renders compiled View pages headlessly for the corpus: deterministic cost counters per
-//! page and viewport, informative timings, optional PNGs, and a hash of the CPU-rendered frame.
+//! page and viewport, informative timings, optional PNGs, a hash of the CPU-rendered frame, and
+//! how far the same frame rendered through the composition plan differs from it.
 //! Driven by packages/lingxia-view/corpus/run.mjs.
 //!   cargo run -p lingxia-view --example corpus -- jobs.json results.json
 
@@ -29,6 +30,56 @@ struct Job {
     /// Rasterizes the frame and reports its hash.
     #[serde(default)]
     hash: bool,
+    /// Also renders the frame through the composition plan and reports its largest byte
+    /// difference from the flat frame; writes it here, with a diff image beside it on a miss.
+    #[serde(default)]
+    composed: Option<String>,
+}
+
+/// Bytes the composed frame may differ by: one more premultiplied rounding than the flat one.
+const COMPOSED_TOLERANCE: u8 = 2;
+
+/// The composed frame against the flat one: `{maxDiff, overBytes}`, and on a miss a diff image
+/// (each channel's difference, scaled 8×, opaque) next to the composed PNG.
+fn compare_composed(
+    flat: &vello_cpu::Pixmap,
+    composed: vello_cpu::Pixmap,
+    path: &str,
+) -> Result<Value, String> {
+    if (flat.width(), flat.height()) != (composed.width(), composed.height()) {
+        return Err(format!(
+            "composed frame is {}x{}, flat {}x{}",
+            composed.width(),
+            composed.height(),
+            flat.width(),
+            flat.height()
+        ));
+    }
+    let (mut max, mut over) = (0u8, 0usize);
+    let mut diff = vello_cpu::Pixmap::new(flat.width(), flat.height());
+    for ((a, b), out) in flat
+        .data_as_u8_slice()
+        .chunks_exact(4)
+        .zip(composed.data_as_u8_slice().chunks_exact(4))
+        .zip(diff.data_as_u8_slice_mut().chunks_exact_mut(4))
+    {
+        for channel in 0..4 {
+            let d = a[channel].abs_diff(b[channel]);
+            max = max.max(d);
+            over += usize::from(d > COMPOSED_TOLERANCE);
+            if channel < 3 {
+                out[channel] = d.saturating_mul(8);
+            }
+        }
+        out[3] = 255;
+    }
+    std::fs::write(path, composed.into_png().map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    if over > 0 {
+        let png = diff.into_png().map_err(|e| e.to_string())?;
+        std::fs::write(path.replace(".png", ".diff.png"), png).map_err(|e| e.to_string())?;
+    }
+    Ok(json!({ "maxDiff": max, "overBytes": over }))
 }
 
 /// The frame's identity: SHA-256 over its size and RGBA bytes.
@@ -149,8 +200,17 @@ fn run(job: &Job) -> Result<Value, String> {
         std::fs::write(path, json).map_err(|e| e.to_string())?;
     }
     let mut hash = Value::Null;
-    if job.png.is_some() || job.hash {
-        let frame = display.rasterize()?;
+    let mut composed = Value::Null;
+    if job.png.is_some() || job.hash || job.composed.is_some() {
+        let frame = match &job.composed {
+            Some(path) => {
+                let frame = display.clone().rasterize()?;
+                let other = display.rasterize_composited()?;
+                composed = compare_composed(&frame.pixels, other.pixels, path)?;
+                frame
+            }
+            None => display.rasterize()?,
+        };
         if job.hash {
             hash = frame_hash(&frame.pixels).into();
         }
@@ -174,6 +234,7 @@ fn run(job: &Job) -> Result<Value, String> {
         "wireValues": metrics.wire_values,
         "medianUs": times[2],
         "hash": hash,
+        "composed": composed,
     }))
 }
 

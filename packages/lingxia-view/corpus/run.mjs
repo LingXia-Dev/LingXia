@@ -10,6 +10,8 @@
 // `--visual` checks fixture hashes only, keyed by platform-arch: the rasterizer picks SIMD paths at
 // run time and fonts come from the host. Frames land in target/corpus/frames/, changed ones also in
 // target/corpus/changed/; `--diff <id>` writes an id's previous (when kept) and current frame to target/corpus/diff/.
+// `--visual` also renders each fixture frame through the composition plan; one differing from the flat
+// frame by more than 2 in any byte fails, with flat, composed and diff images in target/corpus/changed/.
 import { readFile, writeFile, mkdir, readdir, rm, copyFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -76,7 +78,7 @@ for (const lane of lanes) {
           jobs.push({ id, module: join(dist, page.replace(/\.tsx$/, '.js')), width: viewport.width, height: viewport.height,
             scale: viewport.scale, dark: theme === 'dark', locale: state.__locale ?? 'en', state,
             ...(lane.images ? { root: lane.root } : {}),
-            ...(visual ? { png: join(out, 'frames', `${file(id)}.png`), hash: true }
+            ...(visual ? { png: join(out, 'frames', `${file(id)}.png`), hash: true, composed: join(out, 'frames', `${file(id)}.composed.png`) }
               : flag('--png') ? { png: join(out, 'png', `${file(id)}.png`) } : {}),
             ...(flag('--nodes') ? { nodes: join(out, 'nodes', `${file(id)}.json`) } : {}) });
         }
@@ -115,6 +117,11 @@ for (const result of results) {
     const hashes = recorded[lane].renders[platform];
     const frame = join(out, 'frames', `${file(result.id)}.png`);
     if (diff !== undefined) await copyFile(frame, join(out, 'diff', `${file(result.id)}.current.png`));
+    if (result.composed?.overBytes > 0) {
+      problems.push(`${result.id}: composed frame differs from the flat one by up to ${result.composed.maxDiff} in ${result.composed.overBytes} bytes (flat, composed and diff in target/corpus/changed)`);
+      for (const suffix of ['', '.composed', '.composed.diff'])
+        await copyFile(join(out, 'frames', `${file(result.id)}${suffix}.png`), join(out, 'changed', `${file(result.id)}${suffix}.png`));
+    }
     if (flag('--update-visual')) continue;
     if (!hashes) problems.push(`${result.id}: no hashes recorded for ${platform}; run with --update-visual on such a host`);
     else if (!hashes[key]) problems.push(`${result.id}: no recorded hash; run with --update-visual`);
