@@ -37,6 +37,8 @@ mod windows;
 
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const BACKGROUND_CHILD_ENV: &str = "LINGXIA_DEV_BACKGROUND_CHILD";
+/// Set on a desktop app a `--background` session launches: it shows its window without taking focus.
+const LAUNCH_INACTIVE_ENV: &str = "LINGXIA_LAUNCH_INACTIVE";
 /// How long `lingxia dev --background` waits for its session to be ready. A
 /// cold host build in CI takes this long; past it the session is stopped.
 const BACKGROUND_START_TIMEOUT: Duration = Duration::from_secs(1800);

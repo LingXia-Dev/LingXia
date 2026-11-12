@@ -142,6 +142,7 @@ final class MacTitlebarActionStrip: NSView {
 /// ```
 @MainActor
 public final class LxAppShell: NSWindowController, NSWindowDelegate {
+    private var hasShown = false
 
     // MARK: - Layout Constants
 
@@ -455,8 +456,14 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     // MARK: - Show / Hide
 
     public func show() {
-        showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // A scripted dev launch keeps the user's front app: the first window goes in behind it.
+        if !hasShown, ProcessInfo.processInfo.environment["LINGXIA_LAUNCH_INACTIVE"] == "1" {
+            window?.orderBack(nil)
+        } else {
+            showWindow(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        hasShown = true
         applyRestoredZoomIfNeeded()
         guard startupBehavior == .automaticHome,
               !didRequestHomeOpen,

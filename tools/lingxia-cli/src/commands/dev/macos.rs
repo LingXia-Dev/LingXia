@@ -52,7 +52,11 @@ pub(super) fn execute_macos(ctx: DevContext) -> Result<()> {
         // Step 2: Run (run the built executable directly)
         println!("{}", "Step 2/2: Running...".bold());
         terminate_existing_macos_app_processes(&exe)?;
-        let mut child = Command::new(&exe)
+        let mut command = Command::new(&exe);
+        if env::var_os(BACKGROUND_CHILD_ENV).is_some() {
+            command.env(LAUNCH_INACTIVE_ENV, "1");
+        }
+        let mut child = command
             .env(RUNNER_DEV_WS_URL_ENV, &ws_url)
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
