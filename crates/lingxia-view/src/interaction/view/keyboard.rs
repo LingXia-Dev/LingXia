@@ -89,14 +89,14 @@ impl ViewInteraction {
         effects
     }
 
-    /// A dialog that opened takes keyboard focus; one that closed returns it to
-    /// what had it before. Only while the keyboard is in use, so pointers see no ring.
+    /// A dialog or menu that opened takes keyboard focus on its first control; one that closed
+    /// returns it to what had it before. Only while the keyboard is in use, so pointers see no ring.
     fn track_dialogs(&mut self, page: PageTicket) -> Vec<Effect> {
         let Some(frame) = self.frame.clone() else {
             return Vec::new();
         };
-        let open =
-            navigation::active_dialog(&frame).map(|index| frame.nodes[index].identity.clone());
+        let overlay = navigation::active_overlay(&frame);
+        let open = overlay.map(|index| frame.nodes[index].identity.clone());
         let keyboard = self.keyboard_used;
         let mut effects = Vec::new();
         // Dialogs no longer shown hand focus back, innermost first.
@@ -122,7 +122,9 @@ impl ViewInteraction {
             self.dialogs
                 .push((dialog.to_string(), before.map(String::from)));
             if keyboard
-                && let Some(first) = navigation::next(&frame, None, 1, self.revealable(&frame))
+                && let Some(first) = overlay.and_then(|overlay| {
+                    navigation::first_inside(&frame, overlay, self.revealable(&frame))
+                })
             {
                 effects.extend(self.navigate(first, false, page));
             }
@@ -218,7 +220,7 @@ impl ViewInteraction {
             }
         }
         if key == Key::Escape {
-            // Consumed only while a dialog is open; otherwise the platform may use it too.
+            // Consumed only while a dialog or menu is open; otherwise the platform may use it too.
             self.dispatches.push(super::Dispatch::Escape);
             return (!self.dialogs.is_empty(), vec![Effect::Dispatch]);
         }

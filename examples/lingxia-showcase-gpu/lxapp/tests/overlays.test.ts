@@ -36,6 +36,18 @@ spec('a sheet holds its own scroll and closes from its button', { covers: ['view
   await expect(view.testId('lab-overlay-last')).toHaveText('last: apply');
 });
 
+spec('a menu opened from the keyboard focuses its first item and gives focus back when it closes', { covers: ['view:popover', 'view:a11y'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-feedback').click();
+  const more = view.testId('lab-overlay-more');
+  await more.press('Enter');
+  const rename = view.getByRole('menuitem', { name: 'Rename' });
+  await expect(rename).toBeFocused();
+  await rename.press('Enter');
+  await expect(view.testId('lab-overlay-last')).toHaveText('last: Rename');
+  await expect(more).toBeFocused();
+});
+
 spec('a menu moves its focus with arrows, Home and End and jumps by a typed letter', { covers: ['view:popover', 'view:a11y'], start: { page: 'view-lab' } }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-tab-feedback').click();

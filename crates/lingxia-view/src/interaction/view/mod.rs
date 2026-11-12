@@ -103,7 +103,7 @@ pub struct ViewInteraction {
     inert: bool,
     /// Left the stack: the last frame stays readable for automation until the next one replaces it.
     parked: bool,
-    /// Open dialogs, innermost last, each with what had keyboard focus before it opened.
+    /// Open dialogs and menus, innermost last, each with what had keyboard focus before it opened.
     dialogs: Vec<(String, Option<String>)>,
     /// A mouse or trackpad drives the pointer: drags select text instead of scrolling.
     fine_pointer: bool,

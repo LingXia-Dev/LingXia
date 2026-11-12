@@ -103,6 +103,34 @@ fn a_dialog_opened_by_pointer_leaves_focus_and_its_ring_alone() {
 }
 
 #[test]
+fn a_menu_opened_from_the_keyboard_focuses_its_first_item_and_returns_focus_on_close() {
+    let page = || vec![button("/a", 0.0), button("/more", 50.0)];
+    let with_menu = || {
+        let mut nodes = page();
+        // The popover's dismiss backdrop comes first in the layer and is hidden from assistive tech.
+        let mut backdrop = button("/layer/backdrop", 0.0);
+        backdrop.accessibility_hidden = Some(true);
+        let mut menu = node("/layer/panel", "column", [0.0, 100.0, 100.0, 80.0]);
+        menu.role = Some("menu".into());
+        let mut rename = button("/layer/panel/rename", 100.0);
+        rename.role = Some("menuitem".into());
+        let mut delete = button("/layer/panel/delete", 140.0);
+        delete.role = Some("menuitem".into());
+        nodes.extend([backdrop, menu, rename, delete]);
+        nodes
+    };
+    let mut interaction = ViewInteraction::default();
+    present(&mut interaction, page(), 1);
+    assert_eq!(tab(&mut interaction), Some(0));
+    assert_eq!(tab(&mut interaction), Some(1));
+    // Enter on "more" opens the menu: focus lands on its first item, not the backdrop.
+    assert_eq!(ring(&present(&mut interaction, with_menu(), 2)), Some(4));
+    assert_eq!(tab(&mut interaction), Some(5));
+    // Choosing an item closes the menu; focus returns to "more".
+    assert_eq!(ring(&present(&mut interaction, page(), 3)), Some(1));
+}
+
+#[test]
 fn a_menu_takes_home_end_wrapping_arrows_and_type_ahead() {
     use super::policy_tests::node;
     use super::view::*;

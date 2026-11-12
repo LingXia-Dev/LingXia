@@ -48,6 +48,7 @@ pub fn is_option(frame: &PresentedFrame, index: usize) -> bool {
 }
 
 /// Can receive keyboard focus now or after revealing it through scroll ancestors.
+/// A control hidden from assistive technology, such as a popover's dismiss backdrop, is no stop.
 pub fn candidate(
     frame: &PresentedFrame,
     index: usize,
@@ -57,6 +58,7 @@ pub fn candidate(
         return false;
     };
     (interactive(node) || super::frame::draggable(node))
+        && node.accessibility_hidden != Some(true)
         && node.bounds[2] > 0.0
         && node.bounds[3] > 0.0
         && (super::frame::visible(node) || revealable(node))
@@ -68,6 +70,26 @@ pub fn active_dialog(frame: &PresentedFrame) -> Option<usize> {
         .nodes
         .iter()
         .rposition(|node| node.role.as_deref() == Some("dialog") && super::frame::visible(node))
+}
+
+/// The topmost open dialog or menu: opening one from the keyboard moves focus into it.
+pub fn active_overlay(frame: &PresentedFrame) -> Option<usize> {
+    frame.nodes.iter().rposition(|node| {
+        matches!(node.role.as_deref(), Some("dialog" | "menu")) && super::frame::visible(node)
+    })
+}
+
+/// The first focus target inside `container`, in focus order.
+pub fn first_inside(
+    frame: &PresentedFrame,
+    container: usize,
+    revealable: impl Fn(&NodeSnapshot) -> bool,
+) -> Option<usize> {
+    (container + 1..frame.nodes.len()).find(|index| {
+        inside(frame, Some(container), *index)
+            && candidate(frame, *index, &revealable)
+            && tab_stop(frame, *index)
+    })
 }
 
 fn inside(frame: &PresentedFrame, scope: Option<usize>, index: usize) -> bool {
