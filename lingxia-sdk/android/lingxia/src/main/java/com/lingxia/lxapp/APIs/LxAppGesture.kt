@@ -59,7 +59,8 @@ internal object LxAppGesture {
             }
             val visible = android.graphics.Rect()
             if (!view.getGlobalVisibleRect(visible)) throw IllegalStateException("page $webtag is not on screen")
-            val at = IntArray(2).also { view.getLocationOnScreen(it) }
+            // The visible rect is in window coordinates: a window inset by a cutout starts right of the screen's edge.
+            val at = IntArray(2).also { view.getLocationInWindow(it) }
             val density = activity.resources.displayMetrics.density
             JSONObject()
                 .put("left", ((visible.left - at[0]) / density).toDouble())
