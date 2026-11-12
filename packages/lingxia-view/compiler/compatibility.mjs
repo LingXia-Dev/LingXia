@@ -1,9 +1,9 @@
-import { uiAbi, maxField } from '../src/generated/wire.js';
+import { uiAbi, minField } from '../src/generated/wire.js';
 
 // Requirements describe the bundled runtime, including fields it can emit after
 // state changes. Do not infer a lower baseline from the first frame.
 export function moduleBanner(compiler) {
-  const manifest = { uiAbi, minField: maxField, requiredFeatures: ['candidate-transactions', 'bounded-jobs'], compiler };
+  const manifest = { uiAbi, minField, requiredFeatures: ['candidate-transactions', 'bounded-jobs'], compiler };
   return `// LingXia UI module; ${JSON.stringify(manifest)}
 ;(function(required) {
   const host = globalThis.__lingxiaViewHost;

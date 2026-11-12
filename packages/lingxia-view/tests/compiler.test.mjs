@@ -7,7 +7,7 @@ import { audit, buildPages, identify } from '../compiler/index.mjs';
 import { moduleBanner } from '../compiler/compatibility.mjs';
 import { stabilizeClosures } from '../compiler/stable-closures.mjs';
 import { runInNewContext } from 'node:vm';
-import { maxField } from '../src/generated/wire.js';
+import { maxField, minField } from '../src/generated/wire.js';
 import { tree, decode } from './support/wire.mjs';
 
 globalThis.__lingxiaViewHost = { uiAbi: 1, maxField, features: ['candidate-transactions', 'bounded-jobs'] };
@@ -31,14 +31,17 @@ const describePage = (view = { data: {}, env: {} }) => globalThis.__lingxiaDescr
 test('compiled entry refuses old native and missing capabilities before author code runs', () => {
   const source = moduleBanner('0.25.1') + '\nglobalThis.didRender = true;';
   for (const host of [undefined, { uiAbi: 2, maxField, features: [] }, { uiAbi: 1, features: ['candidate-transactions', 'bounded-jobs'] },
-    { uiAbi: 1, maxField: maxField - 1, features: ['candidate-transactions', 'bounded-jobs'] }, { uiAbi: 1, maxField, features: ['candidate-transactions'] }]) {
+    { uiAbi: 1, maxField: minField - 1, features: ['candidate-transactions', 'bounded-jobs'] }, { uiAbi: 1, maxField, features: ['candidate-transactions'] }]) {
     const context = { __lingxiaViewHost: host };
     assert.throws(() => runInNewContext(source, context), /UI_COMPAT/);
     assert.equal(context.didRender, undefined);
   }
-  const context = { __lingxiaViewHost: globalThis.__lingxiaViewHost };
-  runInNewContext(source, context);
-  assert.equal(context.didRender, true);
+  // A host below only ignorable fields runs the page; the runtime leaves those fields out.
+  for (const host of [globalThis.__lingxiaViewHost, { ...globalThis.__lingxiaViewHost, maxField: minField }]) {
+    const context = { __lingxiaViewHost: host };
+    runInNewContext(source, context);
+    assert.equal(context.didRender, true);
+  }
 });
 
 test('audit collects every problem with its source position', () => {

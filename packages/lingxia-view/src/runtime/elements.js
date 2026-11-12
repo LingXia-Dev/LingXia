@@ -7,7 +7,7 @@ import { render, page } from './state.js';
 import { cellOf, envOf } from './hooks.js';
 import { located } from './errors.js';
 import { has, validInputText } from './data.js';
-import { fieldOptions } from '../generated/wire.js';
+import { fieldOptions, field as fieldIds, ignorableFields } from '../generated/wire.js';
 import * as check from './validate.js';
 import { defaultSeries } from '../style/color.js';
 import { keyPositions } from './keys.js';
@@ -24,6 +24,18 @@ const videoEvents = [['loadedmetadata', 'onLoadedMetadata'], ['play', 'onPlay'],
 const common = new Set(commonProps);
 const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy', invalid: 'stateInvalid', required: 'stateRequired' };
 const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
+// An older host would refuse a field it lacks; an accessibility-only one is left out instead.
+const ignorable = new Set(ignorableFields);
+const warned = new Set();
+function dropped(key) {
+  const host = globalThis.__lingxiaViewHost;
+  if (!ignorable.has(key) || !host || fieldIds[key] <= host.maxField) return false;
+  if (!warned.has(key) && typeof globalThis.__lingxiaWarn === 'function') {
+    warned.add(key);
+    globalThis.__lingxiaWarn(`UI_COMPAT: the native host predates ${key}; it is left out of this page's semantics`);
+  }
+  return true;
+}
 // Elements that take input of their own; they may sit inside a pressable control.
 const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'select', 'slider']);
 const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO', select: 'UI_SELECT' };
@@ -380,7 +392,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   // A search field draws its magnifier and search keyboard natively, as its own wire tag.
   const result = { tag: tag === 'input' && props.type === 'search' ? 'search' : element.wire, element: tag, props, fields: style.fields, states: style.states, typography: style.typography,
     identity, text: leaf ? flat.join('') : '', wire: [], handlers: [], children: [] };
-  const wire = (key, value) => result.wire.push([key, value]);
+  const wire = (key, value) => { if (!dropped(key)) result.wire.push([key, value]); };
   const on = (key, callback, kind, isolated) => result.handlers.push([key, handle(), callbackOf(callback, kind, isolated)]);
   if (disabled) wire('enabled', 0);
   // Authored data-* props reach automation (getAttribute, [data-x] selectors), never semantics.

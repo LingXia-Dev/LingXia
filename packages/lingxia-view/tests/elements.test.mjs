@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { h, listTag, describe, prepare, commit, discard, dispatch, useLocal, useView, createView, readsHostContext, useVideo, hasLocalUpdates } from '../src/internal.js';
 import { decode, rendered } from './support/wire.mjs';
+import { minField, field, ignorableFields } from '../src/generated/wire.js';
 
 const throwsOn = (render, pattern) => assert.throws(() => describe(render, {}), pattern);
 
@@ -424,6 +425,25 @@ test('aria states wire each declared state; the old names and non-booleans are r
   assert.throws(() => describe(() => h('view', { 'aria-busy': 'yes' }), {}), /UI_PROP: aria-busy must be boolean/);
   for (const old of ['accessibilityState', 'accessibilityLabel', 'accessibilityHidden'])
     assert.throws(() => describe(() => h('view', { [old]: true }), {}), /UI_PROP: accessibility\w+ is not a property/);
+});
+
+test('a host older than an accessibility-only field gets the page without it, with one warning', () => {
+  assert.ok(ignorableFields.every(key => field[key] > minField), 'ignorable fields sit above minField');
+  const warnings = [], current = globalThis.__lingxiaViewHost;
+  globalThis.__lingxiaViewHost = { uiAbi: 1, maxField: minField, features: [] };
+  globalThis.__lingxiaWarn = message => warnings.push(message);
+  try {
+    const zip = () => h('input', { 'aria-label': 'ZIP', 'aria-invalid': true, 'aria-required': true, 'aria-describedby': 'hint' });
+    for (let i = 0; i < 2; i++) {
+      const { props } = rendered(zip);
+      assert.deepEqual([props.stateInvalid, props.stateRequired, props.ariaDescribedBy], [undefined, undefined, undefined]);
+      assert.equal(props.accessibilityLabel, 'ZIP');
+    }
+    assert.deepEqual(warnings.map(w => w.split(';')[0]), ['UI_COMPAT: the native host predates stateInvalid',
+      'UI_COMPAT: the native host predates stateRequired', 'UI_COMPAT: the native host predates ariaDescribedBy']);
+  } finally { globalThis.__lingxiaViewHost = current; delete globalThis.__lingxiaWarn; }
+  const { props } = rendered(() => h('input', { 'aria-label': 'ZIP', 'aria-invalid': true, 'aria-describedby': 'hint' }));
+  assert.deepEqual([props.stateInvalid, props.ariaDescribedBy], [1, 'hint']);
 });
 
 test('select sends its options and shows the chosen label or its placeholder', () => {

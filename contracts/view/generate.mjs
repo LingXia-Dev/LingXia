@@ -31,6 +31,7 @@ function validate(schema) {
     keys.add(field.key);
     for (const tag of [field.tags ?? [], field.parent ?? []].flat())
       if (!schema.tags.includes(tag)) throw Error(`schema.json: field ${field.key} names unknown tag ${tag}`);
+    if (field.ignorable !== undefined && field.ignorable !== true) throw Error(`schema.json: field ${field.key} ignorable must be true or absent`);
   }
   for (const [name, value] of Object.entries(schema.limits ?? {}))
     if (!Number.isSafeInteger(value) || value <= 0) throw Error(`schema.json: limit ${name} must be a positive integer`);
@@ -248,6 +249,10 @@ function wire(schema) {
   const options = schema.fields.filter(field => schema.options[field.kind]).map(field => [field.key, schema.options[field.kind]]);
   return `${header}export const uiAbi = ${schema.uiAbi};
 export const maxField = ${schema.fields.length - 1};
+// The oldest host a page runs on: one that knows every field above it is ignorable.
+export const minField = ${Math.max(...schema.fields.filter(field => !field.ignorable).map(field => field.id))};
+// Accessibility-only fields a page drops, with one warning, on a host older than them.
+export const ignorableFields = ${JSON.stringify(schema.fields.filter(field => field.ignorable).map(field => field.key))};
 export const tags = ${object(schema.tags.map((name, id) => [name, id]))};
 export const field = ${object(schema.fields.map(field => [field.key, field.id]))};
 export const fieldOptions = ${object(options)};

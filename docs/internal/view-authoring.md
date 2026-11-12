@@ -92,7 +92,11 @@ Runtime errors carry the JSX chain (`at <tag> (file:line:col)`, `at Component`).
 ## Module compatibility
 
 Compiled modules start with the `LingXia UI module` banner declaring `uiAbi`,
-`minField` (the highest field the runtime can emit), required engine features
-and the compiler version. Native validates it before running author code.
+`minField` (the highest field the runtime can emit that is not `ignorable`),
+required engine features and the compiler version. Native validates it before
+running author code. Mark a new field `"ignorable": true` in `schema.json` only
+when it is accessibility-only: on a host below it, `wire()` leaves it out with
+one `UI_COMPAT` warning. A field that changes layout, paint or behaviour (roles
+included) is never ignorable.
 Changing the ABI or features needs both JS banner tests and native rejection
 tests.
