@@ -26,14 +26,14 @@ export const doc: ComponentDoc = {
       { keys: 'Left / Down, Right / Up', effect: 'One step down or up.' },
       { keys: 'Home, End', effect: 'The minimum or the maximum.' },
     ],
-    target: { sm: 32, md: 40 },
+    target: { md: 40 },
     contrast: [
       { what: 'thumb and filled track', pair: ['accent', 'surface'], minimum: '3:1', proven: true },
       { what: 'empty track', pair: ['line', 'surface'], minimum: '3:1', proven: false },
     ],
     notes: [
       'The device reads the number as the value; the words in `valueLabel` follow as the description until sliders take a value text.',
-      'The thumb is 24 px at both sizes; the size changes the press area and the label row.',
+      'One size until the primitive takes thumb and track styling; the press area is 40 px tall.',
     ],
   },
   guidance: {
@@ -49,7 +49,7 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Volume', title: 'With the value in words' },
     { name: 'Stepped', title: 'Whole steps, with help text' },
-    { name: 'Sizes', title: 'Sizes' },
+    { name: 'InList', title: 'As a list row' },
     { name: 'Position', title: 'A position in a recording' },
   ],
   gaps: [
@@ -82,8 +82,10 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a slider when the value is easier to feel than to type: a volume, a size, a place in a recording.',
       hero: 'Volume',
-      variants: [{ name: 'Stepped', title: 'Whole steps, named in words' }],
-      sizes: [{ name: 'Sizes', title: 'Small and medium' }],
+      variants: [
+        { name: 'Stepped', title: 'Whole steps, named in words' },
+        { name: 'InList', title: 'As a row in a list, beside Item rows' },
+      ],
       states: [
         { name: 'StateDefault', title: 'Default' },
         { name: 'StateDisabled', title: 'Disabled' },

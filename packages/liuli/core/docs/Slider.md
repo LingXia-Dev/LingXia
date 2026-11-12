@@ -48,18 +48,20 @@ export function Stepped() {
 }
 ```
 
-### Sizes
+### As a list row
 
 ```tsx
 import { useLocal } from '@lingxia/view';
+import { Item } from '@liulidesign/core/Item';
 import { Slider } from '@liulidesign/core/Slider';
 
-export function Sizes() {
-  const level = useLocal('level', 60);
+/** Among list rows: the row's label style, the value at the end. The stage's own padding is undone so the rows meet its edges. */
+export function InList() {
+  const speed = useLocal('speed', 2);
   return (
-    <view className="gap-4">
-      <Slider bind={level} label="Small" size="sm" valueLabel={`${level.value}%`} />
-      <Slider bind={level} label="Medium" valueLabel={`${level.value}%`} />
+    <view className="-m-5 divide-y divide-text/8">
+      <Item label="Read aloud" description="Notes are read in the system voice" />
+      <Slider bind={speed} label="Speed" valueLabel={['Slow', 'Normal', 'Fast'][speed.value - 1]} min={1} max={3} variant="row" data-testid="speed" />
     </view>
   );
 }
@@ -98,7 +100,7 @@ export function Position() {
 | `min` | `number` | `0` |  |
 | `max` | `number` | `100` |  |
 | `step` | `number` | `1` | The value snaps to it. |
-| `size` | `SliderSize` | `'md'` |  |
+| `variant` | `SliderVariant` | `'standalone'` | `row` sits in a list group among `Item` rows: the row's padding, the Item label style, the value at the end in muted. |
 | `isDisabled` | `boolean` | `false` |  |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the slider. |
@@ -120,9 +122,9 @@ export function Position() {
 - States: disabled (from isDisabled).
 - Left / Down, Right / Up: One step down or up..
 - Home, End: The minimum or the maximum..
-- Press target: sm 32 px, md 40 px.
+- Press target: md 40 px.
 - The device reads the number as the value; the words in `valueLabel` follow as the description until sliders take a value text.
-- The thumb is 24 px at both sizes; the size changes the press area and the label row.
+- One size until the primitive takes thumb and track styling; the press area is 40 px tall.
 
 | Contrast | Pair | Minimum | Proven by the theme pack |
 | --- | --- | --- | --- |

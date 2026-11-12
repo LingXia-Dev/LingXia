@@ -1,4 +1,4 @@
-import type { SliderSize } from './Slider';
+import type { SliderVariant } from './Slider';
 
 export const sliderParts = {
   root: 'view',
@@ -16,23 +16,23 @@ export const sliderParts = {
 export const sliderRecipe = {
   root: {
     base: 'gap-1',
+    variant: { standalone: '', row: 'self-stretch px-4 pt-2.5 pb-1.5' } satisfies Record<SliderVariant, string>,
   },
   header: {
     base: 'flex-row items-baseline justify-between gap-3',
   },
   label: {
-    base: 'font-medium text-text',
-    size: { sm: 'text-caption', md: 'text-footnote' } satisfies Record<SliderSize, string>,
+    base: 'text-text',
+    variant: { standalone: 'text-footnote font-medium', row: 'text-body' } satisfies Record<SliderVariant, string>,
     disabled: 'text-faint',
     hidden: 'sr-only',
   },
   value: {
     base: 'tabular-nums text-muted',
-    size: { sm: 'text-caption', md: 'text-footnote' } satisfies Record<SliderSize, string>,
+    variant: { standalone: 'text-footnote', row: 'text-body' } satisfies Record<SliderVariant, string>,
   },
   control: {
-    base: '-mx-3 p-0 text-accent',
-    size: { sm: 'h-control-sm', md: 'h-control-md' } satisfies Record<SliderSize, string>,
+    base: '-mx-3 p-0 h-control-md text-accent',
   },
   description: {
     base: 'text-footnote text-muted',

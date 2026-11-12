@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Volume, Stepped, Sizes, StateDefault, StateDisabled, Position } from '../../../core/src/Slider/Slider.examples';
+import { Volume, Stepped, InList, StateDefault, StateDisabled, Position } from '../../../core/src/Slider/Slider.examples';
 import { GalleryPage, Lead, PageSection, Stage, StageGrid } from '../../shared/Layout';
 
 export function render() {
@@ -12,10 +12,8 @@ export function render() {
         <Stage caption={"Whole steps, named in words"}>
           <Stepped />
         </Stage>
-      </PageSection>
-      <PageSection title={"Sizes"}>
-        <Stage caption={"Small and medium"}>
-          <Sizes />
+        <Stage caption={"As a row in a list, beside Item rows"}>
+          <InList />
         </Stage>
       </PageSection>
       <PageSection title={"States"}>

@@ -87,16 +87,15 @@ export function render() {
           onChange={next => digest.set(next)}
           testId="digest"
         />
-        <view className="px-4 pt-3 pb-2">
-          <Slider
-            bind={textSize}
-            label="Text size"
-            valueLabel={['Smallest', 'Small', 'Default', 'Large', 'Largest'][textSize.value - 1]}
-            min={1}
-            max={5}
-            data-testid="text-size"
-          />
-        </view>
+        <Slider
+          bind={textSize}
+          label="Text size"
+          valueLabel={['Smallest', 'Small', 'Default', 'Large', 'Largest'][textSize.value - 1]}
+          min={1}
+          max={5}
+          variant="row"
+          data-testid="text-size"
+        />
         <Item label="Offline notes" endContent={<Badge label="Synced" tone="success" size="sm" />} />
       </Group>
 

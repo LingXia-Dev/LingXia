@@ -2,7 +2,7 @@ import { cx, useId, type Local } from '@lingxia/view';
 import { describedBy } from '../internal/describedBy';
 import { sliderRecipe as r } from './Slider.recipe';
 
-export type SliderSize = 'sm' | 'md';
+export type SliderVariant = 'standalone' | 'row';
 
 export type SliderBinding =
   | {
@@ -37,8 +37,11 @@ export type SliderProps = SliderBinding & {
   max?: number;
   /** The value snaps to it. @default 1 */
   step?: number;
-  /** @default 'md' */
-  size?: SliderSize;
+  /**
+   * `row` sits in a list group among `Item` rows: the row's padding, the Item label style, the
+   * value at the end in muted. @default 'standalone'
+   */
+  variant?: SliderVariant;
   /** @default false */
   isDisabled?: boolean;
   className?: string;
@@ -49,7 +52,7 @@ export type SliderProps = SliderBinding & {
 /** A value picked along a track, with a label row that can show the value in words. */
 export function Slider(props: SliderProps) {
   const {
-    label, isLabelHidden = false, valueLabel, description, min = 0, max = 100, step = 1, size = 'md', isDisabled = false,
+    label, isLabelHidden = false, valueLabel, description, min = 0, max = 100, step = 1, variant = 'standalone', isDisabled = false,
     className, 'data-testid': testId,
   } = props;
   const id = useId();
@@ -63,15 +66,15 @@ export function Slider(props: SliderProps) {
     step,
     disabled: isDisabled,
     'data-testid': testId,
-    className: cx(r.control.base, r.control.size[size]),
+    className: r.control.base,
   };
   return (
-    <view className={cx(r.root.base, className)}>
+    <view className={cx(r.root.base, r.root.variant[variant], className)}>
       {(!isLabelHidden || valueLabel !== undefined) && (
         <view className={r.header.base}>
           {/* The slider carries the label as its name, so the visible one is not read again. */}
-          <text aria-hidden className={cx(r.label.base, r.label.size[size], isDisabled && r.label.disabled, isLabelHidden && r.label.hidden)}>{label}</text>
-          {valueLabel !== undefined && <text id={valueId} className={cx(r.value.base, r.value.size[size])}>{valueLabel}</text>}
+          <text aria-hidden className={cx(r.label.base, r.label.variant[variant], isDisabled && r.label.disabled, isLabelHidden && r.label.hidden)}>{label}</text>
+          {valueLabel !== undefined && <text id={valueId} className={cx(r.value.base, r.value.variant[variant])}>{valueLabel}</text>}
         </view>
       )}
       {props.bind ? <slider bind={props.bind} {...semantics} /> : <slider value={props.value} onChange={props.onChange} {...semantics} />}

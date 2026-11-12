@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Item } from '../Item/Item';
 import { Slider } from './Slider';
 
 /** The value in words at the end of the label row; the app writes it. */
@@ -23,12 +24,13 @@ export function Stepped() {
   );
 }
 
-export function Sizes() {
-  const level = useLocal('level', 60);
+/** Among list rows: the row's label style, the value at the end. The stage's own padding is undone so the rows meet its edges. */
+export function InList() {
+  const speed = useLocal('speed', 2);
   return (
-    <view className="gap-4">
-      <Slider bind={level} label="Small" size="sm" valueLabel={`${level.value}%`} />
-      <Slider bind={level} label="Medium" valueLabel={`${level.value}%`} />
+    <view className="-m-5 divide-y divide-text/8">
+      <Item label="Read aloud" description="Notes are read in the system voice" />
+      <Slider bind={speed} label="Speed" valueLabel={['Slow', 'Normal', 'Fast'][speed.value - 1]} min={1} max={3} variant="row" data-testid="speed" />
     </view>
   );
 }
@@ -55,5 +57,5 @@ export function StateDisabled() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Slider value={60} onChange={() => {}} label="Volume" isLabelHidden size="sm" className="w-28" />;
+  return <Slider value={60} onChange={() => {}} label="Volume" isLabelHidden className="w-28" />;
 }

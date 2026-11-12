@@ -2342,11 +2342,11 @@
           "default": "1"
         },
         {
-          "name": "size",
-          "type": "SliderSize",
+          "name": "variant",
+          "type": "SliderVariant",
           "required": false,
-          "description": "",
-          "default": "'md'"
+          "description": "`row` sits in a list group among `Item` rows: the row's padding, the Item label style, the value at the end in muted.",
+          "default": "'standalone'"
         },
         {
           "name": "isDisabled",
@@ -2401,7 +2401,6 @@
           }
         ],
         "target": {
-          "sm": 32,
           "md": 40
         },
         "contrast": [
@@ -2426,7 +2425,7 @@
         ],
         "notes": [
           "The device reads the number as the value; the words in `valueLabel` follow as the description until sliders take a value text.",
-          "The thumb is 24 px at both sizes; the size changes the press area and the label row."
+          "One size until the primitive takes thumb and track styling; the press area is 40 px tall."
         ]
       },
       "examples": [
@@ -2441,9 +2440,9 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** Whole steps: the value snaps to each one. */\nexport function Stepped() {\n  const size = useLocal('size', 3);\n  return (\n    <Slider\n      bind={size}\n      label=\"Text size\"\n      valueLabel={['Smallest', 'Small', 'Default', 'Large', 'Largest'][size.value - 1]}\n      min={1}\n      max={5}\n      description=\"Applies to notes and the reader.\"\n      data-testid=\"text-size\"\n    />\n  );\n}"
         },
         {
-          "name": "Sizes",
-          "title": "Sizes",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Slider } from '@liulidesign/core/Slider';\n\nexport function Sizes() {\n  const level = useLocal('level', 60);\n  return (\n    <view className=\"gap-4\">\n      <Slider bind={level} label=\"Small\" size=\"sm\" valueLabel={`${level.value}%`} />\n      <Slider bind={level} label=\"Medium\" valueLabel={`${level.value}%`} />\n    </view>\n  );\n}"
+          "name": "InList",
+          "title": "As a list row",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** Among list rows: the row's label style, the value at the end. The stage's own padding is undone so the rows meet its edges. */\nexport function InList() {\n  const speed = useLocal('speed', 2);\n  return (\n    <view className=\"-m-5 divide-y divide-text/8\">\n      <Item label=\"Read aloud\" description=\"Notes are read in the system voice\" />\n      <Slider bind={speed} label=\"Speed\" valueLabel={['Slow', 'Normal', 'Fast'][speed.value - 1]} min={1} max={3} variant=\"row\" data-testid=\"speed\" />\n    </view>\n  );\n}"
         },
         {
           "name": "Position",
@@ -2487,12 +2486,10 @@
             {
               "name": "Stepped",
               "title": "Whole steps, named in words"
-            }
-          ],
-          "sizes": [
+            },
             {
-              "name": "Sizes",
-              "title": "Small and medium"
+              "name": "InList",
+              "title": "As a row in a list, beside Item rows"
             }
           ],
           "states": [

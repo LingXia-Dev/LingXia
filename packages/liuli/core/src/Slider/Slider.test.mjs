@@ -25,3 +25,10 @@ test('Position: a hidden label stays the name, the visible time is the descripti
   assert.equal(slider.props.accessibilityLabel, 'Position');
   assert.deepEqual(described(screen, slider), ['1:24 of 3:10']);
 });
+
+test('InList: the row variant takes the list row label style and keeps the value as the description', async () => {
+  const screen = await renderExample('Slider/Slider', 'InList');
+  const slider = screen.getByTestId('speed');
+  assert.equal(slider.props.accessibilityLabel, 'Speed');
+  assert.deepEqual(described(screen, slider), ['Normal']);
+});
