@@ -26,7 +26,7 @@ export const doc: ComponentDoc = {
     keyboard: [],
     contrast: [{ what: 'initials', pair: ['on-accent-soft', 'accent-soft'], minimum: '4.5:1' }],
     notes: [
-      'Read as the person\'s name. Set `isDecorative` when the name is already written beside it.',
+      'Read as a picture of the person, by name, whether it shows the photo or the initials. Set `isDecorative` when the name is already written beside it.',
       'The group is read by its label, then each name; the count by the app\'s own words.',
     ],
   },
@@ -46,13 +46,7 @@ export const doc: ComponentDoc = {
     { name: 'Group', title: 'A group with a count' },
     { name: 'WithName', title: 'Beside the name' },
   ],
-  gaps: [
-    {
-      missing: 'An image role for the initials, so they are announced as a picture of the person.',
-      needs: 'role="img" on view or text',
-      today: 'The initials are a text named by the full name.',
-    },
-  ],
+  gaps: [],
   related: ['Item', 'Badge'],
   gallery: {
     specimen: 'Specimen',

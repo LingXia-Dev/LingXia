@@ -93,7 +93,7 @@
           }
         ],
         "notes": [
-          "Read as the person's name. Set `isDecorative` when the name is already written beside it.",
+          "Read as a picture of the person, by name, whether it shows the photo or the initials. Set `isDecorative` when the name is already written beside it.",
           "The group is read by its label, then each name; the count by the app's own words."
         ]
       },
@@ -119,13 +119,7 @@
           "source": "import { Avatar } from '@liulidesign/core/Avatar';\n\n/** Beside the name it stands for, so it is decorative. */\nexport function WithName() {\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <Avatar name=\"Kai Chen\" isDecorative />\n      <view className=\"gap-0.5\">\n        <text className=\"text-body font-medium text-text\">Kai Chen</text>\n        <text className=\"text-footnote text-muted\">Edited 2 minutes ago</text>\n      </view>\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
-        {
-          "missing": "An image role for the initials, so they are announced as a picture of the person.",
-          "needs": "role=\"img\" on view or text",
-          "today": "The initials are a text named by the full name."
-        }
-      ],
+      "gaps": [],
       "related": [
         "Item",
         "Badge"

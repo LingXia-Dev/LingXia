@@ -35,7 +35,7 @@ export function Avatar({ name, src, initials, size, isDecorative = false, classN
       className={cx(r.root.base, r.root.size[actual], group && r.root.inGroup[group.surface], className)}
     >
       {/* The initials stay under the photo, so a slow or failed load never shows an empty circle. */}
-      <text aria-label={showImage ? undefined : name} aria-hidden={showImage || undefined} className={cx(r.initials.base, r.initials.size[actual])}>{letters}</text>
+      <text role={showImage ? undefined : 'img'} aria-label={showImage ? undefined : name} aria-hidden={showImage || undefined} className={cx(r.initials.base, r.initials.size[actual])}>{letters}</text>
       {showImage && <image src={src} alt={name} onError={() => failed.set(true)} className={r.image.base} />}
     </view>
   );

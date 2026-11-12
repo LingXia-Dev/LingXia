@@ -116,7 +116,7 @@ export function WithName() {
 - Pattern: none.
 - Name: name.
 - Description: none.
-- Read as the person's name. Set `isDecorative` when the name is already written beside it.
+- Read as a picture of the person, by name, whether it shows the photo or the initials. Set `isDecorative` when the name is already written beside it.
 - The group is read by its label, then each name; the count by the app's own words.
 
 | Contrast | Pair | Minimum | Light | Dark |
@@ -131,11 +131,5 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Cap a group with `max` and say what the count means in `overflowLabel`.
 - Don't: Use an avatar as the only way to tell people apart in a list; show names too.
 - Don't: Make an avatar a button on its own; put it inside an Item or Button that says what it opens.
-
-## Not yet
-
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| An image role for the initials, so they are announced as a picture of the person. | role="img" on view or text | The initials are a text named by the full name. |
 
 Related: Item, Badge.
