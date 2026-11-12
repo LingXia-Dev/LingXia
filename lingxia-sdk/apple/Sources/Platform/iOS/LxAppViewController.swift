@@ -54,6 +54,11 @@ final class LxAppViewController: UIViewController, ObservableObject {
     private var currentSessionId: UInt64 = 0
     private var runtimeOrientationMask: UIInterfaceOrientationMask = .allButUpsideDown
     private var runtimePreferredOrientation: UIInterfaceOrientation = .portrait
+    /// The window's orientation when a lock began, to return to when it ends.
+    private var orientationBeforeLock: UIInterfaceOrientationMask?
+    /// A return to `orientationBeforeLock` in flight: the sensor is freed once the window is there.
+    private var pendingRelease: (orientation: UIInterfaceOrientationMask, deadline: DispatchWorkItem)?
+    private var rotationsInFlight = 0
 
     // Store pending navigation state for deferred NavigationBar initialization
     private var pendingNavigationState: (appId: String, path: String)?
@@ -368,13 +373,40 @@ final class LxAppViewController: UIViewController, ObservableObject {
         let runtimeOrientation = lingxia.getPageOrientation(appId, currentPath)
         let mapped = mapRuntimeOrientation(runtimeOrientation)
 
-        runtimeOrientationMask = mapped.mask
+        let scene = view.window?.windowScene
+        let current = sceneOrientation
+        var target = mapped.mask
+        if mapped.mask != .allButUpsideDown {
+            // A lock while returning from the last one keeps the orientation that one began in.
+            if let pending = cancelPendingRelease() {
+                orientationBeforeLock = pending
+            } else if orientationBeforeLock == nil, runtimeOrientationMask == .allButUpsideDown {
+                orientationBeforeLock = current
+            }
+        } else if let before = orientationBeforeLock {
+            // Freeing the lock alone leaves a phone lying flat turned, as its sensor reports
+            // nothing new: go back first, then free it once the window is there. The scene can
+            // still read `before` while the lock's own rotation is under way, so always ask.
+            orientationBeforeLock = nil
+            target = before
+            let deadline = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated { self?.releaseOrientation() }
+            }
+            pendingRelease = (before, deadline)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: deadline)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                MainActor.assumeIsolated { self?.releaseIfReturned() }
+            }
+        } else if pendingRelease != nil {
+            return true
+        }
+        runtimeOrientationMask = target
         runtimePreferredOrientation = mapped.preferred
         setNeedsUpdateOfSupportedInterfaceOrientations()
 
         if #available(iOS 16.0, *) {
-            if let scene = view.window?.windowScene {
-                let preferences = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: mapped.mask)
+            if let scene {
+                let preferences = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: target)
                 scene.requestGeometryUpdate(
                     preferences,
                     errorHandler: Self.reportGeometryUpdateError
@@ -385,6 +417,42 @@ final class LxAppViewController: UIViewController, ObservableObject {
         }
 
         return true
+    }
+
+    /// Cancels a return in flight; the orientation it was returning to.
+    private func cancelPendingRelease() -> UIInterfaceOrientationMask? {
+        guard let pending = pendingRelease else { return nil }
+        pending.deadline.cancel()
+        pendingRelease = nil
+        return pending.orientation
+    }
+
+    /// Gives the window back to the sensor; it stays where it is until the device turns.
+    private func releaseOrientation() {
+        guard cancelPendingRelease() != nil else { return }
+        runtimeOrientationMask = .allButUpsideDown
+        setNeedsUpdateOfSupportedInterfaceOrientations()
+    }
+
+    private var sceneOrientation: UIInterfaceOrientationMask? {
+        view.window?.windowScene.map { $0.interfaceOrientation.isLandscape ? .landscape : .portrait }
+    }
+
+    /// Frees the sensor once the window has settled in the orientation it is returning to.
+    private func releaseIfReturned() {
+        guard let pending = pendingRelease, rotationsInFlight == 0,
+              sceneOrientation == pending.orientation else { return }
+        releaseOrientation()
+    }
+
+    public override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        rotationsInFlight += 1
+        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+            guard let self else { return }
+            self.rotationsInFlight -= 1
+            self.releaseIfReturned()
+        }
     }
 
     // UIKit invokes the geometry error handler on an arbitrary queue. Keeping
