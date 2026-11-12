@@ -192,7 +192,7 @@ spec('details: a row opens and closes; an accordion keeps one open', { start: { 
 
 spec('tooltip: a press opens the note; a tap outside closes it', { start: { page: 'tooltip' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
-  const button = view.getByRole('button', { name: 'About storage' });
+  const button = view.testId('storage');
   const note = view.testId('storage-content');
   await expect(note).toHaveCount(0);
   await button.click();
