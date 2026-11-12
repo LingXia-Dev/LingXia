@@ -11,6 +11,7 @@ import { Specimen as ItemSpecimen } from '../../../core/src/Item/Item.examples';
 import { Specimen as ProgressBarSpecimen } from '../../../core/src/ProgressBar/ProgressBar.examples';
 import { Specimen as TextInputSpecimen } from '../../../core/src/TextInput/TextInput.examples';
 import { Category, GalleryPage, Masthead, Tile } from '../../shared/Layout';
+import { ColourSpecimen, TypographySpecimen, ShapeAndSpacingSpecimen, ElevationSpecimen, MotionSpecimen, SignInSpecimen, SettingsSpecimen, UploadsSpecimen } from '../../shared/Specimens';
 
 type Actions = { open(target: { page: string }): Promise<void> };
 
@@ -18,6 +19,49 @@ export function render({ actions }: View<Actions>) {
   return (
     <GalleryPage>
       <Masthead version={"0.1.0"} status={"Preview"} />
+      <Category title={"Foundations"}>
+        <Tile
+          name={"Colour"}
+          tagline={"Theme roles, light and dark"}
+          onOpen={() => actions.open({ page: "colour" })}
+          testId={"open-colour"}
+        >
+          <ColourSpecimen />
+        </Tile>
+        <Tile
+          name={"Typography"}
+          tagline={"Six sizes, three weights"}
+          onOpen={() => actions.open({ page: "typography" })}
+          testId={"open-typography"}
+        >
+          <TypographySpecimen />
+        </Tile>
+        <Tile
+          name={"Shape & spacing"}
+          tagline={"Corners, heights and steps"}
+          onOpen={() => actions.open({ page: "shape-and-spacing" })}
+          testId={"open-shape-and-spacing"}
+        >
+          <ShapeAndSpacingSpecimen />
+        </Tile>
+        <Tile
+          name={"Elevation"}
+          tagline={"Raised and modal"}
+          onOpen={() => actions.open({ page: "elevation" })}
+          testId={"open-elevation"}
+        >
+          <ElevationSpecimen />
+        </Tile>
+        <Tile
+          name={"Motion"}
+          tagline={"How things enter and react"}
+          isWide
+          onOpen={() => actions.open({ page: "motion" })}
+          testId={"open-motion"}
+        >
+          <MotionSpecimen />
+        </Tile>
+      </Category>
       <Category title={"Actions"}>
         <Tile
           name={"Button"}
@@ -108,6 +152,33 @@ export function render({ actions }: View<Actions>) {
           testId={"open-item"}
         >
           <ItemSpecimen />
+        </Tile>
+      </Category>
+      <Category title={"Patterns"}>
+        <Tile
+          name={"Sign in"}
+          tagline={"A form that checks itself"}
+          onOpen={() => actions.open({ page: "sign-in" })}
+          testId={"open-sign-in"}
+        >
+          <SignInSpecimen />
+        </Tile>
+        <Tile
+          name={"Settings"}
+          tagline={"Rows, menus and a confirm"}
+          onOpen={() => actions.open({ page: "settings" })}
+          testId={"open-settings"}
+        >
+          <SettingsSpecimen />
+        </Tile>
+        <Tile
+          name={"Uploads"}
+          tagline={"Tasks that take a while"}
+          isWide
+          onOpen={() => actions.open({ page: "uploads" })}
+          testId={"open-uploads"}
+        >
+          <UploadsSpecimen />
         </Tile>
       </Category>
     </GalleryPage>

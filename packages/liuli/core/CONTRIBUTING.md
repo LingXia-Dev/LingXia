@@ -16,6 +16,9 @@ entry in `package.json` `exports`:
 After editing any of them, run `npm run generate`: it rewrites `docs/X.md`, `catalog.json` and the
 gallery's pages. Never edit those by hand; `npm run check` fails when they are stale.
 
+Foundations and Patterns pages are hand-written: list each in `../gallery/guides.json` and add its
+tile drawing to `../gallery/shared/Specimens.tsx`; the generator adds it to the home page and manifest.
+
 ## Rules `npm run check` enforces
 
 - Import only public `@lingxia/view` exports (`@lingxia/view/testing` in tests only); no relative

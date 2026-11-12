@@ -1,0 +1,14 @@
+{
+  "foundations": [
+    { "page": "colour", "title": "Colour", "tagline": "Theme roles, light and dark" },
+    { "page": "typography", "title": "Typography", "tagline": "Six sizes, three weights" },
+    { "page": "shape-and-spacing", "title": "Shape & spacing", "tagline": "Corners, heights and steps" },
+    { "page": "elevation", "title": "Elevation", "tagline": "Raised and modal" },
+    { "page": "motion", "title": "Motion", "tagline": "How things enter and react" }
+  ],
+  "patterns": [
+    { "page": "sign-in", "title": "Sign in", "tagline": "A form that checks itself" },
+    { "page": "settings", "title": "Settings", "tagline": "Rows, menus and a confirm" },
+    { "page": "uploads", "title": "Uploads", "tagline": "Tasks that take a while" }
+  ]
+}
