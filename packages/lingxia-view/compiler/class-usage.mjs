@@ -4,30 +4,41 @@ import { sourceChecker } from './source.mjs';
 // Follow lexical bindings, never identifier spelling: nested components may
 // reuse a name for an unrelated value. This analysis does not execute app code.
 /** The string literals an expression can evaluate to, through const bindings and object maps. */
-export function stringLiterals(checker, node, seen = new Set()) {
+export function stringLiterals(checker, node) {
+  return pieces(checker, node, new Set(), false).map(piece => piece.node);
+}
+
+/** The class text an expression can evaluate to: `stringLiterals`, plus template pieces and the
+ * arguments of `cx` from `@lingxia/view`. Each piece is `{ text, node }`. */
+export function classPieces(checker, node) {
+  return pieces(checker, node, new Set(), true);
+}
+
+function pieces(checker, node, seen, classes) {
   if (!node || seen.has(node)) return [];
   seen = new Set(seen).add(node);
-  if (ts.isStringLiteralLike(node)) return [node];
+  const next = child => pieces(checker, child, seen, classes);
+  if (ts.isStringLiteralLike(node)) return [{ text: node.text, node }];
   if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isNonNullExpression(node))
-    return stringLiterals(checker, node.expression, seen);
-  if (ts.isConditionalExpression(node)) return [...stringLiterals(checker, node.whenTrue, seen), ...stringLiterals(checker, node.whenFalse, seen)];
+    return next(node.expression);
+  if (ts.isConditionalExpression(node)) return [...next(node.whenTrue), ...next(node.whenFalse)];
   if (ts.isBinaryExpression(node)) {
-    if (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return stringLiterals(checker, node.right, seen);
+    if (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return next(node.right);
     if ([ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(node.operatorToken.kind))
-      return [...stringLiterals(checker, node.left, seen), ...stringLiterals(checker, node.right, seen)];
+      return [...next(node.left), ...next(node.right)];
   }
   if (ts.isIdentifier(node)) {
     let symbol = checker.getSymbolAtLocation(node);
     if (symbol && (symbol.flags & ts.SymbolFlags.Alias)) symbol = checker.getAliasedSymbol(symbol);
     const declaration = symbol?.valueDeclaration;
     if (declaration && ts.isVariableDeclaration(declaration) &&
-        (declaration.parent.flags & ts.NodeFlags.Const)) return stringLiterals(checker, declaration.initializer, seen);
+        (declaration.parent.flags & ts.NodeFlags.Const)) return next(declaration.initializer);
   }
   if (ts.isPropertyAccessExpression(node)) {
     const declaration = checker.getSymbolAtLocation(node.name)?.valueDeclaration;
-    if (declaration && ts.isPropertyAssignment(declaration)) return stringLiterals(checker, declaration.initializer, seen);
+    if (declaration && ts.isPropertyAssignment(declaration)) return next(declaration.initializer);
     if (declaration && ts.isShorthandPropertyAssignment(declaration))
-      return stringLiterals(checker, checker.getShorthandAssignmentValueSymbol(declaration)?.valueDeclaration?.initializer, seen);
+      return next(checker.getShorthandAssignmentValueSymbol(declaration)?.valueDeclaration?.initializer);
   }
   if (ts.isElementAccessExpression(node)) {
     const type = checker.getTypeAtLocation(node.expression);
@@ -36,21 +47,57 @@ export function stringLiterals(checker, node, seen = new Set()) {
     return properties.flatMap(symbol => {
       const declaration = symbol?.valueDeclaration;
       if (declaration && ts.isShorthandPropertyAssignment(declaration))
-        return stringLiterals(checker, checker.getShorthandAssignmentValueSymbol(declaration)?.valueDeclaration?.initializer, seen);
-      return declaration && ts.isPropertyAssignment(declaration) ? stringLiterals(checker, declaration.initializer, seen) : [];
+        return next(checker.getShorthandAssignmentValueSymbol(declaration)?.valueDeclaration?.initializer);
+      return declaration && ts.isPropertyAssignment(declaration) ? next(declaration.initializer) : [];
     });
   }
+  if (!classes) return [];
+  if (ts.isTemplateExpression(node)) return [...templatePieces(node), ...node.templateSpans.flatMap(span => next(span.expression))];
+  if (ts.isCallExpression(node) && isCx(checker, node.expression)) return node.arguments.flatMap(argument => cxPieces(argument, next));
   return [];
+}
+
+/** `cx` arguments: class text, arrays of it, and `{ 'class names': condition }` maps. */
+function cxPieces(node, next) {
+  while (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node)) node = node.expression;
+  if (ts.isArrayLiteralExpression(node)) return node.elements.flatMap(element => cxPieces(element, next));
+  if (ts.isObjectLiteralExpression(node))
+    return node.properties.flatMap(property => {
+      const name = property.name;
+      if (name && (ts.isStringLiteralLike(name) || ts.isIdentifier(name))) return [{ text: name.text, node: name }];
+      return name && ts.isComputedPropertyName(name) ? next(name.expression) : [];
+    });
+  return next(node);
+}
+
+/** A template's literal text, less any class name an interpolation joins: `px-${n}` checks nothing. */
+function templatePieces(node) {
+  const parts = [node.head, ...node.templateSpans.map(span => span.literal)];
+  return parts.map((part, index) => {
+    const words = part.text.split(/(\s+)/);
+    if (index > 0 && !/^\s/.test(part.text)) words[0] = '';
+    if (index < parts.length - 1 && !/\s$/.test(part.text)) words[words.length - 1] = '';
+    return { text: words.join(''), node: part };
+  });
+}
+
+/** `cx` imported from `@lingxia/view`, under any local name. */
+function isCx(checker, callee) {
+  if (!ts.isIdentifier(callee)) return false;
+  const declaration = checker.getSymbolAtLocation(callee)?.declarations?.[0];
+  if (!declaration || !ts.isImportSpecifier(declaration)) return false;
+  const imported = (declaration.propertyName ?? declaration.name).text;
+  const module = declaration.parent.parent.parent.moduleSpecifier;
+  return imported === 'cx' && ts.isStringLiteral(module) && module.text === '@lingxia/view';
 }
 
 export function collectClassUsage(file, checker = sourceChecker(file)) {
   const usages = [];
-  const strings = node => stringLiterals(checker, node);
   const record = (expression, tag) => {
-    for (const literal of strings(expression)) {
-      const owner = literal.getSourceFile();
-      const { line, character } = owner.getLineAndCharacterOfPosition(literal.getStart(owner));
-      usages.push({ value: literal.text, tag, location: `${owner.fileName}:${line + 1}:${character + 1}` });
+    for (const { text, node } of classPieces(checker, expression)) {
+      const owner = node.getSourceFile();
+      const { line, character } = owner.getLineAndCharacterOfPosition(node.getStart(owner));
+      usages.push({ value: text, tag, location: `${owner.fileName}:${line + 1}:${character + 1}` });
     }
   };
   const visit = node => {

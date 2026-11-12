@@ -1,4 +1,4 @@
-import { List, useLocal, useRequest, useStream, useChannel, useLeaveGuard, useView, type Channel, type ChannelEndpoint, type Stream, type Props, type View } from '../../src/index.js';
+import { cx, List, useLocal, useRequest, useStream, useChannel, useLeaveGuard, useView, type Channel, type ChannelEndpoint, type Stream, type Props, type View } from '../../src/index.js';
 
 function Card(props: Props) { return <view {...props}/>; }
 export function render(view: View<{ save(value: string): Promise<void> }, { title: string; rows: { text: string }[]; pair: [string, number] }>) {
@@ -187,3 +187,10 @@ export async function readonlyAction() {
   // @ts-expect-error direct action results are frozen on the View side
   (await readonlyView.actions.load()).items.pop();
 }
+
+export function Joined({ on, size }: { on: boolean; size: 'sm' | 'md' }) {
+  const sizes = { sm: 'p-1', md: 'p-2' } as const;
+  return <text className={cx('text-sm', sizes[size], on && 'font-bold', { 'opacity-50': !on }, ['grow', null])}>x</text>;
+}
+// @ts-expect-error cx takes class text, maps and arrays, not functions
+cx(() => 'p-1');

@@ -176,6 +176,10 @@ export interface FrameStats {
 }
 /** Measure this page's frames for `ms` (at most 60000) from now; resolves when the window ends. */
 export declare function measureFrames(ms: number): Promise<FrameStats>;
+/** A `className` value `cx` joins: falsy parts drop out; a map keeps the keys whose value is truthy. */
+export type ClassValue = string | number | false | null | undefined | readonly ClassValue[] | { readonly [className: string]: unknown };
+/** Joins class text, as `clsx`. The build checks every class it can see in the arguments. */
+export declare function cx(...values: ClassValue[]): string;
 
 export interface DataListProps<T> extends Omit<ListProps, "count" | "itemKeys" | "row" | "height"> {
   items: readonly T[];

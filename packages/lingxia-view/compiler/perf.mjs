@@ -1,7 +1,7 @@
 import ts from 'typescript';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, relative, isAbsolute } from 'node:path';
-import { stringLiterals } from './class-usage.mjs';
+import { classPieces, stringLiterals } from './class-usage.mjs';
 import { limits } from '../src/generated/contract.js';
 
 /** Literal rows a page may build outside `<list>` before the build suggests virtualising. */
@@ -127,10 +127,10 @@ export async function perfWarnings(root, files, checker, rulesByName) {
         let owner = node.parent;
         while (owner && !functionLike(owner)) owner = owner.parent;
         const inRow = owner && rows.has(owner);
-        if (inRow && name === 'className') for (const literal of stringLiterals(checker, expression))
-          for (const cls of literal.text.split(/\s+/).filter(Boolean))
+        if (inRow && name === 'className') for (const piece of classPieces(checker, expression))
+          for (const cls of piece.text.split(/\s+/).filter(Boolean))
             if ((rulesByName.get(cls) ?? []).some(composites))
-              warnings.push(`${at(literal)}: UI_PERF: ${cls} composites a layer for every row; apply it once to the container, or use a translucent colour`);
+              warnings.push(`${at(piece.node)}: UI_PERF: ${cls} composites a layer for every row; apply it once to the container, or use a translucent colour`);
         if (inRow && name === 'style' && expression && ts.isObjectLiteralExpression(expression))
           for (const prop of expression.properties)
             if (ts.isPropertyAssignment(prop) && prop.name.getText().replace(/['"]/g, '') === 'opacity' && ts.isNumericLiteral(prop.initializer) && Number(prop.initializer.text) < 1)

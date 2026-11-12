@@ -161,6 +161,33 @@ test('class usage follows lexical constants, hidden branches and imported maps t
   });
 });
 
+test('class usage follows cx arguments, class maps and template pieces', async () => {
+  await project({ 'styles.ts': 'export const recipe = { base: "text-sm", size: { sm: "p-1", md: "nope-utility" } };' }, async (root, build) => {
+    const page = (expression, prelude = '') =>
+      writeFile(join(root, 'page.tsx'), `import { cx, cx as join } from '@lingxia/view'; import { recipe } from './styles'; ${prelude}export function render(view){return <text className={${expression}}>Hello</text>}`);
+    for (const expression of ['cx("text-sm", "nope-utility")', 'cx(view.data.on && "nope-utility")', 'cx(["p-1", ["nope-utility"]])',
+      'cx({ "p-1": true, "nope-utility": view.data.on })', 'join("nope-utility")', 'local', '`p-1 ${view.data.extra} nope-utility`']) {
+      await page(expression, 'const local = cx("p-1", "nope-utility"); ');
+      await assert.rejects(build(), /page.tsx:1:\d+: UI_CLASS_UNKNOWN: nope-utility/, expression);
+    }
+    await page('cx(recipe.base, recipe.size[view.data.size])');
+    await assert.rejects(build(), /styles.ts:1:\d+: UI_CLASS_UNKNOWN: nope-utility/);
+    // A class name an interpolation joins is unknowable, so it is not checked.
+    for (const expression of ['`p-${view.data.n}`', '`nope-${view.data.n} text-sm`', '`${view.data.a}nope-utility`'])
+      await page(expression), await build();
+    // A local helper named cx is not traced.
+    await writeFile(join(root, 'page.tsx'), 'const cx = (...a) => a.join(" "); export function render(){return <text className={cx("nope-utility")}>Hello</text>}');
+    await build();
+    await writeFile(join(root, 'page.tsx'), `import { cx } from '@lingxia/view';
+      export function render(view){return <text className={cx('text-sm', { 'p-4': view.data.on }, view.data.off && 'p-1')}>Hello</text>}`);
+    await build();
+    await load(root);
+    const props = on => tree(describePage({ data: { on, off: false }, env: {} })).props;
+    assert.equal(props(true).paddingTop, 16);
+    assert.equal(props(false).paddingTop, undefined);
+  });
+});
+
 test('runtime errors in compiled pages name the JSX site and component chain', async () => {
   await project({ 'page.tsx': `function Card({ children }) {
   return <view>{children}</view>;

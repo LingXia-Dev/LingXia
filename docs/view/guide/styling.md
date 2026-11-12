@@ -42,8 +42,10 @@ CSS-related runs on the device.
 ## Utilities
 
 Write complete utility names as string literals. The build reads class names from literals, both
-branches of conditionals, `&&`/`||`/`??`, `const` aliases and object maps (also imported ones), without
-running your code. A name assembled at runtime is not compiled and fails when it renders:
+branches of conditionals, `&&`/`||`/`??`, `const` aliases, object maps (also imported ones), the
+whole words of template literals, and the arguments of `cx` from `@lingxia/view`, without running your
+code. `cx('p-4', on && 'font-bold', { 'opacity-50': off })` joins class text as `clsx` does. A name
+assembled at runtime is not compiled and fails when it renders:
 
 ```tsx error UI_CLASS
 import { useLocal } from '@lingxia/view';
@@ -57,7 +59,7 @@ export function render() {
 Choose between complete names instead: `size.value === 4 ? 'p-4' : 'p-8'`.
 
 When two classes set the same property under the same variants, the one written later wins, as with
-tailwind-merge, so a caller's `className` overrides a component's: `cn('rounded-md px-4', 'rounded-full')`
+tailwind-merge, so a caller's `className` overrides a component's: `cx('rounded-md px-4', 'rounded-full')`
 is round. Classes under different variants keep Tailwind's order (`md:p-8` beats a later `p-2` at `md`). Every utility
 the default theme defines is listed in [utilities](../reference/utilities.md) as supported or refused.
 
