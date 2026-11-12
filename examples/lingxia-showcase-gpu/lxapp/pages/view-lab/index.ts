@@ -13,4 +13,10 @@ const data: LabPageData = {
   },
 };
 
-Page({ data });
+Page({
+  data,
+  onLoad(options: { media?: string } = {}) {
+    if (options.media === 'packaged') this.setData({ packagedMedia: true });
+  },
+  async openVideoPage() { await lx.navigateTo({ page: 'video' }); },
+});

@@ -140,7 +140,7 @@ spec('a page under another holds its videos still and plays the playing ones aga
 });
 
 // Needs the network: one public row plays Big Buck Bunny as three progressive files, the other
-// Apple's HLS test stream with six renditions; an unreachable host skips.
+// Apple's HLS test stream with five renditions; an unreachable host skips.
 spec('public renditions switch quality over the network', { start: { page: 'video' }, tags: ['network'], timeout: 90_000 }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
@@ -166,13 +166,13 @@ spec('public renditions switch quality over the network', { start: { page: 'vide
   // HLS: the platform lists the stream's renditions and pins the one chosen.
   // HarmonyOS's player plays the stream but does not list or pin its renditions yet.
   const harmony = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase()) === 'harmony';
-  const renditions = await settle('video-stream-state', text => harmony ? /· [1-9]\d*p ·/.test(text) : text.includes('1080p/720p/540p/432p/360p/270p'));
+  const renditions = await settle('video-stream-state', text => harmony ? /· [1-9]\d*p ·/.test(text) : text.includes('1080p/720p/540p/360p/234p'));
   if (harmony) {
     expect(renditions).toMatch(/· [1-9]\d*p ·/);
     await expectPicture(t, view.testId('video-stream'));
     t.skip('HarmonyOS does not list HLS renditions yet');
   }
-  expect(renditions).toContain('1080p/720p/540p/432p/360p/270p');
+  expect(renditions).toContain('1080p/720p/540p/360p/234p');
   await view.testId('video-stream-540p').click();
   await expect(view.testId('video-stream-state')).toContainText('540p · 540p', { timeout: 30_000 });
 });

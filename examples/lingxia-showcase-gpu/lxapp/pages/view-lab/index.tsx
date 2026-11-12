@@ -2,6 +2,7 @@ import { Details, Fragment, List, Pager as KitPagerView, Progress, Summary, useL
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 import type { LabPageData } from '../../shared/lab-types';
+import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../../shared/public-video';
 
 // GPU-only renderer fixtures: one section per View capability, addressed by testId.
 // One group renders at a time: a whole-lab render exceeds the per-render budget on slower phones.
@@ -271,15 +272,31 @@ function Progresses() {
 }
 
 function Media() {
+  const { data, actions } = useView();
   const clip = useVideo('lab-clip');
-  // Waits on its poster for a tap; the kit bar drives it.
+  const stream = useVideo('lab-stream');
+  // Specs pass `media=packaged` for the bundled clip; a network failure falls back to it too.
+  const packaged = data.packagedMedia === true || clip.error?.code === 'VIDEO_NETWORK';
+  const source = packaged
+    ? { src: 'public/video/fractal.mp4', poster: 'public/video/fractal-poster.jpg', 'aria-label': 'Fractal zoom' }
+    : { sources: PUBLIC_VIDEO, 'aria-label': 'Big Buck Bunny' };
+  // Waits for a tap; the kit bar drives it, its menu picking the quality.
   return (
     <Section title="Media" testId="lab-video">
-      <video data-testid="lab-video-player" player={clip} src="public/video/fractal.mp4" poster="public/video/fractal-poster.jpg"
-        aria-label="Fractal zoom" className="rounded-xl" />
+      <video data-testid="lab-video-player" player={clip} {...source} className="rounded-xl" />
       <VideoControls player={clip} data-testid="lab-video-controls" />
       {/* A spinner beside the player commits the page every frame; the bar must still follow it. */}
       <Progress variant="ring" size={24} aria-label="Loading next" data-testid="lab-video-spinner" />
+      {packaged ? null : (
+        <view className="gap-2">
+          <text className="text-sm text-muted">HLS: the stream's renditions are its qualities.</text>
+          <video data-testid="lab-stream-player" player={stream} src={PUBLIC_STREAM} aria-label="HLS test stream" className="rounded-xl" />
+          <VideoControls player={stream} data-testid="lab-stream-controls" />
+        </view>
+      )}
+      <Button testId="lab-video-page" variant="secondary" onClick={() => actions.openVideoPage()}>
+        Video page: quality, HLS and a list of players
+      </Button>
     </Section>
   );
 }

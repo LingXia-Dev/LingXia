@@ -88,7 +88,8 @@ spec('kit progress reads as a progressbar with its value, and without one while 
   await expect.poll(async () => Math.round(await width('lab-progress-bar-fill') / await width('lab-progress-bar') * 100)).toBe(60);
 });
 
-spec('kit video controls start a poster video on a tap, then pause, mute and scrub it', { start: { page: 'view-lab' } }, async (t) => {
+// The media specs play the bundled clip (`media=packaged`): the lab's own player streams public video.
+spec('kit video controls start a poster video on a tap, then pause, mute and scrub it', { start: { page: 'view-lab', query: { media: 'packaged' } } }, async (t) => {
   await skipWhenCovered(t, 'view-lab');
   const view = t.app.view;
   await view.testId('lab-tab-media').click();
@@ -127,7 +128,7 @@ spec('a finger on any group tab opens its group, wrapped line included', { start
   }
 });
 
-spec('kit video controls show the player full screen and Escape brings it back', { start: { page: 'view-lab' } }, async (t) => {
+spec('kit video controls show the player full screen and Escape brings it back', { start: { page: 'view-lab', query: { media: 'packaged' } } }, async (t) => {
   await skipWhenCovered(t, 'view-lab');
   const view = t.app.view;
   await view.testId('lab-tab-media').click();
@@ -153,7 +154,7 @@ spec('kit video controls show the player full screen and Escape brings it back',
 });
 
 // A desktop window keeps the shape its user gave it; a phone turns to the picture.
-spec('a landscape full-screen video turns the window and leaving gives it back', { start: { page: 'view-lab' }, requires: { input: ['touch'] } }, async (t) => {
+spec('a landscape full-screen video turns the window and leaving gives it back', { start: { page: 'view-lab', query: { media: 'packaged' } }, requires: { input: ['touch'] } }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-tab-media').click();
   const wide = async () => { const area = await view.viewport(); return area.width > area.height; };

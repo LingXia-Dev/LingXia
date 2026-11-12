@@ -1,5 +1,6 @@
 import { List, useVideo, type View } from '@lingxia/view';
 import '../../theme/index.css';
+import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../../shared/public-video';
 
 const clips = ['public/video/pattern.mp4', 'public/video/fractal.mp4'];
 // Every third row plays a clip under a text overlay, so a scroll moves video between plain rows.
@@ -69,18 +70,11 @@ function Quality({ actions }: { actions: View['actions'] }) {
   );
 }
 
-// Big Buck Bunny (c) Blender Foundation, CC BY 3.0: one 10 s clip as three progressive files, so a
-// switch changes real resolution over the network.
-const PUBLIC = [360, 720, 1080].map(height => ({
-  src: `https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/${height}/Big_Buck_Bunny_${height}_10s_1MB.mp4`,
-  label: `${height}p`,
-}));
-
 function PublicQuality() {
   const video = useVideo('public');
   return (
     <view className="gap-2">
-      <video data-testid="video-public" player={video} sources={PUBLIC} autoPlay muted loop aria-label="Big Buck Bunny" className="rounded-2xl" />
+      <video data-testid="video-public" player={video} sources={PUBLIC_VIDEO} autoPlay muted loop aria-label="Big Buck Bunny" className="rounded-2xl" />
       <text data-testid="video-public-state" className="text-muted">
         {video.quality} · {video.videoHeight}p · {video.qualities.join('/')}{video.error ? ` · ${video.error.code}` : ''}
       </text>
@@ -101,15 +95,11 @@ function PublicQuality() {
   );
 }
 
-// One adaptive HLS source: its renditions become the qualities. Apple's advanced test stream
-// lists six, 1080p down to 270p.
-const STREAM = 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8';
-
 function Stream() {
   const video = useVideo('stream');
   return (
     <column className="gap-2">
-      <video data-testid="video-stream" player={video} src={STREAM} autoPlay muted loop aria-label="HLS test" className="rounded-2xl" />
+      <video data-testid="video-stream" player={video} src={PUBLIC_STREAM} autoPlay muted loop aria-label="HLS test" className="rounded-2xl" />
       <text data-testid="video-stream-state" className="text-muted">
         {video.quality} · {video.videoHeight}p · {video.qualities.join('/')} · {video.currentTime.toFixed(1)}s{video.error ? ` · ${video.error.code}` : ''}
       </text>
