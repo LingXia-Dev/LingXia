@@ -295,9 +295,11 @@ mod tests {
         let runtime = crate::engine::RongJS::runtime();
         let budget = Budget::new(&runtime);
         let limit = Duration::from_millis(20);
+        // Burn by this thread's CPU clock, which the budget charges: wall time under load may not be.
         let burn = || {
-            let started = Instant::now();
-            while started.elapsed() < limit * 3 {
+            let clock = ThreadClock::current().unwrap();
+            let started = clock.elapsed().unwrap();
+            while clock.elapsed().unwrap() - started < limit * 3 {
                 std::hint::black_box(0u64);
             }
         };
