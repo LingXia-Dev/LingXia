@@ -648,7 +648,7 @@ pub(crate) fn console(token: Token, level: log::Level, message: &str) {
     let builder = lingxia_log::LogBuilder::new(lingxia_log::LogTag::WebViewConsole, message)
         .with_level(level);
     if let Some(page) = page_of(token) {
-        builder.with_path(&page.path()).with_appid(page.appid());
+        builder.with_path(page.path()).with_appid(page.appid());
     }
 }
 
