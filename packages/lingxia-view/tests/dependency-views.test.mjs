@@ -88,3 +88,52 @@ test("a dev build names a dependency's lines by package name and path, linked or
     }, { install });
   }
 });
+
+// A package that declares tokens: its pages may use its scale names; the app overrides them.
+const tokenKit = {
+  ...kit,
+  '../kit/package.json': JSON.stringify({ name: 'view-kit', type: 'module', exports: { './card': './src/card.tsx', './chip': './src/chip.tsx' }, lingxia: { tokens: './tokens.css' } }),
+  '../kit/tokens.css': '@theme {\n  --radius-control: 0.75rem;\n  --spacing-control: 2.5rem;\n}\n',
+  '../kit/src/chip.tsx': 'export function Chip() { return <view className="rounded-control min-h-control" />; }\n',
+};
+const rule = (source, name) => JSON.parse(/\nconfigureClasses\((.*)\);\n/.exec(source)[1]).find(rule => rule.name === name)?.style;
+
+test("a dependency's declared tokens reach the pages that bundle it, below the app's own", async () => {
+  for (const install of ['link', 'copy']) {
+    await project({ ...tokenKit, 'page.tsx': "import { Chip } from 'view-kit/chip';\nexport function render() { return <view><Chip /></view>; }\n" }, async (root, build) => {
+      await build();
+      let source = await readFile(join(root, 'dist/page.js'), 'utf8');
+      assert.deepEqual(rule(source, 'rounded-control'), { borderRadius: 12 }, install);
+      assert.deepEqual(rule(source, 'min-h-control'), { minHeight: 40 }, install);
+      await writeFile(join(root, 'theme.css'), '@theme { --radius-control: 1rem; }\n');
+      await writeFile(join(root, 'page.tsx'), "import './theme.css';\nimport { Chip } from 'view-kit/chip';\nexport function render() { return <view className=\"rounded-control\"><Chip /></view>; }\n");
+      await build();
+      source = await readFile(join(root, 'dist/page.js'), 'utf8');
+      assert.deepEqual(rule(source, 'rounded-control'), { borderRadius: 16 }, `${install}: the app's token wins`);
+    }, { install });
+  }
+});
+
+test("a page that does not bundle the package does not get its tokens", async () => {
+  await project({ ...tokenKit, 'page.tsx': 'export function render() { return <view className="rounded-control" />; }\n' }, async (root, build) => {
+    await assert.rejects(build(), /page.tsx:1:\d+: UI_CLASS_UNKNOWN: rounded-control/);
+  });
+});
+
+test("a dependency's token file holds @theme and @utility only, and two packages may not disagree", async () => {
+  const page = "import { Chip } from 'view-kit/chip';\nexport function render() { return <view><Chip /></view>; }\n";
+  await project({ ...tokenKit, '../kit/tokens.css': ':root { --color-accent: #ff0000; }\n', 'page.tsx': page }, async (root, build) => {
+    await assert.rejects(build(), /view-kit\/tokens\.css:1: UI_CSS: a package's tokens are @theme and @utility only/);
+  });
+  await project({ ...tokenKit, '../kit/package.json': JSON.stringify({ name: 'view-kit', exports: { './chip': './src/chip.tsx' }, lingxia: { tokens: '../outside.css' } }), 'page.tsx': page }, async (root, build) => {
+    await assert.rejects(build(), /view-kit\/package\.json: UI_CSS: lingxia\.tokens names a stylesheet inside the package/);
+  });
+  const other = {
+    'node_modules/other-kit/package.json': JSON.stringify({ name: 'other-kit', exports: { './dot': './dot.tsx' }, lingxia: { tokens: './tokens.css' } }),
+    'node_modules/other-kit/tokens.css': '@theme { --radius-control: 0.25rem; }\n',
+    'node_modules/other-kit/dot.tsx': 'export function Dot() { return <view className="rounded-control" />; }\n',
+  };
+  await project({ ...tokenKit, ...other, 'page.tsx': "import { Chip } from 'view-kit/chip';\nimport { Dot } from 'other-kit/dot';\nexport function render() { return <view><Chip /><Dot /></view>; }\n" }, async (root, build) => {
+    await assert.rejects(build(), /view-kit\/tokens\.css:2: UI_CSS: --radius-control is 0\.75rem here and 0\.25rem in other-kit; set it once in the app's stylesheet/);
+  });
+});

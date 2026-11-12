@@ -10,7 +10,7 @@ import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens, fontFaces } from './stylesheets.mjs';
 import { viewTsconfig } from './tsconfig.mjs';
-import { sourceLabel } from './packages.mjs';
+import { authored, packageOf, sourceLabel } from './packages.mjs';
 import { existsSync, statSync } from 'node:fs';
 import { colorProblem, seriesProblem } from '../src/style/color.js';
 import { readFile, mkdir, writeFile, copyFile, realpath } from 'node:fs/promises';
@@ -309,6 +309,49 @@ function analyse(path, contents, label, id, loader, literalColors) {
 }
 
 /**
+ * The `@theme` tokens of each package a page bundles that declares them (`"lingxia": { "tokens": … }`),
+ * in package-name order. A package adds scale and motion tokens and `@utility` classes; colours are
+ * the app's theme pack, and two packages may not give one token different values.
+ */
+async function packageTokens(root, packages, problems) {
+  const sheets = [], owners = new Map();
+  for (const { dir, name, tokens } of [...packages.values()].sort((a, b) => a.name < b.name ? -1 : 1)) {
+    const path = typeof tokens === 'string' ? resolve(dir, tokens) : '';
+    const inside = relative(dir, path);
+    if (!path || inside.startsWith('..') || isAbsolute(inside) || !existsSync(path)) {
+      problems.push(`${name}/package.json: UI_CSS: lingxia.tokens names a stylesheet inside the package that exists, not ${JSON.stringify(tokens)}`);
+      continue;
+    }
+    const label = sourceLabel(root, path);
+    let sheet;
+    try {
+      sheet = await loadStylesheet(path);
+      validateTokens(sheet);
+    } catch (error) {
+      problems.push(`${label}:${error.line ?? 1}: ${error.reason ?? error.message}`);
+      continue;
+    }
+    let clean = true;
+    for (const node of sheet.nodes) {
+      if (node.type === 'comment' || (node.type === 'atrule' && ['theme', 'utility'].includes(node.name))) continue;
+      problems.push(`${label}:${node.source?.start?.line ?? 1}: UI_CSS: a package's tokens are @theme and @utility only; colours and faces belong to the app`);
+      clean = false;
+    }
+    sheet.walkAtRules('theme', rule => rule.each(decl => {
+      if (decl.type !== 'decl') return;
+      const other = owners.get(decl.prop);
+      if (other && other.value !== decl.value) {
+        problems.push(`${label}:${decl.source?.start?.line ?? 1}: UI_CSS: ${decl.prop} is ${decl.value} here and ${other.value} in ${other.name}; set it once in the app's stylesheet`);
+        clean = false;
+      }
+      owners.set(decl.prop, { name, value: decl.value });
+    }));
+    if (clean) sheets.push(sheet.toString());
+  }
+  return sheets;
+}
+
+/**
  * Compiles GPU pages. `pages` are page source paths relative to `root`, the pages of an lxapp whose
  * `lxapp.json` declares `"renderer": "gpu"`. Output is `<base>.js` beside a copy of the page config,
  * when the page has one; a page config naming a renderer is refused.
@@ -338,7 +381,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const catalog = catalogs[page] ?? { __names: [], __modes: {} };
     if (!Array.isArray(catalog.__names) || catalog.__names.some(name => typeof name !== 'string' || !['call', 'stream'].includes(catalog.__modes?.[name])))
       throw Error(`${page}: invalid GPU action metadata`);
-    const candidates = new Set(), themes = new Map(), sourceFiles = [], problems = [], fonts = [];
+    const candidates = new Set(), themes = new Map(), sourceFiles = [], problems = [], fonts = [], tokenPackages = new Map();
     let bundled;
     try {
       bundled = await build({
@@ -367,6 +410,10 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
           });
           builder.onLoad({ filter: /\.[jt]sx?$/ }, async ({ path }) => {
             if (path.toLowerCase().startsWith(runtimeRoot)) return;
+            if (!authored(root, path)) {
+              const owner = packageOf(path);
+              if (owner?.tokens !== undefined) tokenPackages.set(owner.name, owner);
+            }
             const contents = await readFile(path, 'utf8');
             const loader = path.endsWith('.tsx') ? 'tsx' : path.endsWith('.ts') ? 'ts' : path.endsWith('.jsx') ? 'jsx' : 'js';
             const label = relative(root, path).split('\\').join('/');
@@ -383,14 +430,16 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       if (!problems.length) throw error;
     }
     if (themes.size > 1) problems.push(`${page}: UI_CSS: import one shared @theme stylesheet per page`);
-    warm &&= tailwindWarm([...themes.values()].join('\n'));
-    const classes = await compileUtilities(candidates, [...themes.values()].join('\n'), { literalColors });
+    // Packages' tokens sit below the app's own, so the app's stylesheet overrides any of them.
+    const theme = [...await packageTokens(root, tokenPackages, problems), ...themes.values()].join('\n');
+    warm &&= tailwindWarm(theme);
+    const classes = await compileUtilities(candidates, theme, { literalColors });
     const checker = moduleChecker(sourceFiles);
     const rulesByName = new Map();
     for (const rule of classes) rulesByName.set(rule.name, [...(rulesByName.get(rule.name) ?? []), rule]);
     const usages = sourceFiles.flatMap(file => collectClassUsage(file, checker));
     const unknown = [...new Set(usages.flatMap(({ value }) => value.split(/\s+/)).filter(name => name && !rulesByName.has(name)))];
-    const suggestions = await nearestSupported(unknown, [...themes.values()].join('\n'));
+    const suggestions = await nearestSupported(unknown, theme);
     for (const { value, location, tag } of usages) {
       const names = value.split(/\s+/).filter(Boolean);
       const grid = names.includes('grid');

@@ -128,6 +128,11 @@ between the two blocks compiles into a light and a dark rule; the View picks one
 stack lowers to its declared face, or to the generic of a system stack (`system-ui, …, sans-serif`,
 `ui-serif, …, serif`).
 
+A component package can ship its own scale tokens: `"lingxia": { "tokens": "./tokens.css" }` in its
+`package.json` names a stylesheet of `@theme` and `@utility` blocks. Every page that bundles one of the
+package's files compiles with those tokens below its own stylesheet, so the app overrides any of them.
+Colours and faces stay the app's; two packages giving one token different values fail the build.
+
 ## Variants
 
 | Variant | Matches |

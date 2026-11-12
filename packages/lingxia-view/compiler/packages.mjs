@@ -3,7 +3,8 @@ import { dirname, join, relative, isAbsolute } from 'node:path';
 
 const found = new Map();
 
-/** The nearest package.json above `file` that names a package: `{ dir, name }`, or undefined. */
+/** The nearest package.json above `file` that names a package: `{ dir, name, tokens }`, or undefined.
+ * `tokens` is the package's declared token stylesheet (`"lingxia": { "tokens": "./tokens.css" }`). */
 export function packageOf(file) {
   let dir = dirname(file);
   const seen = [];
@@ -12,9 +13,10 @@ export function packageOf(file) {
     seen.push(dir);
     const manifest = join(dir, 'package.json');
     if (existsSync(manifest)) {
-      let name;
-      try { name = JSON.parse(readFileSync(manifest, 'utf8')).name; } catch {}
-      if (typeof name === 'string' && name) { found.set(dir, { dir, name }); break; }
+      let json;
+      try { json = JSON.parse(readFileSync(manifest, 'utf8')); } catch {}
+      const name = json?.name;
+      if (typeof name === 'string' && name) { found.set(dir, { dir, name, tokens: json.lingxia?.tokens }); break; }
     }
     const up = dirname(dir);
     if (up === dir) { found.set(dir, undefined); break; }
