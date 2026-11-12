@@ -681,6 +681,14 @@ pub(crate) fn cancel_sidebar_drag(origin_width: i32) {
     }
 }
 
+/// Whole-sidebar state (rail, scroll) is read from the shell owner, not the
+/// guest whose `group_id` the chrome command carries.
+fn sidebar_owner_group(group: &str) -> String {
+    shell_owner_appid()
+        .filter(|owner| lxapp::try_get(owner).is_some())
+        .unwrap_or_else(|| group.to_string())
+}
+
 fn update_sidebar_ui_state(group: &str, update: impl FnOnce(&mut SidebarUiState)) {
     let state = SIDEBAR_UI_STATE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut state) = state.lock() {
@@ -5240,7 +5248,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(offset) = payload_i32(&event, "offset") else {
                 return;
             };
-            update_sidebar_ui_state(&group, |state| {
+            update_sidebar_ui_state(&sidebar_owner_group(&group), |state| {
                 state.main_scroll_offset = offset.max(0);
             });
             sync_shell_layout(appid);
@@ -5253,7 +5261,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(row) = payload_usize(&event, "row") else {
                 return;
             };
-            update_sidebar_ui_state(&group, |state| {
+            update_sidebar_ui_state(&sidebar_owner_group(&group), |state| {
                 state.footer_action_scroll_row = row;
             });
             sync_shell_layout(appid);
