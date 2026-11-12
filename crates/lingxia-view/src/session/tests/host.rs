@@ -5161,6 +5161,79 @@ fn a_close_request_closes_the_topmost_dialog_or_popover_and_is_refused_without_o
 }
 
 #[test]
+fn a_select_sheet_is_drivable_and_a_choice_made_elsewhere_closes_it() {
+    let worker = ViewWorker::spawn("test-select-sheet").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const c=useLocal('c','');return h('view',{},h('select',{'data-testid':'country',bind:c,'aria-label':'Country',placeholder:'Choose a country',options:[{value:'de',label:'Germany'},{value:'fr',label:'France'}]}),h('text',{'data-testid':'out'},'c='+c.value))}",
+        ),
+        false,
+    );
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .value["reducedMotion"] = serde_json::json!(true);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let count = |css: &str| {
+        host.automation_request(&serde_json::json!({"op":"query","css":css,"all":true}))
+            .unwrap()["count"]
+            .clone()
+    };
+    let act = |css: &str, action: serde_json::Value| {
+        let acted =
+            host.automation_request(&serde_json::json!({"op":"act","css":css,"action":action}));
+        platform.settle(&[&host]);
+        acted
+    };
+    let tree = || {
+        host.automation_request(&serde_json::json!({"op":"tree"}))
+            .unwrap()
+            .to_string()
+    };
+    act(
+        "[data-testid=\"country\"]",
+        serde_json::json!({"kind":"click"}),
+    )
+    .unwrap();
+    // The touch picker: a dialog named by the select, Cancel, Done and the options.
+    let sheet = tree();
+    for part in [
+        "\"name\":\"Country\",\"role\":\"dialog\"",
+        "\"testId\":\"lx-picker-cancel\"",
+        "\"testId\":\"lx-picker-done\"",
+        "\"name\":\"France\",\"role\":\"option\",\"selected\":false",
+    ] {
+        assert!(sheet.contains(part), "{part} in {sheet}");
+    }
+    assert!(
+        !sheet.contains("\"selected\":true"),
+        "no value, no tick: {sheet}"
+    );
+    // The select is behind a modal: out of role queries, still reached by its test id.
+    assert_eq!(count("select, [role=\"combobox\"]"), 0);
+    act(
+        "[data-testid=\"country\"]",
+        serde_json::json!({"kind":"select","value":"fr"}),
+    )
+    .unwrap();
+    assert_eq!(
+        count("[role=\"dialog\"]"),
+        0,
+        "the choice closes its picker"
+    );
+    let out = host
+        .automation_request(&serde_json::json!({"op":"query","css":"[data-testid=\"out\"]"}))
+        .unwrap();
+    assert_eq!(out["text"], "c=fr");
+}
+
+#[test]
 fn a_list_anchor_with_a_duration_glides_there_and_input_stops_it() {
     use crate::interaction::view::{Wheel, WheelPhase};
     let glide = |stop_at: Option<usize>| {

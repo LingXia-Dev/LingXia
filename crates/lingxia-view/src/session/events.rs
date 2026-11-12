@@ -116,13 +116,15 @@ impl ViewSession {
         }) else {
             return Ok(false);
         };
+        // A choice that arrives another way (automation, a key) closes this select's picker.
+        let closed = self.close_view_picker_on(identity)?;
         let (Some(option), Some(handle)) = (select.options.get(index), select.on_select) else {
-            return Ok(false);
+            return Ok(closed);
         };
         if !option.enabled || select.selected == Some(index) {
-            return Ok(false);
+            return Ok(closed);
         }
-        self.text_event(generation, handle, &option.value)
+        Ok(self.text_event(generation, handle, &option.value)? || closed)
     }
 
     /// A View-side choice (automation, arrow keys) made on a frame the View has since

@@ -170,6 +170,21 @@ impl ViewSession {
         })
     }
 
+    /// Close the View's picker if it is open on `identity`; true when it was.
+    pub fn close_view_picker_on(&self, identity: &str) -> Result<bool, String> {
+        let identity = serde_json::to_string(identity).map_err(|e| e.to_string())?;
+        self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    format!(
+                        "typeof __lingxiaPickerIdentity === 'function' && __lingxiaPickerIdentity() === {identity} && (__lingxiaClosePicker(), true)"
+                    )
+                    .as_bytes(),
+                ))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })
+    }
+
     /// Choices the picker made since the last call.
     pub(crate) fn take_view_picker_results(&self) -> Result<Vec<PickerChoice>, String> {
         let json: String = self.execute(|| {

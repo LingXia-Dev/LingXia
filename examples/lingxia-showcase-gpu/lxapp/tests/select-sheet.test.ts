@@ -24,3 +24,17 @@ spec('a select sheet with no value ticks nothing until a tap, and Done commits t
   await expect(view.testId('lx-picker')).not.toBeAttached();
   await expect(values).toContainText('plan=yearly');
 });
+
+// A choice made through automation while the sheet is open closes the sheet, as a tap and Done would.
+spec('selectOption with the select sheet open picks the option and closes the sheet', {
+  covers: ['view:select', 'view:dialog'], start: { page: 'view-lab' }, requires: { pointer: 'coarse' },
+}, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-input').click();
+  const plan = view.testId('lab-input-plan');
+  await plan.click();
+  await expect(view.testId('lx-picker')).toBeVisible();
+  await plan.selectOption('monthly');
+  await expect(view.testId('lx-picker')).not.toBeAttached();
+  await expect(view.testId('lab-input-values')).toContainText('plan=monthly');
+});
