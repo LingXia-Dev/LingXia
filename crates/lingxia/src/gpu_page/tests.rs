@@ -95,12 +95,7 @@ impl NativeFactory for Factory {
 fn endpoint(factory: &Arc<Factory>, page: &str) -> (Arc<Endpoint>, Arc<Shell>, Token) {
     let token = NEXT.fetch_add(1, Ordering::Relaxed);
     let shell = Arc::new(Shell::default());
-    let lease = Lease {
-        token,
-        page: page.into(),
-        disposed: AtomicBool::new(false),
-        factory: factory.clone(),
-    };
+    let lease = Lease::new(token, page.into(), "test".into(), None, factory.clone());
     (register(lease, shell.clone()), shell, token)
 }
 
@@ -350,6 +345,35 @@ fn hot_swap_matches_routes_with_or_without_module_extension() {
         assert_eq!(super::page_key(path), "pages/view-lab/index");
     }
     assert_eq!(super::page_key("pages/v1.2/index"), "pages/v1.2/index");
+}
+
+#[test]
+fn an_app_pack_outlives_the_pages_a_relaunch_replaces() {
+    let factory: Arc<dyn NativeFactory> = Arc::new(Factory::default());
+    let worker = "pack-holders:1";
+    let pack = || bundled_pack(r##"{"name":"brand","version":1}"##);
+    let lease = |token| {
+        Lease::new(
+            token,
+            format!("page-{token}"),
+            worker.into(),
+            pack(),
+            factory.clone(),
+        )
+    };
+    let old = lease(NEXT.fetch_add(1, Ordering::Relaxed));
+    // A relaunch may create the new page before the old one is disposed.
+    let new = lease(NEXT.fetch_add(1, Ordering::Relaxed));
+    old.dispose();
+    assert!(
+        lingxia_theme::app_pack(worker).is_some(),
+        "the new page keeps the pack"
+    );
+    drop(new);
+    assert!(
+        lingxia_theme::app_pack(worker).is_none(),
+        "the pack ends with the session's last page"
+    );
 }
 
 #[test]

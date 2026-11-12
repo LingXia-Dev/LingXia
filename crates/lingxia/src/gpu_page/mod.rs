@@ -120,18 +120,55 @@ pub(crate) fn worker_key(appid: &str, session: u64) -> String {
     format!("{appid}:{session}")
 }
 
+/// Live pages per View worker key: an app session's theme pack lasts while any page holds it,
+/// so a relaunch's new page keeps the pack the outgoing pages release.
+static PACK_HOLDERS: LazyLock<Mutex<HashMap<String, usize>>> = LazyLock::new(Default::default);
+
 /// Disposes its native shell exactly once, however it is released.
 struct Lease {
     token: Token,
     page: String,
+    worker: String,
     disposed: AtomicBool,
     factory: Arc<dyn NativeFactory>,
 }
 
 impl Lease {
+    /// Holds the app session's pack, registering `pack` before the page's host reads it.
+    fn new(
+        token: Token,
+        page: String,
+        worker: String,
+        pack: Option<lingxia_theme::Pack>,
+        factory: Arc<dyn NativeFactory>,
+    ) -> Self {
+        let mut holders = PACK_HOLDERS.lock().unwrap_or_else(|p| p.into_inner());
+        *holders.entry(worker.clone()).or_default() += 1;
+        if let Some(pack) = pack {
+            lingxia_theme::set_app_pack(&worker, Some(pack));
+        }
+        Self {
+            token,
+            page,
+            worker,
+            disposed: AtomicBool::new(false),
+            factory,
+        }
+    }
+
     fn dispose(&self) {
         if self.disposed.swap(true, Ordering::AcqRel) {
             return;
+        }
+        {
+            let mut holders = PACK_HOLDERS.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some(count) = holders.get_mut(&self.worker) {
+                *count -= 1;
+                if *count == 0 {
+                    holders.remove(&self.worker);
+                    lingxia_theme::set_app_pack(&self.worker, None);
+                }
+            }
         }
         {
             let mut registry = registry();
@@ -274,17 +311,15 @@ impl GpuPageViewFactory for Binding {
         Box::pin(async move {
             let source = page.gpu_module_source()?;
             let token = NEXT.fetch_add(1, Ordering::Relaxed);
-            let lease = Lease {
-                token,
-                page: page.instance_id_string(),
-                disposed: AtomicBool::new(false),
-                factory: factory.clone(),
-            };
             let worker = worker_key(&page.appid(), page.app_session_id());
             // Hosts read the pack when they are created, so the first frame already carries it.
-            if let Some(pack) = page.gpu_theme_pack().as_deref().and_then(bundled_pack) {
-                lingxia_theme::set_app_pack(&worker, Some(pack));
-            }
+            let lease = Lease::new(
+                token,
+                page.instance_id_string(),
+                worker.clone(),
+                page.gpu_theme_pack().as_deref().and_then(bundled_pack),
+                factory.clone(),
+            );
             let (tx, rx) = oneshot::channel();
             registry().pending.insert(token, tx);
             factory.create(

@@ -64,10 +64,6 @@ impl Drop for ViewWorker {
         let (queue, ready) = &*self.queue;
         queue.lock().unwrap_or_else(|p| p.into_inner()).closed = true;
         ready.notify_all();
-        // The app session is over; its theme pack goes with it.
-        if let Some(key) = &self.key {
-            lingxia_theme::set_app_pack(key, None);
-        }
     }
 }
 

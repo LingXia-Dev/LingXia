@@ -3892,10 +3892,47 @@ fn an_lxapp_pack_paints_the_first_presented_frame() {
     drop(host);
     drop(platform);
     drop(worker);
-    assert!(
-        lingxia_theme::app_pack(key).is_none(),
-        "the pack ends with its app session"
+    lingxia_theme::set_app_pack(key, None);
+}
+
+#[test]
+fn a_page_on_a_fresh_worker_reads_the_pack_its_outgoing_worker_left() {
+    let key = "test-app-pack-relaunch";
+    let pack = serde_json::from_value(serde_json::json!(
+        {"name": "brand", "version": 1, "accent": {"seed": "#0f9d58", "derive": true}}))
+    .unwrap();
+    lingxia_theme::set_app_pack(key, Some(pack));
+    let argb = |[r, g, b, a]: [u8; 4]| u32::from_be_bytes([a, r, g, b]);
+    let builtin = argb(crate::theme::Palette::builtin(false).role(lingxia_theme::Role::Accent));
+    // A relaunch: the old stack and its worker go before the new page's host starts a worker.
+    drop(ViewWorker::shared(key).unwrap());
+    let worker = ViewWorker::shared(key).unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){ return h('text',{},'B') }"),
+        false,
     );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let first = host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .feedback
+        .first()
+        .cloned()
+        .expect("a presented frame");
+    assert_ne!(
+        first["selectionHandle"].as_u64().unwrap() as u32,
+        builtin,
+        "the page paints the app's accent"
+    );
+    drop(host);
+    drop(platform);
+    drop(worker);
+    lingxia_theme::set_app_pack(key, None);
 }
 
 #[test]
