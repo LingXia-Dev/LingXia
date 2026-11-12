@@ -111,7 +111,8 @@ impl Budget {
     }
 
     /// Run `work`, interrupting it once it passes `limit`; an evaluation that finished past
-    /// `budget` but within `limit` is reported as an [`Overrun`] beside its result.
+    /// `budget` but within `limit` is reported as an [`Overrun`] beside its result. An error
+    /// `work` returns is its own unless the engine reports it interrupted, however late.
     pub(crate) fn run<T>(
         &self,
         budget: Duration,
@@ -147,11 +148,16 @@ impl Budget {
             )
         };
         let (cpu, wall) = evaluating.used();
-        let expired = interrupted
-            || match cpu {
-                Some(cpu) => cpu >= limit,
-                None => wall >= limit,
-            };
+        // An engine without preemption never reports one, so there only the clock times out a value.
+        let own_error = result
+            .as_ref()
+            .is_err_and(|error| !error.contains(rong::error::E_INTERRUPTED));
+        let expired = !own_error
+            && (interrupted
+                || match cpu {
+                    Some(cpu) => cpu >= limit,
+                    None => wall >= limit,
+                });
         drop(guard);
         let used = cpu.map_or("n/a".to_owned(), |cpu| format!("{}ms", cpu.as_millis()));
         if expired {
@@ -275,6 +281,40 @@ mod tests {
             Ok(())
         });
         assert!(hung.is_err());
+    }
+
+    /// Work that runs no JavaScript cannot be interrupted, as on an engine without preemption:
+    /// its error stands past the limit, and only the engine's interruption is a timeout.
+    #[test]
+    fn an_error_past_the_limit_is_the_works_own_unless_the_engine_interrupted() {
+        if !<crate::engine::Active as crate::engine::Engine>::PREEMPTIBLE
+            || ThreadClock::current().is_none()
+        {
+            return;
+        }
+        let runtime = crate::engine::RongJS::runtime();
+        let budget = Budget::new(&runtime);
+        let limit = Duration::from_millis(20);
+        let burn = || {
+            let started = Instant::now();
+            while started.elapsed() < limit * 3 {
+                std::hint::black_box(0u64);
+            }
+        };
+        let (own, _) = budget.run(limit, limit, || -> Result<(), String> {
+            burn();
+            Err("UI_KEY: duplicate sibling".into())
+        });
+        assert_eq!(own.unwrap_err(), "UI_KEY: duplicate sibling");
+        let (aborted, _) = budget.run(limit, limit, || -> Result<(), String> {
+            burn();
+            Err(format!(
+                "{}: JavaScript execution was interrupted",
+                rong::error::E_INTERRUPTED
+            ))
+        });
+        let error = aborted.unwrap_err();
+        assert!(error.starts_with("UI_TIMEOUT:"), "{error}");
     }
 
     #[test]

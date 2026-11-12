@@ -33,8 +33,14 @@ fn drain_jobs(context: &super::JSContext) -> Result<(), String> {
             }
             let mut owner = std::ptr::null_mut();
             if qjs::JS_ExecutePendingJob(runtime, &mut owner) < 0 {
+                let mut aborted = false;
                 if !owner.is_null() {
-                    qjs::JS_FreeValue(owner, qjs::JS_GetException(owner));
+                    let error = qjs::JS_GetException(owner);
+                    aborted = qjs::JS_IsUncatchableError(error);
+                    qjs::JS_FreeValue(owner, error);
+                }
+                if aborted {
+                    return Err(interrupted());
                 }
                 return Err("UI_ACTION: microtask execution failed".into());
             }
@@ -202,6 +208,14 @@ unsafe fn run(
     Ok(())
 }
 
+/// QuickJS aborts on an interrupt with an uncatchable error; report it as rong does.
+fn interrupted() -> String {
+    format!(
+        "{}: JavaScript execution was interrupted",
+        rong::error::E_INTERRUPTED
+    )
+}
+
 /// Consumes `error`.
 unsafe fn message(
     ctx: *mut rong_quickjs_sys::JSContext,
@@ -209,6 +223,10 @@ unsafe fn message(
 ) -> String {
     use rong_quickjs_sys as qjs;
     unsafe {
+        if qjs::JS_IsUncatchableError(error) {
+            qjs::JS_FreeValue(ctx, error);
+            return interrupted();
+        }
         let text = qjs::JS_ToCStringLen2(ctx, std::ptr::null_mut(), error, false);
         let message = if text.is_null() {
             let secondary = qjs::JS_GetException(ctx);
