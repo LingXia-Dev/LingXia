@@ -7,6 +7,15 @@ use parley::StyleProperty;
 use parley::style::{FontStyle, FontWeight, LineHeight};
 use vello_cpu::Glyph;
 
+/// CSS `font-optical-sizing: auto`: a face with an `opsz` axis takes the drawn size, as
+/// CoreText does; its default is often a display cut (SF's is 28) that sets body text tight.
+fn optical_size<B: parley::Brush>(size: f32) -> StyleProperty<'static, B> {
+    use parley::setting::{FontVariation, Tag};
+    StyleProperty::FontVariations(parley::style::FontVariations::List(
+        vec![FontVariation::new(Tag::new(b"opsz"), size)].into(),
+    ))
+}
+
 pub(crate) fn text_extent(
     layout: &Layout<crate::text::RunBrush>,
     lines: Option<usize>,
@@ -187,6 +196,7 @@ impl Renderer {
                 parley::BaseDirection::Ltr
             });
             builder.push_default(StyleProperty::FontSize(font_size));
+            builder.push_default(optical_size(font_size));
             builder.push_default(StyleProperty::LetterSpacing(letter_spacing));
             builder.push_default(StyleProperty::FontStyle(if italic {
                 FontStyle::Italic
@@ -221,6 +231,7 @@ impl Renderer {
                     StyleProperty::FontSize(self.text_scale.map(run.size)),
                     range.clone(),
                 );
+                builder.push(optical_size(self.text_scale.map(run.size)), range.clone());
                 builder.push(
                     StyleProperty::FontWeight(FontWeight::new(run.weight)),
                     range.clone(),
@@ -272,6 +283,7 @@ impl Renderer {
     pub(crate) fn zero_advance(&mut self, style: &TextStyle) -> f32 {
         let mut builder = self.text.ranged_builder(&mut self.fonts, "0", 1.0, true);
         builder.push_default(StyleProperty::FontSize(self.text_scale.map(style.size)));
+        builder.push_default(optical_size(self.text_scale.map(style.size)));
         builder.push_default(StyleProperty::FontWeight(FontWeight::new(style.weight)));
         builder.push_default(StyleProperty::Locale(self.locale));
         builder.push_default(Self::font_stack(&self.font_faces, &style.family));
@@ -347,5 +359,67 @@ impl Renderer {
             self.text_cache.keep_cut(key, cut.clone());
         }
         cut
+    }
+}
+
+#[cfg(test)]
+mod optical_size_tests {
+    use parley::fontique::Blob;
+    use parley::{FontContext, LayoutContext, PositionedLayoutItem, StyleProperty};
+
+    /// For each glyph run, which variation coordinates are off default; and the line's width.
+    fn shape(face: Vec<u8>, size: f32, optical: bool) -> (Vec<Vec<bool>>, f32) {
+        let mut fonts = FontContext::new();
+        let family = fonts
+            .collection
+            .register_fonts(Blob::new(std::sync::Arc::new(face)), None)[0]
+            .0;
+        let name = fonts.collection.family_name(family).unwrap().to_owned();
+        let mut text = LayoutContext::<super::super::RunBrush>::new();
+        let mut builder = text.ranged_builder(&mut fonts, "Hamburgefonstiv", 1.0, true);
+        builder.push_default(StyleProperty::FontSize(size));
+        builder.push_default(StyleProperty::FontFamily(name.as_str().into()));
+        if optical {
+            builder.push_default(super::optical_size(size));
+        }
+        let mut layout = builder.build("Hamburgefonstiv");
+        layout.break_all_lines(None);
+        let coords = layout
+            .lines()
+            .flat_map(|line| line.items().collect::<Vec<_>>())
+            .filter_map(|item| match item {
+                PositionedLayoutItem::GlyphRun(run) => Some(
+                    run.run()
+                        .normalized_coords()
+                        .iter()
+                        .map(|c| *c != Default::default())
+                        .collect(),
+                ),
+                _ => None,
+            })
+            .collect();
+        (coords, layout.full_width())
+    }
+
+    #[test]
+    fn a_face_without_an_opsz_axis_is_shaped_as_before() {
+        let face = include_bytes!("../session/tests/wide.ttf").to_vec();
+        let (coords, width) = shape(face.clone(), 17.0, true);
+        assert!(coords.iter().all(Vec::is_empty), "{coords:?}");
+        assert_eq!(width, shape(face, 17.0, false).1);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_system_face_takes_its_optical_size_from_the_drawn_size() {
+        let face = std::fs::read("/System/Library/Fonts/SFNS.ttf").unwrap();
+        let (body, body_width) = shape(face.clone(), 17.0, true);
+        let (_, display_width) = shape(face, 17.0, false);
+        assert!(body.iter().all(|coords| coords.contains(&true)), "{body:?}");
+        // The text cut sets wider than the display cut SF defaults to.
+        assert!(
+            body_width > display_width,
+            "{body_width} vs {display_width}"
+        );
     }
 }
