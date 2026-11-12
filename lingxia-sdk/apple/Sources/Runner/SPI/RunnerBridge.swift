@@ -349,7 +349,7 @@ enum RunnerBridge {
     static func presentBrowserTabInSurfaceShell(_ shell: LxAppShell, tabId: String) {
         shell.presentInternalBrowserTab(id: tabId)
         shell.reconcileSidebarAutoHide()
-        shell.window?.makeKeyAndOrderFront(nil)
+        shell.orderFrontIfActive()
     }
 }
 #endif

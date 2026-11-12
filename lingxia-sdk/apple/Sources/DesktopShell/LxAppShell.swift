@@ -1701,6 +1701,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Orders the window front only while this app is active: an inactive app's window would
+    /// rise over other apps' background windows (a `--background` dev session over the user's).
+    func orderFrontIfActive() {
+        guard NSApp.isActive else { return }
+        window?.makeKeyAndOrderFront(nil)
+    }
+
     /// Select the switcher row for an lxapp opened from JS. Managed rows are
     /// keyed by Surface id; a dynamic open's surface id is the app id.
     func selectSidebarLxApp(appId: String, surfaceId: String) {

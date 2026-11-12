@@ -46,7 +46,7 @@ class macOSLxApp: ObservableObject {
             let shell = LxAppShell(configuration: config)
             shell.show()
         } else {
-            activeShell()?.window?.makeKeyAndOrderFront(nil)
+            activeShell()?.orderFrontIfActive()
         }
     }
 
@@ -212,7 +212,7 @@ extension macOSLxApp {
             s.openLxApp(appId: appId, path: path, pageInstanceId: pageInstanceId, sessionId: sessionId)
             // Restart and self-close also land here; only the explicit
             // activation request may raise the app over others.
-            s.window?.makeKeyAndOrderFront(nil)
+            s.orderFrontIfActive()
         } else {
             Self.openShellWindow()
             Self.activeShell()?.openLxApp(
@@ -291,7 +291,7 @@ extension macOSLxApp {
 
         guard let s = activeShell() else { return false }
         s.presentInternalBrowserTab(id: normalized)
-        s.window?.makeKeyAndOrderFront(nil)
+        s.orderFrontIfActive()
         return true
     }
 
