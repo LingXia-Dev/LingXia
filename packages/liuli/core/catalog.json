@@ -3474,7 +3474,7 @@
         },
         "contrast": [
           {
-            "what": "thumb and filled track",
+            "what": "filled range",
             "pair": [
               "accent",
               "surface"
@@ -3482,9 +3482,9 @@
             "minimum": "3:1"
           },
           {
-            "what": "empty track",
+            "what": "thumb",
             "pair": [
-              "line",
+              "accent",
               "surface"
             ],
             "minimum": "3:1"
@@ -3492,7 +3492,8 @@
         ],
         "notes": [
           "The device reads the number as the value; the words in `valueLabel` follow as the description until sliders take a value text.",
-          "One size until the primitive takes thumb and track styling; the press area is 40 px tall."
+          "One size until the primitive takes thumb and track styling; the press area is 40 px tall.",
+          "The empty track is decorative and has no contrast minimum: the value is carried by the filled range and the thumb."
         ]
       },
       "examples": [
@@ -3918,17 +3919,26 @@
             "minimum": "3:1"
           },
           {
-            "what": "segmented thumb edge",
+            "what": "chosen segment text",
             "pair": [
-              "surface-raised",
+              "text",
+              "surface-raised"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "other segments' text",
+            "pair": [
+              "text-muted",
               "surface-sunken"
             ],
-            "minimum": "3:1"
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
           "The chosen state is in the text weight and colour and in the indicator, never in colour alone.",
-          "The segmented control is 36 px tall, with its 32 px segments; it suits pointer and compact layouts."
+          "The segmented control is 36 px tall, with its 32 px segments; it suits pointer and compact layouts.",
+          "The segmented thumb's edge is decorative and has no contrast minimum: the chosen segment is carried by its label and the raised thumb."
         ]
       },
       "examples": [

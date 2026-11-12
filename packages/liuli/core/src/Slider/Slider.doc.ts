@@ -28,12 +28,13 @@ export const doc: ComponentDoc = {
     ],
     target: { md: 40 },
     contrast: [
-      { what: 'thumb and filled track', pair: ['accent', 'surface'], minimum: '3:1' },
-      { what: 'empty track', pair: ['line', 'surface'], minimum: '3:1' },
+      { what: 'filled range', pair: ['accent', 'surface'], minimum: '3:1' },
+      { what: 'thumb', pair: ['accent', 'surface'], minimum: '3:1' },
     ],
     notes: [
       'The device reads the number as the value; the words in `valueLabel` follow as the description until sliders take a value text.',
       'One size until the primitive takes thumb and track styling; the press area is 40 px tall.',
+      'The empty track is decorative and has no contrast minimum: the value is carried by the filled range and the thumb.',
     ],
   },
   guidance: {

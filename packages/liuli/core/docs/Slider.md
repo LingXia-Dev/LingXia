@@ -125,11 +125,12 @@ export function Position() {
 - Press target: md 40 px.
 - The device reads the number as the value; the words in `valueLabel` follow as the description until sliders take a value text.
 - One size until the primitive takes thumb and track styling; the press area is 40 px tall.
+- The empty track is decorative and has no contrast minimum: the value is carried by the filled range and the thumb.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| thumb and filled track | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
-| empty track | `line` on `surface` | 3:1 | 1.31:1, below | 1.39:1, below |
+| filled range | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
+| thumb | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
 
 Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 

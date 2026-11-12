@@ -37,11 +37,13 @@ export const doc: ComponentDoc = {
       { what: 'chosen tab text', pair: ['text', 'surface'], minimum: '4.5:1' },
       { what: 'other tabs\' text', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
       { what: 'underline', pair: ['accent', 'surface'], minimum: '3:1' },
-      { what: 'segmented thumb edge', pair: ['surface-raised', 'surface-sunken'], minimum: '3:1' },
+      { what: 'chosen segment text', pair: ['text', 'surface-raised'], minimum: '4.5:1' },
+      { what: 'other segments\' text', pair: ['text-muted', 'surface-sunken'], minimum: '4.5:1' },
     ],
     notes: [
       'The chosen state is in the text weight and colour and in the indicator, never in colour alone.',
       'The segmented control is 36 px tall, with its 32 px segments; it suits pointer and compact layouts.',
+      'The segmented thumb\'s edge is decorative and has no contrast minimum: the chosen segment is carried by its label and the raised thumb.',
     ],
   },
   guidance: {

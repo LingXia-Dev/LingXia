@@ -137,13 +137,15 @@ export function Filter() {
 - Press target: md 40 px.
 - The chosen state is in the text weight and colour and in the indicator, never in colour alone.
 - The segmented control is 36 px tall, with its 32 px segments; it suits pointer and compact layouts.
+- The segmented thumb's edge is decorative and has no contrast minimum: the chosen segment is carried by its label and the raised thumb.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | chosen tab text | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | other tabs' text | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 | underline | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
-| segmented thumb edge | `surface-raised` on `surface-sunken` | 3:1 | 1.13:1, below | 1.22:1, below |
+| chosen segment text | `text` on `surface-raised` | 4.5:1 | 16.26:1 | 11.83:1 |
+| other segments' text | `text-muted` on `surface-sunken` | 4.5:1 | 5.20:1 | 6.93:1 |
 
 Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 

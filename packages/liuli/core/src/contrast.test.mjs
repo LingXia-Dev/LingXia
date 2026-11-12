@@ -11,12 +11,7 @@ const theme = await palette();
 const key = (pair, appearance) => `${pair.component}: ${pair.what} (${appearance})`;
 
 /** Pairs the default theme fails today: the input to the theme roles work, not a Liuli fix. */
-const themeGaps = new Set([
-  'Slider: empty track (light)',
-  'Slider: empty track (dark)',
-  'Tabs: segmented thumb edge (light)',
-  'Tabs: segmented thumb edge (dark)',
-]);
+const themeGaps = new Set([]);
 
 test('contrast pairs name View roles, with a backdrop under any translucent background', () => {
   for (const pair of pairs) {
