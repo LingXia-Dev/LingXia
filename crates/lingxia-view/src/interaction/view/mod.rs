@@ -105,6 +105,8 @@ pub struct ViewInteraction {
     parked: bool,
     /// Open dialogs and menus, innermost last, each with what had keyboard focus before it opened.
     dialogs: Vec<(String, Option<String>)>,
+    /// The item each composite (by identity) last had keyboard focus on.
+    composite_focus: std::collections::HashMap<String, String>,
     /// A mouse or trackpad drives the pointer: drags select text instead of scrolling.
     fine_pointer: bool,
     /// The last input was a key, not a pointer: focus moves (and its ring) follow it.

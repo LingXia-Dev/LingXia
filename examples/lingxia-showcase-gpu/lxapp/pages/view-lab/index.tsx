@@ -10,7 +10,7 @@ const groups = {
   paint: { label: 'Paint', sections: [Grid, Gradients, Vectors, Borders, Transforms] },
   layout: { label: 'Layout', sections: [Display, Sizing, Direction, Choices, Structure, StickyHeaders, Fragments, Disclosure] },
   text: { label: 'Text', sections: [TextLayout, RichText, Selection, Document] },
-  input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants, FormSemantics] },
+  input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants, FormSemantics, Composites] },
   feedback: { label: 'Feedback', sections: [Overlays, Progresses] },
   media: { label: 'Media', sections: [Media] },
   data: { label: 'Data', sections: [Plots] },
@@ -477,6 +477,38 @@ function FormSemantics() {
         <text className="text-sm">It cannot be restored.</text>
         <Button testId="lab-form-keep" onClick={() => confirm.set(false)}>Keep it</Button>
       </dialog>
+    </Section>
+  );
+}
+
+// Tabs, a toolbar and a tree: one Tab stop each, arrows move between items, tabs activate on arrival.
+function Composites() {
+  const range = useLocal('composite-range', 'week');
+  const bold = useLocal('composite-bold', false);
+  const open = useLocal('composite-open', true);
+  const tab = (value: string, label: string) => (
+    <button key={value} role="tab" aria-selected={range.value === value} data-testid={`lab-range-${value}`} onClick={() => range.set(value)}
+      className={`px-3 py-1 rounded-lg text-sm ${range.value === value ? 'bg-accent text-on-accent' : 'bg-surface-sunken'}`}>{label}</button>
+  );
+  const node = (label: string, level: number, testId: string, expanded?: boolean) => (
+    <button role="treeitem" aria-level={level} aria-expanded={expanded} data-testid={testId}
+      onClick={expanded === undefined ? () => {} : () => open.set(!open.value)} className="text-sm text-left py-1" style={{ paddingLeft: level * 12 }}>{label}</button>
+  );
+  return (
+    <Section title="Composites" testId="lab-composites">
+      <view role="tablist" aria-label="Range" className="flex-row gap-2">
+        {tab('day', 'Day')}{tab('week', 'Week')}{tab('month', 'Month')}
+      </view>
+      <view role="tabpanel" aria-label="Range view" data-testid="lab-range-panel"><text className="text-sm">{`Showing the ${range.value}`}</text></view>
+      <view role="toolbar" aria-label="Format" className="flex-row gap-2">
+        <button data-testid="lab-tool-bold" aria-pressed={bold.value} onClick={() => bold.set(!bold.value)} className="px-3 py-1 rounded-lg bg-surface-sunken text-sm">Bold</button>
+        <button data-testid="lab-tool-copy" onClick={() => {}} className="px-3 py-1 rounded-lg bg-surface-sunken text-sm">Copy</button>
+      </view>
+      <view role="tree" aria-label="Files" className="gap-0">
+        {node('src', 1, 'lab-tree-src', open.value)}
+        {open.value ? node('main.ts', 2, 'lab-tree-main') : null}
+        {node('docs', 1, 'lab-tree-docs')}
+      </view>
     </Section>
   );
 }

@@ -176,7 +176,7 @@ pub fn plot_can_clear(node: &NodeSnapshot) -> bool {
             .is_some_and(|plot| plot.selected_index >= 0)
 }
 
-fn activatable(node: &NodeSnapshot) -> bool {
+pub(crate) fn activatable(node: &NodeSnapshot) -> bool {
     node.on_click.is_some_and(|handle| handle != 0)
         || plot_enabled(node)
         || node

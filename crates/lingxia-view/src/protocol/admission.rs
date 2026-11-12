@@ -96,12 +96,25 @@ pub(super) fn record(
     {
         return Err("UI_STYLE: conflicting automatic height".into());
     }
-    if has(fields, field::HEADING_LEVEL)
-        && !fields
-            .iter()
-            .any(|(id, value)| *id == field::ROLE && value.as_str() == Some("heading"))
+    if let Some(level) = fields
+        .iter()
+        .find(|(id, _)| *id == field::HEADING_LEVEL)
+        .and_then(|(_, value)| value.as_u64())
     {
-        return Err("UI_PROP: headingLevel requires role heading".into());
+        // A heading is 1..6; a tree item carries its depth in the same field.
+        let role = fields
+            .iter()
+            .find(|(id, _)| *id == field::ROLE)
+            .and_then(|(_, value)| value.as_str());
+        match role {
+            Some("heading") if level <= 6 => {}
+            Some("treeitem") => {}
+            _ => {
+                return Err(
+                    "UI_PROP: headingLevel requires role heading (1..6) or treeitem".into(),
+                );
+            }
+        }
     }
     let admission = TAG_ADMISSION[tag];
     if admission.root && parent.is_some() {

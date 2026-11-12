@@ -137,8 +137,13 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
         case "grid": return .grid
         case "grid-cell", "option": return .cell
         case "menu": return .menu
-        case "menu-item": return .menuItem
-        case "dialog", "alert-dialog", "alert", "list-item", "status", "group": return .group
+        case "menu-item", "menu-item-check-box", "menu-item-radio": return .menuItem
+        case "tab-list": return .tabGroup
+        case "tab": return .radioButton
+        case "toolbar": return .toolbar
+        case "tree": return .outline
+        case "tree-item", "row": return .row
+        case "dialog", "alert-dialog", "alert", "list-item", "status", "group", "tab-panel": return .group
         case "tooltip": return .staticText
         default:
             // A role the core added without a mapping here is a bug, never a silent group.

@@ -429,7 +429,9 @@ export type ViewFunction<R, A extends unknown[]> = ((scope: ViewScope, ...args: 
 export type LocatorRole =
   | "button" | "link" | "heading" | "textbox" | "checkbox" | "switch" | "radio" | "radiogroup"
   | "slider" | "img" | "list" | "listitem" | "dialog" | "alert" | "status" | "combobox"
-  | "menu" | "menuitem" | "progressbar" | "alertdialog" | "group" | "tooltip";
+  | "menu" | "menuitem" | "progressbar" | "alertdialog" | "group" | "tooltip"
+  | "tablist" | "tab" | "tabpanel" | "toolbar" | "tree" | "treeitem" | "listbox" | "option"
+  | "menuitemcheckbox" | "menuitemradio";
 
 export interface TestView {
   testId(id: string): Locator;

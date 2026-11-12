@@ -51,6 +51,24 @@ pub enum Role {
     Group,
     /// A short description shown beside the control it describes.
     Tooltip,
+    /// A row of tabs; one tab stop, arrows move between them.
+    TabList,
+    /// One tab of a tab list; a button.
+    Tab,
+    /// The content a tab shows.
+    TabPanel,
+    /// A row of controls sharing one tab stop.
+    Toolbar,
+    /// A hierarchy of items; `heading_level` carries each item's depth.
+    Tree,
+    /// One item of a tree; a button, expandable when it states `expanded`.
+    TreeItem,
+    /// A row of a grid.
+    Row,
+    /// A menu item with a checked state.
+    MenuItemCheckBox,
+    /// One of a set of menu items, only one checked.
+    MenuItemRadio,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -380,11 +398,20 @@ impl Projection<'_> {
             }
         } else if node.tag == "link" {
             Role::Link
-        } else if let Some(role) = node
-            .role
-            .as_deref()
-            .filter(|role| !button || matches!(*role, "gridcell" | "option" | "menuitem"))
-        {
+        } else if let Some(role) = node.role.as_deref().filter(|role| {
+            !button
+                || matches!(
+                    *role,
+                    "gridcell"
+                        | "option"
+                        | "menuitem"
+                        | "tab"
+                        | "radio"
+                        | "treeitem"
+                        | "menuitemcheckbox"
+                        | "menuitemradio"
+                )
+        }) {
             match role {
                 "heading" => Role::Heading,
                 "list" => Role::List,
@@ -401,6 +428,17 @@ impl Projection<'_> {
                 "alertdialog" => Role::AlertDialog,
                 "group" => Role::Group,
                 "tooltip" => Role::Tooltip,
+                "tablist" => Role::TabList,
+                "tab" => Role::Tab,
+                "tabpanel" => Role::TabPanel,
+                "radiogroup" => Role::RadioGroup,
+                "radio" => Role::RadioButton,
+                "toolbar" => Role::Toolbar,
+                "tree" => Role::Tree,
+                "treeitem" => Role::TreeItem,
+                "row" => Role::Row,
+                "menuitemcheckbox" => Role::MenuItemCheckBox,
+                "menuitemradio" => Role::MenuItemRadio,
                 _ => Role::Status,
             }
         } else if button {
@@ -431,6 +469,11 @@ impl Projection<'_> {
                 | Role::Grid
                 | Role::ListBox
                 | Role::Menu
+                | Role::TabList
+                | Role::TabPanel
+                | Role::Toolbar
+                | Role::Tree
+                | Role::Row
         ) || (matches!(
             role,
             Role::Heading
@@ -441,6 +484,10 @@ impl Projection<'_> {
                 | Role::GridCell
                 | Role::Option
                 | Role::MenuItem
+                | Role::Tab
+                | Role::TreeItem
+                | Role::MenuItemCheckBox
+                | Role::MenuItemRadio
         ) && !label.is_empty())
             || (input.is_some() && !label.is_empty())
         {
@@ -512,6 +559,8 @@ impl Projection<'_> {
                 })
                 .count();
             position = Some((row, 1));
+        } else if let Some((row, count)) = self.composite_position(index) {
+            position = Some((row, count));
         } else if role == Role::List {
             position = Some((0, self.list_items(node).count()));
         } else if role == Role::ListItem {
@@ -655,7 +704,7 @@ impl Projection<'_> {
             focusable,
             clickable,
             focused,
-            checked: node.checked,
+            checked: node.checked.or(node.states[6]),
             scrollable: node
                 .scroll
                 .as_ref()
@@ -682,7 +731,11 @@ impl Projection<'_> {
             children,
             position,
             actions,
-            heading_level: node.heading_level.or((role == Role::Heading).then_some(2)),
+            heading_level: node.heading_level.or(match role {
+                Role::Heading => Some(2),
+                Role::TreeItem => Some(1),
+                _ => None,
+            }),
             live_region: node.live_region.clone(),
             text_selection: node.selection_range,
             pressed: node.states[0],
@@ -702,6 +755,58 @@ impl Projection<'_> {
             invalid: node.states[4],
             required: node.states[5],
         })
+    }
+
+    /// A composite's item count as `(0, n)`, or an item's place in it as `(row, 1)`, the way radio
+    /// groups and lists carry theirs. Tree items count within their own level run.
+    fn composite_position(&self, index: usize) -> Option<(usize, usize)> {
+        use crate::interaction::composite::{Composite, Composites};
+        let node = &self.frame.nodes[index];
+        let item = matches!(
+            node.role.as_deref(),
+            Some(
+                "tab"
+                    | "radio"
+                    | "option"
+                    | "menuitem"
+                    | "menuitemcheckbox"
+                    | "menuitemradio"
+                    | "treeitem"
+            )
+        );
+        if !item && Composite::of(node).is_none_or(|kind| kind == Composite::Toolbar) {
+            return None;
+        }
+        let composites = Composites::new(self.frame);
+        if Composite::of(node).is_some() {
+            let count = (0..self.frame.nodes.len())
+                .filter(|item| {
+                    composites
+                        .container_of(*item)
+                        .is_some_and(|(c, _)| c == index)
+                })
+                .count();
+            return Some((0, count));
+        }
+        let (container, kind) = composites
+            .container_of(index)
+            .filter(|(_, kind)| *kind != Composite::Toolbar)?;
+        let level = |item: usize| self.frame.nodes[item].heading_level.unwrap_or(1);
+        let earlier = (0..index).rev().filter(|item| {
+            composites
+                .container_of(*item)
+                .is_some_and(|(c, _)| c == container)
+        });
+        let row = if kind == Composite::Tree {
+            // Siblings back to the parent: items one level deeper belong to an earlier sibling.
+            earlier
+                .take_while(|item| level(*item) >= level(index))
+                .filter(|item| level(*item) == level(index))
+                .count()
+        } else {
+            earlier.count()
+        };
+        Some((row, 1))
     }
 
     /// What `aria-describedby` names, in order: each element's label, else its text and its

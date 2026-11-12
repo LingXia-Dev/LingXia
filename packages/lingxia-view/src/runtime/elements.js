@@ -22,7 +22,7 @@ const videoEvents = [['loadedmetadata', 'onLoadedMetadata'], ['play', 'onPlay'],
   ['ratechange', 'onRateChange'], ['volumechange', 'onVolumeChange'], ['qualitychange', 'onQualityChange']];
 
 const common = new Set(commonProps);
-const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy', invalid: 'stateInvalid', required: 'stateRequired' };
+const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy', invalid: 'stateInvalid', required: 'stateRequired', checked: 'stateChecked' };
 const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
 // An older host would refuse a field it lacks; an accessibility-only one is left out instead.
 const ignorable = new Set(ignorableFields);
@@ -339,9 +339,10 @@ function strongDirection(children, depth = 0) {
 
 // DOM-named accessibility props as the runtime carries them.
 const ariaNames = [['aria-label', 'accessibilityLabel'], ['aria-hidden', 'accessibilityHidden'], ['aria-live', 'accessibilityLiveRegion'],
-  ['aria-valuenow', 'ariaValueNow'], ['aria-valuemin', 'ariaValueMin'], ['aria-valuemax', 'ariaValueMax'], ['aria-valuetext', 'ariaValueText']];
+  ['aria-valuenow', 'ariaValueNow'], ['aria-valuemin', 'ariaValueMin'], ['aria-valuemax', 'ariaValueMax'], ['aria-valuetext', 'ariaValueText'],
+  ['aria-level', 'ariaLevel']];
 const ariaStates = [['aria-pressed', 'pressed'], ['aria-selected', 'selected'], ['aria-expanded', 'expanded'], ['aria-busy', 'busy'],
-  ['aria-invalid', 'invalid'], ['aria-required', 'required']];
+  ['aria-invalid', 'invalid'], ['aria-required', 'required'], ['aria-checked', 'checked']];
 function ariaProps(props) {
   for (let i = 0; i < ariaNames.length; i++) {
     const authored = ariaNames[i][0];
@@ -695,12 +696,18 @@ function progressValues(role, props, wire) {
 }
 
 // Accessibility roles and states any element may declare; controls keep their own role.
+// Composite items take focus and activate, so they are buttons; their containers are views.
+const itemRoles = new Set(['tab', 'radio', 'option', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'treeitem']);
+const containerRoles = new Set(['tablist', 'tabpanel', 'radiogroup', 'toolbar', 'tree', 'row']);
+const checkedRoles = new Set(['radio', 'menuitemcheckbox', 'menuitemradio']);
 function semantics(tag, props, wire) {
-  const { role, headingLevel, accessibilityHidden, accessibilityLiveRegion } = props;
+  const { role, headingLevel, ariaLevel, accessibilityHidden, accessibilityLiveRegion } = props;
   if (role !== undefined) {
     if (role === 'dialog') throw Error('UI_PROP: role="dialog" is the <dialog> element');
     if (role === 'alertdialog' && tag !== 'dialog') throw Error('UI_PROP: role="alertdialog" goes on a <dialog>');
     if (!fieldOptions.role.includes(role)) throw Error(`UI_PROP: role must be one of ${fieldOptions.role.join(', ')}`);
+    if (itemRoles.has(role) && role !== 'option' && tag !== 'button') throw Error(`UI_PROP: role="${role}" belongs on a <button>`);
+    if (containerRoles.has(role) && tag !== 'view') throw Error(`UI_PROP: role="${role}" belongs on a <view>`);
     // A <dialog> wires its own role.
     if (tag !== 'dialog') wire('role', role);
   }
@@ -709,6 +716,11 @@ function semantics(tag, props, wire) {
     if (role !== 'heading' || !Number.isInteger(headingLevel) || headingLevel < 1 || headingLevel > 6)
       throw Error('UI_PROP: headingLevel is an integer 1..6 on role="heading"');
     wire('headingLevel', headingLevel);
+  }
+  if (ariaLevel !== undefined) {
+    if (role !== 'treeitem' || !Number.isInteger(ariaLevel) || ariaLevel < 1 || ariaLevel > 32)
+      throw Error('UI_PROP: aria-level is an integer 1..32 on role="treeitem"');
+    wire('headingLevel', ariaLevel);
   }
   if (accessibilityHidden !== undefined) {
     if (typeof accessibilityHidden !== 'boolean') throw Error('UI_PROP: aria-hidden must be boolean');
@@ -725,11 +737,11 @@ function semantics(tag, props, wire) {
       if (!has(semanticStates, name)) throw Error(`UI_PROP: accessibilityState.${name}; known: ${Object.keys(semanticStates).join(', ')}`);
       if (value === undefined) continue;
       if (typeof value !== 'boolean') throw Error(`UI_PROP: aria-${name} must be boolean`);
+      if (name === 'checked' && !checkedRoles.has(role)) throw Error('UI_PROP: aria-checked goes on role="radio", "menuitemcheckbox" or "menuitemradio"; a checkbox has its own checked');
       wire(semanticStates[name], +value);
     }
   }
   // Containers and text take a label here; controls wire their own.
-  if (role === 'menuitem' && tag !== 'button') throw Error('UI_PROP: role="menuitem" belongs on a <button>');
   if (['view', 'page', 'text', 'dialog'].includes(tag) && props.accessibilityLabel !== undefined) {
     check.label(props.accessibilityLabel, 'UI_PROP');
     wire('accessibilityLabel', props.accessibilityLabel);

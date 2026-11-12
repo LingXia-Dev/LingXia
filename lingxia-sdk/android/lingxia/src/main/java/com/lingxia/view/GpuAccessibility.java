@@ -45,7 +45,14 @@ final class GpuAccessibility {
             case GpuSemantics.ROLE_OPTION: return "android.widget.CheckedTextView";
             case GpuSemantics.ROLE_MENU: return "android.widget.ListView";
             case GpuSemantics.ROLE_MENU_ITEM: return "android.widget.Button";
-            case GpuSemantics.ROLE_GROUP: return "android.view.ViewGroup";
+            case GpuSemantics.ROLE_GROUP: case GpuSemantics.ROLE_TAB_PANEL: case GpuSemantics.ROLE_ROW:
+                return "android.view.ViewGroup";
+            case GpuSemantics.ROLE_TAB_LIST: return "android.widget.TabWidget";
+            case GpuSemantics.ROLE_TAB: case GpuSemantics.ROLE_TREE_ITEM: return "android.widget.Button";
+            case GpuSemantics.ROLE_TOOLBAR: return "android.widget.Toolbar";
+            case GpuSemantics.ROLE_TREE: return "android.widget.ListView";
+            case GpuSemantics.ROLE_MENU_ITEM_CHECK_BOX: case GpuSemantics.ROLE_MENU_ITEM_RADIO:
+                return "android.widget.CheckedTextView";
             // Links (with a role description), headings, list items, alerts, status and dialogs read as text plus their traits.
             case GpuSemantics.ROLE_TEXT: case GpuSemantics.ROLE_LINK: case GpuSemantics.ROLE_HEADING:
             case GpuSemantics.ROLE_LIST_ITEM: case GpuSemantics.ROLE_DIALOG: case GpuSemantics.ROLE_ALERT_DIALOG:
@@ -140,6 +147,21 @@ final class GpuAccessibility {
             info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain((int)position[1], 1, false));
         } else if (position != null && GpuSemantics.ROLE_LIST_ITEM.equals(role)) {
             info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain((int)position[0], 1, 0, 1, false));
+        } else if (position != null && GpuSemantics.ROLE_TAB_LIST.equals(role)) {
+            // Tabs run across: one row, a column each.
+            info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain(1, (int)position[1], false,
+                AccessibilityNodeInfo.CollectionInfo.SELECTION_MODE_SINGLE));
+        } else if (position != null && GpuSemantics.ROLE_TAB.equals(role)) {
+            info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain(0, 1, (int)position[0], 1, false,
+                Boolean.TRUE.equals(selectedState)));
+        } else if (position != null && (GpuSemantics.ROLE_LIST_BOX.equals(role) || GpuSemantics.ROLE_MENU.equals(role)
+                || GpuSemantics.ROLE_TREE.equals(role))) {
+            info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain((int)position[1], 1, false));
+        } else if (position != null && (GpuSemantics.ROLE_OPTION.equals(role) || GpuSemantics.ROLE_MENU_ITEM.equals(role)
+                || GpuSemantics.ROLE_MENU_ITEM_CHECK_BOX.equals(role) || GpuSemantics.ROLE_MENU_ITEM_RADIO.equals(role)
+                || GpuSemantics.ROLE_TREE_ITEM.equals(role))) {
+            info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain((int)position[0], 1, 0, 1, false,
+                Boolean.TRUE.equals(selectedState)));
         }
         if (GpuSemantics.ROLE_HEADING.equals(role)) {
             if (Build.VERSION.SDK_INT >= 28) info.setHeading(true);

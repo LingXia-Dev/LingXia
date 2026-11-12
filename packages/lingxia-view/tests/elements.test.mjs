@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { h, listTag, describe, prepare, commit, discard, dispatch, useLocal, useView, createView, readsHostContext, useVideo, hasLocalUpdates } from '../src/internal.js';
 import { decode, rendered } from './support/wire.mjs';
-import { minField, field, ignorableFields } from '../src/generated/wire.js';
+import { field, ignorableFields } from '../src/generated/wire.js';
 
 const throwsOn = (render, pattern) => assert.throws(() => describe(render, {}), pattern);
 
@@ -428,9 +428,10 @@ test('aria states wire each declared state; the old names and non-booleans are r
 });
 
 test('a host older than an accessibility-only field gets the page without it, with one warning', () => {
-  assert.ok(ignorableFields.every(key => field[key] > minField), 'ignorable fields sit above minField');
+  // A host just below the first ignorable field; the banner decides separately whether it may run.
+  const below = Math.min(...ignorableFields.map(key => field[key])) - 1;
   const warnings = [], current = globalThis.__lingxiaViewHost;
-  globalThis.__lingxiaViewHost = { uiAbi: 1, maxField: minField, features: [] };
+  globalThis.__lingxiaViewHost = { uiAbi: 1, maxField: below, features: [] };
   globalThis.__lingxiaWarn = message => warnings.push(message);
   try {
     const zip = () => h('input', { 'aria-label': 'ZIP', 'aria-invalid': true, 'aria-required': true, 'aria-describedby': 'hint' });
@@ -444,6 +445,23 @@ test('a host older than an accessibility-only field gets the page without it, wi
   } finally { globalThis.__lingxiaViewHost = current; delete globalThis.__lingxiaWarn; }
   const { props } = rendered(() => h('input', { 'aria-label': 'ZIP', 'aria-invalid': true, 'aria-describedby': 'hint' }));
   assert.deepEqual([props.stateInvalid, props.ariaDescribedBy], [1, 'hint']);
+});
+
+test('composite roles: items on buttons, containers on views, aria-checked and aria-level where they belong', () => {
+  const tab = rendered(() => h('button', { role: 'tab', 'aria-selected': true, onClick() {} }, 'A'));
+  assert.deepEqual([tab.props.role, tab.props.stateSelected], ['tab', 1]);
+  const radio = rendered(() => h('button', { role: 'radio', 'aria-checked': false, onClick() {} }, 'S'));
+  assert.deepEqual([radio.props.role, radio.props.stateChecked], ['radio', 0]);
+  const leaf = rendered(() => h('button', { role: 'treeitem', 'aria-level': 3, onClick() {} }, 'a.rs'));
+  assert.equal(leaf.props.headingLevel, 3);
+  assert.equal(rendered(() => h('view', { role: 'toolbar', 'aria-label': 'Format' })).props.role, 'toolbar');
+  for (const [render, pattern] of [
+    [() => h('view', { role: 'tab' }), /role="tab" belongs on a <button>/],
+    [() => h('button', { role: 'tablist', onClick() {} }, 'x'), /role="tablist" belongs on a <view>/],
+    [() => h('button', { 'aria-checked': true, onClick() {} }, 'x'), /aria-checked goes on role="radio"/],
+    [() => h('button', { role: 'tab', 'aria-level': 2, onClick() {} }, 'x'), /aria-level is an integer 1..32 on role="treeitem"/],
+    [() => h('button', { role: 'treeitem', 'aria-level': 40, onClick() {} }, 'x'), /aria-level is an integer 1..32/],
+  ]) assert.throws(() => describe(render, {}), pattern);
 });
 
 test('select sends its options and shows the chosen label or its placeholder', () => {

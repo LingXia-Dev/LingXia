@@ -35,6 +35,15 @@ public final class GpuSemantics {
     public static final String ROLE_ALERT_DIALOG = "alert-dialog";
     public static final String ROLE_GROUP = "group";
     public static final String ROLE_TOOLTIP = "tooltip";
+    public static final String ROLE_TAB_LIST = "tab-list";
+    public static final String ROLE_TAB = "tab";
+    public static final String ROLE_TAB_PANEL = "tab-panel";
+    public static final String ROLE_TOOLBAR = "toolbar";
+    public static final String ROLE_TREE = "tree";
+    public static final String ROLE_TREE_ITEM = "tree-item";
+    public static final String ROLE_ROW = "row";
+    public static final String ROLE_MENU_ITEM_CHECK_BOX = "menu-item-check-box";
+    public static final String ROLE_MENU_ITEM_RADIO = "menu-item-radio";
     public static final String LIVE_POLITE = "polite";
     public static final String LIVE_ASSERTIVE = "assertive";
     public static final String EVENT_ANNOUNCE = "announce";

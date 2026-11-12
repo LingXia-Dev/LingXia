@@ -234,3 +234,24 @@ spec('a field states required and invalid, names its hint and error, in a group 
   await view.getByRole('button', { name: 'Keep it' }).click();
   await expect(confirm).toHaveCount(0);
 });
+
+spec('composites take one Tab stop, arrows move between items and tabs activate on arrival', {
+  start: { page: 'view-lab' },
+}, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-input').click();
+  await expect(view.getByRole('tablist', { name: 'Range' })).toHaveCount(1);
+  const week = view.getByRole('tab', { name: 'Week' });
+  await week.press('ArrowRight');
+  await expect(view.getByRole('tab', { name: 'Month' })).toBeFocused();
+  await expect(view.testId('lab-range-panel')).toHaveText('Showing the month');
+  await view.getByRole('tab', { name: 'Month' }).press('ArrowRight');
+  await expect(view.testId('lab-range-panel')).toHaveText('Showing the day');
+  await view.testId('lab-tool-bold').press('ArrowRight');
+  await expect(view.testId('lab-tool-copy')).toBeFocused();
+  await view.testId('lab-tree-src').press('ArrowRight');
+  await expect(view.testId('lab-tree-main')).toBeFocused();
+  await view.testId('lab-tree-main').press('ArrowLeft');
+  await expect(view.testId('lab-tree-src')).toBeFocused();
+  await expect(view.getByRole('treeitem', { name: 'main.ts' })).toHaveCount(1);
+});

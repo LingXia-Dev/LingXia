@@ -194,3 +194,188 @@ fn a_menu_takes_home_end_wrapping_arrows_and_type_ahead() {
     assert_eq!(press(&mut interaction, "item-2", "S"), Some(2));
     assert_eq!(press(&mut interaction, "item-1", "ArrowUp"), Some(1));
 }
+
+fn composite(identity: &str, role: &str, y: f32) -> NodeSnapshot {
+    let mut node = node(identity, "column", [0.0, y, 300.0, 40.0]);
+    node.role = Some(role.into());
+    node
+}
+
+/// Item `i` of `container`: a button with `role`, test id `<container>-<i>`, handle 100 + i.
+fn item(container: &str, i: usize, role: &str, y: f32) -> NodeSnapshot {
+    let mut node = button(&format!("{container}/{i}"), y);
+    node.bounds = [40.0 * i as f32, y, 40.0, 40.0];
+    node.visible_bounds = node.bounds;
+    node.role = Some(role.into());
+    node.test_id = format!("{container}-{i}");
+    node.text = format!("{container} {i}");
+    node.on_click = Some(100 + i as u64);
+    node
+}
+
+fn press(interaction: &mut ViewInteraction, on: &str, key: &str) -> Option<usize> {
+    use crate::interaction::view::AutomationAct;
+    interaction
+        .automate(
+            &format!("[data-testid=\"{on}\"]"),
+            None,
+            AutomationAct::Press(key.into()),
+            false,
+            PageTicket::new(1),
+        )
+        .unwrap();
+    interaction.keyboard_focus()
+}
+
+fn clicks(interaction: &mut ViewInteraction) -> Vec<u64> {
+    interaction
+        .take_dispatch()
+        .into_iter()
+        .filter_map(|dispatch| match dispatch {
+            crate::interaction::view::Dispatch::Click { handle, .. } => Some(handle),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_tab_list_takes_one_stop_on_its_selected_tab_and_arrows_activate_mirrored_in_rtl() {
+    let tabs = |rtl: bool| {
+        let mut list = composite("t", "tablist", 0.0);
+        list.rtl = rtl;
+        let mut nodes = vec![button("/before", 100.0), list];
+        for i in 0..3 {
+            let mut tab = item("t", i, "tab", 0.0);
+            tab.states[1] = Some(i == 1);
+            nodes.push(tab);
+        }
+        nodes.push(button("/after", 200.0));
+        nodes
+    };
+    let mut interaction = ViewInteraction::default();
+    present(&mut interaction, tabs(false), 1);
+    assert_eq!(tab(&mut interaction), Some(0));
+    assert_eq!(
+        tab(&mut interaction),
+        Some(3),
+        "the selected tab is the stop"
+    );
+    assert_eq!(tab(&mut interaction), Some(5), "Tab leaves the list");
+    clicks(&mut interaction);
+    assert_eq!(press(&mut interaction, "t-1", "ArrowRight"), Some(4));
+    assert_eq!(
+        clicks(&mut interaction),
+        [102],
+        "arriving activates the tab"
+    );
+    assert_eq!(
+        press(&mut interaction, "t-2", "ArrowRight"),
+        Some(2),
+        "arrows wrap"
+    );
+    assert_eq!(press(&mut interaction, "t-0", "End"), Some(4));
+    present(&mut interaction, tabs(true), 2);
+    assert_eq!(
+        press(&mut interaction, "t-1", "ArrowRight"),
+        Some(2),
+        "right goes back in RTL"
+    );
+}
+
+#[test]
+fn a_radio_group_stops_on_its_checked_radio_and_a_toolbar_on_its_last_focused_control() {
+    let nodes = || {
+        let mut nodes = vec![composite("r", "radiogroup", 0.0)];
+        for i in 0..3 {
+            let mut radio = item("r", i, "radio", 0.0);
+            radio.states[6] = Some(i == 2);
+            nodes.push(radio);
+        }
+        nodes.push(composite("b", "toolbar", 100.0));
+        nodes.extend((0..3).map(|i| item("b", i, "", 100.0)));
+        nodes
+            .iter_mut()
+            .filter(|n| n.role.as_deref() == Some(""))
+            .for_each(|n| n.role = None);
+        nodes.push(button("/after", 200.0));
+        nodes
+    };
+    let mut interaction = ViewInteraction::default();
+    present(&mut interaction, nodes(), 1);
+    assert_eq!(
+        tab(&mut interaction),
+        Some(3),
+        "the checked radio is the stop"
+    );
+    assert_eq!(
+        press(&mut interaction, "r-2", "ArrowDown"),
+        Some(1),
+        "down wraps to the first"
+    );
+    assert_eq!(
+        tab(&mut interaction),
+        Some(5),
+        "the toolbar's first control"
+    );
+    assert_eq!(press(&mut interaction, "b-0", "ArrowRight"), Some(6));
+    clicks(&mut interaction);
+    assert_eq!(press(&mut interaction, "b-1", "Home"), Some(5));
+    assert!(
+        clicks(&mut interaction).is_empty(),
+        "a toolbar only moves focus"
+    );
+    assert_eq!(press(&mut interaction, "b-0", "ArrowRight"), Some(6));
+    assert_eq!(tab(&mut interaction), Some(8));
+    let back = interaction.key(Key::Tab, true, false, PageTicket::new(1)).1;
+    assert_eq!(
+        ring(&back),
+        Some(6),
+        "Shift+Tab returns to the control focused last"
+    );
+}
+
+#[test]
+fn a_list_box_stops_at_its_ends_and_a_tree_walks_levels() {
+    let nodes = || {
+        let mut nodes = vec![composite("l", "listbox", 0.0)];
+        nodes.extend((0..3).map(|i| item("l", i, "option", 0.0)));
+        nodes.push(composite("t", "tree", 100.0));
+        // Fruit (expanded) > Apple, Pear; Nuts (collapsed).
+        for (i, level, expanded) in [
+            (0, 1, Some(true)),
+            (1, 2, None),
+            (2, 2, None),
+            (3, 1, Some(false)),
+        ] {
+            let mut tree_item = item("t", i, "treeitem", 100.0 + 40.0 * i as f32);
+            tree_item.heading_level = Some(level);
+            tree_item.states[2] = expanded;
+            nodes.push(tree_item);
+        }
+        nodes
+    };
+    let mut interaction = ViewInteraction::default();
+    present(&mut interaction, nodes(), 1);
+    assert_eq!(press(&mut interaction, "l-0", "End"), Some(3));
+    assert_eq!(
+        press(&mut interaction, "l-2", "ArrowDown"),
+        Some(3),
+        "a list box does not wrap"
+    );
+    assert_eq!(
+        press(&mut interaction, "t-0", "ArrowRight"),
+        Some(6),
+        "into an expanded item"
+    );
+    assert_eq!(
+        press(&mut interaction, "t-2", "ArrowLeft"),
+        Some(5),
+        "up to the parent"
+    );
+    assert_eq!(
+        press(&mut interaction, "t-3", "ArrowRight"),
+        Some(8),
+        "a closed item stays"
+    );
+    assert_eq!(press(&mut interaction, "t-3", "ArrowUp"), Some(7));
+}

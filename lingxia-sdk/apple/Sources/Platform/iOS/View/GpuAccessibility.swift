@@ -130,8 +130,10 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
         case "text", "tooltip": traits.insert(.staticText)
         // A day of a month or a choice of a picker column: pressable, and selected when chosen.
         case "grid-cell", "option", "menu-item": traits.insert(.button)
+        // Composite items: pressable, selected or checked when chosen.
+        case "tab", "tree-item", "menu-item-check-box", "menu-item-radio": traits.insert(.button)
         case "grid", "list-box", "list", "list-item", "dialog", "alert-dialog", "alert", "status", "group", "text-field", "menu",
-             "scroll-view", "horizontal-scroll-view", "radio-group": break
+             "scroll-view", "horizontal-scroll-view", "radio-group", "tab-list", "tab-panel", "toolbar", "tree", "row": break
         // As UIProgressView: no trait, its share spoken as the value.
         case "progress-bar": traits.insert(.updatesFrequently)
         default:

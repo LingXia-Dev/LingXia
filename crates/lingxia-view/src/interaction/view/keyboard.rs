@@ -1,4 +1,5 @@
 use super::*;
+use crate::interaction::composite::{Composites, Move};
 use crate::interaction::keyboard as navigation;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,6 +53,18 @@ impl ViewInteraction {
         frame: &'a PresentedFrame,
     ) -> impl Fn(&NodeSnapshot) -> bool + 'a {
         move |node| self.scroll.can_reveal(frame, node)
+    }
+
+    /// The item a composite at `container` last had focused, if the frame still shows it.
+    pub(super) fn remembered<'a>(
+        &'a self,
+        frame: &'a PresentedFrame,
+    ) -> impl Fn(usize) -> Option<usize> + 'a {
+        move |container| {
+            self.composite_focus
+                .get(&*frame.nodes[container].identity)
+                .and_then(|item| frame.index_of(item))
+        }
     }
 
     pub(super) fn keyboard_origin(&self) -> Option<usize> {
@@ -123,7 +136,12 @@ impl ViewInteraction {
                 .push((dialog.to_string(), before.map(String::from)));
             if keyboard
                 && let Some(first) = overlay.and_then(|overlay| {
-                    navigation::first_inside(&frame, overlay, self.revealable(&frame))
+                    navigation::first_inside(
+                        &frame,
+                        overlay,
+                        self.revealable(&frame),
+                        self.remembered(&frame),
+                    )
                 })
             {
                 effects.extend(self.navigate(first, false, page));
@@ -173,6 +191,12 @@ impl ViewInteraction {
         }
         let changed = self.keyboard_focus != Some(index);
         self.keyboard_focus = Some(index);
+        if let Some((container, _)) = Composites::new(&frame).container_of(index) {
+            self.composite_focus.insert(
+                frame.nodes[container].identity.to_string(),
+                frame.nodes[index].identity.to_string(),
+            );
+        }
         let mut effects = vec![Effect::FocusRing { node: index }];
         if changed && let Some(id) = self.ids.id(index) {
             effects.push(Effect::Accessibility(AccessibilityEffect::InputFocused {
@@ -244,15 +268,16 @@ impl ViewInteraction {
                 return (true, Vec::new());
             }
         }
-        // In a menu, arrows move between its items (wrapping), Home and End go to the ends and a
-        // character jumps to the next item whose name starts with it, as ARIA's menu pattern does.
+        // In a composite (menu, tab list, radio group, toolbar, list box, tree) arrows move between
+        // its items, Home and End go to the ends and, where ARIA's pattern has it, a character jumps
+        // to the next item whose name starts with it.
         if let Some(index) = origin
-            && let Some(target) = self.menu_key(&frame, index, key)
+            && let Some((target, activate)) = self.composite_key(&frame, index, key)
         {
             return (
                 true,
                 target
-                    .map(|next| self.navigate(next, false, page))
+                    .map(|next| self.navigate(next, activate, page))
                     .unwrap_or_default(),
             );
         }
@@ -330,8 +355,13 @@ impl ViewInteraction {
         }
         if matches!(key, Key::Tab | Key::Up | Key::Down) {
             let direction = if shift || key == Key::Up { -1 } else { 1 };
-            if let Some(next) = navigation::next(&frame, origin, direction, self.revealable(&frame))
-            {
+            if let Some(next) = navigation::next(
+                &frame,
+                origin,
+                direction,
+                self.revealable(&frame),
+                self.remembered(&frame),
+            ) {
                 return (true, self.navigate(next, false, page));
             }
         }
@@ -356,52 +386,40 @@ impl ViewInteraction {
         (false, Vec::new())
     }
 
-    /// A menu key on menu item `index`: `None` when the key is not a menu key, else the item to
-    /// focus (`Some(None)` when none matches).
-    fn menu_key(&self, frame: &PresentedFrame, index: usize, key: Key) -> Option<Option<usize>> {
-        if frame.nodes[index].role.as_deref() != Some("menuitem") {
-            return None;
-        }
-        let identity = &frame.nodes[index].identity;
-        let menu = frame
-            .nodes
-            .iter()
-            .filter(|node| {
-                node.role.as_deref() == Some("menu")
-                    && identity.starts_with(&format!("{}/", node.identity))
-            })
-            .max_by_key(|node| node.identity.len())?;
-        let prefix = format!("{}/", menu.identity);
-        let items: Vec<usize> = (0..frame.nodes.len())
-            .filter(|i| {
-                let node = &frame.nodes[*i];
-                node.role.as_deref() == Some("menuitem")
-                    && node.identity.starts_with(&prefix)
-                    && frame::interactive(node)
-                    && frame::visible(node)
-            })
-            .collect();
-        let at = items.iter().position(|i| *i == index)?;
-        let count = items.len();
-        let name = |i: usize| {
-            self.semantics()
-                .and_then(|semantics| semantics.ids.id(i).and_then(|id| semantics.node(id)))
-                .map(|node| node.name.to_lowercase())
-                .unwrap_or_default()
-        };
-        Some(match key {
-            Key::Down => Some(items[(at + 1) % count]),
-            Key::Up => Some(items[(at + count - 1) % count]),
-            Key::Home => items.first().copied(),
-            Key::End => items.last().copied(),
-            Key::Char(character) if !character.is_whitespace() => {
-                let wanted = character.to_lowercase().to_string();
-                (1..=count)
-                    .map(|step| items[(at + step) % count])
-                    .find(|i| name(*i).starts_with(&wanted))
+    /// A composite key on item `index`: `None` when the key is not one, else the item to focus
+    /// (`None` when there is none) and whether arriving activates it.
+    fn composite_key(
+        &self,
+        frame: &PresentedFrame,
+        index: usize,
+        key: Key,
+    ) -> Option<(Option<usize>, bool)> {
+        let composites = Composites::new(frame);
+        let (container, kind) = composites.container_of(index)?;
+        let revealable = self.revealable(frame);
+        if let Key::Char(character) = key {
+            if !kind.types_ahead() || character.is_whitespace() {
+                return None;
             }
-            _ => return None,
-        })
+            let items = composites.items(frame, container, &revealable);
+            let at = items.iter().position(|item| *item == index)?;
+            let name = |i: usize| {
+                self.semantics()
+                    .and_then(|semantics| semantics.ids.id(i).and_then(|id| semantics.node(id)))
+                    .map(|node| node.name.to_lowercase())
+                    .unwrap_or_default()
+            };
+            let wanted = character.to_lowercase().to_string();
+            let target = (1..=items.len())
+                .map(|step| items[(at + step) % items.len()])
+                .find(|i| name(*i).starts_with(&wanted));
+            return Some((target, false));
+        }
+        let movement = kind.movement(key, frame.nodes[container].rtl)?;
+        let target = composites.step(frame, index, movement, &revealable);
+        // A tree's Left and Right reach nothing on a leaf or a closed item; they stay consumed.
+        let activate = kind.activates() && !matches!(movement, Move::Child | Move::Parent);
+        Some((target, activate))
     }
 
     /// The host view gained keyboard focus from the system focus search.
@@ -415,6 +433,7 @@ impl ViewInteraction {
             self.keyboard_origin(),
             if backward { -1 } else { 1 },
             self.revealable(&frame),
+            self.remembered(&frame),
         ) {
             Some(next) => self.navigate(next, false, page),
             None => Vec::new(),

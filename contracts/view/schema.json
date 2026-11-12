@@ -56,7 +56,7 @@
     "grid-auto-flow": ["row", "column", "row-dense", "column-dense"],
     "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"],
     "direction": ["ltr", "rtl", "auto"],
-    "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip"],
+    "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip", "tablist", "tab", "tabpanel", "radiogroup", "radio", "toolbar", "tree", "treeitem", "row", "menuitemcheckbox", "menuitemradio"],
     "anchor-area": ["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top"],
     "live-region": ["off", "polite", "assertive"],
     "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time"],
@@ -290,14 +290,15 @@
     {"id": 220, "key": "ariaValueText", "wire": "ariaValueText", "kind": "string"},
     {"id": 221, "key": "stateInvalid", "wire": "stateInvalid", "ignorable": true, "kind": "semantic-state"},
     {"id": 222, "key": "stateRequired", "wire": "stateRequired", "ignorable": true, "kind": "semantic-state"},
-    {"id": 223, "key": "ariaDescribedBy", "wire": "ariaDescribedBy", "ignorable": true, "kind": "element-ids", "tags": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video"]}
+    {"id": 223, "key": "ariaDescribedBy", "wire": "ariaDescribedBy", "ignorable": true, "kind": "element-ids", "tags": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video"]},
+    {"id": 224, "key": "stateChecked", "wire": "stateChecked", "kind": "semantic-state"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
     "keys": {"maxLength": "max_length", "autoComplete": "auto_complete", "enterKeyHint": "enter_key_hint", "autoCapitalize": "auto_capitalize", "spellCheck": "spell_check", "min": "min", "max": "max", "step": "step", "picker": "picker"}
   },
   "semantics": {
-    "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "combo-box", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status", "grid", "grid-cell", "list-box", "option", "menu", "menu-item", "video", "progress-bar", "alert-dialog", "group", "tooltip"],
+    "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "combo-box", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status", "grid", "grid-cell", "list-box", "option", "menu", "menu-item", "video", "progress-bar", "alert-dialog", "group", "tooltip", "tab-list", "tab", "tab-panel", "toolbar", "tree", "tree-item", "row", "menu-item-check-box", "menu-item-radio"],
     "liveRegions": ["polite", "assertive"],
     "events": ["announce"],
     "actions": ["copy", "cut", "paste", "set-selection"],

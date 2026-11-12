@@ -192,6 +192,15 @@ fn projected_roles_match_the_schema_vocabulary() {
         Role::AlertDialog,
         Role::Group,
         Role::Tooltip,
+        Role::TabList,
+        Role::Tab,
+        Role::TabPanel,
+        Role::Toolbar,
+        Role::Tree,
+        Role::TreeItem,
+        Role::Row,
+        Role::MenuItemCheckBox,
+        Role::MenuItemRadio,
     ]
     .iter()
     .map(|role| {
@@ -285,4 +294,48 @@ fn an_alertdialog_is_modal_like_a_dialog() {
         (dialog.role, dialog.name.as_str()),
         (Role::AlertDialog, "Delete note?")
     );
+}
+
+#[test]
+fn composite_roles_project_with_positions_checked_states_and_tree_levels() {
+    let frame = frame(
+        "h('page',{},h('view',{role:'tablist','aria-label':'Sections','data-testid':'tabs'},h('button',{role:'tab','aria-selected':false,onClick(){},'data-testid':'tab-a'},'Overview'),h('button',{role:'tab','aria-selected':true,onClick(){},'data-testid':'tab-b'},'Details')),h('view',{role:'tabpanel','aria-label':'Details','data-testid':'panel'},h('text',{},'Body')),h('view',{role:'radiogroup','aria-label':'Size','data-testid':'size'},h('button',{role:'radio','aria-checked':false,onClick(){}},'S'),h('button',{role:'radio','aria-checked':true,onClick(){},'data-testid':'m'},'M')),h('view',{role:'toolbar','aria-label':'Format','data-testid':'bar'},h('button',{onClick(){}},'Bold')),h('view',{role:'tree','aria-label':'Files','data-testid':'tree'},h('button',{role:'treeitem','aria-level':1,'aria-expanded':true,onClick(){}},'src'),h('button',{role:'treeitem','aria-level':2,onClick(){}},'a.rs'),h('button',{role:'treeitem','aria-level':2,onClick(){},'data-testid':'b'},'b.rs'),h('button',{role:'treeitem','aria-level':1,onClick(){},'data-testid':'docs'},'docs')),h('view',{role:'menu','aria-label':'View'},h('button',{role:'menuitemcheckbox','aria-checked':true,onClick(){},'data-testid':'wrap'},'Wrap'),h('button',{role:'menuitemradio','aria-checked':false,onClick(){},'data-testid':'zoom'},'Zoom')))",
+    );
+    let tabs = semantic(&frame, "tabs").unwrap();
+    assert_eq!(
+        (tabs.role, tabs.name.as_str(), tabs.position),
+        (Role::TabList, "Sections", Some((0, 2)))
+    );
+    let tab = semantic(&frame, "tab-b").unwrap();
+    assert_eq!(
+        (tab.role, tab.selected, tab.position),
+        (Role::Tab, Some(true), Some((1, 1)))
+    );
+    assert_eq!(semantic(&frame, "panel").unwrap().role, Role::TabPanel);
+    let size = semantic(&frame, "size").unwrap();
+    assert_eq!((size.role, size.position), (Role::RadioGroup, Some((0, 2))));
+    let m = semantic(&frame, "m").unwrap();
+    assert_eq!(
+        (m.role, m.checked, m.position),
+        (Role::RadioButton, Some(true), Some((1, 1)))
+    );
+    let bar = semantic(&frame, "bar").unwrap();
+    assert_eq!((bar.role, bar.position), (Role::Toolbar, None));
+    let b = semantic(&frame, "b").unwrap();
+    assert_eq!(
+        (b.role, b.heading_level, b.position),
+        (Role::TreeItem, Some(2), Some((1, 1)))
+    );
+    let docs = semantic(&frame, "docs").unwrap();
+    assert_eq!(
+        (docs.heading_level, docs.position),
+        (Some(1), Some((1, 1))),
+        "siblings count by level"
+    );
+    let wrap = semantic(&frame, "wrap").unwrap();
+    assert_eq!(
+        (wrap.role, wrap.checked),
+        (Role::MenuItemCheckBox, Some(true))
+    );
+    assert_eq!(semantic(&frame, "zoom").unwrap().role, Role::MenuItemRadio);
 }

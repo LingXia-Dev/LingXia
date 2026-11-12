@@ -16,10 +16,17 @@ const HOST_PARENT: i32 = -2_100_000;
 /// ArkUI component types; the screen reader speaks the role from these.
 fn component_type(role: Role) -> &'static CStr {
     match role {
-        Role::Button | Role::MenuItem | Role::GridCell => c"Button",
+        Role::Button
+        | Role::MenuItem
+        | Role::GridCell
+        | Role::Tab
+        | Role::MenuItemCheckBox
+        | Role::MenuItemRadio => c"Button",
+        Role::TabList => c"Tabs",
+        Role::Toolbar | Role::Row => c"Row",
         Role::CheckBox => c"Checkbox",
         Role::Switch => c"Toggle",
-        Role::RadioGroup | Role::Group => c"Column",
+        Role::RadioGroup | Role::Group | Role::TabPanel => c"Column",
         Role::RadioButton => c"Radio",
         Role::ComboBox => c"Select",
         Role::TextField => c"TextInput",
@@ -28,8 +35,8 @@ fn component_type(role: Role) -> &'static CStr {
         Role::Video => c"Video",
         Role::Slider => c"Slider",
         Role::ProgressBar => c"Progress",
-        Role::List | Role::ListBox | Role::Menu => c"List",
-        Role::ListItem | Role::Option => c"ListItem",
+        Role::List | Role::ListBox | Role::Menu | Role::Tree => c"List",
+        Role::ListItem | Role::Option | Role::TreeItem => c"ListItem",
         Role::Grid => c"Grid",
         Role::Dialog | Role::AlertDialog => c"Dialog",
         Role::Text | Role::Link | Role::Heading | Role::Alert | Role::Status | Role::Tooltip => {

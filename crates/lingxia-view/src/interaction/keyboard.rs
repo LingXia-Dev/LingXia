@@ -1,5 +1,5 @@
-//! Hardware keyboard focus order. Radio groups take one tab stop: the
-//! selected option, else the first enabled one.
+//! Hardware keyboard focus order. Radio groups and composites take one tab stop each.
+use super::composite::Composites;
 use super::frame::{PresentedFrame, interactive};
 use crate::scene::node::NodeSnapshot;
 
@@ -79,16 +79,20 @@ pub fn active_overlay(frame: &PresentedFrame) -> Option<usize> {
     })
 }
 
-/// The first focus target inside `container`, in focus order.
+/// The first focus target inside `container`, in focus order. `remembered` names the item a
+/// composite last had focused.
 pub fn first_inside(
     frame: &PresentedFrame,
     container: usize,
     revealable: impl Fn(&NodeSnapshot) -> bool,
+    remembered: impl Fn(usize) -> Option<usize>,
 ) -> Option<usize> {
+    let composites = Composites::new(frame);
     (container + 1..frame.nodes.len()).find(|index| {
         inside(frame, Some(container), *index)
             && candidate(frame, *index, &revealable)
             && tab_stop(frame, *index)
+            && composites.tab_stop(frame, *index, &remembered, &revealable)
     })
 }
 
@@ -102,13 +106,14 @@ fn inside(frame: &PresentedFrame, scope: Option<usize>, index: usize) -> bool {
     })
 }
 
-/// The next focus target from `current` in `direction`, skipping the current radio group.
-/// With a dialog open the order wraps inside it.
+/// The next focus target from `current` in `direction`, skipping the current radio group or
+/// composite. With a dialog open the order wraps inside it.
 pub fn next(
     frame: &PresentedFrame,
     current: Option<usize>,
     direction: i32,
     revealable: impl Fn(&NodeSnapshot) -> bool,
+    remembered: impl Fn(usize) -> Option<usize>,
 ) -> Option<usize> {
     let count = frame.nodes.len() as i64;
     if count == 0 {
@@ -122,13 +127,21 @@ pub fn next(
         .and_then(|i| frame.nodes.get(i))
         .filter(|node| option(node))
         .and_then(|node| node.radio_group.as_deref());
+    let composites = Composites::new(frame);
+    let current_composite = current
+        .and_then(|index| composites.container_of(index))
+        .filter(|(_, kind)| *kind != super::composite::Composite::Menu)
+        .map(|(container, _)| container);
     (1..=count)
         .map(|step| (origin + i64::from(direction) * step).rem_euclid(count) as usize)
         .find(|index| {
             let node = &frame.nodes[*index];
             !current_group.is_some_and(|group| member(node, group))
+                && (current_composite.is_none()
+                    || composites.container_of(*index).map(|(c, _)| c) != current_composite)
                 && inside(frame, scope, *index)
                 && candidate(frame, *index, &revealable)
                 && tab_stop(frame, *index)
+                && composites.tab_stop(frame, *index, &remembered, &revealable)
         })
 }

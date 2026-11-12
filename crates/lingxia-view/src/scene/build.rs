@@ -1225,6 +1225,7 @@ impl Renderer {
                     .string(field::ARIA_DESCRIBED_BY)
                     .map(|ids| ids.split(' ').map(str::to_owned).collect())
                     .unwrap_or_default(),
+                rtl: directions[index],
                 plot_local: None,
                 data: record
                     .string(field::DATA_ATTRIBUTES)
@@ -1310,6 +1311,7 @@ impl Renderer {
                     field::STATE_BUSY,
                     field::STATE_INVALID,
                     field::STATE_REQUIRED,
+                    field::STATE_CHECKED,
                 ]
                 .map(|id| record.number(id).map(|v| v == 1.0)),
                 progress: (record.string(field::ROLE) == Some("progressbar")).then(|| {

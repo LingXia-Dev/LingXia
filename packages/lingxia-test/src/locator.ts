@@ -159,6 +159,16 @@ export const ROLE_SELECTORS: Readonly<Record<LocatorRole, string>> = {
   alertdialog: '[role="alertdialog"]',
   group: '[role="group"]',
   tooltip: '[role="tooltip"]',
+  tablist: '[role="tablist"]',
+  tab: '[role="tab"]',
+  tabpanel: '[role="tabpanel"]',
+  toolbar: '[role="toolbar"]',
+  tree: '[role="tree"]',
+  treeitem: '[role="treeitem"]',
+  listbox: '[role="listbox"]',
+  option: '[role="option"]',
+  menuitemcheckbox: '[role="menuitemcheckbox"]',
+  menuitemradio: '[role="menuitemradio"]',
 };
 
 export function roleSelector(role: string): string {

@@ -173,15 +173,16 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             "UI_STYLE: invalid order",
         ),
         field::HEADING_LEVEL => ensure(
-            value.as_u64().is_some_and(|v| (1..=6).contains(&v)),
-            "UI_PROP: headingLevel must be 1..6",
+            value.as_u64().is_some_and(|v| (1..=32).contains(&v)),
+            "UI_PROP: headingLevel must be 1..32",
         ),
         field::STATE_PRESSED
         | field::STATE_SELECTED
         | field::STATE_EXPANDED
         | field::STATE_BUSY
         | field::STATE_INVALID
-        | field::STATE_REQUIRED => ensure(flag(value), "UI_PROP: invalid aria state"),
+        | field::STATE_REQUIRED
+        | field::STATE_CHECKED => ensure(flag(value), "UI_PROP: invalid aria state"),
         field::ARIA_VALUE_NOW | field::ARIA_VALUE_MIN | field::ARIA_VALUE_MAX => ensure(
             value.as_f64().is_some_and(f64::is_finite),
             "UI_PROP: invalid aria value",

@@ -49,8 +49,9 @@ change what is painted.
 ## Roles
 
 Controls, editors, scrolls, images and text get their roles automatically. Any other element can
-take one of the structural roles with `role`; on a control, `role` is ignored except `gridcell`,
-`option` and `menuitem`, which a button may take.
+take one of the structural roles with `role`; on a control, `role` is ignored except the item roles
+below (`tab`, `radio`, `option`, `menuitem`, `menuitemcheckbox`, `menuitemradio`, `treeitem`) and
+`gridcell`, which a button may take.
 
 | `role` | Use |
 | --- | --- |
@@ -61,11 +62,21 @@ take one of the structural roles with `role`; on a control, `role` is ignored ex
 | `status` | a result or progress message, announced politely when its text changes |
 | `grid`, `gridcell` | a two-dimensional set of cells, such as a month of days; name each cell in full |
 | `listbox`, `option` | a set of choices to pick one from; mark the chosen one with `aria-selected` |
+| `tablist`, `tab`, `tabpanel` | tabs and the content they show: mark the current tab with `aria-selected`; Left and Right select the previous or next tab (swapped in right-to-left layouts) |
+| `radiogroup`, `radio` | buttons where one choice is on: mark it with `aria-checked`; the arrow keys move to the previous or next choice and turn it on |
+| `toolbar` | a row of controls; Left and Right move focus between them without pressing them |
+| `tree`, `treeitem` | nested items, such as folders: give each its depth with `aria-level` (1–32) and its open state with `aria-expanded`; Right moves into an open item, Left moves to the item above it |
+| `menuitemcheckbox`, `menuitemradio` | menu items that are on or off (`aria-checked`); in a `menuitemradio` set only one is on |
 | `progressbar` | an amount done: `aria-valuenow` within `aria-valuemin` (0) and `aria-valuemax` (100), spoken as a percentage unless `aria-valuetext` is set; leave the value out while indeterminate. The kit `<Progress>` draws one as a bar or a ring |
 
 A modal is the `<dialog>` element, not a role: it keeps focus inside and hides the page behind it
 ([Overlays](overlays.md#focus-and-assistive-tech)). `role="menu"` names a popover of actions and
 `role="menuitem"` its buttons.
+
+Tab reaches a `tablist`, `radiogroup`, `toolbar`, `listbox` or `tree` once, on its selected or
+checked item, else the item focused there last, else its first item; Tab again leaves it. Inside,
+the arrow keys move between items and Home and End go to the first and last (not in a radio group).
+A `menu` takes the same arrow keys.
 
 The full role list is in [semantics](../reference/semantics.md).
 

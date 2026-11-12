@@ -133,6 +133,15 @@ fn aria(role: Role) -> Option<&'static str> {
         Role::AlertDialog => "alertdialog",
         Role::Group => "group",
         Role::Tooltip => "tooltip",
+        Role::TabList => "tablist",
+        Role::Tab => "tab",
+        Role::TabPanel => "tabpanel",
+        Role::Toolbar => "toolbar",
+        Role::Tree => "tree",
+        Role::TreeItem => "treeitem",
+        Role::Row => "row",
+        Role::MenuItemCheckBox => "menuitemcheckbox",
+        Role::MenuItemRadio => "menuitemradio",
         Role::Text | Role::ScrollView | Role::HorizontalScrollView => return None,
     })
 }
@@ -283,6 +292,7 @@ fn attributes(node: &NodeSnapshot) -> Value {
     // Authored ARIA a WebView would show as attributes, so one assertion reads both renderers.
     for (name, state) in [
         ("aria-invalid", node.states[4]),
+        ("aria-checked", node.states[6]),
         ("aria-required", node.states[5]),
     ] {
         if let Some(state) = state {
