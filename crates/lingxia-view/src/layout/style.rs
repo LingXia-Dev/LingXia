@@ -26,20 +26,20 @@ pub(crate) fn cross_alignment(value: &str) -> AlignItems {
     }
 }
 
-pub(crate) fn check_reserve(tag: usize) -> f32 {
-    match tag {
+pub(crate) fn check_reserve(record: &Record) -> f32 {
+    match record.tag {
         tag::CHECKBOX | tag::RADIO_OPTION => 36.0,
-        tag::SWITCH => 64.0,
+        tag::SWITCH => crate::scene::slider::switch_track(record)[0] + 12.0,
         // The chevron at the end of a select.
         tag::SELECT => 28.0,
         _ => 0.0,
     }
 }
 
-pub(crate) fn check_height(tag: usize) -> f32 {
-    match tag {
+pub(crate) fn check_height(record: &Record) -> f32 {
+    match record.tag {
         tag::CHECKBOX | tag::RADIO_OPTION => 24.0,
-        tag::SWITCH => 32.0,
+        tag::SWITCH => crate::scene::slider::switch_track(record)[1],
         _ => 0.0,
     }
 }
@@ -541,7 +541,7 @@ pub(crate) fn node_style(
                 length(120.0)
             } else if matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION) {
                 length(
-                    check_reserve(record.tag)
+                    check_reserve(record)
                         + padding_left
                         + padding_right
                         + border_left

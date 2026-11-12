@@ -264,6 +264,7 @@ impl Renderer {
                     |_, _| 0.0,
                     |known, available| {
                         let tag = context.as_ref().map(|i| records[**i].tag).unwrap_or(0);
+                        let control = context.as_ref().map(|i| &records[**i]);
                         let single_line = matches!(tag, tag::INPUT | tag::SEARCH | tag::SELECT)
                             || context.as_ref().is_some_and(|i| styles[**i].nowrap);
                         let limit = context
@@ -294,7 +295,7 @@ impl Renderer {
                             if single_line {
                                 None
                             } else {
-                                max_width.map(|w| (w - check_reserve(tag)).max(0.0))
+                                max_width.map(|w| (w - control.map_or(0.0, check_reserve)).max(0.0))
                             },
                             None,
                         );
@@ -314,8 +315,12 @@ impl Renderer {
                             }
                         }
                         Size {
-                            width: known.width.unwrap_or(width.ceil() + check_reserve(tag)),
-                            height: known.height.unwrap_or(height.ceil().max(check_height(tag))),
+                            width: known
+                                .width
+                                .unwrap_or(width.ceil() + control.map_or(0.0, check_reserve)),
+                            height: known
+                                .height
+                                .unwrap_or(height.ceil().max(control.map_or(0.0, check_height))),
                         }
                     },
                 );
@@ -343,7 +348,7 @@ impl Renderer {
                                 - padding.right
                                 - border.left
                                 - border.right
-                                - check_reserve(record.tag))
+                                - check_reserve(record))
                             .max(0.0),
                         )
                     };

@@ -777,6 +777,18 @@ test('slider parts lower to part records, and a state before the part carries it
   assert.throws(() => describe(() => h('view', { className: 'thumb:size-4' }), {}), /UI_/);
 });
 
+test('switch parts follow the switch value through checked:, and a track takes a width there', async () => {
+  await use(['track:w-11', 'track:h-6', 'track:bg-line', 'checked:track:bg-success', 'thumb:size-5', 'active:thumb:w-6', 'checked:thumb:bg-on-accent']);
+  const pairs = text => Object.values(Object.fromEntries(JSON.parse(text).reduce((out, v, i, all) => (i % 2 ? out : [...out, [v, all[i + 1]]]), [])));
+  const toggle = value => rendered(() => h('switch', { 'aria-label': 'Wi-Fi', value, onChange() {}, className: 'track:w-11 track:h-6 track:bg-line checked:track:bg-success thumb:size-5 active:thumb:w-6 checked:thumb:bg-on-accent' })).props;
+  const off = toggle(false), on = toggle(true);
+  assert.deepEqual(pairs(off.trackStyle).sort(), [24, 44, 'line'].sort());
+  assert.deepEqual(pairs(on.trackStyle).sort(), [24, 44, 'success'].sort());
+  assert.ok(!pairs(off.thumbStyle).includes('on-accent'));
+  assert.ok(pairs(on.thumbStyle).includes('on-accent'));
+  assert.ok(pairs(on.pressedStyle.thumbStyle).includes(24));
+});
+
 test('a slider takes a secondary value and reads its aria-valuetext', () => {
   const props = rendered(() => h('slider', { 'aria-label': 'Seek', value: 10, secondaryValue: 140, max: 100, 'aria-valuetext': '0:10 of 1:40' })).props;
   assert.deepEqual([props.sliderSecondary, props.ariaValueText], [100, '0:10 of 1:40']);

@@ -119,6 +119,24 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
   });
 });
 
+test('a part names the controls that draw it', async () => {
+  await project({ 'page.tsx': `export function render() {
+  return <view className="thumb:size-4">
+    <slider aria-label="Volume" className="checked:thumb:bg-accent track:w-8"/>
+    <switch aria-label="Wi-Fi" className="range:bg-accent checked:track:bg-success track:w-11"/>
+  </view>;
+}` }, async (root, build) => {
+    const message = (await build().catch(error => error)).message;
+    for (const pattern of [
+      /page.tsx:2:\d+: UI_CLASS_ELEMENT: thumb:size-4 styles a <slider> or <switch>'s thumb, not <view>/,
+      /page.tsx:3:\d+: UI_CLASS_ELEMENT: checked:thumb:bg-accent: a <slider> is never checked/,
+      /page.tsx:3:\d+: UI_CLASS_ELEMENT: track:w-8: a <slider> track spans the slider/,
+      /page.tsx:4:\d+: UI_CLASS_ELEMENT: range:bg-accent styles a <slider>'s range, not <switch>/,
+    ]) assert.match(message, pattern);
+    assert.doesNotMatch(message, /checked:track:bg-success|track:w-11/);
+  });
+});
+
 test('flex-only utilities on a grid name the grid equivalent', async () => {
   await project({ 'page.tsx': 'export function render(){return <view className="grid flex-wrap flex-col items-center content-between justify-items-center"/>}' }, async (root, build) => {
     const message = (await build().catch(error => error)).message;

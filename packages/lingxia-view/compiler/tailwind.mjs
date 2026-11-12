@@ -882,13 +882,16 @@ function selectorParts(selector) {
   const name = unescape(match[1]), rest = match[2];
   if (!rest) return { name };
   if (rest === '::placeholder') return { name, placeholder: true };
-  // A slider part: `thumb:` alone or after one interaction state (`active:thumb:`).
+  // A control part: `thumb:` alone, after one interaction state (`active:thumb:`), or after
+  // `checked:`, which a switch resolves at render.
   const part = rest.match(/::-lx-(track|range|secondary|thumb)(.*)$/);
   if (part) {
     if (part[2]) return { name, error: `selector ${rest} (a state goes before the part: ${part[2].slice(1)}:${part[1]}:)` };
-    const state = rest.slice(0, part.index).match(/^(?::(focus-visible|active|hover|disabled))?$/);
-    if (!state) return { name, error: `selector ${rest} (a slider part takes one of active:, hover:, focus-visible: or disabled: before it)` };
-    return { name, part: part[1], ...(state[1] ? { state: state[1] === 'focus-visible' ? 'focusVisible' : state[1] } : {}) };
+    const before = rest.slice(0, part.index);
+    const checked = /:checked(?![\w-])/.test(before);
+    const state = before.replace(/:checked(?![\w-])/, '').match(/^(?::(focus-visible|active|hover|disabled))?$/);
+    if (!state) return { name, error: `selector ${rest} (a part takes checked: and one of active:, hover:, focus-visible: or disabled: before it)` };
+    return { name, part: part[1], ...(checked ? { checked: true } : {}), ...(state[1] ? { state: state[1] === 'focus-visible' ? 'focusVisible' : state[1] } : {}) };
   }
   if (rest === '::backdrop') return { name, state: 'backdrop' };
   let remaining = rest, structure, data, has;
@@ -918,7 +921,8 @@ function selectorParts(selector) {
 const radii = ['borderRadius', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius'];
 const lineKeys = new Set(['backgroundColor', 'height', ...radii]);
 const partKeys = {
-  track: lineKeys, range: lineKeys, secondary: lineKeys,
+  // A switch track also takes a width; a slider refuses one where the element is known.
+  track: new Set([...lineKeys, 'width']), range: lineKeys, secondary: lineKeys,
   thumb: new Set(['backgroundColor', 'width', 'height', ...radii, 'borderWidth', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderColor']),
 };
 // A part takes the few properties its native drawing has; the thumb also takes shadows, rings and scale.
@@ -926,7 +930,7 @@ function partProblem(part, result) {
   if (result.motion) unsupported(`${part}: eases its own state changes over 150 ms; drop transition-*, duration-* and ease-*`);
   const extra = Object.keys(result).filter(key => key !== 'style' && !(part === 'thumb' && (key === 'shadow' || key === 'transform')));
   const stray = Object.keys(result.style).filter(key => !partKeys[part].has(key));
-  if (extra.length || stray.length) unsupported(`${part}: takes ${part === 'thumb' ? 'bg-*, size-*/w-*/h-*, rounded-*, border-*, shadow-*, ring-* and scale-*' : 'bg-*, h-* and rounded-*'}, not ${[...stray, ...extra].join(', ')}`);
+  if (extra.length || stray.length) unsupported(`${part}: takes ${part === 'thumb' ? 'bg-*, size-*/w-*/h-*, rounded-*, border-*, shadow-*, ring-* and scale-*' : part === 'track' ? 'bg-*, h-*, rounded-* and, on a switch, w-*' : 'bg-*, h-* and rounded-*'}, not ${[...stray, ...extra].join(', ')}`);
 }
 
 // Utilities that lower to nothing drawn are refused, never compiled to a no-op.
@@ -1000,7 +1004,7 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
       if (starting) target.state = 'starting';
       if (hoverMedia && target.state !== 'hover') unsupported('(hover: hover) outside a hover variant');
       if (target.part && (starting || media.reducedMotion !== undefined)) unsupported(`${target.part}: with starting: or motion-*`);
-      const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.part ? { part: target.part } : {}), ...(target.children ? { children: true } : {}), ...(target.every ? { every: true } : {}),
+      const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.part ? { part: target.part } : {}), ...(target.checked ? { checked: true } : {}), ...(target.children ? { children: true } : {}), ...(target.every ? { every: true } : {}),
         ...(target.direction ? { direction: target.direction } : {}), ...(target.structure ? { structure: target.structure } : {}), ...(target.data ? { data: target.data } : {}) };
       const lower = vars => {
         const result = declarations(rule.nodes, vars, root);

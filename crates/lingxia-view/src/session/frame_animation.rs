@@ -139,8 +139,11 @@ fn transition_inputs(
     let mut blocked = None;
     let mut inputs = Vec::new();
     for (index, record) in records.iter().enumerate() {
-        // A slider eases its parts between states even without a transition of its own.
-        let parts = record.tag == crate::protocol::tag::SLIDER;
+        // A slider or switch eases its parts between states even without a transition of its own.
+        let parts = matches!(
+            record.tag,
+            crate::protocol::tag::SLIDER | crate::protocol::tag::SWITCH
+        );
         let definition = match record.string(field::TRANSITION) {
             Some(source) if parts => transition::TransitionDef::decode(source)?.with_parts(),
             Some(source) => transition::TransitionDef::decode(source)?,

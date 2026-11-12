@@ -1,9 +1,10 @@
 use lingxia_view::protocol::field::{
-    ACCESSIBILITY_LABEL, ARIA_VALUE_TEXT, BACKGROUND, COLOR, ENABLED, HEIGHT, ON_CLICK,
-    ON_SLIDER_CHANGE, PADDING_LEFT, PADDING_RIGHT, PRESSED_STYLE, SECONDARY_STYLE, SLIDER_MAX,
-    SLIDER_MIN, SLIDER_SECONDARY, SLIDER_STEP, SLIDER_VALUE, THUMB_STYLE, TRACK_STYLE, WIDTH,
+    ACCESSIBILITY_LABEL, ARIA_VALUE_TEXT, BACKGROUND, CHECKED, COLOR, ENABLED, HEIGHT,
+    ON_CHECKED_CHANGE, ON_CLICK, ON_SLIDER_CHANGE, PADDING_LEFT, PADDING_RIGHT, PRESSED_STYLE,
+    SECONDARY_STYLE, SLIDER_MAX, SLIDER_MIN, SLIDER_SECONDARY, SLIDER_STEP, SLIDER_VALUE,
+    THUMB_STYLE, TRACK_STYLE, WIDTH,
 };
-use lingxia_view::protocol::tag::{SLIDER, TEXT};
+use lingxia_view::protocol::tag::{SLIDER, SWITCH, TEXT};
 use lingxia_view::{Renderer, protocol::decode};
 use serde_json::json;
 
@@ -227,4 +228,42 @@ fn slider_parts_refuse_fields_a_part_cannot_draw() {
         ]);
         assert!(decode(wire.as_array().unwrap()).is_err(), "{pairs}");
     }
+}
+
+#[test]
+fn switch_parts_size_the_track_and_seat_the_thumb_evenly_at_either_end() {
+    let part = |pairs: serde_json::Value| pairs.to_string();
+    let frame = |checked: u8| {
+        let wire = json!([
+            SWITCH,
+            -1,
+            "",
+            "wifi",
+            "",
+            5,
+            ACCESSIBILITY_LABEL,
+            "Wi-Fi",
+            CHECKED,
+            checked,
+            ON_CHECKED_CHANGE,
+            1,
+            TRACK_STYLE,
+            part(json!([WIDTH, 44, HEIGHT, 24, BACKGROUND, "#0000ff"])),
+            THUMB_STYLE,
+            part(json!([WIDTH, 20, HEIGHT, 20, BACKGROUND, "#ff0000"]))
+        ]);
+        pixels(
+            Renderer::default()
+                .layout(&decode(wire.as_array().unwrap()).unwrap(), 200, 100, 1.0)
+                .unwrap(),
+        )
+    };
+    // The track ends at the padding, 144..188; the thumb rests 2 inside it.
+    let on = frame(1);
+    assert_eq!(on(176, 22), [255, 0, 0, 255]);
+    assert_eq!(on(150, 22), [0, 0, 255, 255]);
+    assert_ne!(on(141, 22), [0, 0, 255, 255]);
+    let off = frame(0);
+    assert_eq!(off(156, 22), [255, 0, 0, 255]);
+    assert_eq!(off(180, 22), [0, 0, 255, 255]);
 }

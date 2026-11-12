@@ -620,7 +620,7 @@ impl Renderer {
                 let content_width = (layout.size.width
                     - layout.padding.left
                     - layout.padding.right
-                    - check_reserve(record.tag))
+                    - check_reserve(record))
                 .max(0.0);
                 // Overflowing single-line editors retain a nonnegative text origin;
                 // caret scrolling, not alignment, reveals the hidden text.
@@ -670,7 +670,7 @@ impl Renderer {
                 let label_x = if matches!(record.tag, tag::CHECKBOX | tag::RADIO_OPTION)
                     || (record.tag == tag::SELECT && directions[index])
                 {
-                    check_reserve(record.tag)
+                    check_reserve(record)
                 } else {
                     0.0
                 };
@@ -897,20 +897,13 @@ impl Renderer {
                 let focused = enabled
                     && focused_identity.as_deref() == identities.get(index).map(String::as_str);
                 // The drawn indicator and its corner radius: press and focus follow its shape.
-                let indicator = if record.tag == tag::RADIO_OPTION {
+                let mut indicator = if record.tag == tag::RADIO_OPTION {
                     ([x + layout.padding.left, cy - 12.0, 24.0, 24.0], 12.0)
                 } else if record.tag == tag::CHECKBOX {
                     ([x + layout.padding.left, cy - 12.0, 24.0, 24.0], 5.0)
                 } else {
-                    (
-                        [
-                            x + layout.size.width - layout.padding.right - 52.0,
-                            cy - 16.0,
-                            52.0,
-                            32.0,
-                        ],
-                        16.0,
-                    )
+                    // The switch's track, set once its parts are drawn.
+                    ([0.0; 4], 0.0)
                 };
                 if record.tag == tag::RADIO_OPTION {
                     let cx = x + layout.padding.left;
@@ -978,34 +971,22 @@ impl Renderer {
                         });
                     }
                 } else {
-                    let cx = x + layout.size.width - layout.padding.right - 52.0;
-                    commands.push(Paint::Rect {
-                        corners: None,
-                        color: if checked { accent } else { neutral },
-                        bounds: [cx, cy - 16.0, 52.0, 32.0],
-                        radius: 16.0,
-                    });
-                    if pressed {
-                        commands.push(Paint::Rect {
-                            corners: None,
-                            color: press_layer,
-                            bounds: [cx, cy - 16.0, 52.0, 32.0],
-                            radius: 16.0,
-                        });
-                    }
-                    // A held thumb stretches toward the side it will move to.
-                    let stretch = if pressed { 6.0 } else { 0.0 };
-                    commands.push(Paint::Rect {
-                        corners: None,
-                        color: [255; 4],
-                        bounds: [
-                            cx + if checked { 24.0 - stretch } else { 4.0 },
-                            cy - 12.0,
-                            24.0 + stretch,
-                            24.0,
-                        ],
-                        radius: 12.0,
-                    });
+                    let (slots, track, radius) = crate::scene::slider::paint_switch(
+                        &crate::scene::slider::Switch {
+                            right: x + layout.size.width - layout.padding.right,
+                            center: cy,
+                            checked,
+                            pressed,
+                            on: accent,
+                            off: neutral,
+                            press_layer,
+                        },
+                        record,
+                        &palette,
+                        &mut commands,
+                    )?;
+                    paint_style.slider = Some(slots);
+                    indicator = (track, radius);
                 }
                 if focused {
                     // A focus ring 2 px outside the indicator, as the platform rings other controls.

@@ -243,8 +243,14 @@ function classProblems(rule, name, tag, suggestions, grid) {
   if (rule.error?.category === 'color') return [`UI_COLOR: ${name}: ${rule.error.message}`];
   if (rule.error) return [`UI_CLASS_UNSUPPORTED: ${name}: the native renderer does not support ${rule.error.message}`];
   if (!has(elements, tag) || rule.when?.children) return [];
-  // A part's properties were checked when it compiled; it needs a slider to belong to.
-  if (rule.when?.part) return tag === 'slider' ? [] : [`UI_CLASS_ELEMENT: ${name} styles a <slider>'s ${rule.when.part}, not <${tag}>`];
+  // A part's properties were checked when it compiled; it needs a control that draws it.
+  if (rule.when?.part) {
+    const { part, checked } = rule.when;
+    if (tag === 'switch' && (part === 'track' || part === 'thumb')) return [];
+    if (tag !== 'slider') return [`UI_CLASS_ELEMENT: ${name} styles ${part === 'track' || part === 'thumb' ? 'a <slider> or <switch>' : 'a <slider>'}'s ${part}, not <${tag}>`];
+    if (checked) return [`UI_CLASS_ELEMENT: ${name}: a <slider> is never checked; checked: goes on a <switch> part`];
+    return part === 'track' && rule.style?.width !== undefined ? [`UI_CLASS_ELEMENT: ${name}: a <slider> track spans the slider; size the slider instead`] : [];
+  }
   const runs = tag === 'span' || tag === 'link';
   const props = [...Object.keys(rule.style ?? {}).filter(prop => !(runs && rule.pairedLeading && prop === 'lineHeight')), ...(rule.gradient ? ['backgroundImage'] : []),
     ...(rule.transform?.translate ? ['translate'] : []), ...(rule.transform?.scale ? ['scale'] : []),

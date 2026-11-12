@@ -33,6 +33,7 @@ function applies(rule, env) {
   if (theme && (env.theme ?? 'light') !== theme) return false;
   if (direction && (env.direction ?? 'ltr') !== direction) return false;
   if (rule.when?.structure && !(env.structure ?? []).includes(rule.when.structure)) return false;
+  if (rule.when?.checked && env.checked !== true) return false;
   if (rule.when?.data) {
     const [name, value] = rule.when.data, own = env.data?.[name];
     if (own === undefined || (value !== undefined && own !== value)) return false;
@@ -139,7 +140,7 @@ export function resolveClasses(className, env = {}) {
   if (className === undefined) return undefined;
   if (typeof className !== 'string') throw Error('UI_CLASS: className must be a string');
   if (className.length > 16384) throw Error('UI_CLASS: className exceeds 16384 characters');
-  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ''}`;
+  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ''}|${env.checked === true}`;
   // Keyed by environment too: sibling structure changes it node to node, so clearing on change thrashed.
   const key = `${environment}\u0000${className}`;
   if (cache.has(key)) return copy(cache.get(key));
@@ -156,7 +157,8 @@ export function resolveClasses(className, env = {}) {
     }
   }
   // A pseudo-class adds specificity above media-only rules; source order breaks ties.
-  matched.sort((a, b) => Number(!!a.when?.state) - Number(!!b.when?.state) || a.order - b.order);
+  const specific = rule => Number(!!rule.when?.state) + Number(!!rule.when?.checked);
+  matched.sort((a, b) => specific(a) - specific(b) || a.order - b.order);
   // Among rules under the same variants, the class written later wins, so a caller's class
   // overrides a component's (cva + tailwind-merge); different variants keep Tailwind's order.
   const slots = new Map();
@@ -182,7 +184,7 @@ export function resolveClasses(className, env = {}) {
     const full = cascade([...plain, ...extra]);
     result[state] = state === 'disabled' ? full : changed(full, base);
   }
-  // A slider part resolves on its own; a state carries the part whole, as that state draws it.
+  // A control part resolves on its own; a state carries the part whole, as that state draws it.
   for (const part of parts) {
     const rules = matched.filter(rule => rule.when?.part === part);
     if (!rules.length) continue;

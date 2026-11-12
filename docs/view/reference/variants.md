@@ -39,10 +39,10 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `dark:` | any element; not on colours, which follow appearance |
 | `starting:` | any element; paint only, the values it enters from |
 | `exit:` | any element; paint only, the values a removed element leaves toward |
-| `track:` | `<slider>`; its track: `bg-*`, `h-*`, `rounded-*`; after `active:` `hover:` `focus-visible:` or `disabled:`, eased over 150 ms |
+| `track:` | `<slider>` and `<switch>`; its track: `bg-*`, `h-*`, `rounded-*`, and `w-*` on a switch; after `active:` `hover:` `focus-visible:` or `disabled:`, and `checked:` on a switch, eased over 150 ms |
 | `range:` | `<slider>`; its range, min to value: `bg-*`, `h-*`, `rounded-*`; after `active:` `hover:` `focus-visible:` or `disabled:`, eased over 150 ms |
 | `secondary:` | `<slider>`; its secondary range, min to `secondaryValue`: `bg-*`, `h-*`, `rounded-*`; after `active:` `hover:` `focus-visible:` or `disabled:`, eased over 150 ms |
-| `thumb:` | `<slider>`; its thumb: `bg-*`, `size-*`, `rounded-*`, `border-*`, `shadow-*`, `ring-*`, `scale-*`; after a state like the other parts |
+| `thumb:` | `<slider>` and `<switch>`; its thumb: `bg-*`, `size-*`, `rounded-*`, `border-*`, `shadow-*`, `ring-*`, `scale-*`; after a state like the track |
 | `group-active:` | any element inside a pressable control; while that control is pressed; paint only |
 
 `space-x-*`, `space-y-*` and `divide-*` are utilities, not variants: they style every child but the last.

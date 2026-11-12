@@ -417,6 +417,129 @@ pub(crate) fn paint(
     Ok(slots)
 }
 
+/// A switch track's width and height: its `track:` part, else 52 × 32.
+pub(crate) fn switch_track(record: &Record) -> [f32; 2] {
+    let track = Part::of(record, field::TRACK_STYLE).unwrap_or_default();
+    [track.width.unwrap_or(52.0), track.height.unwrap_or(32.0)]
+}
+
+/// A switch at the inline end `right` of its content box, centred on `center`.
+pub(crate) struct Switch {
+    pub right: f32,
+    pub center: f32,
+    pub checked: bool,
+    pub pressed: bool,
+    /// The track when on, and when off.
+    pub on: [u8; 4],
+    pub off: [u8; 4],
+    pub press_layer: [u8; 4],
+}
+
+/// Draws a switch's track and thumb; the thumb rests `gap` inside the track at either end.
+pub(crate) fn paint_switch(
+    switch: &Switch,
+    record: &Record,
+    palette: &crate::theme::Palette,
+    commands: &mut Vec<Paint>,
+) -> Result<(SliderPaint, [f32; 4], f32), String> {
+    let mut slots = SliderPaint::default();
+    let track = Part::of(record, field::TRACK_STYLE)?;
+    let thumb = Part::of(record, field::THUMB_STYLE)?;
+    let [width, height] = [track.width.unwrap_or(52.0), track.height.unwrap_or(32.0)];
+    let left = switch.right - width;
+    let bounds = [left, switch.center - height / 2.0, width, height];
+    let radius = track.radius.unwrap_or(f32::MAX).min(height / 2.0);
+    let fill = |part: &Part, default: [u8; 4]| match part.background.as_deref() {
+        Some("currentColor") => Ok(switch.on),
+        Some(value) => palette.resolve(value),
+        None => Ok(default),
+    };
+    slots.0[0] = Some(commands.len());
+    commands.push(Paint::Rect {
+        corners: None,
+        color: fill(
+            &track,
+            if switch.checked {
+                switch.on
+            } else {
+                switch.off
+            },
+        )?,
+        bounds,
+        radius,
+    });
+    if switch.pressed {
+        commands.push(Paint::Rect {
+            corners: None,
+            color: switch.press_layer,
+            bounds,
+            radius,
+        });
+    }
+    let size = [
+        thumb.width.unwrap_or(24.0),
+        thumb.height.or(thumb.width).unwrap_or(24.0),
+    ];
+    let gap = ((height - size[1]) / 2.0).max(0.0);
+    // A held default thumb stretches toward the side it will move to.
+    let stretch = if switch.pressed && thumb.width.is_none() {
+        6.0
+    } else {
+        0.0
+    };
+    let [w, h] = [
+        (size[0] + stretch) * thumb.scale[0],
+        size[1] * thumb.scale[1],
+    ];
+    let middle = if switch.checked {
+        left + width - gap - (size[0] + stretch) / 2.0
+    } else {
+        left + gap + (size[0] + stretch) / 2.0
+    };
+    let knob = [middle - w / 2.0, switch.center - h / 2.0, w, h];
+    let round = thumb.radius.unwrap_or(f32::MAX).min(w.min(h) / 2.0);
+    if let Some(source) = &thumb.shadow {
+        for shadow in crate::scene::shadow::BoxShadow::parse(source)?
+            .into_iter()
+            .rev()
+        {
+            let color = if shadow.color == "currentColor" {
+                switch.on
+            } else {
+                palette.resolve(&shadow.color)?
+            };
+            commands.push(Paint::Shadow {
+                shadow,
+                color,
+                bounds: knob,
+                radius: round,
+            });
+        }
+    }
+    slots.0[3] = Some(commands.len());
+    commands.push(Paint::Rect {
+        corners: None,
+        color: fill(&thumb, [255; 4])?,
+        bounds: knob,
+        radius: round,
+    });
+    if thumb.border > 0.0 {
+        slots.0[4] = Some(commands.len());
+        commands.push(Paint::Border {
+            color: match thumb.border_color.as_deref() {
+                Some("currentColor") | None => switch.on,
+                Some(value) => palette.resolve(value)?,
+            },
+            bounds: knob,
+            widths: [thumb.border; 4],
+            radius: round,
+            corners: None,
+            style: crate::scene::border::LineStyle::Solid,
+        });
+    }
+    Ok((slots, bounds, radius))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

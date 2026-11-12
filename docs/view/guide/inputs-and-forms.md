@@ -135,6 +135,22 @@ export function render() {
 control and its accessible name; with content it draws no box of its own, so draw the checked state from its value. `<switch>` takes plain text as its label. Both accept
 `aria-label` when they have no visible text.
 
+A switch's `track:` and `thumb:` parts restyle it; `checked:` before a part applies while it is on, and
+state changes ease over 150 ms. The thumb rests evenly inside the track, and the label makes room for the track's width:
+
+```tsx
+import { useLocal } from '@lingxia/view';
+
+export function render() {
+  const wifi = useLocal('wifi', true);
+  return (
+    <switch bind={wifi} className="track:w-11 track:h-6 checked:track:bg-success thumb:size-5 active:thumb:w-6">
+      Wi-Fi
+    </switch>
+  );
+}
+```
+
 ## Radio
 
 `<radio options={[{ value, label, disabled?, 'data-testid'? }]}>` draws a group of 1–64 options. Values are

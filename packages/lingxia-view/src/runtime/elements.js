@@ -188,7 +188,7 @@ function nodeStyle(tag, props, data, extra, inherited, direction, structure, eve
     if (seeded?.env === environment) for (const [key, style] of seeded.entries) lowered.set(key, style);
   }
   // An inherited line height may be a multiplier object; it keys by value, not as "[object Object]".
-  const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}`;
+  const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${checkedSwitch(tag, props)}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}`;
   let style = lowered.get(key);
   if (!style) {
     style = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure);
@@ -215,9 +215,12 @@ const disabledField = { color: 'text-muted', backgroundColor: 'surface-sunken', 
 // A player's box is black before its first frame and behind letterboxing, as native players are.
 const videoBacking = { backgroundColor: '#000000' };
 
+// `checked:` before a switch part follows the switch's own value.
+const checkedSwitch = (tag, props) => tag === 'switch' && props.value === true;
+
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
 function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every) {
-  const env = { ...loweringEnv(envOf(render.view)), direction, structure, data };
+  const env = { ...loweringEnv(envOf(render.view)), direction, structure, data, checked: checkedSwitch(tag, props) };
   const classes = resolveClasses(props.className, env);
   // A run takes the size of `text-sm` but not the line height paired with it.
   if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
