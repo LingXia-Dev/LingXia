@@ -11,6 +11,10 @@ use std::time::{Duration, Instant};
 /// A player not drawn for this long stops decoding and closes.
 const IDLE: Duration = Duration::from_secs(2);
 
+/// Frames failing in a row before the player is failed: one bad frame may recover, a frame
+/// path that cannot work would otherwise fail and redraw at frame rate.
+const FRAME_FAILURES: u8 = 3;
+
 /// Bumped when a frame size changes: cached scenes encode the video's source region.
 static EPOCH: AtomicU64 = AtomicU64::new(0);
 
@@ -261,6 +265,7 @@ pub(crate) fn command(key: &str, op: VideoOp) -> Result<(), VideoError> {
         (_, VideoOp::Retry) => {
             entry.applied = None;
             entry.switch = None;
+            entry.frame_errors = 0;
             let _closed = std::mem::replace(&mut entry.state, State::Opening);
             request(key, &mut entry.state);
             Ok(())
@@ -442,6 +447,8 @@ struct Entry {
     imported: Option<Instant>,
     /// Paused because its page hid while it played; plays again when the page shows.
     resume: bool,
+    /// Frames that failed in a row.
+    frame_errors: u8,
 }
 
 static PLAYERS: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(Default::default);
@@ -1062,6 +1069,7 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
                 new_at: None,
                 frames: 0,
                 import_us: [0; 2],
+                frame_errors: 0,
             },
         );
         return None;
@@ -1125,14 +1133,41 @@ pub(crate) fn import_frames(device: &wgpu::Device, display: &crate::DisplayList)
                 let us = crate::session::metrics::micros(started);
                 entry.imported = Some(Instant::now());
                 entry.frames += 1;
+                entry.frame_errors = 0;
                 imported = true;
                 entry.import_us = [entry.import_us[0] + us, entry.import_us[1].max(us)];
             }
             Ok(None) => {}
-            Err(error) => log::warn!(target: "lingxia_view", "video {key}: {error}"),
+            Err(error) => {
+                if let Some(failed) = frame_failed(&mut entry.frame_errors, key, &error) {
+                    let closed = std::mem::replace(&mut entry.state, State::Failed(failed));
+                    // Closing a player can wait on its decoder; the render thread does not.
+                    std::thread::spawn(move || drop(closed));
+                }
+            }
         }
     }
     (!keys.is_empty(), imported)
+}
+
+/// Counts a failed frame of player `key`, logging the first of a run: the player's error once
+/// `FRAME_FAILURES` fail in a row.
+fn frame_failed(errors: &mut u8, key: &str, error: &str) -> Option<VideoError> {
+    *errors = errors.saturating_add(1);
+    if *errors == 1 {
+        log::warn!(target: "lingxia_view", "video {key}: {error}");
+    }
+    if *errors < FRAME_FAILURES {
+        return None;
+    }
+    *errors = 0;
+    let message = if error.contains("VIDEO_") {
+        error.to_owned()
+    } else {
+        format!("VIDEO_DECODE: {error}")
+    };
+    log::warn!(target: "lingxia_view", "video {key}: {FRAME_FAILURES} frames failed in a row; the player stops: {message}");
+    Some(VideoError::from_message(&message))
 }
 
 /// Binds each player's newest frame under its texture id.
@@ -2127,6 +2162,27 @@ pub unsafe fn import_hardware_buffer(
 mod platform {
     pub(super) fn open(_url: &str) -> Result<Box<dyn super::Player>, String> {
         Err("VIDEO_UNSUPPORTED: no video player on this platform yet".into())
+    }
+}
+
+#[cfg(test)]
+mod frame_failure_tests {
+    use super::{FRAME_FAILURES, frame_failed};
+
+    #[test]
+    fn a_frame_path_failing_in_a_row_fails_its_player_once_with_a_code() {
+        let mut errors = 0;
+        for _ in 1..FRAME_FAILURES {
+            assert!(frame_failed(&mut errors, "k", "not a Vulkan device").is_none());
+        }
+        let failed = frame_failed(&mut errors, "k", "not a Vulkan device").unwrap();
+        assert_eq!(failed.code, "VIDEO_DECODE");
+        assert!(failed.message.contains("not a Vulkan device"));
+        assert_eq!(errors, 0, "a retried player counts afresh");
+        // A message that names its code keeps it.
+        let mut errors = FRAME_FAILURES - 1;
+        let failed = frame_failed(&mut errors, "k", "GpuVideo: VIDEO_NO_PLAYER: gone").unwrap();
+        assert_eq!(failed.code, "VIDEO_NO_PLAYER");
     }
 }
 
