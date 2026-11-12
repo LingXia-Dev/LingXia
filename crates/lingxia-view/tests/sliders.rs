@@ -298,6 +298,7 @@ fn a_disabled_switch_that_is_on_keeps_its_accent_faintly() {
 
 #[test]
 fn a_switch_with_element_children_lays_them_beside_its_track_and_takes_their_text_as_its_name() {
+    // Parents are wire offsets: the column's record starts at 12.
     let wire = json!([
         SWITCH,
         -1,
@@ -318,13 +319,13 @@ fn a_switch_with_element_children_lays_them_beside_its_track_and_takes_their_tex
         "",
         0,
         TEXT,
-        1,
+        12,
         "",
         "",
         "Wi-Fi Wi-Fi Wi-Fi Wi-Fi Wi-Fi Wi-Fi Wi-Fi Wi-Fi",
         0,
         TEXT,
-        1,
+        12,
         "",
         "",
         "Joins known networks",
