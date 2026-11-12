@@ -23,14 +23,14 @@ export function Details({ open, defaultOpen = false, onToggle, className, 'data-
     if (open === undefined) local.set(!expanded);
     onToggle?.(!expanded);
   };
-  return h('column', { className, 'data-testid': testId },
+  return h('view', { className, 'data-testid': testId },
     h('button', { 'data-testid': testId && `${testId}-summary`, onClick: toggle, 'aria-expanded': expanded,
       className: summary?.[1].className, style: summary?.[1].className ? undefined : { backgroundColor: 'transparent', color: 'text', paddingTop: 8, paddingBottom: 8 } },
-      h('row', { style: { alignItems: 'center', gap: 8 } },
+      h('view', { style: { flexDirection: 'row', alignItems: 'center', gap: 8 } },
         h('vector', { 'aria-hidden': true, paths: chevron,
           style: { width: 16, height: 16, rotate: expanded ? 90 : 0, transition: { properties: ['transform'], durationMs: 150, delayMs: 0, easing: [0.4, 0, 0.2, 1] } } },
         ),
         ...label.map(item => typeof item === 'string' || typeof item === 'number' ? h('text', {}, item) : item))),
-    expanded && h('column', { 'data-testid': testId && `${testId}-body` }, ...body));
+    expanded && h('view', { 'data-testid': testId && `${testId}-body` }, ...body));
 }
 Details.__lxid = '@lingxia/view#Details';

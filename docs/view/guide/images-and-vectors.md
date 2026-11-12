@@ -17,7 +17,7 @@ export function render() {
   const failed = useLocal('failed', false);
   return (
     <page className="p-4 gap-4">
-      <stack className="w-full aspect-video rounded-xl overflow-hidden bg-line">
+      <view className="grid *:col-start-1 *:row-start-1 w-full aspect-video rounded-xl overflow-hidden bg-line">
         <image
           src="https://images.example.com/cover.jpg"
           retryKey={String(attempt.value)}
@@ -31,13 +31,13 @@ export function render() {
             Retry
           </button>
         )}
-      </stack>
-      <row className="items-center gap-3">
+      </view>
+      <view className="flex-row items-center gap-3">
         <image src="images/avatar.png" alt="" className="w-10 h-10 rounded-full" />
         <text className="grow text-sm">Mina Park</text>
         <Icon name="star" className="w-5 h-5 text-warning" />
         <Icon name="chevron" className="w-5 h-5 text-faint rtl:-scale-x-100" />
-      </row>
+      </view>
     </page>
   );
 }
@@ -149,5 +149,5 @@ Keep icons as path data in a component, as in the first example:
 
 ## Backgrounds
 
-`bg-[url(…)]` is not supported. Put an `<image>` and the content in a `<stack>`: children of a stack share
-one cell and paint in order, as in the first example.
+`bg-[url(…)]` is not supported. Put an `<image>` and the content in a `<view className="grid *:col-start-1 *:row-start-1">`:
+its children share one cell and paint in order, as in the first example.

@@ -21,7 +21,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 }
 ```
 
-- `<page>` is the root: it absorbs safe-area insets and the keyboard. `view` is a column until `flex` makes it a row, as in CSS.
+- `<page>` is the root: it absorbs safe-area insets and the keyboard. `<view>` is the only layout container: a flex column; `flex-row`/`flex-col` set direction, `flex` alone means row, `grid` makes a grid; `gap`/`items`/`justify` work without `flex`. Overlap children with `grid *:col-start-1 *:row-start-1`.
   A last-child `<scroll>`/`<List>` runs on under the tab bar, its end padded clear; `<dialog>`s cover the bars.
   `fixed` insets and `vh`/`dvh` measure the page's safe box (inside system bars, above the keyboard);
   `hidden` removes a node entirely.

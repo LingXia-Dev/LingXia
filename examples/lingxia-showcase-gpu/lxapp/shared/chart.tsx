@@ -33,13 +33,13 @@ export function Chart({ data }: { data: ReadonlyData<ChartData> }) {
     .map((entry, index) => `${entry.label}: ${entry.value}${pie && hidden.value.includes(index) ? ' (hidden)' : ''}`)
     .join(', ');
   return (
-    <column data-testid={`chart-${data.kind}`} className="mt-3 rounded-2xl border border-line bg-surface-sunken shadow-sm">
+    <view data-testid={`chart-${data.kind}`} className="mt-3 rounded-2xl border border-line bg-surface-sunken shadow-sm">
       <text data-testid="chart-title" className="px-3.5 pt-3 pb-0.5 text-[10px] font-semibold tracking-widest uppercase text-muted">
         {data.title}
       </text>
-      <row className={pie ? '' : 'px-2 gap-1'}>
+      <view className={pie ? 'flex-row' : 'flex-row px-2 gap-1'}>
         {!pie && (
-          <stack data-testid="chart-y-axis" className="w-7 h-36">
+          <view data-testid="chart-y-axis" className="grid *:col-start-1 *:row-start-1 w-7 h-36">
             {scale.ticks.map((value, index) => (
               <text
                 key={`tick-${index}`}
@@ -50,9 +50,9 @@ export function Chart({ data }: { data: ReadonlyData<ChartData> }) {
                 {axisNumber(value)}
               </text>
             ))}
-          </stack>
+          </view>
         )}
-        <stack className={pie ? 'grow basis-0 min-w-0 h-52' : 'grow basis-0 min-w-0 h-36'}>
+        <view className={pie ? 'grid *:col-start-1 *:row-start-1 grow basis-0 min-w-0 h-52' : 'grid *:col-start-1 *:row-start-1 grow basis-0 min-w-0 h-36'}>
           {!pie &&
             scale.ticks.map((value, index) => (
               <vector
@@ -94,14 +94,14 @@ export function Chart({ data }: { data: ReadonlyData<ChartData> }) {
             style={pie ? undefined : { height: plotHeight }}
           />
           {!pie && item && (
-            <grid className="absolute left-0 right-0 px-1" style={{ top: axisTop, height: axisSpan, gridTemplateColumns: data.series.length }}>
+            <view className="grid absolute left-0 right-0 px-1" style={{ top: axisTop, height: axisSpan, gridTemplateColumns: data.series.length }}>
               {data.series.map((_, index) => (
-                <column key={`pointer-${index}`} className={selected.value === index ? 'h-full bg-line-strong/20' : 'h-full'} />
+                <view key={`pointer-${index}`} className={selected.value === index ? 'h-full bg-line-strong/20' : 'h-full'} />
               ))}
-            </grid>
+            </view>
           )}
           {pie && (
-            <row data-testid="chart-legend" className="absolute left-0 right-0 bottom-1 flex-wrap justify-center px-2 gap-3">
+            <view data-testid="chart-legend" className="flex-row absolute left-0 right-0 bottom-1 flex-wrap justify-center px-2 gap-3">
               {data.series.map((entry, index) => (
                 <button
                   key={`${index}-${entry.label}`}
@@ -110,30 +110,30 @@ export function Chart({ data }: { data: ReadonlyData<ChartData> }) {
                   onClick={() => toggle(index)}
                   className="min-w-0 p-0 rounded bg-transparent text-muted"
                 >
-                  <row className="items-center gap-1.5">
-                    <spacer
+                  <view className="flex-row items-center gap-1.5">
+                    <view
                       className="w-2 h-2 rounded-full"
                       style={{ backgroundColor: hidden.value.includes(index) ? 'text-faint' : palette[index % palette.length] }}
                     />
                     <text className={hidden.value.includes(index) ? 'text-[11px] leading-none text-faint' : 'text-[11px] leading-none'}>
                       {entry.label}
                     </text>
-                  </row>
+                  </view>
                 </button>
               ))}
-            </row>
+            </view>
           )}
           {item && (
             <text data-testid="chart-tooltip" className="absolute top-1 right-1 px-2 py-1 rounded-lg border border-line bg-surface text-xs shadow-sm">
               {`${item.label}: ${pie ? `${percentages[visible.indexOf(selected.value)] ?? 0}%` : item.value}`}
             </text>
           )}
-        </stack>
-      </row>
+        </view>
+      </view>
       {!pie && (
-        <row className="px-2 pb-2 gap-1">
-          <spacer className="w-7" />
-          <grid data-testid="chart-x-axis" className="grow basis-0 min-w-0 px-1" style={{ gridTemplateColumns: data.series.length }}>
+        <view className="flex-row px-2 pb-2 gap-1">
+          <view className="w-7" />
+          <view data-testid="chart-x-axis" className="grid grow basis-0 min-w-0 px-1" style={{ gridTemplateColumns: data.series.length }}>
             {data.series.map((entry, index) => (
               <text
                 key={`${index}-${entry.label}`}
@@ -143,9 +143,9 @@ export function Chart({ data }: { data: ReadonlyData<ChartData> }) {
                 {entry.label}
               </text>
             ))}
-          </grid>
-        </row>
+          </view>
+        </view>
       )}
-    </column>
+    </view>
   );
 }

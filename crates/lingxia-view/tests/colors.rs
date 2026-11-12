@@ -1,7 +1,8 @@
 use lingxia_view::protocol::field::{
-    BACKGROUND, COLOR, FONT_SIZE, HEIGHT, INSET_LEFT, INSET_TOP, WIDTH,
+    BACKGROUND, COLOR, DISPLAY, FONT_SIZE, GRID_COLUMN, GRID_ROW, HEIGHT, INSET_LEFT, INSET_TOP,
+    WIDTH,
 };
-use lingxia_view::protocol::tag::{COLUMN, SEARCH, STACK, TEXT};
+use lingxia_view::protocol::tag::{COLUMN, SEARCH, TEXT};
 use lingxia_view::{
     Renderer,
     protocol::{color, decode},
@@ -58,17 +59,30 @@ fn translucent_stack_layers_composite_in_order_without_premultiplying_twice() {
     let mut wire = vec![];
     node(
         &mut wire,
-        STACK,
+        COLUMN,
         -1,
         "",
-        json!([WIDTH, 64, HEIGHT, 64, BACKGROUND, "#204060"]),
+        json!([
+            WIDTH, 64, HEIGHT, 64, BACKGROUND, "#204060", DISPLAY, "grid"
+        ]),
     );
     node(
         &mut wire,
         COLUMN,
         0,
         "",
-        json!([WIDTH, 32, HEIGHT, 64, BACKGROUND, "#00000080"]),
+        json!([
+            WIDTH,
+            32,
+            HEIGHT,
+            64,
+            BACKGROUND,
+            "#00000080",
+            GRID_COLUMN,
+            "1",
+            GRID_ROW,
+            "1"
+        ]),
     );
     node(
         &mut wire,
@@ -83,7 +97,11 @@ fn translucent_stack_layers_composite_in_order_without_premultiplying_twice() {
             BACKGROUND,
             "#ff000000",
             INSET_LEFT,
-            32
+            32,
+            GRID_COLUMN,
+            "1",
+            GRID_ROW,
+            "1"
         ]),
     );
     node(
@@ -99,7 +117,11 @@ fn translucent_stack_layers_composite_in_order_without_premultiplying_twice() {
             BACKGROUND,
             "#ffffff80",
             INSET_TOP,
-            32
+            32,
+            GRID_COLUMN,
+            "1",
+            GRID_ROW,
+            "1"
         ]),
     );
     let frame = Renderer::default()

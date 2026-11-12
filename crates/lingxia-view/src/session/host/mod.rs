@@ -1939,8 +1939,15 @@ impl<A: PlatformAdapter> Inner<A> {
             main.bootstrap_timer += 1;
             main.pending = false;
             main.telemetry.stats.abandon_reveal();
-            let repeated = main.failure.as_ref().is_some_and(|last| last.error == error);
-            main.failure_repeats = if repeated { main.failure_repeats + 1 } else { 1 };
+            let repeated = main
+                .failure
+                .as_ref()
+                .is_some_and(|last| last.error == error);
+            main.failure_repeats = if repeated {
+                main.failure_repeats + 1
+            } else {
+                1
+            };
             if main.failure_repeats >= STALL_AFTER {
                 main.stalled_at = self
                     .adapter

@@ -244,7 +244,7 @@ fn a_run_spaces_its_own_letters() {
     let width = |span: &str| {
         let display = layout(
             &format!(
-                "h('row',{{}},h('text',{{'data-testid':'p',style:{{fontSize:16}}}},'ab ',h('span',{{style:{{{span}}}}},'cdef')))"
+                "h('view',{{style:{{flexDirection:'row'}}}},h('text',{{'data-testid':'p',style:{{fontSize:16}}}},'ab ',h('span',{{style:{{{span}}}}},'cdef')))"
             ),
             400,
         );
@@ -261,7 +261,7 @@ fn a_run_spaces_its_own_letters() {
 fn fallback_faces_are_the_same_in_every_font_context() {
     let face = || {
         let display = layout(
-            "h('row',{},h('text',{'data-testid':'p',style:{fontSize:14,fontWeight:500}},'中文'))",
+            "h('view',{style:{flexDirection:'row'}},h('text',{'data-testid':'p',style:{fontSize:14,fontWeight:500}},'中文'))",
             400,
         );
         let index = display.nodes.iter().position(|n| n.test_id == "p").unwrap();

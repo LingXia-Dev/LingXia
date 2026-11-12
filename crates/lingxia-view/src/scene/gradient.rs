@@ -461,7 +461,7 @@ mod tests {
 
     fn pixel(source: &str, size: u16, [x, y]: [usize; 2]) -> [u8; 4] {
         let source = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{style:{{width:{size},height:{size},backgroundImage:{source}}}}})}}"
+            "function render(){{return h('view',{{style:{{width:{size},height:{size},backgroundImage:{source}}}}})}}"
         ));
         let mut page = crate::ViewSession::new(&source).unwrap();
         let frame = page.layout(size, size, 1.0).unwrap().rasterize().unwrap();

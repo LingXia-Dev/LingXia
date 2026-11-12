@@ -9,7 +9,7 @@ const render = (view, env) => { const out = decode(prepare(view, { env })); comm
 
 test('a date picker opens on its editor, moves by keys and commits an ISO date', () => {
   reset();
-  const view = () => h('column', {});
+  const view = () => h('view', {});
   const env = { pointer: 'fine', firstWeekday: 2, displayLanguage: 'en-GB' };
   assert.equal(open({ kind: 'text' }), false);
   assert.equal(open({ kind: 'date', value: '2026-10-29', min: '2026-10-05', max: '2026-11-20' }), true);
@@ -30,7 +30,7 @@ test('a date picker opens on its editor, moves by keys and commits an ISO date',
 
 test('on touch a tap picks a day and Done commits it; Cancel and Escape keep the old value', () => {
   reset();
-  const view = () => h('column', {});
+  const view = () => h('view', {});
   const env = { pointer: 'coarse', displayLanguage: 'zh-Hans-CN' };
   open({ kind: 'date', value: '2026-10-29' });
   let nodes = render(view, env);
@@ -52,7 +52,7 @@ test('on touch a tap picks a day and Done commits it; Cancel and Escape keep the
 
 test('a time picker honours the step and the hour cycle, and takes typed digits', () => {
   reset();
-  const view = () => h('column', {});
+  const view = () => h('view', {});
   const env = { pointer: 'fine', hourCycle: 'h12', displayLanguage: 'en-US' };
   open({ kind: 'time', value: '13:15', step: 900 });
   const nodes = render(view, env);
@@ -73,7 +73,7 @@ test('a select picker lists options, skips disabled ones and types ahead', () =>
   reset();
   const options = [{ value: 'a', label: 'Apple' }, { value: 'b', label: 'Banana', enabled: false }, { value: 'c', label: 'Cherry' }, { value: 'd', label: 'Date' }];
   assert.equal(open({ kind: 'select', options, selected: 0, label: 'Fruit' }), true);
-  const nodes = render(() => h('column', {}), { pointer: 'fine' });
+  const nodes = render(() => h('view', {}), { pointer: 'fine' });
   assert.equal(nodes.find(n => n.testId === 'lx-picker-option-1').props.enabled, 0);
   pickerKey('ArrowDown');
   pickerKey('Enter');
@@ -91,7 +91,7 @@ test('on touch every picker sheet opens with Cancel, a title and Done on top', (
   ]) {
     reset();
     open(request);
-    const nodes = render(() => h('column', {}), { pointer: 'coarse', hourCycle: 'h12', displayLanguage: 'en-US' });
+    const nodes = render(() => h('view', {}), { pointer: 'coarse', hourCycle: 'h12', displayLanguage: 'en-US' });
     const sheet = nodes.find(n => n.testId === 'lx-picker');
     const toolbar = sheet.children[0];
     assert.deepEqual(toolbar.children.map(n => n.testId), ['lx-picker-cancel', 'lx-picker-title', 'lx-picker-done'], request.kind);

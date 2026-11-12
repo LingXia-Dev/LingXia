@@ -74,31 +74,31 @@ test('spread and explicit props obey one element contract', () => {
   clean('const x = <input bind={draft} aria-label="Note" placeholder="Write" type="text" inputMode="numeric" autoFocus onSubmit={save} disabled/>;');
   clean('const x = <textarea aria-label="Note" value="" onInput={change} disabled={false}/>;');
   flags('const x = <textarea enabled={false}/>;', /UI_PROP: enabled/);
-  clean('const x = <checkbox value={true}><row><text>Task</text></row></checkbox>;');
+  clean('const x = <checkbox value={true}><view className="flex-row"><text>Task</text></view></checkbox>;');
   clean('const x = <switch aria-label="Task" bind={on}/>;');
   for (const prop of ['secure', 'keyboard="text"', 'onChange={find}']) flags(`const x=<input type="search" ${prop}/>;`, /UI_PROP/);
   for (const name of ['onClick', 'onInput', 'onSubmit']) flags(`const x=<slider aria-label="Range" ${name}={update}/>;`, /UI_PROP/);
   flags('const x=<radio-option/>;', /UI_TAG/);
   flags('const x=<radio onClick={change}/>;', /UI_PROP/);
   flags('const icon=<vector paths={paths} onClick={click}/>;', /UI_PROP/);
-  for (const [tag, prop] of [['text', 'lines={2}'], ['grid', 'columns={3}'], ['image', 'fit="cover"']]) flags(`const x=<${tag} ${prop}/>;`, /UI_PROP/);
+  for (const [tag, prop] of [['text', 'lines={2}'], ['view', 'columns={3}'], ['image', 'fit="cover"']]) flags(`const x=<${tag} ${prop}/>;`, /UI_PROP/);
 });
 
 test('inline styles are CSS-named and checked per element', () => {
-  clean('const x=<grid style={{gridTemplateColumns:3}}><text style={{lineClamp:2}}>Card</text></grid>;');
-  clean('const x=<stack><text style={{position:"absolute",top:-5,left:10}}>Top</text></stack>;');
-  clean('const x=<column style={{display:"grid",gridTemplateColumns:3}}/>;');
+  clean('const x=<view className="grid" style={{gridTemplateColumns:3}}><text style={{lineClamp:2}}>Card</text></view>;');
+  clean('const x=<view className="grid *:col-start-1 *:row-start-1"><text style={{position:"absolute",top:-5,left:10}}>Top</text></view>;');
+  clean('const x=<view style={{display:"grid",gridTemplateColumns:3}}/>;');
   flags('const x=<text style={{gridTemplateColumns:3}}>A</text>;', /UI_STYLE: gridTemplateColumns is not supported on <text>/);
   flags('const x=<text style={{offset:{x:1}}}/>;', /UI_STYLE: unknown style property offset/);
-  flags('const view = <column style={{animation:null}}/>;', /UI_ANIMATION/);
+  flags('const view = <view style={{animation:null}}/>;', /UI_ANIMATION/);
 });
 
 test('class diagnostics separate unknown, unsupported and wrong-element utilities and report all at once', async () => {
   await project({ 'page.tsx': `export function render(view) {
-  return <column className="grid-cols-2 not-a-utility transition-[width]">
+  return <view className="grid-cols-2 not-a-utility transition-[width]">
     <text className={view.data.on ? "grid-cols-2" : "items-center"}>A</text>
-    <column className="active:bg-danger hover:p-4"/>
-  </column>;
+    <view className="active:bg-danger hover:p-4"/>
+  </view>;
 }` }, async (root, build) => {
     const error = await build().catch(error => error);
     const lines = error.message.split('\n');
@@ -108,7 +108,7 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
       /^page.tsx:2:\d+: UI_CLASS_UNKNOWN: not-a-utility is not a Tailwind utility$/,
       /^page.tsx:2:\d+: UI_CLASS_UNSUPPORTED: transition-\[width\]: the native renderer does not support transition of width animates layout/,
       /^page.tsx:3:\d+: UI_CLASS_ELEMENT: items-center does not apply to <text>; layout classes go on the element that holds it$/,
-      /^page.tsx:4:\d+: UI_CLASS_ELEMENT: active:bg-danger needs a control; <column> is never pressed$/,
+      /^page.tsx:4:\d+: UI_CLASS_ELEMENT: active:bg-danger needs a control; <view> is never pressed$/,
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: hover:p-4: hover styles change paint only, not paddingTop, paddingRight, paddingBottom, paddingLeft$/,
     ]) assert.ok(lines.some(line => pattern.test(line)), `${pattern} in\n${error.message}`);
     await assert.rejects(readFile(join(root, 'dist/page.js')), { code: 'ENOENT' });
@@ -116,10 +116,10 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
 });
 
 test('flex-only utilities on a grid name the grid equivalent', async () => {
-  await project({ 'page.tsx': 'export function render(){return <grid className="flex-wrap flex-col items-center content-between justify-items-center"/>}' }, async (root, build) => {
+  await project({ 'page.tsx': 'export function render(){return <view className="grid flex-wrap flex-col items-center content-between justify-items-center"/>}' }, async (root, build) => {
     const message = (await build().catch(error => error)).message;
-    assert.match(message, /flex-wrap does not apply to <grid>; grid items wrap into rows by themselves/);
-    assert.match(message, /flex-col does not apply to <grid>; use grid-flow-col/);
+    assert.match(message, /flex-wrap does not apply to <view className="grid">; grid items wrap into rows by themselves/);
+    assert.match(message, /flex-col does not apply to <view className="grid">; use grid-flow-col/);
     assert.doesNotMatch(message, /items-center|content-between|justify-items-center/);
   });
 });
@@ -135,7 +135,7 @@ test('motion classes are ordinary utilities', async () => {
 });
 
 test('unknown utilities name the nearest form the native renderer supports', async () => {
-  await project({ 'page.tsx': 'export function render(){return <column className="itmes-center md:roundd-lg tabluar-nums zzqqxx"/>}' }, async (root, build) => {
+  await project({ 'page.tsx': 'export function render(){return <view className="itmes-center md:roundd-lg tabluar-nums zzqqxx"/>}' }, async (root, build) => {
     const message = (await build().catch(error => error)).message;
     assert.match(message, /UI_CLASS_UNKNOWN: itmes-center is not a Tailwind utility; nearest supported: items-center/);
     assert.match(message, /UI_CLASS_UNKNOWN: md:roundd-lg is not a Tailwind utility; nearest supported: md:rounded-lg/);
@@ -147,7 +147,7 @@ test('unknown utilities name the nearest form the native renderer supports', asy
 test('class usage follows lexical constants, hidden branches and imported maps to their defining module', async () => {
   await project({ 'styles.ts': 'export const bad = "nope-utility"; export const variants = {good:"text-sm", bad};' }, async (root, build) => {
     for (const expression of ['"nope-utility"', 'view.data.active ? "text-sm" : "nope-utility"', 'view.data.active && "nope-utility"', 'local', '(local as string)']) {
-      await writeFile(join(root, 'page.tsx'), `const local = 'nope-utility'; export function render(view){return <column className={${expression}}/>}`);
+      await writeFile(join(root, 'page.tsx'), `const local = 'nope-utility'; export function render(view){return <view className={${expression}}/>}`);
       await assert.rejects(build(), /page.tsx:1:\d+: UI_CLASS_UNKNOWN: nope-utility/);
     }
     for (const expression of ['bad', 'variants[view.data.mode]']) {
@@ -163,14 +163,14 @@ test('class usage follows lexical constants, hidden branches and imported maps t
 
 test('runtime errors in compiled pages name the JSX site and component chain', async () => {
   await project({ 'page.tsx': `function Card({ children }) {
-  return <column>{children}</column>;
+  return <view>{children}</view>;
 }
 export function render() {
   return <Card><text onClick={() => {}}>x</text></Card>;
 }` }, async (root, build) => {
     // A spread the checker cannot see past reaches the runtime, which reports the JSX chain.
     await writeFile(join(root, 'page.tsx'), `function Card({ children }) {
-  return <column>{children}</column>;
+  return <view>{children}</view>;
 }
 const extra = JSON.parse('{"onClick":1}');
 export function render() {
@@ -178,13 +178,13 @@ export function render() {
 }`);
     await build();
     await load(root);
-    assert.throws(() => describePage(), /UI_PROP: onClick is not a property of <text>\n  at <text> \(page.tsx:6:16\)\n  at <column> \(page.tsx:2:10\)\n  at Card \(page.tsx:6:10\)/);
+    assert.throws(() => describePage(), /UI_PROP: onClick is not a property of <text>\n  at <text> \(page.tsx:6:16\)\n  at <view> \(page.tsx:2:10\)\n  at Card \(page.tsx:6:10\)/);
   });
 });
 
 test('wrapper components forward children; a page config naming a renderer is refused', async () => {
   await project({ 'page.tsx': `
-      function Card(props){return <column {...props}/>}
+      function Card(props){return <view {...props}/>}
       export function render(){return <Card><text children="Replaced">Visible{true}{false}{null}{''}</text></Card>}
     ` }, async (root, build) => {
     await build(); await load(root);
@@ -204,7 +204,7 @@ test('compiled transparent and empty components follow the public children contr
   await project({ 'page.tsx': `
       function Forward({children}: {children: JSX.Element}) { return children; }
       function Optional(): JSX.Element | null { return null; }
-      export function render() { return <column><Forward><text>One</text></Forward><Optional/></column>; }
+      export function render() { return <view><Forward><text>One</text></Forward><Optional/></view>; }
     ` }, async (root, build) => {
     await build(); await load(root);
     const column = tree(describePage());
@@ -213,11 +213,11 @@ test('compiled transparent and empty components follow the public children contr
 });
 
 test('page builds reject invalid keyframes and inline animation before installing a module', async () => {
-  await project({ 'page.tsx': 'export function render(){return <column style={{ animation: "spin 1s" }}><text>Pending</text></column>;}' }, async (root, build) => {
+  await project({ 'page.tsx': 'export function render(){return <view style={{ animation: "spin 1s" }}><text>Pending</text></view>;}' }, async (root, build) => {
     await assert.rejects(build(), /UI_ANIMATION: inline animation is not supported; use animate-\* utilities/);
     await assert.rejects(readFile(join(root, 'dist/page.js')), { code: 'ENOENT' });
     await writeFile(join(root, 'tokens.css'), '@theme {--animate-enter:enter 1s;@keyframes enter{from{width:0px}to{width:10px}}}');
-    await writeFile(join(root, 'page.tsx'), 'import "./tokens.css";export function render(){return <column className="animate-enter"/>;}');
+    await writeFile(join(root, 'page.tsx'), 'import "./tokens.css";export function render(){return <view className="animate-enter"/>;}');
     await assert.rejects(build(), /UI_ANIMATION|UI_CLASS_UNSUPPORTED/);
     await writeFile(join(root, 'tokens.css'), '@theme {--animate-enter:enter 1s;@keyframes enter{from{opacity:0}to{opacity:1}}}');
     await build();
@@ -227,12 +227,12 @@ test('page builds reject invalid keyframes and inline animation before installin
 test('compiler emits executable ESM UI, carries the action catalog and preserves page config', async () => {
   await project({
     'page.json': '{"title":"Hello"}',
-    'page.tsx': `export function render() { return <column>
-      <stack><text>Back</text><text style={{position:"absolute",left:12,top:-4}}>Front</text></stack>
-      <grid style={{gridTemplateColumns:2}}><text style={{lineClamp:2}}>Hello, world!</text><text>Second card</text></grid>
+    'page.tsx': `export function render() { return <view>
+      <view className="grid *:col-start-1 *:row-start-1"><text>Back</text><text style={{position:"absolute",left:12,top:-4}}>Front</text></view>
+      <view className="grid" style={{gridTemplateColumns:2}}><text style={{lineClamp:2}}>Hello, world!</text><text>Second card</text></view>
       <input type="search" aria-label="Search" placeholder="Find a moment"/><slider aria-label="Volume" value={40}/>
       <radio aria-label="Repeat" value="daily" options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"}]} />
-    </column>; }`,
+    </view>; }`,
   }, async root => {
     const catalog = { __names: ['increment'], __modes: { increment: 'call' } };
     await buildPages(root, ['page.tsx'], join(root, 'dist'), { 'page.tsx': catalog });
@@ -243,7 +243,7 @@ test('compiler emits executable ESM UI, carries the action catalog and preserves
     const named = text => records.find(record => record.text === text);
     assert.equal(named('Hello, world!').props.textLines, 2);
     assert.deepEqual([named('Front').props.insetLeft, named('Front').props.insetTop], [12, -4]);
-    assert.equal(records.find(record => record.tag === 'grid').props.gridTemplateColumns, 'repeat(2, minmax(0, 1fr))');
+    assert.equal(records.find(record => record.props.display === 'grid' && record.props.gridTemplateColumns).props.gridTemplateColumns, 'repeat(2, minmax(0, 1fr))');
     assert.equal(records.find(record => record.tag === 'search').props.placeholder, 'Find a moment');
     assert.equal(records.find(record => record.tag === 'slider').props.sliderValue, 40);
     assert.deepEqual(records.filter(record => record.tag === 'radio-option').map(record => record.text), ['Daily', 'Weekly']);
@@ -280,7 +280,7 @@ test('@font-face declares bundled faces the page names by family, with a generic
     'theme.css': '@font-face { font-family: "Brand Serif"; src: url("./brand.ttf") format("truetype"); font-weight: 400; }\n@theme { --font-brand: "Brand Serif", serif; }',
     'page.tsx': `
       import './theme.css';
-      export function render() { return <column><text className="font-brand">A</text><text style={{ fontFamily: 'Brand Serif, monospace' }}>B</text><text className="font-serif">C</text></column>; }
+      export function render() { return <view><text className="font-brand">A</text><text style={{ fontFamily: 'Brand Serif, monospace' }}>B</text><text className="font-serif">C</text></view>; }
     `,
   }, async (root, build) => {
     await build();
@@ -337,7 +337,7 @@ test('controls a screen reader announces need a name, and the message names the 
     '<button onClick={f}>Save</button>',
     '<button onClick={f}>{label}</button>',
     '<button onClick={f} aria-label="Close"><image src="x.png" alt=""/></button>',
-    '<button onClick={f}><row><text>Pay</text></row></button>',
+    '<button onClick={f}><view className="flex-row"><text>Pay</text></view></button>',
     '<input {...props}/>',
     '<image src="x.png" alt=""/>',
   ]) clean(`export function render(){ return ${source}; }`);
@@ -347,23 +347,23 @@ test('build problems read top-down: the page first in line order, imports after,
   await project({
     'page.tsx': `import { Card } from './card';
 export function render() {
-  return <column className="itmes-center">
+  return <view className="itmes-center">
     <text className="cursor-pointer">A</text>
     <Card/>
     <text className="cursor-pointer">B</text>
     <button bogus={1}>Go</button>
-  </column>;
+  </view>;
 }`,
-    'card.tsx': 'export function Card() { return <column className="skew-x-3"><image src="a.png"/></column>; }',
+    'card.tsx': 'export function Card() { return <view className="skew-x-3"><image src="a.png"/></view>; }',
   }, async (root, build) => {
     const lines = (await build().catch(error => error)).message.split('\n');
     assert.match(lines[0], /page.tsx: 5 authoring problems/);
     assert.deepEqual(lines.slice(1).map(line => line.match(/^([\w.]+):([\d:, ]+): (UI_\w+)/).slice(1, 4)), [
-      ['page.tsx', '3:28', 'UI_CLASS_UNKNOWN'],
+      ['page.tsx', '3:26', 'UI_CLASS_UNKNOWN'],
       ['page.tsx', '4:21, 6:21', 'UI_CLASS_UNSUPPORTED'],
       ['page.tsx', '7:13', 'UI_PROP'],
-      ['card.tsx', '1:51', 'UI_CLASS_UNSUPPORTED'],
-      ['card.tsx', '1:62', 'UI_A11Y'],
+      ['card.tsx', '1:49', 'UI_CLASS_UNSUPPORTED'],
+      ['card.tsx', '1:60', 'UI_A11Y'],
     ]);
   });
 });
@@ -374,10 +374,10 @@ test('dev builds name the author line of a runtime error', async () => {
   return <text>{first.price.toFixed(2)}</text>;
 }
 export function render() {
-  return <column>
+  return <view>
     <button onClick={() => {}}>Clear</button>
     <Total items={[{}]}/>
-  </column>;
+  </view>;
 }` }, async root => {
     await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
     const source = await load(root);
@@ -398,10 +398,10 @@ test('UI_PERF warnings name literal row sets, per-row layers and oversized bundl
 const tags = Array.from({ length: 60 }, (_, i) => 'tag' + i);
 const chips = ['a', 'b', 'c'];
 function Row({ label }) {
-  return <row className="backdrop-blur-md hover:opacity-50"><text>{label}</text></row>;
+  return <view className="flex-row backdrop-blur-md hover:opacity-50"><text>{label}</text></view>;
 }
 export function render() {
-  return <column>
+  return <view>
     {tags.map(tag => <text key={tag}>{tag}</text>)}
     {Array.from({ length: 80 }, (_, i) => <text key={String(i)}>{i}</text>)}
     {chips.map(chip => <text key={chip} className="opacity-50">{chip}</text>)}
@@ -409,14 +409,14 @@ export function render() {
     <image src="huge.png" alt="" className="w-10 h-10" />
     <image src="small.png" alt="" className="w-10 h-10" />
     <image src="heavy.png" alt="" className="w-10 h-10" />
-  </column>;
+  </view>;
 }`,
     'huge.png': png(4000, 3000), 'small.png': png(512, 512), 'heavy.png': Buffer.alloc(9 * 1048576),
   }, async (root, build) => {
     const { warnings } = await build();
     await load(root);
     const codes = warnings.map(line => line.match(/^page.tsx:([\d:, ]+): UI_PERF: (.*)$/).slice(1, 3));
-    assert.deepEqual(codes.map(([place]) => place), ['5:25', '9:6', '10:6', '11:51', '13:16', '15:16']);
+    assert.deepEqual(codes.map(([place]) => place), ['5:26', '9:6', '10:6', '11:51', '13:16', '15:16']);
     assert.match(codes[0][1], /backdrop-blur-md composites a layer for every row/);
     assert.match(codes[1][1], /^60 rows built at once; above 50 use <List>/);
     assert.match(codes[2][1], /^80 rows/);
@@ -432,12 +432,12 @@ test('UI_STYLE_STATIC warns on a style object of fixed values only; computed and
 export function render() {
   const { env } = useView();
   const wide = env.viewport.width > 600;
-  return <column>
+  return <view>
     <text style={{ fontSize: 18, color: 'text-muted' }}>fixed</text>
     <text style={{ fontSize: wide ? 22 : 18, color: 'accent' }}>computed</text>
     <view style={{ positionArea: 'bottom' }} id="tip" popover><text>tip</text></view>
-    <spacer style={{ width: \`\${env.viewport.width / 2}px\` }} />
-  </column>;
+    <view style={{ width: \`\${env.viewport.width / 2}px\` }} />
+  </view>;
 }`,
   }, async (root, build) => {
     const { warnings } = await build();
@@ -448,9 +448,9 @@ export function render() {
 });
 
 test('a component keyed by its own function name fails the build: release builds rename functions', () => {
-  flags('function A(){return <text>a</text>} const parts=[A]; export function render(){ return <column>{parts.map(Part => <Part key={Part.name} />)}</column>; }',
+  flags('function A(){return <text>a</text>} const parts=[A]; export function render(){ return <view>{parts.map(Part => <Part key={Part.name} />)}</view>; }',
     /UI_KEY: Part\.name is not a stable key; release builds rename functions, so key by a label or index/);
-  clean('function A(){return <text>a</text>} const parts=[A]; export function render(){ return <column>{parts.map((Part, i) => <Part key={String(i)} />)}</column>; }');
+  clean('function A(){return <text>a</text>} const parts=[A]; export function render(){ return <view>{parts.map((Part, i) => <Part key={String(i)} />)}</view>; }');
 });
 
 test('top-level components get a compile-time id from their module path and declaration name', () => {
@@ -463,7 +463,7 @@ test('top-level components get a compile-time id from their module path and decl
 test('a pressable control around a single control fails the build; controls beside content are fine', () => {
   flags('export function render(){ return <button onClick={() => {}}><switch value={true} onChange={() => {}} aria-label="x" /></button>; }',
     /UI_BUTTON: <button> holds only a <switch>; put the action on that control/);
-  clean('export function render(){ return <button onClick={() => {}}><row><text>Wi-Fi</text><switch value={true} onChange={() => {}} aria-label="Wi-Fi" /></row></button>; }');
+  clean('export function render(){ return <button onClick={() => {}}><view className="flex-row"><text>Wi-Fi</text><switch value={true} onChange={() => {}} aria-label="Wi-Fi" /></view></button>; }');
 });
 
 test('closures a render hands on keep their identity while their captures are unchanged', () => {
@@ -475,13 +475,13 @@ export function render({ data }) {
   let count = 0; count++;
   const run = () => local;
   const self = () => self();
-  return <column>
+  return <view>
     <List items={a} getKey={String} renderItem={i => <text>{label(i) + Math.max(i, 0)}</text>} />
     <List items={a} getKey={String} renderItem={i => <text>{String(local)}</text>} />
     <List items={a} getKey={String} renderItem={i => <text>{String(mutable)}</text>} />
     <List items={a} getKey={String} renderItem={function (i) { return <text>{String(this)}</text>; }} />
     <button onClick={data.ok ? () => count : run}>Go</button>
-  </column>;
+  </view>;
 }`;
   const out = stabilizeClosures(source, 'pages/a/index.tsx', 'pages/a/index.tsx');
   const wrapped = [...out.matchAll(/__lxFn\("[^"]+", \((.*?)\), \[([^\]]*)\]\)/g)].map(m => [m[1].slice(0, 12), m[2]]);

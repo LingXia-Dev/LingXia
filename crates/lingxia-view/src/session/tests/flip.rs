@@ -13,7 +13,7 @@ fn frame_time(index: u64) -> Duration {
 /// Red is wider, so the column at x = 55 shows it even where the rows cross.
 fn page() -> ViewSession {
     let module = super::source(
-        "function render(){const flipped=useLocal('flipped',false);const rows=[['a','#ff0000'],['b','#00ff00'],['c','#0000ff']];const order=flipped.value?[...rows].reverse():rows;return h('page',{style:{backgroundColor:'#ffffff'}},h('button',{'data-testid':'toggle',onClick(){flipped.set(!flipped.value)},style:{position:'absolute',left:150,top:0,width:40,height:20}},'T'),h('column',{style:{width:70,alignItems:'flex-start'}},order.map(([key,color])=>h('view',{key,'data-testid':key,style:{height:20,width:key==='a'?60:50,backgroundColor:color,transition:{properties:['layout'],durationMs:200,delayMs:0,easing:'linear'}}}))))}",
+        "function render(){const flipped=useLocal('flipped',false);const rows=[['a','#ff0000'],['b','#00ff00'],['c','#0000ff']];const order=flipped.value?[...rows].reverse():rows;return h('page',{style:{backgroundColor:'#ffffff'}},h('button',{'data-testid':'toggle',onClick(){flipped.set(!flipped.value)},style:{position:'absolute',left:150,top:0,width:40,height:20}},'T'),h('view',{style:{width:70,alignItems:'flex-start'}},order.map(([key,color])=>h('view',{key,'data-testid':key,style:{height:20,width:key==='a'?60:50,backgroundColor:color,transition:{properties:['layout'],durationMs:200,delayMs:0,easing:'linear'}}}))))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     page.set_animation_surface(Some(SURFACE), Duration::ZERO)

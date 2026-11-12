@@ -51,7 +51,7 @@ const contextKeys = ['tag', 'direction', 'inControl', 'inText', 'inLink'];
 function sameContext(a, b, old) {
   for (let i = 0; i < contextKeys.length; i++) if (a[contextKeys[i]] !== b[contextKeys[i]]) return false;
   const budget = { left: compareBudget };
-  return same(a.typography, b.typography, old, budget) && same(a.extra, b.extra, old, budget) &&
+  return same(a.typography, b.typography, old, budget) && same(a.extra, b.extra, old, budget) && same(a.every, b.every, old, budget) &&
     same(a.sibling, b.sibling, old, budget) && same(a.popovers, b.popovers, old, budget);
 }
 

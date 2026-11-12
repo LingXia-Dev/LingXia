@@ -57,11 +57,11 @@ export function VideoControls({ player, className, 'data-testid': testId, [tone]
   };
   const toggle = () => ended ? player.seek(0).then(() => player.play()) : paused ? player.play() : player.pause();
   const label = ended ? 'Replay' : paused ? 'Play' : 'Pause';
-  return h('column', { className, 'data-testid': testId, ...(className ? {} : { style: { color } }) },
-    error && h('row', { 'data-testid': id('error'), role: 'alert', style: { alignItems: 'center', gap: 8, paddingLeft: 11, paddingRight: 11 } },
+  return h('view', { className, 'data-testid': testId, ...(className ? {} : { style: { color } }) },
+    error && h('view', { 'data-testid': id('error'), role: 'alert', style: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 11, paddingRight: 11 } },
       h('text', { style: { flexGrow: 1, flexBasis: 0, fontSize: 12, color: 'danger' } }, error.message),
       error.recoverable && h('button', { 'data-testid': id('retry'), onClick: () => player.retry(), style: { fontSize: 12 } }, 'Retry')),
-    h('row', { style: { alignItems: 'center', gap: 2 } },
+    h('view', { style: { flexDirection: 'row', alignItems: 'center', gap: 2 } },
       iconButton(color, id('play'), label, ended ? 'replay' : paused ? 'play' : 'pause', toggle, { 'aria-busy': buffering }),
       live
         ? h('text', { 'data-testid': id('live'), style: { flexGrow: 1, fontSize: 12, fontWeight: 600, color: 'accent' } }, 'LIVE')
@@ -89,10 +89,10 @@ function FullscreenVideo({ name }) {
     'data-testid': 'lx-fullscreen-video',
     style: { width: '100%', height: '100%', maxWidth: '100%', maxHeight: '100%', marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0,
       paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0, borderRadius: 0, backgroundColor: '#000000' } },
-    h('column', { style: { flexGrow: 1, justifyContent: 'center' } },
+    h('view', { style: { flexGrow: 1, justifyContent: 'center' } },
       // Until the player has a frame the full screen view shows what the page's view does.
       h('video', { player, poster: posterOf(name), style: { width: '100%', flexGrow: 1, objectFit: 'contain' } })),
-    h('column', { style: { paddingLeft: safeArea.left, paddingRight: safeArea.right, paddingBottom: safeArea.bottom } },
+    h('view', { style: { paddingLeft: safeArea.left, paddingRight: safeArea.right, paddingBottom: safeArea.bottom } },
       h(VideoControls, { player, [tone]: '#ffffff', 'data-testid': 'lx-fullscreen-controls' })));
 }
 

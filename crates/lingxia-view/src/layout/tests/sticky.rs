@@ -33,7 +33,7 @@ fn top(display: &crate::DisplayList, id: &str) -> f32 {
         .bounds[1]
 }
 
-const SECTIONS: &str = "h('scroll',{'data-testid':'s',style:{height:200}},h('column',{'data-testid':'a'},h('text',{'data-testid':'ha',style:{position:'sticky',top:0,height:30,backgroundColor:'#ffffff'}},'A'),h('column',{style:{height:270}})),h('column',{'data-testid':'b'},h('text',{'data-testid':'hb',style:{position:'sticky',top:0,height:30}},'B'),h('column',{style:{height:470}})))";
+const SECTIONS: &str = "h('scroll',{'data-testid':'s',style:{height:200}},h('view',{'data-testid':'a'},h('text',{'data-testid':'ha',style:{position:'sticky',top:0,height:30,backgroundColor:'#ffffff'}},'A'),h('view',{style:{height:270}})),h('view',{'data-testid':'b'},h('text',{'data-testid':'hb',style:{position:'sticky',top:0,height:30}},'B'),h('view',{style:{height:470}})))";
 
 #[test]
 fn headers_stick_then_get_pushed_by_the_end_of_their_section() {
@@ -56,7 +56,7 @@ fn headers_stick_then_get_pushed_by_the_end_of_their_section() {
 #[test]
 fn an_inner_scroll_owns_its_sticky_and_the_outer_scroll_only_carries_it() {
     let base = display(
-        "h('scroll',{'data-testid':'outer',style:{height:200}},h('column',{style:{height:40}}),h('scroll',{'data-testid':'inner',style:{height:100}},h('text',{'data-testid':'h',style:{position:'sticky',top:0,height:20}},'H'),h('column',{style:{height:400}})),h('column',{style:{height:400}}))",
+        "h('scroll',{'data-testid':'outer',style:{height:200}},h('view',{style:{height:40}}),h('scroll',{'data-testid':'inner',style:{height:100}},h('text',{'data-testid':'h',style:{position:'sticky',top:0,height:20}},'H'),h('view',{style:{height:400}})),h('view',{style:{height:400}}))",
     );
     assert_eq!(top(&base, "h"), 40.0);
     // Scrolling the inner region keeps the header at the inner viewport top.
@@ -81,7 +81,7 @@ fn sticky_needs_a_scroll_and_stays_out_of_list_rows() {
             .unwrap()
     };
     assert!(
-        fails("h('column',{},h('text',{style:{position:'sticky',top:0}},'x'))")
+        fails("h('view',{},h('text',{style:{position:'sticky',top:0}},'x'))")
             .contains("ancestor scroll")
     );
     assert!(
@@ -95,14 +95,14 @@ fn a_pinned_header_pushes_the_previous_one_fully_out() {
     // The view-lab shape: a bordered, rounded scroll; headers with padding over bordered rows.
     let group = |id: &str, rows: usize| {
         format!(
-            "h('column',{{}},h('text',{{'data-testid':'{id}',style:{{position:'sticky',top:0,paddingTop:6,paddingBottom:6,fontSize:12,lineHeight:'16px',backgroundColor:'#eeeeee'}}}},'{id}'){})",
+            "h('view',{{}},h('text',{{'data-testid':'{id}',style:{{position:'sticky',top:0,paddingTop:6,paddingBottom:6,fontSize:12,lineHeight:'16px',backgroundColor:'#eeeeee'}}}},'{id}'){})",
             (0..rows)
                 .map(|row| format!(",h('text',{{style:{{paddingTop:12,paddingBottom:12,borderBottomWidth:1,borderColor:'#cccccc'}}}},'row {row}')"))
                 .collect::<String>()
         )
     };
     let base = display(&format!(
-        "h('column',{{style:{{padding:16}}}},h('scroll',{{'data-testid':'s',style:{{height:192,borderWidth:1,borderColor:'#cccccc',borderRadius:12}}}},{},{},{}))",
+        "h('view',{{style:{{padding:16}}}},h('scroll',{{'data-testid':'s',style:{{height:192,borderWidth:1,borderColor:'#cccccc',borderRadius:12}}}},{},{},{}))",
         group("today", 2),
         group("yesterday", 3),
         group("week", 2)
@@ -135,7 +135,7 @@ fn a_pinned_header_pushes_the_previous_one_fully_out() {
 fn a_pinned_header_and_its_scroll_edge_share_a_device_pixel_row() {
     let scale = 2.75;
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{paddingTop:10.3}},h('scroll',{'data-testid':'s',style:{height:100,borderWidth:1,borderColor:'#cccccc',borderRadius:11}},h('column',{},h('text',{'data-testid':'a',style:{position:'sticky',top:0,height:28,backgroundColor:'#eeeeee'}},'Today'),h('column',{style:{height:90}})),h('column',{},h('text',{'data-testid':'b',style:{position:'sticky',top:0,height:28,backgroundColor:'#eeeeee'}},'Yesterday'),h('column',{style:{height:300}}))))}",
+        "function render(){return h('view',{style:{paddingTop:10.3}},h('scroll',{'data-testid':'s',style:{height:100,borderWidth:1,borderColor:'#cccccc',borderRadius:11}},h('view',{},h('text',{'data-testid':'a',style:{position:'sticky',top:0,height:28,backgroundColor:'#eeeeee'}},'Today'),h('view',{style:{height:90}})),h('view',{},h('text',{'data-testid':'b',style:{position:'sticky',top:0,height:28,backgroundColor:'#eeeeee'}},'Yesterday'),h('view',{style:{height:300}}))))}",
     );
     let base = crate::ViewSession::new(&source)
         .unwrap()
@@ -161,7 +161,7 @@ fn a_pinned_header_and_its_scroll_edge_share_a_device_pixel_row() {
 #[test]
 fn a_header_inside_a_list_row_pins_while_its_row_is_in_view() {
     let base = display(
-        "h(listTag,{'data-testid':'l',count:3,height:()=>150,style:{height:200},row:(i)=>h('column',{'data-testid':'row'+i,style:{height:150}},h('text',{'data-testid':'h'+i,style:{position:'sticky',top:0,height:30}},'Group '+i),h('column',{style:{height:120}}))})",
+        "h(listTag,{'data-testid':'l',count:3,height:()=>150,style:{height:200},row:(i)=>h('view',{'data-testid':'row'+i,style:{height:150}},h('text',{'data-testid':'h'+i,style:{position:'sticky',top:0,height:30}},'Group '+i),h('view',{style:{height:120}}))})",
     );
     assert_eq!(top(&base, "h0"), 0.0);
     // Row 0 spans 0..150: scrolled 60, its header stays at the top.

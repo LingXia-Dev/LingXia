@@ -588,7 +588,7 @@ mod tests {
                 .contains("dash geometry budget")
         );
         let source = crate::session::tests::source(
-            "function render(){return h('column',{},Array.from({length:80},(_,i)=>h('vector',{key:String(i),viewBox:[0,0,1,1],paths:[{d:'M0 .5H1',fill:'none',stroke:'#000000',strokeDasharray:[1,1],vectorEffect:'non-scaling-stroke'}],style:{width:200,height:1,objectFit:'fill'}})))}",
+            "function render(){return h('view',{},Array.from({length:80},(_,i)=>h('vector',{key:String(i),viewBox:[0,0,1,1],paths:[{d:'M0 .5H1',fill:'none',stroke:'#000000',strokeDasharray:[1,1],vectorEffect:'non-scaling-stroke'}],style:{width:200,height:1,objectFit:'fill'}})))}",
         );
         let mut page = crate::ViewSession::new(&source).unwrap();
         assert!(

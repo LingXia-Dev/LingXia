@@ -30,29 +30,29 @@ export function render({ data, actions }: View) {
       <Card testId="location-card" className="p-6 gap-4 items-center">
         <text className="text-base text-muted">Current Location</text>
         {data.isLoading ? (
-          <row className="items-center gap-3 py-8">
+          <view className="flex-row items-center gap-3 py-8">
             <Icon name="location" className="w-8 h-8 text-accent" />
             <text data-testid="location-status" className="text-base text-muted">
               Getting location...
             </text>
-          </row>
+          </view>
         ) : location ? (
-          <column data-testid="location-result" className="w-full gap-4 items-center">
+          <view data-testid="location-result" className="w-full gap-4 items-center">
             <text
               data-testid="location-coordinate"
               className="text-2xl font-light"
             >{`${coordinate(location.longitude, false)} ${coordinate(location.latitude, true)}`}</text>
-            <grid className="w-full gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <view className="grid w-full gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {details.map(([label, value]) => (
-                <column key={label} className="items-center gap-1">
+                <view key={label} className="items-center gap-1">
                   <text className="text-sm text-muted">{label}</text>
                   <text data-testid={`location-${label.toLowerCase()}`} className="text-sm font-medium">
                     {value}
                   </text>
-                </column>
+                </view>
               ))}
-            </grid>
-          </column>
+            </view>
+          </view>
         ) : (
           <text data-testid="location-status" className={data.locationError ? 'py-8 text-base text-danger' : 'py-8 text-base text-muted'}>
             {String(data.locationError || 'No location data available')}

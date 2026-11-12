@@ -246,8 +246,8 @@ function renderRowTimed(node, i, cells, depth) {
     }
     // Rows are siblings in the list, so structural variants see their row index.
     const content = resolveNode(value, render.scope, depth + 2, { typography: node.typography, sibling: { index: i, count: props.count } });
-    if (content?.fragment) throw Error('UI_LIST: a row returns one node; wrap its fragment in <column>');
-    const row = { tag: 'column', element: 'column', props: { key }, fields, states: {}, wire: [], handlers: [], identity: render.scope,
+    if (content?.fragment) throw Error('UI_LIST: a row returns one node; wrap its fragment in <view>');
+    const row = { tag: 'column', element: 'view', props: { key }, fields, states: {}, wire: [], handlers: [], identity: render.scope,
       rowIndex: i, text: '', children: content === null ? [] : [content] };
     return { row, key };
   } finally { render.scope = previous; }

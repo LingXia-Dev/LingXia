@@ -12,7 +12,7 @@
   "vectorElements": 283,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 992
+  "wireValues": 1008
  },
  "api@phone-light": {
   "backdrops": 0,
@@ -27,7 +27,7 @@
   "vectorElements": 283,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 992
+  "wireValues": 1008
  },
  "api@tablet-dark": {
   "backdrops": 0,
@@ -42,7 +42,7 @@
   "vectorElements": 283,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 992
+  "wireValues": 1008
  },
  "api@tablet-light": {
   "backdrops": 0,
@@ -57,7 +57,7 @@
   "vectorElements": 283,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 992
+  "wireValues": 1008
  },
  "bridge-repro@phone-dark": {
   "backdrops": 0,
@@ -72,7 +72,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 566
+  "wireValues": 568
  },
  "bridge-repro@phone-light": {
   "backdrops": 0,
@@ -87,7 +87,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 566
+  "wireValues": 568
  },
  "bridge-repro@tablet-dark": {
   "backdrops": 0,
@@ -102,7 +102,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 566
+  "wireValues": 568
  },
  "bridge-repro@tablet-light": {
   "backdrops": 0,
@@ -117,7 +117,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 566
+  "wireValues": 568
  },
  "channel@phone-dark": {
   "backdrops": 0,
@@ -132,7 +132,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 430
+  "wireValues": 440
  },
  "channel@phone-light": {
   "backdrops": 0,
@@ -147,7 +147,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 430
+  "wireValues": 440
  },
  "channel@tablet-dark": {
   "backdrops": 0,
@@ -162,7 +162,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 430
+  "wireValues": 440
  },
  "channel@tablet-light": {
   "backdrops": 0,
@@ -177,7 +177,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 430
+  "wireValues": 440
  },
  "clipboard@phone-dark": {
   "backdrops": 0,
@@ -192,7 +192,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1004
+  "wireValues": 1018
  },
  "clipboard@phone-light": {
   "backdrops": 0,
@@ -207,7 +207,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1004
+  "wireValues": 1018
  },
  "clipboard@tablet-dark": {
   "backdrops": 0,
@@ -222,7 +222,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1004
+  "wireValues": 1018
  },
  "clipboard@tablet-light": {
   "backdrops": 0,
@@ -237,7 +237,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1004
+  "wireValues": 1018
  },
  "cloud@phone-dark": {
   "backdrops": 0,
@@ -252,7 +252,7 @@
   "vectorElements": 46,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 712
+  "wireValues": 724
  },
  "cloud@phone-light": {
   "backdrops": 0,
@@ -267,7 +267,7 @@
   "vectorElements": 46,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 712
+  "wireValues": 724
  },
  "cloud@tablet-dark": {
   "backdrops": 0,
@@ -282,7 +282,7 @@
   "vectorElements": 46,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 712
+  "wireValues": 724
  },
  "cloud@tablet-light": {
   "backdrops": 0,
@@ -297,7 +297,7 @@
   "vectorElements": 46,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 712
+  "wireValues": 724
  },
  "device@phone-dark": {
   "backdrops": 0,
@@ -312,7 +312,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 230
+  "wireValues": 232
  },
  "device@phone-light": {
   "backdrops": 0,
@@ -327,7 +327,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 230
+  "wireValues": 232
  },
  "device@tablet-dark": {
   "backdrops": 0,
@@ -342,7 +342,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 230
+  "wireValues": 232
  },
  "device@tablet-light": {
   "backdrops": 0,
@@ -357,7 +357,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 230
+  "wireValues": 232
  },
  "feedback@phone-dark": {
   "backdrops": 0,
@@ -372,7 +372,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 502
+  "wireValues": 504
  },
  "feedback@phone-light": {
   "backdrops": 0,
@@ -387,7 +387,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 502
+  "wireValues": 504
  },
  "feedback@tablet-dark": {
   "backdrops": 0,
@@ -402,7 +402,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 502
+  "wireValues": 504
  },
  "feedback@tablet-light": {
   "backdrops": 0,
@@ -417,7 +417,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 502
+  "wireValues": 504
  },
  "file@phone-dark": {
   "backdrops": 0,
@@ -432,7 +432,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 758
+  "wireValues": 764
  },
  "file@phone-light": {
   "backdrops": 0,
@@ -447,7 +447,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 758
+  "wireValues": 764
  },
  "file@tablet-dark": {
   "backdrops": 0,
@@ -462,7 +462,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 758
+  "wireValues": 764
  },
  "file@tablet-light": {
   "backdrops": 0,
@@ -477,7 +477,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 758
+  "wireValues": 764
  },
  "home@phone-dark": {
   "backdrops": 2,
@@ -492,7 +492,7 @@
   "vectorElements": 14,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 886
+  "wireValues": 898
  },
  "home@phone-light": {
   "backdrops": 2,
@@ -507,7 +507,7 @@
   "vectorElements": 14,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 886
+  "wireValues": 898
  },
  "home@tablet-dark": {
   "backdrops": 2,
@@ -522,7 +522,7 @@
   "vectorElements": 14,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 886
+  "wireValues": 898
  },
  "home@tablet-light": {
   "backdrops": 2,
@@ -537,7 +537,7 @@
   "vectorElements": 14,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 886
+  "wireValues": 898
  },
  "leaveguard@phone-dark": {
   "backdrops": 0,
@@ -552,7 +552,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 330
+  "wireValues": 334
  },
  "leaveguard@phone-light": {
   "backdrops": 0,
@@ -567,7 +567,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 330
+  "wireValues": 334
  },
  "leaveguard@tablet-dark": {
   "backdrops": 0,
@@ -582,7 +582,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 330
+  "wireValues": 334
  },
  "leaveguard@tablet-light": {
   "backdrops": 0,
@@ -597,7 +597,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 330
+  "wireValues": 334
  },
  "location@phone-dark": {
   "backdrops": 0,
@@ -672,7 +672,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 850
+  "wireValues": 858
  },
  "media@phone-light": {
   "backdrops": 0,
@@ -687,7 +687,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 850
+  "wireValues": 858
  },
  "media@tablet-dark": {
   "backdrops": 0,
@@ -702,7 +702,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 850
+  "wireValues": 858
  },
  "media@tablet-light": {
   "backdrops": 0,
@@ -717,7 +717,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 850
+  "wireValues": 858
  },
  "motion-lab@phone-dark": {
   "backdrops": 0,
@@ -732,7 +732,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1526
+  "wireValues": 1556
  },
  "motion-lab@phone-light": {
   "backdrops": 0,
@@ -747,7 +747,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1526
+  "wireValues": 1556
  },
  "motion-lab@tablet-dark": {
   "backdrops": 0,
@@ -762,7 +762,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1526
+  "wireValues": 1556
  },
  "motion-lab@tablet-light": {
   "backdrops": 0,
@@ -777,7 +777,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1526
+  "wireValues": 1556
  },
  "motion-target@phone-dark": {
   "backdrops": 0,
@@ -792,7 +792,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1526
+  "wireValues": 1556
  },
  "motion-target@phone-light": {
   "backdrops": 0,
@@ -807,7 +807,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1526
+  "wireValues": 1556
  },
  "motion-target@tablet-dark": {
   "backdrops": 0,
@@ -822,7 +822,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1526
+  "wireValues": 1556
  },
  "motion-target@tablet-light": {
   "backdrops": 0,
@@ -837,7 +837,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1526
+  "wireValues": 1556
  },
  "perf-lab@phone-dark": {
   "backdrops": 0,
@@ -852,7 +852,7 @@
   "vectorElements": 0,
   "layoutPasses": 2,
   "viewPasses": 2,
-  "wireValues": 3926
+  "wireValues": 3970
  },
  "perf-lab@phone-light": {
   "backdrops": 0,
@@ -867,7 +867,7 @@
   "vectorElements": 0,
   "layoutPasses": 2,
   "viewPasses": 2,
-  "wireValues": 3926
+  "wireValues": 3970
  },
  "perf-lab@tablet-dark": {
   "backdrops": 0,
@@ -882,7 +882,7 @@
   "vectorElements": 0,
   "layoutPasses": 2,
   "viewPasses": 2,
-  "wireValues": 3926
+  "wireValues": 3970
  },
  "perf-lab@tablet-light": {
   "backdrops": 0,
@@ -897,7 +897,7 @@
   "vectorElements": 0,
   "layoutPasses": 2,
   "viewPasses": 2,
-  "wireValues": 3926
+  "wireValues": 3970
  },
  "perf-target@phone-dark": {
   "backdrops": 0,
@@ -972,7 +972,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1170
+  "wireValues": 1182
  },
  "pulltorefresh@phone-light": {
   "backdrops": 0,
@@ -987,7 +987,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1170
+  "wireValues": 1182
  },
  "pulltorefresh@tablet-dark": {
   "backdrops": 0,
@@ -1002,7 +1002,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1170
+  "wireValues": 1182
  },
  "pulltorefresh@tablet-light": {
   "backdrops": 0,
@@ -1017,7 +1017,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1170
+  "wireValues": 1182
  },
  "share@phone-dark": {
   "backdrops": 0,
@@ -1032,7 +1032,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 924
+  "wireValues": 936
  },
  "share@phone-light": {
   "backdrops": 0,
@@ -1047,7 +1047,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 924
+  "wireValues": 936
  },
  "share@tablet-dark": {
   "backdrops": 0,
@@ -1062,7 +1062,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 924
+  "wireValues": 936
  },
  "share@tablet-light": {
   "backdrops": 0,
@@ -1077,7 +1077,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 924
+  "wireValues": 936
  },
  "stream@phone-dark": {
   "backdrops": 0,
@@ -1092,7 +1092,7 @@
   "vectorElements": 43,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 366
+  "wireValues": 368
  },
  "stream@phone-light": {
   "backdrops": 0,
@@ -1107,7 +1107,7 @@
   "vectorElements": 43,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 366
+  "wireValues": 368
  },
  "stream@tablet-dark": {
   "backdrops": 0,
@@ -1122,7 +1122,7 @@
   "vectorElements": 43,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 366
+  "wireValues": 368
  },
  "stream@tablet-light": {
   "backdrops": 0,
@@ -1137,7 +1137,7 @@
   "vectorElements": 43,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 366
+  "wireValues": 368
  },
  "surface@phone-dark": {
   "backdrops": 0,
@@ -1152,7 +1152,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1246
+  "wireValues": 1266
  },
  "surface@phone-light": {
   "backdrops": 0,
@@ -1167,7 +1167,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1246
+  "wireValues": 1266
  },
  "surface@tablet-dark": {
   "backdrops": 0,
@@ -1182,7 +1182,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1246
+  "wireValues": 1266
  },
  "surface@tablet-light": {
   "backdrops": 0,
@@ -1197,7 +1197,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1246
+  "wireValues": 1266
  },
  "system@phone-dark": {
   "backdrops": 0,
@@ -1212,7 +1212,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 230
+  "wireValues": 232
  },
  "system@phone-light": {
   "backdrops": 0,
@@ -1227,7 +1227,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 230
+  "wireValues": 232
  },
  "system@tablet-dark": {
   "backdrops": 0,
@@ -1242,7 +1242,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 230
+  "wireValues": 232
  },
  "system@tablet-light": {
   "backdrops": 0,
@@ -1257,7 +1257,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 230
+  "wireValues": 232
  },
  "todo@phone-dark": {
   "backdrops": 1,
@@ -1272,7 +1272,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 192
+  "wireValues": 194
  },
  "todo@phone-light": {
   "backdrops": 1,
@@ -1287,7 +1287,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 192
+  "wireValues": 194
  },
  "todo@tablet-dark": {
   "backdrops": 1,
@@ -1302,7 +1302,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 192
+  "wireValues": 194
  },
  "todo@tablet-light": {
   "backdrops": 1,
@@ -1317,7 +1317,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 192
+  "wireValues": 194
  },
  "ui@phone-dark": {
   "backdrops": 0,
@@ -1332,7 +1332,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1452
+  "wireValues": 1474
  },
  "ui@phone-light": {
   "backdrops": 0,
@@ -1347,7 +1347,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1452
+  "wireValues": 1474
  },
  "ui@tablet-dark": {
   "backdrops": 0,
@@ -1362,7 +1362,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1452
+  "wireValues": 1474
  },
  "ui@tablet-light": {
   "backdrops": 0,
@@ -1377,7 +1377,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1452
+  "wireValues": 1474
  },
  "view-lab@phone-dark": {
   "backdrops": 0,
@@ -1392,7 +1392,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1748
+  "wireValues": 1816
  },
  "view-lab@phone-light": {
   "backdrops": 0,
@@ -1407,7 +1407,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1748
+  "wireValues": 1816
  },
  "view-lab@tablet-dark": {
   "backdrops": 0,
@@ -1422,7 +1422,7 @@
   "vectorElements": 161,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1748
+  "wireValues": 1816
  },
  "view-lab@tablet-light": {
   "backdrops": 0,
@@ -1437,7 +1437,7 @@
   "vectorElements": 161,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1748
+  "wireValues": 1816
  },
  "wifi@phone-dark": {
   "backdrops": 0,
@@ -1452,7 +1452,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 270
+  "wireValues": 274
  },
  "wifi@phone-light": {
   "backdrops": 0,
@@ -1467,7 +1467,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 270
+  "wireValues": 274
  },
  "wifi@tablet-dark": {
   "backdrops": 0,
@@ -1482,7 +1482,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 270
+  "wireValues": 274
  },
  "wifi@tablet-light": {
   "backdrops": 0,
@@ -1497,6 +1497,6 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 270
+  "wireValues": 274
  }
 }

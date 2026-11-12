@@ -30,7 +30,7 @@ export function render({ actions }: View) {
   return (
     <Page>
       <Header title="Help us improve" subtitle="Share a bug, an idea, or anything that felt confusing in the showcase." />
-      <column className="gap-2">
+      <view className="gap-2">
         <text className="text-sm font-medium">What is this about?</text>
         <Segmented
           testId="feedback"
@@ -39,8 +39,8 @@ export function render({ actions }: View) {
           disabled={submitting.value}
           onChange={value => category.set(value)}
         />
-      </column>
-      <column className="gap-1.5">
+      </view>
+      <view className="gap-1.5">
         <text className="text-sm font-medium">Your feedback</text>
         <textarea
           data-testid="feedback-message"
@@ -50,7 +50,7 @@ export function render({ actions }: View) {
           placeholder="What happened, and what would you prefer?"
           className="h-44 px-4 py-3 rounded-2xl border border-line-strong bg-surface text-sm leading-6"
         />
-      </column>
+      </view>
       <Field
         testId="feedback-email"
         label="Email (optional)"

@@ -6,8 +6,8 @@ export function render() {
   const range = useLocal('border-range', 0);
   const selection = useLocal('border-selection', -1);
   const clicks = useLocal('border-clicks', 0);
-  return <column className="bg-white" style={{ paddingTop: env.insets.top, paddingBottom: env.insets.bottom }}>
-    <column className="p-3 gap-2">
+  return <view className="bg-white" style={{ paddingTop: env.insets.top, paddingBottom: env.insets.bottom }}>
+    <view className="p-3 gap-2">
       <button testId="border-ring" onClick={() => clicks.set(clicks.value + 1)} className="w-40 h-16 rounded-3xl border-8 border-[#ff0000]/50 bg-white text-black">Ring</button>
       <scroll testId="border-scroll" className="w-40 h-20 rounded-[20px] border-t-2 border-r-4 border-b-[6px] border-l-8 border-[#ff0000] bg-white">
         <button testId="border-scroll-blue" onClick={() => clicks.set(clicks.value + 1)} className="h-40 rounded-none bg-[#0000ff] text-white">Blue</button>
@@ -18,6 +18,6 @@ export function render() {
       <plot testId="border-plot" accessibilityLabel="Border plot" kind="bar" values={[3, 5, 4]} colors={['#0000ff']} selectedIndex={selection.value} onSelect={index => selection.set(index)} className="w-70 h-20 rounded-[20px] border-l-8 border-r-3 border-t-2 border-b-[6px] border-[#ff0000] bg-white" />
       <image testId="border-image" alt="App icon" src="public/AppIcon.png" className="object-fill w-16 h-16 rounded-[20px] border-8 border-[#ff0000] bg-white" />
       <text testId="border-status" className="text-xs text-black">{`${clicks.value}/${range.value}/${selection.value}`}</text>
-    </column>
-  </column>;
+    </view>
+  </view>;
 }

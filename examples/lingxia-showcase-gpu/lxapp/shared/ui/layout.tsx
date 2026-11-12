@@ -23,10 +23,10 @@ export function Page({
   return (
     <page data-testid={testId} {...data} className="bg-canvas text-text">
       <scroll data-testid={scrollId} className="grow basis-0">
-        <column className="w-full max-w-3xl self-center px-4 pt-5 pb-10 gap-4">
+        <view className="w-full max-w-3xl self-center px-4 pt-5 pb-10 gap-4">
           {intro ? <text className="text-sm text-muted text-center line-clamp-3">{intro}</text> : null}
           {children}
-        </column>
+        </view>
       </scroll>
     </page>
   );
@@ -34,12 +34,12 @@ export function Page({
 
 export function Header({ title, subtitle, testId }: { title: string; subtitle?: string; testId?: string }) {
   return (
-    <column className="items-center gap-2 pb-1">
+    <view className="items-center gap-2 pb-1">
       <text data-testid={testId} role="heading" headingLevel={1} className="text-2xl font-light text-center">
         {title}
       </text>
       {subtitle ? <text className="text-sm text-muted text-center line-clamp-3">{subtitle}</text> : null}
-    </column>
+    </view>
   );
 }
 
@@ -58,24 +58,24 @@ export function Section({
   action?: Child;
 }) {
   return (
-    <column data-testid={testId} className="bg-surface text-text rounded-2xl border border-line shadow-sm">
-      <row className="items-center gap-3 px-4 py-4 border-b border-line">
-        <column className="grow basis-0 min-w-0 gap-0.5">
+    <view data-testid={testId} className="bg-surface text-text rounded-2xl border border-line shadow-sm">
+      <view className="flex-row items-center gap-3 px-4 py-4 border-b border-line">
+        <view className="grow basis-0 min-w-0 gap-0.5">
           <text role="heading" headingLevel={2} className="text-sm font-semibold">{title}</text>
           {description ? <text className="text-xs text-muted line-clamp-4">{description}</text> : null}
-        </column>
+        </view>
         {action}
-      </row>
-      <column className="p-4 gap-3">{children}</column>
-    </column>
+      </view>
+      <view className="p-4 gap-3">{children}</view>
+    </view>
   );
 }
 
 export function Card({ testId, className = 'p-4 gap-3', children }: { testId?: string; className?: string; children?: Child }) {
   return (
-    <column data-testid={testId} className={`bg-surface text-text rounded-2xl border border-line shadow-sm ${className}`}>
+    <view data-testid={testId} className={`bg-surface text-text rounded-2xl border border-line shadow-sm ${className}`}>
       {children}
-    </column>
+    </view>
   );
 }
 
@@ -93,20 +93,20 @@ const display = (value: unknown) =>
 /** One labeled value; rows separate with a divider. */
 export function InfoRow({ label, value, testId }: { label: string; value: unknown; testId?: string }) {
   return (
-    <row className="items-start justify-between gap-3 py-2.5">
+    <view className="flex-row items-start justify-between gap-3 py-2.5">
       <text className="shrink-0 text-sm text-muted">{label}</text>
       <text data-testid={testId} className="grow basis-0 min-w-0 text-right text-sm font-semibold break-all whitespace-pre-wrap">
         {display(value)}
       </text>
-    </row>
+    </view>
   );
 }
 
 export function InfoList({ testId, children }: { testId?: string; children?: Child }) {
   return (
-    <column data-testid={testId} className="divide-y divide-line">
+    <view data-testid={testId} className="divide-y divide-line">
       {children}
-    </column>
+    </view>
   );
 }
 

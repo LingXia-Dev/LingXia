@@ -17,7 +17,7 @@ import { readFile, mkdir, writeFile, copyFile, realpath } from 'node:fs/promises
 import { resolve, dirname, join, relative, isAbsolute, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { elements, style as styleTable, commonProps, limits } from '../src/generated/contract.js';
-import { classElementProblem, appliesTo } from '../src/style/hints.js';
+import { classElementProblem, appliesTo, gridProblem, gridRefuses, tagHint } from '../src/style/hints.js';
 
 const runtime = fileURLToPath(new URL('../src/internal.js', import.meta.url));
 const publicEntry = fileURLToPath(new URL('../src/index.js', import.meta.url));
@@ -119,7 +119,7 @@ export function audit(source, filename, { literalColors = false } = {}) {
       const problem = intrinsic && unnamed(tag, node, file);
       if (problem) report(node, problem);
       const component = { details: 'Details', summary: 'Summary', list: 'List' }[tag];
-      if (!intrinsic) report(node, `UI_TAG: unsupported tag <${tag}>${component ? `; use <${component}> from @lingxia/view` : ''}`);
+      if (!intrinsic) report(node, `UI_TAG: unsupported tag <${tag}>${component ? `; use <${component}> from @lingxia/view` : tagHint(tag)}`);
       else for (const prop of node.attributes.properties) {
         if (ts.isJsxSpreadAttribute(prop)) {
           for (const symbol of checker.getTypeAtLocation(prop.expression).getProperties())
@@ -203,7 +203,7 @@ export function identify(source, filename, label) {
     volatile.map(name => `${name}.__lxVolatile = true;\n`).join('');
 }
 
-function classProblems(rule, name, tag, suggestions) {
+function classProblems(rule, name, tag, suggestions, grid) {
   if (!rule) {
     const nearest = suggestions.get(name);
     return [`UI_CLASS_UNKNOWN: ${name} is not a Tailwind utility${nearest ? `; nearest supported: ${nearest}` : ''}`];
@@ -219,6 +219,8 @@ function classProblems(rule, name, tag, suggestions) {
   const state = rule.when?.state;
   const unsupported = props.find(prop => !elements[tag].style.includes(prop));
   const problems = unsupported ? [classElementProblem(name, unsupported, tag)] : [];
+  const flexOnly = grid && !Object.keys(rule.when ?? {}).length && gridRefuses(props);
+  if (flexOnly) problems.push(gridProblem(name, flexOnly));
   if (state === 'focus' && !editors.has(tag) && tag !== 'select') problems.push(`UI_CLASS_ELEMENT: ${name} needs an editor or <select>; <${tag}> never takes focus`);
   if (state === 'active' && !controls.has(tag)) problems.push(`UI_CLASS_ELEMENT: ${name} needs a control; <${tag}> is never pressed`);
   const layout = state && state !== 'disabled' ? props.filter(prop => !styleTable[prop]?.paint) : [];
@@ -358,11 +360,14 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const usages = sourceFiles.flatMap(file => collectClassUsage(file, checker));
     const unknown = [...new Set(usages.flatMap(({ value }) => value.split(/\s+/)).filter(name => name && !rulesByName.has(name)))];
     const suggestions = await nearestSupported(unknown, [...themes.values()].join('\n'));
-    for (const { value, location, tag } of usages)
-      for (const name of value.split(/\s+/).filter(Boolean)) {
+    for (const { value, location, tag } of usages) {
+      const names = value.split(/\s+/).filter(Boolean);
+      const grid = names.includes('grid');
+      for (const name of names) {
         const found = rulesByName.get(name) ?? [undefined];
-        for (const problem of new Set(found.flatMap(rule => classProblems(rule, name, tag, suggestions)))) problems.push(`${location}: ${problem}`);
+        for (const problem of new Set(found.flatMap(rule => classProblems(rule, name, tag, suggestions, grid)))) problems.push(`${location}: ${problem}`);
       }
+    }
     if (problems.length) {
       const lines = report(problems.map(line => line.startsWith(root + sep) ? line.slice(root.length + 1) : line), rel);
       throw Error(`${page}: ${lines.count} authoring problem${lines.count === 1 ? '' : 's'}\n${lines.text}`);

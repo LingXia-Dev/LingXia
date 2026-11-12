@@ -16,7 +16,7 @@ export const scrimMark = Symbol('drag scrim');
 /** The popover ids a node sits inside, innermost last. */
 export const popoverScope = Symbol('popover scope');
 
-const popoverTags = new Set(['view', 'column', 'row', 'stack', 'grid']);
+const popoverTags = new Set(['view']);
 const closers = new Set(['any', 'closerequest', 'none']);
 // Below Logic's feedback and the pickers, which the View draws over everything.
 const layerZ = 9000;
@@ -58,7 +58,7 @@ function placement(props, env) {
 }
 
 function layer(identity, env, ...children) {
-  return h('column', { style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: env?.keyboard?.height ?? 0, zIndex: layerZ + opened.get(identity) % 1000 } }, ...children);
+  return h('view', { style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: env?.keyboard?.height ?? 0, zIndex: layerZ + opened.get(identity) % 1000 } }, ...children);
 }
 
 const backdropFade = { opacity: 1, transition: { properties: ['opacity'], durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] } };

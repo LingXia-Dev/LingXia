@@ -25,7 +25,7 @@ export function Progress({ value, max = 100, variant = 'bar', size = 40, 'aria-l
     ...(text === undefined || value === undefined ? {} : { 'aria-valuetext': text }) };
   if (variant === 'ring') {
     const arc = share === undefined ? around / 4 : around * share;
-    return h('column', { ...semantics, className, style: { width: size, height: size } },
+    return h('view', { ...semantics, className, style: { width: size, height: size } },
       h('vector', { 'aria-hidden': true, 'data-testid': testId && `${testId}-arc`,
         style: { width: size, height: size, ...(share === undefined ? { animation: spin } : {}) },
         paths: [
@@ -33,9 +33,9 @@ export function Progress({ value, max = 100, variant = 'bar', size = 40, 'aria-l
           { d: circle, fill: 'none', stroke: 'accent', strokeWidth: 2.5, strokeLinecap: 'round', strokeDasharray: [arc, around] },
         ] }));
   }
-  return h('column', { ...semantics, className,
+  return h('view', { ...semantics, className,
     style: { height: 4, borderRadius: 2, backgroundColor: 'surface-sunken', overflow: 'hidden' } },
-    h('column', { 'data-testid': testId && `${testId}-fill`, style: share === undefined
+    h('view', { 'data-testid': testId && `${testId}-fill`, style: share === undefined
       ? { width: '40%', height: '100%', borderRadius: 2, backgroundColor: 'accent', animation: slide }
       : { width: `${share * 100}%`, height: '100%', borderRadius: 2, backgroundColor: 'accent', transition: fillMotion } }));
 }

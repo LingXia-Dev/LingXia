@@ -4,13 +4,13 @@ import { Button } from './controls';
 
 export function EmptyState({ icon = 'note', title, message, testId }: { icon?: IconName; title: string; message?: string; testId?: string }) {
   return (
-    <column className="items-center gap-2 px-5 py-10">
+    <view className="items-center gap-2 px-5 py-10">
       <Icon name={icon} className="w-12 h-12 text-muted" />
       <text data-testid={testId} className="text-lg font-medium text-center text-text">
         {title}
       </text>
       {message ? <text className="text-sm text-muted text-center">{message}</text> : null}
-    </column>
+    </view>
   );
 }
 
@@ -19,7 +19,7 @@ export function ErrorState({ error, onRetry, testId }: { error: string | Resourc
   if (!error) return null;
   const message = typeof error === 'string' ? error : error.message;
   return (
-    <row className="items-start gap-3 p-4 rounded-xl bg-danger-soft border border-danger/40">
+    <view className="flex-row items-start gap-3 p-4 rounded-xl bg-danger-soft border border-danger/40">
       <Icon name="alert" className="w-5 h-5 text-danger" />
       <text data-testid={testId} className="grow basis-0 min-w-0 text-sm text-danger break-words">
         {message}
@@ -29,18 +29,18 @@ export function ErrorState({ error, onRetry, testId }: { error: string | Resourc
           Retry
         </Button>
       ) : null}
-    </row>
+    </view>
   );
 }
 
 export function Notice({ tone = 'success', children, testId }: { tone?: 'success' | 'error'; children: string; testId?: string }) {
   const success = tone === 'success';
   return (
-    <row
+    <view
       className={
         success
-          ? 'items-start gap-3 p-4 rounded-xl bg-success-soft border border-success/40'
-          : 'items-start gap-3 p-4 rounded-xl bg-danger-soft border border-danger/40'
+          ? 'flex-row items-start gap-3 p-4 rounded-xl bg-success-soft border border-success/40'
+          : 'flex-row items-start gap-3 p-4 rounded-xl bg-danger-soft border border-danger/40'
       }
     >
       <Icon name={success ? 'success' : 'alert'} className={success ? 'w-5 h-5 text-success' : 'w-5 h-5 text-danger'} />
@@ -50,6 +50,6 @@ export function Notice({ tone = 'success', children, testId }: { tone?: 'success
       >
         {children}
       </text>
-    </row>
+    </view>
   );
 }

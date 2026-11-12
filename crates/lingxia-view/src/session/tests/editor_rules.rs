@@ -12,7 +12,7 @@ fn replace(text: &str) -> Edit {
 
 fn page(props: &str) -> (ViewSession, String, u64) {
     let module = super::source(&format!(
-        "function render(){{const v=useLocal('v','');return h('column',{{}},h('input',{{key:'i',bind:v,autoFocus:true,{props}}}),h('text',{{}},'['+v.value+']'))}}"
+        "function render(){{const v=useLocal('v','');return h('view',{{}},h('input',{{key:'i',bind:v,autoFocus:true,{props}}}),h('text',{{}},'['+v.value+']'))}}"
     ));
     let mut page = ViewSession::new(&module).unwrap();
     let first = page.layout(300, 300, 1.0).unwrap();

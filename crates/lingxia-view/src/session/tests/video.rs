@@ -42,7 +42,7 @@ impl Player for Fake {
 fn video_events_reach_a_page_that_committed_since_it_last_presented() {
     install(|_| Ok(Box::new(Fake::default())));
     let module = crate::session::tests::source(
-        "function render(){const clip=useVideo('clip');return h('column',{},h('video',{player:clip,src:'clip.mp4',style:{width:160,height:90}}),h('text',{'data-testid':'duration'},clip.duration===null?'none':String(clip.duration)))}",
+        "function render(){const clip=useVideo('clip');return h('view',{},h('video',{player:clip,src:'clip.mp4',style:{width:160,height:90}}),h('text',{'data-testid':'duration'},clip.duration===null?'none':String(clip.duration)))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     page.layout(200, 200, 1.0).unwrap();

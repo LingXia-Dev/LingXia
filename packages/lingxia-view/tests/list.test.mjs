@@ -78,7 +78,7 @@ test('a pure row is reused while its items and environment are unchanged',()=>{
  reset();let built=[],env={theme:'light'},extra=0;
  const items=Object.freeze(['a','b','c','d','e']);
  const renderItem=Object.assign(item=>{built.push(item);return h('text',{'data-testid':item},item);},{__lxRow:'site'});
- const page=()=>h('column',{},h('text',{},String(extra)),h(List,{items,getKey:String,renderItem}));
+ const page=()=>h('view',{},h('text',{},String(extra)),h(List,{items,getKey:String,renderItem}));
  const view=()=>({data:{},env});
  const id=records(prepare(page,view())).find(r=>r.tag==='list').fields.get('listId');commit();
  const win=(s,e)=>({[id]:{start:s,end:e,leading:0,trailing:0}});
@@ -213,7 +213,7 @@ test('reach callbacks are retained handles and never run during candidate prepar
  prepare(page,{},window(5,7));discard();assert.equal(dispatch(start),true);
  prepare(page,{},window(5,7));commit();assert.equal(dispatch(start),false);
  assert.throws(()=>prepare(()=>h('scroll',{onReachEnd:42}),{}),/UI_PROP/);
- assert.throws(()=>prepare(()=>h('column',{onReachStart(){}}),{}),/UI_PROP/);
+ assert.throws(()=>prepare(()=>h('view',{onReachStart(){}}),{}),/UI_PROP/);
 });
 
 
@@ -235,9 +235,9 @@ test('shrinking a list accepts the previous native window before refinement',()=
 
 test('nested list refinement isolates discarded windows and retains ordinary callbacks',()=>{
  reset();let calls=0,fail=false;
- const page=()=>h('column',{},
+ const page=()=>h('view',{},
   h('button',{'data-testid':'ordinary',onClick:()=>calls++},'Ordinary'),
-  h(listTag,{count:1,row:()=>h('column',{},h(listTag,{count:10,row:i=>{
+  h(listTag,{count:1,row:()=>h('view',{},h(listTag,{count:10,row:i=>{
    if(fail&&i===4)throw Error('nested row failed');
    return h('button',{'data-testid':`nested-${i}`,onClick:()=>calls++},String(i));
   }}))}));
@@ -301,7 +301,7 @@ test('item keys enforce a page-wide UTF-8 budget before lazy row construction',(
  reset();const itemKeys=Array.from({length:1200},(_,i)=>String(i).padEnd(200,'x'));
  const list=()=>h(listTag,{count:itemKeys.length,itemKeys,row:i=>h('text',{},String(i))});
  assert.doesNotThrow(()=>prepare(list,{}));discard();
- assert.throws(()=>prepare(()=>h('column',{},list(),list()),{}),/itemKeys page budget/);
+ assert.throws(()=>prepare(()=>h('view',{},list(),list()),{}),/itemKeys page budget/);
  const oversized=[...itemKeys,...itemKeys.map(key=>'y'+key)];
  assert.throws(()=>prepare(()=>h(listTag,{count:oversized.length,itemKeys:oversized,row:i=>h('text',{},String(i))}),{}),/itemKeys budget/);
 });

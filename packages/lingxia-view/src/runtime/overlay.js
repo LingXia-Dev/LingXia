@@ -103,20 +103,22 @@ const spin = { name: 'lx-overlay-spin', durationMs: 800, delayMs: 0, iterations:
 const fade = { properties: ['opacity', 'transform'], durationMs: ENTER_MS, delayMs: 0, easing: [0.4, 0, 0.2, 1] };
 const toastFade = { properties: ['opacity', 'transform'], durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] };
 const fill = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
+// Children of a one-cell grid overlap in that cell.
+const cell = { gridColumn: 1, gridRow: 1 };
 
 function toastNode() {
   const { title, icon, position, mask } = toast;
   const bare = icon === 'none';
-  const box = h('column', { 'data-testid': 'lx-toast', key: `toast-${toast.key}`, role: 'status', 'aria-live': 'polite', 'aria-label': title,
+  const box = h('view', { 'data-testid': 'lx-toast', key: `toast-${toast.key}`, role: 'status', 'aria-live': 'polite', 'aria-label': title,
     style: { alignItems: 'center', justifyContent: 'center', gap: 12, minWidth: 120, maxWidth: 280, minHeight: bare ? 60 : 100,
       paddingLeft: 20, paddingRight: 20, paddingTop: bare ? 16 : 20, paddingBottom: bare ? 16 : 20, borderRadius: 12,
       backgroundColor: 'shadow/80', transition: toastFade } },
     !bare && h('vector', { 'data-testid': 'lx-toast-icon', 'aria-hidden': true, paths: icons[icon], viewBox: [0, 0, 28, 28], style: { width: 28, height: 28 } }),
     h('text', { style: { color: '#ffffff', fontSize: 16, fontWeight: 500, textAlign: 'center', lineClamp: bare ? 3 : 2 } }, title));
   // A manual popover: no light dismiss; with `mask` it covers the page and takes its taps.
-  return h('stack', { id: 'lx-toast', popover: 'manual', open: true, style: { ...fill, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 } },
-    mask && h('button', { 'data-testid': 'lx-toast-mask', 'aria-hidden': true, onClick() {}, style: { ...fill, zIndex: 0, backgroundColor: 'shadow/30' } }),
-    h('column', { style: { ...fill, zIndex: 1, alignItems: 'center', justifyContent: position === 'top' ? 'start' : position === 'bottom' ? 'end' : 'center',
+  return h('view', { id: 'lx-toast', popover: 'manual', open: true, style: { display: 'grid', ...fill, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 } },
+    mask && h('button', { 'data-testid': 'lx-toast-mask', 'aria-hidden': true, onClick() {}, style: { ...fill, ...cell, zIndex: 0, backgroundColor: 'shadow/30' } }),
+    h('view', { style: { ...fill, ...cell, zIndex: 1, alignItems: 'center', justifyContent: position === 'top' ? 'start' : position === 'bottom' ? 'end' : 'center',
       paddingTop: position === 'top' ? 80 : 0, paddingBottom: position === 'bottom' ? 80 : 0 } }, box));
 }
 
@@ -127,10 +129,10 @@ function modalNode() {
   return h('dialog', { 'data-testid': 'lx-modal', key: `modal-${modal.key}`, open: true, onClose: () => settleModal(false),
     'aria-label': modal.title || modal.content || 'Dialog',
     style: { width: 320, maxWidth: '86%', borderRadius: 14, backgroundColor: 'surface-raised', overflow: 'hidden', transition: fade } },
-    h('column', { style: { padding: 20, gap: 8, alignItems: 'center' } },
+    h('view', { style: { padding: 20, gap: 8, alignItems: 'center' } },
       modal.title && h('text', { role: 'heading', style: { fontSize: 17, fontWeight: 600, textAlign: 'center', color: 'text' } }, modal.title),
       modal.content && h('text', { style: { fontSize: 15, textAlign: 'center', color: 'text-muted' } }, modal.content)),
-    h('row', { style: { borderTopWidth: 1, borderColor: 'line' } },
+    h('view', { style: { flexDirection: 'row', borderTopWidth: 1, borderColor: 'line' } },
       modal.showCancel && button('lx-modal-cancel', modal.cancelText, false, 'text-muted'),
       button('lx-modal-confirm', modal.confirmText, true, 'accent')));
 }
@@ -144,10 +146,10 @@ function sheetNode(env) {
   const place = phone ? { marginTop: 'auto', marginBottom: 8, marginLeft: 8, marginRight: 8 } : { width: 320 };
   return h('dialog', { 'data-testid': 'lx-action-sheet', key: `sheet-${sheet.key}`, open: true, closedby: 'any', onClose: () => settleSheet(-1),
     'aria-label': 'Actions', style: { ...place, gap: 8, transition: fade } },
-    h('column', { style: { borderRadius: 14, backgroundColor: 'surface-raised', overflow: 'hidden' } },
-      ...sheet.items.map((label, index) => h('column', { key: `item-${index}`, style: index ? { borderTopWidth: 1, borderColor: 'line' } : {} },
+    h('view', { style: { borderRadius: 14, backgroundColor: 'surface-raised', overflow: 'hidden' } },
+      ...sheet.items.map((label, index) => h('view', { key: `item-${index}`, style: index ? { borderTopWidth: 1, borderColor: 'line' } : {} },
         item(`lx-action-sheet-item-${index}`, label, index, 'accent')))),
-    h('column', { style: { borderRadius: 14, backgroundColor: 'surface-raised', overflow: 'hidden' } },
+    h('view', { style: { borderRadius: 14, backgroundColor: 'surface-raised', overflow: 'hidden' } },
       item('lx-action-sheet-cancel', sheet.cancelText, -1, 'text')));
 }
 
@@ -155,14 +157,14 @@ function sheetNode(env) {
 export function overlayNode(env) {
   if (!hasOverlay()) return null;
   // Each one draws in the top layer; this box only holds their place in the tree.
-  return h('stack', { key: 'lx-overlay', style: { position: 'absolute', top: 0, left: 0, width: 0, height: 0 } },
+  return h('view', { key: 'lx-overlay', style: { position: 'absolute', top: 0, left: 0, width: 0, height: 0 } },
     sheets.length > 0 && sheetNode(env), modals.length > 0 && modalNode(), toast && toastNode());
 }
 
 /** Presence and spin, set on resolved nodes: enter from and leave toward a faded, smaller box. */
 export function decorateOverlay(node, env) {
-  const enter = lowerStyle('column', { opacity: 0, scale: [0.94, 0.94] }, env).fields;
-  const toastEnter = lowerStyle('column', { opacity: 0, scale: [0.8, 0.8] }, env).fields;
+  const enter = lowerStyle('view', { opacity: 0, scale: [0.94, 0.94] }, env).fields;
+  const toastEnter = lowerStyle('view', { opacity: 0, scale: [0.8, 0.8] }, env).fields;
   const walk = item => {
     if (['lx-modal', 'lx-action-sheet'].includes(item.props?.testId)) item.states = { ...item.states, startingStyle: enter, exitStyle: enter };
     if (item.props?.testId === 'lx-toast') item.states = { ...item.states, startingStyle: toastEnter, exitStyle: toastEnter };

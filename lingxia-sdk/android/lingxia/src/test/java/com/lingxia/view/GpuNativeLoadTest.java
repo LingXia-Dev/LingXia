@@ -144,7 +144,7 @@ public class GpuNativeLoadTest {
         Fake fake = new Fake();
         long host = GpuView.nativeHostCreate(fake, "test:jvm", false, 0);
         GpuView.nativeLoad(host, GpuNative.module(
-            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1),style:{height:60}},'Count '+n.value),h('image',{src:'lx://pic.png',style:{width:20,height:20}}))}"));
+            "function render(){const n=useLocal('n',0);return h('view',{},h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1),style:{height:60}},'Count '+n.value),h('image',{src:'lx://pic.png',style:{width:20,height:20}}))}"));
         fake.pump(host, () -> fake.loaded == 1);
         GpuView.nativeSetVisible(host, true);
         fake.pump(host, () -> fake.presented == 1 && !fake.pixels.isEmpty());
@@ -194,7 +194,7 @@ public class GpuNativeLoadTest {
         long host = GpuView.nativeHostCreate(fake, "test:jvm", false, 0);
         try {
             GpuView.nativeLoad(host, GpuNative.module(
-                "function render(){const plan=useLocal('plan','m');return h('column',{},h('select',{'data-testid':'s',bind:plan,'aria-label':'Plan',options:[{value:'m',label:'Monthly'},{value:'y',label:'Yearly'}]}),h('text',{'data-testid':'t'},plan.value))}"));
+                "function render(){const plan=useLocal('plan','m');return h('view',{},h('select',{'data-testid':'s',bind:plan,'aria-label':'Plan',options:[{value:'m',label:'Monthly'},{value:'y',label:'Yearly'}]}),h('text',{'data-testid':'t'},plan.value))}"));
             GpuView.nativeSetVisible(host, true);
             fake.pump(host, () -> fake.presented >= 1);
             int box = new JSONObject(GpuView.nativeSemanticRoots(host)).getJSONArray("roots").getInt(0);

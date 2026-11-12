@@ -263,7 +263,7 @@ impl Projection<'_> {
     fn is_container(&self, index: usize) -> bool {
         matches!(
             self.frame.nodes[index].tag,
-            "column" | "row" | "grid" | "stack" | "scroll" | "list" | "radio"
+            "column" | "scroll" | "list" | "radio"
         ) && self.published(index)
     }
 

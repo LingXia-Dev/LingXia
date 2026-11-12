@@ -19,10 +19,10 @@ export function render() {
   const selected = useLocal<'neutral' | 'accent'>('selected', 'neutral');
   return (
     <page className="bg-canvas p-4 gap-3">
-      <column className={`rounded-card p-4 gap-1 shadow-md ${tone[selected.value]}`}>
+      <view className={`rounded-card p-4 gap-1 shadow-md ${tone[selected.value]}`}>
         <text className="text-lg font-semibold">Plan</text>
         <text className="text-sm opacity-80">Renews monthly</text>
-      </column>
+      </view>
       <button
         onClick={() => selected.set(selected.value === 'neutral' ? 'accent' : 'neutral')}
         className="rounded-full border border-accent p-3 text-accent active:bg-accent/10 md:self-start"
@@ -193,7 +193,7 @@ export function render() {
 ```
 
 The accepted properties per element are in [styles](../reference/styles.md). `<span>` and `<link>`
-take only text paint; `<spacer>` only box properties.
+take only text paint.
 
 ## The `style` prop
 
@@ -236,6 +236,6 @@ A misspelled or invented utility is `UI_CLASS_UNKNOWN`; the message names the ne
 
 ```tsx error UI_CLASS_UNKNOWN
 export function render() {
-  return <page><row className="flex-center" /></page>;
+  return <page><view className="flex-center" /></page>;
 }
 ```

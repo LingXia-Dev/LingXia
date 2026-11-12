@@ -45,7 +45,7 @@ public class GpuAutomationTest {
         long host = GpuView.nativeHostCreate(fake, "test:jvm-automation", false, 0);
         try {
             GpuView.nativeLoad(host, GpuNative.module(
-                "function render(){const n=useLocal('n',0),v=useLocal('v','');return h('column',{},"
+                "function render(){const n=useLocal('n',0),v=useLocal('v','');return h('view',{},"
                 + "h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1)},'Add'),"
                 + "h('button',{'data-testid':'off',disabled:true},'Off'),"
                 + "h('input',{'data-testid':'name',bind:v,'aria-label':'Name'}),"

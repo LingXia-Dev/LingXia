@@ -15,7 +15,7 @@ fn node<'a>(display: &'a crate::DisplayList, id: &str) -> &'a crate::scene::node
 #[test]
 fn long_press_selects_a_word_and_handles_extend_it() {
     let mut session = page(
-        "h('column',{},h('text',{'data-testid':'p',style:{userSelect:'text',fontSize:16,width:300}},t.value),h('text',{'data-testid':'q'},'plain'))",
+        "h('view',{},h('text',{'data-testid':'p',style:{userSelect:'text',fontSize:16,width:300}},t.value),h('text',{'data-testid':'q'},'plain'))",
     );
     let display = session.layout(320, 200, 1.0).unwrap();
     let text = node(&display, "p");
@@ -51,7 +51,7 @@ fn long_press_selects_a_word_and_handles_extend_it() {
 #[test]
 fn select_all_takes_the_whole_text_and_changes_drop_the_selection() {
     let mut session = page(
-        "h('column',{},h('text',{'data-testid':'p',style:{userSelect:'all'}},t.value),h('button',{'data-testid':'b',onClick:()=>t.set('changed')},'Change'))",
+        "h('view',{},h('text',{'data-testid':'p',style:{userSelect:'all'}},t.value),h('button',{'data-testid':'b',onClick:()=>t.set('changed')},'Change'))",
     );
     let display = session.layout(320, 200, 1.0).unwrap();
     let text = node(&display, "p").clone();
@@ -115,7 +115,7 @@ fn selectable_text_projects_selection_actions() {
 #[test]
 fn long_press_between_words_selects_the_nearest_word() {
     let mut session = page(
-        "h('column',{},h('text',{'data-testid':'p',style:{userSelect:'text',whiteSpace:'pre',fontFamily:'monospace',fontSize:16,alignSelf:'flex-start'}},'ab        cd'))",
+        "h('view',{},h('text',{'data-testid':'p',style:{userSelect:'text',whiteSpace:'pre',fontFamily:'monospace',fontSize:16,alignSelf:'flex-start'}},'ab        cd'))",
     );
     let display = session.layout(320, 200, 1.0).unwrap();
     let text = node(&display, "p");

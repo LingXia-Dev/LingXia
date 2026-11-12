@@ -207,17 +207,10 @@ pub(crate) fn radius_corners(record: &Record, rtl: bool) -> [usize; 4] {
 
 /// Whether `parent` places its children along a horizontal main axis.
 fn lays_out_in_row(parent: &Record) -> bool {
-    match parent.string(field::FLEX_DIRECTION) {
-        Some("row" | "row-reverse") => true,
-        Some(_) => false,
-        None => {
-            parent.tag == tag::ROW
-                && !matches!(
-                    parent.string(field::DISPLAY),
-                    Some("block" | "inline-block")
-                )
-        }
-    }
+    matches!(
+        parent.string(field::FLEX_DIRECTION),
+        Some("row" | "row-reverse")
+    )
 }
 
 /// A replaced element's fixed length on `axis`: its automatic minimum, as in CSS.
@@ -368,31 +361,21 @@ pub(crate) fn node_style(
     Ok(Style {
         display: if display == Some("none") {
             Display::None
-        } else if display == Some("grid") || matches!(record.tag, tag::GRID | tag::STACK) {
+        } else if display == Some("grid") {
             Display::Grid
         } else {
             Display::Flex
         },
-        grid_column: if let Some(source) = record.string(field::GRID_COLUMN) {
-            crate::layout::grid::placement(source)?
-        } else if record.parent.is_some_and(|p| records[p].tag == tag::STACK) {
-            Line {
-                start: line(1),
-                end: line(2),
-            }
-        } else {
-            Default::default()
-        },
-        grid_row: if let Some(source) = record.string(field::GRID_ROW) {
-            crate::layout::grid::placement(source)?
-        } else if record.parent.is_some_and(|p| records[p].tag == tag::STACK) {
-            Line {
-                start: line(1),
-                end: line(2),
-            }
-        } else {
-            Default::default()
-        },
+        grid_column: record
+            .string(field::GRID_COLUMN)
+            .map(crate::layout::grid::placement)
+            .transpose()?
+            .unwrap_or_default(),
+        grid_row: record
+            .string(field::GRID_ROW)
+            .map(crate::layout::grid::placement)
+            .transpose()?
+            .unwrap_or_default(),
         position: if matches!(record.string(field::POSITION), Some("absolute" | "fixed")) {
             Position::Absolute
         } else {
@@ -435,13 +418,11 @@ pub(crate) fn node_style(
         } else {
             taffy::Direction::Ltr
         },
-        grid_template_columns: if let Some(source) = record.string(field::GRID_TEMPLATE_COLUMNS) {
-            crate::layout::grid::template(source)?
-        } else if let Some(columns) = record.number(field::GRID_COLUMNS) {
-            vec![flex(1.0); columns as usize]
-        } else {
-            Vec::new()
-        },
+        grid_template_columns: record
+            .string(field::GRID_TEMPLATE_COLUMNS)
+            .map(crate::layout::grid::template)
+            .transpose()?
+            .unwrap_or_default(),
         grid_template_rows: record
             .string(field::GRID_TEMPLATE_ROWS)
             .map(crate::layout::grid::template)
@@ -481,8 +462,6 @@ pub(crate) fn node_style(
             Some("row-reverse") => FlexDirection::RowReverse,
             Some("column") => FlexDirection::Column,
             Some("column-reverse") => FlexDirection::ColumnReverse,
-            _ if block => FlexDirection::Column,
-            _ if record.tag == tag::ROW => FlexDirection::Row,
             _ => FlexDirection::Column,
         },
         flex_wrap: match record.string(field::FLEX_WRAP) {

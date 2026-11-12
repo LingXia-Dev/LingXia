@@ -88,13 +88,13 @@ test('smooth area fields are optional and share the expanded geometry budget', (
   assert.equal(props.plotSmooth, 1); assert.equal(props.plotArea, 1);
   assert.deepEqual(audit('const v = <plot kind="line" aria-label="Trend" values={[1,2]} colors={["chart-2"]} smooth area />;', 'plot.tsx'), []);
   reset();
-  assert.throws(() => describe(() => h('column', {}, Array.from({ length: 8 }, (_, i) =>
+  assert.throws(() => describe(() => h('view', {}, Array.from({ length: 8 }, (_, i) =>
     plot({ key: String(i), kind: 'line', smooth: true, area: true, values: Array(128).fill(1) }))), view), /plot geometry budget/);
 });
 
 test('many individually valid plots share one geometry budget', () => {
   reset();
-  assert.throws(() => describe(() => h('column', {}, Array.from({ length: 64 }, (_, i) => plot({ key: String(i), kind: 'pie' }))), view), /plot geometry budget/);
+  assert.throws(() => describe(() => h('view', {}, Array.from({ length: 64 }, (_, i) => plot({ key: String(i), kind: 'pie' }))), view), /plot geometry budget/);
 });
 
 test('explicit plot domains encode exact bounds and reject misleading scales', () => {
@@ -112,7 +112,7 @@ test('explicit plot domains encode exact bounds and reject misleading scales', (
 
 test('rounded bar paths share the frame geometry budget', () => {
   reset();
-  assert.throws(() => describe(() => h('column', {}, Array.from({length:17}, (_, i) =>
+  assert.throws(() => describe(() => h('view', {}, Array.from({length:17}, (_, i) =>
     plot({key:String(i),values:Array(128).fill(1)}))), view), /plot geometry budget/);
 });
 

@@ -152,7 +152,7 @@ fn marker_emphasis_raster_expands_white_center_and_blue_ring() {
 #[test]
 fn expanded_pie_is_clipped_to_its_unbordered_plot_viewport() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{backgroundColor:'#ffffff',padding:20}},h('plot',{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],selectedIndex:0,'aria-label':'Series',pieLayout:{center:[0.5,0.5],innerRadius:0.1,outerRadius:0.8,emphasisScale:64},style:{width:100,height:100}}))}",
+        "function render(){return h('view',{style:{backgroundColor:'#ffffff',padding:20}},h('plot',{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],selectedIndex:0,'aria-label':'Series',pieLayout:{center:[0.5,0.5],innerRadius:0.1,outerRadius:0.8,emphasisScale:64},style:{width:100,height:100}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(160, 160, 1.0).unwrap();

@@ -14,10 +14,10 @@ export function render() {
         <link onClick={() => opened.set(opened.value + 1)} className="active:text-accent">terms</link>
         {' '}before you continue.
       </text>
-      <row className="justify-between">
+      <view className="flex-row justify-between">
         <text className="text-sm text-muted">Total</text>
         <text className="text-sm font-semibold tabular-nums">1,204.50</text>
-      </row>
+      </view>
       <text className="text-xs text-muted whitespace-pre-line">{'Line one\nLine two'}</text>
       <text className="text-sm line-clamp-2">A long description that stops after two lines and ends with an ellipsis when it would run longer than that.</text>
       <text className="font-mono text-sm select-all">LX-2024-88412</text>
@@ -28,7 +28,7 @@ export function render() {
 
 All text is in a `<text>`. A bare string among element children becomes one. Containers pass text
 style down: `text-*`, `font-*`, `leading-*`, `tracking-*` and the other typography utilities set on a
-`<column>` apply to every `<text>` inside it unless overridden.
+`<view>` apply to every `<text>` inside it unless overridden.
 
 ## Defaults
 

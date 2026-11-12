@@ -1,6 +1,6 @@
 // Compiled Tailwind rules, matched per node. Rules carry CSS-named style;
 // `when` narrows them by theme, viewport width, interaction state or the
-// children a `space-*`/`divide-*` rule targets.
+// children a `space-*`/`divide-*` rule targets, or every child (`*:` grid placement).
 import { resetLonghands } from './lower.js';
 
 let byName = new Map();
@@ -170,7 +170,7 @@ export function resolveClasses(className, env = {}) {
     indices.forEach((index, at) => { ordered[index] = group[at]; });
   }
   matched.splice(0, matched.length, ...ordered);
-  const own = matched.filter(rule => !rule.when?.children);
+  const own = matched.filter(rule => !rule.when?.children && !rule.when?.every);
   const plain = own.filter(rule => !rule.when?.state);
   const meta = {};
   const base = cascade(plain, meta);
@@ -186,6 +186,8 @@ export function resolveClasses(className, env = {}) {
   if (backdrop.length) result.backdrop = cascade(backdrop);
   const children = matched.filter(rule => rule.when?.children);
   if (children.length) result.children = cascade(children);
+  const every = matched.filter(rule => rule.when?.every);
+  if (every.length) result.every = cascade(every);
   // Cache only the class cascade; inline values and inheritance resolve per node.
   if (cache.size >= 1024) cache.delete(cache.keys().next().value);
   cache.set(key, copy(result));

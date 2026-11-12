@@ -15,7 +15,7 @@ test('editor labels are distinct from values and placeholder hints', () => {
 
 test('local string bindings receive only typed committed text events', () => {
   reset();
-  const render = () => { const draft = useLocal('draft', ''); return h('column', {}, h('input', { bind: draft }), h('text', {}, draft.value)); };
+  const render = () => { const draft = useLocal('draft', ''); return h('view', {}, h('input', { bind: draft }), h('text', {}, draft.value)); };
   const handle = rendered(render).children[0].props.onInput;
   assert.equal(dispatch(handle), false);
   assert.equal(dispatch(handle, 42), false);
@@ -121,7 +121,7 @@ test('focus styles lower to paint deltas on editors and are rejected elsewhere',
     { name: 'focus:p-4', when: { state: 'focus' }, style: { paddingTop: 16 } },
   ]);
   assert.deepEqual(rendered(() => h('input', { className: 'focus:bg-surface' })).props.focusStyle, { background: 'surface' });
-  assert.throws(() => describe(() => h('column', { className: 'focus:bg-surface' }), {}), /UI_STYLE: focus: requires an editor/);
+  assert.throws(() => describe(() => h('view', { className: 'focus:bg-surface' }), {}), /UI_STYLE: focus: requires an editor/);
   assert.throws(() => describe(() => h('input', { className: 'focus:p-4' }), {}), /UI_STYLE: focus: supports paint properties only/);
   configureClasses([]);
 });

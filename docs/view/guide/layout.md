@@ -8,17 +8,17 @@ export function render() {
     <page className="bg-surface-sunken">
       <scroll className="grow">
         <text className="sticky top-0 px-4 py-2 text-xs font-semibold bg-line">Services</text>
-        <grid className="grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-2 p-4">
+        <view className="grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-2 p-4">
           {tiles.map(tile => (
-            <column key={tile} className="h-16 items-center justify-center rounded-lg bg-surface">
+            <view key={tile} className="h-16 items-center justify-center rounded-lg bg-surface">
               <text className="text-sm">{tile}</text>
-            </column>
+            </view>
           ))}
-        </grid>
-        <row className="items-center gap-3 px-4">
+        </view>
+        <view className="flex-row items-center gap-3 px-4">
           <text className="grow text-sm">Balance</text>
           <text className="text-sm font-semibold tabular-nums">12.40</text>
-        </row>
+        </view>
       </scroll>
       <button onClick={() => {}} className="fixed bottom-6 end-6 rounded-full bg-accent text-on-accent px-5 py-3">Top up</button>
     </page>
@@ -31,19 +31,24 @@ a flex container unless it is a grid.
 
 ## Containers
 
-| Element | Lays out children |
+`<view>` is the one layout container; Tailwind classes choose how it lays out its children.
+
+| Classes | Lays out children |
 | --- | --- |
-| `<column>`, `<view>`, `<page>` | flex column; a `<view>` with `flex` or `inline-flex` lays out a row, as in CSS |
-| `<row>` | flex row |
-| `<grid>` | CSS Grid; the same as `grid` on any container |
-| `<stack>` | every child in one cell, overlapping; place them with `self-*`, `justify-self-*` and insets |
-| `<scroll>` | flex column that scrolls one axis (see [Lists and scrolling](lists-and-scrolling.md)) |
-| `<spacer>` | nothing: an empty box; give it `grow` or a size |
+| none | flex column (also `<page>`) |
+| `flex-row`, or `flex`/`inline-flex` alone | flex row, as in CSS |
+| `grid` | CSS Grid |
+| `grid *:col-start-1 *:row-start-1` | every child in one cell, overlapping; place them with `self-*`, `place-self-*` and insets |
+
+`<scroll>` is a flex column that scrolls one axis (see [Lists and scrolling](lists-and-scrolling.md)). An
+empty `<view className="grow" />` is a spacer.
+
+`*:` puts grid placement (`col-*`, `row-*`) on every child and nothing else; other classes go on each child.
 
 `justify-self-start` and `justify-self-end` are refused at the moment; use `place-self-*` or
 `style={{ justifySelf: 'end' }}`.
 
-`flex-row`/`flex-col` (and their `-reverse` forms) change the direction of a `<column>`, `<row>` or `<page>`.
+`flex-row`/`flex-col` (and their `-reverse` forms) set the direction of a `<view>` or `<page>`.
 `flex-wrap`, `items-*`, `justify-*`, `content-*` and `gap-*` behave as in CSS.
 
 ## Where native defaults differ from CSS
@@ -85,12 +90,12 @@ use `hidden`, or `opacity-0` to keep the space.
 export function render() {
   return (
     <page className="p-4">
-      <grid className="grid-cols-3 grid-rows-[auto_auto] gap-2">
+      <view className="grid grid-cols-3 grid-rows-[auto_auto] gap-2">
         <view className="col-span-2 h-12 rounded-lg bg-accent" />
         <view className="row-span-2 rounded-lg bg-danger" />
         <view className="h-12 rounded-lg bg-line" />
         <view className="h-12 rounded-lg bg-line order-first" />
-      </grid>
+      </view>
     </page>
   );
 }

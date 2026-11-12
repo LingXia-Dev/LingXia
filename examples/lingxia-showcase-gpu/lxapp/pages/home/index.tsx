@@ -29,11 +29,11 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
   return (
     <page data-testid="home-page" className="bg-canvas">
       {Boolean(data.imageUrl) && <image data-testid="home-background" src={data.imageUrl} alt="" className="absolute inset-0 object-cover" onLoad={() => photo.set(true)} onError={() => photo.set(false)} />}
-      {photo.value && <column data-testid="home-background-overlay" className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-scrim" />}
+      {photo.value && <view data-testid="home-background-overlay" className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-scrim" />}
       <scroll data-testid="home-scroll" className="grow basis-0">
-        <column className="min-h-full px-5 py-10 items-center justify-center gap-4">
+        <view className="min-h-full px-5 py-10 items-center justify-center gap-4">
           <Card testId="home-card" className="w-full max-w-sm p-6 gap-3 bg-surface/80 backdrop-blur-xl shadow-lg border-line/60">
-            <column data-testid="home-header" className="items-center gap-1 pb-3">
+            <view data-testid="home-header" className="items-center gap-1 pb-3">
               <image data-testid="home-logo" src="public/AppIcon.png" alt="" className="w-16 h-16 mb-2 rounded-2xl object-contain" />
               <text data-testid="home-title" className="text-[17px] font-semibold">
                 LingXia
@@ -41,7 +41,7 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
               <text data-testid="home-tagline" className="text-[13px] text-muted text-center line-clamp-2">
                 {t('tagline')}
               </text>
-            </column>
+            </view>
             <input
               data-testid="home-name"
               data-controlled-value={name.value}
@@ -60,13 +60,13 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
                 {greeting}
               </Notice>
             )}
-            <column data-testid="home-appearance" className="gap-1.5 pt-2">
-              <row className="justify-between">
+            <view data-testid="home-appearance" className="gap-1.5 pt-2">
+              <view className="flex-row justify-between">
                 <text className="text-[11px] font-medium text-muted">{t('appearance')}</text>
                 <text data-testid="home-appearance-resolved" className="text-[11px] text-muted">
                   {data.appearance.resolved === 'dark' ? t('appearanceDark') : t('appearanceLight')}
                 </text>
-              </row>
+              </view>
               <Segmented
                 testId="home-appearance"
                 value={data.appearance.preference}
@@ -77,14 +77,14 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
                   { value: 'dark', label: t('appearanceDark') },
                 ]}
               />
-            </column>
-            <column data-testid="home-language" className="gap-1.5 pt-1">
-              <row className="justify-between">
+            </view>
+            <view data-testid="home-language" className="gap-1.5 pt-1">
+              <view className="flex-row justify-between">
                 <text className="text-[11px] font-medium text-muted">{t('language')}</text>
                 <text data-testid="home-language-resolved" className="text-[11px] text-muted">
                   {language === 'zh-CN' ? t('languageZh') : t('languageEn')}
                 </text>
-              </row>
+              </view>
               <Segmented
                 testId="home-language"
                 value={data.displayLanguage.preference}
@@ -95,7 +95,7 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
                   { value: 'zh-CN', label: t('languageZh') },
                 ]}
               />
-            </column>
+            </view>
             {Boolean(data.appVersion) && (
               <text data-testid="home-version" className="text-[10px] font-medium text-muted">
                 {data.appVersion}
@@ -103,15 +103,15 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
             )}
           </Card>
           {Boolean(data.ipAddr) && (
-            <row className="max-w-full px-4 py-2 gap-2 items-center rounded-full bg-surface/70 backdrop-blur-md">
-              <spacer className="shrink-0 w-1.5 h-1.5 rounded-full bg-success" />
+            <view className="flex-row max-w-full px-4 py-2 gap-2 items-center rounded-full bg-surface/70 backdrop-blur-md">
+              <view className="shrink-0 w-1.5 h-1.5 rounded-full bg-success" />
               <text className="shrink-0 text-xs font-medium tracking-wide text-text">{t('myIp')}</text>
               <text data-testid="home-ip" className="min-w-0 grow truncate text-xs font-mono text-muted">
                 {data.ipAddr}
               </text>
-            </row>
+            </view>
           )}
-        </column>
+        </view>
       </scroll>
     </page>
   );

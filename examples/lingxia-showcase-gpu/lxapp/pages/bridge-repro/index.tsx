@@ -88,7 +88,7 @@ export function render({ data, actions }: View<Actions, Data>) {
           {echoLog.value}
         </text>
       </Card>
-      <grid className="gap-2 grid-cols-2">
+      <view className="grid gap-2 grid-cols-2">
         <Button variant="destructive" testId="btn-reconnect" onClick={() => echoLog.set('reconnect hook unavailable (GPU transport)')}>
           Reconnect
         </Button>
@@ -108,7 +108,7 @@ export function render({ data, actions }: View<Actions, Data>) {
         <Button variant="secondary" testId="btn-stop" onClick={() => ticks.cancel()}>
           Stop
         </Button>
-      </grid>
+      </view>
       <text className="text-xs text-muted">
         Start the stream, then reconnect. Any gap or bridge error fails the check. Echo may time out while the long stream occupies AppService.
       </text>

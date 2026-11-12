@@ -54,24 +54,24 @@ test('invalid effects report diagnostics and animate-none clears an animation', 
   const invalid = await compileUtilities(new Set(['animate-enter']), '@theme {--animate-enter:enter 1s;@keyframes enter{from{width:0px}to{width:10px}}}');
   assert.match(invalid[0].error.message,/unsupported animated property width/);
   configureClasses(await compileUtilities(new Set(['animate-enter','animate-none']),theme));
-  const records = describe(()=>h('column',{className:'animate-enter'}));
+  const records = describe(()=>h('view',{className:'animate-enter'}));
   assert.equal(records[6],101);
   assert.equal(JSON.parse(records[7]).name,'enter');
-  assert.equal(describe(()=>h('column',{className:'animate-none'}))[5],0);
-  assert.equal(describe(()=>h('column',{className:'animate-enter',style:{animation:null}}))[5],0);
+  assert.equal(describe(()=>h('view',{className:'animate-none'}))[5],0);
+  assert.equal(describe(()=>h('view',{className:'animate-enter',style:{animation:null}}))[5],0);
 });
 
 test('animation wire preserves exact payload and bounds serialization before transport', () => {
-  const encoded = describe(()=>h('column',{style:{animation:fixture.blink}}));
+  const encoded = describe(()=>h('view',{style:{animation:fixture.blink}}));
   assert.equal(encoded[6],101);
   assert.deepEqual(JSON.parse(encoded[7]),fixture.blink);
   for (const value of [false,[],42,'blink', {value:NaN},{value:Infinity},{value:undefined},{value:()=>{}},{value:'x'.repeat(32768)}]) {
-    assert.throws(()=>describe(()=>h('column',{style:{animation:value}})),/UI_ANIMATION/);
+    assert.throws(()=>describe(()=>h('view',{style:{animation:value}})),/UI_ANIMATION/);
   }
   const circular={}; circular.self=circular;
-  assert.throws(()=>describe(()=>h('column',{style:{animation:circular}})),/circular|cyclic/i);
+  assert.throws(()=>describe(()=>h('view',{style:{animation:circular}})),/circular|cyclic/i);
   const payload = {...fixture.blink,padding:'x'.repeat(32000)};
-  assert.throws(()=>describe(()=>h('column',{},Array.from({length:9},(_,i)=>h('column',{key:String(i),style:{animation:payload}})))),/page payload budget/);
+  assert.throws(()=>describe(()=>h('view',{},Array.from({length:9},(_,i)=>h('view',{key:String(i),style:{animation:payload}})))),/page payload budget/);
 });
 
 test('animation transport budgets count UTF-8 bytes at definition and page boundaries', () => {
@@ -83,10 +83,10 @@ test('animation transport budgets count UTF-8 bytes at definition and page bound
     const padding = character.repeat(count) + 'x'.repeat((32768 - overhead) % bytes);
     const payload = {...base,padding};
     assert.equal(Buffer.byteLength(JSON.stringify(payload)),32768);
-    const render = n => describe(()=>h('column',{},Array.from({length:n},(_,i)=>h('column',{key:String(i),style:{animation:payload}}))));
+    const render = n => describe(()=>h('view',{},Array.from({length:n},(_,i)=>h('view',{key:String(i),style:{animation:payload}}))));
     assert.doesNotThrow(()=>render(8));
     assert.throws(()=>render(9),/page payload budget/);
-    assert.throws(()=>describe(()=>h('column',{style:{animation:{...payload,padding:padding+'x'}}})),/wire budget/);
+    assert.throws(()=>describe(()=>h('view',{style:{animation:{...payload,padding:padding+'x'}}})),/wire budget/);
   }
 });
 
@@ -195,7 +195,7 @@ test('transition utilities lower to one bounded transition of painted properties
   assert.equal(resolveClasses('motion-safe:animate-spin', { reducedMotion: true }).base.animation, undefined);
   assert.throws(() => resolveClasses('transition-[height]'), /animates layout; nearest supported: transition-transform/);
   assert.throws(() => resolveClasses('duration-[12s]'), /over 10000ms/);
-  const records = describe(() => h('column', { className: 'transition-opacity duration-200' }));
+  const records = describe(() => h('view', { className: 'transition-opacity duration-200' }));
   assert.equal(records[6], 171);
   assert.deepEqual(JSON.parse(records[7]), { properties: ['opacity'], durationMs: 200, delayMs: 0, easing: [0.4, 0, 0.2, 1] });
 });

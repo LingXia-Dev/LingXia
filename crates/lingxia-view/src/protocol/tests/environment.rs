@@ -77,7 +77,7 @@ fn the_session_fills_the_session_keys() {
 #[test]
 fn a_pushed_palette_repaints_roles_and_editors_default_to_line_strong() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{},h('input',{style:{borderWidth:1,width:100,height:30}}))}",
+        "function render(){return h('view',{},h('input',{style:{borderWidth:1,width:100,height:30}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let rects = |page: &mut crate::ViewSession| {

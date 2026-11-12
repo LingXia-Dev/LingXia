@@ -3,7 +3,7 @@ use crate::ViewSession;
 
 fn module(label: &str) -> String {
     super::source(&format!(
-        "function render(){{const n=useLocal('n',0);return h('column',{{}},h('button',{{'data-testid':'b',onClick(){{n.set(n.value+1)}}}},'{label} '+n.value),h('scroll',{{'data-testid':'s',style:{{height:50}}}},h('column',{{style:{{height:300}}}})))}}"
+        "function render(){{const n=useLocal('n',0);return h('view',{{}},h('button',{{'data-testid':'b',onClick(){{n.set(n.value+1)}}}},'{label} '+n.value),h('scroll',{{'data-testid':'s',style:{{height:50}}}},h('view',{{style:{{height:300}}}})))}}"
     )) + "\nenableHotSwap();"
 }
 
@@ -34,8 +34,7 @@ fn a_swapped_module_keeps_local_state_and_a_broken_one_rolls_back() {
     page.swap_module(&module("Total")).unwrap();
     assert_eq!(text(&mut page), "Total 1");
     // A module that throws while rendering leaves the running one in place.
-    let broken =
-        module("Total").replace("return h('column'", "throw Error('typo');return h('column'");
+    let broken = module("Total").replace("return h('view'", "throw Error('typo');return h('view'");
     let error = page.swap_module(&broken).unwrap_err();
     assert!(error.contains("typo"), "{error}");
     assert_eq!(text(&mut page), "Total 1");
@@ -50,7 +49,7 @@ fn component_locals_survive_a_swap_whatever_order_components_first_rendered_in()
         super::source(&format!(
             "function Paint(){{const p=useLocal('p','paint');return h('text',{{}},p.value)}}
              function Inputs(){{const plan=useLocal('plan','initial');return h('button',{{'data-testid':'plan',onClick(){{plan.set('yearly')}}}},'{label} '+plan.value)}}
-             function render(){{const tab=useLocal('tab','paint');return h('column',{{}},h('button',{{'data-testid':'tab',onClick(){{tab.set('inputs')}}}},'tab'),tab.value==='paint'?h(Paint,{{}}):h(Inputs,{{}}))}}"
+             function render(){{const tab=useLocal('tab','paint');return h('view',{{}},h('button',{{'data-testid':'tab',onClick(){{tab.set('inputs')}}}},'tab'),tab.value==='paint'?h(Paint,{{}}):h(Inputs,{{}}))}}"
         )) + "\nenableHotSwap();"
     };
     let mut page = ViewSession::new(&module("Plan")).unwrap();
@@ -268,7 +267,7 @@ fn identified(name: &str, id: &str) -> String {
     super::source(&format!(
         "function {name}(){{const n=useLocal('n',0);return h('button',{{'data-testid':'b',onClick(){{n.set(n.value+1)}}}},'Card '+n.value)}}\n\
          {name}.__lxid={id:?};\n\
-         function render(){{return h('column',{{}},h({name},{{}}))}}"
+         function render(){{return h('view',{{}},h({name},{{}}))}}"
     )) + "\nenableHotSwap();"
 }
 

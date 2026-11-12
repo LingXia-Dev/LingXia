@@ -14,20 +14,20 @@ export function Pager({ bind, defaultPage = 0, dots = true, 'aria-label': label,
   const page = bind ?? local;
   const pages = childrenToArray(children).filter(child => child !== null && child !== undefined && child !== false);
   const at = Math.min(Math.max(0, Math.round(page.value)), Math.max(0, pages.length - 1));
-  return h('column', { className, 'data-testid': testId, style: { gap: 8 } },
+  return h('view', { className, 'data-testid': testId, style: { gap: 8 } },
     h('scroll', { bind: page, 'data-testid': testId && `${testId}-scroll`,
       style: { overflowX: 'auto', scrollSnapType: 'x', scrollSnapStop: 'always' } },
-      h('row', { role: 'list', 'aria-label': label },
-        ...pages.map((content, index) => h('column', { key: String(index), role: 'listitem',
+      h('view', { style: { flexDirection: 'row' }, role: 'list', 'aria-label': label },
+        ...pages.map((content, index) => h('view', { key: String(index), role: 'listitem',
           'data-testid': testId && `${testId}-page-${index}`,
           style: { width: '100%', flexShrink: 0, scrollSnapAlign: 'start' } }, content)))),
-    dots && pages.length > 1 && h('row', { 'aria-hidden': true, 'data-testid': testId && `${testId}-dots`,
-      style: { justifyContent: 'center', alignItems: 'center' } },
+    dots && pages.length > 1 && h('view', { 'aria-hidden': true, 'data-testid': testId && `${testId}-dots`,
+      style: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' } },
       // A finger-sized target around each small mark.
       ...pages.map((_, index) => h('button', { key: String(index), 'data-testid': testId && `${testId}-dot-${index}`,
         onClick: () => page.set(index),
         style: { paddingTop: 9, paddingBottom: 9, paddingLeft: 3, paddingRight: 3, backgroundColor: 'transparent' } },
-        h('column', { 'data-testid': testId && `${testId}-mark-${index}`,
+        h('view', { 'data-testid': testId && `${testId}-mark-${index}`,
           style: { width: index === at ? 18 : 6, height: 6, borderRadius: 3,
             backgroundColor: index === at ? 'accent' : 'line', transition: dotMotion } })))));
 }

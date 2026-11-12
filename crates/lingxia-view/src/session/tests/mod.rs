@@ -86,8 +86,8 @@ fn unchanged_plots_rebind_selection_without_layout_or_leaking_failed_callbacks()
 #[test]
 fn a_reused_subtree_crosses_as_a_reference_and_decodes_the_same() {
     let module = source(
-        "function Card(){return h('column',{},h('text',{},'a'),h('text',{},'b'),h('text',{},'c'))}\
-         function render(){return h('column',{},h(Card),h('text',{},String(globalThis.n)))}",
+        "function Card(){return h('view',{},h('text',{},'a'),h('text',{},'b'),h('text',{},'c'))}\
+         function render(){return h('view',{},h(Card),h('text',{},String(globalThis.n)))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let texts = |display: &crate::DisplayList| -> Vec<String> {
@@ -135,7 +135,7 @@ fn an_isolate_outside_a_dev_session_has_no_clock() {
 
 #[test]
 fn frame_metrics_distinguish_reuse_and_preserve_the_last_success() {
-    let module = source("function render(){return h('column',{},h('text',{},'Measured frame'))}");
+    let module = source("function render(){return h('view',{},h('text',{},'Measured frame'))}");
     let mut page = ViewSession::new(&module).unwrap();
     assert_eq!(page.frame_metrics(), &crate::FrameMetrics::default());
     let display = page.layout(300, 200, 1.0).unwrap();
@@ -255,7 +255,7 @@ fn list_windows_keep_root_render_and_offscreen_row_state() {
 #[test]
 fn nested_list_end_anchor_survives_sibling_removal() {
     let module = source(
-        "globalThis.extra=true;function render(){return h('column',{style:{padding:12,gap:8}},globalThis.extra?h('text',{},'sibling'):null,h(listTag,{'data-testid':'list',count:100,anchor:'end',style:{height:100,paddingTop:7,paddingBottom:19,paddingLeft:23,paddingRight:11,borderWidth:3},row:i=>h('text',{'data-testid':'row-'+i,style:{height:40}},String(i))}))}",
+        "globalThis.extra=true;function render(){return h('view',{style:{padding:12,gap:8}},globalThis.extra?h('text',{},'sibling'):null,h(listTag,{'data-testid':'list',count:100,anchor:'end',style:{height:100,paddingTop:7,paddingBottom:19,paddingLeft:23,paddingRight:11,borderWidth:3},row:i=>h('text',{'data-testid':'row-'+i,style:{height:40}},String(i))}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     for extra in [true, true, false, false] {
@@ -389,7 +389,7 @@ fn text_scaling_discards_offscreen_list_measurements() {
 #[test]
 fn a_moved_anchor_on_a_measured_list_takes_one_layout() {
     let module = source(
-        "globalThis.anchor={index:0,align:'start',seq:0};function render(){return h('column',{},h('text',{},String(globalThis.anchor.seq)),h(listTag,{count:1000,anchor:globalThis.anchor,style:{height:300},row:i=>h('text',{'data-testid':'row-'+i,style:{height:40+(i%3)*10}},String(i))}))}",
+        "globalThis.anchor={index:0,align:'start',seq:0};function render(){return h('view',{},h('text',{},String(globalThis.anchor.seq)),h(listTag,{count:1000,anchor:globalThis.anchor,style:{height:300},row:i=>h('text',{'data-testid':'row-'+i,style:{height:40+(i%3)*10}},String(i))}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     page.layout(200, 400, 1.0).unwrap();
@@ -620,8 +620,7 @@ fn native_scroll_reuses_committed_description_and_preserves_click_handles() {
 
 #[test]
 fn failed_scroll_candidate_does_not_commit_offsets_or_generation() {
-    let source =
-        source("function render(){return h('scroll',{},h('spacer',{style:{height:300}}))}");
+    let source = source("function render(){return h('scroll',{},h('view',{style:{height:300}}))}");
     let mut page = ViewSession::new(&source).unwrap();
     let initial = page.layout(100, 100, 1.0).unwrap();
     let id = initial.nodes[0].scroll.as_ref().unwrap().id.clone();
@@ -706,7 +705,7 @@ fn committed_channel_resource_opens_without_input_and_quiesces_after_redraw() {
     }
     use serde_json::json;
     let module = source(
-        "function render(view){const last=useLocal('last','waiting');const feed=useChannel('feed',view.actions.ticker,{params:{},onData:v=>last.set(v)});return h('column',{},h('text',{},feed.connected?'connected':'waiting'),h('text',{},last.value));}",
+        "function render(view){const last=useLocal('last','waiting');const feed=useChannel('feed',view.actions.ticker,{params:{},onData:v=>last.set(v)});return h('view',{},h('text',{},feed.connected?'connected':'waiting'),h('text',{},last.value));}",
     ) + "\nglobalThis.__lingxiaActionCatalog={__names:['ticker'],__modes:{ticker:'call'}};";
     let mut page = ViewSession::new_with_logic(&module, true).unwrap();
     page.begin_bridge().unwrap();
@@ -743,7 +742,7 @@ fn stream_bridge_events_render_and_cancel_through_the_page_endpoint() {
     }
     use serde_json::json;
     let module = source(
-        "let stream;function render({actions}){const value=useLocal('value','');return h('column',{},h('button',{onClick:()=>{stream=actions.watch();stream.on('data',v=>value.set(v));}},'Start'),h('text',{},value.value),h('button',{onClick:()=>stream.cancel()},'Stop'))}",
+        "let stream;function render({actions}){const value=useLocal('value','');return h('view',{},h('button',{onClick:()=>{stream=actions.watch();stream.on('data',v=>value.set(v));}},'Start'),h('text',{},value.value),h('button',{onClick:()=>stream.cancel()},'Stop'))}",
     ) + "\nglobalThis.__lingxiaActionCatalog={__names:['watch'],__modes:{watch:'stream'}};";
     let mut page = ViewSession::new_with_logic(&module, true).unwrap();
     page.begin_bridge().unwrap();
@@ -773,7 +772,7 @@ fn channel_bridge_opens_delivers_and_sends_on_the_bound_endpoint() {
     }
     use serde_json::json;
     let module = source(
-        "let channel;function render({channels}){const value=useLocal('value','');return h('column',{},h('button',{onClick:async()=>{channel=await channels.open('ticker');channel.on('data',v=>{value.set(v);channel.send({symbol:'MSFT'})})}},'Connect'),h('text',{},value.value),h('button',{onClick:()=>channel.close()},'Close'))}",
+        "let channel;function render({channels}){const value=useLocal('value','');return h('view',{},h('button',{onClick:async()=>{channel=await channels.open('ticker');channel.on('data',v=>{value.set(v);channel.send({symbol:'MSFT'})})}},'Connect'),h('text',{},value.value),h('button',{onClick:()=>channel.close()},'Close'))}",
     ) + "\nglobalThis.__lingxiaActionCatalog={__names:['ticker'],__modes:{ticker:'call'}};";
     let mut page = ViewSession::new_with_logic(&module, true).unwrap();
     page.begin_bridge().unwrap();
@@ -808,7 +807,7 @@ fn composing_uses_native_layout_and_commits_back_to_local_state() {
     use crate::text::input::Edit;
     for search in [false, true] {
         let module = source(
-            "let renders=0;function render(){renders++;const draft=useLocal('draft',''),sent=useLocal('sent','');return h('column',{},h('input',{key:'draft',bind:draft,autoFocus:true,onSubmit:v=>sent.set(v)}),h('text',{},draft.value+'|'+sent.value+'|'+renders))}",
+            "let renders=0;function render(){renders++;const draft=useLocal('draft',''),sent=useLocal('sent','');return h('view',{},h('input',{key:'draft',bind:draft,autoFocus:true,onSubmit:v=>sent.set(v)}),h('text',{},draft.value+'|'+sent.value+'|'+renders))}",
         );
         let module = if search {
             module.replace("h('input',{", "h('input',{type:'search',")
@@ -889,7 +888,7 @@ fn composing_uses_native_layout_and_commits_back_to_local_state() {
 fn input_focus_tokens_survive_reorder_but_not_disable_removal_or_reset() {
     use crate::text::input::Edit;
     let module = source(
-        "globalThis.show=true;globalThis.enabled=true;globalThis.insert=false;function render(){return h('column',{},insert?h('text',{key:'new'},'new'):null,show?h('input',{key:'a',value:'canonical',disabled:!enabled,autoFocus:true}):null,h('input',{key:'b',value:'second'}))}",
+        "globalThis.show=true;globalThis.enabled=true;globalThis.insert=false;function render(){return h('view',{},insert?h('text',{key:'new'},'new'):null,show?h('input',{key:'a',value:'canonical',disabled:!enabled,autoFocus:true}):null,h('input',{key:'b',value:'second'}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let first = page.layout(300, 300, 1.0).unwrap();
@@ -949,7 +948,7 @@ fn input_focus_tokens_survive_reorder_but_not_disable_removal_or_reset() {
 fn failed_frames_and_callback_errors_do_not_commit_candidate_editors() {
     use crate::text::input::Edit;
     let module = source(
-        "globalThis.show=false;function render(){return h('column',{},show?h('input',{key:'a',autoFocus:true,value:'old',onInput(){throw Error('handler failed')}}):null)}",
+        "globalThis.show=false;function render(){return h('view',{},show?h('input',{key:'a',autoFocus:true,value:'old',onInput(){throw Error('handler failed')}}):null)}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     page.layout(300, 300, 1.0).unwrap();
@@ -994,7 +993,7 @@ fn failed_frames_and_callback_errors_do_not_commit_candidate_editors() {
 fn viewport_reveal_preserves_editor_and_rolls_back_failed_frames() {
     for scale in [1.0, 2.0] {
         let module = source(
-            "function render(){return h('scroll',{},h('spacer',{style:{height:300}}),h('input',{'data-testid':'editor',autoFocus:true,value:'draft',style:{height:44}}),h('spacer',{style:{height:200}}))}",
+            "function render(){return h('scroll',{},h('view',{style:{height:300}}),h('input',{'data-testid':'editor',autoFocus:true,value:'draft',style:{height:44}}),h('view',{style:{height:200}}))}",
         );
         let mut page = ViewSession::new(&module).unwrap();
         let width = (300.0 * scale) as u16;
@@ -1050,7 +1049,7 @@ fn viewport_reveal_preserves_editor_and_rolls_back_failed_frames() {
 #[test]
 fn viewport_reveal_walks_nested_scroll_regions() {
     let module = source(
-        "function render(){return h('scroll',{},h('spacer',{style:{height:100}}),h('scroll',{style:{height:180}},h('spacer',{style:{height:140}}),h('input',{autoFocus:true,value:'nested',style:{height:44}}),h('spacer',{style:{height:100}})),h('spacer',{style:{height:200}}))}",
+        "function render(){return h('scroll',{},h('view',{style:{height:100}}),h('scroll',{style:{height:180}},h('view',{style:{height:140}}),h('input',{autoFocus:true,value:'nested',style:{height:44}}),h('view',{style:{height:100}})),h('view',{style:{height:200}}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let frame = page.layout(300, 500, 1.0).unwrap();
@@ -1068,7 +1067,7 @@ fn viewport_reveal_walks_nested_scroll_regions() {
 #[test]
 fn keyboard_occlusion_reveals_without_surface_resize() {
     let module = source(
-        "function render(view){return h('column',{},h('scroll',{style:{flexGrow:1}},h('spacer',{style:{height:300}}),h('input',{autoFocus:true,value:'draft',style:{height:44}}),h('spacer',{style:{height:200}})),h('spacer',{style:{height:view.env.keyboard.height}}))}",
+        "function render(view){return h('view',{},h('scroll',{style:{flexGrow:1}},h('view',{style:{height:300}}),h('input',{autoFocus:true,value:'draft',style:{height:44}}),h('view',{style:{height:200}})),h('view',{style:{height:view.env.keyboard.height}}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let frame = page.layout(300, 500, 1.0).unwrap();
@@ -1139,7 +1138,7 @@ fn editor_focus_paint_tracks_autofocus_blur_disable_and_failed_frames() {
 #[test]
 fn editor_focus_paint_recomputes_when_scrolling_changes_visibility() {
     let module = source(
-        "configureClasses([{name:'base',when:{},style:{backgroundColor:'#ffffff'}},{name:'focused',when:{state:'focus'},style:{backgroundColor:'#0000ff'}}]);function render(){return h('scroll',{},h('spacer',{style:{height:200}}),h('input',{className:'base focused',autoFocus:true,style:{height:40,borderRadius:0}}),h('spacer',{style:{height:160}}))}",
+        "configureClasses([{name:'base',when:{},style:{backgroundColor:'#ffffff'}},{name:'focused',when:{state:'focus'},style:{backgroundColor:'#0000ff'}}]);function render(){return h('scroll',{},h('view',{style:{height:200}}),h('input',{className:'base focused',autoFocus:true,style:{height:40,borderRadius:0}}),h('view',{style:{height:160}}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let first = page.layout(200, 100, 1.0).unwrap();
@@ -1181,7 +1180,7 @@ fn editor_focus_paint_recomputes_when_scrolling_changes_visibility() {
 #[test]
 fn autofocus_waits_for_visibility_and_does_not_repeat_after_blur() {
     let module = source(
-        "function render(){return h('scroll',{},h('spacer',{style:{height:200}}),h('input',{key:'a',value:'draft',autoFocus:true}))}",
+        "function render(){return h('scroll',{},h('view',{style:{height:200}}),h('input',{key:'a',value:'draft',autoFocus:true}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let first = page.layout(200, 100, 1.0).unwrap();
@@ -1244,7 +1243,7 @@ fn autofocus_waits_for_visibility_and_does_not_repeat_after_blur() {
 #[test]
 fn editor_budget_failure_preserves_the_previous_input_connection() {
     let module = source(
-        "globalThis.count=1;globalThis.large=false;function render(){return h('column',{},Array.from({length:count},(_,i)=>h('input',{key:String(i),value:large?'x'.repeat(4096):'',autoFocus:i===0})))}",
+        "globalThis.count=1;globalThis.large=false;function render(){return h('view',{},Array.from({length:count},(_,i)=>h('input',{key:String(i),value:large?'x'.repeat(4096):'',autoFocus:i===0})))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let frame = page.layout(200, 200, 1.0).unwrap();
@@ -1262,7 +1261,7 @@ fn editor_budget_failure_preserves_the_previous_input_connection() {
 fn failed_input_presentation_restores_buffer_and_invalidates_the_connection() {
     use crate::text::input::Edit;
     let module = source(
-        "function render(){const draft=useLocal('draft','old');return h('column',{},h('input',{bind:draft,autoFocus:true}),h('text',{},draft.value))}",
+        "function render(){const draft=useLocal('draft','old');return h('view',{},h('input',{bind:draft,autoFocus:true}),h('text',{},draft.value))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let frame = page.layout(200, 200, 1.0).unwrap();
@@ -1461,7 +1460,7 @@ fn slider_events_are_numeric_generation_bound_and_commit_transactionally() {
 #[test]
 fn text_events_are_typed_generation_bound_and_safely_encoded() {
     let module = source(
-        "function render(){const draft=useLocal('draft','');return h('column',{},h('input',{bind:draft}),h('text',{},draft.value))}",
+        "function render(){const draft=useLocal('draft','');return h('view',{},h('input',{bind:draft}),h('text',{},draft.value))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let frame = page.prepare_native(300, 300, 1.0, true, None, Ok).unwrap();
@@ -1773,7 +1772,7 @@ fn a_render_that_runs_out_of_time_names_the_element_it_was_building() {
         return;
     }
     let module = source(
-        "function Spin(){for(;;){}}\nfunction render(){return h('column',{__loc:'page.tsx:2:10'},h(Spin,{__loc:'page.tsx:3:5'}))}",
+        "function Spin(){for(;;){}}\nfunction render(){return h('view',{__loc:'page.tsx:2:10'},h(Spin,{__loc:'page.tsx:3:5'}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let error = page.layout(100, 100, 1.0).err().unwrap();
@@ -1834,7 +1833,7 @@ fn a_handler_that_runs_out_of_time_names_no_element() {
     // List rows resolve while encoding, after the page's own elements: the last of them must
     // not be blamed for a handler that spins later.
     let module = source(
-        "function render(){return h('column',{},h('button',{onClick:()=>{for(;;){}},style:{height:40}},'spin'),h(List,{style:{height:120},items:[1,2,3],getKey:i=>String(i),renderItem:i=>h('text',{__loc:'page.tsx:4:7',style:{height:40}},String(i))}))}",
+        "function render(){return h('view',{},h('button',{onClick:()=>{for(;;){}},style:{height:40}},'spin'),h(List,{style:{height:120},items:[1,2,3],getKey:i=>String(i),renderItem:i=>h('text',{__loc:'page.tsx:4:7',style:{height:40}},String(i))}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let frame = page.layout(200, 200, 1.0).unwrap();
@@ -1873,7 +1872,7 @@ fn a_focused_select_paints_its_focus_classes_without_the_view() {
 fn a_page_near_a_limit_is_warned_once() {
     // One image box covering 13.4M device pixels: 80% of the visible image budget.
     let module = source(
-        "function render(){return h('column',{},h('image',{src:'big.png',alt:'',style:{width:4000,height:3355}}))}",
+        "function render(){return h('view',{},h('image',{src:'big.png',alt:'',style:{width:4000,height:3355}}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     page.layout(4096, 4096, 1.0).unwrap();
@@ -1950,7 +1949,7 @@ fn a_declined_frame_keeps_a_tap_and_a_rejected_one_reverts_it() {
 #[test]
 fn composed_text_reaches_the_page_and_survives_blur_through_input_requests() {
     let module = source(
-        "function render(){const name=useLocal('name','');return h('column',{},h('input',{key:'name',bind:name}),h('button',{key:'go',disabled:!name.value,onClick(){}},'Say '+name.value))}",
+        "function render(){const name=useLocal('name','');return h('view',{},h('input',{key:'name',bind:name}),h('button',{key:'go',disabled:!name.value,onClick(){}},'Say '+name.value))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let frame = page.layout(300, 200, 1.0).unwrap();

@@ -64,9 +64,10 @@ test('a dialog that settles hidden closes; closedby="none" keeps it; its backdro
 
 test('a swipe row names the controls behind it; they carry their ids', () => {
   reset();
-  const nodes = render(() => h('page', {}, h('stack', {},
-    h('button', { id: 'del-1', 'data-testid': 'del', onClick: () => {} }, 'Delete'),
-    h('button', { 'data-testid': 'row', drag: 'x', dragSnapPoints: [0, -88], 'aria-actions': 'del-1', onClick: () => {} }, 'Groceries'))));
+  const cell = { gridColumn: '1', gridRow: '1' };
+  const nodes = render(() => h('page', {}, h('view', { style: { display: 'grid' } },
+    h('button', { style: cell, id: 'del-1', 'data-testid': 'del', onClick: () => {} }, 'Delete'),
+    h('button', { style: cell, 'data-testid': 'row', drag: 'x', dragSnapPoints: [0, -88], 'aria-actions': 'del-1', onClick: () => {} }, 'Groceries'))));
   assert.equal(byId(nodes, 'del').props.elementId, 'del-1');
   assert.equal(byId(nodes, 'row').props.ariaActions, 'del-1');
   assert.throws(() => render(() => h('page', {}, h('button', { 'aria-actions': 'x', onClick: () => {} }, 'Row'))), /aria-actions belongs to an element with drag/);

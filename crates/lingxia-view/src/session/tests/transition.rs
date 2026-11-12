@@ -387,7 +387,7 @@ fn reduced_motion_keeps_only_animations_authored_for_it() {
     };
     for (when, plays) in [("base", false), ("keep", true)] {
         let module = super::source(&format!(
-            "function render(){{return h('page',{{style:{{backgroundColor:'#ffffff'}}}},h('column',{{style:{{width:40,height:40,backgroundColor:'#000000',animation:{}}}}}))}}",
+            "function render(){{return h('page',{{style:{{backgroundColor:'#ffffff'}}}},h('view',{{style:{{width:40,height:40,backgroundColor:'#000000',animation:{}}}}}))}}",
             pulse(when)
         ));
         let mut page = ViewSession::new(&module).unwrap();
@@ -443,7 +443,7 @@ fn spans_stay_on_their_commands_through_caret_input_and_selection_splices() {
     use serde_json::Value;
     let spin = r#"{"name":"spin","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":"linear","opacity":null,"transforms":[{"kind":"rotate","angle":[{"offset":0,"value":0},{"offset":1,"value":360}]}]}"#;
     let module = super::source(&format!(
-        "function render(){{const draft=useLocal('draft','typed');return h('column',{{style:{{backgroundColor:'#ffffff'}}}},h('input',{{'data-testid':'i',bind:draft,style:{{width:150}}}}),h('column',{{style:{{width:20,height:20,backgroundColor:'#00ff00',animation:{spin}}}}}),h('text',{{'data-testid':'p',style:{{userSelect:'text',fontSize:16,width:180}}}},'hello brave new world'))}}"
+        "function render(){{const draft=useLocal('draft','typed');return h('view',{{style:{{backgroundColor:'#ffffff'}}}},h('input',{{'data-testid':'i',bind:draft,style:{{width:150}}}}),h('view',{{style:{{width:20,height:20,backgroundColor:'#00ff00',animation:{spin}}}}}),h('text',{{'data-testid':'p',style:{{userSelect:'text',fontSize:16,width:180}}}},'hello brave new world'))}}"
     ));
     let mut page = ViewSession::new(&module).unwrap();
     page.set_animation_surface(Some(SURFACE), Duration::ZERO)
@@ -598,7 +598,7 @@ fn a_focus_change_on_the_scroll_path_composes_a_frame_ahead_once() {
     use std::collections::HashMap;
     let spin = r#"{"name":"spin","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":"linear","opacity":null,"transforms":[{"kind":"rotate","angle":[{"offset":0,"value":0},{"offset":1,"value":360}]}]}"#;
     let module = super::source(&format!(
-        "configureClasses([{{name:'base',when:{{}},style:{{backgroundColor:'#ffffff'}}}},{{name:'focused',when:{{state:'focus'}},style:{{backgroundColor:'#0000ff'}}}}]);function render(){{const draft=useLocal('draft','typed');return h('scroll',{{style:{{height:100}}}},h('column',{{style:{{width:20,height:20,backgroundColor:'#00ff00',animation:{spin}}}}}),h('view',{{style:{{height:300}}}}),h('input',{{'data-testid':'i',className:'base focused',autoFocus:true,bind:draft,style:{{width:150}}}}))}}"
+        "configureClasses([{{name:'base',when:{{}},style:{{backgroundColor:'#ffffff'}}}},{{name:'focused',when:{{state:'focus'}},style:{{backgroundColor:'#0000ff'}}}}]);function render(){{const draft=useLocal('draft','typed');return h('scroll',{{style:{{height:100}}}},h('view',{{style:{{width:20,height:20,backgroundColor:'#00ff00',animation:{spin}}}}}),h('view',{{style:{{height:300}}}}),h('input',{{'data-testid':'i',className:'base focused',autoFocus:true,bind:draft,style:{{width:150}}}}))}}"
     ));
     let mut page = ViewSession::new(&module).unwrap();
     page.set_animation_surface(Some(SURFACE), Duration::ZERO)

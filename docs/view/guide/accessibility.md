@@ -11,17 +11,17 @@ export function render() {
   return (
     <page className="p-4 gap-3">
       <text role="heading" headingLevel={1} className="text-2xl font-semibold">Bills</text>
-      <column role="list" aria-label="Bills due" className="gap-2">
+      <view role="list" aria-label="Bills due" className="gap-2">
         {bills.map(bill => (
-          <row key={bill} role="listitem" className="items-center justify-between">
+          <view key={bill} role="listitem" className="flex-row items-center justify-between">
             <text className="text-sm">{bill}</text>
             <button disabled={paid.value.includes(bill)} onClick={() => paid.set([...paid.value, bill])}
               aria-label={`Pay ${bill}`} className="rounded-lg bg-accent px-3 py-1 text-sm text-on-accent">
               Pay
             </button>
-          </row>
+          </view>
         ))}
-      </column>
+      </view>
       <text role="status" className="text-sm text-muted">{status}</text>
     </page>
   );

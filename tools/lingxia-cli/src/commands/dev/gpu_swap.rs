@@ -196,7 +196,7 @@ mod tests {
         write("package.json", r#"{"name":"prime-test","private":true}"#);
         write(
             "pages/a/index.tsx",
-            "export function render() { return <column className=\"p-4 gap-2\"><text className=\"text-sm\">Hello</text></column>; }\n",
+            "export function render() { return <view className=\"p-4 gap-2\"><text className=\"text-sm\">Hello</text></view>; }\n",
         );
         write(
             ".lingxia/gpu-inputs.json",

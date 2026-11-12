@@ -30,7 +30,7 @@ pub(crate) fn node(
 pub(crate) fn page() -> Vec<Record> {
     vec![
         node(0, None, "root", &[(6, json!("#ffffff"))]),
-        node(4, Some(0), "header", &[(1, json!(20))]),
+        node(0, Some(0), "header", &[(1, json!(20))]),
         node(5, Some(0), "feed", &[(1, json!(60))]),
         node(
             3,
@@ -54,6 +54,6 @@ pub(crate) fn page() -> Vec<Record> {
                 (8, json!(2)),
             ],
         ),
-        node(4, Some(0), "footer", &[(1, json!(20))]),
+        node(0, Some(0), "footer", &[(1, json!(20))]),
     ]
 }

@@ -30,7 +30,7 @@ test('image sources and fits are validated; objectFit is image and vector style'
   for (const props of [{}, { src: 42 }, { src: '' }, { src: 'a\0b' }]) throwsOn(() => h('image', props), /UI_IMAGE/);
   throwsOn(() => h('image', { src: 'ok', style: { objectFit: 'stretch' } }), /UI_STYLE_VALUE: objectFit/);
   throwsOn(() => h('image', { src: 'a' }, h('text', {}, 'x')), /UI_CHILD/);
-  throwsOn(() => h('column', { src: 'a' }), /UI_PROP/);
+  throwsOn(() => h('view', { src: 'a' }), /UI_PROP/);
   throwsOn(() => h('text', { style: { objectFit: 'cover' } }, 'x'), /UI_STYLE: objectFit is not supported on <text>; it applies to <image>/);
 });
 
@@ -67,7 +67,7 @@ test('useVideo names the player, re-renders only for read fields and rejects com
   const render = () => {
     const hero = useVideo('hero');
     renders++;
-    return h('column', {}, h('video', { player: hero, src: 'a.mp4', onPlay: () => {} }), h('text', {}, hero.paused ? 'paused' : 'playing'));
+    return h('view', {}, h('video', { player: hero, src: 'a.mp4', onPlay: () => {} }), h('text', {}, hero.paused ? 'paused' : 'playing'));
   };
   const [, video, label] = decode(describe(render, {}));
   assert.equal(video.props.videoPlayer, 'name:hero');
@@ -143,10 +143,10 @@ test('vectors encode bounded path data, fit and dash patterns, and decorate comp
 
 test('property admission stays local to each element and rejects prototype names', () => {
   for (const [tag, property] of [
-    ['text', 'onClick'], ['button', 'onInput'], ['column', 'disabled'], ['row', 'row'], ['scroll', 'count'],
-    ['image', 'columns'], ['grid', 'src'], ['plot', 'onChange'], ['input', 'onClick'], ['textarea', 'onChange'], ['input', 'options'],
-    ['checkbox', 'min'], ['switch', 'placeholder'], ['slider', 'type'], ['radio', 'step'], ['spacer', 'lines'], ['stack', 'onReachStart'],
-    ['text', 'lines'], ['grid', 'columns'], ['image', 'fit'], ['button', 'enabled'],
+    ['text', 'onClick'], ['button', 'onInput'], ['view', 'disabled'], ['view', 'row'], ['scroll', 'count'],
+    ['image', 'columns'], ['view', 'src'], ['plot', 'onChange'], ['input', 'onClick'], ['textarea', 'onChange'], ['input', 'options'],
+    ['checkbox', 'min'], ['switch', 'placeholder'], ['slider', 'type'], ['radio', 'step'], ['view', 'lines'], ['view', 'onReachStart'],
+    ['text', 'lines'], ['view', 'columns'], ['image', 'fit'], ['button', 'enabled'],
   ]) {
     throwsOn(() => h(tag, { [property]: 1 }), new RegExp(`UI_PROP: ${property} is not a property of <${tag}>`));
     for (const key of ['constructor', 'toString', '__proto__']) throwsOn(() => h(tag, { [key]: 1 }), /UI_PROP:/);
@@ -154,14 +154,17 @@ test('property admission stays local to each element and rejects prototype names
 });
 
 test('children flatten; booleans, nullish values and empty strings render nothing', () => {
-  const root = rendered(() => h('column', {}, false, null, '', [h('text', { 'data-testid': 'hello' }, 'Hello ', 42)], '' && h('text', {}, 'never')));
+  const root = rendered(() => h('view', {}, false, null, '', [h('text', { 'data-testid': 'hello' }, 'Hello ', 42)], '' && h('text', {}, 'never')));
   assert.equal(root.children.length, 1);
   assert.deepEqual([root.children[0].testId, root.children[0].text], ['hello', 'Hello 42']);
 });
 
-test('view is a column; row is the horizontal container', () => {
-  assert.equal(rendered(() => h('view', {})).tag, 'column');
-  assert.equal(rendered(() => h('row', {})).tag, 'row');
+test('view is the one layout container; its style picks the layout', () => {
+  assert.deepEqual(rendered(() => h('view', {})).props, {});
+  assert.equal(rendered(() => h('view', { style: { flexDirection: 'row' } })).props.flexDirection, 'row');
+  assert.equal(rendered(() => h('view', { style: { display: 'grid' } })).props.display, 'grid');
+  for (const tag of ['column', 'row', 'grid', 'stack', 'spacer'])
+    throwsOn(() => h(tag, {}), new RegExp(`UI_TAG: ${tag}; use <view`));
 });
 
 test('components receive props only and read the View through useView', () => {
@@ -172,11 +175,11 @@ test('components receive props only and read the View through useView', () => {
   assert.equal(args, 1);
 });
 test('unsupported tags, callbacks and child shapes fail with their JSX site', () => {
-  for (const render of [() => h('div'), () => h('toString'), () => h('button', { onClick: 42 }), () => h('text', {}, {}), () => h('spacer', {}, 'x'), () => [h('text')]])
+  for (const render of [() => h('div'), () => h('toString'), () => h('button', { onClick: 42 }), () => h('text', {}, {}), () => h('image', {}, 'x'), () => [h('text')]])
     assert.throws(() => describe(render, {}), /UI_/);
-  const Card = () => h('column', { __loc: 'pages/home.tsx:4:10' }, h('text', { __loc: 'pages/home.tsx:5:12', onClick() {} }, 'x'));
-  assert.throws(() => describe(() => h('column', {}, h(Card, { __loc: 'pages/home.tsx:9:3' })), {}),
-    /UI_PROP: onClick is not a property of <text>\n  at <text> \(pages\/home.tsx:5:12\)\n  at <column> \(pages\/home.tsx:4:10\)\n  at Card \(pages\/home.tsx:9:3\)/);
+  const Card = () => h('view', { __loc: 'pages/home.tsx:4:10' }, h('text', { __loc: 'pages/home.tsx:5:12', onClick() {} }, 'x'));
+  assert.throws(() => describe(() => h('view', {}, h(Card, { __loc: 'pages/home.tsx:9:3' })), {}),
+    /UI_PROP: onClick is not a property of <text>\n  at <text> \(pages\/home.tsx:5:12\)\n  at <view> \(pages\/home.tsx:4:10\)\n  at Card \(pages\/home.tsx:9:3\)/);
 });
 
 test('scroll retains child button callbacks and rejects unsupported scroll props', () => {
@@ -194,7 +197,7 @@ test('keyed components retain local state across reorder and release it on remov
     return h('button', { onClick: () => count.set(count.value + 1) }, `${name}:${count.value}`);
   }
   let names = ['a', 'b'];
-  const render = () => h('column', {}, names.map(name => h(Counter, { key: name, name })));
+  const render = () => h('view', {}, names.map(name => h(Counter, { key: name, name })));
   const nodes = buttons(describe(render, {}));
   assert.equal(dispatch(nodes[0].handle), true);
   names = ['b', 'a'];
@@ -317,7 +320,7 @@ test('radio is controlled, validates options and binding, and disables the entir
 test('composed buttons take their accessible name from descendant text unless labeled', () => {
   let clicks = 0;
   const render = label => () => h('button', { 'aria-label': label, onClick: () => clicks++ },
-    h('row', {}, h('text', {}, 'Inbox'), '3 unread'));
+    h('view', { style: { flexDirection: 'row' } }, h('text', {}, 'Inbox'), '3 unread'));
   const button = rendered(render(undefined));
   assert.equal(button.text, ''); assert.equal(button.props.accessibilityLabel, undefined);
   assert.deepEqual(button.children[0].children.map(child => child.text), ['Inbox', '3 unread']);
@@ -330,27 +333,27 @@ test('composed buttons take their accessible name from descendant text unless la
 
 test('composed controls hold controls of their own, never a scroll or list, and never just one control', () => {
   for (const tag of ['scroll', listTag]) {
-    function Nested() { return h('column', {}, h(tag, tag === listTag ? { count: 0, row: () => null } : {})); }
+    function Nested() { return h('view', {}, h(tag, tag === listTag ? { count: 0, row: () => null } : {})); }
     throwsOn(() => h('button', {}, h(Nested, {})), /UI_BUTTON: a scroll or list cannot sit inside a pressable control/);
     throwsOn(() => h('checkbox', {}, h(Nested, {})), /UI_BUTTON/);
   }
-  const row = rendered(() => h('button', { onClick() {} }, h('row', {}, h('text', {}, 'Wi-Fi'),
+  const row = rendered(() => h('button', { onClick() {} }, h('view', { style: { flexDirection: 'row' } }, h('text', {}, 'Wi-Fi'),
     h('switch', { value: true, onChange() {}, 'aria-label': 'Wi-Fi' }), h('button', { onClick() {} }, 'Delete'))));
   assert.deepEqual(row.children[0].children.map(child => child.tag), ['text', 'switch', 'button']);
   function Only() { return h('switch', { value: true, onChange() {}, 'aria-label': 'x' }); }
   throwsOn(() => h('button', { onClick() {} }, h(Only, {})), /UI_BUTTON: <button> holds only a <switch>; put the action on that control/);
   let checked;
-  const box = rendered(() => h('checkbox', { value: false, onChange: value => checked = value }, h('row', {}, h('text', {}, 'Task'))));
+  const box = rendered(() => h('checkbox', { value: false, onChange: value => checked = value }, h('view', { style: { flexDirection: 'row' } }, h('text', {}, 'Task'))));
   assert.equal(box.tag, 'checkbox'); assert.equal(box.text, '');
   assert.equal(dispatch(box.props.onCheckedChange), true); assert.equal(checked, true);
 });
 
 test('grid templates are a style; counts expand to equal tracks and any container may be a grid', () => {
   for (const gridTemplateColumns of [null, 0, -1, 1.5, 65, Infinity, '[a] 1fr', '1fr; x'])
-    throwsOn(() => h('grid', { style: { gridTemplateColumns } }), /UI_(GRID|STYLE_VALUE)/);
-  assert.doesNotThrow(() => describe(() => h('grid', {}, h('text', {}, 'one column')), {}));
+    throwsOn(() => h('view', { style: { display: 'grid', gridTemplateColumns } }), /UI_(GRID|STYLE_VALUE)/);
+  assert.doesNotThrow(() => describe(() => h('view', { style: { display: 'grid' } }, h('text', {}, 'one column')), {}));
   for (const columns of [1, 3, 64]) {
-    const grid = rendered(() => h('grid', { style: { gridTemplateColumns: columns } }, h('text', { key: 'a' }, 'A'), h('text', { key: 'b' }, 'B')));
+    const grid = rendered(() => h('view', { style: { display: 'grid', gridTemplateColumns: columns } }, h('text', { key: 'a' }, 'A'), h('text', { key: 'b' }, 'B')));
     assert.equal(grid.props.gridTemplateColumns, `repeat(${columns}, minmax(0, 1fr))`);
     assert.deepEqual(grid.children.map(child => child.key), ['a', 'b']);
   }
@@ -376,7 +379,7 @@ test('text flattens nested spans and links into styled runs under one paragraph'
   assert.equal(tree.children[5].props.accessibilityLabel, 'Terms');
   assert.equal(typeof tree.children[5].props.onClick, 'number');
   assert.equal(rendered(() => h('text', {}, 'plain ', 'text')).text, 'plain text');
-  throwsOn(() => h('column', {}, h('span', {}, 'loose')), /UI_TEXT: <span> belongs inside <text>/);
+  throwsOn(() => h('view', {}, h('span', {}, 'loose')), /UI_TEXT: <span> belongs inside <text>/);
   assert.equal(rendered(() => h('button', {}, h('text', {}, 'Read ', h('link', { onClick() {} }, 'terms')))).tag, 'button');
   throwsOn(() => h('text', {}, h('link', {}, h('link', {}, 'x'))), /UI_TEXT: links do not nest/);
   const pieces = rendered(() => h('text', {}, h('link', { onClick() {}, 'aria-label': 'Terms' }, 'the ', h('span', { style: { fontWeight: 700 } }, 'terms')))).children;
@@ -387,8 +390,8 @@ test('text flattens nested spans and links into styled runs under one paragraph'
 });
 
 test('accessibility roles, heading levels, hidden subtrees and live regions are bounded props', () => {
-  const tree = rendered(() => h('column', { role: 'list', 'aria-label': 'Bills' },
-    h('text', { role: 'heading', headingLevel: 2 }, 'Title'), h('row', { role: 'listitem', 'aria-hidden': true }),
+  const tree = rendered(() => h('view', { role: 'list', 'aria-label': 'Bills' },
+    h('text', { role: 'heading', headingLevel: 2 }, 'Title'), h('view', { style: { flexDirection: 'row' }, role: 'listitem', 'aria-hidden': true }),
     h('text', { role: 'status', 'aria-live': 'assertive' }, 'Saved')));
   assert.deepEqual([tree.props.role, tree.props.accessibilityLabel], ['list', 'Bills']);
   assert.deepEqual([tree.children[0].props.role, tree.children[0].props.headingLevel], ['heading', 2]);
@@ -396,31 +399,31 @@ test('accessibility roles, heading levels, hidden subtrees and live regions are 
   assert.equal(tree.children[2].props.accessibilityLiveRegion, 'assertive');
   for (const props of [{ role: 'banner' }, { headingLevel: 2 }, { role: 'heading', headingLevel: 7 }, { 'aria-hidden': 'yes' },
     { 'aria-live': 'rude' }, { 'aria-label': '  ' }])
-    throwsOn(() => h('column', props), /UI_PROP/);
+    throwsOn(() => h('view', props), /UI_PROP/);
 });
 
-test('stack children position with insets', () => {
+test('overlapping grid children position with insets', () => {
   const Child = () => h('button', { style: { position: 'absolute', left: -5, top: 12 } }, 'Top');
-  const stack = rendered(() => h('stack', {}, h('text', {}, 'Back'), h(Child, {})));
-  assert.equal(stack.tag, 'stack');
+  const stack = rendered(() => h('view', { style: { display: 'grid' } }, h('text', {}, 'Back'), h(Child, {})));
+  assert.equal(stack.props.display, 'grid');
   assert.deepEqual([stack.children[1].props.position, stack.children[1].props.insetLeft, stack.children[1].props.insetTop], ['absolute', -5, 12]);
-  throwsOn(() => h('stack', {}, h('text', { style: { offset: { x: 1 } } }, 'x')), /UI_STYLE: unknown style property offset/);
+  throwsOn(() => h('view', { style: { display: 'grid' } }, h('text', { style: { offset: { x: 1 } } }, 'x')), /UI_STYLE: unknown style property offset/);
 });
 
 test('line clamps are text styles and preserve the source string', () => {
   const text = rendered(() => h('text', { style: { lineClamp: 2 } }, 'First\nSecond\nThird'));
   assert.equal(text.props.textLines, 2); assert.equal(text.text, 'First\nSecond\nThird');
   for (const lineClamp of [null, 0, -1, 1.5, 1025, Infinity, '2', true]) throwsOn(() => h('text', { style: { lineClamp } }, 'x'), /UI_STYLE_VALUE/);
-  for (const tag of ['button', 'input', 'column', 'stack']) throwsOn(() => h(tag, { style: { lineClamp: 2 } }), /UI_STYLE: lineClamp is not supported/);
+  for (const tag of ['button', 'input', 'view']) throwsOn(() => h(tag, { style: { lineClamp: 2 } }), /UI_STYLE: lineClamp is not supported/);
 });
 
 
 test('aria states wire each declared state; the old names and non-booleans are refused', () => {
   const { props } = rendered(() => h('button', { onClick() {}, 'aria-pressed': true, 'aria-expanded': false }, 'Bold'));
   assert.deepEqual([props.statePressed, props.stateExpanded, props.stateSelected], [1, 0, undefined]);
-  assert.throws(() => describe(() => h('column', { 'aria-busy': 'yes' }), {}), /UI_PROP: aria-busy must be boolean/);
+  assert.throws(() => describe(() => h('view', { 'aria-busy': 'yes' }), {}), /UI_PROP: aria-busy must be boolean/);
   for (const old of ['accessibilityState', 'accessibilityLabel', 'accessibilityHidden'])
-    assert.throws(() => describe(() => h('column', { [old]: true }), {}), /UI_PROP: accessibility\w+ is not a property/);
+    assert.throws(() => describe(() => h('view', { [old]: true }), {}), /UI_PROP: accessibility\w+ is not a property/);
 });
 
 test('select sends its options and shows the chosen label or its placeholder', () => {
@@ -449,7 +452,7 @@ test('a textarea takes rows and maxRows as an autosizing range', () => {
 
 test('a View reading env.sizeClass or env.canDock is marked as reading the host context; runtime lowering is not', () => {
   const env = { theme: 'light', viewport: { width: 400, height: 800 }, sizeClass: 'compact', canDock: false };
-  const quiet = () => h('column', { style: { padding: 4 } }, h('text', {}, 'A'));
+  const quiet = () => h('view', { style: { padding: 4 } }, h('text', {}, 'A'));
   prepare(quiet, createView({}, env));
   assert.equal(readsHostContext(), false);
   discard();
@@ -462,10 +465,10 @@ test('a View reading env.sizeClass or env.canDock is marked as reading the host 
 });
 
 test('data-testid names a node for automation; the old testId prop is refused', () => {
-  const root = rendered(() => h('column', { 'data-testid': 'box' }, h('text', { 'data-testid': 'label' }, 'Hi')));
+  const root = rendered(() => h('view', { 'data-testid': 'box' }, h('text', { 'data-testid': 'label' }, 'Hi')));
   assert.deepEqual([root.testId, root.children[0].testId], ['box', 'label']);
   assert.equal(root.props.data, undefined, 'it is not one of the data-* variant attributes');
-  assert.throws(() => rendered(() => h('column', { testId: 'box' })), /UI_PROP: testId is not a property of <column>/);
+  assert.throws(() => rendered(() => h('view', { testId: 'box' })), /UI_PROP: testId is not a property of <view>/);
 });
 
 test('page code reaches the list element only through <List>', () => {

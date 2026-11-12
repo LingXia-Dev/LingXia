@@ -37,25 +37,25 @@ export function render({ data, actions }: View) {
       </Section>
       <Section title="Image" description="Choose or capture an image, then share it as an attachment.">
         {path(data.selectedImagePath)}
-        <grid className="gap-3 grid-cols-2">
+        <view className="grid gap-3 grid-cols-2">
           <Button variant="secondary" testId="share-choose-image" disabled={busy.value} onClick={() => run(() => actions.chooseImage())}>
             Choose Image
           </Button>
           <Button testId="share-image" disabled={busy.value} onClick={() => run(() => actions.shareSelectedImage())}>
             Share Image
           </Button>
-        </grid>
+        </view>
       </Section>
       <Section title="File" description="Pick an image, PDF, or other document before sharing it.">
         {path(data.selectedFilePath)}
-        <grid className="gap-3 grid-cols-2">
+        <view className="grid gap-3 grid-cols-2">
           <Button variant="secondary" testId="share-choose-file" disabled={busy.value} onClick={() => run(() => actions.chooseFile())}>
             Choose File
           </Button>
           <Button testId="share-file" disabled={busy.value} onClick={() => run(() => actions.shareSelectedFile())}>
             Share File
           </Button>
-        </grid>
+        </view>
       </Section>
     </Page>
   );

@@ -46,7 +46,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 
 | Variant | Probed as | Reason |
 | --- | --- | --- |
-| `*:` | `*:` | child variants (put the classes on each child, e.g. when mapping the children in TS) |
+| `*:` | `*:` | *: places grid children only (col-start-*, col-end-*, col-span-*, row-start-*, row-end-*, row-span-*); put other classes on each child |
 | `**:` | `**:` | descendant variants (put the classes on the descendants that need them) |
 | `not:` | `not-hover:` | selector :not(:hover) |
 | `group:` | `group-hover:` | group-*/peer-* variants (hold the shared state in TS and choose both elements' classes from it) |

@@ -17,7 +17,7 @@ do nothing. `transition-all` does not include `layout`; it is opted into by name
 
 ```tsx
 {open.value && <view className="transition duration-200 starting:opacity-0 starting:translate-y-2 exit:opacity-0" />}
-<List items={rows} getKey={r => r.id} renderItem={r => <row className="transition-layout duration-200">…</row>} />
+<List items={rows} getKey={r => r.id} renderItem={r => <view className="flex-row transition-layout duration-200">…</view>} />
 ```
 
 ## Enter

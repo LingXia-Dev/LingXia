@@ -13,7 +13,7 @@ function setup() {
   globalThis.__lingxiaVideoCommand = (player, op, number, text) => { commands.push([player, op, number, text]); return ''; };
   const render = () => {
     const hero = useVideo('hero');
-    return h('column', {}, h('video', { player: hero, src: 'a.mp4' }), h(VideoControls, { player: hero, 'data-testid': 'bar' }));
+    return h('view', {}, h('video', { player: hero, src: 'a.mp4' }), h(VideoControls, { player: hero, 'data-testid': 'bar' }));
   };
   const nodes = () => decode(describe(render, {}));
   const by = (list, testId) => list.find(node => node.testId === testId);
@@ -89,7 +89,7 @@ test('the full screen view keeps the poster of a page view that did not re-rende
   const Inline = () => (runs++, h('video', { player: useVideo('hero'), src: 'a.mp4', poster: 'a.jpg' }));
   // The ticking sibling commits every render, so Inline is reused rather than re-run.
   let tick = 0;
-  const page = () => h('column', {}, h(Inline, {}), h('text', {}, String(tick++)), h(VideoControls, { player: useVideo('hero'), 'data-testid': 'bar' }));
+  const page = () => h('view', {}, h(Inline, {}), h('text', {}, String(tick++)), h(VideoControls, { player: useVideo('hero'), 'data-testid': 'bar' }));
   const all = () => decode(describe(page, {}));
   all();
   dispatch(by(all(), 'bar-fullscreen').props.onClick);
@@ -111,7 +111,7 @@ test('VideoControls full screen shows the player again in the top layer and a cl
   const probe = () => {
     const hero = useVideo('hero');
     read = hero.fullscreen;
-    return h('column', {}, h('video', { player: hero, src: 'a.mp4', poster: 'a.jpg', onFullscreenChange: ({ fullscreen }) => changes.push(fullscreen) }),
+    return h('view', {}, h('video', { player: hero, src: 'a.mp4', poster: 'a.jpg', onFullscreenChange: ({ fullscreen }) => changes.push(fullscreen) }),
       h(VideoControls, { player: hero, 'data-testid': 'bar' }));
   };
   const all = () => decode(describe(probe, {}));

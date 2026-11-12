@@ -14,7 +14,7 @@ fn page(shown: bool, scroll: bool) -> ViewSession {
     let panel = "h('view',{'data-testid':'panel',className:'starting:fade exit:fade',style:{width:50,height:20,backgroundColor:'#000000',transition:{properties:['opacity'],durationMs:200,delayMs:0,easing:'linear'}}})";
     let content = if scroll {
         format!(
-            "h('scroll',{{'data-testid':'s',style:{{height:30,width:100}}}},h('column',{{style:{{height:300,paddingTop:20}}}},shown.value && {panel}))"
+            "h('scroll',{{'data-testid':'s',style:{{height:30,width:100}}}},h('view',{{style:{{height:300,paddingTop:20}}}},shown.value && {panel}))"
         )
     } else {
         format!("shown.value && {panel}")
@@ -252,7 +252,7 @@ fn reentering_replaces_the_ghost_and_resumes_from_it() {
 
 #[test]
 fn a_sheet_holding_a_scroll_slides_in_by_composition() {
-    let sheet = "h('dialog',{open:shown.value,'aria-label':'Sheet','data-testid':'sheet',className:'starting:down exit:down',style:{marginTop:'auto',marginBottom:0,width:200,height:60,backgroundColor:'#000000',transition:{properties:['transform'],durationMs:200,delayMs:0,easing:'linear'}}},h('scroll',{'data-testid':'inner',style:{height:40}},h('column',{style:{height:300}})))";
+    let sheet = "h('dialog',{open:shown.value,'aria-label':'Sheet','data-testid':'sheet',className:'starting:down exit:down',style:{marginTop:'auto',marginBottom:0,width:200,height:60,backgroundColor:'#000000',transition:{properties:['transform'],durationMs:200,delayMs:0,easing:'linear'}}},h('scroll',{'data-testid':'inner',style:{height:40}},h('view',{style:{height:300}})))";
     let module = super::source(&format!(
         "function render(){{const shown=useLocal('shown',false);return h('page',{{}},h('button',{{'data-testid':'toggle',onClick(){{shown.set(!shown.value)}},style:{{width:40,height:20}}}},'T'),{sheet})}}"
     ))

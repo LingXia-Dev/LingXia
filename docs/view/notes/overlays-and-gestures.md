@@ -61,10 +61,10 @@ Three cases, and scroll already is one of them.
              transition-transform duration-300 ease-spring starting:translate-y-full exit:translate-y-full">…</dialog>
 
 // Swipe row: actions sit behind; a full swipe is one more point.
-<stack>
-  <row className="absolute inset-0 justify-end"><button id={`del-${r.id}`} onClick={remove}>Delete</button></row>
+<view className="grid *:col-start-1 *:row-start-1">
+  <view className="flex-row absolute inset-0 justify-end"><button id={`del-${r.id}`} onClick={remove}>Delete</button></view>
   <button drag="x" dragSnapPoints={[0, -88, '-100%']} bind={swipe} aria-actions={`del-${r.id}`} onClick={open}>…</button>
-</stack>
+</view>
 ```
 
 - `drag`: `'x'` or `'y'`. No free 2D drag, no reordering in this step.

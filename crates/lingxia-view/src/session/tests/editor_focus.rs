@@ -1,7 +1,7 @@
 //! Moving editor focus: `enterKeyHint` next/previous and a binding's `focus()`.
 use crate::ViewSession;
 
-const FORM: &str = "function render(){const a=useLocal('a',''),b=useLocal('b',''),c=useLocal('c',''),sent=useLocal('sent','');return h('column',{},h('input',{key:'a',bind:a,autoFocus:true,enterKeyHint:'next',onSubmit:()=>sent.set('a')}),h('input',{key:'off',value:'',disabled:true}),h('input',{key:'b',bind:b,enterKeyHint:'previous'}),h('input',{key:'c',bind:c,enterKeyHint:'next',onSubmit:()=>{sent.set('c');a.focus()}}),h('text',{},'['+sent.value+']'))}";
+const FORM: &str = "function render(){const a=useLocal('a',''),b=useLocal('b',''),c=useLocal('c',''),sent=useLocal('sent','');return h('view',{},h('input',{key:'a',bind:a,autoFocus:true,enterKeyHint:'next',onSubmit:()=>sent.set('a')}),h('input',{key:'off',value:'',disabled:true}),h('input',{key:'b',bind:b,enterKeyHint:'previous'}),h('input',{key:'c',bind:c,enterKeyHint:'next',onSubmit:()=>{sent.set('c');a.focus()}}),h('text',{},'['+sent.value+']'))}";
 
 fn focused(frame: &crate::DisplayList) -> Vec<usize> {
     frame
@@ -61,7 +61,7 @@ fn submitting_an_unfocused_editor_runs_its_input_method_action() {
 #[test]
 fn after_the_user_ends_editing_a_focus_the_page_makes_raises_no_keyboard() {
     let mut page = ViewSession::new(&super::source(
-        "function render(){const a=useLocal('a','');return h('column',{},h('input',{key:'a',bind:a,autoFocus:true}),h('button',{onClick:()=>a.focus()},'again'))}",
+        "function render(){const a=useLocal('a','');return h('view',{},h('input',{key:'a',bind:a,autoFocus:true}),h('button',{onClick:()=>a.focus()},'again'))}",
     ))
     .unwrap();
     let frame = page.layout(300, 400, 1.0).unwrap();
@@ -92,7 +92,7 @@ fn after_the_user_ends_editing_a_focus_the_page_makes_raises_no_keyboard() {
 #[test]
 fn focus_within_styles_the_ancestors_of_the_focused_editor() {
     let module = super::source(
-        "function render(){const a=useLocal('a',''),b=useLocal('b','');return h('column',{style:{backgroundColor:'#ffffff'}},h('column',{className:'ring',style:{padding:10,height:60}},h('input',{key:'a',bind:a})),h('input',{key:'b',bind:b}))}",
+        "function render(){const a=useLocal('a',''),b=useLocal('b','');return h('view',{style:{backgroundColor:'#ffffff'}},h('view',{className:'ring',style:{padding:10,height:60}},h('input',{key:'a',bind:a})),h('input',{key:'b',bind:b}))}",
     )
     .replace(
         "__lingxiaPublish(render);",

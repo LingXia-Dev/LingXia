@@ -35,14 +35,14 @@ export function render({ data, actions }: View) {
           placeholder="Text to copy"
           className="h-20 px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm"
         />
-        <grid className="gap-3 grid-cols-2">
+        <view className="grid gap-3 grid-cols-2">
           <Button testId="clipboard-write-text" disabled={busy.value} onClick={() => run(() => actions.writeText({ text: draft.value }))}>
             Write text
           </Button>
           <Button variant="secondary" testId="clipboard-read-text" disabled={busy.value} onClick={() => run(() => actions.readText())}>
             Read text
           </Button>
-        </grid>
+        </view>
         <Button
           variant="secondary"
           testId="clipboard-write-typed"
@@ -58,16 +58,16 @@ export function render({ data, actions }: View) {
         )}
       </Section>
       <Section title="Image" description="Write a 1×1 sample PNG, or pick one with lx.chooseMedia.">
-        <grid className="gap-3 grid-cols-2">
+        <view className="grid gap-3 grid-cols-2">
           <Button testId="clipboard-write-sample-image" disabled={busy.value} onClick={() => run(() => actions.writeSampleImage())}>
             Write sample PNG
           </Button>
           <Button variant="secondary" testId="clipboard-choose-image" disabled={busy.value} onClick={() => run(() => actions.chooseAndWriteImage())}>
             Choose image
           </Button>
-        </grid>
+        </view>
         {!!data.imagePath && (
-          <column className="items-center gap-2">
+          <view className="items-center gap-2">
             <image
               data-testid="clipboard-image"
               src={String(data.imagePath)}
@@ -75,11 +75,11 @@ export function render({ data, actions }: View) {
               className="w-40 h-40 rounded border border-line object-contain"
             />
             <text className="text-xs text-muted break-all">{String(data.imagePath)}</text>
-          </column>
+          </view>
         )}
       </Section>
       <Section title="Inspect" description="Peek types without the payload, read every representation, or clear.">
-        <grid className="gap-3 grid-cols-3">
+        <view className="grid gap-3 grid-cols-3">
           <Button variant="secondary" testId="clipboard-types" disabled={busy.value} onClick={() => run(() => actions.peekTypes())}>
             Types
           </Button>
@@ -89,7 +89,7 @@ export function render({ data, actions }: View) {
           <Button variant="destructive" testId="clipboard-clear" disabled={busy.value} onClick={() => run(() => actions.clearClipboard())}>
             Clear
           </Button>
-        </grid>
+        </view>
       </Section>
     </Page>
   );

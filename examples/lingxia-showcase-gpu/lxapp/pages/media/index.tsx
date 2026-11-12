@@ -46,11 +46,11 @@ function Setting({
       }}
       className="px-4 py-3.5 rounded-none bg-transparent text-text text-left active:bg-surface-sunken disabled:opacity-60"
     >
-      <row className="items-center gap-4">
+      <view className="flex-row items-center gap-4">
         <text className="grow basis-0 text-sm font-medium text-muted">{label}</text>
         <text className="text-sm font-semibold">{value}</text>
         {!disabled && <text className="text-lg text-muted">›</text>}
-      </row>
+      </view>
     </button>
   );
 }
@@ -63,9 +63,9 @@ function Inputs({
   columns = 2,
 }: Pane & { fields: [key: string, label: string, action: string, placeholder: string][]; columns?: number }) {
   return (
-    <grid className="gap-3" style={{ gridTemplateColumns: columns }}>
+    <view className="grid gap-3" style={{ gridTemplateColumns: columns }}>
       {fields.map(([key, label, action, placeholder]) => (
-        <column key={key} className="gap-1.5">
+        <view key={key} className="gap-1.5">
           <text className="text-xs font-medium">{label}</text>
           <input
             data-testid={`media-${key}`}
@@ -75,9 +75,9 @@ function Inputs({
             onInput={value => actions[action]({ detail: { value } })}
             className="px-3 py-2.5 text-sm rounded-xl border border-line-strong bg-surface"
           />
-        </column>
+        </view>
       ))}
-    </grid>
+    </view>
   );
 }
 
@@ -96,7 +96,7 @@ function Capture({ data, actions }: Pane) {
       intro={scan ? 'Scan QR codes and barcodes using camera or album' : 'Capture photo or video and save to device album'}
     >
       {scan ? (
-        <column className="gap-4">
+        <view className="gap-4">
           <Card className="divide-y divide-line">
             <Setting
               testId="media-openScanSourcePicker"
@@ -127,10 +127,10 @@ function Capture({ data, actions }: Pane) {
               {data.scanBusy ? 'Scanning...' : 'Start Scan'}
             </Button>
           </Section>
-        </column>
+        </view>
       ) : (
         <Section title="Capture" description="Capture photo or video, then save to album. Check your device album to view saved media.">
-          <grid className="gap-3 grid-cols-2">
+          <view className="grid gap-3 grid-cols-2">
             <Button testId="media-captureImageForAlbum" disabled={!!data.saveToAlbumBusy} onClick={() => actions.captureImageForAlbum()}>
               {data.saveToAlbumBusy ? 'Saving...' : 'Capture Image'}
             </Button>
@@ -142,7 +142,7 @@ function Capture({ data, actions }: Pane) {
             >
               {data.saveToAlbumBusy ? 'Saving...' : 'Capture Video'}
             </Button>
-          </grid>
+          </view>
         </Section>
       )}
     </Page>
@@ -173,7 +173,7 @@ function ImageTools({ data, actions }: Pane) {
       </Button>
       <ErrorState testId="media-imageInfoError" error={data.imageInfoError ? String(data.imageInfoError) : null} />
       {!!source && (
-        <column className="gap-4">
+        <view className="gap-4">
           <ImageSummary title="Source Image" info={source} prefix="media-imageInfoResult" />
           <Section title="Compress">
             <Inputs
@@ -191,15 +191,15 @@ function ImageTools({ data, actions }: Pane) {
             </Button>
             <ErrorState testId="media-compressError" error={data.compressError ? String(data.compressError) : null} />
           </Section>
-        </column>
+        </view>
       )}
       {!!result && (
-        <column className="gap-4">
+        <view className="gap-4">
           <ImageSummary title="Compressed Image" info={result} prefix="media-compressResult" />
           <Button variant="secondary" testId="media-previewCompressedImage" onClick={() => actions.previewCompressedImage()}>
             Preview Image
           </Button>
-        </column>
+        </view>
       )}
     </Page>
   );
@@ -320,14 +320,14 @@ function VideoTools({ data, actions }: Pane) {
           {data.videoCompressBusy ? `Compressing...${typeof data.videoCompressProgress === 'number' ? ` ${progress}%` : ''}` : 'Compress Video'}
         </Button>
         {!!data.videoCompressBusy && (
-          <column className="gap-3">
-            <row data-testid="media-compression-progress" className="h-2 rounded-full bg-surface-sunken">
-              <spacer className="h-2 rounded-full bg-success" style={{ width: `${progress}%` }} />
-            </row>
+          <view className="gap-3">
+            <view data-testid="media-compression-progress" className="flex-row h-2 rounded-full bg-surface-sunken">
+              <view className="h-2 rounded-full bg-success" style={{ width: `${progress}%` }} />
+            </view>
             <Button variant="secondary" testId="media-cancelVideoCompress" onClick={() => actions.cancelVideoCompress()}>
               Cancel
             </Button>
-          </column>
+          </view>
         )}
         <ErrorState testId="media-videoCompressError" error={data.videoCompressError ? String(data.videoCompressError) : null} />
       </Section>
@@ -382,10 +382,10 @@ function Gallery({ data, actions }: Pane) {
           : 'h-24 p-3 rounded-2xl border-2 border-accent/40 bg-accent-soft active:opacity-80 disabled:opacity-40'
       }
     >
-      <column className="items-center justify-center gap-2">
+      <view className="items-center justify-center gap-2">
         <text className="text-4xl text-accent">+</text>
         <text className="text-xs font-medium text-accent">{data.isRunning ? 'Opening...' : String(data.addLabel)}</text>
-      </column>
+      </view>
     </button>
   );
   return (
@@ -433,15 +433,15 @@ function Gallery({ data, actions }: Pane) {
           ) : null
         }
       >
-        <grid className="gap-2 grid-cols-2">
+        <view className="grid gap-2 grid-cols-2">
           {option('openPreviewBehaviorPicker', `Preview Flow: ${behavior}`)}
           {option('openPreviewRotatePicker', `Preview Rotate: ${rotate}`)}
           {option('openPreviewObjectFitPicker', `Preview Fit: ${fit}`)}
           {option('togglePreviewIndexIndicator', `Index Indicator: ${data.previewHideIndexIndicator ? 'Hidden' : 'Auto'}`, 'preview-index')}
-        </grid>
+        </view>
         <text className="text-[11px] text-muted">`next` advances and finishes on the last item; `loop` wraps back to the first.</text>
         {!video && (
-          <column className="gap-1">
+          <view className="gap-1">
             <text className="text-xs font-medium text-muted">Image Duration (ms)</text>
             <input
               data-testid="media-previewImageDurationMs"
@@ -451,7 +451,7 @@ function Gallery({ data, actions }: Pane) {
               onInput={value => actions.onPreviewImageDurationInput({ detail: { value } })}
               className="px-3 py-2 text-sm rounded-lg border border-line-strong bg-surface"
             />
-          </column>
+          </view>
         )}
         <Button
           testId="media-previewSelectedMedia"
@@ -476,7 +476,7 @@ function Gallery({ data, actions }: Pane) {
         {!items.length ? (
           add
         ) : video ? (
-          <column className="gap-3">
+          <view className="gap-3">
             {items.map((item, index) => (
               <Card key={`${item.path}-${index}`} className="px-4 py-3 gap-1">
                 <text className="text-sm font-semibold">{`Video ${index + 1}`}</text>
@@ -487,9 +487,9 @@ function Gallery({ data, actions }: Pane) {
               </Card>
             ))}
             {canAdd && add}
-          </column>
+          </view>
         ) : (
-          <grid className="gap-3 grid-cols-2">
+          <view className="grid gap-3 grid-cols-2">
             {items.map((item, index) => (
               <Card key={`${item.path}-${index}`} className="overflow-hidden">
                 <image
@@ -502,7 +502,7 @@ function Gallery({ data, actions }: Pane) {
               </Card>
             ))}
             {canAdd && add}
-          </grid>
+          </view>
         )}
       </Section>
     </Page>

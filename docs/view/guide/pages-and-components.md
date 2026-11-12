@@ -20,25 +20,25 @@ export function render({ data, actions }: View<Actions, { items: Item[] }>) {
 
 function Card({ title, children }: { title: string; children?: Child }) {
   return (
-    <column className="rounded-xl border border-line p-4 gap-2">
+    <view className="rounded-xl border border-line p-4 gap-2">
       <text className="text-base font-semibold">{title}</text>
       {children}
-    </column>
+    </view>
   );
 }
 
 function Row({ title, done, onToggle }: { title: string; done: boolean; onToggle: () => void }) {
   const expanded = useLocal('expanded', false);
   return (
-    <column className="gap-1">
-      <row className="items-center gap-2">
+    <view className="gap-1">
+      <view className="flex-row items-center gap-2">
         <checkbox value={done} onChange={onToggle} aria-label={title} />
         <button onClick={() => expanded.set(!expanded.value)} className="grow p-0 bg-transparent">
           <text className={done ? 'text-sm line-through text-faint' : 'text-sm'}>{title}</text>
         </button>
-      </row>
+      </view>
       {expanded.value && <text className="text-xs text-muted">Tap the box to mark it done.</text>}
-    </column>
+    </view>
   );
 }
 ```
@@ -77,7 +77,7 @@ export function render() {
 }
 ```
 
-Wrap siblings in a `<column>`, `<row>` or `<page>` instead. `<view>` is a flex column; `flex-row` (or `flex`) makes it a row.
+Wrap siblings in a `<view>` or `<page>` instead. `<view>` is a flex column; `flex-row` (or `flex`) makes it a row.
 
 Anywhere else, a fragment groups children without a box: `<>…</>` or a component that returns one lays
 its children out in its place, and each keeps its own identity and local state while siblings come and
@@ -114,10 +114,10 @@ import { useView, type Child } from '@lingxia/view';
 function Section({ title, children }: { title: string; children?: Child }) {
   const { env } = useView();
   return (
-    <column className={env.theme === 'dark' ? 'gap-2 p-4 bg-text' : 'gap-2 p-4 bg-surface-sunken'}>
+    <view className={env.theme === 'dark' ? 'gap-2 p-4 bg-text' : 'gap-2 p-4 bg-surface-sunken'}>
       <text className="text-sm font-semibold">{title}</text>
       {children}
-    </column>
+    </view>
   );
 }
 

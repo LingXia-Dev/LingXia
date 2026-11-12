@@ -11,12 +11,12 @@ export function render(_view: View) {
     <Page intro="Edit the draft, then go back or home: the page stays and asks. Save, and it leaves at once.">
       <Section title="Draft">
         <Field testId="leave-draft" label="Draft" bind={draft} placeholder="Type something" />
-        <row className="items-center justify-between gap-2">
+        <view className="flex-row items-center justify-between gap-2">
           <text data-testid="leave-status" className="text-xs text-muted">
             {dirty ? 'Unsaved changes' : 'Saved'}
           </text>
           <text data-testid="leave-requests" className="text-xs text-muted">{`leave requests: ${guard.requests}`}</text>
-        </row>
+        </view>
         <Button testId="leave-save" disabled={!dirty} onClick={() => saved.set(draft.value)}>
           Save
         </Button>
@@ -26,14 +26,14 @@ export function render(_view: View) {
           <text data-testid="leave-question" className="text-sm">
             Leaving now drops the draft.
           </text>
-          <grid className="gap-2 grid-cols-2">
+          <view className="grid gap-2 grid-cols-2">
             <Button variant="secondary" testId="leave-keep" onClick={() => guard.answer(false)}>
               Keep editing
             </Button>
             <Button variant="destructive" testId="leave-discard" onClick={() => guard.answer(true)}>
               Discard
             </Button>
-          </grid>
+          </view>
         </Section>
       )}
       <ErrorState testId="leave-error" error={guard.error} />

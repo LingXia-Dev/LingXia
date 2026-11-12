@@ -5,8 +5,8 @@ import { rendered } from './support/wire.mjs';
 import { mergeStyle } from '../src/style/lower.js';
 
 afterEach(() => configureClasses([]));
-const style = (value, tag = 'column') => rendered(() => h(tag, { style: value })).props;
-const rejects = (value, pattern, tag = 'column') => assert.throws(() => describe(() => h(tag, { style: value }), {}), pattern);
+const style = (value, tag = 'view') => rendered(() => h(tag, { style: value })).props;
+const rejects = (value, pattern, tag = 'view') => assert.throws(() => describe(() => h(tag, { style: value }), {}), pattern);
 
 test('dimensions lower lengths, percentages, viewport units and sizing keywords', () => {
   assert.equal(style({ width: 100 }).width, 100);
@@ -18,7 +18,7 @@ test('dimensions lower lengths, percentages, viewport units and sizing keywords'
   assert.equal(style({ height: 'auto' }).heightAuto, 1);
   assert.equal(style({ width: 'fit-content' }).widthKeyword, 'fit-content');
   rejects({ minWidth: 'fit-content' }, /UI_STYLE_VALUE/);
-  const viewport = rendered(() => h('column', { style: { width: '100vw', height: '50vh' } }), { env: { viewport: { width: 360, height: 800 } } }).props;
+  const viewport = rendered(() => h('view', { style: { width: '100vw', height: '50vh' } }), { env: { viewport: { width: 360, height: 800 } } }).props;
   assert.deepEqual([viewport.width, viewport.height], [360, 400]);
   rejects({ widthPercent: 50 }, /UI_STYLE: unknown style property widthPercent/);
 });
@@ -30,7 +30,7 @@ test('flex basis encodes auto, logical lengths and percentages without mixing th
 
 test('CSS names lower to the native box: colors, radii, flex factors and alignment', () => {
   const props = style({ backgroundColor: 'surface', borderRadius: 8, borderTopLeftRadius: 2, flexGrow: 1, flexShrink: 0,
-    alignItems: 'flex-start', justifyContent: 'space-between', alignSelf: 'flex-end' }, 'row');
+    alignItems: 'flex-start', justifyContent: 'space-between', alignSelf: 'flex-end' }, 'view');
   assert.deepEqual([props.background, props.radius, props.radiusTopLeft, props.radiusTopRight, props.grow, props.shrink, props.align, props.justify, props.alignSelf],
     ['surface', 8, 2, 8, 1, 0, 'start', 'between', 'end']);
   assert.deepEqual([style({ justifyContent: 'space-around' }).justify, style({ justifyContent: 'space-evenly' }).justify], ['around', 'evenly']);
@@ -99,7 +99,7 @@ test('userSelect applies to static text, not editors', () => {
 });
 
 test('typography: CSS line-height multipliers inherit and recompute per font size', () => {
-  const root = rendered(() => h('column', { style: { fontSize: 10, lineHeight: 1.5 } }, h('text', { style: { fontSize: 20 } }, 'big'), h('text', {}, 'small')));
+  const root = rendered(() => h('view', { style: { fontSize: 10, lineHeight: 1.5 } }, h('text', { style: { fontSize: 20 } }, 'big'), h('text', {}, 'small')));
   assert.equal(root.props.lineHeight, 15);
   assert.deepEqual(root.children.map(child => child.props.lineHeight), [30, 15]);
   assert.equal(style({ lineHeight: '24px' }, 'text').lineHeight, 24);
@@ -118,14 +118,14 @@ test('opacity, placeholder and scroll axes accept only their element and range',
   for (const opacity of [-0.01, 1.01, NaN, Infinity, '0.5', null, true]) rejects({ opacity }, /UI_STYLE_VALUE/);
   assert.equal(style({ placeholderColor: 'text-muted/50' }, 'input').placeholderColor, 'text-muted/50');
   for (const value of [null, 1, true, {}]) rejects({ placeholderColor: value }, /UI_STYLE_VALUE/, 'input');
-  rejects({ placeholderColor: 'text-muted' }, /not supported on <column>/);
+  rejects({ placeholderColor: 'text-muted' }, /not supported on <view>/);
   assert.equal(style({ overflowX: 'auto' }, 'scroll').scrollAxis, 'horizontal');
-  rejects({ overflowX: 'auto' }, /UI_STYLE: overflowX is not supported on <column>/);
+  rejects({ overflowX: 'auto' }, /UI_STYLE: overflowX is not supported on <view>/);
 });
 
 test('every style property is checked against the element that renders it', () => {
-  for (const [tag, name, value] of [['text', 'alignItems', 'center'], ['text', 'gap', 4], ['image', 'color', 'text'], ['spacer', 'padding', 4],
-    ['plot', 'fontSize', 12], ['row', 'lineClamp', 2], ['checkbox', 'flexDirection', 'row'], ['slider', 'fontSize', 12]])
+  for (const [tag, name, value] of [['text', 'alignItems', 'center'], ['text', 'gap', 4], ['image', 'color', 'text'],
+    ['plot', 'fontSize', 12], ['view', 'lineClamp', 2], ['checkbox', 'flexDirection', 'row'], ['slider', 'fontSize', 12]])
     rejects({ [name]: value }, new RegExp(`UI_STYLE: ${name} is not supported on <${tag}>`), tag);
   rejects({ unknownThing: 1 }, /UI_STYLE: unknown style property unknownThing/);
 });
@@ -140,33 +140,33 @@ test('active and hover variants become paint deltas; hover only for fine pointer
   assert.equal(touch.props.hoverStyle, undefined);
   const mouse = rendered(() => h('button', { className: 'bg-surface hover:bg-accent' }, 'Go'), { env: { pointer: 'fine' } });
   assert.deepEqual(mouse.props.hoverStyle, { background: 'accent' });
-  assert.throws(() => describe(() => h('column', { className: 'active:bg-line-strong' }), {}), /UI_STYLE: active: requires a control, not <column>/);
+  assert.throws(() => describe(() => h('view', { className: 'active:bg-line-strong' }), {}), /UI_STYLE: active: requires a control, not <view>/);
   assert.throws(() => describe(() => h('button', { className: 'active:p-2' }, 'x'), {}), /active: supports paint properties only, not paddingTop/);
 });
 
 test('data-* variants match the element own data-* props, layout included', () => {
   rules([['p-1', { paddingTop: 4 }], ['data-[state=open]:p-4', { paddingTop: 16 }, { data: ['state', 'open'] }],
     ['data-active:bg-accent', { backgroundColor: 'accent' }, { data: ['active'] }]]);
-  const node = props => rendered(() => h('column', { className: 'p-1 data-[state=open]:p-4 data-active:bg-accent', ...props })).props;
+  const node = props => rendered(() => h('view', { className: 'p-1 data-[state=open]:p-4 data-active:bg-accent', ...props })).props;
   assert.deepEqual([node({}).paddingTop, node({}).background], [4, undefined]);
   assert.equal(node({ 'data-state': 'open' }).paddingTop, 16);
   assert.equal(node({ 'data-state': 'closed' }).paddingTop, 4);
   assert.equal(node({ 'data-active': true }).background, 'accent');
   assert.equal(node({ 'data-active': false }).background, undefined);
-  assert.throws(() => describe(() => h('column', { 'data-x': {} }), {}), /UI_PROP: data-x must be a string, number or boolean/);
-  assert.throws(() => describe(() => h('column', { 'dataX': 1 }), {}), /UI_PROP: dataX is not a property/);
+  assert.throws(() => describe(() => h('view', { 'data-x': {} }), {}), /UI_PROP: data-x must be a string, number or boolean/);
+  assert.throws(() => describe(() => h('view', { 'dataX': 1 }), {}), /UI_PROP: dataX is not a property/);
 });
 
 test('has-checked and has-disabled follow descendants; focus-within reaches native', () => {
   rules([['has-checked:bg-accent', { backgroundColor: 'accent' }, { state: 'hasChecked' }],
     ['has-disabled:opacity-50', { opacity: 0.5 }, { state: 'hasDisabled' }],
     ['focus-within:bg-danger', { backgroundColor: 'danger' }, { state: 'focusWithin' }], ['has-checked:p-2', { paddingTop: 8 }, { state: 'hasChecked' }]]);
-  const card = (checked, disabled) => rendered(() => h('row', { className: 'has-checked:bg-accent has-disabled:opacity-50' },
-    h('column', {}, h('checkbox', { value: checked, onChange() {}, 'aria-label': 'x' }), h('input', { value: '', disabled })))).props;
+  const card = (checked, disabled) => rendered(() => h('view', { style: { flexDirection: 'row' }, className: 'has-checked:bg-accent has-disabled:opacity-50' },
+    h('view', {}, h('checkbox', { value: checked, onChange() {}, 'aria-label': 'x' }), h('input', { value: '', disabled })))).props;
   assert.deepEqual([card(false, false).background, card(true, false).background], [undefined, 'accent']);
   assert.equal(card(false, true).opacity, 0.5);
-  assert.ok(rendered(() => h('column', { className: 'focus-within:bg-danger' }, h('input', { value: '' }))).props.focusWithinStyle);
-  assert.throws(() => describe(() => h('column', { className: 'has-checked:p-2' }), {}), /has-checked: supports paint properties only, not paddingTop/);
+  assert.ok(rendered(() => h('view', { className: 'focus-within:bg-danger' }, h('input', { value: '' }))).props.focusWithinStyle);
+  assert.throws(() => describe(() => h('view', { className: 'has-checked:p-2' }), {}), /has-checked: supports paint properties only, not paddingTop/);
 });
 
 test('disabled variants replace the cascade only while disabled', () => {
@@ -179,7 +179,7 @@ test('disabled variants replace the cascade only while disabled', () => {
 test('space and divide rules style every child but the last, below the child own classes', () => {
   rules([['space-y-4', { marginTop: 0, marginBottom: 16 }, { children: true }], ['divide-y', { borderTopWidth: 0, borderBottomWidth: 1 }, { children: true }],
     ['mb-1', { marginBottom: 4 }]]);
-  const root = rendered(() => h('column', { className: 'space-y-4 divide-y' }, h('text', {}, 'a'), h('text', { className: 'mb-1' }, 'b'), h('text', {}, 'c')));
+  const root = rendered(() => h('view', { className: 'space-y-4 divide-y' }, h('text', {}, 'a'), h('text', { className: 'mb-1' }, 'b'), h('text', {}, 'c')));
   assert.deepEqual(root.children.map(child => child.props.marginBottom), [16, 4, undefined]);
   assert.deepEqual(root.children.map(child => child.props.borderBottomWidth), [1, 1, undefined]);
 });

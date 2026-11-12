@@ -3,7 +3,7 @@ use crate::scene::test_prelude::*;
 #[test]
 fn zero_opacity_contains_input_decorations_without_removing_semantics() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{backgroundColor:'#ffffff',width:100,height:100}},h('input',{'data-testid':'editor',value:'Hello',autoFocus:true,style:{opacity:0,width:100,height:60}}))}",
+        "function render(){return h('view',{style:{backgroundColor:'#ffffff',width:100,height:100}},h('input',{'data-testid':'editor',value:'Hello',autoFocus:true,style:{opacity:0,width:100,height:60}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
@@ -173,7 +173,7 @@ fn search_keeps_icon_fixed_while_text_selection_and_caret_scroll() {
 #[test]
 fn letter_spacing_inherits_resets_and_changes_input_geometry() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{fontFamily:'monospace',fontSize:20,letterSpacing:4}},h('input',{value:'ABCD',style:{height:50}}),h('input',{value:'ABCD',style:{height:50,letterSpacing:0}}),h('input',{value:'ABCD',style:{height:50,letterSpacing:-1}}))}",
+        "function render(){return h('view',{style:{fontFamily:'monospace',fontSize:20,letterSpacing:4}},h('input',{value:'ABCD',style:{height:50}}),h('input',{value:'ABCD',style:{height:50,letterSpacing:0}}),h('input',{value:'ABCD',style:{height:50,letterSpacing:-1}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let frame = page.layout(320, 200, 1.0).unwrap();
@@ -604,7 +604,7 @@ fn placeholder_tint_is_local_and_does_not_recolor_value_or_caret() {
         }
     }
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{color:'#0000ff'}},h('input',{placeholder:'Hint'}))}",
+        "function render(){return h('view',{style:{color:'#0000ff'}},h('input',{placeholder:'Hint'}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(200, 80, 1.0).unwrap();
@@ -623,7 +623,7 @@ fn placeholder_tint_is_local_and_does_not_recolor_value_or_caret() {
 #[test]
 fn word_hit_testing_and_empty_placeholder_do_not_use_character_width_estimates() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{},h('input',{value:'hello world',style:{height:40,fontSize:20,padding:8}}),h('input',{placeholder:'not editable text',style:{height:40}}))}",
+        "function render(){return h('view',{},h('input',{value:'hello world',style:{height:40,fontSize:20,padding:8}}),h('input',{placeholder:'not editable text',style:{height:40}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let display = page.prepare_native(300, 100, 1.0, true, None, Ok).unwrap();
@@ -651,7 +651,7 @@ fn word_hit_testing_and_empty_placeholder_do_not_use_character_width_estimates()
 #[test]
 fn blink_hides_only_caret_without_changing_editor_or_rerunning_view() {
     let module = crate::session::tests::source(
-        "let renders=0;function render(){renders++;return h('column',{},h('input',{value:'hello',autoFocus:true}),h('text',{},String(renders)))}",
+        "let renders=0;function render(){renders++;return h('view',{},h('input',{value:'hello',autoFocus:true}),h('text',{},String(renders)))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let first = page.layout(200, 100, 1.0).unwrap();
@@ -963,7 +963,7 @@ fn empty_and_secure_inputs_keep_a_caret_and_multiline_selection_wraps() {
 #[test]
 fn caret_moves_with_retained_scroll_and_disappears_when_hidden() {
     let module = crate::session::tests::source(
-        "function render(){return h('scroll',{style:{borderRadius:20}},h('input',{value:'hello',autoFocus:true}),h('spacer',{style:{height:300}}))}",
+        "function render(){return h('scroll',{style:{borderRadius:20}},h('input',{value:'hello',autoFocus:true}),h('view',{style:{height:300}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let first = page.layout(200, 100, 1.0).unwrap();

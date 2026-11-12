@@ -104,14 +104,14 @@ export function render({ data, actions }: View) {
       )}
       {type === 'networkStatus' && (
         <Section title="Network status listener" description="Report connectivity changes as they happen">
-          <grid className="gap-3 grid-cols-2">
+          <view className="grid gap-3 grid-cols-2">
             <Button testId="device-network-listen-start" onClick={() => actions.startNetworkChangeListen()}>
               Start listening
             </Button>
             <Button variant="secondary" testId="device-network-listen-stop" onClick={() => actions.stopNetworkChangeListen()}>
               Stop listening
             </Button>
-          </grid>
+          </view>
           <InfoList testId="device-network-status">
             <InfoRow label="Listening" value={data.networkListening ? 'Yes' : 'No'} testId="device-network-listening" />
             <InfoRow label="Connected" value={yesNo(changed.isConnected)} />
@@ -123,14 +123,14 @@ export function render({ data, actions }: View) {
       )}
       {type === 'vibrate' && (
         <Section title="Trigger vibration" description="Try a short or long vibration">
-          <grid className="gap-3 grid-cols-2">
+          <view className="grid gap-3 grid-cols-2">
             <Button testId="device-vibrate-short" onClick={() => actions.vibrateShort()}>
               Short
             </Button>
             <Button variant="secondary" testId="device-vibrate-long" onClick={() => actions.vibrateLong()}>
               Long
             </Button>
-          </grid>
+          </view>
         </Section>
       )}
       {type === 'dial' && (
@@ -147,7 +147,7 @@ export function render({ data, actions }: View) {
       )}
       {type === 'orientation' && (
         <Section title="Lock and follow orientation" description="Choose an orientation and listen for changes">
-          <grid className="gap-3 grid-cols-2">
+          <view className="grid gap-3 grid-cols-2">
             <Button testId="device-orientation-portrait" onClick={() => actions.setOrientationPortrait()}>
               Lock portrait
             </Button>
@@ -160,18 +160,18 @@ export function render({ data, actions }: View) {
             <Button variant="secondary" testId="device-orientation-listen-stop" onClick={() => actions.stopDeviceOrientationListen()}>
               Stop listening
             </Button>
-          </grid>
+          </view>
           <InfoList>
             <InfoRow label="Listening" value={data.orientationListening ? 'Yes' : 'No'} />
             <InfoRow label="Lock target" value={data.orientationLock} testId="device-orientation-lock" />
             <InfoRow label="Current value" value={data.deviceOrientationValue} testId="device-orientation-value" />
           </InfoList>
-          <row className="items-center justify-between gap-3">
+          <view className="flex-row items-center justify-between gap-3">
             <text className="text-sm font-semibold">Orientation events</text>
             <Button variant="ghost" size="sm" testId="device-orientation-clear" onClick={() => actions.clearOrientationEvents()}>
               Clear logs
             </Button>
-          </row>
+          </view>
           <scroll data-testid="device-orientation-event-scroll" className="max-h-56 p-3 rounded-lg border border-line bg-surface-sunken">
             <text data-testid="device-orientation-events" className="text-xs break-all whitespace-pre-line">
               {events.join('\n') || '--'}

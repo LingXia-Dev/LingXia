@@ -15,14 +15,14 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   return (
     <page className="bg-canvas">
       <scroll className="grow">
-        <column className="p-4 gap-3">
+        <view className="p-4 gap-3">
           <text role="heading" className="text-xl font-semibold">{note.value?.title ?? 'Loading…'}</text>
           <text className="text-sm text-muted whitespace-pre-line">{note.value?.body ?? ''}</text>
           <input bind={draft} aria-label="Reply" placeholder="Reply" className="px-3 py-2 rounded-lg border border-line" />
           <button disabled={!draft.value} onClick={() => draft.set('')} className="px-4 py-2 rounded-lg bg-accent text-on-accent active:opacity-80">
             Send
           </button>
-        </column>
+        </view>
       </scroll>
     </page>
   );

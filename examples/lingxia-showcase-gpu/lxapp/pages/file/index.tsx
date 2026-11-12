@@ -20,7 +20,7 @@ function UrlField({
   onInput: (value: string) => unknown;
 }) {
   return (
-    <column className="gap-1.5">
+    <view className="gap-1.5">
       <text className="text-sm text-muted">{label}</text>
       <input
         data-testid={testId}
@@ -33,7 +33,7 @@ function UrlField({
         }}
         className="px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm"
       />
-    </column>
+    </view>
   );
 }
 
@@ -59,12 +59,12 @@ export function render({ data, actions: raw }: View) {
           onChange={() => actions.toggleShowMenu()}
           className="bg-transparent text-text"
         >
-          <column className="gap-1">
+          <view className="gap-1">
             <text className="text-sm font-medium">Show Share Button</text>
             <text className="text-xs text-muted">
               Only applies to PDF documents. Office documents always open with the system default viewer.
             </text>
-          </column>
+          </view>
         </checkbox>
       </Section>
       {data.activeDemo === 'chooseFile' ? (
@@ -83,7 +83,7 @@ export function render({ data, actions: raw }: View) {
           </Button>
         </Section>
       ) : (
-        <column className="gap-4">
+        <view className="gap-4">
           <Section
             title="PDF via lx.downloadFile()"
             description="Download to a temporary file with progress and pause/continue, then open the native PDF viewer."
@@ -104,17 +104,17 @@ export function render({ data, actions: raw }: View) {
               {pdfLabel}
             </Button>
             {(state !== 'idle' || !!data.pdfProgressText) && (
-              <column className="p-3 gap-2 rounded-xl border border-accent/20 bg-accent-soft">
-                <row className="items-center justify-between">
+              <view className="p-3 gap-2 rounded-xl border border-accent/20 bg-accent-soft">
+                <view className="flex-row items-center justify-between">
                   <text className="text-xs text-accent">PDF Transfer</text>
                   <text data-testid="file-pdf-progress" className="text-xs text-accent">
                     {data.pdfProgressKnown ? `${Math.round(progress)}%` : 'Streaming'}
                   </text>
-                </row>
+                </view>
                 {data.pdfProgressKnown ? (
-                  <row className="h-2 rounded-full bg-accent-soft">
-                    <spacer data-testid="file-progress-bar" className="h-2 rounded-full bg-accent" style={{ width: `${progress}%` }} />
-                  </row>
+                  <view className="flex-row h-2 rounded-full bg-accent-soft">
+                    <view data-testid="file-progress-bar" className="h-2 rounded-full bg-accent" style={{ width: `${progress}%` }} />
+                  </view>
                 ) : (
                   <text className="text-[11px] text-accent">Waiting for precise progress from runtime...</text>
                 )}
@@ -124,7 +124,7 @@ export function render({ data, actions: raw }: View) {
                 <Button size="sm" testId="file-pdf-transfer" disabled={!transferEnabled} onClick={() => actions.togglePdfTransfer()}>
                   {String(data.pdfTransferButtonText || 'Pause Download')}
                 </Button>
-              </column>
+              </view>
             )}
           </Section>
           <Section
@@ -161,7 +161,7 @@ export function render({ data, actions: raw }: View) {
               </text>
             )}
           </Section>
-        </column>
+        </view>
       )}
     </Page>
   );

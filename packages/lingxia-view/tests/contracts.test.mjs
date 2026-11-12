@@ -28,7 +28,7 @@ test('limits, admission and the CSS table reach native decode and the JS runtime
   const nesting = structuredClone(schema);
   nesting.admission.text.children = 'any';
   const fieldTags = structuredClone(schema);
-  fieldTags.fields.find(field => field.key === 'onClick').tags.push('row');
+  fieldTags.fields.find(field => field.key === 'onClick').tags.push('scroll');
   const css = structuredClone(schema);
   css.style.width.css = 'inline-size';
   for (const changed of [nesting, fieldTags]) {

@@ -546,7 +546,7 @@ fn a_fake_platform_hosts_frames_input_semantics_and_images() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1),style:{height:60}},`Count ${n.value}`),n.value<2?h('image',{src:'lx://pic.png',alt:'Picture',style:{width:20,height:20}}):h('text',{},'done'))}",
+            "function render(){const n=useLocal('n',0);return h('view',{},h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1),style:{height:60}},`Count ${n.value}`),n.value<2?h('image',{src:'lx://pic.png',alt:'Picture',style:{width:20,height:20}}):h('text',{},'done'))}",
         ),
         false,
     );
@@ -618,7 +618,7 @@ fn removed_images_cancel_their_transport_and_failures_stop_input() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const show=useLocal('show',true);return h('column',{},h('button',{onClick:()=>show.set(false),style:{height:60}},'hide'),show.value?h('image',{src:'lx://a.png',style:{width:20,height:20}}):h('text',{},'gone'))}",
+            "function render(){const show=useLocal('show',true);return h('view',{},h('button',{onClick:()=>show.set(false),style:{height:60}},'hide'),show.value?h('image',{src:'lx://a.png',style:{width:20,height:20}}):h('text',{},'gone'))}",
         ),
         false,
     );
@@ -733,7 +733,7 @@ fn a_page_whose_target_is_attaching_waits_without_holding_up_its_worker() {
     // Page A's image transport never completes.
     let stalled = platform.host(
         &worker,
-        &source("function render(){return h('column',{},h('text',{},'A'),h('image',{src:'lx://slow.png',alt:'',style:{width:20,height:20}}))}"),
+        &source("function render(){return h('view',{},h('text',{},'A'),h('image',{src:'lx://slow.png',alt:'',style:{width:20,height:20}}))}"),
         false,
     );
     let attaching = platform.host(
@@ -803,7 +803,7 @@ fn a_stalled_image_decode_never_holds_up_another_page_on_the_worker() {
     let platform = Platform::new(&[&worker]);
     let photo = platform.host(
         &worker,
-        &source("function render(){return h('column',{},h('text',{},'A'),h('image',{src:'lx://photo.png',alt:'',style:{width:20,height:20}}))}"),
+        &source("function render(){return h('view',{},h('text',{},'A'),h('image',{src:'lx://photo.png',alt:'',style:{width:20,height:20}}))}"),
         false,
     );
     photo.set_visible(true);
@@ -837,7 +837,7 @@ fn images_past_the_visible_budget_fail_to_their_author_instead_of_the_page() {
     // Five stacked 2048px images: 16 MiB each decoded, past the 64 MiB a frame binds.
     let page = platform.host(
         &worker,
-        &source("function render(){const s=[0,1,2,3,4].map(i=>useLocal('s'+i,'-'));return h('column',{},h('text',{},s.map(x=>x.value).join('')),...s.map((x,i)=>h('image',{src:'lx://big'+i+'.png',alt:'',onLoad:()=>x.set('L'),onError:()=>x.set('E'),style:{position:'absolute',top:0,left:0,width:2048,height:2048}})))}"),
+        &source("function render(){const s=[0,1,2,3,4].map(i=>useLocal('s'+i,'-'));return h('view',{},h('text',{},s.map(x=>x.value).join('')),...s.map((x,i)=>h('image',{src:'lx://big'+i+'.png',alt:'',onLoad:()=>x.set('L'),onError:()=>x.set('E'),style:{position:'absolute',top:0,left:0,width:2048,height:2048}})))}"),
         false,
     );
     page.set_visible(true);
@@ -1210,7 +1210,7 @@ fn a_click_that_changes_the_look_logs_one_input_line() {
     let host = platform.host(
         &worker,
         &source(
-            "function render({env}){const n=useLocal('n',0),l=useLocal('l','-');return h('column',{},h('button',{'data-testid':'look',onClick:()=>n.set(n.value+1),style:{width:100,height:40}},`${env.theme} ${n.value} ${l.value}`),h('image',{src:'lx://look.png',alt:'',onLoad:()=>l.set('L'),style:{width:10,height:10}}))}",
+            "function render({env}){const n=useLocal('n',0),l=useLocal('l','-');return h('view',{},h('button',{'data-testid':'look',onClick:()=>n.set(n.value+1),style:{width:100,height:40}},`${env.theme} ${n.value} ${l.value}`),h('image',{src:'lx://look.png',alt:'',onLoad:()=>l.set('L'),style:{width:10,height:10}}))}",
         ),
         false,
     );
@@ -1591,7 +1591,7 @@ fn a_spinner_presents_at_display_rate_only_while_visible_and_present() {
     let host = platform.host(
         &worker,
         &source(&format!(
-            "function render(){{const on=useLocal('on',true);return h('column',{{}},h('button',{{onClick:()=>on.set(false),style:{{height:60}}}},'stop'),on.value?h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}):null)}}"
+            "function render(){{const on=useLocal('on',true);return h('view',{{}},h('button',{{onClick:()=>on.set(false),style:{{height:60}}}},'stop'),on.value?h('view',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}):null)}}"
         )),
         false,
     );
@@ -1639,7 +1639,7 @@ fn frame_pacing_reports_display_rate_frames_and_the_hud_never_becomes_page_conte
     let host = platform.host(
         &worker,
         &source(&format!(
-            "function render(){{return h('column',{{}},h('text',{{}},'spin'),h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
+            "function render(){{return h('view',{{}},h('text',{{}},'spin'),h('view',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
         )),
         false,
     );
@@ -1690,7 +1690,7 @@ fn measure_frames_resolves_with_the_window_it_waited_out() {
     let host = platform.host(
         &worker,
         &source(&format!(
-            "function render(){{const n=useLocal('n','none');return h('column',{{}},h('button',{{onClick:()=>{{measureFrames(500).then(s=>n.set(s.windowMs+':'+(s.samples>=25)+':'+(s.frameTimeMs.p50<17)))}},style:{{height:60}}}},'measured '+n.value),h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
+            "function render(){{const n=useLocal('n','none');return h('view',{{}},h('button',{{onClick:()=>{{measureFrames(500).then(s=>n.set(s.windowMs+':'+(s.samples>=25)+':'+(s.frameTimeMs.p50<17)))}},style:{{height:60}}}},'measured '+n.value),h('view',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
         )),
         false,
     );
@@ -1740,7 +1740,7 @@ fn a_one_shot_animation_stops_presenting_once_complete() {
     let host = platform.host(
         &worker,
         &source(&format!(
-            "function render(){{return h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{fade}}}}})}}"
+            "function render(){{return h('view',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{fade}}}}})}}"
         )),
         false,
     );
@@ -1761,7 +1761,7 @@ fn a_reduced_motion_change_while_hidden_catches_up_once_and_stays_silent() {
     let host = platform.host(
         &worker,
         &source(&format!(
-            "function render(){{return h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}})}}"
+            "function render(){{return h('view',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}})}}"
         )),
         false,
     );
@@ -1915,7 +1915,11 @@ fn the_same_render_failure_three_times_stops_rendering_until_a_retry_or_a_new_si
     let shown = || {
         let log = host.adapter().log.lock().unwrap();
         let recoveries = log.recovery.iter().filter(|r| r.is_some()).count();
-        let warned = log.warnings.iter().filter(|w| w.contains("steady failure")).count();
+        let warned = log
+            .warnings
+            .iter()
+            .filter(|w| w.contains("steady failure"))
+            .count();
         (recoveries, warned)
     };
     host.set_visible(true);
@@ -1926,7 +1930,11 @@ fn the_same_render_failure_three_times_stops_rendering_until_a_retry_or_a_new_si
         platform.settle(&[&host]);
     }
     assert_eq!(renders(), 1 + 3, "rendering stalled");
-    assert_eq!(shown(), (1, 2), "recovery shown once; logged once and at the stall");
+    assert_eq!(
+        shown(),
+        (1, 2),
+        "recovery shown once; logged once and at the stall"
+    );
     // Another size may render: it tries again.
     resize(&host, 180);
     host.surface_changed();
@@ -2392,7 +2400,7 @@ fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
     let worker = ViewWorker::spawn("test-fill-select").unwrap();
     let platform = Platform::new(&[&worker]);
     let mut page = source(
-        "function render(){const name=useLocal('name',''),plan=useLocal('plan','');return h('column',{},h('input',{'data-testid':'name',bind:name,'aria-label':'Name'}),h('select',{'data-testid':'plan',bind:plan,'aria-label':'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B'}]}),h('text',{'data-testid':'out'},`name=${name.value} plan=${plan.value}`))}",
+        "function render(){const name=useLocal('name',''),plan=useLocal('plan','');return h('view',{},h('input',{'data-testid':'name',bind:name,'aria-label':'Name'}),h('select',{'data-testid':'plan',bind:plan,'aria-label':'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B'}]}),h('text',{'data-testid':'out'},`name=${name.value} plan=${plan.value}`))}",
     );
     if dev {
         page.push_str("\nconfigureSourceMap({sources:[null],mappings:''});\nenableHotSwap();\n");
@@ -2698,7 +2706,7 @@ fn a_parked_page_reads_blank_and_refuses_actions() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const n=useLocal('n',0);return h('column',{'data-testid':'card','data-mode':'live'},h('text',{},'Total'),h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1)},`Count ${n.value}`))}",
+            "function render(){const n=useLocal('n',0);return h('view',{'data-testid':'card','data-mode':'live'},h('text',{},'Total'),h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1)},`Count ${n.value}`))}",
         ),
         false,
     );
@@ -3059,7 +3067,7 @@ fn edits_for_two_editors_reach_the_platform_one_at_a_time() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const a=useLocal('a','');const b=useLocal('b','');return h('column',{},h('input',{'data-testid':'amount',bind:a,autoFocus:true}),h('input',{'data-testid':'code',bind:b}))}",
+            "function render(){const a=useLocal('a','');const b=useLocal('b','');return h('view',{},h('input',{'data-testid':'amount',bind:a,autoFocus:true}),h('input',{'data-testid':'code',bind:b}))}",
         ),
         false,
     );
@@ -3187,7 +3195,7 @@ fn a_held_press_keeps_its_scale_transition_and_accessibility_hears_moves_at_a_qu
     let worker = ViewWorker::spawn("test-view").unwrap();
     let platform = Platform::new(&[&worker]);
     let page = source(
-        "function render(){return h('column',{},h('button',{'data-testid':'b',onClick(){},className:'active:x',style:{width:100,height:40,padding:0,transition:{properties:['transform'],durationMs:150,delayMs:0,easing:'linear'}}},'Press'))}",
+        "function render(){return h('view',{},h('button',{'data-testid':'b',onClick(){},className:'active:x',style:{width:100,height:40,padding:0,transition:{properties:['transform'],durationMs:150,delayMs:0,easing:'linear'}}},'Press'))}",
     )
     .replace(
         "__lingxiaPublish(render);",
@@ -3247,7 +3255,7 @@ fn a_spinning_decoration_sends_accessibility_no_content_changes() {
     let host = platform.host(
         &worker,
         &source(&format!(
-            "function render(){{return h('column',{{}},h('text',{{}},'Loading'),h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
+            "function render(){{return h('view',{{}},h('text',{{}},'Loading'),h('view',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
         )),
         false,
     );
@@ -3264,7 +3272,7 @@ fn a_frame_drawn_off_the_worker_reports_its_presenter_counters() {
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
         &worker,
-        &source("function render(){return h('column',{},h('text',{},'drawn'))}"),
+        &source("function render(){return h('view',{},h('text',{},'drawn'))}"),
         false,
     );
     host.adapter()
@@ -3308,7 +3316,7 @@ fn a_deferred_present_holds_the_next_frame_until_it_reaches_the_screen() {
     let host = platform.host(
         &worker,
         &source(&format!(
-            "function render(){{return h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}})}}"
+            "function render(){{return h('view',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}})}}"
         )),
         false,
     );
@@ -3366,7 +3374,7 @@ fn a_tap_during_a_running_animation_dispatches_and_rebuilds_within_a_frame() {
     let host = platform.host(
         &worker,
         &source(&format!(
-            "function render(){{const n=useLocal('n',0);return h('column',{{}},h('button',{{onClick:()=>n.set(n.value+1),style:{{height:60}}}},`Count ${{n.value}}`),h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
+            "function render(){{const n=useLocal('n',0);return h('view',{{}},h('button',{{onClick:()=>n.set(n.value+1),style:{{height:60}}}},`Count ${{n.value}}`),h('view',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
         )),
         false,
     );
@@ -3462,7 +3470,7 @@ fn a_frame_asked_for_while_a_flight_lands_starts_after_it() {
 fn costly_spinner(platform: &Platform, worker: &Arc<ViewWorker>, ahead: bool) -> ViewHost<Fake> {
     // The button darkens while pressed, as the lab's buttons do: pressing relays the page out.
     let page = source(&format!(
-        "function render(){{const n=useLocal('n',0);return h('column',{{}},h('button',{{onClick:()=>n.set(n.value+1),className:'active:x',style:{{height:60}}}},`Count ${{n.value}}`),h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
+        "function render(){{const n=useLocal('n',0);return h('view',{{}},h('button',{{onClick:()=>n.set(n.value+1),className:'active:x',style:{{height:60}}}},`Count ${{n.value}}`),h('view',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
     ))
     .replace(
         "__lingxiaPublish(render);",
@@ -3610,7 +3618,7 @@ fn every_deferred_frame_the_adapter_shows_is_reported_presented_once() {
     let host = platform.host(
         &worker,
         &source(&format!(
-            "function render(){{return h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}})}}"
+            "function render(){{return h('view',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}})}}"
         )),
         false,
     );
@@ -3659,8 +3667,8 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
         h('vector',{'data-testid':'icon','aria-hidden':true,paths:[{d:'M0 0H10V10Z'}],style:{width:10,height:10}}),
         h('image',{'data-testid':'photo',src:'a.png',alt:'Photo',style:{width:20,height:20,borderRadius:4}}),
         h('text',{},'Read the ',h('link',{onClick(){}},'terms')),
-        h('button',{'data-testid':'go',onClick(){}},h('row',{},h('text',{},'Go'),h('checkbox',{'data-testid':'remember',bind:on,'aria-label':'Remember'}))),
-        h('scroll',{'data-testid':'inner',style:{height:20,overflowX:'auto'}},h('row',{style:{width:900,height:20}})))
+        h('button',{'data-testid':'go',onClick(){}},h('view',{style:{flexDirection:'row'}},h('text',{},'Go'),h('checkbox',{'data-testid':'remember',bind:on,'aria-label':'Remember'}))),
+        h('scroll',{'data-testid':'inner',style:{height:20,overflowX:'auto'}},h('view',{style:{flexDirection:'row',width:900,height:20}})))
     }";
     let host = platform.host(&worker, &source(page), false);
     host.set_visible(true);
@@ -4191,7 +4199,7 @@ fn an_activation_whose_control_went_away_before_dispatch_is_reported_not_silent(
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const n=useLocal('n',0);return h('column',{},n.value===0?h('button',{'data-testid':'b',onClick:()=>n.set(1),style:{height:60}},'Remove me'):h('text',{},'gone'))}",
+            "function render(){const n=useLocal('n',0);return h('view',{},n.value===0?h('button',{'data-testid':'b',onClick:()=>n.set(1),style:{height:60}},'Remove me'):h('text',{},'gone'))}",
         ),
         false,
     );
@@ -4358,7 +4366,7 @@ fn an_editor_selection_offers_copy_cut_and_paste_to_assistive_tech() {
     let platform = Platform::new(&[&worker]);
     let page = "function render(){
       const name=useLocal('name','Hello world'), pin=useLocal('pin','1234');
-      return h('column',{},
+      return h('view',{},
         h('input',{'data-testid':'name',bind:name,'aria-label':'Name'}),
         h('input',{'data-testid':'pin',bind:pin,type:'password','aria-label':'PIN'}))
     }";
@@ -4445,7 +4453,7 @@ fn a_sibling_after_an_appearing_conditional_keeps_its_local_and_semantic_id() {
     let platform = Platform::new(&[&worker]);
     let page = "function Counter(){const n=useLocal('n',0);return h('button',{'data-testid':'count',onClick(){n.set(n.value+1)}},'n '+n.value)}
       function render(){const on=useLocal('on',false);
-        return h('column',{}, on.value && h('text',{'data-testid':'banner'},'Hi'), h(Counter,{}),
+        return h('view',{}, on.value && h('text',{'data-testid':'banner'},'Hi'), h(Counter,{}),
           h('button',{'data-testid':'toggle',onClick(){on.set(!on.value)}},'Toggle'))}";
     let host = platform.host(&worker, &source(page), false);
     host.set_visible(true);
@@ -4487,9 +4495,9 @@ fn a_pressable_row_holds_its_own_controls() {
     let platform = Platform::new(&[&worker]);
     let page = "function render(){
       const rows=useLocal('rows',0), on=useLocal('on',false), deletes=useLocal('deletes',0);
-      return h('column',{},
+      return h('view',{},
         h('button',{'data-testid':'row',onClick(){rows.set(rows.value+1)},style:{height:60,width:190}},
-          h('row',{},h('text',{'data-testid':'label'},'Wi'),
+          h('view',{style:{flexDirection:'row'}},h('text',{'data-testid':'label'},'Wi'),
             h('switch',{'data-testid':'wifi',bind:on,'aria-label':'Wi-Fi'}),
             h('button',{'data-testid':'delete',onClick(){deletes.set(deletes.value+1)}},'Del'))),
         h('text',{'data-testid':'state'},`rows=${rows.value} on=${on.value} deletes=${deletes.value}`))
@@ -4658,7 +4666,7 @@ fn declared_font_faces_load_by_lxapp_path_and_reshape_their_text() {
     let worker = ViewWorker::spawn("test-view-fonts").unwrap();
     let platform = Platform::new(&[&worker]);
     let page = source(
-        "function render(){return h('column',{style:{alignItems:'flex-start'}},h('text',{'data-testid':'t',style:{fontFamily:'Wide, serif',fontSize:10}},'abc'))}",
+        "function render(){return h('view',{style:{alignItems:'flex-start'}},h('text',{'data-testid':'t',style:{fontFamily:'Wide, serif',fontSize:10}},'abc'))}",
     )
     .replace(
         "__lingxiaPublish(render);",
@@ -4706,7 +4714,7 @@ fn an_off_screen_list_row_is_found_revealed_and_clicked_by_test_id() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const query=useLocal('query',''),picked=useLocal('picked','');const rows=Array.from({length:40},(_,i)=>({id:`row-${i}`,label:`Row ${i}`})).filter(r=>r.label.includes(query.value));return h('column',{},h('input',{type:'search','data-testid':'filter',bind:query,'aria-label':'Filter'}),h(List,{'data-testid':'list',style:{height:120},items:rows,getKey:r=>r.id,renderItem:r=>h('button',{'data-testid':r.id,onClick:()=>picked.set(r.label),style:{height:40}},r.label)}),h('text',{'data-testid':'picked'},`picked=${picked.value}`))}",
+            "function render(){const query=useLocal('query',''),picked=useLocal('picked','');const rows=Array.from({length:40},(_,i)=>({id:`row-${i}`,label:`Row ${i}`})).filter(r=>r.label.includes(query.value));return h('view',{},h('input',{type:'search','data-testid':'filter',bind:query,'aria-label':'Filter'}),h(List,{'data-testid':'list',style:{height:120},items:rows,getKey:r=>r.id,renderItem:r=>h('button',{'data-testid':r.id,onClick:()=>picked.set(r.label),style:{height:40}},r.label)}),h('text',{'data-testid':'picked'},`picked=${picked.value}`))}",
         ),
         false,
     );
@@ -4969,7 +4977,7 @@ fn a_date_editor_opens_the_views_picker_and_commits_through_the_editor() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const day=useLocal('2026-10-29'),submits=useLocal(0);return h('column',{},h('input',{'data-testid':'day',type:'date',bind:day,'aria-label':'Day',min:'2026-10-01',onSubmit:()=>submits.set(submits.value+1)}),h('text',{'data-testid':'out'},`${day.value} ${submits.value}`))}",
+            "function render(){const day=useLocal('2026-10-29'),submits=useLocal(0);return h('view',{},h('input',{'data-testid':'day',type:'date',bind:day,'aria-label':'Day',min:'2026-10-01',onSubmit:()=>submits.set(submits.value+1)}),h('text',{'data-testid':'out'},`${day.value} ${submits.value}`))}",
         ),
         false,
     );
@@ -5023,7 +5031,7 @@ fn the_views_pickers_announce_grid_cells_and_options_and_take_a_tapped_time() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const day=useLocal('2026-10-21'),at=useLocal('18:30');return h('column',{},h('input',{'data-testid':'day',type:'date',bind:day,'aria-label':'Day'}),h('input',{'data-testid':'at',type:'time',bind:at,step:900,'aria-label':'At'}),h('text',{'data-testid':'out'},`${day.value} ${at.value}`))}",
+            "function render(){const day=useLocal('2026-10-21'),at=useLocal('18:30');return h('view',{},h('input',{'data-testid':'day',type:'date',bind:day,'aria-label':'Day'}),h('input',{'data-testid':'at',type:'time',bind:at,step:900,'aria-label':'At'}),h('text',{'data-testid':'out'},`${day.value} ${at.value}`))}",
         ),
         false,
     );
@@ -5070,7 +5078,7 @@ fn a_snapping_scroll_settles_on_the_nearest_point_once_input_stops() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){return h('scroll',{'data-testid':'s',style:{height:100,scrollSnapType:'y'}},...Array.from({length:10},(_,i)=>h('column',{key:String(i),'data-testid':'r'+i,style:{height:40,scrollSnapAlign:'start'}})))}",
+            "function render(){return h('scroll',{'data-testid':'s',style:{height:100,scrollSnapType:'y'}},...Array.from({length:10},(_,i)=>h('view',{key:String(i),'data-testid':'r'+i,style:{height:40,scrollSnapAlign:'start'}})))}",
         ),
         false,
     );

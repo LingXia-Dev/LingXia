@@ -28,7 +28,7 @@ function ChromeError({ data }: { data: Data }) {
 /** A labeled value that opens a Logic picker. */
 function Choice({ testId, label, value, onClick }: { testId: string; label: string; value: string; onClick: () => unknown }) {
   return (
-    <column className="gap-1.5">
+    <view className="gap-1.5">
       <text className="text-sm font-medium">{label}</text>
       <button
         data-testid={testId}
@@ -38,12 +38,12 @@ function Choice({ testId, label, value, onClick }: { testId: string; label: stri
         }}
         className="px-3 py-2 rounded-lg border border-line-strong bg-surface text-text active:bg-surface-sunken"
       >
-        <row className="items-center justify-between gap-3">
+        <view className="flex-row items-center justify-between gap-3">
           <text className="text-base">{value}</text>
           <text className="text-xs text-accent">Change</text>
-        </row>
+        </view>
       </button>
-    </column>
+    </view>
   );
 }
 
@@ -90,14 +90,14 @@ function Dialogs({ data, actions }: Pane) {
           <checkbox data-testid="toast-mask" bind={toastMask} className="text-sm">
             Show mask (prevents interaction)
           </checkbox>
-          <grid className="gap-3 grid-cols-2">
+          <view className="grid gap-3 grid-cols-2">
             <Button testId="toast-show" onClick={showToast}>
               Show Toast
             </Button>
             <Button variant="secondary" testId="toast-hide" onClick={() => actions.hideToast()}>
               Hide Toast
             </Button>
-          </grid>
+          </view>
         </Section>
       )}
       {type === 'actionsheet' && (
@@ -115,7 +115,7 @@ function Dialogs({ data, actions }: Pane) {
       {type === 'modal' && (
         <Section title="Modal Parameters">
           <Field testId="modal-title" label="Title (optional)" bind={modalTitle} placeholder="Leave empty for no title" />
-          <column className="gap-1.5">
+          <view className="gap-1.5">
             <text className="text-sm font-medium">Content</text>
             <textarea
               data-testid="modal-content"
@@ -124,7 +124,7 @@ function Dialogs({ data, actions }: Pane) {
               placeholder="Enter modal content"
               className="h-24 px-3 py-2 rounded-lg border border-line-strong bg-surface text-base"
             />
-          </column>
+          </view>
           <checkbox data-testid="modal-show-cancel" bind={modalCancel} className="text-sm">
             Show cancel button
           </checkbox>
@@ -207,10 +207,10 @@ function Navbar({ data, actions }: Pane) {
         <Button testId="navbar-set-title" onClick={() => title.value && actions.updateNavigationBarTitle({ title: title.value })}>
           Set Title
         </Button>
-        <grid className="gap-2 grid-cols-2">
+        <view className="grid gap-2 grid-cols-2">
           <Field testId="navbar-bg-input" label="Background" bind={background} placeholder="#ffffff" />
           <Field testId="navbar-fg-input" label="Text" bind={foreground} placeholder="#000000" />
-        </grid>
+        </view>
         <Button
           testId="navbar-set-colors"
           onClick={() =>
@@ -222,13 +222,13 @@ function Navbar({ data, actions }: Pane) {
         >
           Set Colors
         </Button>
-        <grid className="gap-2 grid-cols-2">
+        <view className="grid gap-2 grid-cols-2">
           {preset('Dark', '#1f2937', '#ffffff')}
           {preset('Blue', '#3b82f6', '#ffffff')}
           {preset('Light', '#ffffff', '#000000')}
           {preset('Green', '#10b981', '#ffffff')}
-        </grid>
-        <grid className="gap-2 grid-cols-3">
+        </view>
+        <view className="grid gap-2 grid-cols-3">
           <Button
             variant="secondary"
             size="sm"
@@ -248,7 +248,7 @@ function Navbar({ data, actions }: Pane) {
           <Button variant="ghost" size="sm" testId="navbar-reset" onClick={() => actions.resetNavigationBar()}>
             Reset
           </Button>
-        </grid>
+        </view>
       </Section>
     </Page>
   );
@@ -258,10 +258,10 @@ function Tabbar({ data, actions }: Pane) {
   const itemText = useLocal('itemText', 'New Tab');
   const badge = useLocal('badge', '99');
   const pair = (left: Child, right: Child) => (
-    <grid className="gap-3 grid-cols-2">
+    <view className="grid gap-3 grid-cols-2">
       {left}
       {right}
-    </grid>
+    </view>
   );
   return (
     <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
@@ -314,13 +314,13 @@ function NavLink({ testId, label, description, onClick }: { testId: string; labe
       }}
       className="px-4 py-3.5 rounded-none bg-transparent text-text text-left active:bg-surface-sunken"
     >
-      <row className="items-center justify-between gap-3">
-        <column className="grow basis-0 gap-1">
+      <view className="flex-row items-center justify-between gap-3">
+        <view className="grow basis-0 gap-1">
           <text className="text-sm font-medium">{label}</text>
           {!!description && <text className="text-xs text-muted">{description}</text>}
-        </column>
+        </view>
         <text className="text-lg text-muted">›</text>
-      </row>
+      </view>
     </button>
   );
 }
@@ -335,13 +335,13 @@ function Counter({ id, label, value, hint, onClick }: { id: string; label: strin
       }}
       className="px-2 py-4 rounded-xl bg-surface-sunken text-text active:bg-line"
     >
-      <column className="items-center gap-1">
+      <view className="items-center gap-1">
         <text data-testid={`lifecycle-${id}-counter`} className="text-2xl font-bold">
           {String(value)}
         </text>
         <text className="text-sm font-medium">{label}</text>
         <text className="text-[10px] text-muted">{hint}</text>
-      </column>
+      </view>
     </button>
   );
 }
@@ -354,7 +354,7 @@ function Navigation({ data, actions }: Pane) {
   return (
     <page data-testid="ui-page" data-instance-tag={String(data.instanceTag ?? '')} className="bg-canvas text-text">
       <scroll data-testid="page-scroll" className="grow basis-0">
-        <column className="w-full max-w-3xl self-center px-4 pt-5 pb-10 gap-4">
+        <view className="w-full max-w-3xl self-center px-4 pt-5 pb-10 gap-4">
           <ChromeError data={data} />
           <Card className="divide-y divide-line">
             <NavLink
@@ -377,23 +377,23 @@ function Navigation({ data, actions }: Pane) {
               >{`${pages.length}/10`}</text>
             }
           >
-            <column data-testid="ui-page-stack-list" className="gap-1.5">
+            <view data-testid="ui-page-stack-list" className="gap-1.5">
               {[...pages].reverse().map(page => (
-                <row
+                <view
                   key={String(page.index)}
                   className={
                     page.current
-                      ? 'items-center gap-3 px-3 py-2 rounded-lg border border-line bg-accent-soft'
-                      : 'items-center gap-3 px-3 py-2 rounded-lg border border-line bg-surface-sunken'
+                      ? 'flex-row items-center gap-3 px-3 py-2 rounded-lg border border-line bg-accent-soft'
+                      : 'flex-row items-center gap-3 px-3 py-2 rounded-lg border border-line bg-surface-sunken'
                   }
                 >
                   <text className="w-5 text-right text-xs font-mono text-muted">{String(page.index + 1)}</text>
                   <text className="grow basis-0 text-xs font-mono">{page.name}</text>
                   {page.current && <text className="text-[10px] font-medium">you are here</text>}
-                </row>
+                </view>
               ))}
               {!pages.length && <text className="py-4 text-xs text-muted text-center">No page stack available</text>}
-            </column>
+            </view>
           </Section>
           <Section title="Logic instance" description="Push this page again to create a new Page instance with a new tag.">
             <InfoList>
@@ -406,7 +406,7 @@ function Navigation({ data, actions }: Pane) {
             title="State that resets and state that stays"
             description="Logic and View reset per entry; the module counter is shared by every instance."
           >
-            <grid className="gap-3 grid-cols-3">
+            <view className="grid gap-3 grid-cols-3">
               <Counter
                 id="logic"
                 label="Logic +1"
@@ -422,28 +422,28 @@ function Navigation({ data, actions }: Pane) {
                 hint="module scope"
                 onClick={() => actions.bumpModuleCounter()}
               />
-            </grid>
+            </view>
             <Button testId="lifecycle-open-popup" onClick={() => popup.set(true)}>
               Open View popup
             </Button>
           </Section>
           <Section title="Lifecycle of this instance" description="Stored in page data, so it starts over with every entry.">
-            <column data-testid="lifecycle-events" className="gap-2">
+            <view data-testid="lifecycle-events" className="gap-2">
               {events.map((event, index) => (
                 <text key={String(index)} className="px-3 py-2 rounded-lg border border-line bg-surface-sunken text-xs font-mono break-all">
                   {event}
                 </text>
               ))}
               {!events.length && <text className="text-xs text-muted">No events yet</text>}
-            </column>
+            </view>
             <text className="text-[11px] text-muted">
               Backgrounding fires onHide / onShow on the same instance. Leaving the page fires onUnload.
             </text>
           </Section>
-        </column>
+        </view>
       </scroll>
       {popup.value && (
-        <column data-testid="lifecycle-popup" className="absolute inset-0 z-10 items-center justify-center px-8">
+        <view data-testid="lifecycle-popup" className="absolute inset-0 z-10 items-center justify-center px-8">
           <button
             data-testid="lifecycle-popup-backdrop"
             aria-label="Close popup"
@@ -459,7 +459,7 @@ function Navigation({ data, actions }: Pane) {
               Close
             </Button>
           </Card>
-        </column>
+        </view>
       )}
     </page>
   );
@@ -499,9 +499,9 @@ function Options({
   disabled?: boolean;
 }) {
   return (
-    <column className="gap-2">
+    <view className="gap-2">
       <text className="text-xs text-muted uppercase">{label}</text>
-      <grid className={options.length > 3 ? 'gap-2 grid-cols-2' : 'gap-2 grid-cols-3'}>
+      <view className={options.length > 3 ? 'grid gap-2 grid-cols-2' : 'grid gap-2 grid-cols-3'}>
         {options.map(option => (
           <Button
             key={option.value}
@@ -514,8 +514,8 @@ function Options({
             {option.label}
           </Button>
         ))}
-      </grid>
-    </column>
+      </view>
+    </view>
   );
 }
 
@@ -558,10 +558,10 @@ function Surface({ data, actions }: Pane) {
           <Options label="Position" testId="surface-position" bind={position} options={titled(['center', 'top', 'bottom', 'left', 'right'])} />
         )}
         {kind.value === 'window' && <Options label="Chrome" testId="surface-chrome" bind={chrome} options={titled(['system', 'full'])} />}
-        <grid className="gap-2 grid-cols-2">
+        <view className="grid gap-2 grid-cols-2">
           <Field testId="surface-width" label="Width (px or %)" bind={width} placeholder="width (px or %)" />
           <Field testId="surface-height" label="Height (px or %)" bind={height} placeholder="height (px or %)" />
-        </grid>
+        </view>
         {attempted.value && !!sizeError && (
           <text data-testid="size-error" className="text-xs text-danger">
             {sizeError}
@@ -572,7 +572,7 @@ function Surface({ data, actions }: Pane) {
           Placement applies when the surface opens; hiding and showing keeps it. Close and reopen to change it.
         </text>
         {active && (
-          <grid className="gap-2 grid-cols-3">
+          <view className="grid gap-2 grid-cols-3">
             <Button size="sm" testId="surface-parent-show" disabled={!!state?.visible} onClick={() => actions.showActiveSurface()}>
               Show
             </Button>
@@ -582,7 +582,7 @@ function Surface({ data, actions }: Pane) {
             <Button size="sm" variant="destructive" testId="surface-parent-close" onClick={() => actions.closeActiveSurface()}>
               Close
             </Button>
-          </grid>
+          </view>
         )}
         <text data-testid="surface-status" className="px-3 py-2 rounded-lg bg-surface-sunken text-sm font-mono break-all">
           {state?.message || 'No message received yet.'}

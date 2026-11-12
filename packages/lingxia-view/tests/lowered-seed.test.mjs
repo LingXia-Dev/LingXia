@@ -47,8 +47,8 @@ test('a malformed seed is refused and changes nothing', () => {
 });
 
 test('a lowered set too large to keep is not serialized', () => {
-  const many = count => () => h('column', {}, ...Array.from({ length: count }, (_, i) =>
-    h('column', { style: { fontSize: 8 + i / 100 } }, h('text', { className: 'font-bold' }, 'x'))));
+  const many = count => () => h('view', {}, ...Array.from({ length: count }, (_, i) =>
+    h('view', { style: { fontSize: 8 + i / 100 } }, h('text', { className: 'font-bold' }, 'x'))));
   describe(many(10), env(331));
   assert.notEqual(takeLowered(), '');
   describe(many(401), env(332));
@@ -68,7 +68,7 @@ test('a seed survives the class table its module configures before seeding', asy
 
 test('a new class table drops what the old one lowered, and the old seed with it', () => {
   configureClasses([{ name: 'p-2', when: {}, style: { paddingTop: 8 } }]);
-  const padding = () => decode(describe(() => h('column', { className: 'p-2' }), env(341)))[0].props.paddingTop;
+  const padding = () => decode(describe(() => h('view', { className: 'p-2' }), env(341)))[0].props.paddingTop;
   assert.equal(padding(), 8);
   const taken = takeLowered();
   configureClasses([{ name: 'p-2', when: {}, style: { paddingTop: 12 } }]);

@@ -79,7 +79,7 @@ test('parameter replacement only takes effect on commit and old close cannot dis
 test('resource names are scoped and render-time connection mutation is forbidden', () => {
   const view = setup();
   const Row = () => { useChannel('feed', useView().actions.ticker, { params: undefined, onData() {} }); return h('text'); };
-  describe(() => h('column', {}, h(Row, { key: 'a' }), h(Row, { key: 'b' })), view);
+  describe(() => h('view', {}, h(Row, { key: 'a' }), h(Row, { key: 'b' })), view);
   assert.equal(requests().length, 2);
   assert.throws(() => describe(() => {
     useChannel('same', useView().actions.ticker, { params: undefined, onData() {} });

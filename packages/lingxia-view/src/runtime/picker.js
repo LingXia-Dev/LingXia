@@ -152,15 +152,15 @@ function dateBody(words, env, titled) {
       String(date.day));
   };
   // Content-sized and centred, so a full-width sheet keeps the month compact.
-  return h('column', { style: { gap: 8, alignSelf: 'center' } },
-    h('row', { style: { alignItems: 'center', gap: 4, justifyContent: titled ? 'start' : 'space-between' } },
+  return h('view', { style: { gap: 8, alignSelf: 'center' } },
+    h('view', { style: { flexDirection: 'row', alignItems: 'center', gap: 4, justifyContent: titled ? 'start' : 'space-between' } },
       titled && h('text', { 'data-testid': 'lx-picker-title', 'aria-live': 'polite', style: { flexGrow: 1, fontSize: 16, fontWeight: 600, color: 'text', paddingLeft: 8 } }, title),
       iconButton('lx-picker-previous', words.previous, 'M12.5 4l-6 6 6 6', -1),
       iconButton('lx-picker-next', words.next, 'M7.5 4l6 6-6 6', 1)),
-    h('column', { role: 'grid', 'aria-label': title, style: { gap: 2 } },
-      h('row', { 'aria-hidden': true, style: { gap: 2 } }, ...weekdayOrder(first).map(day => h('text', { key: `w${day}`,
+    h('view', { role: 'grid', 'aria-label': title, style: { gap: 2 } },
+      h('view', { 'aria-hidden': true, style: { flexDirection: 'row', gap: 2 } }, ...weekdayOrder(first).map(day => h('text', { key: `w${day}`,
         style: { width: 36, textAlign: 'center', fontSize: 12, color: 'text-muted' } }, words.days[day]))),
-      ...rows.map((week, index) => h('row', { key: `r${index}`, style: { gap: 2 } }, ...week.map(cell)))));
+      ...rows.map((week, index) => h('view', { key: `r${index}`, style: { flexDirection: 'row', gap: 2 } }, ...week.map(cell)))));
 }
 
 const ROW = 40, VISIBLE = 5;
@@ -172,7 +172,7 @@ function timeColumn(testId, label, values, selected, format, choose, cyclic = fa
   const index = middle * values.length + Math.max(0, values.indexOf(selected));
   const pad = cyclic ? 0 : ROW * Math.floor(VISIBLE / 2);
   const offset = cyclic ? Math.floor(VISIBLE / 2) : 0;
-  return h('column', { 'data-testid': testId, role: 'listbox', 'aria-label': label, style: { width: 64 } },
+  return h('view', { 'data-testid': testId, role: 'listbox', 'aria-label': label, style: { width: 64 } },
     h(listTag, { count: values.length * copies, itemKeys: Array.from({ length: values.length * copies }, (_, i) => `${Math.floor(i / values.length)}:${values[i % values.length]}`),
       height: () => ROW, anchor: { index: Math.max(0, index - offset), align: 'start', seq: index },
       style: { height: ROW * VISIBLE, paddingTop: pad, paddingBottom: pad, scrollSnapType: 'y' },
@@ -200,7 +200,7 @@ function timeBody(words, env) {
   ];
   if (cycle === 'h12') columns.push(timeColumn('lx-picker-period', words.period, ['am', 'pm'], hour >= 12 ? 'pm' : 'am', period => words[period],
     period => set({ hour: (hour % 12) + (period === 'pm' ? 12 : 0) })));
-  return h('row', { style: { gap: 8, justifyContent: 'center' } }, ...columns);
+  return h('view', { style: { flexDirection: 'row', gap: 8, justifyContent: 'center' } }, ...columns);
 }
 
 function selectBody(touch) {
@@ -209,7 +209,7 @@ function selectBody(touch) {
   const selected = touch ? focus : picker.selected;
   const check = 'M4 10.5l4 4 8-9';
   // The band follows the keyboard; the trailing check marks the choice.
-  return h('column', { role: 'listbox', 'aria-label': picker.label || 'Options', style: { gap: 2, minWidth: Math.max(160, picker.width - 24) } },
+  return h('view', { role: 'listbox', 'aria-label': picker.label || 'Options', style: { gap: 2, minWidth: Math.max(160, picker.width - 24) } },
     ...options.map((option, index) => h('button', { key: `o${index}`, 'data-testid': `lx-picker-option-${index}`, role: 'option',
       'aria-selected': index === selected, disabled: !option.enabled, onClick: () => { if (touch) picker.focus = index; else settleSelect(index); },
       style: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36, paddingLeft: 12, paddingRight: 10, borderRadius: 8,
@@ -218,7 +218,7 @@ function selectBody(touch) {
       index === selected
         ? h('vector', { 'aria-hidden': true, paths: [{ d: check, fill: 'none', stroke: 'currentColor', strokeWidth: 2,
           strokeLinecap: 'round', strokeLinejoin: 'round' }], style: { width: 18, height: 18, color: 'accent' } })
-        : h('spacer', { style: { width: 18, height: 18 } }))));
+        : h('view', { style: { width: 18, height: 18 } }))));
 }
 
 /** The popover's anchor: the editor it opened from, or null for a sheet. */
@@ -244,7 +244,7 @@ export function pickerNode(env) {
   const monthTitle = picker.kind === 'date' && words.title(words.months[picker.focus.month - 1], picker.focus.year);
   // Touch: a toolbar on top, as iOS's and WeChat's picker sheets have, clear of the home indicator.
   const text = { paddingTop: 8, paddingBottom: 8, paddingLeft: 4, paddingRight: 4, fontSize: 16, backgroundColor: 'transparent' };
-  const toolbar = touch && h('row', { style: { alignItems: 'center', gap: 8 } },
+  const toolbar = touch && h('view', { style: { flexDirection: 'row', alignItems: 'center', gap: 8 } },
     cancel({ ...text, color: 'text-muted' }),
     h('text', { 'data-testid': 'lx-picker-title', 'aria-live': 'polite',
       style: { flexGrow: 1, flexBasis: 0, minWidth: 0, textAlign: 'center', fontSize: 16, fontWeight: 600, color: 'text', lineClamp: 1 } },
@@ -252,7 +252,7 @@ export function pickerNode(env) {
     done({ ...text, color: 'accent', fontWeight: 600 }));
   // A mouse: the time popover confirms with a button pair below its columns.
   const button = { paddingTop: 8, paddingBottom: 8, paddingLeft: 14, paddingRight: 14, borderRadius: 8, fontSize: 15 };
-  const footer = !touch && picker.kind === 'time' && h('row', { style: { gap: 8, justifyContent: 'end' } },
+  const footer = !touch && picker.kind === 'time' && h('view', { style: { flexDirection: 'row', gap: 8, justifyContent: 'end' } },
     cancel({ ...button, color: 'text' }), done({ ...button, backgroundColor: 'accent', color: 'on-accent', fontWeight: 600 }));
   const name = picker.kind === 'date' ? monthTitle : picker.kind === 'time' ? words.hour : picker.label || 'Options';
   const panel = { 'data-testid': 'lx-picker', key: `picker-${picker.key}`, 'aria-label': name,

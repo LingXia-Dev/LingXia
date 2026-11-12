@@ -46,42 +46,6 @@ Children: any elements and text. Renders as `column`.
 | `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 | `aria-actions` | `string` |  |
 
-## `<column>`
-
-Children: any elements and text.
-
-| Prop | Type | Required |
-| --- | --- | --- |
-| `aria-label` | `string` |  |
-| `id` | `string` |  |
-| `popover` | `boolean \| "auto" \| "manual"` |  |
-| `open` | `boolean` |  |
-| `onToggle` | `(open: boolean) => void` |  |
-| `drag` | `"x" \| "y"` |  |
-| `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
-| `bind` | `Local<number>` |  |
-| `onDragStart` | `() => void` |  |
-| `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
-| `aria-actions` | `string` |  |
-
-## `<row>`
-
-Children: any elements and text.
-
-| Prop | Type | Required |
-| --- | --- | --- |
-| `aria-label` | `string` |  |
-| `id` | `string` |  |
-| `popover` | `boolean \| "auto" \| "manual"` |  |
-| `open` | `boolean` |  |
-| `onToggle` | `(open: boolean) => void` |  |
-| `drag` | `"x" \| "y"` |  |
-| `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
-| `bind` | `Local<number>` |  |
-| `onDragStart` | `() => void` |  |
-| `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
-| `aria-actions` | `string` |  |
-
 ## `<page>`
 
 Children: any elements and text. The page root.
@@ -115,12 +79,6 @@ Children: text, or noninteractive content elements (a composed control).
 | `onDragStart` | `() => void` |  |
 | `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 | `aria-actions` | `string` |  |
-
-## `<spacer>`
-
-Children: none.
-
-No element-specific props.
 
 ## `<scroll>`
 
@@ -254,40 +212,6 @@ Binding: `bind={local}` with a `useLocal<number>` cell, or `value` plus `onChang
 | `step` | `number` |  |
 | `aria-label` | `string` | yes |
 | `disabled` | `boolean` |  |
-
-## `<grid>`
-
-Children: any elements and text.
-
-| Prop | Type | Required |
-| --- | --- | --- |
-| `id` | `string` |  |
-| `popover` | `boolean \| "auto" \| "manual"` |  |
-| `open` | `boolean` |  |
-| `onToggle` | `(open: boolean) => void` |  |
-| `drag` | `"x" \| "y"` |  |
-| `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
-| `bind` | `Local<number>` |  |
-| `onDragStart` | `() => void` |  |
-| `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
-| `aria-actions` | `string` |  |
-
-## `<stack>`
-
-Children: any elements and text.
-
-| Prop | Type | Required |
-| --- | --- | --- |
-| `id` | `string` |  |
-| `popover` | `boolean \| "auto" \| "manual"` |  |
-| `open` | `boolean` |  |
-| `onToggle` | `(open: boolean) => void` |  |
-| `drag` | `"x" \| "y"` |  |
-| `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
-| `bind` | `Local<number>` |  |
-| `onDragStart` | `() => void` |  |
-| `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
-| `aria-actions` | `string` |  |
 
 ## `<dialog>`
 

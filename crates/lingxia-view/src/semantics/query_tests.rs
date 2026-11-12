@@ -22,7 +22,7 @@ fn interaction(render: &str) -> ViewInteraction {
     interaction
 }
 
-const PAGE: &str = "h('column',{},h('text',{'data-testid':'title',role:'heading',headingLevel:1},'Bills'),h('button',{'data-testid':'pay',onClick(){}},'Pay now'),h('button',{'data-testid':'off',disabled:true},'Later'),h('input',{'data-testid':'amount','aria-label':'Amount',value:'12'}),h('column',{'data-testid':'gone','aria-hidden':true},h('text',{},'x')),h('text',{},'Read ',h('link',{onClick(){}},'terms')))";
+const PAGE: &str = "h('view',{},h('text',{'data-testid':'title',role:'heading',headingLevel:1},'Bills'),h('button',{'data-testid':'pay',onClick(){}},'Pay now'),h('button',{'data-testid':'off',disabled:true},'Later'),h('input',{'data-testid':'amount','aria-label':'Amount',value:'12'}),h('view',{'data-testid':'gone','aria-hidden':true},h('text',{},'x')),h('text',{},'Read ',h('link',{onClick(){}},'terms')))";
 
 #[test]
 fn locators_match_test_ids_roles_names_and_tags_in_reading_order() {
@@ -192,7 +192,7 @@ fn reading_order_ids_and_names_are_stable_across_unchanged_frames() {
 #[test]
 fn offscreen_matches_are_visible_but_must_be_revealed_before_input() {
     let mut i = interaction(
-        "h('scroll',{style:{height:100}},h('column',{style:{height:400}}),h('button',{'data-testid':'far',onClick(){}},'Far'))",
+        "h('scroll',{style:{height:100}},h('view',{style:{height:400}}),h('button',{'data-testid':'far',onClick(){}},'Far'))",
     );
     let far = i
         .automation_query("[data-testid=\"far\"]", None, false, None)
@@ -264,7 +264,7 @@ fn press_submits_editors_and_drives_keyboard_focus() {
 #[test]
 fn the_tree_nests_named_nodes_in_reading_order_with_their_states() {
     let i = interaction(
-        "h('column',{},h('text',{role:'heading',headingLevel:1},'Bills'),h('column',{role:'list','aria-label':'Due'},h('text',{'data-testid':'w',role:'listitem','aria-selected':true},'Water')),h('button',{'data-testid':'pay',disabled:true},'Pay'))",
+        "h('view',{},h('text',{role:'heading',headingLevel:1},'Bills'),h('view',{role:'list','aria-label':'Due'},h('text',{'data-testid':'w',role:'listitem','aria-selected':true},'Water')),h('button',{'data-testid':'pay',disabled:true},'Pay'))",
     );
     let tree = i.automation_tree().unwrap();
     let nodes = tree["nodes"].as_array().unwrap();
@@ -290,8 +290,8 @@ fn the_tree_nests_named_nodes_in_reading_order_with_their_states() {
 #[test]
 fn offscreen_selects_reveal_and_a_disabled_option_fails_at_once() {
     for layout in [
-        "h('page',{},h('scroll',{style:{flexGrow:1}},h('column',{style:{padding:16,gap:12}},h('column',{style:{height:600}}),SELECT)))",
-        "h('page',{},h('scroll',{style:{flexGrow:1}},h('column',{style:{padding:16,gap:12}},h('column',{style:{height:600}}),h('row',{style:{gap:8}},SELECT))))",
+        "h('page',{},h('scroll',{style:{flexGrow:1}},h('view',{style:{padding:16,gap:12}},h('view',{style:{height:600}}),SELECT)))",
+        "h('page',{},h('scroll',{style:{flexGrow:1}},h('view',{style:{padding:16,gap:12}},h('view',{style:{height:600}}),h('view',{style:{flexDirection:'row',gap:8}},SELECT))))",
     ] {
         let mut i = interaction(&layout.replace("SELECT", "h('select',{'data-testid':'plan','aria-label':'Plan',placeholder:'Choose',options:[{value:'monthly',label:'Monthly'}],value:'',onChange(){},style:{paddingLeft:12,paddingRight:12,paddingTop:8,paddingBottom:8,borderWidth:1,borderRadius:8}})"));
         let page = PageTicket::new(1);
@@ -308,7 +308,7 @@ fn offscreen_selects_reveal_and_a_disabled_option_fails_at_once() {
         );
     }
     let mut i = interaction(
-        "h('scroll',{style:{height:100}},h('column',{style:{height:400}}),h('select',{'data-testid':'plan','aria-label':'Plan',options:[{value:'monthly',label:'Monthly'},{value:'yearly',label:'Yearly',disabled:true}],value:'monthly',onChange(){}}))",
+        "h('scroll',{style:{height:100}},h('view',{style:{height:400}}),h('select',{'data-testid':'plan','aria-label':'Plan',options:[{value:'monthly',label:'Monthly'},{value:'yearly',label:'Yearly',disabled:true}],value:'monthly',onChange(){}}))",
     );
     let page = PageTicket::new(1);
     let revealed = i
@@ -343,7 +343,7 @@ fn offscreen_selects_reveal_and_a_disabled_option_fails_at_once() {
 #[test]
 fn a_double_click_selects_the_word_in_text_and_editors() {
     let mut i = interaction(
-        "h('column',{},h('text',{'data-testid':'copy',style:{userSelect:'text'}},'select this word'),h('input',{'data-testid':'name',value:'Ada Lovelace',onInput(){}}),h('button',{'data-testid':'go',onClick(){}},'Go'))",
+        "h('view',{},h('text',{'data-testid':'copy',style:{userSelect:'text'}},'select this word'),h('input',{'data-testid':'name',value:'Ada Lovelace',onInput(){}}),h('button',{'data-testid':'go',onClick(){}},'Go'))",
     );
     let page = PageTicket::new(1);
     let text = i
@@ -389,7 +389,7 @@ fn a_double_click_selects_the_word_in_text_and_editors() {
 #[test]
 fn a_container_reads_its_descendants_text_like_dom_text_content() {
     let i = interaction(
-        "h('column',{'data-testid':'result'},h('row',{},h('text',{},'Model'),h('text',{},'Pixel')),h('column',{},h('text',{},'OS ',h('span',{},'Android'))),h('input',{value:'not text','aria-label':'x'}))",
+        "h('view',{'data-testid':'result'},h('view',{style:{flexDirection:'row'}},h('text',{},'Model'),h('text',{},'Pixel')),h('view',{},h('text',{},'OS ',h('span',{},'Android'))),h('input',{value:'not text','aria-label':'x'}))",
     );
     let result = i
         .automation_query("[data-testid=\"result\"]", None, false, None)
@@ -403,7 +403,7 @@ fn a_container_reads_its_descendants_text_like_dom_text_content() {
 #[test]
 fn data_props_answer_attribute_selectors_and_reads_but_not_semantics() {
     let i = interaction(
-        "h('column',{},h('button',{'data-testid':'mode','data-mode':'dark','data-selected':true,onClick(){}},'Dark'),h('button',{'data-testid':'light','data-mode':'light',onClick(){}},'Light'))",
+        "h('view',{},h('button',{'data-testid':'mode','data-mode':'dark','data-selected':true,onClick(){}},'Dark'),h('button',{'data-testid':'light','data-mode':'light',onClick(){}},'Light'))",
     );
     let dark = i
         .automation_query("[data-mode=\"dark\"]", None, false, None)
@@ -463,7 +463,7 @@ fn a_parked_page_answers_queries_from_its_last_frame_and_refuses_actions() {
 #[test]
 fn unlabelled_editors_answer_placeholder_selectors() {
     let i = interaction(
-        "h('column',{},h('input',{'data-testid':'email',value:'',placeholder:'Email'}),h('textarea',{'data-testid':'note',value:'',placeholder:'Note'}),h('input',{'data-testid':'bare',value:''}))",
+        "h('view',{},h('input',{'data-testid':'email',value:'',placeholder:'Email'}),h('textarea',{'data-testid':'note',value:'',placeholder:'Note'}),h('input',{'data-testid':'bare',value:''}))",
     );
     let email = i
         .automation_query("input[placeholder=\"Email\"]", None, false, None)
@@ -507,7 +507,7 @@ fn a_details_summary_is_a_button_that_announces_expanded() {
 fn a_click_on_a_controls_label_lands_on_the_control() {
     let row = |disabled: bool| {
         format!(
-            "h('column',{{}},h('checkbox',{{'data-testid':'box',value:false,onChange(){{}},disabled:{disabled},'aria-label':'Wi-Fi'}},h('row',{{}},h('text',{{'data-testid':'label'}},'Wi-Fi'))),h('text',{{'data-testid':'loose'}},'Not a control'))"
+            "h('view',{{}},h('checkbox',{{'data-testid':'box',value:false,onChange(){{}},disabled:{disabled},'aria-label':'Wi-Fi'}},h('view',{{style:{{flexDirection:'row'}}}},h('text',{{'data-testid':'label'}},'Wi-Fi'))),h('text',{{'data-testid':'loose'}},'Not a control'))"
         )
     };
     let page = PageTicket::new(1);
@@ -548,7 +548,7 @@ fn a_click_on_a_controls_label_lands_on_the_control() {
 #[test]
 fn a_match_under_a_bottom_bar_is_outside_the_viewport_until_revealed() {
     let mut i = interaction(
-        "h('scroll',{style:{height:400,paddingBottom:60}},h('column',{style:{height:345}}),h('button',{'data-testid':'under',onClick(){}},'Under'))",
+        "h('scroll',{style:{height:400,paddingBottom:60}},h('view',{style:{height:345}}),h('button',{'data-testid':'under',onClick(){}},'Under'))",
     );
     let under = |i: &ViewInteraction| {
         i.automation_query("[data-testid=\"under\"]", None, false, None)
@@ -584,7 +584,7 @@ fn a_match_under_a_bottom_bar_is_outside_the_viewport_until_revealed() {
 #[test]
 fn a_reveal_in_an_unpadded_root_scroll_stops_above_the_bar() {
     let mut i = interaction(
-        "h('scroll',{style:{height:400}},h('column',{style:{height:350}}),h('button',{'data-testid':'under',style:{height:30},onClick(){}},'Under'),h('column',{style:{height:200}}))",
+        "h('scroll',{style:{height:400}},h('view',{style:{height:350}}),h('button',{'data-testid':'under',style:{height:30},onClick(){}},'Under'),h('view',{style:{height:200}}))",
     );
     i.set_obscured([[0.0, 0.0, 60.0, 0.0], [0.0; 4]]);
     let frame = i.frame().unwrap().clone();
@@ -613,7 +613,7 @@ fn an_open_dialog_rises_above_host_bars_but_not_the_system_ones() {
 #[test]
 fn a_match_out_of_the_accessibility_tree_can_still_be_revealed() {
     let mut i = interaction(
-        "h('scroll',{style:{height:100}},h('column',{style:{height:400}}),h('row',{'aria-hidden':true},h('button',{'data-testid':'dot',onClick(){}},'')))",
+        "h('scroll',{style:{height:100}},h('view',{style:{height:400}}),h('view',{style:{flexDirection:'row'},'aria-hidden':true},h('button',{'data-testid':'dot',onClick(){}},'')))",
     );
     let page = PageTicket::new(1);
     let revealed = i
@@ -631,7 +631,7 @@ fn a_match_out_of_the_accessibility_tree_can_still_be_revealed() {
 #[test]
 fn a_progressbar_reads_its_share_or_its_value_text_and_has_no_value_while_indeterminate() {
     let i = interaction(
-        "h('column',{},h('column',{'data-testid':'up',role:'progressbar','aria-label':'Upload','aria-valuenow':42,style:{height:4}}),h('column',{'data-testid':'steps',role:'progressbar','aria-label':'Steps','aria-valuenow':2,'aria-valuemin':1,'aria-valuemax':5,'aria-valuetext':'Step 2 of 5',style:{height:4}}),h('column',{'data-testid':'spin',role:'progressbar','aria-label':'Loading',style:{height:4}}))",
+        "h('view',{},h('view',{'data-testid':'up',role:'progressbar','aria-label':'Upload','aria-valuenow':42,style:{height:4}}),h('view',{'data-testid':'steps',role:'progressbar','aria-label':'Steps','aria-valuenow':2,'aria-valuemin':1,'aria-valuemax':5,'aria-valuetext':'Step 2 of 5',style:{height:4}}),h('view',{'data-testid':'spin',role:'progressbar','aria-label':'Loading',style:{height:4}}))",
     );
     let found = |id: &str| {
         i.automation_query(&format!("[data-testid=\"{id}\"]"), None, false, None)
@@ -652,7 +652,7 @@ fn a_progressbar_reads_its_share_or_its_value_text_and_has_no_value_while_indete
 #[test]
 fn the_visible_rect_is_the_box_less_scroll_clips_and_covered_edges() {
     let mut i = interaction(
-        "h('scroll',{style:{height:400}},h('column',{style:{height:330}}),h('button',{'data-testid':'half',style:{height:40},onClick(){}},'Half'),h('column',{style:{height:300}}))",
+        "h('scroll',{style:{height:400}},h('view',{style:{height:330}}),h('button',{'data-testid':'half',style:{height:40},onClick(){}},'Half'),h('view',{style:{height:300}}))",
     );
     i.set_obscured([[0.0, 0.0, 60.0, 0.0], [0.0; 4]]);
     let half = i

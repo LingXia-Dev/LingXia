@@ -12,7 +12,7 @@ export function render() {
         {['Item 1', 'Item 2', 'Item 3'].map(item => <button key={item} role="menuitem" className="px-3 py-2 text-start">{item}</button>)}
       </view>
       <dialog open aria-label="Sheet" className="mt-auto mb-0 w-full p-4 pb-8 gap-3 rounded-t-3xl bg-surface-raised backdrop:bg-scrim">
-        <spacer className="self-center w-10 h-1 rounded-full bg-line-strong" />
+        <view className="self-center w-10 h-1 rounded-full bg-line-strong" />
         <text className="text-lg font-semibold">Sheet</text>
         <text className="text-sm text-muted">Lorem ipsum dolor sit amet.</text>
       </dialog>

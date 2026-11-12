@@ -19,7 +19,7 @@ fn authored_transform_can_bring_an_offscreen_node_into_the_animation_visible_set
       "transforms":[{"kind":"translate","x":[{"offset":0,"value":0},{"offset":1,"value":0}],
         "y":[{"offset":0,"value":-40},{"offset":1,"value":0}]}]});
     let source = tests::source(&format!(
-        "function render(){{return h('column',{{}},h('spacer',{{style:{{height:130,flexShrink:0}}}}),h('column',{{'data-testid':'incoming',style:{{height:20,flexShrink:0,backgroundColor:'#ff0000',animation:{effect}}}}}));}}"
+        "function render(){{return h('view',{{}},h('view',{{style:{{height:130,flexShrink:0}}}}),h('view',{{'data-testid':'incoming',style:{{height:20,flexShrink:0,backgroundColor:'#ff0000',animation:{effect}}}}}));}}"
     ));
     let mut page = ViewSession::new(&source).unwrap();
     page.set_animation_surface(Some(SurfaceTicket::new(1)), ms(0))
@@ -73,7 +73,7 @@ fn automatic(page: &mut ViewSession, time: u64, rebuild: bool, offset: f32) -> D
 #[test]
 fn authored_collection_uses_records_and_rolls_back_failed_pixel_builds() {
     let source = tests::source(&format!(
-        "globalThis.effect={};function render(){{return h('column',{{style:{{width:40,height:40,backgroundColor:'#ff0000',animation:effect}}}});}}",
+        "globalThis.effect={};function render(){{return h('view',{{style:{{width:40,height:40,backgroundColor:'#ff0000',animation:effect}}}});}}",
         authored_effect()
     ));
     let mut page = ViewSession::new(&source).unwrap();
@@ -126,7 +126,7 @@ fn authored_collection_uses_records_and_rolls_back_failed_pixel_builds() {
 #[test]
 fn authored_virtual_animation_retains_eviction_but_restarts_after_semantic_removal() {
     let source = tests::source(&format!(
-        "globalThis.items=Array.from({{length:100}},(_,i)=>'item-'+i);globalThis.effect={};function render(){{return h(listTag,{{style:{{height:120}},count:items.length,itemKeys:items,height:()=>40,row:i=>h('column',{{key:items[i],'data-testid':items[i],style:{{height:40,backgroundColor:'#ff0000',...(items[i]==='item-1'?{{animation:effect}}:{{}})}}}})}});}}",
+        "globalThis.items=Array.from({{length:100}},(_,i)=>'item-'+i);globalThis.effect={};function render(){{return h(listTag,{{style:{{height:120}},count:items.length,itemKeys:items,height:()=>40,row:i=>h('view',{{key:items[i],'data-testid':items[i],style:{{height:40,backgroundColor:'#ff0000',...(items[i]==='item-1'?{{animation:effect}}:{{}})}}}})}});}}",
         authored_effect()
     ));
     let mut page = ViewSession::new(&source).unwrap();
@@ -194,7 +194,7 @@ fn authored_virtual_animation_retains_eviction_but_restarts_after_semantic_remov
 #[test]
 fn authored_virtual_effect_requires_inventory_and_unseen_overscan_does_not_start() {
     let source = tests::source(&format!(
-        "globalThis.keys=undefined;function render(){{return h(listTag,{{style:{{height:120}},count:100,itemKeys:keys,height:()=>40,row:i=>h('column',{{key:'item-'+i,'data-testid':'item-'+i,style:{{height:40,...(i===4?{{animation:{}}}:{{}})}}}})}});}}",
+        "globalThis.keys=undefined;function render(){{return h(listTag,{{style:{{height:120}},count:100,itemKeys:keys,height:()=>40,row:i=>h('view',{{key:'item-'+i,'data-testid':'item-'+i,style:{{height:40,...(i===4?{{animation:{}}}:{{}})}}}})}});}}",
         authored_effect()
     ));
     let mut page = ViewSession::new(&source).unwrap();
@@ -265,7 +265,7 @@ fn definitions() -> [(String, Definition); 1] {
 
 fn page() -> ViewSession {
     let mut page = ViewSession::new(&tests::source(
-        "function render(){return h('column',{},h('text',{},'Chart'));}",
+        "function render(){return h('view',{},h('text',{},'Chart'));}",
     ))
     .unwrap();
     page.set_animation_surface(Some(SurfaceTicket::new(10)), ms(0))
@@ -551,7 +551,7 @@ fn view_wire_requires_matching_definition_and_presentation_aware_rendering() {
     .unwrap();
     let payload = fixture["chart-in"].to_string();
     let source = tests::source(&format!(
-        "function render(){{return h('column',{{style:{{width:40,height:40,backgroundColor:'#ff0000',animation:{payload}}}}});}}"
+        "function render(){{return h('view',{{style:{{width:40,height:40,backgroundColor:'#ff0000',animation:{payload}}}}});}}"
     ));
     let mut page = ViewSession::new(&source).unwrap();
     let error = page.layout(80, 80, 1.0).err().unwrap();
@@ -635,7 +635,7 @@ fn a_covered_window_runs_finite_animations_to_completion_and_parks_looping_ones(
     let pulse = serde_json::json!({"name":"pulse","durationMs":100,"delayMs":0,"iterations":null,"whenReduced":"base",
         "easing":"linear","opacity":[{"offset":0,"value":0},{"offset":1,"value":1}],"transforms":[]});
     let source = tests::source(&format!(
-        "function render(){{return h('column',{{}},h('column',{{style:{{height:20,animation:{fade}}}}}),h('column',{{style:{{height:20,animation:{pulse}}}}}));}}"
+        "function render(){{return h('view',{{}},h('view',{{style:{{height:20,animation:{fade}}}}}),h('view',{{style:{{height:20,animation:{pulse}}}}}));}}"
     ));
     let mut page = ViewSession::new(&source).unwrap();
     page.set_animation_surface(Some(SurfaceTicket::new(1)), ms(0))
@@ -669,7 +669,7 @@ fn an_endless_spin_keeps_frames_coming_but_leaves_the_page_settled_while_finite_
     let spin = serde_json::json!({"name":"spin","durationMs":800,"delayMs":0,"iterations":null,"whenReduced":"base","easing":"linear",
       "transforms":[{"kind":"rotate","angle":[{"offset":0,"value":0},{"offset":1,"value":360}]}]});
     let source = tests::source(&format!(
-        "function render(){{return h('column',{{}},h('column',{{'data-testid':'spin',style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{spin}}}}}),h('column',{{'data-testid':'fade',style:{{width:20,height:20,backgroundColor:'#00ff00',animation:{}}}}}));}}",
+        "function render(){{return h('view',{{}},h('view',{{'data-testid':'spin',style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{spin}}}}}),h('view',{{'data-testid':'fade',style:{{width:20,height:20,backgroundColor:'#00ff00',animation:{}}}}}));}}",
         authored_effect()
     ));
     let mut page = ViewSession::new(&source).unwrap();

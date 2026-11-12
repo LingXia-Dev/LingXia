@@ -243,17 +243,7 @@ pub fn buffer(data: &[u8]) -> Vec<Value> {
             continue;
         }
         let (parent, tag) = if index == 0 {
-            (
-                None,
-                *b.pick(&[
-                    tag::COLUMN,
-                    tag::PAGE,
-                    tag::ROW,
-                    tag::STACK,
-                    tag::GRID,
-                    tag::SCROLL,
-                ]),
-            )
+            (None, *b.pick(&[tag::COLUMN, tag::PAGE, tag::SCROLL]))
         } else {
             let containers: Vec<usize> = (0..nodes.len())
                 .filter(|&n| {
@@ -271,18 +261,12 @@ pub fn buffer(data: &[u8]) -> Vec<Value> {
             let owner = nodes[parent].0;
             let tag = match TAG_ADMISSION[owner].children {
                 Children::Runs => *b.pick(&[tag::SPAN, tag::LINK]),
-                Children::Content if !hostile => {
-                    *b.pick(&[tag::TEXT, tag::IMAGE, tag::COLUMN, tag::ROW])
-                }
+                Children::Content if !hostile => *b.pick(&[tag::TEXT, tag::IMAGE, tag::COLUMN]),
                 _ if !hostile => *b.pick(&[
                     tag::COLUMN,
-                    tag::ROW,
                     tag::TEXT,
-                    tag::STACK,
-                    tag::GRID,
                     tag::SCROLL,
                     tag::BUTTON,
-                    tag::SPACER,
                     tag::INPUT,
                     tag::CHECKBOX,
                     tag::SLIDER,

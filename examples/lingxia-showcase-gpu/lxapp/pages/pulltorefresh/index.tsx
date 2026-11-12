@@ -17,12 +17,12 @@ export function render({ data, actions }: View) {
       </text>
       <Section title="Refresh Status">
         <InfoList>
-          <row className="items-center justify-between gap-3 py-2.5">
+          <view className="flex-row items-center justify-between gap-3 py-2.5">
             <text className="text-sm text-muted">Status</text>
             <text data-testid="pull-refresh-status" className={refreshing ? 'text-sm font-medium text-accent' : 'text-sm font-medium text-success'}>
               {refreshing ? 'Refreshing...' : 'Idle'}
             </text>
-          </row>
+          </view>
           <InfoRow label="Refresh Count" value={String(data.refreshCount ?? 0)} testId="pull-refresh-count" />
           <InfoRow label="Last Refresh" value={data.lastRefreshTime || 'Never'} testId="pull-refresh-time" />
         </InfoList>

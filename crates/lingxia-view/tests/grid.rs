@@ -1,31 +1,47 @@
 use lingxia_view::protocol::field::{
-    BACKGROUND, FONT_SIZE, GAP, GRID_COLUMNS, HEIGHT, ON_CLICK, PADDING,
+    BACKGROUND, DISPLAY, FONT_SIZE, GAP, GRID_COLUMNS, GRID_TEMPLATE_COLUMNS, HEIGHT, ON_CLICK,
+    PADDING,
 };
-use lingxia_view::protocol::tag::{BUTTON, COLUMN, GRID, TEXT};
+use lingxia_view::protocol::tag::{BUTTON, COLUMN, TEXT};
 use lingxia_view::{Renderer, protocol::decode};
 use serde_json::{Value, json};
 
+fn tracks(columns: impl std::fmt::Display) -> String {
+    format!("repeat({columns}, minmax(0, 1fr))")
+}
+
 #[test]
-fn grid_columns_are_bounded_and_tag_specific() {
-    for value in [
-        json!(0),
-        json!(65),
-        json!(1.5),
-        json!("3"),
-        json!(null),
-        json!(-1),
-    ] {
-        assert!(
-            decode(
-                json!([GRID, -1, "", "", "", 1, GRID_COLUMNS, value])
-                    .as_array()
-                    .unwrap()
-            )
-            .is_err()
-        );
-    }
-    // A grid without columns is one implicit column, as in CSS.
-    assert!(decode(json!([GRID, -1, "", "", "", 0]).as_array().unwrap()).is_ok());
+fn grid_tracks_are_bounded_and_the_columns_field_is_reserved() {
+    let admits = |columns: u32| {
+        decode(
+            json!([
+                COLUMN,
+                -1,
+                "",
+                "",
+                "",
+                2,
+                DISPLAY,
+                "grid",
+                GRID_TEMPLATE_COLUMNS,
+                tracks(columns)
+            ])
+            .as_array()
+            .unwrap(),
+        )
+        .is_ok()
+    };
+    assert!(admits(1) && admits(64));
+    assert!(!admits(65));
+    // A grid without tracks is one implicit column, as in CSS.
+    assert!(
+        decode(
+            json!([COLUMN, -1, "", "", "", 1, DISPLAY, "grid"])
+                .as_array()
+                .unwrap()
+        )
+        .is_ok()
+    );
     assert!(
         decode(
             json!([COLUMN, -1, "", "", "", 1, GRID_COLUMNS, 3])
@@ -34,16 +50,6 @@ fn grid_columns_are_bounded_and_tag_specific() {
         )
         .is_err()
     );
-    for columns in [1, 64] {
-        assert!(
-            decode(
-                json!([GRID, -1, "", "", "", 1, GRID_COLUMNS, columns])
-                    .as_array()
-                    .unwrap()
-            )
-            .is_ok()
-        );
-    }
 }
 
 fn cards(columns: u32) -> Vec<Value> {
@@ -54,14 +60,16 @@ fn cards(columns: u32) -> Vec<Value> {
         "root",
         "",
         0,
-        GRID,
+        COLUMN,
         0,
         "grid",
         "grid",
         "",
-        3,
-        GRID_COLUMNS,
-        columns,
+        4,
+        DISPLAY,
+        "grid",
+        GRID_TEMPLATE_COLUMNS,
+        tracks(columns),
         GAP,
         10,
         PADDING,
@@ -139,14 +147,16 @@ fn grid_text_wraps_without_widening_equal_columns() {
         "",
         "",
         0,
-        GRID,
+        COLUMN,
         0,
         "",
         "",
         "",
-        2,
-        GRID_COLUMNS,
-        2,
+        3,
+        DISPLAY,
+        "grid",
+        GRID_TEMPLATE_COLUMNS,
+        tracks(2),
         GAP,
         8,
         TEXT,

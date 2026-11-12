@@ -26,13 +26,13 @@ export function render() {
   const data = { 'data-inset-bottom': String(insets.bottom), 'data-safe-bottom': String(safeArea.bottom) } as const;
   return (
     <Page testId="view-lab" data={data}>
-      <row className="gap-2 flex-wrap">
+      <view className="flex-row gap-2 flex-wrap">
         {(Object.keys(groups) as Group[]).map(key => (
           <Button key={key} testId={`lab-tab-${key}`} size="sm" variant={group.value === key ? 'primary' : 'secondary'} onClick={() => group.set(key)}>
             {groups[key].label}
           </Button>
         ))}
-      </row>
+      </view>
       {groups[group.value].sections.map((Part, index) => <Part key={`${group.value}-${index}`} />)}
     </Page>
   );
@@ -41,18 +41,18 @@ export function render() {
 function Gradients() {
   return (
     <Section title="Gradients" testId="lab-gradients">
-      <row className="gap-3">
+      <view className="flex-row gap-3">
         <view data-testid="lab-gradient-radial" className="h-16 grow basis-0 rounded-xl bg-radial from-accent to-transparent" />
         <view data-testid="lab-gradient-conic" className="h-16 grow basis-0 rounded-xl bg-conic-90 from-accent via-danger to-accent" />
         <view data-testid="lab-gradient-arbitrary" className="h-16 grow basis-0 rounded-xl bg-radial-[at_top] from-surface to-accent to-70%" />
-      </row>
-      <column data-testid="lab-gradient-mask" className="h-16 rounded-xl bg-accent mask-b-from-20% mask-r-to-90% p-3">
+      </view>
+      <view data-testid="lab-gradient-mask" className="h-16 rounded-xl bg-accent mask-b-from-20% mask-r-to-90% p-3">
         <text className="text-sm text-on-accent">Fades out downward and to the right</text>
-      </column>
-      <column data-testid="lab-gradient-halo" className="h-20 items-center justify-center">
+      </view>
+      <view data-testid="lab-gradient-halo" className="h-20 items-center justify-center">
         <view className="absolute w-16 h-16 rounded-full bg-accent/40 blur-xl" />
         <view className="w-10 h-10 rounded-full bg-accent" />
-      </column>
+      </view>
       <text data-testid="lab-gradient-text" className="text-3xl font-bold bg-clip-text text-transparent bg-linear-to-r from-accent to-danger">Gradient text</text>
     </Section>
   );
@@ -68,7 +68,7 @@ const strokes: VectorPath[] = [
 function Vectors() {
   return (
     <Section title="Vectors" testId="lab-vectors">
-      <row className="gap-4 items-center">
+      <view className="flex-row gap-4 items-center">
         <vector data-testid="lab-vector-gradient" className="w-16 h-16" paths={[{ d: star, fill: 'url(#gold)', stroke: 'url(#edge)', strokeWidth: 0.75 }]}
           gradients={{
             gold: { type: 'radial', fx: 0.35, fy: 0.3, stops: [{ offset: 0, color: '#fff3b0' }, { offset: 1, color: '#f59e0b' }] },
@@ -79,7 +79,7 @@ function Vectors() {
           gradients={{ wheel: { type: 'conic', stops: [{ offset: 0, color: '#ef4444' }, { offset: 0.33, color: '#22c55e' }, { offset: 0.66, color: '#3b82f6' }, { offset: 1, color: '#ef4444' }] } }} />
         <vector data-testid="lab-vector-transform" className="w-16 h-16 text-accent"
           paths={[0, 45, 90, 135].map(angle => ({ d: 'M12 4h1v16h-1z', transform: `rotate(${angle} 12.5 12)` }))} />
-      </row>
+      </view>
     </Section>
   );
 }
@@ -87,11 +87,11 @@ function Vectors() {
 function Borders() {
   return (
     <Section title="Borders" testId="lab-borders">
-      <row className="gap-3">
+      <view className="flex-row gap-3">
         <view data-testid="lab-border-dashed" className="h-12 grow basis-0 rounded-xl border-2 border-dashed border-accent" />
         <view data-testid="lab-border-dotted" className="h-12 grow basis-0 rounded-full border-4 border-dotted border-danger" />
         <view data-testid="lab-border-edges" className="h-12 grow basis-0 border-t-2 border-l-4 border-dashed border-text" />
-      </row>
+      </view>
     </Section>
   );
 }
@@ -100,18 +100,18 @@ function Display() {
   const shown = useLocal('shown', true);
   return (
     <Section title="Display" testId="lab-display">
-      <row className="gap-2 items-center">
+      <view className="flex-row gap-2 items-center">
         <Button testId="lab-display-toggle" onClick={() => shown.set(!shown.value)}>{shown.value ? 'Hide' : 'Show'}</Button>
         <text data-testid="lab-display-hidden" className={shown.value ? 'text-sm' : 'hidden'}>Toggled by hidden</text>
-      </row>
-      <row className="block gap-1">
+      </view>
+      <view className="block gap-1">
         <text className="text-xs text-muted">block: a column that stretches</text>
         <view className="h-2 rounded bg-accent" />
-      </row>
-      <row className="h-16 items-center gap-2 bg-surface-sunken rounded-lg px-2">
+      </view>
+      <view className="flex-row h-16 items-center gap-2 bg-surface-sunken rounded-lg px-2">
         <view data-testid="lab-display-inline" className="inline-flex px-2 py-1 rounded bg-surface"><text className="text-xs">inline-flex</text></view>
         <view className="h-[8dvh] w-4 rounded bg-accent" />
-      </row>
+      </view>
       <view data-testid="lab-display-fixed" className="fixed bottom-4 right-4 px-3 py-1 rounded-full bg-accent"><text className="text-xs text-on-accent">fixed</text></view>
     </Section>
   );
@@ -120,14 +120,14 @@ function Display() {
 function Transforms() {
   return (
     <Section title="Transforms" testId="lab-transforms">
-      <row className="gap-4 items-center">
+      <view className="flex-row gap-4 items-center">
         <Icon name="chevron" className="w-6 h-6 text-text rotate-90" />
         <Icon name="send" className="w-6 h-6 text-accent -scale-x-100" />
         <view className="relative w-16 h-10 rounded-lg bg-surface-sunken">
           <view data-testid="lab-transform-badge" className="absolute top-0 right-0 w-4 h-4 rounded-full bg-danger translate-x-1/2 -translate-y-1/2" />
         </view>
         <view data-testid="lab-transform-card" className="w-12 h-12 rounded-lg bg-accent origin-bottom-left rotate-12 scale-90" />
-      </row>
+      </view>
     </Section>
   );
 }
@@ -135,12 +135,12 @@ function Transforms() {
 function TextLayout() {
   return (
     <Section title="Text" testId="lab-text">
-      <row className="gap-6">
-        <column className="items-end">
+      <view className="flex-row gap-6">
+        <view className="items-end">
           {['1,111.10', '808.08', '10.00'].map(value => <text key={value} className="text-sm tabular-nums slashed-zero">{value}</text>)}
-        </column>
+        </view>
         <text data-testid="lab-text-pre-line" className="grow basis-0 text-sm whitespace-pre-line">{'First line\n   second line keeps   one space'}</text>
-      </row>
+      </view>
       <text data-testid="lab-text-pre-wrap" className="p-2 rounded bg-surface-sunken text-xs font-mono whitespace-pre-wrap">{'{\n  "indent": true\n}'}</text>
       <text data-testid="lab-text-break-all" className="text-xs break-all">https://example.com/a/very/long/path/without/any/spaces/to/break/at</text>
     </Section>
@@ -150,15 +150,15 @@ function TextLayout() {
 function Sizing() {
   return (
     <Section title="Sizing" testId="lab-sizing">
-      <row className="gap-3 items-start">
+      <view className="flex-row gap-3 items-start">
         <view data-testid="lab-aspect-video" className="grow basis-0 aspect-video rounded-lg bg-accent" />
         <view data-testid="lab-aspect-square" className="w-16 aspect-square rounded-lg text-danger bg-current" />
-      </row>
+      </view>
       <text data-testid="lab-max-ch" className="max-w-[24ch] text-sm select-none">This paragraph wraps at about twenty-four zeros of its own font.</text>
       <scroll data-testid="lab-overscroll" className="h-24 rounded-lg border border-line overscroll-contain">
-        <column className="p-3 gap-2">
+        <view className="p-3 gap-2">
           {Array.from({ length: 8 }, (_, i) => <text key={String(i)} className="text-xs">Contained row {i + 1}</text>)}
-        </column>
+        </view>
       </scroll>
     </Section>
   );
@@ -186,11 +186,11 @@ function Direction() {
   return (
     <Section title={`Direction (env: ${env.direction})`} testId="lab-direction">
       {(['ltr', 'rtl'] as const).map(dir => (
-        <row key={dir} dir={dir} data-testid={`lab-direction-${dir}`} className="items-center gap-2 ps-3 pe-1 py-2 rounded-s-xl border-s-4 border-accent bg-surface-sunken">
+        <view key={dir} dir={dir} data-testid={`lab-direction-${dir}`} className="flex-row items-center gap-2 ps-3 pe-1 py-2 rounded-s-xl border-s-4 border-accent bg-surface-sunken">
           <Icon name="chevron" className="w-5 h-5 text-text rtl:-scale-x-100" />
           <text className="grow basis-0 text-sm text-start">{dir === 'rtl' ? 'مرحبا بالعالم' : 'Hello, world'}</text>
           <text className="text-xs text-muted ms-auto">{dir}</text>
-        </row>
+        </view>
       ))}
     </Section>
   );
@@ -216,23 +216,23 @@ function Document() {
   const { terms } = useView().data as unknown as LabPageData;
   return (
     <Section title="Document" testId="lab-document">
-      <column className="gap-4 max-w-[68ch]">
+      <view className="gap-4 max-w-[68ch]">
         <text className="text-xs text-muted tabular-nums">{`Updated ${terms.updated}`}</text>
         {terms.clauses.map((clause, index) => (
-          <column key={clause.heading} className="gap-2">
+          <view key={clause.heading} className="gap-2">
             <text role="heading" headingLevel={3} className="text-base font-semibold">{`${index + 1}. ${clause.heading}`}</text>
             <text className="text-sm leading-relaxed select-text">
               {clause.body} <span className="font-semibold">{clause.term}</span> is defined in{' '}
               <span className="font-mono text-xs bg-surface-sunken">section {index + 2}</span> and its <span className="italic">annexes</span>.
             </text>
             <text className="text-xs text-faint line-clamp-2">{clause.body.repeat(3)}</text>
-          </column>
+          </view>
         ))}
         <text role="heading" headingLevel={3} className="text-base font-semibold">Definitions</text>
         <view data-testid="lab-document-terms" className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
           {terms.clauses.map(clause => <Fragment key={clause.term}><Term word={clause.term} meaning={clause.heading} /></Fragment>)}
         </view>
-      </column>
+      </view>
     </Section>
   );
 }
@@ -247,10 +247,10 @@ function Plots() {
       <plot data-testid="lab-plot-bar" kind="bar" values={plots.hourly} colors={['chart-1']} aria-label="Hourly series"
         selectedIndex={picked.value} onSelect={index => picked.set(index)} className="h-40" />
       <text data-testid="lab-plot-picked" className="text-xs text-muted tabular-nums">{picked.value < 0 ? 'No bar selected' : `Hour ${picked.value}: ${plots.hourly[picked.value]}`}</text>
-      <row className="gap-4">
+      <view className="flex-row gap-4">
         <plot data-testid="lab-plot-pie" kind="pie" values={plots.share} colors={colors} aria-label="Share" className="grow basis-0 h-36" />
         <plot data-testid="lab-plot-line" kind="line" values={plots.latency} colors={['chart-2']} smooth area aria-label="Latency" className="grow basis-0 h-36" />
-      </row>
+      </view>
     </Section>
   );
 }
@@ -262,11 +262,11 @@ function Progresses() {
     <Section title="Progress" testId="lab-progress">
       <Progress value={done.value} aria-label="Upload" data-testid="lab-progress-bar" />
       <Progress aria-label="Syncing" data-testid="lab-progress-busy" />
-      <row className="gap-4 items-center">
+      <view className="flex-row gap-4 items-center">
         <Progress variant="ring" value={done.value} aria-label="Storage" aria-valuetext={`${done.value} of 100 GB`} data-testid="lab-progress-ring" />
         <Progress variant="ring" aria-label="Connecting" data-testid="lab-progress-spin" />
         <Button testId="lab-progress-more" size="sm" onClick={() => done.set(Math.min(100, done.value + 20))}>More</Button>
-      </row>
+      </view>
     </Section>
   );
 }
@@ -306,18 +306,18 @@ function Accessibility() {
   return (
     <Section title="Accessibility" testId="lab-accessibility">
       <text data-testid="lab-a11y-heading" role="heading" headingLevel={3} className="text-base font-semibold">Monthly bills</text>
-      <column data-testid="lab-a11y-list" role="list" aria-label="Bills" className="gap-1">
+      <view data-testid="lab-a11y-list" role="list" aria-label="Bills" className="gap-1">
         {['Water', 'Power', 'Internet'].map(bill => (
-          <row key={bill} role="listitem" className="justify-between">
+          <view key={bill} role="listitem" className="flex-row justify-between">
             <text className="text-sm">{bill}</text>
             <vector aria-hidden className="w-4 h-4 text-muted" paths={[{ d: 'M9 18l6-6-6-6', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }]} />
-          </row>
+          </view>
         ))}
-      </column>
-      <row className="items-center gap-3">
+      </view>
+      <view className="flex-row items-center gap-3">
         <Button testId="lab-a11y-save" onClick={() => saves.set(saves.value + 1)}>Save</Button>
         <text data-testid="lab-a11y-status" role="status" className="text-sm text-muted">{saves.value ? `Saved ${saves.value} times` : 'Not saved yet'}</text>
-      </row>
+      </view>
     </Section>
   );
 }
@@ -333,10 +333,10 @@ function Inputs() {
     <Section title="Inputs" testId="lab-inputs">
       <input data-testid="lab-input-otp" bind={code} aria-label="One-time code" type="number" maxLength={6} autoComplete="one-time-code" enterKeyHint="done" placeholder="6-digit code" className={field} />
       <input data-testid="lab-input-amount" bind={amount} aria-label="Amount" type="number" min={1} max={500} step={0.5} enterKeyHint="next" placeholder="1 to 500, steps of 0.5" className={field} />
-      <row className="gap-2">
+      <view className="flex-row gap-2">
         <input data-testid="lab-input-date" bind={day} aria-label="Billing date" type="date" min="2024-01-01" placeholder="Pick a date" className={`grow basis-0 ${field}`} />
         <input data-testid="lab-input-time" bind={time} aria-label="Reminder time" type="time" placeholder="Pick a time" className={`grow basis-0 ${field}`} />
-      </row>
+      </view>
       <select data-testid="lab-input-plan" bind={plan} aria-label="Billing plan" placeholder="Choose a plan" className={field}
         options={[{ value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly', disabled: true }, { value: 'yearly', label: 'Yearly' }]} />
       <input data-testid="lab-input-name" aria-label="Name" autoComplete="name" autoCapitalize="words" spellCheck={false} placeholder="Full name" className={field} />
@@ -349,15 +349,15 @@ function Structure() {
   const rows = ['Starter', 'Plus', 'Pro', 'Max'];
   return (
     <Section title="Structural variants" testId="lab-structure">
-      <column data-testid="lab-structure-rows" className="rounded-lg border border-line">
+      <view data-testid="lab-structure-rows" className="rounded-lg border border-line">
         {rows.map(row => (
           <text key={row} className="px-3 py-2 text-sm odd:bg-surface-sunken first:rounded-t-lg last:rounded-b-lg last:font-semibold">{row}</text>
         ))}
-      </column>
-      <row className="gap-2">
+      </view>
+      <view className="flex-row gap-2">
         <view data-testid="lab-structure-empty" className="h-8 grow basis-0 rounded-lg bg-danger empty:bg-surface-sunken" />
         <view className="h-8 grow basis-0 rounded-lg bg-surface-sunken"><text className="only:text-xs only:p-2">only child</text></view>
-      </row>
+      </view>
     </Section>
   );
 }
@@ -368,10 +368,10 @@ function StickyHeaders() {
     <Section title="Sticky headers" testId="lab-sticky">
       <scroll data-testid="lab-sticky-scroll" className="h-48 rounded-lg border border-line">
         {Object.entries(groups).map(([day, items]) => (
-          <column key={day}>
+          <view key={day}>
             <text className="sticky top-0 px-3 py-1.5 text-xs font-semibold bg-surface-sunken">{day}</text>
             {items.map(item => <text key={item} className="px-3 py-3 text-sm border-b border-line">{item}</text>)}
-          </column>
+          </view>
         ))}
       </scroll>
     </Section>
@@ -395,16 +395,16 @@ function Focus() {
   return (
     <Section title="Keyboard focus" testId="lab-focus">
       <text className="text-xs text-muted">With a keyboard: Tab to Open, press Enter; focus stays in the dialog and returns to Open when it closes.</text>
-      <row className="gap-2 items-center">
+      <view className="flex-row gap-2 items-center">
         <Button testId="lab-focus-open" onClick={() => open.set(true)}>Open dialog</Button>
         <text data-testid="lab-focus-choice" className="text-sm">{`chosen: ${choice.value}`}</text>
-      </row>
+      </view>
       <dialog open={open.value} onClose={() => close('escape')} data-testid="lab-focus-dialog" aria-label="Confirm payment" className="w-72 gap-3 p-4 rounded-xl border border-line bg-surface">
         <text role="heading" headingLevel={3} className="text-sm font-semibold">Confirm payment</text>
-        <row className="gap-2">
+        <view className="flex-row gap-2">
           <Button testId="lab-focus-confirm" onClick={() => close('confirm')}>Confirm</Button>
           <Button testId="lab-focus-cancel" variant="secondary" onClick={() => close('cancel')}>Cancel</Button>
-        </row>
+        </view>
       </dialog>
     </Section>
   );
@@ -418,11 +418,11 @@ function NestedControls() {
   return (
     <Section title="Nested controls" testId="lab-nested">
       <button data-testid="lab-nested-row" onClick={() => opened.set(opened.value + 1)} className="rounded-xl bg-surface-sunken px-4 py-3">
-        <row className="items-center gap-3">
+        <view className="flex-row items-center gap-3">
           <text className="grow text-sm">Wi-Fi</text>
           <switch data-testid="lab-nested-switch" bind={wifi} aria-label="Wi-Fi" />
           <button data-testid="lab-nested-remove" onClick={() => removed.set(removed.value + 1)} className="rounded-lg px-2 py-1 text-sm text-danger">Remove</button>
-        </row>
+        </view>
       </button>
       <text data-testid="lab-nested-state" className="text-xs text-muted tabular-nums">{`opened=${opened.value} wifi=${wifi.value} removed=${removed.value}`}</text>
     </Section>
@@ -439,14 +439,14 @@ function Fragments() {
   const note = useLocal('fragment-note', false);
   return (
     <Section title="Fragments" testId="lab-fragments">
-      <row className="gap-2">
+      <view className="flex-row gap-2">
         <Button testId="lab-fragments-rotate" size="sm" onClick={() => words.set([...words.value.slice(1), words.value[0]])}>Rotate</Button>
         <Button testId="lab-fragments-note" size="sm" onClick={() => note.set(!note.value)}>{note.value ? 'Hide note' : 'Show note'}</Button>
-      </row>
-      <column data-testid="lab-fragments-list" className="gap-1">
+      </view>
+      <view data-testid="lab-fragments-list" className="gap-1">
         {note.value && <text data-testid="lab-fragments-hint" className="text-xs">Each term is two texts in one fragment.</text>}
         {words.value.map(([word, meaning]) => <Fragment key={word}><Term word={word} meaning={meaning} /></Fragment>)}
-      </column>
+      </view>
     </Section>
   );
 }
@@ -458,18 +458,18 @@ function StateVariants() {
   const note = useLocal('variants-note', '');
   return (
     <Section title="Data and has variants" testId="lab-variants">
-      <row data-testid="lab-variants-agree" className="items-center gap-3 rounded-xl px-4 py-3 bg-surface-sunken has-checked:bg-accent has-checked:text-on-accent">
+      <view data-testid="lab-variants-agree" className="flex-row items-center gap-3 rounded-xl px-4 py-3 bg-surface-sunken has-checked:bg-accent has-checked:text-on-accent">
         <checkbox data-testid="lab-variants-checkbox" bind={agreed} aria-label="Agree" />
         <text className="text-sm">{agreed.value ? 'Agreed' : 'Tap to agree'}</text>
-      </row>
+      </view>
       <button data-testid="lab-variants-toggle" data-state={open.value ? 'open' : 'closed'} onClick={() => open.set(!open.value)}
         className="rounded-xl px-4 py-3 bg-surface-sunken data-[state=open]:bg-accent data-[state=open]:text-on-accent data-[state=open]:py-5">
         {open.value ? 'Open (taller)' : 'Closed'}
       </button>
-      <column data-testid="lab-variants-field" className="rounded-xl p-3 gap-1 border border-line focus-within:border-accent focus-within:bg-surface-sunken">
+      <view data-testid="lab-variants-field" className="rounded-xl p-3 gap-1 border border-line focus-within:border-accent focus-within:bg-surface-sunken">
         <text className="text-xs text-muted">Note</text>
         <input data-testid="lab-variants-input" bind={note} placeholder="Focus me" aria-label="Note" />
-      </column>
+      </view>
     </Section>
   );
 }
@@ -525,11 +525,11 @@ function Overlays() {
   const safeBottom = useView().env.safeArea?.bottom ?? 0;
   return (
     <Section title="Overlays" testId="lab-overlays">
-      <row className="gap-2 items-center flex-wrap">
+      <view className="flex-row gap-2 items-center flex-wrap">
         <Button testId="lab-overlay-confirm" onClick={() => confirm.set(true)}>Dialog</Button>
         <Button testId="lab-overlay-sheet" variant="secondary" onClick={() => sheet.set(true)}>Sheet</Button>
         <button popoverTarget="lab-menu" data-testid="lab-overlay-more" aria-label="More" className="ms-auto rounded-full px-3 py-1.5 bg-surface-sunken text-text">⋯</button>
-      </row>
+      </view>
       <text data-testid="lab-overlay-last" className="text-sm">{`last: ${last.value}`}</text>
       <view id="lab-menu" popover role="menu" aria-label="Note actions" data-testid="lab-menu"
         style={{ positionArea: 'bottom span-inline-start' }} className="w-44 p-1 rounded-xl bg-surface-raised shadow-lg border border-line">
@@ -542,15 +542,15 @@ function Overlays() {
         className="w-72 p-4 gap-3 rounded-2xl bg-surface-raised transition duration-200 starting:opacity-0 starting:scale-95 exit:opacity-0 exit:scale-95">
         <text role="heading" headingLevel={3} className="text-base font-semibold">Delete note?</text>
         <text className="text-sm text-muted">Escape cancels; the backdrop does not.</text>
-        <row className="gap-2 justify-end">
+        <view className="flex-row gap-2 justify-end">
           <Button testId="lab-dialog-cancel" variant="secondary" onClick={() => { act('cancel'); confirm.set(false); }}>Cancel</Button>
           <Button testId="lab-dialog-delete" onClick={() => { act('delete'); confirm.set(false); }}>Delete</Button>
-        </row>
+        </view>
       </dialog>
       <dialog open={sheet.value} onClose={() => sheet.set(false)} closedby="any" aria-label="Filters" data-testid="lab-sheet"
         style={{ paddingBottom: 16 + safeBottom }}
         className="mt-auto mb-0 w-full p-4 gap-3 rounded-t-3xl bg-surface-raised transition-transform duration-300 ease-out starting:translate-y-full exit:translate-y-full">
-        <spacer className="self-center w-10 h-1 rounded-full bg-line-strong" />
+        <view className="self-center w-10 h-1 rounded-full bg-line-strong" />
         <text role="heading" headingLevel={3} className="text-base font-semibold">Filters</text>
         <scroll data-testid="lab-sheet-scroll" className="max-h-48">
           {Array.from({ length: 12 }, (_, i) => <text key={`f${i}`} className="py-2 text-sm">{`Filter ${i + 1}`}</text>)}
@@ -588,7 +588,7 @@ function DragChain() {
   return (
     <Section title="Drag and scroll" testId="lab-chain">
       <view className="h-56 rounded-xl bg-surface-sunken overflow-hidden">
-        <column drag="y" dragSnapPoints={[0, 96]} bind={at} aria-label="Panel" data-testid="lab-chain-panel"
+        <view drag="y" dragSnapPoints={[0, 96]} bind={at} aria-label="Panel" data-testid="lab-chain-panel"
           className="h-56 rounded-t-xl bg-surface-raised">
           <text data-testid="lab-chain-title" className="p-3 text-sm font-semibold">Pull up, then keep going</text>
           <scroll data-testid="lab-chain-list" className="grow basis-0">
@@ -596,7 +596,7 @@ function DragChain() {
               <text key={`c${i}`} data-testid={`lab-chain-row-${i + 1}`} className="px-3 py-2 text-sm border-b border-line">{`Item ${i + 1}`}</text>
             ))}
           </scroll>
-        </column>
+        </view>
       </view>
       <text data-testid="lab-chain-state" className="text-xs text-muted tabular-nums">{`at=${at.value}`}</text>
     </Section>
@@ -612,15 +612,15 @@ function Detents() {
   const safeBottom = useView().env.safeArea?.bottom ?? 0;
   return (
     <Section title="Sheet detents" testId="lab-detents">
-      <row className="gap-2 items-center">
+      <view className="flex-row gap-2 items-center">
         <Button testId="lab-detents-open" onClick={() => { detent.set(1); open.set(true); }}>Open sheet</Button>
         <text data-testid="lab-detents-state" className="text-xs text-muted tabular-nums">{`open=${open.value} at=${detent.value} closed=${closed.value}`}</text>
-      </row>
+      </view>
       <dialog open={open.value} onClose={() => { closed.set(closed.value + 1); open.set(false); }} closedby="any" aria-label="Places"
         drag="y" dragSnapPoints={[0, '45%', '100%']} bind={detent} data-testid="lab-detents-sheet"
         style={{ paddingBottom: 16 + safeBottom }}
         className="mt-auto mb-0 w-full h-[85dvh] p-4 gap-3 rounded-t-3xl bg-surface-raised transition-transform duration-300 ease-spring starting:translate-y-full exit:translate-y-full">
-        <spacer className="self-center w-10 h-1 rounded-full bg-line-strong" />
+        <view className="self-center w-10 h-1 rounded-full bg-line-strong" />
         <text data-testid="lab-detents-title" role="heading" headingLevel={3} className="text-base font-semibold">Places</text>
         <scroll data-testid="lab-detents-list" className="grow basis-0">
           {Array.from({ length: 30 }, (_, i) => <text key={`p${i}`} data-testid={`lab-detents-row-${i + 1}`} className="py-2 text-sm">{`Place ${i + 1}`}</text>)}
@@ -640,14 +640,14 @@ function SwipeRows() {
   const remove = (item: string) => { items.set(items.value.filter(other => other !== item)); last.set(`deleted ${item}`); };
   return (
     <Section title="Swipe rows" testId="lab-swipe">
-      <column className="overflow-hidden bg-surface">
+      <view className="overflow-hidden bg-surface">
         {items.value.map((item, index) => (
           <Fragment key={item}>
             {index > 0 && <view className="h-px bg-line" />}
             <SwipeRow item={item} onOpen={() => last.set(`opened ${item}`)} onArchive={() => last.set(`archived ${item}`)} onDelete={() => remove(item)} />
           </Fragment>
         ))}
-      </column>
+      </view>
       <text data-testid="lab-swipe-state" className="text-xs text-muted">{`rows=${items.value.length} last=${last.value}`}</text>
     </Section>
   );
@@ -658,17 +658,17 @@ function SwipeRow({ item, onOpen, onArchive, onDelete }: { item: string; onOpen:
   const id = item.toLowerCase();
   const strip = 'h-full items-center justify-center text-sm font-medium';
   return (
-    <stack className="h-12">
-      <row className="absolute top-0 bottom-0 right-0 w-[144px]">
+    <view className="grid *:col-start-1 *:row-start-1 h-12">
+      <view className="flex-row absolute top-0 bottom-0 right-0 w-[144px]">
         <button id={`archive-${id}`} data-testid={`lab-swipe-archive-${id}`} onClick={() => { open.set(0); onArchive(); }}
           className={`${strip} w-[72px] bg-accent text-on-accent`}>Archive</button>
         <button id={`delete-${id}`} data-testid={`lab-swipe-delete-${id}`} onClick={onDelete}
           className={`${strip} w-[72px] bg-danger text-on-danger`}>Delete</button>
-      </row>
+      </view>
       <button drag="x" dragSnapPoints={[0, -144, '-100%']} bind={open} aria-actions={`archive-${id} delete-${id}`}
         data-testid={`lab-swipe-row-${id}`} onClick={onOpen} onDragEnd={({ index }) => { if (index === 2) onDelete(); }}
         className="absolute inset-0 px-4 justify-center items-start text-start bg-surface text-sm text-text">{item}</button>
-    </stack>
+    </view>
   );
 }
 
@@ -679,18 +679,18 @@ function Pager() {
   return (
     <Section title="Pager" testId="lab-pager">
       <scroll data-testid="lab-pager-scroll" bind={page} className="w-72 overflow-x-auto snap-x snap-always rounded-xl bg-surface-sunken">
-        <row>
+        <view className="flex-row">
           {pages.map(name => (
-            <column key={name} className="snap-start shrink-0 w-72 h-28 items-center justify-center">
+            <view key={name} className="snap-start shrink-0 w-72 h-28 items-center justify-center">
               <text className="text-lg font-semibold">{name}</text>
-            </column>
+            </view>
           ))}
-        </row>
+        </view>
       </scroll>
-      <row className="gap-2 items-center">
+      <view className="flex-row gap-2 items-center">
         <text data-testid="lab-pager-state" className="grow text-xs text-muted tabular-nums">{`page=${page.value}`}</text>
         <Button testId="lab-pager-next" size="sm" variant="secondary" onClick={() => page.set((page.value + 1) % pages.length)}>Next</Button>
-      </row>
+      </view>
     </Section>
   );
 }
@@ -703,9 +703,9 @@ function KitPager() {
     <Section title="Kit pager" testId="lab-kit-pager">
       <KitPagerView bind={page} aria-label="Checkout steps" data-testid="lab-kit-pager-view" className="w-72">
         {pages.map(name => (
-          <column key={name} className="h-28 items-center justify-center rounded-xl bg-surface-sunken">
+          <view key={name} className="h-28 items-center justify-center rounded-xl bg-surface-sunken">
             <text className="text-lg font-semibold">{name}</text>
-          </column>
+          </view>
         ))}
       </KitPagerView>
       <text data-testid="lab-kit-pager-state" className="text-xs text-muted tabular-nums">{`page=${page.value}`}</text>

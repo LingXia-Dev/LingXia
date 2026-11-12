@@ -19,11 +19,12 @@ test('flex direction follows utility cascade, responsive rules and explicit styl
   assert.equal(classStyle('flex-col-reverse').flexDirection, 'column-reverse');
   const view = rendered(() => h('view', { className: 'flex flex-col' }, h('text', {}, 'Hello')));
   assert.deepEqual([view.tag, view.props.display, view.props.flexDirection], ['column', 'flex', 'column']);
-  // As in CSS, a `flex` view lays out a row; a `<column>` stays a column.
+  // As in CSS, `flex` alone lays out a row; without it a `<view>` or `<page>` is a column.
   assert.equal(rendered(() => h('view', { className: 'flex' }, h('text', {}, 'a'))).props.flexDirection, 'row');
   assert.equal(rendered(() => h('view', { className: 'inline-flex' }, h('text', {}, 'a'))).props.flexDirection, 'row');
-  assert.equal(rendered(() => h('column', { className: 'flex' }, h('text', {}, 'a'))).props.flexDirection, undefined);
-  assert.throws(() => describe(() => h('grid', { className: 'flex-col', style: { gridTemplateColumns: 2 } }), {}), /UI_CLASS_ELEMENT: flex-col does not apply to <grid>; use grid-flow-col/);
+  assert.equal(rendered(() => h('page', { className: 'flex' }, h('text', {}, 'a'))).props.flexDirection, 'row');
+  assert.equal(rendered(() => h('view', {}, h('text', {}, 'a'))).props.flexDirection, undefined);
+  assert.throws(() => describe(() => h('view', { className: 'flex-col', style: { display: 'grid', gridTemplateColumns: 2 } }), {}), /UI_CLASS_ELEMENT: flex-col does not apply to <view className="grid">; use grid-flow-col/);
 });
 
 test('display utilities, fixed positioning and dynamic viewport units lower to defined native semantics', async () => {
@@ -38,7 +39,7 @@ test('display utilities, fixed positioning and dynamic viewport units lower to d
   assert.equal(classStyle('fixed').position, 'fixed');
   assert.deepEqual([classStyle('h-dvh').height, classStyle('min-h-svh').minHeight, classStyle('max-h-lvh').maxHeight, classStyle('w-dvw').width, classStyle('h-[50dvh]').height],
     ['100vh', '100vh', '100vh', '100vw', '50vh']);
-  assert.equal(node('column', { className: 'h-dvh' }, { env: { viewport: { width: 400, height: 700 } } }).height, 700);
+  assert.equal(node('view', { className: 'h-dvh' }, { env: { viewport: { width: 400, height: 700 } } }).height, 700);
 });
 
 test('static transforms compose per-axis variables, origins and rotations; skew and 3D fail', async () => {
@@ -53,7 +54,7 @@ test('static transforms compose per-axis variables, origins and rotations; skew 
   assert.deepEqual([classStyle('origin-top-left').transformOrigin, classStyle('origin-[25%_75%]').transformOrigin], [[0, 0], [.25, .75]]);
   assert.throws(() => classStyle('transform'), /apply without it/);
   for (const name of ['skew-x-6', 'rotate-x-45']) assert.throws(() => classStyle(name), /only translate, rotate and scale/);
-  assert.deepEqual(JSON.parse(node('column', { className: 'translate-x-2 rotate-45 -scale-x-100 origin-top-left' }).transform),
+  assert.deepEqual(JSON.parse(node('view', { className: 'translate-x-2 rotate-45 -scale-x-100 origin-top-left' }).transform),
     { translate: [8, 0], rotate: 45, scale: [-1, 1], origin: [0, 0] });
   // Transforms are paint, so pressed states may scale.
   assert.deepEqual(JSON.parse(rendered(() => h('button', { className: 'active:scale-95' }, 'Go')).props.pressedStyle.transform), { scale: [0.95, 0.95] });
@@ -77,13 +78,13 @@ test('aspect ratios, ch widths, current-color backgrounds, overscroll and select
   await use(['aspect-square', 'aspect-video', 'aspect-[4/3]', 'aspect-auto', 'max-w-[60ch]', 'w-[10ch]', 'bg-current', 'overscroll-contain',
     'overscroll-y-none', 'select-none', 'select-text', 'select-all']);
   assert.deepEqual([classStyle('aspect-square').aspectRatio, classStyle('aspect-video').aspectRatio, classStyle('aspect-[4/3]').aspectRatio], [1, 16 / 9, 4 / 3]);
-  assert.equal(node('column', { className: 'aspect-video', style: { aspectRatio: 'auto' } }).aspectRatio, undefined);
+  assert.equal(node('view', { className: 'aspect-video', style: { aspectRatio: 'auto' } }).aspectRatio, undefined);
   assert.equal(node('text', { className: 'max-w-[60ch]' }).maxWidthCh, 60);
-  assert.throws(() => describe(() => h('column', { className: 'w-[10ch]' }), {}), /UI_STYLE_VALUE: width/);
-  assert.equal(node('column', { className: 'bg-current' }).background, 'currentColor');
+  assert.throws(() => describe(() => h('view', { className: 'w-[10ch]' }), {}), /UI_STYLE_VALUE: width/);
+  assert.equal(node('view', { className: 'bg-current' }).background, 'currentColor');
   assert.equal(node('scroll', { className: 'overscroll-contain' }).overscroll, 'contain');
   assert.equal(node('scroll', { className: 'overscroll-y-none' }).overscroll, 'none');
-  assert.throws(() => describe(() => h('column', { className: 'overscroll-contain' }), {}), /UI_CLASS_ELEMENT: overscroll-contain does not apply to <column>; it applies to <scroll>, <List>/);
+  assert.throws(() => describe(() => h('view', { className: 'overscroll-contain' }), {}), /UI_CLASS_ELEMENT: overscroll-contain does not apply to <view>; it applies to <scroll>, <List>/);
   assert.deepEqual(['select-none', 'select-text', 'select-all'].map(name => classStyle(name).userSelect), ['none', 'text', 'all']);
   assert.equal(node('text', { className: 'select-text' }).userSelect, 'text');
 });
@@ -94,9 +95,9 @@ test('CSS grid utilities lower to tracks, placements, alignment and order; named
     'order-2', 'order-first', 'grid-cols-[[a]_1fr]', 'grid-cols-[subgrid]', '[grid-template-areas:"a_b"]']);
   assert.deepEqual(classStyle('grid grid-cols-3'), { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' });
   assert.equal(classStyle('grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))]').gridTemplateColumns, 'repeat(auto-fit,minmax(120px,1fr))');
-  const item = node('column', { className: 'col-span-2 col-end-4 row-span-full place-self-end order-first' });
+  const item = node('view', { className: 'col-span-2 col-end-4 row-span-full place-self-end order-first' });
   assert.deepEqual([item.gridColumn, item.gridRow, item.alignSelf, item.justifySelf, item.order], ['span 2 / 4', '1 / -1', 'end', 'end', -9999]);
-  assert.equal(node('column', { className: 'col-start-2' }).gridColumn, '2');
+  assert.equal(node('view', { className: 'col-start-2' }).gridColumn, '2');
   const box = node('view', { className: 'grid grid-flow-col-dense auto-rows-fr place-items-center content-between' });
   assert.deepEqual([box.display, box.gridAutoFlow, box.gridAutoRows, box.align, box.justifyItems, box.alignContent],
     ['grid', 'column-dense', 'minmax(0, 1fr)', 'center', 'center', 'between']);
@@ -104,42 +105,53 @@ test('CSS grid utilities lower to tracks, placements, alignment and order; named
   assert.throws(() => classStyle('[grid-template-areas:"a_b"]'), /UI_CLASS/);
 });
 
+test('*: places every child of a grid, so children overlap in one cell', async () => {
+  await use(['grid', '*:col-start-1', '*:row-start-1', 'col-start-2', 'p-2']);
+  const stack = rendered(() => h('view', { className: 'grid *:col-start-1 *:row-start-1' },
+    h('text', {}, 'Back'), h('view', { className: 'p-2' }, h('text', {}, 'Front'))));
+  assert.deepEqual(stack.children.map(child => [child.props.gridColumn, child.props.gridRow]), [['1', '1'], ['1', '1']]);
+  assert.equal(stack.children[1].props.paddingTop, 8);
+  assert.equal(stack.children[1].children[0].props.gridColumn, undefined, 'only direct children');
+  // The parent's `*:` wins over a child's own placement, as the variant does in CSS.
+  assert.equal(rendered(() => h('view', { className: 'grid *:col-start-1' }, h('view', { className: 'col-start-2' }))).children[0].props.gridColumn, '1');
+});
+
 test('flow-relative utilities stay logical on the wire and rtl:/ltr: follow the inherited direction', async () => {
   await use(['ps-4', 'pe-2', 'ms-auto', 'me-1', 'start-0', 'end-2', 'border-s-2', 'rounded-s-lg', 'rounded-ee-md', 'text-start',
     'rtl:-scale-x-100', 'ltr:ml-2', 'rtl:mr-2', 'pl-1', 'px-3']);
-  const props = node('column', { className: 'ps-4 pe-2 ms-auto start-0 border-s-2 rounded-s-lg rounded-ee-md' });
+  const props = node('view', { className: 'ps-4 pe-2 ms-auto start-0 border-s-2 rounded-s-lg rounded-ee-md' });
   assert.deepEqual([props.paddingInlineStart, props.paddingInlineEnd, props.marginInlineStart, props.insetInlineStart, props.borderInlineStartWidth],
     [16, 8, 'auto', 0, 2]);
   assert.deepEqual([props.radiusStartStart, props.radiusEndStart, props.radiusEndEnd], [8, 8, 6]);
   assert.deepEqual(classStyle('rtl:-scale-x-100', { direction: 'ltr' }), {});
   assert.deepEqual(classStyle('rtl:-scale-x-100', { direction: 'rtl' }).scale, [-1, 1]);
-  const tree = rendered(() => h('column', { dir: 'rtl' }, h('vector', { className: 'rtl:-scale-x-100 ltr:ml-2', paths: [{ d: 'M0 0h1' }] }),
-    h('column', { dir: 'ltr' }, h('column', { className: 'rtl:mr-2 ltr:ml-2' }))));
+  const tree = rendered(() => h('view', { dir: 'rtl' }, h('vector', { className: 'rtl:-scale-x-100 ltr:ml-2', paths: [{ d: 'M0 0h1' }] }),
+    h('view', { dir: 'ltr' }, h('view', { className: 'rtl:mr-2 ltr:ml-2' }))));
   assert.equal(tree.props.direction, 'rtl');
   assert.deepEqual(JSON.parse(tree.children[0].props.transform).scale, [-1, 1]);
   assert.equal(tree.children[0].props.marginLeft, undefined);
   assert.deepEqual([tree.children[1].children[0].props.marginLeft, tree.children[1].children[0].props.marginRight], [8, undefined]);
-  assert.equal(rendered(() => h('column', { className: 'rtl:mr-2' }), { env: { direction: 'rtl' } }).props.marginRight, 8);
-  assert.throws(() => describe(() => h('column', { dir: 'sideways' }), {}), /UI_PROP: dir/);
+  assert.equal(rendered(() => h('view', { className: 'rtl:mr-2' }), { env: { direction: 'rtl' } }).props.marginRight, 8);
+  assert.throws(() => describe(() => h('view', { dir: 'sideways' }), {}), /UI_PROP: dir/);
   assert.equal(rendered(() => h('input', { value: '', dir: 'auto' })).props.direction, 'auto');
 });
 
 test('structural variants match sibling position, list rows and emptiness; DOM-state variants name the TS alternative', async () => {
   await use(['first:pt-1', 'last:pb-2', 'odd:bg-surface', 'even:bg-text', 'only:p-4', 'empty:hidden', 'first:hover:p-3', 'md:first:pt-3',
     'has-[input]:p-2', 'data-[state=open]:p-2', 'aria-checked:p-2']);
-  const tree = rendered(() => h('column', {}, ...['a', 'b', 'c'].map(key => h('text', { key, className: 'first:pt-1 last:pb-2 odd:bg-surface even:bg-text' }, key))));
+  const tree = rendered(() => h('view', {}, ...['a', 'b', 'c'].map(key => h('text', { key, className: 'first:pt-1 last:pb-2 odd:bg-surface even:bg-text' }, key))));
   const rows = tree.children.map(child => [child.props.paddingTop, child.props.paddingBottom, child.props.background]);
   assert.deepEqual(rows, [[4, undefined, 'surface'], [undefined, undefined, 'text'], [undefined, 8, 'surface']]);
-  assert.equal(rendered(() => h('column', {}, h('text', { className: 'only:p-4' }, 'x'))).children[0].props.paddingTop, 16);
-  assert.equal(rendered(() => h('column', {}, false, h('text', { className: 'only:p-4' }, 'x'), null)).children[0].props.paddingTop, 16);
+  assert.equal(rendered(() => h('view', {}, h('text', { className: 'only:p-4' }, 'x'))).children[0].props.paddingTop, 16);
+  assert.equal(rendered(() => h('view', {}, false, h('text', { className: 'only:p-4' }, 'x'), null)).children[0].props.paddingTop, 16);
   // Holes keep their slot in identity but never count as siblings.
-  const holes = rendered(() => h('column', {}, false, h('text', { className: 'first:pt-1' }, 'a'), null, h('text', { className: 'last:pb-2' }, 'b')));
+  const holes = rendered(() => h('view', {}, false, h('text', { className: 'first:pt-1' }, 'a'), null, h('text', { className: 'last:pb-2' }, 'b')));
   assert.deepEqual(holes.children.map(child => [child.props.paddingTop, child.props.paddingBottom, child.props.childSlot]),
     [[4, undefined, '1'], [undefined, 8, '3']]);
-  assert.equal(rendered(() => h('column', {}, h('text', {}, 'a'), h('text', {}, 'b'))).children[1].props.childSlot, undefined,
+  assert.equal(rendered(() => h('view', {}, h('text', {}, 'a'), h('text', {}, 'b'))).children[1].props.childSlot, undefined,
     'a child at its rendered position sends no slot');
-  assert.equal(rendered(() => h('column', { className: 'empty:hidden' })).props.display, 'none');
-  assert.equal(rendered(() => h('column', { className: 'empty:hidden' }, h('text', {}, 'x'))).props.display, undefined);
+  assert.equal(rendered(() => h('view', { className: 'empty:hidden' })).props.display, 'none');
+  assert.equal(rendered(() => h('view', { className: 'empty:hidden' }, h('text', {}, 'x'))).props.display, undefined);
   const page = () => h(listTag, { count: 3, row: i => h('text', { className: 'first:pt-1 last:pb-2' }, String(i)) });
   const texts = decode(prepare(page, {}, { root: { start: 0, end: 3, leading: 0, trailing: 0 } })).filter(node => node.tag === 'text').map(node => node.props);
   discard();
@@ -155,17 +167,17 @@ test('horizontal overflow lowers only onto scroll containers', async () => {
   assert.deepEqual(classStyle('md:overflow-x-auto', env('light', 320)), {});
   assert.deepEqual(classStyle('md:overflow-x-auto', env('light', 900)), { overflowX: 'auto' });
   assert.equal(node('scroll', { className: 'overflow-x-auto' }).scrollAxis, 'horizontal');
-  assert.throws(() => describe(() => h('row', { className: 'overflow-x-auto' }), {}), /UI_CLASS_ELEMENT: overflow-x-auto does not apply to <row>; it applies to <scroll>/);
-  assert.equal(node('row', { className: 'overflow-hidden' }).overflow, 'hidden');
+  assert.throws(() => describe(() => h('view', { style: { flexDirection: 'row' }, className: 'overflow-x-auto' }), {}), /UI_CLASS_ELEMENT: overflow-x-auto does not apply to <view>; it applies to <scroll>/);
+  assert.equal(node('view', { style: { flexDirection: 'row' }, className: 'overflow-hidden' }).overflow, 'hidden');
 });
 
 test('alignment keeps CSS values until rendering', async () => {
   await use(['items-baseline', 'self-baseline', 'justify-between', 'justify-around', 'justify-evenly', 'items-start']);
   assert.deepEqual(classStyle('items-baseline self-baseline'), { alignItems: 'baseline', alignSelf: 'baseline' });
   assert.deepEqual(classStyle('justify-around'), { justifyContent: 'space-around' });
-  const row = node('row', { className: 'items-start justify-evenly' });
+  const row = node('view', { style: { flexDirection: 'row' }, className: 'items-start justify-evenly' });
   assert.deepEqual([row.align, row.justify], ['start', 'evenly']);
-  assert.doesNotThrow(() => describe(() => h('row', { className: 'items-baseline' }, h('text', { className: 'self-baseline' }, 'Price')), {}));
+  assert.doesNotThrow(() => describe(() => h('view', { style: { flexDirection: 'row' }, className: 'items-baseline' }, h('text', { className: 'self-baseline' }, 'Price')), {}));
 });
 
 test('cached class cascades isolate mutations, typography and environments', async () => {
@@ -195,7 +207,7 @@ test('flex growth, basis and shorthands retain independent cascade values', asyn
   // The class written later wins a conflict, as tailwind-merge resolves it.
   assert.equal(classStyle('flex-1 basis-auto').flexBasis, 'auto');
   assert.equal(classStyle('basis-auto flex-1').flexBasis, '0%');
-  assert.equal(node('column', { className: 'basis-12', style: { flexBasis: '25%' } }).flexBasis, '25%');
+  assert.equal(node('view', { className: 'basis-12', style: { flexBasis: '25%' } }).flexBasis, '25%');
 });
 
 test('percentages, fractions, viewport units and sizing keywords preserve relative layout', async () => {
@@ -205,34 +217,34 @@ test('percentages, fractions, viewport units and sizing keywords preserve relati
   assert.ok(Math.abs(parseFloat(height) - 100 / 3) < 1e-5);
   assert.equal(classStyle('w-full md:w-1/2', env('light', 800)).width, '50%');
   assert.deepEqual(classStyle('w-screen h-screen'), { width: '100vw', height: '100vh' });
-  const screen = node('column', { className: 'w-screen h-screen' }, { env: { viewport: { width: 390, height: 844 } } });
+  const screen = node('view', { className: 'w-screen h-screen' }, { env: { viewport: { width: 390, height: 844 } } });
   assert.deepEqual([screen.width, screen.height], [390, 844]);
-  assert.equal(node('column', { className: 'w-fit' }).widthKeyword, 'fit-content');
+  assert.equal(node('view', { className: 'w-fit' }).widthKeyword, 'fit-content');
   assert.deepEqual(classStyle('w-auto'), { width: 'auto' });
   assert.throws(() => classStyle('gap-[10%]'), /UI_CLASS/);
 });
 
 test('margins, positioning, layering and line clamps are native utilities', async () => {
-  await use(['m-2', 'mx-auto', '-mt-1', 'relative', 'absolute', 'inset-0', 'inset-x-4', 'top-1/2', 'z-10', 'truncate', 'line-clamp-3', 'grid-cols-3', 'object-cover', 'object-top-left', 'object-bottom', 'object-[25%_75%]']);
+  await use(['m-2', 'mx-auto', '-mt-1', 'relative', 'absolute', 'inset-0', 'inset-x-4', 'top-1/2', 'z-10', 'truncate', 'line-clamp-3', 'grid', 'grid-cols-3', 'object-cover', 'object-top-left', 'object-bottom', 'object-[25%_75%]']);
   assert.deepEqual(classStyle('m-2 mx-auto -mt-1'), { marginTop: -4, marginRight: 'auto', marginBottom: 8, marginLeft: 'auto' });
   assert.deepEqual(classStyle('absolute inset-0 inset-x-4 z-10'), { position: 'absolute', top: 0, right: 16, bottom: 0, left: 16, zIndex: 10 });
   assert.equal(classStyle('top-1/2').top, '50%');
   assert.deepEqual(classStyle('truncate'), { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
   assert.deepEqual(classStyle('line-clamp-3'), { overflow: 'hidden', lineClamp: 3 });
   assert.equal(node('text', { className: 'line-clamp-3' }).textLines, 3);
-  assert.equal(node('grid', { className: 'grid-cols-3' }).gridTemplateColumns, 'repeat(3, minmax(0, 1fr))');
+  assert.equal(node('view', { className: 'grid grid-cols-3' }).gridTemplateColumns, 'repeat(3, minmax(0, 1fr))');
   assert.equal(node('image', { src: 'a.png', className: 'object-cover' }).imageFit, 'cover');
   assert.equal(node('image', { src: 'a.png', className: 'object-top-left' }).imagePosition, '[0,0]');
   assert.equal(node('image', { src: 'a.png', className: 'object-bottom' }).imagePosition, '[0.5,1]');
   assert.equal(node('image', { src: 'a.png', className: 'object-[25%_75%]' }).imagePosition, '[0.25,0.75]');
-  assert.throws(() => describe(() => h('column', { className: 'line-clamp-3' }), {}), /UI_CLASS_ELEMENT: line-clamp-3 does not apply to <column>; it applies to <text>/);
+  assert.throws(() => describe(() => h('view', { className: 'line-clamp-3' }), {}), /UI_CLASS_ELEMENT: line-clamp-3 does not apply to <view>; it applies to <text>/);
 });
 
 test('space and divide utilities target non-last children', async () => {
   await use(['space-y-2', 'space-x-3', 'divide-y', 'divide-line', 'gap-x-2', 'gap-y-4']);
   assert.deepEqual(resolveClasses('space-y-2').children, { marginTop: 0, marginBottom: 8 });
   assert.deepEqual(resolveClasses('space-x-3').children, { marginInlineStart: 0, marginInlineEnd: 12 });
-  const list = rendered(() => h('column', { className: 'space-y-2 divide-y divide-line' }, h('text', {}, 'a'), h('text', {}, 'b')));
+  const list = rendered(() => h('view', { className: 'space-y-2 divide-y divide-line' }, h('text', {}, 'a'), h('text', {}, 'b')));
   assert.deepEqual(list.children.map(child => [child.props.marginBottom, child.props.borderBottomWidth]), [[8, 1], [undefined, undefined]]);
   assert.equal(list.children[0].props.borderColor, 'line');
   assert.deepEqual(classStyle('gap-x-2 gap-y-4'), { columnGap: 8, rowGap: 16 });
@@ -255,9 +267,9 @@ test('starting and exit variants lower to presence states', async () => {
   const states = resolveClasses('opacity-100 starting:opacity-0 exit:opacity-0 exit:translate-y-2');
   assert.equal(states.starting.opacity, 0);
   assert.equal(states.exit.opacity, 0);
-  const panel = rendered(() => h('column', { className: 'opacity-100 starting:opacity-0 exit:opacity-0' })).props;
+  const panel = rendered(() => h('view', { className: 'opacity-100 starting:opacity-0 exit:opacity-0' })).props;
   assert.deepEqual([panel.startingStyle, panel.exitStyle], ['[58,0]', '[58,0]'], 'opacity 0, wire-encoded');
-  assert.throws(() => rendered(() => h('column', { className: 'starting:p-2' })), /starting: supports paint properties only, not paddingTop/);
+  assert.throws(() => rendered(() => h('view', { className: 'starting:p-2' })), /starting: supports paint properties only, not paddingTop/);
 });
 
 test('transition-layout adds layout motion to whatever transition-* sets', async () => {
@@ -274,7 +286,7 @@ test('bg-clip-text paints a text background through its glyphs, on <text> only',
   const text = rendered(() => h('text', { className: 'bg-clip-text text-transparent bg-linear-to-r from-accent to-danger' }, 'Thinking')).props;
   assert.equal(text.backgroundClip, 'text');
   assert.ok(text.backgroundGradient);
-  assert.throws(() => describe(() => h('column', { className: 'bg-clip-text' }), {}), /UI_CLASS_ELEMENT: bg-clip-text does not apply to <column>; it applies to <text>/);
+  assert.throws(() => describe(() => h('view', { className: 'bg-clip-text' }), {}), /UI_CLASS_ELEMENT: bg-clip-text does not apply to <view>; it applies to <text>/);
 });
 
 test('mask edge fades and linear mask-image lower to intersected alpha fades', async () => {
@@ -285,7 +297,7 @@ test('mask edge fades and linear mask-image lower to intersected alpha fades', a
   ]);
   assert.deepEqual(classStyle('mask-[linear-gradient(to_bottom,transparent_0,#000_1rem)]').maskImage, [{ to: 'bottom', stops: [{ alpha: 0, px: 0 }, { alpha: 1, px: 16 }] }]);
   assert.equal(classStyle('mask-t-from-80% mask-none').maskImage, 'none');
-  const wire = rendered(() => h('column', { className: 'mask-b-to-4' })).props.maskImage;
+  const wire = rendered(() => h('view', { className: 'mask-b-to-4' })).props.maskImage;
   assert.deepEqual(JSON.parse(wire), [{ to: 'bottom', stops: [{ offset: 0, alpha: 1 }, { px: 16, alpha: 0 }] }]);
   assert.throws(() => classStyle('mask-radial-from-50%'), /radial and conic masks/);
   assert.throws(() => classStyle('mask-[radial-gradient(#000,transparent)]'), /only linear-gradient fades/);
@@ -294,12 +306,12 @@ test('mask edge fades and linear mask-image lower to intersected alpha fades', a
 test('blur utilities and filter: blur() lower to a subtree blur; other filters are refused', async () => {
   await use(['blur-md', 'blur-[10px]', 'blur-none', '[filter:blur(4px)]', 'brightness-50', '[filter:grayscale(1)]', 'blur-[100px]']);
   assert.deepEqual(classStyle('blur-md'), { filter: 'blur(12px)' });
-  assert.equal(rendered(() => h('column', { className: 'blur-[10px]' })).props.filterBlur, 10);
-  assert.equal(rendered(() => h('column', { className: 'blur-none' })).props.filterBlur, 0);
-  assert.equal(rendered(() => h('column', { className: '[filter:blur(4px)]' })).props.filterBlur, 4);
+  assert.equal(rendered(() => h('view', { className: 'blur-[10px]' })).props.filterBlur, 10);
+  assert.equal(rendered(() => h('view', { className: 'blur-none' })).props.filterBlur, 0);
+  assert.equal(rendered(() => h('view', { className: '[filter:blur(4px)]' })).props.filterBlur, 4);
   assert.throws(() => classStyle('brightness-50'), /sets nothing/);
   assert.throws(() => classStyle('[filter:grayscale(1)]'), /only blur/);
-  assert.throws(() => describe(() => h('column', { className: 'blur-[100px]' }), {}), /UI_STYLE_VALUE: filter/);
+  assert.throws(() => describe(() => h('view', { className: 'blur-[100px]' }), {}), /UI_STYLE_VALUE: filter/);
 });
 
 test('text utilities: transform, decoration, nowrap, alignment and families', async () => {
@@ -340,7 +352,7 @@ test('outer shadows preserve layers, color overrides, variants and CSS order', a
   assert.deepEqual(classStyle('shadow-danger/40'), {});
   const [palette, dark] = await compileUtilities(new Set(['shadow-red-500', 'dark:shadow-accent']));
   assert.deepEqual([palette.error.category, dark.error.message], ['color', 'roles follow appearance; drop dark:']);
-  assert.equal(node('column', { className: classes, style: { boxShadow: 'none' } }, { env: env() }).boxShadow, 'none');
+  assert.equal(node('view', { className: classes, style: { boxShadow: 'none' } }, { env: env() }).boxShadow, 'none');
 });
 
 test('arbitrary outer shadows retain currentColor and reject unsupported or excessive geometry', async () => {
@@ -444,7 +456,7 @@ test('dashed and dotted borders follow the border-style variable whatever the cl
     assert.equal(classStyle(classes).borderStyle, 'dashed', classes);
   assert.equal(classStyle('border').borderStyle, undefined);
   assert.equal(classStyle('border-2 border-dashed md:border-dotted', env('light', 900)).borderStyle, 'dotted');
-  assert.equal(node('column', { className: 'border border-dotted' }).borderStyle, 'dotted');
+  assert.equal(node('view', { className: 'border border-dotted' }).borderStyle, 'dotted');
   assert.throws(() => classStyle('[border-top-style:dashed]'), /per-edge border styles/);
 });
 
@@ -456,7 +468,7 @@ test('radii: infinite radius clamps and corners cascade under shorthands', async
   assert.deepEqual(classStyle('rounded-br-md rounded-3xl'), { borderRadius: 24 }, 'a later shorthand clears the corner');
   assert.deepEqual(classStyle('rounded-3xl rounded-t-none'), { borderRadius: 24, borderTopLeftRadius: 0, borderTopRightRadius: 0 });
   assert.equal(classStyle('rounded-br-full').borderBottomRightRadius, 16384);
-  const inline = node('column', { className: 'rounded-3xl rounded-br-md', style: { borderRadius: 8 } });
+  const inline = node('view', { className: 'rounded-3xl rounded-br-md', style: { borderRadius: 8 } });
   assert.deepEqual([inline.radius, inline.radiusBottomRight], [8, 8], 'an inline shorthand resets class longhands');
   assert.throws(() => classStyle('[width:calc(infinity*1px)]'), /UI_CLASS/);
 });
@@ -534,13 +546,13 @@ test('palette rules obey source order and diagnose invalid variables in either a
 test('relative line height and tracking follow font size across components and lists', async () => {
   await use(['text-sm', 'leading-normal', 'leading-5', 'text-[20px]', 'text-[21px]', 'text-[10px]', 'tracking-widest', 'tracking-tight', 'tracking-normal', 'tracking-[-1px]']);
   assert.equal(node('text', { className: 'text-sm', style: { fontSize: 21 } }).lineHeight, 30);
-  const nested = rendered(() => h('column', { className: 'text-sm' }, h('text', { className: 'text-[20px]' }, 'child')));
+  const nested = rendered(() => h('view', { className: 'text-sm' }, h('text', { className: 'text-[20px]' }, 'child')));
   assert.ok(Math.abs(nested.children[0].props.lineHeight - 20 * 20 / 14) < 1e-9);
   assert.equal(node('text', { className: 'leading-5', style: { fontSize: 21 } }).lineHeight, 20);
   assert.equal(node('text', { className: 'leading-normal', style: { fontSize: 20 } }).lineHeight, 30);
   assert.equal(node('text', { className: 'text-sm', style: { lineHeight: '40px' } }).lineHeight, 40);
   const Label = ({ children }) => h('text', { className: 'text-[21px]' }, children);
-  const texts = decode(describe(() => h('column', { className: 'text-sm' }, h(Label, {}, 'child'), h(listTag, { count: 1, row: () => h(Label, {}, 'row') })), {}))
+  const texts = decode(describe(() => h('view', { className: 'text-sm' }, h(Label, {}, 'child'), h(listTag, { count: 1, row: () => h(Label, {}, 'row') })), {}))
     .filter(record => record.tag === 'text');
   assert.deepEqual(texts.map(text => text.props.lineHeight), [30, 30]);
   assert.equal(node('text', { className: 'text-[10px] tracking-widest' }).letterSpacing, 1);
@@ -556,7 +568,7 @@ test('padding, borders and word breaking keep shorthand, axis, edge and variant 
   assert.deepEqual(classStyle(names, env('light', 800)), { paddingTop: 16, paddingRight: 16, paddingBottom: 16, paddingLeft: 16 });
   assert.deepEqual(classStyle(names, env('dark', 800)), { paddingTop: 16, paddingRight: 12, paddingBottom: 16, paddingLeft: 12 });
   assert.deepEqual(classStyle('[padding:1px_2px_3px_4px]'), { paddingTop: 1, paddingRight: 2, paddingBottom: 3, paddingLeft: 4 });
-  const inline = node('column', { className: 'px-6 py-3', style: { paddingLeft: 7, padding: 5 } });
+  const inline = node('view', { className: 'px-6 py-3', style: { paddingLeft: 7, padding: 5 } });
   assert.deepEqual([inline.paddingTop, inline.paddingRight, inline.paddingLeft], [5, 5, 7]);
   assert.deepEqual(classStyle('border'), { borderTopWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderLeftWidth: 1 });
   assert.equal(classStyle('border-4 border-t-2').borderTopWidth, 2);
@@ -580,7 +592,7 @@ test('backdrop variables compose through CSS order, variants and disabling', asy
   assert.deepEqual(classStyle(classes, env('dark')), { backdropFilter: 'blur(8px) saturate(1.8)' });
   assert.deepEqual(classStyle(classes, env('light', 900)), {});
   assert.deepEqual(classStyle('backdrop-blur-none'), {});
-  const filter = node('column', { className: '[backdrop-filter:blur(20px)_saturate(180%)]' });
+  const filter = node('view', { className: '[backdrop-filter:blur(20px)_saturate(180%)]' });
   assert.deepEqual([filter.backdropBlur, filter.backdropSaturation], [20, 1.8]);
   for (const name of ['backdrop-brightness-125', 'backdrop-blur-[65px]', 'backdrop-saturate-[1700%]', '[backdrop-filter:saturate(180%)_blur(20px)]'])
     assert.throws(() => classStyle(name), /UI_CLASS/);
@@ -622,7 +634,7 @@ test('relative variants, undrawn properties and no-op utilities fail with what t
     'drop-shadow-red-500', 'text-shadow-red-500', 'mask-radial-at-center', 'space-x-reverse', 'divide-y-reverse', 'select-auto'])))
     .map(rule => [rule.name, rule.error?.message]));
   const expect = {
-    '*:p-2': /child variants .*each child/, '**:p-2': /descendant variants/, 'in-focus:p-2': /ancestor-state variants .*focus-within:/,
+    '*:p-2': /places grid children only .*each child/, '**:p-2': /descendant variants/, 'in-focus:p-2': /ancestor-state variants .*focus-within:/,
     'group-hover:p-2': /group-\*\/peer-\*/, 'peer-checked:p-2': /group-\*\/peer-\*/, 'cursor-pointer': /no pointer cursor/,
     'pointer-events-none': /hit testing follows handlers/, 'outline-2': /ring-\*/, sepia: /sets nothing/,
     'translate-z-4': /3D transforms/, 'scale-z-50': /3D transforms/, transform: /apply without it/, 'transform-cpu': /apply without it/,
@@ -701,8 +713,8 @@ test('group-active: paints while the enclosing control is pressed', async () => 
 });
 
 test('dir="auto" takes the direction of the content\'s first strong character', () => {
-  const root = rendered(() => h('column', {}, h('text', { dir: 'auto' }, '42 שלום world'), h('text', { dir: 'auto' }, '123 hello'),
-    h('row', { dir: 'auto' }, h('text', {}, 'مرحبا')), h('text', { dir: 'auto' }, '123')));
+  const root = rendered(() => h('view', {}, h('text', { dir: 'auto' }, '42 שלום world'), h('text', { dir: 'auto' }, '123 hello'),
+    h('view', { style: { flexDirection: 'row' }, dir: 'auto' }, h('text', {}, 'مرحبا')), h('text', { dir: 'auto' }, '123')));
   assert.deepEqual(root.children.map(child => child.props.direction), ['rtl', 'ltr', 'rtl', undefined]);
   assert.throws(() => rendered(() => h('text', { dir: 'up' }, 'x')), /UI_PROP: dir must be "ltr", "rtl" or "auto"/);
 });
@@ -731,8 +743,8 @@ test('a gradient sweep: a sized background layer and a background-position keyfr
 
 test('children under different line-height multipliers do not share a lowered style', async () => {
   await use(['font-bold']);
-  const root = rendered(() => h('column', {},
-    h('column', { style: { fontSize: 10, lineHeight: 1.5 } }, h('text', { className: 'font-bold' }, 'a')),
-    h('column', { style: { fontSize: 10, lineHeight: 2 } }, h('text', { className: 'font-bold' }, 'b'))));
+  const root = rendered(() => h('view', {},
+    h('view', { style: { fontSize: 10, lineHeight: 1.5 } }, h('text', { className: 'font-bold' }, 'a')),
+    h('view', { style: { fontSize: 10, lineHeight: 2 } }, h('text', { className: 'font-bold' }, 'b'))));
   assert.deepEqual(['a', 'b'].map(text => byText(root, text).props.lineHeight), [15, 20]);
 });

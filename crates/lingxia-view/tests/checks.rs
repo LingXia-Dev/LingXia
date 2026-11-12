@@ -138,7 +138,7 @@ fn radio_wire_requires_bounded_unique_options_and_a_single_selection() {
         group(&[option("", "A", 0)]),
         json!([RADIO, -1, "", "", "", 0, RADIO_OPTION, 0, "a", "", "A", 0]),
         json!([
-            tag::SPACER,
+            tag::SCROLL,
             -1,
             "",
             "",

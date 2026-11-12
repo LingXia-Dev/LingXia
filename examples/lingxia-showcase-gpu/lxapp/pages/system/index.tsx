@@ -156,14 +156,14 @@ export function render({ data, actions, env }: View) {
             <InfoRow label="Last id" value={data.notificationLastId} testId="system-notification-result" />
           </InfoList>
           <ErrorState error={data.notificationError ? String(data.notificationError) : null} />
-          <grid className="gap-2 grid-cols-2">
+          <view className="grid gap-2 grid-cols-2">
             <Button variant="secondary" size="sm" testId="system-notification-refresh" onClick={() => actions.refreshNotification()}>
               Re-read Permission
             </Button>
             <Button variant="secondary" size="sm" testId="system-notification-cancel" onClick={() => actions.cancelNotification()}>
               Cancel
             </Button>
-          </grid>
+          </view>
         </Section>
       )}
       {type === 'banner' && desktop && (
@@ -188,7 +188,7 @@ export function render({ data, actions, env }: View) {
             onChange={value => actions.setBannerBackground(value)}
           />
           {!!data.bannerSupported && (
-            <grid className="gap-2 grid-cols-3">
+            <view className="grid gap-2 grid-cols-3">
               <Button size="sm" testId="system-banner-toast" disabled={!!data.bannerBusy} onClick={() => actions.showBannerToast()}>
                 Toast
               </Button>
@@ -204,7 +204,7 @@ export function render({ data, actions, env }: View) {
               >
                 Dismiss
               </Button>
-            </grid>
+            </view>
           )}
         </Section>
       )}

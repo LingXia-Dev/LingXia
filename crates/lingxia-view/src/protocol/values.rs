@@ -298,10 +298,6 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             value.as_u64().is_some_and(|v| (1..=1024).contains(&v)),
             "UI_TEXT: lines must be an integer between 1 and 1024 on text",
         ),
-        field::GRID_COLUMNS => ensure(
-            value.as_u64().is_some_and(|v| (1..=64).contains(&v)),
-            "UI_GRID: columns must be an integer between 1 and 64 on a grid",
-        ),
         field::ON_SLIDER_CHANGE => ensure(handle(value), "UI_SLIDER: invalid callback"),
         field::SLIDER_VALUE | field::SLIDER_MIN | field::SLIDER_MAX | field::SLIDER_STEP => {
             ensure(finite_within(value, 1e9), "UI_SLIDER: invalid number")

@@ -14,7 +14,7 @@ const byId = (nodes, id) => nodes.find(node => node.testId === id);
 test('an open dialog is a top-layer box with a backdrop, a modal role and auto margins', () => {
   reset();
   let close = 0;
-  const view = () => h('page', {}, h('row', {},
+  const view = () => h('page', {}, h('view', { style: { flexDirection: 'row' } },
     h('dialog', { open: true, onClose: () => close++, closedby: 'any', 'aria-label': 'Delete?', 'data-testid': 'd', style: { marginTop: 'auto' } }, h('text', {}, 'Sure?'))));
   const nodes = render(view, { keyboard: { height: 300 } });
   const panel = byId(nodes, 'd'), backdrop = byId(nodes, 'd-backdrop');

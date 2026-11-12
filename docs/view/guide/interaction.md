@@ -11,14 +11,14 @@ export function render() {
   return (
     <page className="p-4 gap-3">
       <button onClick={() => opened.set(opened.value + 1)} className="p-3 rounded-xl bg-surface text-text active:bg-surface-sunken">
-        <row className="items-center gap-3">
+        <view className="flex-row items-center gap-3">
           <image src="images/album.png" alt="" className="w-12 h-12 rounded-lg" />
-          <column className="grow basis-0 gap-0.5">
+          <view className="grow basis-0 gap-0.5">
             <text className="text-sm font-semibold">Morning Mix</text>
             <text className="text-xs text-muted">32 songs</text>
-          </column>
+          </view>
           <vector aria-hidden paths={chevron} className="w-5 h-5 text-faint rtl:-scale-x-100" />
-        </row>
+        </view>
       </button>
       <button onClick={() => liked.set(!liked.value)} aria-label={liked.value ? 'Unlike' : 'Like'}
         className={liked.value ? 'self-start rounded-full bg-danger p-3 text-on-danger' : 'self-start rounded-full bg-line p-3 text-text'}>
@@ -38,7 +38,7 @@ the editors, `<slider>`, and `<plot onSelect>`. Containers, text and images have
 
 ```tsx error UI_PROP
 export function render() {
-  return <page><row onClick={() => {}}><text>Not a control</text></row></page>;
+  return <page><view onClick={() => {}}><text>Not a control</text></view></page>;
 }
 ```
 
@@ -61,10 +61,10 @@ export function render() {
   return (
     <page>
       <button onClick={() => {}} className="rounded-xl bg-surface px-4 py-3">
-        <row className="items-center gap-3">
+        <view className="flex-row items-center gap-3">
           <text className="grow">Wi-Fi</text>
           <switch bind={on} aria-label="Wi-Fi" />
-        </row>
+        </view>
       </button>
     </page>
   );
@@ -119,8 +119,7 @@ reader reads them as a named list ("2 of 3"), and dots under it follow the page 
 
 ## Dragging an element
 
-`drag="x"` or `drag="y"` lets the finger move a `<view>`, `<row>`, `<column>` or
-`<button>` along one axis, its whole subtree with it, between its `dragSnapPoints`: up to 8 offsets from
+`drag="x"` or `drag="y"` lets the finger move a `<view>` or `<button>` along one axis, its whole subtree with it, between its `dragSnapPoints`: up to 8 offsets from
 where layout put it, in px or `%` of its own size (`x` offsets mirror in RTL, like `start`/`end`). The
 points are also its bounds: past the first or last it follows only part of the finger. On release it
 springs to the nearest point, carried on by the finger's speed; a flick moves at least one point on.

@@ -6,10 +6,10 @@ pub const UI_ABI: u32 = 1;
 /// Wire tag ids.
 pub mod tag {
     pub const COLUMN: usize = 0;
-    pub const ROW: usize = 1;
+    pub const RESERVED_1: usize = 1;
     pub const TEXT: usize = 2;
     pub const BUTTON: usize = 3;
-    pub const SPACER: usize = 4;
+    pub const RESERVED_4: usize = 4;
     pub const SCROLL: usize = 5;
     pub const LIST: usize = 6;
     pub const IMAGE: usize = 7;
@@ -21,8 +21,8 @@ pub mod tag {
     pub const RADIO_OPTION: usize = 13;
     pub const SEARCH: usize = 14;
     pub const SLIDER: usize = 15;
-    pub const GRID: usize = 16;
-    pub const STACK: usize = 17;
+    pub const RESERVED_16: usize = 16;
+    pub const RESERVED_17: usize = 17;
     pub const PLOT: usize = 18;
     pub const VECTOR: usize = 19;
     pub const PAGE: usize = 20;
@@ -257,7 +257,7 @@ pub mod field {
     pub const ARIA_VALUE_TEXT: usize = 220;
 }
 
-pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select", "video"];
+pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video"];
 
 /// Wire name and value kind, indexed by field id.
 pub const FIELDS: &[(&str, &str)] = &[
@@ -308,7 +308,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("max", "slider-number"),
     ("step", "slider-number"),
     ("onChange", "slider-handle"),
-    ("columns", "grid-columns"),
+    ("columns", "reserved"),
     ("offsetX", "reserved"),
     ("offsetY", "reserved"),
     ("lines", "text-lines"),
@@ -649,10 +649,10 @@ pub struct TagAdmission {
 /// Indexed by tag id.
 pub const TAG_ADMISSION: &[TagAdmission] = &[
     TagAdmission { children: Children::Any, content: true, parent: None, root: false, keyed: false, requires: &[] },
-    TagAdmission { children: Children::Any, content: true, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Runs, content: true, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Content, content: false, parent: None, root: false, keyed: false, requires: &[] },
-    TagAdmission { children: Children::None, content: true, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Any, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Rows, content: false, parent: None, root: false, keyed: false, requires: &[field::LIST_ID, field::LIST_COUNT, field::LIST_LEADING, field::LIST_TRAILING] },
     TagAdmission { children: Children::None, content: true, parent: None, root: false, keyed: false, requires: &[field::IMAGE_SRC] },
@@ -664,8 +664,8 @@ pub const TAG_ADMISSION: &[TagAdmission] = &[
     TagAdmission { children: Children::Text, content: false, parent: Some(tag::RADIO), root: false, keyed: true, requires: &[field::CHECKED] },
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
-    TagAdmission { children: Children::Any, content: true, parent: None, root: false, keyed: false, requires: &[] },
-    TagAdmission { children: Children::Any, content: true, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::None, content: true, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Any, content: false, parent: None, root: true, keyed: false, requires: &[] },
@@ -725,13 +725,13 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::LINK, tag::COLUMN, tag::ROW, tag::PAGE, tag::TEXT, tag::SELECT, tag::VIDEO]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::LINK, tag::COLUMN, tag::PAGE, tag::TEXT, tag::SELECT, tag::VIDEO]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
-    FieldAdmission { tags: Some(&[tag::GRID]), parent: None },
+    FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::TEXT]), parent: None },
@@ -787,7 +787,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::PAGE, tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::PAGE, tag::BUTTON]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
@@ -877,17 +877,17 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::STACK, tag::GRID]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN]), parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::STACK, tag::GRID]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN]), parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::STACK, tag::GRID, tag::BUTTON]), parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::STACK, tag::GRID, tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON]), parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::STACK, tag::GRID, tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },

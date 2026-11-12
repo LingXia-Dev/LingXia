@@ -93,10 +93,10 @@ fn overflow_wrap_options_are_validated_on_the_wire() {
 #[test]
 fn flex_wrap_options_are_validated_on_the_wire() {
     for value in [json!("nowrap"), json!("wrap"), json!("wrap-reverse")] {
-        assert!(decode(json!([1, -1, "", "", "", 1, 87, value]).as_array().unwrap()).is_ok());
+        assert!(decode(json!([0, -1, "", "", "", 1, 87, value]).as_array().unwrap()).is_ok());
     }
     for value in [json!("normal"), json!(0), json!(null)] {
-        assert!(decode(json!([1, -1, "", "", "", 1, 87, value]).as_array().unwrap()).is_err());
+        assert!(decode(json!([0, -1, "", "", "", 1, 87, value]).as_array().unwrap()).is_err());
     }
 }
 
@@ -650,7 +650,7 @@ fn contract_drift_reports_admission_and_limit_changes() {
             .any(|e| e.contains("admission text"))
     );
     let mut widened = schema.clone();
-    widened["fields"][field::ON_CLICK]["tags"] = json!(["button", "row"]);
+    widened["fields"][field::ON_CLICK]["tags"] = json!(["button", "scroll"]);
     assert!(
         contract_drift(&widened)
             .iter()

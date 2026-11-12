@@ -95,7 +95,7 @@ fn walk(buffer: &[Value], previous: Option<&Wire>) -> Result<(Vec<Record>, Wire)
         }
         let tag = header[0]
             .as_u64()
-            .filter(|v| *v < TAGS.len() as u64)
+            .filter(|v| *v < TAGS.len() as u64 && !TAGS[*v as usize].starts_with("reserved-"))
             .ok_or("UI_TAG: unknown tag id")? as usize;
         let parent_offset = header[1]
             .as_i64()

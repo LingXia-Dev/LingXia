@@ -1,6 +1,6 @@
 import { elements, admission, limits, commonProps } from '../generated/contract.js';
 import { resolveClasses, classGeneration } from '../style/classes.js';
-import { classElementProblem } from '../style/hints.js';
+import { classElementProblem, gridProblem, gridRefuses, tagHint } from '../style/hints.js';
 import { lowerStyle, paintOnly, mergeStyle } from '../style/lower.js';
 import { h, readNode, isNode, isFragment, entries } from './nodes.js';
 import { render, page } from './state.js';
@@ -127,7 +127,7 @@ export function takeLowered() {
 }
 
 // Whether JSON carries a style unchanged. The only fields it may drop are these, read solely by value.
-const droppable = new Set(['children', 'release']);
+const droppable = new Set(['children', 'every', 'release']);
 function portable(style) {
   return Object.entries(style).every(([name, value]) => value === undefined ? droppable.has(name)
     : name === 'typography' ? Object.entries(value).every(([field, size]) => size === undefined ? field === 'lineHeight' : plainJson(size))
@@ -158,8 +158,8 @@ export function seedLowered(text) {
   return true;
 }
 
-function nodeStyle(tag, props, data, extra, inherited, direction, structure) {
-  if (props.style !== undefined || extra !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure);
+function nodeStyle(tag, props, data, extra, inherited, direction, structure, every) {
+  if (props.style !== undefined || extra !== undefined || every !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every);
   const environment = envKey(envOf(render.view));
   if (loweredClasses !== classGeneration) {
     // A new class table: what was lowered, here or by a previous isolate, read the old one.
@@ -200,7 +200,7 @@ const runTags = new Set(['span', 'link']);
 const disabledField = { color: 'text-muted', backgroundColor: 'surface-sunken', borderColor: 'line' };
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
-function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure) {
+function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every) {
   const env = { ...loweringEnv(envOf(render.view)), direction, structure, data };
   const classes = resolveClasses(props.className, env);
   // A run takes the size of `text-sm` but not the line height paired with it.
@@ -211,9 +211,11 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
   const base = disabled && classes?.disabled ? classes.disabled : classes?.base;
   const stray = base && Object.keys(base).find(key => !elements[tag].style.includes(key) && !(props.style && key in props.style));
   if (stray) throw Error(classElementProblem(authoredClass(props.className, stray, env), stray, tag));
-  const author = mergeStyle(direction, extra, base, muted, props.style);
-  // A `<view>` is a block until it says `flex`: then, as in CSS, it lays out a row.
-  if (tag === 'view' && (author?.display === 'flex' || author?.display === 'inline-flex') && author.flexDirection === undefined)
+  const author = mergeStyle(direction, extra, base, every, muted, props.style);
+  const flexOnly = author?.display === 'grid' && base && gridRefuses(Object.keys(base).filter(key => !(props.style && key in props.style)));
+  if (flexOnly) throw Error(gridProblem(authoredClass(props.className, flexOnly, env), flexOnly));
+  // A box is a flex column; `flex` alone asks for a row, as `display: flex` does in CSS.
+  if ((tag === 'view' || tag === 'page') && (author?.display === 'flex' || author?.display === 'inline-flex') && author.flexDirection === undefined)
     author.flexDirection = 'row';
   const { fields, typography } = lowerStyle(tag, author, env, inherited);
   const states = {};
@@ -243,7 +245,7 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
     paintOnly(name.replace(/^has/, 'has-').toLowerCase(), tag, delta);
     descendants[kind] = lowerStyle(tag, delta, env, { fontSize: typography.fontSize }).fields;
   }
-  return { fields, states, typography, author, children: classes?.children, descendants, release: classes?.release };
+  return { fields, states, typography, author, children: classes?.children, every: classes?.every, descendants, release: classes?.release };
 }
 
 /** The tag `List` renders; page code reaches the list element only through it. */
@@ -286,7 +288,7 @@ export function resolveNode(node, identity, depth = 0, parent = {}) {
     const expansion = expand(tag, original, children, identity, parent);
     if (expansion === null) return null;
     if (expansion) {
-      const result = resolveNode(expansion.node, identity, depth + 1, { ...parent, extra: undefined, sibling: undefined });
+      const result = resolveNode(expansion.node, identity, depth + 1, { ...parent, extra: undefined, every: undefined, sibling: undefined });
       expansion.finish(result);
       return result;
     }
@@ -335,7 +337,7 @@ function ariaProps(props) {
 
 const dragProps = ['dragSnapPoints', 'bind', 'onDragStart', 'onDragEnd'];
 function resolveElement(tag, original, children, identity, depth, parent) {
-  if (typeof tag !== 'string' || !has(elements, tag)) throw Error(`UI_TAG: ${String(tag)}`);
+  if (typeof tag !== 'string' || !has(elements, tag)) throw Error(`UI_TAG: ${String(tag)}${tagHint(tag)}`);
   const element = elements[tag];
   const props = { ...original };
   admit(tag, element, props);
@@ -355,7 +357,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const authored = entries(children), flat = authored.map(entry => entry.child);
   // The data-* props as variants and automation read them; nothing below changes them.
   const data = dataOf(props);
-  const style = nodeStyle(tag, props, data, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
+  const style = nodeStyle(tag, props, data, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every);
   const inline = child => typeof child === 'string' || typeof child === 'number';
   if ((tag === 'span' || tag === 'link') && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>`);
   if (tag === 'link' && parent.inLink) throw Error('UI_TEXT: links do not nest');
@@ -592,7 +594,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (key !== undefined) keys.add(key);
       const part = key === undefined ? `position:${at}` : `key:${JSON.stringify(key)}`;
       const node = resolveNode(child, `${identity}/${tag}/${part}`, depth + 1, {
-        tag, typography: style.typography, direction, extra: position < last ? style.children : undefined,
+        tag, typography: style.typography, direction, extra: position < last ? style.children : undefined, every: style.every,
         sibling: { index: position, count: flat.length },
         inControl: parent.inControl || admission.tags[element.wire].children === 'content',
         popovers: props[popoverScope] ?? parent.popovers,
@@ -696,7 +698,7 @@ function semantics(tag, props, wire) {
   }
   // Containers and text take a label here; controls wire their own.
   if (role === 'menuitem' && tag !== 'button') throw Error('UI_PROP: role="menuitem" belongs on a <button>');
-  if (['view', 'column', 'row', 'page', 'text', 'dialog'].includes(tag) && props.accessibilityLabel !== undefined) {
+  if (['view', 'page', 'text', 'dialog'].includes(tag) && props.accessibilityLabel !== undefined) {
     check.label(props.accessibilityLabel, 'UI_PROP');
     wire('accessibilityLabel', props.accessibilityLabel);
   }

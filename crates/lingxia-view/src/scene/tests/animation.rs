@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 #[test]
 fn subtree_translation_recovers_offscreen_paint_without_moving_siblings() {
     let mut page = crate::ViewSession::new(&crate::session::tests::source(
-        "function render(){return h('stack',{style:{width:100,height:100}},h('column',{'data-testid':'card',style:{left:120,top:10,width:30,height:30,backgroundColor:'#ff0000'}}),h('column',{'data-testid':'sibling',style:{left:0,top:50,width:20,height:20,backgroundColor:'#00ff00'}}));}"
+        "function render(){return h('view',{style:{display:'grid',width:100,height:100}},h('view',{'data-testid':'card',style:{gridColumn:'1',gridRow:'1',left:120,top:10,width:30,height:30,backgroundColor:'#ff0000'}}),h('view',{'data-testid':'sibling',style:{gridColumn:'1',gridRow:'1',left:0,top:50,width:20,height:20,backgroundColor:'#00ff00'}}));}"
     )).unwrap();
     let original = page.layout(100, 100, 1.0).unwrap();
     let card = original.nodes.iter().find(|n| n.test_id == "card").unwrap();
@@ -37,7 +37,7 @@ fn subtree_translation_recovers_offscreen_paint_without_moving_siblings() {
 fn transformed_plot_selection_uses_original_geometry_inside_static_scroll_clips() {
     for kind in ["bar", "pie"] {
         let source = format!(
-            "function render(){{return h('scroll',{{style:{{width:100,height:80,borderRadius:8}}}},h('column',{{'data-testid':'card',style:{{width:80,height:140}}}},h('plot',{{kind:'{kind}',values:[2,4,6],colors:['#123456'],'aria-label':'Series',onSelect:()=>{{}},style:{{width:80,height:60}}}})));}}"
+            "function render(){{return h('scroll',{{style:{{width:100,height:80,borderRadius:8}}}},h('view',{{'data-testid':'card',style:{{width:80,height:140}}}},h('plot',{{kind:'{kind}',values:[2,4,6],colors:['#123456'],'aria-label':'Series',onSelect:()=>{{}},style:{{width:80,height:60}}}})));}}"
         );
         let mut page = crate::ViewSession::new(&crate::session::tests::source(&source)).unwrap();
         let original = page.layout(100, 100, 1.0).unwrap();
@@ -88,7 +88,7 @@ fn transformed_plot_selection_uses_original_geometry_inside_static_scroll_clips(
 #[test]
 fn animated_opacity_replaces_base_alpha_and_isolates_overlapping_children() {
     let mut page = crate::ViewSession::new(&crate::session::tests::source(
-        "function render(){return h('stack',{style:{width:40,height:40,opacity:0.8}},h('column',{style:{width:40,height:40,backgroundColor:'#ff0000'}}),h('column',{style:{width:40,height:40,backgroundColor:'#0000ff'}}));}"
+        "function render(){return h('view',{style:{display:'grid',width:40,height:40,opacity:0.8}},h('view',{style:{gridColumn:'1',gridRow:'1',width:40,height:40,backgroundColor:'#ff0000'}}),h('view',{style:{gridColumn:'1',gridRow:'1',width:40,height:40,backgroundColor:'#0000ff'}}));}"
     )).unwrap();
     let display = page.layout(50, 50, 1.0).unwrap().animate_for_test(
         0,
@@ -114,7 +114,7 @@ fn animated_interactive_geometry_is_rejected_before_build_when_unsupported() {
             ""
         };
         let source = format!(
-            "function render(){{return h('column',{{}},h('{tag}',{{{label}style:{{width:50,height:30}}}}));}}"
+            "function render(){{return h('view',{{}},h('{tag}',{{{label}style:{{width:50,height:30}}}}));}}"
         );
         let mut page = crate::ViewSession::new(&crate::session::tests::source(&source)).unwrap();
         let display = page.layout(100, 100, 1.0).unwrap();
@@ -138,7 +138,7 @@ fn animated_interactive_geometry_is_rejected_before_build_when_unsupported() {
 
 fn primitives(scale: f32) -> DisplayList {
     let mut page = crate::ViewSession::new(&crate::session::tests::source(
-        "function render(){return h('column',{});}",
+        "function render(){return h('view',{});}",
     ))
     .unwrap();
     let mut display = page.layout(80, 80, scale).unwrap();
@@ -371,7 +371,7 @@ fn group_surfaces_cover_what_they_paint_and_the_backdrop_they_read() {
 fn a_transitioning_background_is_painted_on_a_node_that_has_none() {
     use crate::animation::transition::Overrides;
     let mut page = crate::ViewSession::new(&crate::session::tests::source(
-        "function render(){return h('column',{style:{backgroundColor:'#ffffff',width:40,height:40}},h('column',{'data-testid':'x',style:{width:20,height:20,borderRadius:4}}))}",
+        "function render(){return h('view',{style:{backgroundColor:'#ffffff',width:40,height:40}},h('view',{'data-testid':'x',style:{width:20,height:20,borderRadius:4}}))}",
     ))
     .unwrap();
     let display = page.layout(40, 40, 1.0).unwrap();
@@ -400,7 +400,7 @@ fn a_transitioning_background_is_painted_on_a_node_that_has_none() {
 fn animated_subtrees_are_self_contained_spans_and_the_rest_is_unchanged() {
     use crate::scene::paint::Paint;
     let mut page = crate::ViewSession::new(&crate::session::tests::source(
-        "function render(){return h('column',{style:{backgroundColor:'#ffffff',width:100,height:100,opacity:0.9}},h('column',{style:{height:20,backgroundColor:'#ff0000'}}),h('column',{'data-testid':'spin',style:{width:20,height:20,opacity:0.5,backgroundColor:'#00ff00'}},h('column',{'data-testid':'inner',style:{width:10,height:10,backgroundColor:'#0000ff'}})),h('column',{style:{height:20,backgroundColor:'#000000'}}))}",
+        "function render(){return h('view',{style:{backgroundColor:'#ffffff',width:100,height:100,opacity:0.9}},h('view',{style:{height:20,backgroundColor:'#ff0000'}}),h('view',{'data-testid':'spin',style:{width:20,height:20,opacity:0.5,backgroundColor:'#00ff00'}},h('view',{'data-testid':'inner',style:{width:10,height:10,backgroundColor:'#0000ff'}})),h('view',{style:{height:20,backgroundColor:'#000000'}}))}",
     ))
     .unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
@@ -457,7 +457,7 @@ fn animated_subtrees_are_self_contained_spans_and_the_rest_is_unchanged() {
 #[test]
 fn a_dragged_element_off_its_rest_is_a_span_and_the_rest_is_unchanged() {
     let mut page = crate::ViewSession::new(&crate::session::tests::source(
-        "function render(){return h('page',{},h('column',{style:{height:20,backgroundColor:'#ff0000'}}),h('view',{'data-testid':'box',drag:'x',dragSnapPoints:[0,60],'aria-label':'Box',style:{width:40,height:40,backgroundColor:'#00ff00'}}),h('column',{style:{height:20,backgroundColor:'#000000'}}))}",
+        "function render(){return h('page',{},h('view',{style:{height:20,backgroundColor:'#ff0000'}}),h('view',{'data-testid':'box',drag:'x',dragSnapPoints:[0,60],'aria-label':'Box',style:{width:40,height:40,backgroundColor:'#00ff00'}}),h('view',{style:{height:20,backgroundColor:'#000000'}}))}",
     ))
     .unwrap();
     let display = page.layout(200, 200, 1.0).unwrap();

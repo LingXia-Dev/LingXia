@@ -72,7 +72,7 @@ export function Field({
   onSubmit?: (value: string) => void;
 }) {
   return (
-    <column className="gap-1.5">
+    <view className="gap-1.5">
       <text className="text-sm font-medium">{label}</text>
       <input
         data-testid={testId}
@@ -85,7 +85,7 @@ export function Field({
         onSubmit={onSubmit}
         className="min-h-11 px-3 py-2 rounded-lg border border-line-strong bg-surface text-base placeholder:text-muted focus:border-focus"
       />
-    </column>
+    </view>
   );
 }
 
@@ -104,7 +104,7 @@ export function Segmented<T extends string>({
   disabled?: boolean;
 }) {
   return (
-    <row data-testid={testId} className="gap-1 p-1 bg-surface-sunken rounded-xl">
+    <view data-testid={testId} className="flex-row gap-1 p-1 bg-surface-sunken rounded-xl">
       {options.map(option => (
         <button
           key={option.value}
@@ -123,6 +123,6 @@ export function Segmented<T extends string>({
           {option.label}
         </button>
       ))}
-    </row>
+    </view>
   );
 }

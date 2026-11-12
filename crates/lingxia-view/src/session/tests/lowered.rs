@@ -5,7 +5,7 @@ use rong::Source;
 
 fn page() -> ViewSession {
     let module =
-        super::source("function render(){return h('page',{},h('column',{},h('text',{},'a')))}");
+        super::source("function render(){return h('page',{},h('view',{},h('text',{},'a')))}");
     let session = ViewSession::new(&module).unwrap();
     // Count takes; the host globals are plain properties.
     eval(

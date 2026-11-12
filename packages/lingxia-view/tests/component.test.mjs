@@ -25,12 +25,12 @@ test('data List keeps item state through reorder and rejects duplicate keys', ()
 test('component children preserve zero/one/many and explicit JSX precedence', () => {
   const seen = [];
   function Forward({children}) { seen.push(children); return children ?? h('text', {}, 'empty'); }
-  const records = describe(() => h('column', {}, h(Forward), h(Forward, {children:h('text', {}, 'ignored')}, h('text', {}, 'one'))), {});
+  const records = describe(() => h('view', {}, h(Forward), h(Forward, {children:h('text', {}, 'ignored')}, h('text', {}, 'one'))), {});
   assert.equal(seen[0], undefined);
   assert.equal(Array.isArray(seen[1]), false);
   assert.ok(records.includes('one'));
   assert.ok(!records.includes('ignored'));
-  function Many({children}) { assert.equal(children.length, 2); return h('column', {}, children); }
+  function Many({children}) { assert.equal(children.length, 2); return h('view', {}, children); }
   assert.ok(describe(() => h(Many, {}, h('text', {}, 'a'), h('text', {}, 'b')), {}).includes('b'));
   assert.deepEqual(childrenToArray([null, ['a', false, [1]], undefined]), ['a', 1]);
 });
@@ -63,7 +63,7 @@ test('empty invoked components retain own state and dispose descendants only aft
   let visible = true, owner, child;
   function Child() { child = useLocal('value', 'child'); return h('text', {}, child.value); }
   function Optional({ visible }) { owner = useLocal('value', 'owner'); return visible ? h(Child) : null; }
-  const render = () => h('column', {}, h(Optional, { visible }));
+  const render = () => h('view', {}, h(Optional, { visible }));
   describe(render, {}); owner.set('kept'); child.set('changed'); describe(render, {});
   visible = false; prepare(render, {}); discard(); visible = true;
   assert.ok(describe(render, {}).includes('changed'));
@@ -71,7 +71,7 @@ test('empty invoked components retain own state and dispose descendants only aft
   assert.throws(() => child.set('stale'), /UI_LOCAL: "value" in .* is no longer mounted/); visible = true;
   assert.ok(describe(render, {}).includes('child')); assert.equal(owner.value, 'kept');
   for (const value of [null, undefined, false, true]) {
-    assert.doesNotThrow(() => describe(() => h('column', {}, h(() => value)), {}));
+    assert.doesNotThrow(() => describe(() => h('view', {}, h(() => value)), {}));
     assert.throws(() => describe(() => h(() => value), {}), /UI_ROOT/);
   }
 });
@@ -81,7 +81,7 @@ test('an empty component keeps its request while removing its descendant request
   const view = createView({}, {}); let visible = true;
   function Child() { useRequest('load', view.actions.load, {owner:'child'}); return h('text'); }
   function Optional({ visible }) { useRequest('load', view.actions.load, {owner:'parent'}); return visible ? h(Child) : null; }
-  const render = () => h('column', {}, h(Optional, { visible }));
+  const render = () => h('view', {}, h(Optional, { visible }));
   describe(render, view); const started = takeActionRequests().map(JSON.parse);
   assert.equal(started.length, 2);
   visible = false; describe(render, view); takeActionRequests();
@@ -102,18 +102,18 @@ test('local JSON domain omits optional object fields without admitting invalid a
 
 test('fragments lay their children out in their place, keeping each child slot', () => {
   const text = (value, props = {}) => h('text', props, value);
-  const inline = rendered(() => h('column', {}, text('a'), h(Fragment, null, false, text('b'), text('c')), text('d')));
+  const inline = rendered(() => h('view', {}, text('a'), h(Fragment, null, false, text('b'), text('c')), text('d')));
   assert.deepEqual(inline.children.map(child => [child.text, child.props.childSlot]), [['a', undefined], ['b', '1.1'], ['c', '1.2'], ['d', '2']]);
   function Pair() { return h(Fragment, null, text('x'), text('y')); }
-  const component = rendered(() => h('column', {}, false, h(Pair)));
+  const component = rendered(() => h('view', {}, false, h(Pair)));
   assert.deepEqual(component.children.map(child => [child.text, child.props.childSlot]), [['x', '1.0'], ['y', '1.1']]);
   // A keyed group moves together: its children are named by the group key.
-  const groups = order => rendered(() => h('column', {}, order.map(id => h(Fragment, { key: id }, text(`${id}1`), text(`${id}2`, { key: 'tail' })))));
+  const groups = order => rendered(() => h('view', {}, order.map(id => h(Fragment, { key: id }, text(`${id}1`), text(`${id}2`, { key: 'tail' })))));
   const keys = groups(['a', 'b']).children.map(child => [child.text, child.key]);
   assert.deepEqual(keys, [['a1', '["a","#0"]'], ['a2', '["a","tail"]'], ['b1', '["b","#0"]'], ['b2', '["b","tail"]']]);
   assert.deepEqual(groups(['b', 'a']).children.map(child => child.key), [keys[2][1], keys[3][1], keys[0][1], keys[1][1]]);
   function Keyed() { return h(Fragment, null, text('k', { key: 'same' })); }
-  assert.throws(() => describe(() => h('column', {}, h(Keyed), h(Keyed)), {}), /UI_KEY: duplicate sibling/);
+  assert.throws(() => describe(() => h('view', {}, h(Keyed), h(Keyed)), {}), /UI_KEY: duplicate sibling/);
   assert.throws(() => describe(() => h(Fragment, null, text('a'), text('b')), {}), /UI_ROOT/);
   assert.throws(() => describe(() => h('text', {}, h(Pair)), {}), /UI_TEXT: a component inside <text> returns a fragment/);
 });
@@ -122,7 +122,7 @@ test('local state inside a fragment child survives a sibling appearing before th
   let cell;
   function Counter() { cell = useLocal('n', 0); return h('text', {}, String(cell.value)); }
   let extra = false;
-  const render = () => h('column', {}, extra && h('text', {}, 'new'), h(Fragment, null, h(Counter)));
+  const render = () => h('view', {}, extra && h('text', {}, 'new'), h(Fragment, null, h(Counter)));
   describe(render, {}); cell.set(5); describe(render, {});
   extra = true;
   assert.ok(rendered(render).children.some(child => child.text === '5'));
@@ -130,7 +130,7 @@ test('local state inside a fragment child survives a sibling appearing before th
 
 test('Details discloses its body behind a Summary toggle that announces expanded', () => {
   const { Details, Summary } = details;
-  const view = () => h('column', {}, h(Details, { 'data-testid': 'lic' }, h(Summary, {}, 'Licenses'), h('text', {}, 'MIT')));
+  const view = () => h('view', {}, h(Details, { 'data-testid': 'lic' }, h(Summary, {}, 'Licenses'), h('text', {}, 'MIT')));
   let root = rendered(view);
   const summary = root.children[0].children[0];
   assert.equal(summary.testId, 'lic-summary');
@@ -187,7 +187,7 @@ test('useLocal(initial) keys state by call order, independent of named locals', 
     cells.splice(0, 3, a, named, b);
     return h('text', {}, `${a.value}|${named.value}|${b.value}`);
   }
-  const render = () => h('column', {}, h(Counter, { key: 'one' }), h(Counter, { key: 'two' }));
+  const render = () => h('view', {}, h(Counter, { key: 'one' }), h(Counter, { key: 'two' }));
   describe(render, {});
   cells[0].set(5); cells[2].set('typed');
   const output = describe(render, {});

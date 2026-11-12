@@ -1,20 +1,36 @@
 import { elements } from '../generated/contract.js';
 
-// The fix for a class that sets a property its element does not render.
-const grid = {
+const container = new Set(['alignItems', 'alignContent', 'justifyContent', 'justifyItems', 'flexDirection', 'flexWrap',
+  'gap', 'rowGap', 'columnGap', 'gridTemplateColumns', 'gridTemplateRows', 'gridAutoColumns', 'gridAutoRows', 'gridAutoFlow']);
+const layouts = new Set(['view', 'scroll', 'list', 'button', 'checkbox', 'page']);
+// Box tags that `<view>` and its classes replace.
+const boxes = { column: '<view>', row: '<view className="flex-row">', grid: '<view className="grid">',
+  stack: '<view className="grid *:col-start-1 *:row-start-1">', spacer: '<view>' };
+
+/** `; use <view …>` for a box tag the layout classes replace, else nothing. */
+export function tagHint(tag) {
+  return Object.hasOwn(boxes, tag) ? `; use ${boxes[tag]}` : '';
+}
+
+// Flex-only properties a grid refuses, with the grid way to say it.
+const gridOnly = {
   flexWrap: '; grid items wrap into rows by themselves (use grid-cols-[repeat(auto-fit,minmax(…,1fr))])',
   flexDirection: '; use grid-flow-col to fill columns first',
 };
-const container = new Set(['alignItems', 'alignContent', 'justifyContent', 'justifyItems', 'flexDirection', 'flexWrap',
-  'gap', 'rowGap', 'columnGap', 'gridTemplateColumns', 'gridTemplateRows', 'gridAutoColumns', 'gridAutoRows', 'gridAutoFlow']);
-const layouts = new Set(['view', 'column', 'row', 'grid', 'scroll', 'list', 'stack', 'button', 'checkbox', 'page']);
+
+/** The flex-only property among `props` that a grid refuses, if any. */
+export const gridRefuses = props => props.find(prop => Object.hasOwn(gridOnly, prop));
+
+/** `UI_CLASS_ELEMENT` for class `name` setting flex-only `prop` on a grid. */
+export function gridProblem(name, prop) {
+  return `UI_CLASS_ELEMENT: ${name} does not apply to <view className="grid">${gridOnly[prop]}`;
+}
 
 /** `UI_CLASS_ELEMENT` for class `name` setting `prop`, which `<tag>` does not render. */
 export function classElementProblem(name, prop, tag) {
   let hint = '';
-  if (tag === 'grid') hint = grid[prop] ?? '';
   // Flex elements center with the flex pair; `place-items-*` and `justify-items-*` are grid-only.
-  else if (prop === 'justifyItems' && layouts.has(tag)) hint = '; on a flex element center with items-center justify-center';
+  if (prop === 'justifyItems' && layouts.has(tag)) hint = '; on a flex element center with items-center justify-center';
   else if (container.has(prop) && !layouts.has(tag)) hint = '; layout classes go on the element that holds it';
   else hint = appliesTo(prop);
   return `UI_CLASS_ELEMENT: ${name} does not apply to <${tag}>${hint}`;
@@ -22,6 +38,6 @@ export function classElementProblem(name, prop, tag) {
 
 /** `; it applies to <a>, <b>` when only a few elements render `prop`, else nothing. */
 export function appliesTo(prop) {
-  const takers = Object.keys(elements).filter(name => elements[name].style.includes(prop) && name !== 'column');
+  const takers = Object.keys(elements).filter(name => elements[name].style.includes(prop));
   return takers.length && takers.length <= 3 ? `; it applies to ${takers.map(name => `<${elements[name].component ?? name}>`).join(', ')}` : '';
 }

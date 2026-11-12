@@ -4,7 +4,7 @@ use serde_json::json;
 #[test]
 fn flex_container_directions_reflow_without_changing_identity() {
     let source = crate::session::tests::source(
-        "globalThis.direction='row';function render(){return h('view',{style:{flexDirection:direction,display:'flex',gap:10}},[0,1].map(i=>h('column',{key:String(i),'data-testid':'item'+i,style:{width:40,height:20}})))}",
+        "globalThis.direction='row';function render(){return h('view',{style:{flexDirection:direction,display:'flex',gap:10}},[0,1].map(i=>h('view',{key:String(i),'data-testid':'item'+i,style:{width:40,height:20}})))}",
     );
     let mut page = ViewSession::new(&source).unwrap();
     let mut identities = None;
@@ -53,7 +53,7 @@ fn wire_keeps_flex_layout_options_bounded_and_container_specific() {
     let wire = json!([3, -1, "", "", "", 1, 103, "row"]);
     assert!(protocol::decode(wire.as_array().unwrap()).is_ok());
     // Any box may leave layout.
-    for tag in [2, 3, 5, 17] {
+    for tag in [2, 3, 5] {
         let wire = json!([tag, -1, "", "", "", 1, 104, "none"]);
         assert!(protocol::decode(wire.as_array().unwrap()).is_ok());
     }

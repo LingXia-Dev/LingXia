@@ -59,7 +59,7 @@ time (see [view-authoring.md](view-authoring.md)) and again at runtime.
 - `truncate` and `line-clamp-N` lower to `overflow`, `whiteSpace`,
   `textOverflow` and `lineClamp`; Tailwind's `-webkit-box` declarations are
   absorbed by the clamp.
-- `grid` makes any container a CSS Grid (`<grid>` is sugar for it). Track lists
+- `grid` makes any container a CSS Grid. Track lists
   take lengths, `%`, `fr`, `auto`, `min-/max-content`, `minmax()`, `fit-content()` and
   `repeat(N | auto-fit | auto-fill, …)`, ≤64 tracks; named lines, areas, subgrid and
   `calc()` fail. A number `gridTemplateColumns` is N equal columns.

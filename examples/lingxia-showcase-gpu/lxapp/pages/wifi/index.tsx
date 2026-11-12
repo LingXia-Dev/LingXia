@@ -17,14 +17,14 @@ export function render({ data, actions }: View) {
   return (
     <Page>
       <Section title="WiFi Module" description="Initialize or stop WiFi module">
-        <grid className="gap-3 grid-cols-2">
+        <view className="grid gap-3 grid-cols-2">
           <Button testId="wifi-start" disabled={enabled || !!data.scanning} onClick={() => actions.startWifi()}>
             Start WiFi
           </Button>
           <Button variant="destructive" testId="wifi-stop" disabled={!enabled || !!data.scanning} onClick={() => actions.stopWifi()}>
             Stop WiFi
           </Button>
-        </grid>
+        </view>
         {data.statusText !== 'Ready' && (
           <text data-testid="wifi-status" className="text-xs text-muted">
             {String(data.statusText || '')}
@@ -57,44 +57,44 @@ export function render({ data, actions }: View) {
           title="WiFi Connected Events"
           description="Listen to WiFi connection changes"
           action={
-            <row className="gap-2">
+            <view className="flex-row gap-2">
               <Button size="sm" testId="wifi-listener-on" disabled={listening} onClick={() => actions.onWifiConnected()}>
                 On
               </Button>
               <Button size="sm" variant="secondary" testId="wifi-listener-off" disabled={!listening} onClick={() => actions.offWifiConnected()}>
                 Off
               </Button>
-            </row>
+            </view>
           }
         >
-          <row className="items-center justify-between">
+          <view className="flex-row items-center justify-between">
             <text data-testid="wifi-listener-status" className="text-xs text-muted">{`Listening: ${listening ? 'On' : 'Off'}`}</text>
             {events.length > 0 && (
               <Button variant="ghost" size="sm" testId="wifi-clear-events" onClick={() => actions.clearWifiConnectedEvents()}>
                 Clear
               </Button>
             )}
-          </row>
+          </view>
           {!events.length ? (
             <text data-testid="wifi-events" className="text-sm text-muted">
               No events yet.
             </text>
           ) : (
-            <column data-testid="wifi-events" className="gap-2">
+            <view data-testid="wifi-events" className="gap-2">
               {events.map(event => (
-                <column key={event.id} className="p-3 gap-1 rounded-lg border border-line">
-                  <row className="justify-between">
+                <view key={event.id} className="p-3 gap-1 rounded-lg border border-line">
+                  <view className="flex-row justify-between">
                     <text className="text-xs text-muted">{event.time}</text>
                     <text className="text-xs text-muted">{percent(event.signalStrength)}</text>
-                  </row>
+                  </view>
                   <text className="text-sm font-semibold">{event.ssid || '--'}</text>
                   <text className="text-[11px] text-muted">
                     {`State: ${event.state ?? (event.connected === undefined ? '--' : event.connected ? 'Connected' : 'Disconnected')}`}
                   </text>
                   <text className="text-[11px] text-muted">{`Secure: ${event.secure === undefined ? '--' : event.secure ? 'Yes' : 'No'}`}</text>
-                </column>
+                </view>
               ))}
-            </column>
+            </view>
           )}
         </Section>
       )}
@@ -120,14 +120,14 @@ export function render({ data, actions }: View) {
                 onClick={() => ssid.set(wifi.ssid || '')}
                 className="p-3 rounded-lg border border-line bg-surface text-text text-left active:bg-surface-sunken"
               >
-                <column className="gap-1">
-                  <row className="items-center justify-between gap-2">
+                <view className="gap-1">
+                  <view className="flex-row items-center justify-between gap-2">
                     <text className="grow basis-0 min-w-0 text-sm font-semibold">{wifi.ssid || 'Hidden network'}</text>
                     <text className="px-2 py-1 rounded-full bg-accent-soft text-xs text-accent">{percent(wifi.signalStrength)}</text>
-                  </row>
+                  </view>
                   {!!wifi.bssid && <text className="text-xs text-muted">{`BSSID: ${wifi.bssid}`}</text>}
                   <text className="text-xs text-muted">{wifi.secure ? 'Security: Secured' : 'Security: Open'}</text>
-                </column>
+                </view>
               </button>
             ))}
           </scroll>

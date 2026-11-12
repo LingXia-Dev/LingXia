@@ -12,18 +12,18 @@ export function render({ data, actions }: View<Actions, { query: string }>) {
   const results = useRequest('results', actions.search, { query: query.value });
   return (
     <page>
-      <column className="p-4 gap-2">
+      <view className="p-4 gap-2">
         <input type="search" bind={query} aria-label="Search products" placeholder="Search" />
         {results.pending && <text className="text-xs text-muted">Searching…</text>}
-      </column>
+      </view>
       <List
         items={results.value ?? []}
         getKey={product => product.id}
         renderItem={product => (
-          <row className="justify-between px-4 py-3">
+          <view className="flex-row justify-between px-4 py-3">
             <text className="text-sm">{product.name}</text>
             <text className="text-sm tabular-nums">{product.price}</text>
-          </row>
+          </view>
         )}
       />
     </page>
@@ -38,13 +38,13 @@ no React and no DOM. This page lists what changes.
 
 | HTML / React | View |
 | --- | --- |
-| `div` | `<view>` / `<column>`, `<row>`, `<grid>`, `<stack>` |
+| `div` | `<view>` (`flex-row`, `grid` as in Tailwind) |
 | `p`, `h1`–`h6`, `span` with text | `<text>` (headings add `role="heading" headingLevel`) |
 | inline `span`, `strong`, `em`, `code` | `<span>` inside `<text>` |
 | `a` | `<link onClick>` inside `<text>`, or a `<button>` |
 | `img` | `<image>` |
 | `svg`, icon components | `<vector paths>` |
-| `ul`/`ol`/`li` | `<column role="list">` / `role="listitem"` |
+| `ul`/`ol`/`li` | `<view role="list">` / `role="listitem"` |
 | `input`, `textarea` | `<input>`, `<textarea>` |
 | `input type="checkbox"`, radio buttons, `select`, `input type="range"` | `<checkbox>`/`<switch>`, `<radio>`, `<select>`, `<slider>` |
 | `form` | none: state + an action ([Inputs and forms](inputs-and-forms.md)) |

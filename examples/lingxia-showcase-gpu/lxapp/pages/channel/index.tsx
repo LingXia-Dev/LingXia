@@ -36,8 +36,8 @@ export function render({ actions }: View<Actions>) {
   const status = channel.connected ? 'Connected' : channel.connecting ? 'Connecting...' : 'Disconnected';
   return (
     <Page testId="channel-page">
-      <row className="items-center gap-2">
-        <spacer
+      <view className="flex-row items-center gap-2">
+        <view
           className={
             channel.connected
               ? 'w-2 h-2 rounded-full bg-success'
@@ -49,9 +49,9 @@ export function render({ actions }: View<Actions>) {
         <text data-testid="channel-status" className="text-xs text-muted">
           {status}
         </text>
-      </row>
+      </view>
       <scroll data-testid="channel-symbols" className="overflow-x-auto">
-        <row className="gap-2">
+        <view className="flex-row gap-2">
           {symbols.value.map(value => (
             <Button
               key={value}
@@ -65,13 +65,13 @@ export function render({ actions }: View<Actions>) {
               {value}
             </Button>
           ))}
-        </row>
+        </view>
       </scroll>
       <Card className="p-6 gap-1">
         <text data-testid="channel-active" className="text-xs font-medium tracking-wider text-muted">
           {symbol.value || '---'}
         </text>
-        <row className="items-baseline gap-3">
+        <view className="flex-row items-baseline gap-3">
           <text data-testid="channel-price" className="text-4xl font-bold">
             {latest.value ? `$${latest.value.price.toFixed(2)}` : '---'}
           </text>
@@ -80,7 +80,7 @@ export function render({ actions }: View<Actions>) {
               {formatChange(latest.value.change)}
             </text>
           )}
-        </row>
+        </view>
         {latest.value && (
           <text data-testid="channel-last-time" className="text-xs text-muted">
             {new Date(latest.value.timestamp).toLocaleTimeString()}
@@ -92,31 +92,31 @@ export function render({ actions }: View<Actions>) {
           {!history.value.length ? (
             <text className="py-6 text-sm text-center text-muted">Waiting for data...</text>
           ) : (
-            <column className="divide-y divide-line">
+            <view className="divide-y divide-line">
               {history.value
                 .slice()
                 .reverse()
                 .map(tick => (
-                  <row key={`${tick.timestamp}-${tick.symbol}`} className="items-center justify-between gap-3 py-2.5">
+                  <view key={`${tick.timestamp}-${tick.symbol}`} className="flex-row items-center justify-between gap-3 py-2.5">
                     <text className="text-sm font-mono">{`$${tick.price.toFixed(2)}`}</text>
-                    <row className="items-center gap-3">
+                    <view className="flex-row items-center gap-3">
                       <text className={`text-sm font-medium ${changeClass(tick.change)}`}>{formatChange(tick.change)}</text>
                       <text className="text-xs text-muted">{new Date(tick.timestamp).toLocaleTimeString()}</text>
-                    </row>
-                  </row>
+                    </view>
+                  </view>
                 ))}
-            </column>
+            </view>
           )}
         </scroll>
       </Section>
-      <grid className="gap-3 grid-cols-2">
+      <view className="grid gap-3 grid-cols-2">
         <Button variant="secondary" testId="channel-disconnect" disabled={!channel.connected} onClick={() => channel.close()}>
           Disconnect
         </Button>
         <Button testId="channel-reconnect" disabled={channel.connecting || channel.connected} onClick={() => channel.connect()}>
           Reconnect
         </Button>
-      </grid>
+      </view>
       <ErrorState error={channel.error} />
     </Page>
   );

@@ -73,24 +73,24 @@ export function render({ data, actions }: View<PerfActions, PerfData>) {
   };
   return (
     <Page testId="perf-lab" data={{ 'data-scene': scene.value, 'data-count': String(count), 'data-verdict': verdict.value }}>
-      <row className="gap-2 flex-wrap">
+      <view className="flex-row gap-2 flex-wrap">
         {order.map(key => (
           <Button key={key} testId={`perf-tab-${key}`} size="sm" variant={scene.value === key ? 'primary' : 'secondary'}
             disabled={running.value} onClick={() => { scene.set(key); result.set(''); verdict.set(''); }}>
             {scenes[key].label}
           </Button>
         ))}
-      </row>
+      </view>
       <Section title={spec.label} description={`${spec.knob}: ${count}`} testId={`perf-scene-${scene.value}`}
         action={<Button testId="perf-run" size="sm" disabled={running.value} onClick={run}>{running.value ? 'Running…' : 'Run budget'}</Button>}>
-        <row className="gap-2">
+        <view className="flex-row gap-2">
           {spec.counts.map(value => (
             <Button key={String(value)} testId={`perf-count-${value}`} size="sm" variant={value === count ? 'primary' : 'secondary'}
               disabled={running.value} onClick={() => counts.set({ ...counts.value, [scene.value]: value })}>
               {String(value)}
             </Button>
           ))}
-        </row>
+        </view>
         <text data-testid="perf-result" data-verdict={verdict.value} className="text-xs font-mono tabular-nums">
           {result.value ? `${verdict.value.toUpperCase()} · ${result.value}` : running.value ? 'Measuring 5 s…' : 'Not run'}
         </text>
@@ -146,14 +146,14 @@ function LongList({ count, step, glide }: { count: number; step: number; glide: 
       anchor={glide ? { index: Math.min(GLIDE_ROWS, shown.value - 1), align: 'start', duration: RUN_MS }
         : step >= 0 ? { index: Math.min(step % count, shown.value - 1), align: 'start', seq: step } : undefined}
       renderItem={i => (
-        <row data-testid={`perf-row-${i}`} className="items-center gap-3 px-3 py-2 border-b border-line">
+        <view data-testid={`perf-row-${i}`} className="flex-row items-center gap-3 px-3 py-2 border-b border-line">
           <image src={image(i)} alt="" className="w-10 h-10 rounded-full" />
-          <column className="grow basis-0 min-w-0">
+          <view className="grow basis-0 min-w-0">
             <text className="text-sm font-medium truncate">Row {i + 1}</text>
             <text className="text-xs text-muted truncate">A second line of text to lay out in every row</text>
-          </column>
+          </view>
           <text className="px-2 rounded-full bg-accent text-on-accent text-xs tabular-nums">{String(i % 100)}</text>
-        </row>
+        </view>
       )} />
   );
 }
@@ -165,13 +165,13 @@ function Records({ rows, count }: { rows: readonly PerfRow[]; count: number }) {
   return (
     <List data-testid="perf-records" data-rows={String(rows.length)} className="h-96 rounded-lg border border-line" items={rows} getKey={row => String(row.id)}
       renderItem={row => (
-        <row data-testid={`perf-record-${row.id}`} className="items-center gap-3 px-3 py-2 border-b border-line">
-          <column className="grow basis-0 min-w-0">
+        <view data-testid={`perf-record-${row.id}`} className="flex-row items-center gap-3 px-3 py-2 border-b border-line">
+          <view className="grow basis-0 min-w-0">
             <text className="text-sm font-medium truncate">{row.title}</text>
             <text className="text-xs text-muted truncate">{row.note}</text>
-          </column>
+          </view>
           <text className={`px-2 rounded-full text-xs tabular-nums ${row.done ? 'bg-accent text-on-accent' : 'bg-surface-sunken'}`}>{String(row.count)}</text>
-        </row>
+        </view>
       )} />
   );
 }
@@ -179,18 +179,18 @@ function Records({ rows, count }: { rows: readonly PerfRow[]; count: number }) {
 /** Every node springs to the other side at once. */
 function Springs({ count, phase }: { count: number; phase: boolean }) {
   return (
-    <row data-testid="perf-springs" className="flex-wrap gap-1 h-80 overflow-hidden">
+    <view data-testid="perf-springs" className="flex-row flex-wrap gap-1 h-80 overflow-hidden">
       {Array.from({ length: count }, (_, i) => (
         <view key={String(i)} className={`w-3 h-3 rounded-full bg-accent transition-transform duration-500 ease-spring-bouncy ${phase ? 'translate-y-8 scale-150' : 'translate-y-0 scale-100'}`} />
       ))}
-    </row>
+    </view>
   );
 }
 
 /** Translucent layers over a spinning gradient: every frame blends the whole stack again. */
 function Layers({ count, spinning }: { count: number; spinning: boolean }) {
   return (
-    <stack data-testid="perf-layers" className="h-80 rounded-xl overflow-hidden bg-surface-sunken">
+    <view data-testid="perf-layers" className="grid *:col-start-1 *:row-start-1 h-80 rounded-xl overflow-hidden bg-surface-sunken">
       <view className={`absolute -inset-16 bg-conic from-accent via-danger to-accent ${spinning ? 'animate-spin' : ''}`} />
       {Array.from({ length: count }, (_, i) => (
         <view key={String(i)}
@@ -198,7 +198,7 @@ function Layers({ count, spinning }: { count: number; spinning: boolean }) {
           style={{ left: 8 + (i % 4) * 14, top: 8 + i * 12, width: 180, height: 120 }} />
       ))}
       <view className="absolute right-4 bottom-4 w-20 h-20 rounded-full bg-accent/50 blur-lg" />
-    </stack>
+    </view>
   );
 }
 
@@ -209,22 +209,22 @@ function Relayout({ count, tick }: { count: number; tick: number }) {
   const typed = 'typing… 輸入中 ⌨️ '.repeat(Math.floor(tick / 6) % 20);
   const width = 200 + ((tick * 3) % 160);
   return (
-    <column data-testid="perf-text" className="h-80 overflow-hidden">
+    <view data-testid="perf-text" className="h-80 overflow-hidden">
       <text className="text-sm" style={{ width }}>{PARAGRAPH.repeat(count) + typed}</text>
-    </column>
+    </view>
   );
 }
 
 /** A box the finger drags; the HUD draws the finger's trail against the frames'. */
 function Drag({ size }: { size: number }) {
   return (
-    <column className="gap-2">
+    <view className="gap-2">
       <text className="text-xs text-muted">Drag the box across. With the HUD on (lxdev lxapp page hud on), red dots trail the finger and green dots the frames that showed it.</text>
-      <row data-testid="perf-track" className="h-32 items-center rounded-xl bg-surface-sunken px-2">
+      <view data-testid="perf-track" className="flex-row h-32 items-center rounded-xl bg-surface-sunken px-2">
         <view data-testid="perf-box" drag="x" dragSnapPoints={[0, 60, 120, 180, 240]} aria-label="Box"
           className="rounded-xl bg-accent" style={{ width: size, height: size }} />
-      </row>
-    </column>
+      </view>
+    </view>
   );
 }
 
@@ -235,12 +235,12 @@ function ImageStream({ size, step }: { size: number; step: number }) {
     <List data-testid="perf-images" className="h-96 rounded-lg border border-line" items={rows} getKey={i => String(i)}
       anchor={step >= 0 ? { index: step % rows.length, align: 'start', seq: step } : undefined}
       renderItem={i => (
-        <row className="items-end gap-2 px-3 py-2 border-b border-line">
+        <view className="flex-row items-end gap-2 px-3 py-2 border-b border-line">
           {[1, 0.75, 0.5].map((factor, k) => (
             <image key={String(k)} src={image(i * 3 + k)} alt="" className="rounded-md"
               style={{ width: Math.round(size * factor) + (i % 7), height: Math.round(size * factor) + (i % 7) }} />
           ))}
-        </row>
+        </view>
       )} />
   );
 }

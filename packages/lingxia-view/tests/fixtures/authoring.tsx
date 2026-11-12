@@ -1,6 +1,6 @@
 import { List, useLocal, useRequest, useStream, useChannel, useLeaveGuard, useView, type Channel, type ChannelEndpoint, type Stream, type Props, type View } from '../../src/index.js';
 
-function Card(props: Props) { return <column {...props}/>; }
+function Card(props: Props) { return <view {...props}/>; }
 export function render(view: View<{ save(value: string): Promise<void> }, { title: string; rows: { text: string }[]; pair: [string, number] }>) {
   const draft = useLocal('draft', '');
   const checked = useLocal('checked', false);
@@ -37,8 +37,8 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   // @ts-expect-error style properties are checked per element
   const misplaced = <text style={{alignItems: 'center'}}/>;
   // @ts-expect-error grid columns are a style, not a prop
-  const columns = <grid columns={2}/>;
-  const grid = <grid style={{gridTemplateColumns: 2}}><text style={{lineClamp: 2}}>Card</text></grid>;
+  const columns = <view className="grid" columns={2}/>;
+  const grid = <view className="grid" style={{gridTemplateColumns: 2}}><text style={{lineClamp: 2}}>Card</text></view>;
   const disabled = <button disabled onClick={() => {}}>Save</button>;
   // @ts-expect-error controls are disabled, not enabled
   const enabled = <button enabled={false}/>;
@@ -69,11 +69,11 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   // @ts-expect-error alternative text must be text
   const invalidAlt = <image src="photo.png" alt={3}/>;
   // @ts-expect-error roles are a closed set.
-  const banner = <column role="banner"/>;
+  const banner = <view role="banner"/>;
   // @ts-expect-error aria states are booleans.
   const state = <button aria-pressed="yes">Go</button>;
   // @ts-expect-error unknown style keys are refused.
-  const unknownStyle = <column style={{ cursor: 'pointer' }}/>;
+  const unknownStyle = <view style={{ cursor: 'pointer' }}/>;
   // @ts-expect-error sizeClass is compact or regular.
   const wide = useView().env.sizeClass === 'wide';
   return <Card>
@@ -177,10 +177,10 @@ export async function readonlyResources() {
 }
 function Forward({children}: {children: JSX.Element}) { return children; }
 function Optional(): JSX.Element | null { return null; }
-export function composition() { return <column><Forward><text>One</text></Forward><Optional/></column>; }
+export function composition() { return <view><Forward><text>One</text></Forward><Optional/></view>; }
 function Empty() { return false; }
 export function listComposition() {
-  return <column><Empty/><List items={[{id:'one', title:'One'}]} getKey={item => item.id} renderItem={item => <text>{item.title}</text>}/></column>;
+  return <view><Empty/><List items={[{id:'one', title:'One'}]} getKey={item => item.id} renderItem={item => <text>{item.title}</text>}/></view>;
 }
 declare const readonlyView: View<{load(): Promise<Payload>}>;
 export async function readonlyAction() {

@@ -1,7 +1,7 @@
 use lingxia_view::protocol::field::{
-    FONT_SIZE, HEIGHT, LINE_HEIGHT, PADDING, TEXT_LINES, WHITE_SPACE,
+    FLEX_DIRECTION, FONT_SIZE, HEIGHT, LINE_HEIGHT, PADDING, TEXT_LINES, WHITE_SPACE,
 };
-use lingxia_view::protocol::tag::{BUTTON, COLUMN, GRID, INPUT, ROW, STACK, TEXT};
+use lingxia_view::protocol::tag::{BUTTON, COLUMN, INPUT, TEXT};
 use lingxia_view::{Renderer, protocol::decode};
 use serde_json::{Value, json};
 
@@ -112,7 +112,7 @@ fn line_limit_requires_a_bounded_integer_and_only_belongs_to_text() {
             .is_err()
         );
     }
-    for tag in [COLUMN, BUTTON, INPUT, GRID, STACK] {
+    for tag in [COLUMN, BUTTON, INPUT] {
         assert!(
             decode(
                 json!([tag, -1, "", "", "", 1, TEXT_LINES, 2])
@@ -134,13 +134,18 @@ fn line_limit_requires_a_bounded_integer_and_only_belongs_to_text() {
     }
 }
 
+/// The root laid out as a row: its one field says so.
+fn row(mut wire: Vec<Value>) -> Vec<Value> {
+    wire[5] = json!(1);
+    wire.splice(6..6, [json!(FLEX_DIRECTION), json!("row")]);
+    wire
+}
+
 #[test]
 fn hidden_lines_do_not_inflate_intrinsic_width() {
     let mut renderer = Renderer::default();
-    let mut limited = wire("x\nAn exceptionally long hidden second line", Some(1));
-    limited[0] = json!(ROW);
-    let mut prefix = wire("x", None);
-    prefix[0] = json!(ROW);
+    let limited = row(wire("x\nAn exceptionally long hidden second line", Some(1)));
+    let prefix = row(wire("x", None));
     let frame = renderer
         .layout(&decode(&limited).unwrap(), 800, 200, 1.0)
         .unwrap();

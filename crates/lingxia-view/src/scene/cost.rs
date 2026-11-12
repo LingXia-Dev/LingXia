@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn counts_are_stable_across_renders_and_follow_the_tree() {
         let source = crate::session::tests::source(
-            "function render(){return h('column',{style:{opacity:0.5,padding:4}},h('text',{},'abc'),h('vector',{paths:[{d:'M0 0H10V10Z'}],style:{width:10,height:10}}),h('image',{src:'a.png',alt:'',style:{width:10,height:20}}))}",
+            "function render(){return h('view',{style:{opacity:0.5,padding:4}},h('text',{},'abc'),h('vector',{paths:[{d:'M0 0H10V10Z'}],style:{width:10,height:10}}),h('image',{src:'a.png',alt:'',style:{width:10,height:20}}))}",
         );
         let mut page = crate::ViewSession::new(&source).unwrap();
         let first = page.layout(100, 100, 2.0).unwrap().cost();

@@ -9,13 +9,13 @@ const hints = ['Tell me about LingXia streaming', 'Show me some data', 'How does
 
 function Bubble({ id, content, user, chart }: { id: string; content: string; user: boolean; chart?: ReadonlyData<ChartData> | null }) {
   return (
-    <row className={user ? 'justify-end px-4 py-1.5' : 'justify-start px-4 py-1.5 gap-2 items-start'}>
+    <view className={user ? 'flex-row justify-end px-4 py-1.5' : 'flex-row justify-start px-4 py-1.5 gap-2 items-start'}>
       {!user && (
-        <column className="w-7 h-7 shrink-0 rounded-full bg-linear-to-br from-chart-4 to-accent items-center justify-center">
+        <view className="w-7 h-7 shrink-0 rounded-full bg-linear-to-br from-chart-4 to-accent items-center justify-center">
           <Icon name="bolt" className="w-3.5 h-3.5 text-on-accent" />
-        </column>
+        </view>
       )}
-      <column
+      <view
         className={
           user
             ? 'shrink min-w-0 max-w-4/5 px-4 py-2.5 rounded-3xl rounded-br-md bg-accent text-on-accent'
@@ -29,8 +29,8 @@ function Bubble({ id, content, user, chart }: { id: string; content: string; use
           {content || '...'}
         </text>
         {chart && <Chart data={chart} />}
-      </column>
-    </row>
+      </view>
+    </view>
   );
 }
 
@@ -64,29 +64,29 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
   return (
     <page data-testid="stream-page" className="bg-canvas text-text">
       {messages.length > 0 && !pending && (
-        <row className="justify-end px-4 pt-3">
+        <view className="flex-row justify-end px-4 pt-3">
           <button data-testid="stream-clear" onClick={() => actions.onClear()} className="px-3 py-1 rounded-full bg-surface text-xs text-accent shadow-sm">
             Clear
           </button>
-        </row>
+        </view>
       )}
       {empty ? (
         <scroll data-testid="page-scroll" className="grow basis-0">
-          <column className="min-h-full px-8 py-4 items-center justify-center gap-3">
+          <view className="min-h-full px-8 py-4 items-center justify-center gap-3">
             <EmptyState
               testId="stream-empty"
               icon="chat"
               title="Stream Demo"
               message="Async generator streaming — text & chart artifacts via LingXia bridge."
             />
-            <column className="w-full gap-2">
+            <view className="w-full gap-2">
               {hints.map(hint => (
                 <text key={hint} data-testid={`stream-hint-${hint}`} className="px-4 py-2.5 rounded-xl bg-accent-soft text-sm text-accent">
                   {hint}
                 </text>
               ))}
-            </column>
-          </column>
+            </view>
+          </view>
         </scroll>
       ) : (
         <List
@@ -104,10 +104,10 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
           }
         />
       )}
-      <column className="px-4">
+      <view className="px-4">
         <ErrorState testId="stream-error" error={stream.error} />
-      </column>
-      <row className="items-end gap-2 px-3 py-3 border-t border-line bg-surface">
+      </view>
+      <view className="flex-row items-end gap-2 px-3 py-3 border-t border-line bg-surface">
         <textarea
           data-testid="stream-input"
           data-controlled-value={draft.value}
@@ -126,7 +126,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
             onClick={() => stream.cancel()}
             className="w-9 h-9 rounded-full bg-text/90 items-center justify-center"
           >
-            <spacer className="w-3 h-3 rounded-sm bg-surface" />
+            <view className="w-3 h-3 rounded-sm bg-surface" />
           </button>
         ) : (
           <button
@@ -139,7 +139,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
             <Icon name="send" className="w-4 h-4 text-on-accent" />
           </button>
         )}
-      </row>
+      </view>
     </page>
   );
 }

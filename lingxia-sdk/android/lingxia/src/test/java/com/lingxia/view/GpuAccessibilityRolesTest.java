@@ -49,7 +49,7 @@ public class GpuAccessibilityRolesTest {
         long host = GpuView.nativeHostCreate(fake, "test:jvm-select", false, 0);
         try {
             GpuView.nativeLoad(host, GpuNative.module(
-                "function render(){const p=useLocal('p','');return h('column',{},"
+                "function render(){const p=useLocal('p','');return h('view',{},"
                 + "h('select',{'data-testid':'p',bind:p,'aria-label':'Billing plan',placeholder:'Choose a plan',"
                 + "options:[{value:'m',label:'Monthly'},{value:'y',label:'Yearly'}],style:{height:40}}),"
                 + "h('input',{'data-testid':'e','aria-label':'Name',style:{height:40}}))}"));
@@ -78,10 +78,10 @@ public class GpuAccessibilityRolesTest {
         long host = GpuView.nativeHostCreate(fake, "test:jvm-roles", false, 0);
         try {
             GpuView.nativeLoad(host, GpuNative.module(
-                "function render(){const n=useLocal('n',0);return h('column',{},"
+                "function render(){const n=useLocal('n',0);return h('view',{},"
                 + "h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1),style:{height:60}},'Add'),"
                 + "h('text',{'data-testid':'h',role:'heading',headingLevel:3},'Plans'),"
-                + "h('column',{'data-testid':'list',role:'list'},h('row',{'data-testid':'a',role:'listitem'},h('text',{},'Water')),h('row',{'data-testid':'b',role:'listitem'},h('text',{},'Power'))),"
+                + "h('view',{'data-testid':'list',role:'list'},h('view',{style:{flexDirection:'row'},'data-testid':'a',role:'listitem'},h('text',{},'Water')),h('view',{style:{flexDirection:'row'},'data-testid':'b',role:'listitem'},h('text',{},'Power'))),"
                 + "h('dialog',{'data-testid':'d',open:n.value>1,'aria-label':'Confirm'},h('text',{},'Sure?')),"
                 + "h('text',{'data-testid':'s',role:'status'},'Saved '+n.value),"
                 + "h('text',{},'Read the ',h('link',{'data-testid':'l',onClick(){}},'terms')))}"));

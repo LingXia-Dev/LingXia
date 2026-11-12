@@ -9,11 +9,11 @@ export function render() {
       <text className="text-sm line-clamp-2">{lorem.repeat(3)}</text>
       <text className="text-xs font-mono whitespace-pre-wrap p-2 rounded bg-surface-sunken">{'Line one\n    indented line two\nline three'}</text>
       <text className="text-sm break-all">https://example.com/a/very/long/path/without/any/spaces/to/break/at</text>
-      <row className="gap-2 items-baseline">
+      <view className="flex-row gap-2 items-baseline">
         <text className="text-3xl font-bold tabular-nums">1,234</text>
         <text className="text-xs text-muted">units</text>
         <text className="min-w-0 shrink truncate text-sm">{lorem}</text>
-      </row>
+      </view>
     </page>
   );
 }

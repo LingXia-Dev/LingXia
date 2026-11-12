@@ -689,7 +689,7 @@ mod tests {
     fn spin_page_on(faded: bool, background: &str) -> (crate::ViewSession, DisplayList) {
         let opacity = if faded { ",opacity:0.8" } else { "" };
         let module = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{style:{{width:96,height:96{background}}}}},h('text',{{}},'Before'),h('column',{{style:{{width:80,height:56,borderRadius:8,overflow:'hidden',backgroundColor:'#eeeeee'{opacity}}}}},h('column',{{'data-testid':'spin',style:{{width:30,height:30,backgroundColor:'#00ff00'}}}},h('text',{{}},'Go')),h('input',{{value:'Hi',autoFocus:true}}),h('column',{{style:{{height:10,backgroundColor:'#000000'}}}})),h('text',{{}},'After'))}}"
+            "function render(){{return h('view',{{style:{{width:96,height:96{background}}}}},h('text',{{}},'Before'),h('view',{{style:{{width:80,height:56,borderRadius:8,overflow:'hidden',backgroundColor:'#eeeeee'{opacity}}}}},h('view',{{'data-testid':'spin',style:{{width:30,height:30,backgroundColor:'#00ff00'}}}},h('text',{{}},'Go')),h('input',{{value:'Hi',autoFocus:true}}),h('view',{{style:{{height:10,backgroundColor:'#000000'}}}})),h('text',{{}},'After'))}}"
         ));
         let mut page = crate::ViewSession::new(&module).unwrap();
         let display = page.layout(96, 96, 1.0).unwrap();
@@ -727,7 +727,7 @@ mod tests {
     #[test]
     fn a_span_clipped_out_keeps_the_base_and_the_damage_history() {
         let module = crate::session::tests::source(
-            "function render(){return h('column',{style:{width:200,height:120,backgroundColor:'#ffffff'}},h('text',{},'Top'),h('column',{style:{height:4,overflow:'hidden',backgroundColor:'#eeeeee'}},h('column',{'data-testid':'bar',style:{width:'40%',height:'100%',backgroundColor:'#00ff00'}})),h('column',{'data-testid':'spin',style:{width:30,height:30,backgroundColor:'#ff0000'}}),h('text',{},'After'))}",
+            "function render(){return h('view',{style:{width:200,height:120,backgroundColor:'#ffffff'}},h('text',{},'Top'),h('view',{style:{height:4,overflow:'hidden',backgroundColor:'#eeeeee'}},h('view',{'data-testid':'bar',style:{width:'40%',height:'100%',backgroundColor:'#00ff00'}})),h('view',{'data-testid':'spin',style:{width:30,height:30,backgroundColor:'#ff0000'}}),h('text',{},'After'))}",
         );
         let mut page = crate::ViewSession::new(&module).unwrap();
         let display = page.layout(200, 120, 1.0).unwrap();
@@ -845,7 +845,7 @@ mod tests {
     #[test]
     fn spans_split_by_a_few_static_paints_share_one_pass() {
         let module = crate::session::tests::source(
-            "function render(){return h('column',{style:{width:96,height:96}},h('text',{},'Before'),h('column',{'data-testid':'a',style:{width:10,height:10,backgroundColor:'#00ff00'}}),h('column',{style:{width:10,height:10,backgroundColor:'#000000'}}),h('column',{'data-testid':'b',style:{width:10,height:10,backgroundColor:'#0000ff'}}),h('text',{},'After'))}",
+            "function render(){return h('view',{style:{width:96,height:96}},h('text',{},'Before'),h('view',{'data-testid':'a',style:{width:10,height:10,backgroundColor:'#00ff00'}}),h('view',{style:{width:10,height:10,backgroundColor:'#000000'}}),h('view',{'data-testid':'b',style:{width:10,height:10,backgroundColor:'#0000ff'}}),h('text',{},'After'))}",
         );
         let mut page = crate::ViewSession::new(&module).unwrap();
         let display = page.layout(96, 96, 1.0).unwrap();

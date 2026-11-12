@@ -158,7 +158,7 @@ mod tests {
     #[test]
     fn translation_moves_geometry_hits_and_descendants_without_moving_siblings() {
         let mut page = page(
-            "h('column',{},h('column',{'data-testid':'b',style:{width:40,height:20,translate:[10,'50%']}},h('text',{'data-testid':'t'},'Go')),h('column',{'data-testid':'next',style:{height:10}}))",
+            "h('view',{},h('view',{'data-testid':'b',style:{width:40,height:20,translate:[10,'50%']}},h('text',{'data-testid':'t'},'Go')),h('view',{'data-testid':'next',style:{height:10}}))",
         );
         let display = page.layout(100, 100, 1.0).unwrap();
         assert_eq!(node(&display, "b").bounds, [10.0, 10.0, 40.0, 20.0]);
@@ -226,7 +226,7 @@ mod tests {
 
     #[test]
     fn editors_and_scrolls_cannot_rotate_but_may_translate() {
-        let mut rotated = page("h('column',{style:{rotate:10}},h('input',{value:''}))");
+        let mut rotated = page("h('view',{style:{rotate:10}},h('input',{value:''}))");
         assert!(
             rotated
                 .layout(100, 100, 1.0)
@@ -235,7 +235,7 @@ mod tests {
                 .contains("UI_TRANSFORM")
         );
         let mut moved =
-            page("h('column',{style:{translate:[5,5]}},h('input',{'data-testid':'i',value:''}))");
+            page("h('view',{style:{translate:[5,5]}},h('input',{'data-testid':'i',value:''}))");
         let display = moved.layout(200, 100, 1.0).unwrap();
         assert_eq!(node(&display, "i").bounds[0], 5.0);
     }

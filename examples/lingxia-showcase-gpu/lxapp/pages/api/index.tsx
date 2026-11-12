@@ -133,13 +133,13 @@ export function render({ data, actions, env }: View) {
               onClick={() => toggle(group.id)}
               className="px-4 py-4 rounded-2xl bg-transparent text-text text-left active:bg-surface-sunken"
             >
-              <row className="items-center justify-between gap-3">
+              <view className="flex-row items-center justify-between gap-3">
                 <text className="text-base">{group.label}</text>
                 <Icon name={group.id} />
-              </row>
+              </view>
             </button>
             {expanded.value[group.id] && (
-              <column className="divide-y divide-line border-t border-line">
+              <view className="divide-y divide-line border-t border-line">
                 {group.entries
                   .filter(item => !item.desktopOnly || desktop)
                   .map(item => (
@@ -149,16 +149,16 @@ export function render({ data, actions, env }: View) {
                       onClick={() => actions[item.action](item.payload)}
                       className="px-4 py-3 min-h-11 rounded-none bg-transparent text-text text-left active:bg-surface-sunken"
                     >
-                      <row className="items-center gap-3">
-                        <column className="grow basis-0 min-w-0 gap-1">
+                      <view className="flex-row items-center gap-3">
+                        <view className="grow basis-0 min-w-0 gap-1">
                           <text className="text-sm">{item.label}</text>
                           {item.description && <text className="text-xs text-muted line-clamp-3">{item.description}</text>}
-                        </column>
+                        </view>
                         <Icon name={item.id === 'api-exit' ? 'exit' : 'chevron'} className="w-4 h-4 text-muted" />
-                      </row>
+                      </view>
                     </button>
                   ))}
-              </column>
+              </view>
             )}
           </Card>
         ))}
@@ -168,10 +168,10 @@ export function render({ data, actions, env }: View) {
           onClick={() => actions.openLocation()}
           className="px-4 py-4 rounded-2xl bg-transparent text-text text-left active:bg-surface-sunken"
         >
-          <row className="items-center justify-between">
+          <view className="flex-row items-center justify-between">
             <text className="text-base">Location</text>
             <Icon name="location" />
-          </row>
+          </view>
         </button>
       </Card>
     </Page>

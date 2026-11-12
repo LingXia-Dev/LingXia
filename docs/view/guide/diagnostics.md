@@ -8,10 +8,10 @@ type Actions = { orders(): Promise<{ id: string; total: string }[]> };
 function ErrorBanner({ error, onRetry }: { error: ResourceError | null; onRetry: () => void }) {
   if (!error) return null;
   return (
-    <row role="alert" className="items-center gap-3 p-3 rounded-lg bg-danger-soft">
+    <view role="alert" className="flex-row items-center gap-3 p-3 rounded-lg bg-danger-soft">
       <text className="grow text-sm text-danger">{error.message}</text>
       <button onClick={onRetry} className="rounded-lg bg-danger text-on-danger px-3 py-1">Retry</button>
-    </row>
+    </view>
   );
 }
 
@@ -21,10 +21,10 @@ export function render({ actions }: View<Actions>) {
     <page className="p-4 gap-3">
       <ErrorBanner error={orders.error} onRetry={() => orders.reload()} />
       {(orders.value ?? []).map(order => (
-        <row key={order.id} className="justify-between">
+        <view key={order.id} className="flex-row justify-between">
           <text className="text-sm">{order.id}</text>
           <text className="text-sm tabular-nums">{order.total}</text>
-        </row>
+        </view>
       ))}
     </page>
   );
@@ -75,7 +75,7 @@ innermost first:
 
 ```text
 UI_KEY: duplicate sibling
-  at <row> (pages/profile/index.tsx:3:5)
+  at <view> (pages/profile/index.tsx:3:5)
   at Tags (pages/profile/index.tsx:10:16)
   at <page> (pages/profile/index.tsx:10:10)
 ```

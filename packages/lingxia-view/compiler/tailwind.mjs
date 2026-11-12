@@ -829,6 +829,9 @@ function conditions(rule) {
   return result;
 }
 
+// What `*:` may set on every child: its grid area, as a stack of overlapping children needs.
+const placement = new Set(['gridColumn', 'gridColumnStart', 'gridColumnEnd', 'gridRow', 'gridRowStart', 'gridRowEnd']);
+
 // A CSS identifier with escapes; `\\32 xl` is how `2xl:` starts.
 const ident = String.raw`(?:\\[0-9a-fA-F]{1,6}\s?|\\[^0-9a-fA-F]|[^\s:.>+~[\\()])+`;
 
@@ -863,6 +866,8 @@ function alternative(rest) {
 function selectorParts(selector) {
   const children = selector.match(new RegExp(`^:where\\(\\.(${ident}) > :not\\(:last-child\\)\\)$`));
   if (children) return { name: unescape(children[1]), children: true };
+  const every = selector.match(new RegExp(`^:is\\(\\.(${ident}) > \\*\\)$`));
+  if (every) return { name: unescape(every[1]), every: true };
   const match = selector.match(new RegExp(`^\\.(${ident})(.*)$`));
   if (!match) {
     // Variants that style relatives (`*:`, `**:`, `in-*:`, `group-*:`, `peer-*:`) put the class elsewhere in the selector.
@@ -966,13 +971,15 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
       if (starting && target.state) unsupported('starting: with another state variant');
       if (starting) target.state = 'starting';
       if (hoverMedia && target.state !== 'hover') unsupported('(hover: hover) outside a hover variant');
-      const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.children ? { children: true } : {}),
+      const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.children ? { children: true } : {}), ...(target.every ? { every: true } : {}),
         ...(target.direction ? { direction: target.direction } : {}), ...(target.structure ? { structure: target.structure } : {}), ...(target.data ? { data: target.data } : {}) };
       const lower = vars => {
         const result = declarations(rule.nodes, vars, root);
         if (!Object.keys(result.style).length && Object.keys(result).length === 1) unsupported(inert(name));
         // Native drops plain animations under reduced motion; ones authored under motion-reduce:/motion-safe: say so.
         if (result.style.animation) result.style.animation.whenReduced = when.reducedMotion === undefined ? 'base' : 'keep';
+        if (target.every && (Object.keys(result).some(key => key !== 'style') || !Object.keys(result.style).every(key => placement.has(key))))
+          unsupported('*: places grid children only (col-start-*, col-end-*, col-span-*, row-start-*, row-end-*, row-span-*); put other classes on each child');
         if (!target.placeholder) return result;
         if (Object.keys(result).some(key => key !== 'style') || Object.keys(result.style).some(key => key !== 'color') || !result.style.color)
           unsupported('placeholder supports only color');

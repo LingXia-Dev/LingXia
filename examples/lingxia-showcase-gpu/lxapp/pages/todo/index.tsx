@@ -11,7 +11,7 @@ const filters = [
 
 function TodoRow({ todo, blocked, onToggle, onDelete }: { todo: Todo; blocked: boolean; onToggle: () => unknown; onDelete: () => unknown }) {
   return (
-    <row data-testid={`todo-item-${todo.id}`} className="items-center min-h-12 px-3 gap-2 border-t border-line">
+    <view data-testid={`todo-item-${todo.id}`} className="flex-row items-center min-h-12 px-3 gap-2 border-t border-line">
       <checkbox
         data-testid={`todo-toggle-${todo.id}`}
         value={todo.completed}
@@ -21,12 +21,12 @@ function TodoRow({ todo, blocked, onToggle, onDelete }: { todo: Todo; blocked: b
         }}
         className="grow basis-0 min-w-0 py-3.5 bg-transparent"
       >
-        <row className="items-center gap-3.5">
+        <view className="flex-row items-center gap-3.5">
           <Icon name={todo.completed ? 'success' : 'note'} className={todo.completed ? 'w-6 h-6 text-accent' : 'w-6 h-6 text-faint'} />
           <text data-testid={`todo-label-${todo.id}`} className={todo.completed ? 'grow basis-0 min-w-0 text-base line-through text-muted' : 'grow basis-0 min-w-0 text-base'}>
             {todo.text}
           </text>
-        </row>
+        </view>
       </checkbox>
       <button
         data-testid={`todo-delete-${todo.id}`}
@@ -39,7 +39,7 @@ function TodoRow({ todo, blocked, onToggle, onDelete }: { todo: Todo; blocked: b
       >
         <Icon name="close" className="w-5 h-5 text-danger" />
       </button>
-    </row>
+    </view>
   );
 }
 
@@ -76,11 +76,11 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
   return (
     <page data-testid="todo-page" className="bg-canvas text-text items-center px-3 py-6 gap-4">
       <text className="text-7xl font-thin tracking-tighter text-accent">todos</text>
-      <column
+      <view
         data-testid="todo-panel"
         className="w-full max-w-xl grow basis-0 min-h-0 rounded-2xl bg-surface/90 backdrop-blur-xl shadow-lg border border-line"
       >
-        <row className="items-center">
+        <view className="flex-row items-center">
           {todos.length > 0 ? (
             <button
               data-testid="todo-toggle-all"
@@ -92,7 +92,7 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
               <Icon name="expand" className={active ? 'w-6 h-6 text-faint' : 'w-6 h-6 text-accent'} />
             </button>
           ) : (
-            <spacer className="w-12" />
+            <view className="w-12" />
           )}
           <input
             data-testid="todo-input"
@@ -104,17 +104,17 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
             onSubmit={add}
             className="grow basis-0 min-w-0 min-h-14 py-4 pr-4 bg-transparent text-base placeholder:text-muted focus:bg-surface-sunken/40"
           />
-        </row>
+        </view>
         {data.loading && (
           <text data-testid="todo-loading" className="p-4 text-sm text-muted">
             Loading saved tasks...
           </text>
         )}
         {(data.loadError || failure.value) && (
-          <column className="px-4 pb-3 gap-2">
+          <view className="px-4 pb-3 gap-2">
             <ErrorState testId="todo-load-error" error={data.loadError || null} onRetry={() => actions.reload()} />
             <ErrorState testId="todo-error" error={failure.value || null} />
-          </column>
+          </view>
         )}
         {!todos.length && !data.loading && !data.loadError ? (
           <EmptyState testId="todo-empty" title="No tasks yet" message="Add a task above to get started" />
@@ -157,7 +157,7 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
             )}
           </view>
         )}
-      </column>
+      </view>
     </page>
   );
 }

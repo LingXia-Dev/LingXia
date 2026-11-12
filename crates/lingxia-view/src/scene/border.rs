@@ -438,7 +438,7 @@ mod tests {
 
     fn top_row(style: &str, widths: &str) -> Vec<bool> {
         let source = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{style:{{width:96,height:24,backgroundColor:'#ffffff',borderColor:'#000000',borderStyle:'{style}',{widths}}}}})}}"
+            "function render(){{return h('view',{{style:{{width:96,height:24,backgroundColor:'#ffffff',borderColor:'#000000',borderStyle:'{style}',{widths}}}}})}}"
         ));
         let mut page = crate::ViewSession::new(&source).unwrap();
         let frame = page.layout(96, 24, 1.0).unwrap().rasterize().unwrap();

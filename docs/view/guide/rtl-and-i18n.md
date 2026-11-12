@@ -18,15 +18,15 @@ export function render() {
       <text role="heading" className="text-xl font-semibold text-start">{t.title}</text>
       {[t.account, t.language].map(label => (
         <button key={label} onClick={() => {}} className="rounded-xl bg-surface text-text ps-4 pe-2 py-3">
-          <row className="items-center gap-3">
+          <view className="flex-row items-center gap-3">
             <text className="grow text-start text-sm">{label}</text>
             <vector aria-hidden paths={chevron} className="w-5 h-5 text-faint rtl:-scale-x-100" />
-          </row>
+          </view>
         </button>
       ))}
-      <row dir="ltr" className="gap-1">
+      <view dir="ltr" className="flex-row gap-1">
         <text className="text-sm font-mono">+1 555 0100</text>
-      </row>
+      </view>
     </page>
   );
 }

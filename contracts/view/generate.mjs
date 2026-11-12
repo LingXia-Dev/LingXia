@@ -37,6 +37,10 @@ function validate(schema) {
   for (const [key, entry] of Object.entries(schema.environment ?? {}))
     if (!['none', 'external', ...Object.keys(environmentChecks)].includes(entry.check) || !['device', 'push', 'session'].includes(entry.origin) || typeof entry.type !== 'string')
       throw Error(`schema.json: environment ${key} needs a type, a known check and an origin`);
+  // A reserved tag id keeps its slot: nothing may name it, and native rejects it on the wire.
+  const reserved = tag => tag.startsWith('reserved-');
+  for (const field of schema.fields)
+    if ([field.tags ?? [], field.parent ?? []].flat().some(reserved)) throw Error(`schema.json: field ${field.key} names a reserved tag`);
   const admitted = Object.keys(schema.admission ?? {});
   if (admitted.join() !== schema.tags.join()) throw Error('schema.json: admission must list every tag in tag order');
   for (const [tag, entry] of Object.entries(schema.admission)) {
@@ -271,7 +275,7 @@ function validateAuthor(schema) {
     for (const target of [entry.wire].flat())
       if (!keys.has(target)) throw Error(`schema.json: style ${name} lowers to unknown field ${target}`);
   for (const [name, element] of Object.entries(schema.elements)) {
-    if (!schema.tags.includes(element.wire)) throw Error(`schema.json: element ${name} uses unknown tag ${element.wire}`);
+    if (!schema.tags.includes(element.wire) || element.wire.startsWith('reserved-')) throw Error(`schema.json: element ${name} uses unknown tag ${element.wire}`);
     elementStyle(schema, element);
   }
 }

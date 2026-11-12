@@ -94,7 +94,7 @@ fn admitted_buffers_lay_out_to_finite_geometry_inside_the_viewport() {
 #[test]
 fn a_margin_wider_than_the_parent_never_yields_a_negative_size() {
     let wire: Vec<serde_json::Value> = serde_json::from_str(
-        r#"[0,-1,"","root","",0,1,0,"row","row","",1,112,71.0,4,6,"gap","gap","",0]"#,
+        r#"[0,-1,"","root","",0,0,0,"row","row","",2,103,"row",112,71.0,0,6,"gap","gap","",0]"#,
     )
     .unwrap();
     let records = lingxia_view::protocol::decode(&wire).unwrap();
