@@ -254,7 +254,7 @@ public class RunnerApp {
                             self.confirmRuntimeClose(session)
                             self.windowController = previous
                             previous.window?.appearance = self.simulatedAppearance.nsAppearance
-                            previous.window?.makeKeyAndOrderFront(nil)
+                            RunnerFront.show(previous.window)
                             self.alignPhoneHostWithRuntime(previous)
                             self.refreshCapsulePageChrome(for: previous)
                         } else {
@@ -438,7 +438,7 @@ public class RunnerApp {
 
         if let existingController = windowController, existingController.appId == appId {
             existingController.applyDeviceChange(deviceSize)
-            existingController.window?.makeKeyAndOrderFront(nil)
+            RunnerFront.show(existingController.window)
             if phoneRestartReloadPending.remove(appId) != nil {
                 // Fresh session after a cold restart: swap the inner webview.
                 existingController.reloadContentForRestart(path: path)
@@ -459,7 +459,7 @@ public class RunnerApp {
         if let index = suspendedPhoneControllers.lastIndex(where: { $0.appId == appId }) {
             let resumed = suspendedPhoneControllers.remove(at: index)
             resumed.applyDeviceChange(deviceSize)
-            resumed.window?.makeKeyAndOrderFront(nil)
+            RunnerFront.show(resumed.window)
             windowController = resumed
             resumed.navigate(to: path)
             refreshCapsulePageChrome(for: resumed)
@@ -468,8 +468,7 @@ public class RunnerApp {
 
         let controller = SimulatorWindowController(appId: appId, path: path)
         controller.showWindow(self)
-        controller.window?.makeKeyAndOrderFront(self)
-        NSApp.activate(ignoringOtherApps: true)
+        RunnerFront.show(controller.window, activate: true)
 
         windowController = controller
         refreshCapsulePageChrome(for: controller)
@@ -510,7 +509,7 @@ public class RunnerApp {
         if let host = windowController, host.webTargetTabId == target.tabId {
             host.applyDeviceChange(device)
             if !headlessWebTarget {
-                host.window?.makeKeyAndOrderFront(nil)
+                RunnerFront.show(host.window)
             }
             return
         }
@@ -523,8 +522,7 @@ public class RunnerApp {
         }
         restoreBrowserTabs(in: host, target: target)
         if !headlessWebTarget {
-            host.window?.makeKeyAndOrderFront(self)
-            NSApp.activate(ignoringOtherApps: true)
+            RunnerFront.show(host.window, activate: true)
         }
         windowController = host
     }

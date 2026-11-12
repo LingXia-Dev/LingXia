@@ -1585,7 +1585,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         // Restart drops back to the entry page, so re-sync the navbar to it —
         // otherwise the previous page's nav state lingers (stale title/buttons).
         updateNavigationBar(with: RunnerSupport.Navigation.state(appId: appId, path: path))
-        window?.makeKeyAndOrderFront(nil)
+        RunnerFront.show(window)
     }
 
     func detachForHostSwitch() {
@@ -1614,7 +1614,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
                 : 0
         )
         if !headlessWebTarget {
-            window?.makeKeyAndOrderFront(nil)
+            RunnerFront.show(window)
         }
     }
     

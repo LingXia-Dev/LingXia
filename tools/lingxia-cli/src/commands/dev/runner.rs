@@ -451,6 +451,10 @@ fn launch_runner_for_lxapp(
     command.env(RUNNER_ENV_ENV, runner_env.as_str());
     command.env(RUNNER_PID_FILE_ENV, &pid_file);
     command.env(RUNNER_INSTANCE_ENV, runner_instance_id(session_root));
+    // A `--background` session keeps the user's front app.
+    if env::var_os(BACKGROUND_CHILD_ENV).is_some() {
+        command.env(LAUNCH_INACTIVE_ENV, "1");
+    }
     if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
         command.env("LINGXIA_RUNNER_DEVICE", device);
     }
@@ -527,6 +531,10 @@ fn launch_runner_for_web(
     command.env(RUNNER_ENV_ENV, runner_env.as_str());
     command.env(RUNNER_PID_FILE_ENV, &pid_file);
     command.env(RUNNER_INSTANCE_ENV, runner_instance_id(session_root));
+    // A `--background` session keeps the user's front app.
+    if env::var_os(BACKGROUND_CHILD_ENV).is_some() {
+        command.env(LAUNCH_INACTIVE_ENV, "1");
+    }
     if let Some(device) = runner_device
         .map(str::trim)
         .filter(|value| !value.is_empty())

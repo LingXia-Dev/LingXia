@@ -84,8 +84,7 @@ final class RunnerSurfaceShellHost {
         isHiddenForHostSwitch = false
         RunnerSupport.SurfaceShell.activate(shell)
         if !headless {
-            shell.window?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            RunnerFront.show(shell.window, activate: true)
         }
     }
 
@@ -117,8 +116,7 @@ final class RunnerSurfaceShellHost {
         RunnerSupport.SurfaceShell.setBrowserBlankNewTabs(shell, enabled: true)
         RunnerSupport.SurfaceShell.presentBrowserTab(shell, tabId: tabId)
         if !headless {
-            shell.window?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            RunnerFront.show(shell.window, activate: true)
         }
     }
 
