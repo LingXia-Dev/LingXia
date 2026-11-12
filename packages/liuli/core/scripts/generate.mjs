@@ -28,11 +28,12 @@ const checker = program.getTypeChecker();
 
 /** The exported props type's properties: name, type, required, description, default. */
 function props(name, typeName) {
+  const component = typeName.replace(/Props$/, '');
   const file = program.getSourceFile(join(src, name, `${name}.tsx`));
   const declaration = file.statements.find(node => (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) && node.name.text === typeName);
   if (!declaration) { problems.push(`src/${name}/${name}.doc.ts: propsType ${typeName} is not declared in ${name}.tsx`); return []; }
   const type = checker.getTypeAtLocation(declaration.name);
-  const defaults = destructuredDefaults(file, name);
+  const defaults = destructuredDefaults(file, component);
   return checker.getPropertiesOfType(type).map(property => {
     const declaration = property.valueDeclaration ?? property.declarations?.[0];
     const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration ?? file);
@@ -112,9 +113,16 @@ function reference(doc, entry) {
     if (example.description) lines.push(example.description, '');
     lines.push('```tsx', example.source, '```', '');
   }
-  lines.push('## Props', '', '| Prop | Type | Default | Description |', '| --- | --- | --- | --- |');
-  for (const prop of entry.props)
-    lines.push(`| \`${prop.name}\`${prop.required ? ' (required)' : ''} | \`${cell(prop.type)}\` | ${prop.default ? `\`${cell(prop.default)}\`` : ''} | ${cell(prop.description)} |`);
+  const table = (heading, rows) => {
+    lines.push(heading, '', '| Prop | Type | Default | Description |', '| --- | --- | --- | --- |');
+    for (const prop of rows)
+      lines.push(`| \`${prop.name}\`${prop.required ? ' (required)' : ''} | \`${cell(prop.type)}\` | ${prop.default ? `\`${cell(prop.default)}\`` : ''} | ${cell(prop.description)} |`);
+  };
+  table('## Props', entry.props);
+  for (const [component, rows] of Object.entries(entry.otherProps)) {
+    lines.push('');
+    table(`## ${component} props`, rows);
+  }
   lines.push('', '## Anatomy', '', '| Part | Element | Required | Description |', '| --- | --- | --- | --- |');
   for (const part of doc.anatomy) lines.push(`| ${part.part} | \`<${entry.parts[part.part] ?? '?'}>\` | ${part.required ? 'yes' : 'no'} | ${cell(part.description)} |`);
   lines.push('', '## Accessibility', '');
@@ -172,6 +180,7 @@ for (const name of names) {
     description: doc.description,
     keywords: doc.keywords,
     props: props(name, doc.propsType),
+    otherProps: Object.fromEntries((doc.otherPropsTypes ?? []).map(type => [type.replace(/Props$/, ''), props(name, type)])),
     parts,
     accessibility: doc.accessibility,
     examples: doc.examples.map(example => ({ ...example, source: sources.get(example.name) ?? '' })),

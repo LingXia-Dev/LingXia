@@ -10,4 +10,11 @@
   --radius-control: 0.625rem;
   --radius-container: 0.875rem;
   --radius-dialog: 1.25rem;
+
+  /* An indeterminate ProgressBar: a fill two-fifths of the track wide sweeps it end to end. */
+  --animate-progress-sweep: progress-sweep 1.2s ease-in-out infinite;
+  @keyframes progress-sweep {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(250%); }
+  }
 }

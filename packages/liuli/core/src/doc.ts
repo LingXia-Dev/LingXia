@@ -20,6 +20,8 @@ export interface ComponentDoc {
   readonly keywords: readonly string[];
   /** The exported props type the generator reads (`ButtonProps`). */
   readonly propsType: string;
+  /** Props types of the other components the same import exports (`DropdownMenuItemProps`). */
+  readonly otherPropsTypes?: readonly string[];
   /** The exported recipe and its part manifest (`buttonRecipe`, `buttonParts`). */
   readonly recipe: { readonly map: string; readonly parts: string };
   readonly anatomy: readonly AnatomyPart[];

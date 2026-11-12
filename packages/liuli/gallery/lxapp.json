@@ -6,11 +6,15 @@
   "minRuntime": "0.28.0",
   "pages": [
     { "name": "home", "path": "pages/home/index" },
+    { "name": "badge", "path": "pages/badge/index" },
     { "name": "button", "path": "pages/button/index" },
+    { "name": "card", "path": "pages/card/index" },
     { "name": "checkbox-input", "path": "pages/checkbox-input/index" },
     { "name": "dialog", "path": "pages/dialog/index" },
     { "name": "dropdown-menu", "path": "pages/dropdown-menu/index" },
     { "name": "field", "path": "pages/field/index" },
+    { "name": "item", "path": "pages/item/index" },
+    { "name": "progress-bar", "path": "pages/progress-bar/index" },
     { "name": "text-input", "path": "pages/text-input/index" }
   ]
 }

@@ -1,0 +1,72 @@
+import type { ComponentDoc } from '../doc';
+
+export const doc: ComponentDoc = {
+  name: 'ProgressBar',
+  category: 'feedback',
+  status: 'lab',
+  summary: 'How much of a task is done, or a spinner while the amount is unknown',
+  description:
+    'ProgressBar shows a task that runs for a while: an upload, an export, storage used. Without `value` it sweeps to say ' +
+    'the task is running. Spinner, from the same import, is the small form for a wait inside a control or a list. ' +
+    'Both are drawn from plain views and vectors, so they look the same on every OS.',
+  keywords: ['progress', 'progressbar', 'loading', 'spinner', 'busy', 'upload', 'download', 'meter', 'indeterminate'],
+  propsType: 'ProgressBarProps',
+  otherPropsTypes: ['SpinnerProps'],
+  recipe: { map: 'progressBarRecipe', parts: 'progressBarParts' },
+  anatomy: [
+    { part: 'header', required: false, description: 'The label row: `label`, then `valueLabel`; hidden from assistive tech, since the bar carries both.' },
+    { part: 'track', required: true, description: 'The bar itself, and the element assistive tech reports as a progress bar.' },
+    { part: 'fill', required: true, description: 'The amount done, as a share of the track width; a sweeping segment while the amount is unknown.' },
+    { part: 'spinner', required: false, description: "Spinner's spinning arc." },
+  ],
+  accessibility: {
+    pattern: null,
+    name: 'label',
+    description: [],
+    states: [],
+    keyboard: [],
+    contrast: [
+      { what: 'fill against the track', pair: ['accent', 'surface-sunken'], minimum: '3:1', proven: false },
+      { what: 'fill and spinner on a card', pair: ['accent', 'surface'], minimum: '3:1', proven: true },
+      { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1', proven: true },
+      { what: 'value', pair: ['text-muted', 'surface'], minimum: '4.5:1', proven: true },
+    ],
+    notes: [
+      'Role progressbar, named by `label`. With `value` it reports the value, 0 and `max`; `valueLabel` is read in place of a percentage.',
+      'Without `value` it reports no value, which assistive tech reads as busy.',
+      'With reduced motion the sweep and the spin stop; the bar and the arc stay drawn.',
+      'Spinner is a progressbar named by its `label`, with nothing drawn but the arc.',
+    ],
+  },
+  guidance: {
+    do: [
+      'Name what is in progress in `label`: "Uploading photos", not "Progress".',
+      'Pass `valueLabel` in the app\'s own words and units; Liuli formats no numbers.',
+      'Use Spinner for waits under a few seconds, and ProgressBar when the amount is known or the wait is long.',
+    ],
+    dont: [
+      'Show a ProgressBar and a Spinner for the same task.',
+      'Use ProgressBar as a gauge the user sets; that is a slider.',
+      'Put a Spinner inside a Button; Button has its own loading state.',
+    ],
+  },
+  examples: [
+    { name: 'Determinate', title: 'An amount the app words' },
+    { name: 'Indeterminate', title: 'Running, amount unknown' },
+    { name: 'Compact', title: 'Thin, under its own heading' },
+    { name: 'Spinners', title: 'Spinner sizes' },
+  ],
+  gaps: [
+    {
+      missing: 'Finding a progress bar by role in device tests.',
+      needs: 'progressbar in the test locator roles',
+      today: 'Device checks find it by `data-testid`; Node tests read its role.',
+    },
+    {
+      missing: 'Proof that the fill stands out from the track.',
+      needs: 'an accent on surface-sunken contrast pair in the theme pack',
+      today: 'Only accent on surface is proven; the fill against the track is unchecked.',
+    },
+  ],
+  related: ['Button'],
+};

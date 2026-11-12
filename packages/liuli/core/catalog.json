@@ -2,6 +2,212 @@
   "generated": "Generated from the doc file by scripts/generate.mjs; do not edit.",
   "components": [
     {
+      "name": "Badge",
+      "import": "@liulidesign/core/Badge",
+      "exports": [
+        "Badge"
+      ],
+      "category": "content",
+      "status": "lab",
+      "summary": "A short status or category label in a tinted pill",
+      "description": "Badge marks the state or kind of the thing next to it: Draft, Paid, Overdue, New. It is text, not a control, and is read as it is shown. Five tones come soft; the four status tones also come solid for the one label that must stand out.",
+      "keywords": [
+        "badge",
+        "tag",
+        "label",
+        "pill",
+        "chip",
+        "status",
+        "lozenge",
+        "tone"
+      ],
+      "props": [
+        {
+          "name": "tone",
+          "type": "\"neutral\" | BadgeStatusTone",
+          "required": false,
+          "description": "What the badge marks; `neutral` comes soft only.",
+          "default": "'neutral'"
+        },
+        {
+          "name": "emphasis",
+          "type": "\"soft\" | \"solid\"",
+          "required": false,
+          "description": "`solid` for a badge that must stand out; at most one per view.",
+          "default": "'soft'"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The text, read as it is shown. Say the status in words: \"Overdue\", not a colour."
+        },
+        {
+          "name": "size",
+          "type": "BadgeSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "startIcon",
+          "type": "Child",
+          "required": false,
+          "description": "Drawn before the label and hidden from assistive tech."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "icon": "view",
+        "label": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "neutral",
+            "pair": [
+              "text",
+              "surface-sunken"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "soft accent",
+            "pair": [
+              "on-accent-soft",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "soft success",
+            "pair": [
+              "text",
+              "success-soft"
+            ],
+            "minimum": "4.5:1",
+            "proven": false
+          },
+          {
+            "what": "soft warning",
+            "pair": [
+              "text",
+              "warning-soft"
+            ],
+            "minimum": "4.5:1",
+            "proven": false
+          },
+          {
+            "what": "soft danger",
+            "pair": [
+              "text",
+              "danger-soft"
+            ],
+            "minimum": "4.5:1",
+            "proven": false
+          },
+          {
+            "what": "solid accent",
+            "pair": [
+              "on-accent",
+              "accent"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "solid success",
+            "pair": [
+              "on-success",
+              "success"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "solid warning",
+            "pair": [
+              "on-warning",
+              "warning"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "solid danger",
+            "pair": [
+              "on-danger",
+              "danger"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          }
+        ],
+        "notes": [
+          "Not a control and not announced on change. A badge whose change matters sits next to a status region the app keeps.",
+          "The tone is colour only; the label carries the meaning in words."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Tones",
+          "title": "Soft tones",
+          "source": "import { Badge } from '@liulidesign/core/Badge';\n\nexport function Tones() {\n  return (\n    <view className=\"flex-row flex-wrap gap-2\">\n      <Badge label=\"Draft\" data-testid=\"neutral\" />\n      <Badge label=\"New\" tone=\"accent\" data-testid=\"accent\" />\n      <Badge label=\"Paid\" tone=\"success\" />\n      <Badge label=\"Due soon\" tone=\"warning\" />\n      <Badge label=\"Overdue\" tone=\"danger\" data-testid=\"danger\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Solid",
+          "title": "Solid, to stand out",
+          "source": "import { Badge } from '@liulidesign/core/Badge';\n\n/** Solid fills stand out; keep one per view. */\nexport function Solid() {\n  return (\n    <view className=\"flex-row flex-wrap gap-2\">\n      <Badge label=\"Beta\" tone=\"accent\" emphasis=\"solid\" data-testid=\"solid\" />\n      <Badge label=\"Live\" tone=\"success\" emphasis=\"solid\" />\n      <Badge label=\"Paused\" tone=\"warning\" emphasis=\"solid\" />\n      <Badge label=\"Failed\" tone=\"danger\" emphasis=\"solid\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes and an icon",
+          "source": "import { Badge } from '@liulidesign/core/Badge';\n\nconst dot = [{ d: 'M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8z', fill: 'currentColor' }] as const;\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row flex-wrap items-center gap-2\">\n      <Badge label=\"Small\" size=\"sm\" data-testid=\"small\" />\n      <Badge label=\"Online\" tone=\"success\" startIcon={<vector paths={dot} viewBox={[0, 0, 24, 24]} className=\"size-full\" />} />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "InARow",
+          "title": "At the end of a row",
+          "source": "import { Item } from '@liulidesign/core/Item';\nimport { Badge } from '@liulidesign/core/Badge';\n\n/** In a pressable row the end content is not read, so the status is repeated in the description. */\nexport function InARow() {\n  return (\n    <view className=\"rounded-container border border-line bg-surface\">\n      <Item\n        label=\"Invoice 2041\"\n        description=\"Overdue, due 3 May\"\n        endContent={<Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" />}\n        hasChevron\n        onClick={() => {}}\n        data-testid=\"invoice\"\n      />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Proof that text reads on the soft status tints.",
+          "needs": "text on success-soft, warning-soft and danger-soft contrast pairs in the theme pack",
+          "today": "The pairs are listed here and unproven; neutral and accent are proven."
+        },
+        {
+          "missing": "An info tone and category hues (tags, labels, people).",
+          "needs": "info and categorical hue roles with soft and on- pairs",
+          "today": "Five tones; use neutral for categories."
+        }
+      ],
+      "related": [
+        "Item",
+        "Card"
+      ]
+    },
+    {
       "name": "Button",
       "import": "@liulidesign/core/Button",
       "exports": [
@@ -106,6 +312,7 @@
           "description": ""
         }
       ],
+      "otherProps": {},
       "parts": {
         "root": "button",
         "icon": "view",
@@ -223,6 +430,188 @@
       ]
     },
     {
+      "name": "Card",
+      "import": "@liulidesign/core/Card",
+      "exports": [
+        "Card",
+        "ClickableCard"
+      ],
+      "category": "container",
+      "status": "lab",
+      "summary": "A surface that groups related content, or one pressable choice",
+      "description": "Card groups a heading, text and actions that belong together. ClickableCard, from the same import, makes the whole card one button, for opening an item or choosing one of a few options; it is named by a short `label` and must not contain other controls.",
+      "keywords": [
+        "card",
+        "panel",
+        "tile",
+        "surface",
+        "container",
+        "box",
+        "clickable card",
+        "option card",
+        "choice"
+      ],
+      "props": [
+        {
+          "name": "children",
+          "type": "Child",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "variant",
+          "type": "CardVariant",
+          "required": false,
+          "description": "`outlined` sits on the page, `raised` floats above it, `sunken` groups content inside another surface.",
+          "default": "'outlined'"
+        },
+        {
+          "name": "padding",
+          "type": "CardPadding",
+          "required": false,
+          "description": "The inset and the gap between children.",
+          "default": "'md'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {
+        "ClickableCard": [
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "The accessible name: a short summary of the card, since its content is not read separately."
+          },
+          {
+            "name": "onClick",
+            "type": "() => void",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "isSelected",
+            "type": "boolean",
+            "required": false,
+            "description": "Marks the card as the chosen one among several; reported as selected.",
+            "default": "false"
+          },
+          {
+            "name": "isDisabled",
+            "type": "boolean",
+            "required": false,
+            "description": "",
+            "default": "false"
+          },
+          {
+            "name": "children",
+            "type": "Child",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "variant",
+            "type": "CardVariant",
+            "required": false,
+            "description": "`outlined` sits on the page, `raised` floats above it, `sunken` groups content inside another surface.",
+            "default": "'outlined'"
+          },
+          {
+            "name": "padding",
+            "type": "CardPadding",
+            "required": false,
+            "description": "The inset and the gap between children.",
+            "default": "'md'"
+          },
+          {
+            "name": "className",
+            "type": "string",
+            "required": false,
+            "description": ""
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
+        ]
+      },
+      "parts": {
+        "root": "view"
+      },
+      "accessibility": {
+        "pattern": "button",
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "selected",
+            "from": "isSelected (ClickableCard)"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled (ClickableCard)"
+          }
+        ],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "selected border",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          }
+        ],
+        "notes": [
+          "Card is not a control; its content is read in order. The button pattern applies to ClickableCard.",
+          "ClickableCard is read as its `label` only, so the label summarises what the card shows.",
+          "Selection is a thicker accent border as well as a colour, so it does not rest on colour alone."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Variants",
+          "title": "Outlined, raised and sunken",
+          "source": "import { Card } from '@liulidesign/core/Card';\n\nexport function Variants() {\n  return (\n    <view className=\"gap-3\">\n      <Card data-testid=\"outlined\">\n        <text className=\"text-base font-semibold text-text\">Outlined</text>\n        <text className=\"text-sm text-muted\">Sits on the page.</text>\n      </Card>\n      <Card variant=\"raised\">\n        <text className=\"text-base font-semibold text-text\">Raised</text>\n        <text className=\"text-sm text-muted\">Floats above the page.</text>\n      </Card>\n      <Card variant=\"sunken\">\n        <text className=\"text-base font-semibold text-text\">Sunken</text>\n        <text className=\"text-sm text-muted\">Groups content inside another surface.</text>\n      </Card>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "WithActions",
+          "title": "A card with actions",
+          "source": "import { Button } from '@liulidesign/core/Button';\nimport { Card, ClickableCard } from '@liulidesign/core/Card';\n\n/** Actions go in a plain Card, never in a ClickableCard. */\nexport function WithActions() {\n  return (\n    <Card>\n      <text role=\"heading\" headingLevel={3} className=\"text-base font-semibold text-text\">Back up your notes</text>\n      <text className=\"text-sm text-muted\">Keep a copy on another device in case this one is lost.</text>\n      <view className=\"flex-row justify-end gap-2\">\n        <Button label=\"Not now\" variant=\"ghost\" size=\"sm\" />\n        <Button label=\"Turn on\" variant=\"primary\" size=\"sm\" data-testid=\"turn-on\" />\n      </view>\n    </Card>\n  );\n}"
+        },
+        {
+          "name": "Choice",
+          "title": "Choosing one card of several",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ClickableCard } from '@liulidesign/core/Card';\n\nconst plans = [\n  { id: 'monthly', name: 'Monthly', price: '4 a month' },\n  { id: 'yearly', name: 'Yearly', price: '40 a year' },\n] as const;\n\n/** Choosing one of several: the chosen card is reported as selected. */\nexport function Choice() {\n  const plan = useLocal('plan', 'monthly');\n  return (\n    <view className=\"flex-row gap-3\">\n      {plans.map(item => (\n        <ClickableCard\n          key={item.id}\n          label={`${item.name}, ${item.price}`}\n          isSelected={plan.value === item.id}\n          onClick={() => plan.set(item.id)}\n          className=\"grow basis-0\"\n          data-testid={`plan-${item.id}`}\n        >\n          <text className=\"text-base font-semibold text-text\">{item.name}</text>\n          <text className=\"text-sm text-muted\">{item.price}</text>\n        </ClickableCard>\n      ))}\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Choice cards reported as a radio group with a position.",
+          "needs": "radio controls that take children, as checkbox does",
+          "today": "Each card is a button reported as selected."
+        }
+      ],
+      "related": [
+        "Item",
+        "Button"
+      ]
+    },
+    {
       "name": "CheckboxInput",
       "import": "@liulidesign/core/CheckboxInput",
       "exports": [
@@ -326,6 +715,7 @@
           "description": "On the checkbox."
         }
       ],
+      "otherProps": {},
       "parts": {
         "root": "view",
         "control": "checkbox",
@@ -537,6 +927,7 @@
           "description": ""
         }
       ],
+      "otherProps": {},
       "parts": {
         "panel": "dialog",
         "header": "view",
@@ -740,6 +1131,54 @@
           "description": "On the trigger."
         }
       ],
+      "otherProps": {
+        "DropdownMenuItem": [
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "The item's text and the start of its accessible name."
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "required": false,
+            "description": "A second line, read after the label."
+          },
+          {
+            "name": "icon",
+            "type": "Child",
+            "required": false,
+            "description": "Drawn before the label; hidden from assistive tech."
+          },
+          {
+            "name": "onClick",
+            "type": "() => void",
+            "required": true,
+            "description": "Runs on choice; the menu then closes."
+          },
+          {
+            "name": "isDisabled",
+            "type": "boolean",
+            "required": false,
+            "description": "",
+            "default": "false"
+          },
+          {
+            "name": "variant",
+            "type": "DropdownMenuItemVariant",
+            "required": false,
+            "description": "`destructive` tints the icon with the danger role; the text stays readable.",
+            "default": "'default'"
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
+        ]
+      },
       "parts": {
         "chevron": "vector",
         "menu": "view",
@@ -956,6 +1395,7 @@
           "default": "'md'"
         }
       ],
+      "otherProps": {},
       "parts": {
         "root": "view",
         "label": "text",
@@ -1038,6 +1478,392 @@
       "related": [
         "TextInput",
         "CheckboxInput"
+      ]
+    },
+    {
+      "name": "Item",
+      "import": "@liulidesign/core/Item",
+      "exports": [
+        "Item"
+      ],
+      "category": "list",
+      "status": "lab",
+      "summary": "One row of a list: a label, a second line, and content at either end",
+      "description": "Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that opens or selects something; without it the row is plain content and its `endContent` may hold its own control. Rows carry no border or fill, so the container decides how a list is grouped and divided.",
+      "keywords": [
+        "item",
+        "row",
+        "list",
+        "cell",
+        "list item",
+        "settings row",
+        "table row",
+        "navigation row"
+      ],
+      "props": [
+        {
+          "name": "onClick",
+          "type": "(() => void)",
+          "required": false,
+          "description": "Makes the whole row one button. Its `endContent` is then drawn only, never pressed."
+        },
+        {
+          "name": "hasChevron",
+          "type": "boolean",
+          "required": false,
+          "description": "A chevron at the end, for a row that opens another page.",
+          "default": "false"
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Shown in place of `description` while disabled."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The row's main text, and its accessible name when it is pressable."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "A second line under the label; read as the row's description when it is pressable."
+        },
+        {
+          "name": "startContent",
+          "type": "Child",
+          "required": false,
+          "description": "Before the text: an icon or an avatar. Hidden from assistive tech on a pressable row."
+        },
+        {
+          "name": "endContent",
+          "type": "Child",
+          "required": false,
+          "description": "After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "start": "view",
+        "text": "view",
+        "label": "text",
+        "description": "text",
+        "end": "view",
+        "chevron": "vector"
+      },
+      "accessibility": {
+        "pattern": "button",
+        "name": "label",
+        "description": [
+          "description, or disabledMessage while disabled"
+        ],
+        "states": [
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          }
+        ],
+        "keyboard": [],
+        "target": {
+          "lg": 48
+        },
+        "contrast": [
+          {
+            "what": "label",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "second line and end values",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "chevron",
+            "pair": [
+              "text-faint",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          }
+        ],
+        "notes": [
+          "The button pattern applies to a row with `onClick`. A plain row is not a control; its texts are read in order.",
+          "On a pressable row the start and end content are drawn only, so the row is read as its label and second line.",
+          "Every row is at least 48 px tall, above the 44 pt touch minimum."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Navigation",
+          "title": "Rows that open a page",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** Rows that open a page: each is one button named by its title, with the second line as its description. */\nexport function Navigation() {\n  const opened = useLocal('opened', '');\n  return (\n    <view className=\"gap-2\">\n      <view className=\"rounded-container border border-line bg-surface divide-y divide-line\">\n        {notes.map(note => (\n          <Item\n            key={note.id}\n            label={note.title}\n            description={note.updated}\n            hasChevron\n            onClick={() => opened.set(note.title)}\n            data-testid={`note-${note.id}`}\n          />\n        ))}\n      </view>\n      <text data-testid=\"opened\" className=\"text-sm text-muted\">{opened.value}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Values",
+          "title": "Read-only rows with values",
+          "source": "import { Item } from '@liulidesign/core/Item';\n\nconst folder = [{ d: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }] as const;\n\n/** A value at the end of a read-only row, and an icon at the start. */\nexport function Values() {\n  return (\n    <view className=\"rounded-container border border-line bg-surface divide-y divide-line\">\n      <Item\n        label=\"Version\"\n        endContent={<text className=\"text-sm text-muted\">2.4.1</text>}\n        data-testid=\"version\"\n      />\n      <Item\n        label=\"Storage\"\n        description=\"Photos and documents\"\n        startContent={<vector aria-hidden paths={folder} viewBox={[0, 0, 24, 24]} className=\"size-5\" />}\n        endContent={<text className=\"text-sm text-muted\">7.2 GB</text>}\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "WithControl",
+          "title": "A control at the end",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Item } from '@liulidesign/core/Item';\n\n/** A row without `onClick` can hold its own control at the end. */\nexport function WithControl() {\n  const signedIn = useLocal('signedIn', true);\n  return (\n    <view className=\"rounded-container border border-line bg-surface\">\n      <Item\n        label=\"Account\"\n        description={signedIn.value ? 'Signed in' : 'Signed out'}\n        endContent={\n          <Button\n            label={signedIn.value ? 'Sign out' : 'Sign in'}\n            size=\"sm\"\n            onClick={() => signedIn.set(!signedIn.value)}\n            data-testid=\"account-action\"\n          />\n        }\n        data-testid=\"account\"\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Disabled",
+          "title": "Disabled, with the reason",
+          "source": "import { Item } from '@liulidesign/core/Item';\n\nexport function Disabled() {\n  return (\n    <view className=\"rounded-container border border-line bg-surface\">\n      <Item\n        label=\"Export history\"\n        description=\"Download every change as a file\"\n        disabledMessage=\"Available once a change is saved\"\n        isDisabled\n        hasChevron\n        onClick={() => {}}\n        data-testid=\"export\"\n      />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Rows reported as items of a list, with their position.",
+          "needs": "a listitem role on a pressable row, or list position on a button",
+          "today": "Rows are buttons or plain views; the list itself is not announced."
+        },
+        {
+          "missing": "Swipe to reveal row actions.",
+          "needs": "a horizontal drag with snap points that closes other open rows",
+          "today": "Put actions in a DropdownMenu at the end of a plain row."
+        }
+      ],
+      "related": [
+        "DropdownMenu",
+        "Card"
+      ]
+    },
+    {
+      "name": "ProgressBar",
+      "import": "@liulidesign/core/ProgressBar",
+      "exports": [
+        "ProgressBar",
+        "Spinner"
+      ],
+      "category": "feedback",
+      "status": "lab",
+      "summary": "How much of a task is done, or a spinner while the amount is unknown",
+      "description": "ProgressBar shows a task that runs for a while: an upload, an export, storage used. Without `value` it sweeps to say the task is running. Spinner, from the same import, is the small form for a wait inside a control or a list. Both are drawn from plain views and vectors, so they look the same on every OS.",
+      "keywords": [
+        "progress",
+        "progressbar",
+        "loading",
+        "spinner",
+        "busy",
+        "upload",
+        "download",
+        "meter",
+        "indeterminate"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the accessible name: what is in progress (\"Uploading photos\")."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the label row; `label` stays the name.",
+          "default": "false"
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "required": false,
+          "description": "The amount done, from 0 to `max`. Leave it out while the amount is unknown."
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "required": false,
+          "description": "",
+          "default": "100"
+        },
+        {
+          "name": "valueLabel",
+          "type": "string",
+          "required": false,
+          "description": "The amount as the app words it (\"3 of 8 files\"), shown after the label and read in place of a percentage."
+        },
+        {
+          "name": "size",
+          "type": "ProgressBarSize",
+          "required": false,
+          "description": "The track's thickness.",
+          "default": "'md'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the progress bar."
+        }
+      ],
+      "otherProps": {
+        "Spinner": [
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "The accessible name: what is loading. Not drawn."
+          },
+          {
+            "name": "size",
+            "type": "SpinnerSize",
+            "required": false,
+            "description": "",
+            "default": "'md'"
+          },
+          {
+            "name": "className",
+            "type": "string",
+            "required": false,
+            "description": ""
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
+        ]
+      },
+      "parts": {
+        "root": "view",
+        "header": "view",
+        "label": "text",
+        "value": "text",
+        "track": "view",
+        "fill": "view",
+        "spinner": "vector"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "fill against the track",
+            "pair": [
+              "accent",
+              "surface-sunken"
+            ],
+            "minimum": "3:1",
+            "proven": false
+          },
+          {
+            "what": "fill and spinner on a card",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          },
+          {
+            "what": "label",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "value",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          }
+        ],
+        "notes": [
+          "Role progressbar, named by `label`. With `value` it reports the value, 0 and `max`; `valueLabel` is read in place of a percentage.",
+          "Without `value` it reports no value, which assistive tech reads as busy.",
+          "With reduced motion the sweep and the spin stop; the bar and the arc stay drawn.",
+          "Spinner is a progressbar named by its `label`, with nothing drawn but the arc."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Determinate",
+          "title": "An amount the app words",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { ProgressBar } from '@liulidesign/core/ProgressBar';\n\n/** The app words the amount; Liuli formats no numbers. */\nexport function Determinate() {\n  const sent = useLocal('sent', 3);\n  return (\n    <view className=\"gap-3\">\n      <ProgressBar label=\"Uploading photos\" value={sent.value} max={8} valueLabel={`${sent.value} of 8`} data-testid=\"upload\" />\n      <Button\n        label=\"Send one more\"\n        size=\"sm\"\n        width=\"content\"\n        isDisabled={sent.value === 8}\n        onClick={() => sent.set(sent.value + 1)}\n        data-testid=\"more\"\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Indeterminate",
+          "title": "Running, amount unknown",
+          "source": "import { ProgressBar } from '@liulidesign/core/ProgressBar';\n\nexport function Indeterminate() {\n  return <ProgressBar label=\"Preparing the export\" data-testid=\"export\" />;\n}"
+        },
+        {
+          "name": "Compact",
+          "title": "Thin, under its own heading",
+          "source": "import { ProgressBar } from '@liulidesign/core/ProgressBar';\n\n/** A thin bar under a heading that already says what is happening. */\nexport function Compact() {\n  return (\n    <view className=\"gap-2\">\n      <text className=\"text-sm font-medium text-text\">Storage</text>\n      <ProgressBar label=\"Storage used\" isLabelHidden size=\"sm\" value={72} valueLabel=\"7.2 of 10 GB\" data-testid=\"storage\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Spinners",
+          "title": "Spinner sizes",
+          "source": "import { Spinner } from '@liulidesign/core/ProgressBar';\n\nexport function Spinners() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <Spinner label=\"Loading\" size=\"sm\" />\n      <Spinner label=\"Loading messages\" data-testid=\"spinner\" />\n      <Spinner label=\"Loading\" size=\"lg\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Finding a progress bar by role in device tests.",
+          "needs": "progressbar in the test locator roles",
+          "today": "Device checks find it by `data-testid`; Node tests read its role."
+        },
+        {
+          "missing": "Proof that the fill stands out from the track.",
+          "needs": "an accent on surface-sunken contrast pair in the theme pack",
+          "today": "Only accent on surface is proven; the fill against the track is unchecked."
+        }
+      ],
+      "related": [
+        "Button"
       ]
     },
     {
@@ -1231,6 +2057,7 @@
           "description": "On the editor."
         }
       ],
+      "otherProps": {},
       "parts": {
         "box": "view",
         "icon": "view",

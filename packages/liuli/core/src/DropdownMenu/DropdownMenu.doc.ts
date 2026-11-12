@@ -10,6 +10,7 @@ export const doc: ComponentDoc = {
     'Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu.',
   keywords: ['dropdown', 'menu', 'more', 'overflow', 'kebab', 'actions', 'popover', 'context'],
   propsType: 'DropdownMenuProps',
+  otherPropsTypes: ['DropdownMenuItemProps'],
   recipe: { map: 'dropdownMenuRecipe', parts: 'dropdownMenuParts' },
   anatomy: [
     { part: 'chevron', required: false, description: 'The trigger is a Button-styled popover invoker; the chevron marks it as opening a menu.' },

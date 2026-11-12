@@ -116,6 +116,18 @@ export function InList() {
 | `menuClassName` | `string` |  | Classes for the menu panel. |
 | `data-testid` | `string` |  | On the trigger. |
 
+## DropdownMenuItem props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `label` (required) | `string` |  | The item's text and the start of its accessible name. |
+| `description` | `string` |  | A second line, read after the label. |
+| `icon` | `Child` |  | Drawn before the label; hidden from assistive tech. |
+| `onClick` (required) | `() => void` |  | Runs on choice; the menu then closes. |
+| `isDisabled` | `boolean` | `false` |  |
+| `variant` | `DropdownMenuItemVariant` | `'default'` | `destructive` tints the icon with the danger role; the text stays readable. |
+| `data-testid` | `string` |  |  |
+
 ## Anatomy
 
 | Part | Element | Required | Description |

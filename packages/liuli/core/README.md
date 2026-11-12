@@ -5,7 +5,7 @@ TSX and Tailwind classes, inspired by Astryx. The package ships TSX source; the 
 compiles it with the app's pages, checks every class it uses, and names its files by package in
 errors.
 
-Status: lab. Six components, verified by Node unit tests and the compiler only, not yet on a device.
+Status: lab. Ten components, verified by Node unit tests and the compiler only, not yet on a device.
 
 ## What it needs
 
@@ -45,6 +45,10 @@ export function render() {
 | `@liulidesign/core/CheckboxInput` | CheckboxInput: one on/off choice with label and help text |
 | `@liulidesign/core/Dialog` | Dialog: modal panel, `isOpen` + `onOpenChange` |
 | `@liulidesign/core/DropdownMenu` | DropdownMenu, DropdownMenuItem, DropdownMenuDivider |
+| `@liulidesign/core/Item` | Item: a list row, pressable or holding its own control |
+| `@liulidesign/core/Card` | Card and ClickableCard: grouped content, or one pressable choice |
+| `@liulidesign/core/ProgressBar` | ProgressBar and Spinner: an amount done, or a wait |
+| `@liulidesign/core/Badge` | Badge: a short status or category label |
 
 Each also exports its class recipe at `@liulidesign/core/<Name>/recipe`, for styling a raw primitive
 to match. The full reference for each component (props, anatomy, accessibility, examples) is in

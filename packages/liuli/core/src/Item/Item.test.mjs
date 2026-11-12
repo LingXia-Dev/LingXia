@@ -1,0 +1,43 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { textOf } from '@lingxia/view/testing';
+import { described, renderExample } from '../testing/harness.mjs';
+
+test('Navigation: each row is one button named by its title, described by its second line, and runs once', async () => {
+  const screen = await renderExample('Item/Item', 'Navigation');
+  const row = screen.getByTestId('note-n2');
+  assert.equal(row.tag, 'button');
+  assert.equal(row.props.accessibilityLabel, 'Trip to the coast');
+  assert.deepEqual(described(screen, row), ['Edited yesterday']);
+  assert.ok(row.children.some(node => node.tag === 'vector' && node.props.accessibilityHidden), 'a hidden chevron');
+  assert.equal(row.props.minHeight, 48);
+  screen.press(row);
+  assert.equal(textOf(screen.getByTestId('opened')), 'Trip to the coast');
+});
+
+test('Values: a plain row is not a button, and its end content stays readable', async () => {
+  const screen = await renderExample('Item/Item', 'Values');
+  const row = screen.getByTestId('version');
+  assert.notEqual(row.tag, 'button');
+  assert.equal(row.props.accessibilityLabel, undefined);
+  const end = row.children.at(-1);
+  assert.equal(end.props.accessibilityHidden, undefined);
+  assert.equal(textOf(end), '2.4.1');
+});
+
+test('WithControl: the control at the end is its own button', async () => {
+  const screen = await renderExample('Item/Item', 'WithControl');
+  const action = screen.getByTestId('account-action');
+  assert.equal(action.props.accessibilityLabel, 'Sign out');
+  screen.press(action);
+  assert.equal(screen.getByTestId('account-action').props.accessibilityLabel, 'Sign in');
+  assert.ok(textOf(screen.getByTestId('account')).includes('Signed out'));
+});
+
+test('Disabled: takes no press and is described by the reason instead of its second line', async () => {
+  const screen = await renderExample('Item/Item', 'Disabled');
+  const row = screen.getByTestId('export');
+  assert.equal(row.props.onClick, undefined);
+  assert.deepEqual(described(screen, row), ['Available once a change is saved']);
+  assert.equal(screen.queryAll(node => textOf(node) === 'Download every change as a file').length, 0);
+});
