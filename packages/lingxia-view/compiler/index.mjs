@@ -9,6 +9,7 @@ import { moduleBanner } from './compatibility.mjs';
 import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens, fontFaces } from './stylesheets.mjs';
+import { viewTsconfig } from './tsconfig.mjs';
 import { existsSync, statSync } from 'node:fs';
 import { colorProblem, seriesProblem } from '../src/style/color.js';
 import { readFile, mkdir, writeFile, copyFile, realpath } from 'node:fs/promises';
@@ -287,6 +288,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = await realpath(resolve(root)); output = resolve(output);
   const inputs = {}, warnings = [];
+  const tsconfig = viewTsconfig(root);
   // Whether the theme's Tailwind compile was warm, and how many files needed fresh analysis.
   let warm = true;
   analysisHits = analysisMisses = 0;
@@ -307,6 +309,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       bundled = await build({
         stdin: { contents: `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureFonts, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)});`, resolveDir: root },
         bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', jsxFragment: 'Fragment', inject: [jsx], logLevel: 'silent',
+        tsconfigRaw: tsconfig,
         // Dev builds keep a source map so runtime errors name the author's line.
         ...(dev ? { sourcemap: 'external', absWorkingDir: root, outfile: join(root, 'page.js'), metafile: true } : {}),
         alias: { '@lingxia/view': publicEntry },
