@@ -10,7 +10,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | Variant | Applies to |
 | --- | --- |
 | `placeholder:` | editors; `text-*` color only |
-| `backdrop:` | any element |
+| `backdrop:` | `<dialog>` only; styles its scrim |
 | `first:` | any element |
 | `last:` | any element |
 | `only:` | any element |
@@ -38,6 +38,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `dark:` | any element; not on colours, which follow appearance |
 | `starting:` | any element; paint only, the values it enters from |
 | `exit:` | any element; paint only, the values a removed element leaves toward |
+| `group-active:` | any element inside a pressable control; while that control is pressed; paint only |
 
 `space-x-*`, `space-y-*` and `divide-*` are utilities, not variants: they style every child but the last.
 
@@ -81,7 +82,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `focus-visible:` | `focus-visible:` | selector :focus-visible |
 | `enabled:` | `enabled:` | selector :enabled |
 | `inert:` | `inert:` | selector :is([inert], [inert] *) |
-| `in:` | `in-focus:` | ancestor-state variants (in-*; track the ancestor state in TS, e.g. onFocus/onBlur, and choose the classes from it) |
+| `in:` | `in-focus:` | ancestor-state variants (in-*; use focus-within: on the ancestor, or track the state in TS and choose the classes from it) |
 | `aria:` | `aria-checked:` | selector [aria-checked="true"] (aria-*: choose classes from the state in TS and set aria-* props separately) |
 | `nth:` | `nth-3:` | selector :nth-child(3) |
 | `nth-last:` | `nth-last-3:` | selector :nth-last-child(3) |

@@ -17,7 +17,7 @@ export declare function childrenToArray(children: Child): readonly Exclude<Child
 export interface Props {
   style?: Style; className?: string; key?: string; "data-testid"?: string; dir?: "ltr" | "rtl" | "auto"; children?: Child;
   /** Semantic role; controls keep their own. Headings take `headingLevel` 1..6. */
-  role?: "heading" | "list" | "listitem" | "alert" | "status" | "menu" | "menuitem" | "progressbar"; headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
+  role?: "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "menuitem" | "progressbar"; headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   /** A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. */
   "aria-valuenow"?: number; "aria-valuemin"?: number; "aria-valuemax"?: number; "aria-valuetext"?: string;
   /** Removes the node and its subtree from accessibility. */
@@ -192,7 +192,7 @@ export type BackgroundGradient =
   | { kind: "radial"; shape?: "circle" | "ellipse"; size?: "closest-side" | "closest-corner" | "farthest-side" | "farthest-corner"; at?: readonly [number, number]; colorSpace?: "srgb" | "oklab"; stops: ReadonlyArray<GradientStop> }
   | { kind: "conic"; from?: number; at?: readonly [number, number]; colorSpace?: "srgb" | "oklab"; stops: ReadonlyArray<GradientStop> };
 export interface PieLayout { center: readonly [number, number]; innerRadius: number; outerRadius: number; emphasisScale?: number }
-/** `fill`/`stroke` take a hex color, `currentColor`, `none` or `url(#id)` naming one of the vector's `gradients`. */
+/** `fill`/`stroke` take a colour role (`'line-strong/65'`), a hex color, `currentColor`, `none` or `url(#id)` naming one of the vector's `gradients`. */
 export interface VectorPath {
   d: string; fill?: string; stroke?: string; strokeWidth?: number; strokeDasharray?: readonly number[]; strokeDashoffset?: number;
   strokeLinecap?: "butt" | "round" | "square"; strokeLinejoin?: "miter" | "round" | "bevel";

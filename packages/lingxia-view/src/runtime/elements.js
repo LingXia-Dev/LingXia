@@ -25,7 +25,7 @@ const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', exp
 const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
 // Elements that take input of their own; they may sit inside a pressable control.
 const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'select', 'slider']);
-const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO' };
+const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO', select: 'UI_SELECT' };
 const optionStyle = ['fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'color', 'background'];
 // A component's id keys its local state and nodes. The compiler stamps each top-level component
 // with `__lxid` (module path and declaration name), which survives minification and hot swaps; a

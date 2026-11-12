@@ -836,7 +836,7 @@ const ident = String.raw`(?:\\[0-9a-fA-F]{1,6}\s?|\\[^0-9a-fA-F]|[^\s:.>+~[\\()]
 function relatives(selector) {
   if (/^:is\(\.\S+ > \*\)$/.test(selector)) return 'child variants (put the classes on each child, e.g. when mapping the children in TS)';
   if (/^:is\(\.\S+ \*\)$/.test(selector)) return 'descendant variants (put the classes on the descendants that need them)';
-  if (/^:where\(:[a-z-]+\) \./.test(selector)) return 'ancestor-state variants (in-*; track the ancestor state in TS, e.g. onFocus/onBlur, and choose the classes from it)';
+  if (/^:where\(:[a-z-]+\) \./.test(selector)) return 'ancestor-state variants (in-*; use focus-within: on the ancestor, or track the state in TS and choose the classes from it)';
   if (/\.(?:group|peer)\b/.test(selector)) return 'group-*/peer-* variants (hold the shared state in TS and choose both elements\' classes from it)';
   return undefined;
 }

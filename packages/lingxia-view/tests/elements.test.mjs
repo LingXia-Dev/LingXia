@@ -436,6 +436,8 @@ test('select sends its options and shows the chosen label or its placeholder', (
   assert.equal(empty.props.inputValue, '');
   for (const bad of [[], [{ value: 'a', label: 'A' }, { value: 'a', label: 'B' }], [{ value: '', label: 'x' }]])
     assert.throws(() => describe(() => h('select', { options: bad, 'aria-label': 'Plan' }), {}), /UI_SELECT/);
+  const loose = { value: 'm', set() {} };
+  assert.throws(() => describe(() => h('select', { options, bind: loose, 'aria-label': 'Plan' }), {}), /^Error: UI_SELECT: bind requires a mounted string useLocal cell/);
 });
 
 test('a textarea takes rows and maxRows as an autosizing range', () => {

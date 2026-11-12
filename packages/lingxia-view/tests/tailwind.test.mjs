@@ -622,7 +622,7 @@ test('relative variants, undrawn properties and no-op utilities fail with what t
     'drop-shadow-red-500', 'text-shadow-red-500', 'mask-radial-at-center', 'space-x-reverse', 'divide-y-reverse', 'select-auto'])))
     .map(rule => [rule.name, rule.error?.message]));
   const expect = {
-    '*:p-2': /child variants .*each child/, '**:p-2': /descendant variants/, 'in-focus:p-2': /ancestor-state variants .*onFocus/,
+    '*:p-2': /child variants .*each child/, '**:p-2': /descendant variants/, 'in-focus:p-2': /ancestor-state variants .*focus-within:/,
     'group-hover:p-2': /group-\*\/peer-\*/, 'peer-checked:p-2': /group-\*\/peer-\*/, 'cursor-pointer': /no pointer cursor/,
     'pointer-events-none': /hit testing follows handlers/, 'outline-2': /ring-\*/, sepia: /sets nothing/,
     'translate-z-4': /3D transforms/, 'scale-z-50': /3D transforms/, transform: /apply without it/, 'transform-cpu': /apply without it/,

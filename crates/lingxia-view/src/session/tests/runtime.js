@@ -2722,7 +2722,7 @@
   var semanticStates = { pressed: "statePressed", selected: "stateSelected", expanded: "stateExpanded", busy: "stateBusy" };
   var accepts = (field2, tag) => admission.fields[field2].includes(elements[tag].wire);
   var interactiveTags = /* @__PURE__ */ new Set(["button", "link", "checkbox", "switch", "radio", "input", "textarea", "select", "slider"]);
-  var bindCodes = { input: "UI_INPUT", textarea: "UI_INPUT", checkbox: "UI_CHECK", switch: "UI_CHECK", slider: "UI_SLIDER", radio: "UI_RADIO" };
+  var bindCodes = { input: "UI_INPUT", textarea: "UI_INPUT", checkbox: "UI_CHECK", switch: "UI_CHECK", slider: "UI_SLIDER", radio: "UI_RADIO", select: "UI_SELECT" };
   var optionStyle = ["fontSize", "fontWeight", "fontFamily", "lineHeight", "color", "background"];
   var componentIds = /* @__PURE__ */ new WeakMap();
   var componentNames = /* @__PURE__ */ new Map();

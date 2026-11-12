@@ -32,7 +32,7 @@ async function chapters() {
       const line = text.slice(0, match.index).split('\n').length;
       if (lang === 'css') theme = source;
       if (lang !== 'tsx') continue;
-      const expected = info.match(/\berror\s+(UI_[A-Z_]+)/)?.[1];
+      const expected = info.match(/\berror\s+(UI_[A-Z0-9_]+)/)?.[1];
       const data = JSON.parse(info.match(/\bdata=(\{.*\})/)?.[1] ?? '{}');
       blocks.push({ name: `${relative(docs, file)}:${line}`, source, theme, expected, data });
     }

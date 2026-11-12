@@ -68,7 +68,8 @@ async function elements(schema) {
     if (element.wire !== name) facts.push(`Renders as ${code(element.wire)}.`);
     if (parents[element.wire]) facts.push(`Only inside ${code(`<${parents[element.wire]}>`)}.`);
     if (admission.root) facts.push('The page root.');
-    facts.push(admission.content ? 'May sit inside a composed `<button>` or `<checkbox>`.' : 'Not allowed inside a composed `<button>` or `<checkbox>`.');
+    // Controls nest inside a pressable control; only scrolls and lists are refused there.
+    if (name === 'scroll' || element.wire === 'list') facts.push('Not allowed inside a pressable control (`UI_BUTTON`).');
     out.push(facts.join(' '), '');
     if (element.binding) {
       const { type, event } = element.binding;
@@ -237,7 +238,9 @@ const variantSamples = {
 };
 
 const probe = 'opacity-50';
-const variantCandidates = system => system.getVariants().map(variant => [variant.name, `${variantSamples[variant.name] ?? variant.name}:${probe}`]);
+// `group-active:` is supported while the other `group-*` variants are refused, so it is probed too.
+const variantCandidates = system => [...system.getVariants().map(variant => [variant.name, `${variantSamples[variant.name] ?? variant.name}:${probe}`]),
+  ['group-active', `group-active:${probe}`]];
 
 function variants(schema, system, rules) {
   const candidates = variantCandidates(system);
@@ -254,6 +257,8 @@ function variants(schema, system, rules) {
     hover: 'any element, only when `env.pointer` is `fine`; paint only', disabled: `${disableable}; replaces the whole class cascade`,
     placeholder: `editors; \`text-*\` color only`,
     dark: 'any element; not on colours, which follow appearance',
+    backdrop: '`<dialog>` only; styles its scrim',
+    'group-active': 'any element inside a pressable control; while that control is pressed; paint only',
     starting: 'any element; paint only, the values it enters from',
     has: 'any element, alone; `has-checked:`, `has-disabled:` (a descendant checkbox, switch, answered radio or disabled element) and `has-focus:`; paint only',
     'focus-within': 'any element; while it or a descendant has focus; paint only',
@@ -366,7 +371,8 @@ async function environment(schema) {
 
 function semantics(schema) {
   const { roles, liveRegions, actions } = schema.semantics;
-  const authored = schema.options.role;
+  // `dialog` is the <dialog> element's own role; page code cannot set it.
+  const authored = schema.options.role.filter(role => role !== 'dialog');
   const projected = role => roles.includes(role) ? role : roles.find(name => name.replace(/-/g, '') === role);
   return [header, '# Semantics', '',
     'The accessibility tree the platform adapter exposes. Elements get their role from what they are;',
@@ -388,6 +394,7 @@ const untestable = {
 };
 
 const errorNotes = {
+  UI_A11Y: 'An image without `alt`, or a control, editor, plot, select or dialog without an accessible name.',
   UI_SELECT: 'Invalid `<select>` options, value or selection reply.',
   UI_FONT: 'A family is not declared with `@font-face`, a declared face file is missing, outside the lxapp or too large, or a face or system font could not be read; text falls back to the next font.',
   UI_FRAME: 'The platform presenter kept refusing frames prepared ahead; the page falls back to one frame at a time.',
@@ -505,7 +512,7 @@ async function errors() {
   const found = new Map();
   for (const [where, dir, test] of sources) for (const path of await files(dir, test)) {
     const text = shipped(path, await readFile(path, 'utf8'));
-    for (const match of text.matchAll(/["'`](UI_[A-Z][A-Z_]*[A-Z])(?=[:"'`])/g)) {
+    for (const match of text.matchAll(/["'`](UI_[A-Z][A-Z0-9_]*[A-Z0-9])(?=[:"'`])/g)) {
       const entry = found.get(match[1]) ?? { where: new Set() };
       entry.where.add(where);
       found.set(match[1], entry);

@@ -12,7 +12,6 @@ the `role` prop sets one of the authored roles on any non-control element.
 | `heading` | `heading` |
 | `list` | `list` |
 | `listitem` | `list-item` |
-| `dialog` | `dialog` |
 | `alert` | `alert` |
 | `status` | `status` |
 | `grid` | `grid` |

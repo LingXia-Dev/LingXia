@@ -8,6 +8,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 
 | Code | Raised at | Meaning |
 | --- | --- | --- |
+| `UI_A11Y` | build, runtime, native | An image without `alt`, or a control, editor, plot, select or dialog without an accessible name. |
 | `UI_ACTION` | runtime, native | An action call was malformed or its reply invalid. |
 | `UI_ANIMATION` | build, runtime, native | An invalid or over-budget animation definition, or an inline `style.animation`. |
 | `UI_BOOTSTRAP_TIMEOUT` | native | Logic did not deliver the first page state in time. |

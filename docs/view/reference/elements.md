@@ -13,7 +13,7 @@ Styles each element accepts are in [styles.md](styles.md).
 | `key` | `string` |  |
 | `"data-testid"` | `string` |  |
 | `dir` | `"ltr" \| "rtl" \| "auto"` |  |
-| `role` | `"heading" \| "list" \| "listitem" \| "alert" \| "status" \| "menu" \| "menuitem" \| "progressbar"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6. |
+| `role` | `"heading" \| "list" \| "listitem" \| "alert" \| "status" \| "grid" \| "gridcell" \| "listbox" \| "option" \| "menu" \| "menuitem" \| "progressbar"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6. |
 | `headingLevel` | `1 \| 2 \| 3 \| 4 \| 5 \| 6` |  |
 | `"aria-valuenow"` | `number` | A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. |
 | `"aria-valuemin"` | `number` |  |
@@ -30,7 +30,7 @@ Styles each element accepts are in [styles.md](styles.md).
 
 ## `<view>`
 
-Children: any elements and text. Renders as `column`. May sit inside a composed `<button>` or `<checkbox>`.
+Children: any elements and text. Renders as `column`.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -48,7 +48,7 @@ Children: any elements and text. Renders as `column`. May sit inside a composed 
 
 ## `<column>`
 
-Children: any elements and text. May sit inside a composed `<button>` or `<checkbox>`.
+Children: any elements and text.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -66,7 +66,7 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 
 ## `<row>`
 
-Children: any elements and text. May sit inside a composed `<button>` or `<checkbox>`.
+Children: any elements and text.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -84,7 +84,7 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 
 ## `<page>`
 
-Children: any elements and text. The page root. Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: any elements and text. The page root.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -92,7 +92,7 @@ Children: any elements and text. The page root. Not allowed inside a composed `<
 
 ## `<text>`
 
-Children: text, `<span>` and `<link>` runs. May sit inside a composed `<button>` or `<checkbox>`.
+Children: text, `<span>` and `<link>` runs.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -100,7 +100,7 @@ Children: text, `<span>` and `<link>` runs. May sit inside a composed `<button>`
 
 ## `<button>`
 
-Children: text, or noninteractive content elements (a composed control). Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: text, or noninteractive content elements (a composed control).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -118,13 +118,13 @@ Children: text, or noninteractive content elements (a composed control). Not all
 
 ## `<spacer>`
 
-Children: none. May sit inside a composed `<button>` or `<checkbox>`.
+Children: none.
 
 No element-specific props.
 
 ## `<scroll>`
 
-Children: any elements and text. Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: any elements and text. Not allowed inside a pressable control (`UI_BUTTON`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -134,7 +134,7 @@ Children: any elements and text. Not allowed inside a composed `<button>` or `<c
 
 ## `<List>`
 
-Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: none. Not allowed inside a pressable control (`UI_BUTTON`).
 
 A component from `@lingxia/view`, rendered as the `list` element.
 
@@ -150,7 +150,7 @@ A component from `@lingxia/view`, rendered as the `list` element.
 
 ## `<image>`
 
-Children: none. May sit inside a composed `<button>` or `<checkbox>`.
+Children: none.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -163,7 +163,7 @@ Children: none. May sit inside a composed `<button>` or `<checkbox>`.
 
 ## `<input>`
 
-Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: none.
 
 Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput(value: string)`; not both. `onInput` runs on every value change, a composition included.
 
@@ -187,7 +187,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 ## `<textarea>`
 
-Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: none.
 
 Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput(value: string)`; not both. `onInput` runs on every value change, a composition included.
 
@@ -209,7 +209,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 ## `<checkbox>`
 
-Children: text, or noninteractive content elements (a composed control). Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: text, or noninteractive content elements (a composed control).
 
 Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChange(value: boolean)`; not both.
 
@@ -220,7 +220,7 @@ Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChan
 
 ## `<switch>`
 
-Children: text only. Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: text only.
 
 Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChange(value: boolean)`; not both.
 
@@ -231,7 +231,7 @@ Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChan
 
 ## `<radio>`
 
-Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: none.
 
 Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChange(value: string)`; not both.
 
@@ -243,7 +243,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChang
 
 ## `<slider>`
 
-Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: none.
 
 Binding: `bind={local}` with a `useLocal<number>` cell, or `value` plus `onChange(value: number)`; not both.
 
@@ -257,7 +257,7 @@ Binding: `bind={local}` with a `useLocal<number>` cell, or `value` plus `onChang
 
 ## `<grid>`
 
-Children: any elements and text. May sit inside a composed `<button>` or `<checkbox>`.
+Children: any elements and text.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -274,7 +274,7 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 
 ## `<stack>`
 
-Children: any elements and text. May sit inside a composed `<button>` or `<checkbox>`.
+Children: any elements and text.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -291,7 +291,7 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 
 ## `<dialog>`
 
-Children: any elements and text. Renders as `column`. May sit inside a composed `<button>` or `<checkbox>`.
+Children: any elements and text. Renders as `column`.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -307,7 +307,7 @@ Children: any elements and text. Renders as `column`. May sit inside a composed 
 
 ## `<plot>`
 
-Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: none.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -326,7 +326,7 @@ Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
 
 ## `<vector>`
 
-Children: none. May sit inside a composed `<button>` or `<checkbox>`.
+Children: none.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -336,13 +336,13 @@ Children: none. May sit inside a composed `<button>` or `<checkbox>`.
 
 ## `<span>`
 
-Children: text, `<span>` and `<link>` runs. Only inside `<text>`. May sit inside a composed `<button>` or `<checkbox>`.
+Children: text, `<span>` and `<link>` runs. Only inside `<text>`.
 
 No element-specific props.
 
 ## `<link>`
 
-Children: text and `<span>` runs; links do not nest. Only inside `<text>`. Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: text and `<span>` runs; links do not nest. Only inside `<text>`.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -352,7 +352,7 @@ Children: text and `<span>` runs; links do not nest. Only inside `<text>`. Not a
 
 ## `<select>`
 
-Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: none.
 
 Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChange(value: string)`; not both.
 
@@ -365,7 +365,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChang
 
 ## `<video>`
 
-Children: none. May sit inside a composed `<button>` or `<checkbox>`.
+Children: none.
 
 | Prop | Type | Required |
 | --- | --- | --- |
