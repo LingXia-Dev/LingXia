@@ -63,7 +63,10 @@
     recall: null,
     frames: [],
     lists: 0,
-    cellReads: 0
+    cellReads: 0,
+    contextReads: 0,
+    // The providers visible to the component or row factory now running.
+    contexts: void 0
   };
   var page = { committed: null, locals: /* @__PURE__ */ new Map(), callbacks: /* @__PURE__ */ new Map(), updates: /* @__PURE__ */ new Map(), resources: /* @__PURE__ */ new Map() };
   function outsideRender(what) {
@@ -973,14 +976,14 @@
     }
     matched.splice(0, matched.length, ...ordered);
     const own2 = matched.filter((rule) => !rule.when?.children && !rule.when?.every);
-    const plain2 = own2.filter((rule) => !rule.when?.state);
+    const plain3 = own2.filter((rule) => !rule.when?.state);
     const meta = {};
-    const base = cascade(plain2, meta);
+    const base = cascade(plain3, meta);
     const result = { base, ...meta.pairedLeading ? { pairedLeading: true } : {}, ...meta.release ? { release: meta.release } : {} };
     for (const state of states) {
       const extra = own2.filter((rule) => rule.when?.state === state);
       if (!extra.length || state === "hover" && env.pointer !== "fine") continue;
-      const full = cascade([...plain2, ...extra]);
+      const full = cascade([...plain3, ...extra]);
       result[state] = state === "disabled" ? full : changed(full, base);
     }
     const backdrop2 = own2.filter((rule) => rule.when?.state === "backdrop");
@@ -2557,6 +2560,45 @@
     return out;
   }
 
+  // src/runtime/context.js
+  var unstamped = /* @__PURE__ */ new WeakMap();
+  var unnamed = 0;
+  function contextId(context) {
+    if (typeof context.__lxid === "string") return context.__lxid;
+    let id = unstamped.get(context);
+    if (id === void 0) unstamped.set(context, id = `context#${++unnamed}`);
+    return id;
+  }
+  function lookup(chain, id) {
+    while (chain && chain.id !== id) chain = chain.next;
+    return chain;
+  }
+  function plain2(value, budget) {
+    if (value === null || typeof value !== "object" || --budget.left < 0 || brand in value || cellOf(value)) return true;
+    if (Array.isArray(value)) return value.every((each) => plain2(each, budget));
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return false;
+    for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value)))
+      if ("value" in descriptor && !plain2(descriptor.value, budget)) return false;
+    return true;
+  }
+  function checkValue(value) {
+    if (!plain2(value, { left: 256 })) throw Error("UI_CONTEXT: value must be plain data, functions or handles");
+  }
+  function isProvider(tag) {
+    return Boolean(tag.__lxContext);
+  }
+  function provide(tag, props, children, chain, resolve) {
+    for (const key in props) if (key !== "value" && key !== "key") throw Error(`UI_CONTEXT: a Provider takes only value, not ${key}`);
+    if (!("value" in props)) throw Error("UI_CONTEXT: a Provider needs a value");
+    checkValue(props.value);
+    const child = children.length === 1 ? children[0] : void 0;
+    if (children.length > 1 || child != null && child !== false && !isNode(child)) throw Error("UI_CONTEXT: a Provider wraps one element");
+    const result = resolve(child, { id: contextId(tag.__lxContext), value: props.value, next: chain });
+    if (result?.fragment) throw Error("UI_CONTEXT: a Provider wraps one element");
+    return result;
+  }
+
   // src/runtime/video.js
   var fields = [
     "paused",
@@ -2949,13 +2991,25 @@
       render.scope = scope;
       const supplied = children.length === 0 ? void 0 : children.length === 1 ? children[0] : children;
       try {
+        if (isProvider(tag)) return provide(
+          tag,
+          original,
+          children,
+          parent.contexts,
+          (child, contexts) => resolveNode(child, scope, depth + 1, { ...parent, contexts })
+        );
         const recalled = recall(scope, tag, original, children, parent);
         if (recalled !== void 0) return recalled;
-        const frame = enter(scope);
+        const frame = enter(scope, parent.contexts);
+        const outerContexts = render.contexts;
         let result;
         try {
-          result = resolveNode(tag({ ...original, children: supplied }), scope, depth + 1, parent);
+          render.contexts = parent.contexts;
+          const output = tag({ ...original, children: supplied });
+          render.contexts = outerContexts;
+          result = resolveNode(output, scope, depth + 1, parent);
         } finally {
+          render.contexts = outerContexts;
           leave(frame);
         }
         remember(frame, tag, original, children, parent, result);
@@ -3267,7 +3321,7 @@
     }
     if (tag === "list") {
       listKeys(props);
-      result.list = listState(props, identity);
+      result.list = listState(props, identity, direction, parent.contexts);
       render.lists++;
     } else if (runs) {
       const extra = tag === "span" || tag === "link" ? style2.author : void 0;
@@ -3280,7 +3334,8 @@
           extra,
           inText: true,
           inControl: parent.inControl,
-          inLink: parent.inLink || tag === "link"
+          inLink: parent.inLink || tag === "link",
+          contexts: parent.contexts
         });
         if (run === null) return [];
         if (run.fragment) throw Error(`UI_TEXT: a component inside <${tag}> returns a fragment; return one <span>`);
@@ -3313,7 +3368,8 @@
           every: style2.every,
           sibling: { index: position, count: flat.length },
           inControl: parent.inControl || admission.tags[element.wire].children === "content",
-          popovers: props[popoverScope] ?? parent.popovers
+          popovers: props[popoverScope] ?? parent.popovers,
+          contexts: parent.contexts
         });
         if (node?.fragment) {
           for (const inner of node.fragment) place(key === void 0 ? { ...inner, slot: inner.slot === void 0 ? void 0 : `${at}.${inner.slot}`, key: inner.key } : { child: inner.child, key: JSON.stringify([key, inner.key ?? `#${inner.slot}`]) }, position, nesting + 1);
@@ -3475,9 +3531,9 @@
       return child;
     });
   }
-  function reusableRows(old, props, rowEnv) {
+  function reusableRows(old, props, rowEnv, direction) {
     const source2 = props.row?.__lxRows, before = old?.rowSource;
-    if (!source2 || !before || before.site !== source2.site || old.count !== props.count || old.rowEnv !== rowEnv || !old.pure?.size) return null;
+    if (!source2 || !before || before.site !== source2.site || old.count !== props.count || old.rowEnv !== rowEnv || old.direction !== direction || !old.pure?.size) return null;
     const same3 = before.items === source2.items;
     const rows = /* @__PURE__ */ new Map();
     for (const i of old.pure) {
@@ -3487,7 +3543,7 @@
     }
     return rows.size ? { rows, typography: old.typography } : null;
   }
-  function listState(props, identity) {
+  function listState(props, identity, direction, contexts) {
     const old = page.committed?.lists.get(identity);
     const rowSource = props.row?.__lxRows, rowEnv = rowSource ? JSON.stringify(envOf(render.view) ?? null) : void 0;
     const anchor = props.anchor === void 0 ? null : JSON.stringify(props.anchor);
@@ -3504,9 +3560,11 @@
       states: states2,
       cache: /* @__PURE__ */ new Map(),
       pure: /* @__PURE__ */ new Set(),
-      reusable: reusableRows(old, props, rowEnv),
+      reusable: reusableRows(old, props, rowEnv, direction),
       rowSource,
       rowEnv,
+      direction,
+      contexts,
       window: old?.window ? { ...old.window, start: Math.min(old.window.start, props.count), end: Math.min(old.window.end, props.count) } : null
     };
   }
@@ -3705,10 +3763,10 @@
         let row = node.list.cache.get(i), key = node.list.states.get(i)?.key;
         if (!row) {
           const { candidate } = render, handles = handlesIssued(), declarations = candidate.declarations.size, resources = candidate.resources.size;
-          const reads = render.cellReads;
+          const reads = render.cellReads, contextReads = render.contextReads;
           render.readsView = false;
           ({ row, key } = renderRow(node, i, cells, depth));
-          const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles && render.cellReads === reads && candidate.declarations.size === declarations && candidate.resources.size === resources;
+          const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles && render.cellReads === reads && render.contextReads === contextReads && candidate.declarations.size === declarations && candidate.resources.size === resources;
           if (pure) node.list.pure.add(i);
           else node.list.pure.delete(i);
         } else {
@@ -3741,10 +3799,12 @@
   function renderRowTimed(node, i, cells, depth) {
     const { props, identity } = node;
     const suppliedKey = props.itemKeys?.[i];
-    const previous = render.scope;
+    const previous = render.scope, outerContexts = render.contexts;
+    render.contexts = node.list.contexts;
     render.scope = suppliedKey === void 0 ? `${identity}/row:${i}` : `${identity}/row/key:${JSON.stringify(suppliedKey)}`;
     try {
       const value = props.row(i);
+      render.contexts = outerContexts;
       const declared2 = isNode(value) ? readNode(value)[1].key : void 0;
       if (declared2 !== void 0 && typeof declared2 !== "string") throw Error("UI_KEY: expected string");
       if (suppliedKey === void 0 && declared2 !== void 0 && cells.size > 0)
@@ -3759,7 +3819,12 @@
         if (!Number.isFinite(height) || height < 0 || height > 16384) throw Error("UI_LIST: invalid row height");
         fields2.height = height;
       }
-      const content = resolveNode(value, render.scope, depth + 2, { typography: node.typography, sibling: { index: i, count: props.count } });
+      const content = resolveNode(value, render.scope, depth + 2, {
+        typography: node.typography,
+        sibling: { index: i, count: props.count },
+        direction: node.list.direction,
+        contexts: node.list.contexts
+      });
       if (content?.fragment) throw Error("UI_LIST: a row returns one node; wrap its fragment in <view>");
       const row = {
         tag: "column",
@@ -3777,6 +3842,7 @@
       return { row, key };
     } finally {
       render.scope = previous;
+      render.contexts = outerContexts;
     }
   }
 
@@ -3821,6 +3887,20 @@
     const budget = { left: compareBudget };
     return same2(a.typography, b.typography, old, budget) && same2(a.extra, b.extra, old, budget) && same2(a.every, b.every, old, budget) && same2(a.sibling, b.sibling, old, budget) && same2(a.popovers, b.popovers, old, budget);
   }
+  function sameContexts(reads, chain, old, budget) {
+    for (const [id, read] of reads) {
+      const entry = lookup(chain, id);
+      if (!same2(entry ? entry.value : read.context.defaultValue, read.value, old, budget)) return false;
+    }
+    return true;
+  }
+  function sameChain(a, b, old, budget) {
+    for (; a || b; a = a.next, b = b.next) if (!a || !b || a.id !== b.id || !same2(a.value, b.value, old, budget)) return false;
+    return true;
+  }
+  function passContexts(reads, chain, outer) {
+    for (const [id, read] of reads) if (!outer.contextReads.has(id) && lookup(chain, id) === lookup(outer.contexts, id)) outer.contextReads.set(id, read);
+  }
   var topLayerSize = () => {
     const top = render.candidate.topLayer;
     return top ? top.entries.length + top.popovers.size + top.invokers.length : 0;
@@ -3839,13 +3919,14 @@
     for (const cell2 of record.reads) if (page.updates.has(cell2)) return void 0;
     for (const cell2 of record.cells.values()) if (page.updates.has(cell2)) return void 0;
     const budget = { left: compareBudget };
-    if (!sameFields(props, record.props, record.arena, budget) || !same2(children, record.children, record.arena, budget) || !sameContext(parent, record.parent, record.arena)) return void 0;
+    if (!sameFields(props, record.props, record.arena, budget) || !same2(children, record.children, record.arena, budget) || !sameContext(parent, record.parent, record.arena) || !sameContexts(record.contextReads, parent.contexts, record.arena, budget) || record.lists && !sameChain(parent.contexts, record.parent.contexts, record.arena, budget)) return void 0;
     const fresh2 = { ...record, props, children, parent, arena: currentArena(), result: record.lists ? reuse(record.result) : record.result };
     keep(fresh2);
     const frame = render.frames[render.frames.length - 1];
     if (frame) {
       frame.nested.push(fresh2);
       for (const cell2 of record.reads) frame.reads.add(cell2);
+      passContexts(record.contextReads, parent.contexts, frame);
     }
     for (const [key, cell2] of record.cells) {
       render.candidate.locals.set(key, cell2);
@@ -3881,8 +3962,8 @@
     for (const [key, entry] of record.closures) render.candidate.closures?.set(key, entry);
     for (const nested of record.nested) keep(nested);
   }
-  function enter(scope) {
-    const frame = { scope, cells: /* @__PURE__ */ new Map(), reads: /* @__PURE__ */ new Set(), view: false, nested: [], closures: [], handles: handlesIssued(), top: topLayerSize(), lists: render.lists };
+  function enter(scope, contexts) {
+    const frame = { scope, contexts, contextReads: /* @__PURE__ */ new Map(), cells: /* @__PURE__ */ new Map(), reads: /* @__PURE__ */ new Set(), view: false, nested: [], closures: [], handles: handlesIssued(), top: topLayerSize(), lists: render.lists };
     render.frames.push(frame);
     render.collectors.push(frame.cells);
     return frame;
@@ -3903,6 +3984,7 @@
     if (outer) {
       for (const cell2 of frame.reads) outer.reads.add(cell2);
       outer.view || (outer.view = frame.view);
+      passContexts(frame.contextReads, frame.contexts, outer);
     }
   }
   function remember(frame, tag, props, children, parent, result) {
@@ -3917,6 +3999,7 @@
       result,
       cells: frame.cells,
       reads: frame.reads,
+      contextReads: frame.contextReads,
       nested: frame.nested,
       closures: frame.closures,
       view: viewStamp(render.view),
@@ -5062,11 +5145,11 @@
     const name = props["data-testid"] ? ` "${props["data-testid"]}"` : "";
     globalThis.__lingxiaWarn(`UI_LIST: <List>${name} got an items array that is not frozen, so every row renders again on every render; Object.freeze the array the View builds, or pass the Logic data array through unchanged`);
   }
-  function runCandidate(view, lookup, build, recall2 = null) {
+  function runCandidate(view, lookup2, build, recall2 = null) {
     if (render.active) throw Error("UI_RENDER: recursive render");
     render.thrown = "";
     resetArena();
-    Object.assign(render, { active: true, view, lookupLocals: lookup, recall: recall2?.memo, recallClosures: recall2?.closures });
+    Object.assign(render, { active: true, view, lookupLocals: lookup2, recall: recall2?.memo, recallClosures: recall2?.closures });
     render.candidate = {
       locals: /* @__PURE__ */ new Map(),
       declarations: /* @__PURE__ */ new Set(),

@@ -6,6 +6,7 @@ import { brand, currentArena } from './nodes.js';
 import { envOf } from './hooks.js';
 import { handlesIssued, skipHandle } from './elements.js';
 import { sliceable } from './encode.js';
+import { lookup } from './context.js';
 
 // Comparing two prop sets stops after this many objects; past it they count as different.
 const compareBudget = 256;
@@ -55,6 +56,26 @@ function sameContext(a, b, old) {
     same(a.sibling, b.sibling, old, budget) && same(a.popovers, b.popovers, old, budget);
 }
 
+// Context values the subtree read must equal what the current providers supply.
+function sameContexts(reads, chain, old, budget) {
+  for (const [id, read] of reads) {
+    const entry = lookup(chain, id);
+    if (!same(entry ? entry.value : read.context.defaultValue, read.value, old, budget)) return false;
+  }
+  return true;
+}
+
+// A list renders its rows later from the providers it captured, so every one of them counts.
+function sameChain(a, b, old, budget) {
+  for (; a || b; a = a.next, b = b.next) if (!a || !b || a.id !== b.id || !same(a.value, b.value, old, budget)) return false;
+  return true;
+}
+
+/** Hands context reads to the enclosing frame when they resolve through the same provider there. */
+function passContexts(reads, chain, outer) {
+  for (const [id, read] of reads) if (!outer.contextReads.has(id) && lookup(chain, id) === lookup(outer.contexts, id)) outer.contextReads.set(id, read);
+}
+
 const topLayerSize = () => {
   const top = render.candidate.topLayer;
   return top ? top.entries.length + top.popovers.size + top.invokers.length : 0;
@@ -73,12 +94,17 @@ function recallTimed(scope, tag, props, children, parent) {
   for (const cell of record.cells.values()) if (page.updates.has(cell)) return undefined;
   const budget = { left: compareBudget };
   if (!sameFields(props, record.props, record.arena, budget) || !same(children, record.children, record.arena, budget) ||
-      !sameContext(parent, record.parent, record.arena)) return undefined;
+      !sameContext(parent, record.parent, record.arena) || !sameContexts(record.contextReads, parent.contexts, record.arena, budget) ||
+      (record.lists && !sameChain(parent.contexts, record.parent.contexts, record.arena, budget))) return undefined;
   // A list's copy is what this render encodes and commits, so the next recall starts from it.
   const fresh = { ...record, props, children, parent, arena: currentArena(), result: record.lists ? reuse(record.result) : record.result };
   keep(fresh);
   const frame = render.frames[render.frames.length - 1];
-  if (frame) { frame.nested.push(fresh); for (const cell of record.reads) frame.reads.add(cell); }
+  if (frame) {
+    frame.nested.push(fresh);
+    for (const cell of record.reads) frame.reads.add(cell);
+    passContexts(record.contextReads, parent.contexts, frame);
+  }
   for (const [key, cell] of record.cells) {
     render.candidate.locals.set(key, cell);
     for (const collector of render.collectors) collector.set(key, cell);
@@ -113,8 +139,8 @@ function keep(record) {
 }
 
 /** Starts tracking what the component at `scope` builds from. */
-export function enter(scope) {
-  const frame = { scope, cells: new Map(), reads: new Set(), view: false, nested: [], closures: [], handles: handlesIssued(), top: topLayerSize(), lists: render.lists };
+export function enter(scope, contexts) {
+  const frame = { scope, contexts, contextReads: new Map(), cells: new Map(), reads: new Set(), view: false, nested: [], closures: [], handles: handlesIssued(), top: topLayerSize(), lists: render.lists };
   render.frames.push(frame);
   render.collectors.push(frame.cells);
   return frame;
@@ -125,6 +151,13 @@ export function noteRead(cell) {
   render.cellReads++;
   const frame = render.frames[render.frames.length - 1];
   if (frame) frame.reads.add(cell);
+}
+
+/** A context read during render: the reading subtrees re-run when its value changes. */
+export function noteContext(id, context, value) {
+  render.contextReads++;
+  const frame = render.frames[render.frames.length - 1];
+  if (frame && !frame.contextReads.has(id)) frame.contextReads.set(id, { context, value });
 }
 
 /** The View read during render: the reading subtrees re-run on every render. */
@@ -138,14 +171,14 @@ export function leave(frame) {
   render.frames.splice(render.frames.lastIndexOf(frame), 1);
   render.collectors.splice(render.collectors.lastIndexOf(frame.cells), 1);
   const outer = render.frames[render.frames.length - 1];
-  if (outer) { for (const cell of frame.reads) outer.reads.add(cell); outer.view ||= frame.view; }
+  if (outer) { for (const cell of frame.reads) outer.reads.add(cell); outer.view ||= frame.view; passContexts(frame.contextReads, frame.contexts, outer); }
 }
 
 /** Remembers the subtree `frame` resolved, when it can stand in for a later render. */
 export function remember(frame, tag, props, children, parent, result) {
   if (frame.view || result?.fragment || topLayerSize() !== frame.top || !render.candidate.memo) return;
   const record = { scope: frame.scope, tag, props, children, parent, arena: currentArena(), result,
-    cells: frame.cells, reads: frame.reads, nested: frame.nested, closures: frame.closures, view: viewStamp(render.view),
+    cells: frame.cells, reads: frame.reads, contextReads: frame.contextReads, nested: frame.nested, closures: frame.closures, view: viewStamp(render.view),
     handles: handlesIssued() !== frame.handles, lists: render.lists !== frame.lists };
   render.candidate.memo.set(frame.scope, record);
   render.frames[render.frames.length - 1]?.nested.push(record);

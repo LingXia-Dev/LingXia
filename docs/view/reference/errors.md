@@ -28,6 +28,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_COMMIT` | runtime | A commit without a prepared candidate. |
 | `UI_COMPAT` | runtime, native | The installed host is older than the compiled page; update the host app. |
 | `UI_COMPOSITE` | native | A composited effect (backdrop, opacity group) is out of bounds. |
+| `UI_CONTEXT` | build, runtime | A `createContext` call that is not a module-level const, a `Provider` without one element or a value, or a context value that is not plain data, functions or handles. |
 | `UI_CSS` | build | The page stylesheet has something other than tokens, or more than one is imported. |
 | `UI_DOM` | build | A DOM global (`window`, `document`, …) is used in View code. |
 | `UI_ENVIRONMENT` | native | The host reported an invalid environment. |

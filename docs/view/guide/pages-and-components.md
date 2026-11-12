@@ -164,6 +164,35 @@ A component's identity is its module and declaration name (`pages/lab/index#Inpu
 time, so minified release builds and hot swaps agree. Declare components at the top level of a module;
 keying by `Component.name` fails the build (`UI_KEY`).
 
+## Context
+
+`createContext(default)` hands a value to a whole subtree, for parts of one compound component. Declare
+it as a module-level `const` (`UI_CONTEXT` otherwise). `<X.Provider value={…}>` wraps exactly one
+element; `useContext(X)` returns the nearest provider's value, or the default. Values are plain data,
+functions or handles such as a `Local`; to change one, provide a `Local` and `set` it from a handler.
+A changed value re-runs only the components that read it, including `List` rows.
+
+```tsx
+import { createContext, useContext, useLocal, type Child, type Local } from '@lingxia/view';
+
+const Selected = createContext<Local<string> | null>(null);
+
+function Choice({ value }: { value: string }) {
+  const selected = useContext(Selected);
+  const on = selected?.value === value;
+  return <button onClick={() => selected?.set(value)} className={on ? 'bg-accent' : ''}>{value}</button>;
+}
+
+function Choices({ children }: { children?: Child }) {
+  const selected = useLocal('selected', 'a');
+  return <Selected.Provider value={selected}><view className="flex-row gap-2">{children}</view></Selected.Provider>;
+}
+
+export function render() {
+  return <page><Choices><Choice value="a" /><Choice value="b" /></Choices></page>;
+}
+```
+
 ## data-testid
 
 Every element takes `data-testid`, the name automation (`lxdev`, the test runner) uses to find it. It has

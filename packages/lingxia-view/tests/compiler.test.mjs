@@ -460,6 +460,16 @@ test('top-level components get a compile-time id from their module path and decl
   assert.doesNotMatch(out, /helper\.__lxid|Late\.__lxid/);
 });
 
+test('a context gets a compile-time id only as a module-level const', () => {
+  const out = identify("import { createContext } from '@lingxia/view';\nexport const TabsContext = createContext(null);\nconst size = createContext('md');", 'pkg/tabs.tsx', 'pkg/tabs.tsx');
+  assert.match(out, /TabsContext\.__lxid = "pkg\/tabs#TabsContext";/);
+  assert.match(out, /size\.__lxid = "pkg\/tabs#size";/);
+  clean("import { createContext } from '@lingxia/view';\nexport const A = createContext(0);");
+  flags("import { createContext } from '@lingxia/view';\nfunction make() { const B = createContext(0); return B; }", /UI_CONTEXT: createContext belongs at module top level/);
+  flags("import { createContext } from '@lingxia/view';\nlet C = createContext(0);", /UI_CONTEXT/);
+  flags("import { createContext } from '@lingxia/view';\nexport const D = { ctx: createContext(0) };", /UI_CONTEXT/);
+});
+
 test('a pressable control around a single control fails the build; controls beside content are fine', () => {
   flags('export function render(){ return <button onClick={() => {}}><switch value={true} onChange={() => {}} aria-label="x" /></button>; }',
     /UI_BUTTON: <button> holds only a <switch>; put the action on that control/);

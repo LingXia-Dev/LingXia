@@ -1,4 +1,4 @@
-import { Details, Fragment, List, Pager as KitPagerView, Progress, Summary, useLocal, useVideo, useView, VideoControls, type VectorPath } from '@lingxia/view';
+import { createContext, Details, Fragment, List, Pager as KitPagerView, Progress, Summary, useContext, useLocal, useVideo, useView, VideoControls, type Local, type VectorPath } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 import type { LabPageData } from '../../shared/lab-types';
@@ -8,7 +8,7 @@ import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../../shared/public-video';
 // One group renders at a time: a whole-lab render exceeds the per-render budget on slower phones.
 const groups = {
   paint: { label: 'Paint', sections: [Grid, Gradients, Vectors, Borders, Transforms] },
-  layout: { label: 'Layout', sections: [Display, Sizing, Direction, Structure, StickyHeaders, Fragments, Disclosure] },
+  layout: { label: 'Layout', sections: [Display, Sizing, Direction, Choices, Structure, StickyHeaders, Fragments, Disclosure] },
   text: { label: 'Text', sections: [TextLayout, RichText, Selection, Document] },
   input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants] },
   feedback: { label: 'Feedback', sections: [Overlays, Progresses] },
@@ -471,6 +471,38 @@ function StateVariants() {
         <input data-testid="lab-variants-input" bind={note} placeholder="Focus me" aria-label="Note" />
       </view>
     </Section>
+  );
+}
+// A compound control: the group provides size and selection; options read them, here as rows of an rtl List.
+type ChoiceState = { size: 'sm' | 'md'; picked: Local<string> | null };
+const ChoiceGroup = createContext<ChoiceState>({ size: 'md', picked: null });
+const choices = Object.freeze(['alpha', 'beta', 'gamma']);
+
+function Choices() {
+  const size = useLocal<'sm' | 'md'>('choices-size', 'md');
+  const picked = useLocal('choices-picked', 'alpha');
+  return (
+    <Section title="Context" testId="lab-choices">
+      <Button testId="lab-choices-size" size="sm" variant="secondary" onClick={() => size.set(size.value === 'md' ? 'sm' : 'md')}>Toggle size</Button>
+      <ChoiceGroup.Provider value={{ size: size.value, picked }}>
+        <view dir="rtl">
+          <List data-testid="lab-choices-list" className="h-36 rounded-lg border border-line" items={choices} getKey={item => item}
+            renderItem={item => <Choice value={item} />} />
+        </view>
+      </ChoiceGroup.Provider>
+    </Section>
+  );
+}
+
+function Choice({ value }: { value: string }) {
+  const group = useContext(ChoiceGroup);
+  const on = group.picked?.value === value;
+  return (
+    <button data-testid={`lab-choice-${value}`} onClick={() => group.picked?.set(value)}
+      className={`flex-row justify-between px-3 border-b border-line ${group.size === 'sm' ? 'py-1 text-xs' : 'py-3 text-sm'} ${on ? 'bg-accent-soft' : ''}`}>
+      <text data-testid={`lab-choice-${value}-label`}>{value}</text>
+      <text data-testid={`lab-choice-${value}-state`}>{`${group.size}${on ? ' on' : ''}`}</text>
+    </button>
   );
 }
 

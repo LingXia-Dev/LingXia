@@ -136,6 +136,13 @@ test('flow-relative utilities stay logical on the wire and rtl:/ltr: follow the 
   assert.equal(rendered(() => h('input', { value: '', dir: 'auto' })).props.direction, 'auto');
 });
 
+test('list rows take the direction of the subtree the list sits in', async () => {
+  await use(['rtl:mr-2', 'ltr:ml-2']);
+  const tree = rendered(() => h('view', { dir: 'rtl' }, h(listTag, { count: 1, row: () => h('view', { className: 'rtl:mr-2 ltr:ml-2' }) })));
+  const row = tree.children[0].children[0].children[0];
+  assert.deepEqual([row.props.marginRight, row.props.marginLeft], [8, undefined]);
+});
+
 test('structural variants match sibling position, list rows and emptiness; DOM-state variants name the TS alternative', async () => {
   await use(['first:pt-1', 'last:pb-2', 'odd:bg-surface', 'even:bg-text', 'only:p-4', 'empty:hidden', 'first:hover:p-3', 'md:first:pt-3',
     'has-[input]:p-2', 'data-[state=open]:p-2', 'aria-checked:p-2']);

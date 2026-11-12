@@ -77,6 +77,17 @@ export declare function useLocal<T>(initial: T, ...invalid: [T] extends [LocalDa
 /** Local state keyed by `name`: it survives reordered calls and hot edits. */
 export declare function useLocal<T>(name: string, initial: T, ...invalid: [T] extends [LocalData<T>] ? [] : [never]): Local<T>;
 
+/** A value a `Provider` hands its subtree: plain data, functions or handles such as `Local`. */
+export interface Context<T> {
+  /** Wraps exactly one element; a changed `value` re-runs only the components that read it. */
+  readonly Provider: (props: { value: T; key?: string; children?: JSX.Element | null | false }) => JSX.Element;
+  readonly defaultValue: T;
+}
+/** Declare as a module-level `const`; the value with no `Provider` above is `defaultValue`. */
+export declare function createContext<T>(defaultValue: T): Context<T>;
+/** The nearest enclosing `Provider`'s value, during render only. */
+export declare function useContext<T>(context: Context<T>): T;
+
 export interface RequestResource<T> {
   /** A load is in flight; `value` keeps the previous result until it settles. */
   readonly pending: boolean;

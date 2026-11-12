@@ -195,11 +195,11 @@ function writeRows(node, window, index, depth, write) {
       let row = node.list.cache.get(i), key = node.list.states.get(i)?.key;
       if (!row) {
         const { candidate } = render, handles = handlesIssued(), declarations = candidate.declarations.size, resources = candidate.resources.size;
-        const reads = render.cellReads;
+        const reads = render.cellReads, contextReads = render.contextReads;
         render.readsView = false;
         ({ row, key } = renderRow(node, i, cells, depth));
-        // Reusable in a later render only if it holds no state, callback or resource and read no state or View.
-        const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles && render.cellReads === reads &&
+        // Reusable in a later render only if it holds no state, callback or resource and read no state, context or View.
+        const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles && render.cellReads === reads && render.contextReads === contextReads &&
           candidate.declarations.size === declarations && candidate.resources.size === resources;
         if (pure) node.list.pure.add(i); else node.list.pure.delete(i);
       } else { row = copyTree(row); retainCells(node.list.states.get(i).locals); }
@@ -226,10 +226,12 @@ export function renderRow(node, i, cells, depth) {
 function renderRowTimed(node, i, cells, depth) {
   const { props, identity } = node;
   const suppliedKey = props.itemKeys?.[i];
-  const previous = render.scope;
+  const previous = render.scope, outerContexts = render.contexts;
+  render.contexts = node.list.contexts;
   render.scope = suppliedKey === undefined ? `${identity}/row:${i}` : `${identity}/row/key:${JSON.stringify(suppliedKey)}`;
   try {
     const value = props.row(i);
+    render.contexts = outerContexts;
     const declared = isNode(value) ? readNode(value)[1].key : undefined;
     if (declared !== undefined && typeof declared !== 'string') throw Error('UI_KEY: expected string');
     if (suppliedKey === undefined && declared !== undefined && cells.size > 0)
@@ -245,10 +247,11 @@ function renderRowTimed(node, i, cells, depth) {
       fields.height = height;
     }
     // Rows are siblings in the list, so structural variants see their row index.
-    const content = resolveNode(value, render.scope, depth + 2, { typography: node.typography, sibling: { index: i, count: props.count } });
+    const content = resolveNode(value, render.scope, depth + 2, { typography: node.typography, sibling: { index: i, count: props.count },
+      direction: node.list.direction, contexts: node.list.contexts });
     if (content?.fragment) throw Error('UI_LIST: a row returns one node; wrap its fragment in <view>');
     const row = { tag: 'column', element: 'view', props: { key }, fields, states: {}, wire: [], handlers: [], identity: render.scope,
       rowIndex: i, text: '', children: content === null ? [] : [content] };
     return { row, key };
-  } finally { render.scope = previous; }
+  } finally { render.scope = previous; render.contexts = outerContexts; }
 }

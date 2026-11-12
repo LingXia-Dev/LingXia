@@ -13,6 +13,7 @@ import { defaultSeries } from '../style/color.js';
 import { keyPositions } from './keys.js';
 import { expand, invokerHandler, popoverScope, dragClose, scrimMark } from './toplayer.js';
 import { recall, enter, leave, remember } from './memo.js';
+import { isProvider, provide } from './context.js';
 import { playerName, videoStatus, fullscreenHandler, videoPoster } from './video.js';
 
 const videoFlags = [['videoMuted', 'muted'], ['videoLoop', 'loop']];
@@ -271,12 +272,20 @@ export function resolveNode(node, identity, depth = 0, parent = {}) {
     render.scope = scope;
     const supplied = children.length === 0 ? undefined : children.length === 1 ? children[0] : children;
     try {
+      if (isProvider(tag)) return provide(tag, original, children, parent.contexts,
+        (child, contexts) => resolveNode(child, scope, depth + 1, { ...parent, contexts }));
       const recalled = recall(scope, tag, original, children, parent);
       if (recalled !== undefined) return recalled;
-      const frame = enter(scope);
+      const frame = enter(scope, parent.contexts);
+      const outerContexts = render.contexts;
       let result;
-      try { result = resolveNode(tag({ ...original, children: supplied }), scope, depth + 1, parent); }
-      finally { leave(frame); }
+      try {
+        render.contexts = parent.contexts;
+        const output = tag({ ...original, children: supplied });
+        render.contexts = outerContexts;
+        result = resolveNode(output, scope, depth + 1, parent);
+      }
+      finally { render.contexts = outerContexts; leave(frame); }
       remember(frame, tag, original, children, parent, result);
       return result;
     }
@@ -562,7 +571,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   }
   if (tag === 'list') {
     check.listKeys(props);
-    result.list = listState(props, identity);
+    result.list = listState(props, identity, direction, parent.contexts);
     render.lists++;
   } else if (runs) {
     // Nested spans flatten into one run list; inner runs layer over the outer span's style.
@@ -571,6 +580,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       const at = authored[position], part = at.slot === undefined ? `key:${JSON.stringify(at.key)}` : `position:${at.slot}`;
       const run = resolveNode(inline(child) ? h('span', {}, child) : child, `${identity}/${tag}/${part}`, depth + 1, {
         tag, typography: style.typography, direction, extra, inText: true, inControl: parent.inControl, inLink: parent.inLink || tag === 'link',
+        contexts: parent.contexts,
       });
       if (run === null) return [];
       if (run.fragment) throw Error(`UI_TEXT: a component inside <${tag}> returns a fragment; return one <span>`);
@@ -597,7 +607,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         tag, typography: style.typography, direction, extra: position < last ? style.children : undefined, every: style.every,
         sibling: { index: position, count: flat.length },
         inControl: parent.inControl || admission.tags[element.wire].children === 'content',
-        popovers: props[popoverScope] ?? parent.popovers,
+        popovers: props[popoverScope] ?? parent.popovers, contexts: parent.contexts,
       });
       // A component's fragment opens in its place, named under the component's slot or key.
       if (node?.fragment) {
@@ -775,10 +785,10 @@ function radioOptions(props, identity, fields, disabled) {
 
 /** The committed list's pure rows a full render may reuse, when nothing they were built from changed:
  *  over new items (a patched data array), a row whose frozen item is the same object stands. */
-function reusableRows(old, props, rowEnv) {
+function reusableRows(old, props, rowEnv, direction) {
   const source = props.row?.__lxRows, before = old?.rowSource;
   if (!source || !before || before.site !== source.site || old.count !== props.count ||
-      old.rowEnv !== rowEnv || !old.pure?.size) return null;
+      old.rowEnv !== rowEnv || old.direction !== direction || !old.pure?.size) return null;
   const same = before.items === source.items;
   const rows = new Map();
   for (const i of old.pure) {
@@ -789,7 +799,8 @@ function reusableRows(old, props, rowEnv) {
   return rows.size ? { rows, typography: old.typography } : null;
 }
 
-function listState(props, identity) {
+// Rows render after resolution, so the list keeps the direction and providers they sit under.
+function listState(props, identity, direction, contexts) {
   const old = page.committed?.lists.get(identity);
   const rowSource = props.row?.__lxRows, rowEnv = rowSource ? JSON.stringify(envOf(render.view) ?? null) : undefined;
   const anchor = props.anchor === undefined ? null : JSON.stringify(props.anchor);
@@ -802,6 +813,6 @@ function listState(props, identity) {
   if (anchorChanged && !props.anchor.duration) render.candidate?.movedAnchors?.set(identity, anchor);
   return { count: props.count, previousCount: old?.count ?? props.count, anchor, anchorChanged,
     anchorCache: old?.cache ?? null,
-    states, cache: new Map(), pure: new Set(), reusable: reusableRows(old, props, rowEnv), rowSource, rowEnv,
+    states, cache: new Map(), pure: new Set(), reusable: reusableRows(old, props, rowEnv, direction), rowSource, rowEnv, direction, contexts,
     window: old?.window ? { ...old.window, start: Math.min(old.window.start, props.count), end: Math.min(old.window.end, props.count) } : null };
 }

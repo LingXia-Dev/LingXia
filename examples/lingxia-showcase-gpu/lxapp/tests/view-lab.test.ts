@@ -175,3 +175,28 @@ spec('a landscape full-screen video turns the window and leaving gives it back',
   await expect(layer).not.toBeAttached();
   await expect.poll(wide, { timeout: 5_000 }).toBe(before);
 });
+
+spec('a provided value reaches List rows under rtl and follows its changes', { covers: ['view:list'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-layout').click();
+  // Rows of a List below the fold are not rendered yet; a tap on the picked row reveals it and changes nothing.
+  await view.testId('lab-choice-alpha').click();
+  await expect(view.testId('lab-choice-alpha-state')).toHaveText('md on');
+  await expect(view.testId('lab-choice-beta-state')).toHaveText('md');
+  await view.testId('lab-choice-beta').click();
+  // The rows inherit the list's rtl: the label sits right of the state.
+  const label = await view.testId('lab-choice-beta-label').boundingBox();
+  const state = await view.testId('lab-choice-beta-state').boundingBox();
+  expect(label.x).toBeGreaterThan(state.x);
+  await expect(view.testId('lab-choice-beta-state')).toHaveText('md on');
+  await expect(view.testId('lab-choice-alpha-state')).toHaveText('md');
+  await view.testId('lab-choices-size').click();
+  await expect(view.testId('lab-choice-gamma-state')).toHaveText('sm');
+  await expect(view.testId('lab-choice-beta-state')).toHaveText('sm on');
+  // Leaving the group unmounts the section; coming back provides the defaults afresh.
+  await view.testId('lab-tab-paint').click();
+  await view.testId('lab-tab-layout').click();
+  await view.testId('lab-choice-gamma').click();
+  await expect(view.testId('lab-choice-gamma-state')).toHaveText('md on');
+  await expect(view.testId('lab-choice-alpha-state')).toHaveText('md');
+});

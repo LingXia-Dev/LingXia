@@ -419,6 +419,7 @@ const errorNotes = {
   UI_COMMIT: 'A commit without a prepared candidate.',
   UI_COMPAT: 'The installed host is older than the compiled page; update the host app.',
   UI_COMPOSITE: 'A composited effect (backdrop, opacity group) is out of bounds.',
+  UI_CONTEXT: 'A `createContext` call that is not a module-level const, a `Provider` without one element or a value, or a context value that is not plain data, functions or handles.',
   UI_CSS: 'The page stylesheet has something other than tokens, or more than one is imported.',
   UI_DOM: 'A DOM global (`window`, `document`, …) is used in View code.',
   UI_ENVIRONMENT: 'The host reported an invalid environment.',

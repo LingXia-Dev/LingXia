@@ -146,6 +146,7 @@ export function audit(source, filename, { literalColors = false } = {}) {
         }
       }
     }
+    if (contextCall(node) && !moduleContext(node.parent)) report(node, 'UI_CONTEXT: createContext belongs at module top level, as a const');
     if (ts.isIdentifier(node) && ['window', 'document', 'HTMLElement', 'localStorage'].includes(node.text)) {
       const parent = node.parent;
       const propertyName = parent.name === node && !ts.isShorthandPropertyAssignment(parent);
@@ -157,6 +158,12 @@ export function audit(source, filename, { literalColors = false } = {}) {
   visit(file);
   return problems;
 }
+
+const contextCall = node => ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'createContext';
+// `const X = createContext(…)` directly in a module: the only form with a stable identity to stamp.
+const moduleContext = declaration => ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name) &&
+  ts.isVariableStatement(declaration.parent.parent) && ts.isSourceFile(declaration.parent.parent.parent) &&
+  Boolean(declaration.parent.flags & ts.NodeFlags.Const);
 
 // Each JSX site carries its source position so runtime errors name the line that built the node.
 export function annotate(source, filename, label) {
@@ -177,8 +184,8 @@ export function annotate(source, filename, label) {
 
 /**
  * Stamps each top-level component (a capitalized function declaration, or a const bound to a
- * function) with `__lxid`, `<module path without extension>#<name>`: local state is keyed by it,
- * so minified and dev builds of one source agree.
+ * function) and each module-level context with `__lxid`, `<module path without extension>#<name>`:
+ * local state and context lookup are keyed by it, so minified and dev builds of one source agree.
  */
 export function identify(source, filename, label) {
   const file = parseSource(filename, source);
@@ -195,7 +202,7 @@ export function identify(source, filename, label) {
             (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))) {
           names.push(declaration.name.text);
           if (volatileComponent(declaration.initializer, moduleNames)) volatile.push(declaration.name.text);
-        }
+        } else if (declaration.initializer && contextCall(declaration.initializer) && moduleContext(declaration)) names.push(declaration.name.text);
   }
   if (!names.length) return source;
   // A component that reads the clock, randomness or a module `let` re-runs on every render.
