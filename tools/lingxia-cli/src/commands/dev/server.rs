@@ -194,6 +194,8 @@ pub(crate) struct DevServerState {
     watch_leases: Mutex<std::collections::HashMap<String, WatchLease>>,
     /// The build the connected runtime reported in its hello.
     runtime_build: Mutex<Option<lingxia_control_protocol::dev_session::PeerBuild>>,
+    /// The requirement each served GPU lxapp was last reported refused at, so a rebuild says so once.
+    view_refused: Mutex<std::collections::HashMap<String, ViewWire>>,
     /// The session's companion, when one runs.
     companion: std::sync::OnceLock<Arc<super::companion::CompanionLink>>,
     /// Scenario owners with `function` rules installed in the companion.
@@ -296,6 +298,7 @@ impl DevServerState {
             interrupted_test_run: Mutex::new(None),
             watch_leases: Mutex::new(std::collections::HashMap::new()),
             runtime_build: Mutex::new(None),
+            view_refused: Mutex::new(std::collections::HashMap::new()),
             companion: std::sync::OnceLock::new(),
             companion_owners: Mutex::new(std::collections::HashSet::new()),
             companion_scenario_lock: Mutex::new(()),
@@ -734,10 +737,10 @@ impl DevServerState {
         }
         match build.and_then(|build| build.view) {
             Some(have) => {
-                for (app_id, need) in needs {
-                    if !have.renders(&need) {
-                        eprintln!("  ✗ {}", view_mismatch(&app_id, have, need));
-                    }
+                let mut refused = self.lock_view_refused();
+                refused.clear();
+                for (app_id, need) in newly_refused(have, needs, &mut refused) {
+                    eprintln!("  ✗ {}", view_mismatch(&app_id, have, need));
                 }
             }
             None => eprintln!(
@@ -745,6 +748,26 @@ impl DevServerState {
                  UI_COMPAT, rebuild and reinstall it with `lingxia dev`."
             ),
         }
+    }
+
+    /// After an lxapp (re)build: a served GPU lxapp that now needs more than the connected
+    /// app's View says so once, as at the hello, rather than each page failing with UI_COMPAT.
+    pub(crate) fn recheck_view_wire(&self) {
+        let Some(have) = self.runtime_build().and_then(|build| build.view) else {
+            return;
+        };
+        let needs = self.view_needs();
+        for (app_id, need) in newly_refused(have, needs, &mut self.lock_view_refused()) {
+            eprintln!("  ✗ {}", view_mismatch(&app_id, have, need));
+        }
+    }
+
+    fn lock_view_refused(
+        &self,
+    ) -> std::sync::MutexGuard<'_, std::collections::HashMap<String, ViewWire>> {
+        self.view_refused
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn runtime_build(&self) -> Option<lingxia_control_protocol::dev_session::PeerBuild> {
@@ -2091,7 +2114,10 @@ fn handle_devtool_connection(
     if replaced_runtime {
         eprintln!("[lingxia dev] devtool runtime reconnected; replacing stale runtime connection");
     } else {
-        println!("  ✓ app connected");
+        match state.runtime_build().and_then(|build| build.view) {
+            Some(view) => println!("  ✓ app connected (View wire {view})"),
+            None => println!("  ✓ app connected"),
+        }
     }
     // The runtime's mocks end with its connection: load them again, off
     // this thread, which routes the answers.
@@ -2300,6 +2326,25 @@ fn handle_lxapp_attach(
     )?;
     hold_attach(&mut websocket);
     Ok(())
+}
+
+/// The served lxapps `have` cannot render whose requirement changed since last reported; one
+/// it renders again is forgotten, so a later refusal is reported anew.
+fn newly_refused(
+    have: ViewWire,
+    needs: Vec<(String, ViewWire)>,
+    reported: &mut std::collections::HashMap<String, ViewWire>,
+) -> Vec<(String, ViewWire)> {
+    let mut fresh = Vec::new();
+    for (app_id, need) in needs {
+        if have.renders(&need) {
+            reported.remove(&app_id);
+        } else if reported.get(&app_id) != Some(&need) {
+            reported.insert(app_id.clone(), need);
+            fresh.push((app_id, need));
+        }
+    }
+    fresh
 }
 
 /// Why the app's View cannot render `app_id`'s compiled pages, and what to do.
@@ -2884,6 +2929,34 @@ mod tests {
             &mut false,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn a_rebuild_that_raises_an_lxapps_wire_is_reported_once_per_change() {
+        let wire = |max_field| super::ViewWire {
+            ui_abi: 1,
+            max_field,
+        };
+        let have = wire(231);
+        let mut reported = std::collections::HashMap::new();
+        let needs = |max_field| vec![("demo".to_string(), wire(max_field))];
+        assert!(super::newly_refused(have, needs(231), &mut reported).is_empty());
+        let refused = super::newly_refused(have, needs(233), &mut reported);
+        assert_eq!(refused, [("demo".to_string(), wire(233))]);
+        assert!(
+            super::newly_refused(have, needs(233), &mut reported).is_empty(),
+            "the same requirement is not repeated on every save"
+        );
+        assert_eq!(
+            super::newly_refused(have, needs(234), &mut reported).len(),
+            1
+        );
+        assert!(super::newly_refused(have, needs(230), &mut reported).is_empty());
+        assert_eq!(
+            super::newly_refused(have, needs(234), &mut reported).len(),
+            1,
+            "renderable again, then refused again: said again"
+        );
     }
 
     #[test]

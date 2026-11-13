@@ -583,6 +583,7 @@ fn hot_swap(
         eprintln!("  {} {app_id}: {err:#}", "✗".red());
         return false;
     }
+    state.recheck_view_wire();
     let published = started.elapsed();
     for page in &pages {
         let path = super::gpu_swap::page_path(page);
@@ -633,6 +634,7 @@ fn reload_one(state: &DevServerState, app_id: &str, options: &LxAppWatchOptions)
         eprintln!("  {} auto-reload {app_id} failed: {err:#}", "✗".red());
         return Reload::Done;
     }
+    state.recheck_view_wire();
     match state.restart_lxapp(app_id) {
         Ok(RestartOutcome::Restarted) => {
             println!("  {} reloaded {}", "✓".green(), app_id.cyan());

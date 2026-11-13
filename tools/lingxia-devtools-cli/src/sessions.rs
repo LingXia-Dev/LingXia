@@ -38,6 +38,7 @@ fn to_json(sessions: &[project::SessionInfo], probes: &[project::SessionProbe]) 
                     "ws_url": s.ws_url,
                     "log_file": s.log_file,
                     "cli_build": s.build,
+                    "cli_current": cli_current(s),
                     "host_build": probe.runtime_build,
                     "state": probe.state.as_str(),
                     "runtime_connected": probe.state == project::SessionState::Ready,
@@ -104,6 +105,12 @@ fn render(sessions: &[project::SessionInfo], probes: &[project::SessionProbe]) -
         if !info.log_file.is_empty() {
             out.push_str(&format!("  log: {}\n", info.log_file));
         }
+        if !cli_current(info) {
+            out.push_str(&format!(
+                "  note: {} was rebuilt after this session started; restart it to pick up CLI changes\n",
+                info.executable
+            ));
+        }
     }
     out.push_str(
         "\nSelect one with --session NAME|TARGET|TARGET@<dir>|#; name a session with \
@@ -112,10 +119,28 @@ fn render(sessions: &[project::SessionInfo], probes: &[project::SessionProbe]) -
     out
 }
 
-/// `0.19.0/p2`: the host runtime's LingXia version and dev protocol.
+/// Whether the session's `lingxia dev` still runs the binary at its path: one rebuilt after the
+/// session started serves the old CLI code until the session restarts.
+fn cli_current(info: &project::SessionInfo) -> bool {
+    let modified = std::fs::metadata(&info.executable)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok());
+    match modified {
+        Some(modified) if info.started_at > 0 => {
+            modified.as_millis() <= u128::from(info.started_at)
+        }
+        _ => true,
+    }
+}
+
+/// `0.19.0/p2 view 1/231`: the host runtime's LingXia version, dev protocol and View wire.
 fn host_label(probe: &project::SessionProbe) -> String {
     match &probe.runtime_build {
-        Some(build) => format!("{}/p{}", build.version, build.protocol),
+        Some(build) => match build.view {
+            Some(view) => format!("{}/p{} view {view}", build.version, build.protocol),
+            None => format!("{}/p{}", build.version, build.protocol),
+        },
         None => "-".to_string(),
     }
 }
@@ -219,5 +244,64 @@ mod tests {
         }
         assert_eq!(entry["state"], "ready");
         assert_eq!(entry["name"], "ci");
+    }
+
+    #[test]
+    fn a_session_whose_cli_was_rebuilt_since_says_to_restart_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("lingxia");
+        std::fs::write(&binary, "").unwrap();
+        let built = std::fs::metadata(&binary)
+            .unwrap()
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        let mut old = session("aaa111", None);
+        old.executable = binary.display().to_string();
+        old.started_at = built - 60_000;
+        let mut current = session("bbb222", None);
+        current.executable = binary.display().to_string();
+        current.started_at = built + 1_000;
+        let probes = [
+            probe(project::SessionState::Ready),
+            probe(project::SessionState::Ready),
+        ];
+        let sessions = [old, current];
+        let table = render(&sessions, &probes);
+        let lines: Vec<&str> = table.lines().collect();
+        assert_eq!(
+            lines[3],
+            format!(
+                "  note: {} was rebuilt after this session started; restart it to pick up CLI changes",
+                binary.display()
+            ),
+            "{table}"
+        );
+        assert!(lines[4].starts_with("2  bbb222"), "{table}");
+        let value = to_json(&sessions, &probes);
+        assert_eq!(value[0]["cli_current"], false);
+        assert_eq!(value[1]["cli_current"], true);
+    }
+
+    #[test]
+    fn the_host_build_names_its_view_wire() {
+        use lingxia_control_protocol::dev_session::{PeerBuild, ViewWire};
+        let mut ready = probe(project::SessionState::Ready);
+        ready.runtime_build = Some(PeerBuild {
+            version: "0.30.0".into(),
+            protocol: 2,
+            view: Some(ViewWire {
+                ui_abi: 1,
+                max_field: 231,
+            }),
+        });
+        assert_eq!(host_label(&ready), "0.30.0/p2 view 1/231");
+        let value = to_json(&[session("aaa111", None)], std::slice::from_ref(&ready));
+        assert_eq!(
+            value[0]["host_build"]["view"],
+            json!({"uiAbi": 1, "maxField": 231})
+        );
     }
 }

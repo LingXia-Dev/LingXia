@@ -855,6 +855,13 @@ pub mod dev_session {
         }
     }
 
+    /// `1/231`: UI ABI, then the newest field.
+    impl std::fmt::Display for ViewWire {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}/{}", self.ui_abi, self.max_field)
+        }
+    }
+
     impl PeerBuild {
         /// This build of the LingXia control runtime, rendering `view`.
         pub fn current(view: Option<ViewWire>) -> Self {
