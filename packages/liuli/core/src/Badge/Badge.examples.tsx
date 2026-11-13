@@ -39,7 +39,7 @@ export function Sizes() {
 /** In a pressable row the end content is not read, so the status is repeated in the description. */
 export function InARow() {
   return (
-    <view className="overflow-hidden rounded-container border border-line bg-surface">
+    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
       <Item
         label="Invoice 2041"
         description="Overdue, due 3 May"

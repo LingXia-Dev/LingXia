@@ -93,7 +93,7 @@ export function render() {
         </StageGrid>
       </PageSection>
       <PageSection title="Rhythm">
-        <view className="rounded-container border border-text/10 bg-surface divide-y divide-text/8">
+        <view className="rounded-container border border-text/12 bg-surface divide-y divide-text/8">
           {rhythm.map(entry => (
             <view key={entry.name} className="flex-row items-center justify-between gap-3 px-4 py-3">
               <text className="text-body text-text">{entry.name}</text>

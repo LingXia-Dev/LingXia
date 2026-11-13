@@ -11,7 +11,7 @@ export const dateInputRecipe = {
     base: 'flex-row items-center gap-2 px-3 rounded-control border border-line-strong bg-surface transition duration-150 ease-out focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/20',
     size: { sm: 'min-h-control-sm', md: 'min-h-control-md', lg: 'min-h-control-lg' } satisfies Record<FieldSize, string>,
     status: { error: 'border-danger', warning: 'border-warning', success: 'border-line-strong' } satisfies Record<FieldStatusType, string>,
-    disabled: 'bg-text/5 border-line',
+    disabled: 'bg-text/5 border-text/8',
   },
   input: {
     base: 'grow basis-0 min-w-0 self-stretch px-0 bg-transparent text-text tabular-nums placeholder:text-muted disabled:text-faint',

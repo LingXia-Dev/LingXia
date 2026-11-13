@@ -34,7 +34,7 @@ export function PageSection({ title, children }: { title: string; children: Chil
 export function Stage({ caption, bare = false, children }: { caption?: string; bare?: boolean; children: Child }) {
   return (
     <view className="gap-2">
-      <view className={bare ? 'grow gap-3' : 'grow gap-3 overflow-hidden rounded-container border border-text/10 bg-surface p-5'}>{children}</view>
+      <view className={bare ? 'grow gap-3' : 'grow gap-3 overflow-hidden rounded-container border border-text/12 bg-surface p-5'}>{children}</view>
       {caption !== undefined && <text className="text-footnote text-muted">{caption}</text>}
     </view>
   );
@@ -101,7 +101,7 @@ export interface TileProps {
  */
 export function Tile({ name, tagline, status, isWide = false, onOpen, testId, children }: TileProps) {
   return (
-    <view className={isWide ? 'relative overflow-hidden rounded-container border border-text/10 bg-surface min-[360px]:col-span-2 md:col-span-1' : 'relative overflow-hidden rounded-container border border-text/10 bg-surface'}>
+    <view className={isWide ? 'relative overflow-hidden rounded-container border border-text/12 bg-surface min-[360px]:col-span-2 md:col-span-1' : 'relative overflow-hidden rounded-container border border-text/12 bg-surface'}>
       <view aria-hidden className="h-24 items-center justify-center overflow-hidden p-3 bg-surface-sunken border-b border-text/8">
         {children}
       </view>

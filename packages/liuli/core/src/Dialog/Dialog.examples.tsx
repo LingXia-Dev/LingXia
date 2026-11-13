@@ -63,7 +63,7 @@ export function Form() {
  */
 export function Specimen() {
   return (
-    <view className="mb-4 w-30 p-2.5 gap-1.5 rounded-control border border-text/10 bg-surface-raised shadow-[0_2px_4px_rgb(0_0_0/0.10),0_8px_18px_rgb(0_0_0/0.22)]">
+    <view className="mb-4 w-30 p-2.5 gap-1.5 rounded-control border border-text/12 bg-surface-raised shadow-[0_2px_4px_rgb(0_0_0/0.10),0_8px_18px_rgb(0_0_0/0.22)]">
       <text className="text-caption font-semibold text-text">Delete this note?</text>
       <view className="flex-row justify-end gap-1">
         <view className="h-6 justify-center rounded-md bg-text/6 px-2"><text className="text-caption font-medium text-text">Keep</text></view>
@@ -80,7 +80,7 @@ export function Specimen() {
 export function Parts() {
   return (
     <view className="items-center rounded-container bg-scrim px-4 py-8">
-      <view className="w-full max-w-[360px] p-5 gap-4 rounded-dialog border border-text/10 bg-surface-raised shadow-modal">
+      <view className="w-full max-w-[360px] p-5 gap-4 rounded-dialog border border-text/12 bg-surface-raised shadow-modal">
         <view className={dialogRecipe.header.base}>
           <text className={dialogRecipe.title.base}>Delete this note?</text>
         </view>

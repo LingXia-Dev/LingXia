@@ -20,7 +20,7 @@ import { Skeleton, SkeletonGroup } from '@liulidesign/core/Skeleton';
 /** A list loading: rows shaped as the rows that will arrive, named once as what is loading. */
 export function ListLoading() {
   return (
-    <SkeletonGroup label="Loading notes" className="gap-0 overflow-hidden rounded-container border border-text/10 bg-surface divide-y divide-text/8" data-testid="loading-notes">
+    <SkeletonGroup label="Loading notes" className="gap-0 overflow-hidden rounded-container border border-text/12 bg-surface divide-y divide-text/8" data-testid="loading-notes">
       {['a', 'b', 'c'].map(key => (
         <view key={key} className="flex-row items-center gap-3 px-4 py-3">
           <Skeleton shape="circle" className="size-10 shrink-0" />

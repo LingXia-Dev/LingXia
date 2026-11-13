@@ -347,7 +347,7 @@
         {
           "name": "InARow",
           "title": "At the end of a row",
-          "source": "import { Item } from '@liulidesign/core/Item';\nimport { Badge } from '@liulidesign/core/Badge';\n\n/** In a pressable row the end content is not read, so the status is repeated in the description. */\nexport function InARow() {\n  return (\n    <view className=\"overflow-hidden rounded-container border border-line bg-surface\">\n      <Item\n        label=\"Invoice 2041\"\n        description=\"Overdue, due 3 May\"\n        endContent={<Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" />}\n        hasChevron\n        onClick={() => {}}\n        data-testid=\"invoice\"\n      />\n    </view>\n  );\n}"
+          "source": "import { Item } from '@liulidesign/core/Item';\nimport { Badge } from '@liulidesign/core/Badge';\n\n/** In a pressable row the end content is not read, so the status is repeated in the description. */\nexport function InARow() {\n  return (\n    <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n      <Item\n        label=\"Invoice 2041\"\n        description=\"Overdue, due 3 May\"\n        endContent={<Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" />}\n        hasChevron\n        onClick={() => {}}\n        data-testid=\"invoice\"\n      />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -545,7 +545,7 @@
         {
           "name": "OverList",
           "title": "Above the list it is about",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Banner } from '@liulidesign/core/Banner';\n\n/** At the top of a list it is about, before the content. */\nexport function OverList() {\n  const retried = useLocal(false);\n  return (\n    <view className=\"gap-3\">\n      <Banner\n        tone=\"danger\"\n        title={retried.value ? 'Still offline' : 'Sync stopped'}\n        message=\"Changes are kept on this device until the connection returns.\"\n        action={{ label: 'Retry now', onClick: () => retried.set(true) }}\n        data-testid=\"sync\"\n      />\n      <view className=\"overflow-hidden rounded-container border border-text/10 bg-surface divide-y divide-text/8\">\n        {['Q3 plan', 'Reading list', 'Interview notes'].map(note => (\n          <view key={note} className=\"px-4 py-3\"><text className=\"text-body text-text\">{note}</text></view>\n        ))}\n      </view>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Banner } from '@liulidesign/core/Banner';\n\n/** At the top of a list it is about, before the content. */\nexport function OverList() {\n  const retried = useLocal(false);\n  return (\n    <view className=\"gap-3\">\n      <Banner\n        tone=\"danger\"\n        title={retried.value ? 'Still offline' : 'Sync stopped'}\n        message=\"Changes are kept on this device until the connection returns.\"\n        action={{ label: 'Retry now', onClick: () => retried.set(true) }}\n        data-testid=\"sync\"\n      />\n      <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface divide-y divide-text/8\">\n        {['Q3 plan', 'Reading list', 'Interview notes'].map(note => (\n          <view key={note} className=\"px-4 py-3\"><text className=\"text-body text-text\">{note}</text></view>\n        ))}\n      </view>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -2057,7 +2057,7 @@
         {
           "name": "Single",
           "title": "One row",
-          "source": "import { Details } from '@liulidesign/core/Details';\n\nconst surface = 'gap-1 rounded-container border border-text/10 bg-surface px-5 pt-4 pb-1';\n\n/** One disclosure under the text it qualifies: the summary opens and closes the content under it. */\nexport function Single() {\n  return (\n    <view className={surface}>\n      <text className=\"text-body text-text\">Team is €8 a month for each active member.</text>\n      <Details label=\"What counts as an active member?\" data-testid=\"active\">\n        <text className=\"text-body text-muted\">Anyone who opened a shared notebook in the last 30 days. Guests with view access are free.</text>\n      </Details>\n    </view>\n  );\n}"
+          "source": "import { Details } from '@liulidesign/core/Details';\n\nconst surface = 'gap-1 rounded-container border border-text/12 bg-surface px-5 pt-4 pb-1';\n\n/** One disclosure under the text it qualifies: the summary opens and closes the content under it. */\nexport function Single() {\n  return (\n    <view className={surface}>\n      <text className=\"text-body text-text\">Team is €8 a month for each active member.</text>\n      <Details label=\"What counts as an active member?\" data-testid=\"active\">\n        <text className=\"text-body text-muted\">Anyone who opened a shared notebook in the last 30 days. Guests with view access are free.</text>\n      </Details>\n    </view>\n  );\n}"
         },
         {
           "name": "Accordion",
@@ -3364,17 +3364,17 @@
         {
           "name": "WithControl",
           "title": "A control at the end",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Item } from '@liulidesign/core/Item';\n\n/** A row without `onClick` can hold its own control at the end. */\nexport function WithControl() {\n  const signedIn = useLocal('signedIn', true);\n  return (\n    <view className=\"overflow-hidden rounded-container border border-line bg-surface\">\n      <Item\n        label=\"Account\"\n        description={signedIn.value ? 'Signed in' : 'Signed out'}\n        endContent={\n          <Button\n            label={signedIn.value ? 'Sign out' : 'Sign in'}\n            size=\"sm\"\n            onClick={() => signedIn.set(!signedIn.value)}\n            data-testid=\"account-action\"\n          />\n        }\n        data-testid=\"account\"\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Item } from '@liulidesign/core/Item';\n\n/** A row without `onClick` can hold its own control at the end. */\nexport function WithControl() {\n  const signedIn = useLocal('signedIn', true);\n  return (\n    <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n      <Item\n        label=\"Account\"\n        description={signedIn.value ? 'Signed in' : 'Signed out'}\n        endContent={\n          <Button\n            label={signedIn.value ? 'Sign out' : 'Sign in'}\n            size=\"sm\"\n            onClick={() => signedIn.set(!signedIn.value)}\n            data-testid=\"account-action\"\n          />\n        }\n        data-testid=\"account\"\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "Disabled",
           "title": "Disabled, with the reason",
-          "source": "import { Item } from '@liulidesign/core/Item';\n\nexport function Disabled() {\n  return (\n    <view className=\"overflow-hidden rounded-container border border-line bg-surface\">\n      <Item\n        label=\"Export history\"\n        description=\"Download every change as a file\"\n        disabledMessage=\"Available once a change is saved\"\n        isDisabled\n        hasChevron\n        onClick={() => {}}\n        data-testid=\"export\"\n      />\n    </view>\n  );\n}"
+          "source": "import { Item } from '@liulidesign/core/Item';\n\nexport function Disabled() {\n  return (\n    <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n      <Item\n        label=\"Export history\"\n        description=\"Download every change as a file\"\n        disabledMessage=\"Available once a change is saved\"\n        isDisabled\n        hasChevron\n        onClick={() => {}}\n        data-testid=\"export\"\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "Destructive",
           "title": "A destructive row",
-          "source": "import { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** A row that deletes or ends something; the danger tone marks it before it is pressed. */\nexport function Destructive() {\n  return (\n    <view className=\"overflow-hidden rounded-container border border-line bg-surface\">\n      <Item label=\"Delete account\" description=\"Removes your notes from every device\" tone=\"danger\" hasChevron onClick={() => {}} data-testid=\"delete-row\" />\n    </view>\n  );\n}"
+          "source": "import { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** A row that deletes or ends something; the danger tone marks it before it is pressed. */\nexport function Destructive() {\n  return (\n    <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n      <Item label=\"Delete account\" description=\"Removes your notes from every device\" tone=\"danger\" hasChevron onClick={() => {}} data-testid=\"delete-row\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -4721,7 +4721,7 @@
         {
           "name": "ListLoading",
           "title": "A list loading",
-          "source": "import { Skeleton, SkeletonGroup } from '@liulidesign/core/Skeleton';\n\n/** A list loading: rows shaped as the rows that will arrive, named once as what is loading. */\nexport function ListLoading() {\n  return (\n    <SkeletonGroup label=\"Loading notes\" className=\"gap-0 overflow-hidden rounded-container border border-text/10 bg-surface divide-y divide-text/8\" data-testid=\"loading-notes\">\n      {['a', 'b', 'c'].map(key => (\n        <view key={key} className=\"flex-row items-center gap-3 px-4 py-3\">\n          <Skeleton shape=\"circle\" className=\"size-10 shrink-0\" />\n          <view className=\"grow basis-0 gap-1\">\n            <Skeleton className=\"w-2/3\" />\n            <Skeleton className=\"w-1/3\" />\n          </view>\n        </view>\n      ))}\n    </SkeletonGroup>\n  );\n}"
+          "source": "import { Skeleton, SkeletonGroup } from '@liulidesign/core/Skeleton';\n\n/** A list loading: rows shaped as the rows that will arrive, named once as what is loading. */\nexport function ListLoading() {\n  return (\n    <SkeletonGroup label=\"Loading notes\" className=\"gap-0 overflow-hidden rounded-container border border-text/12 bg-surface divide-y divide-text/8\" data-testid=\"loading-notes\">\n      {['a', 'b', 'c'].map(key => (\n        <view key={key} className=\"flex-row items-center gap-3 px-4 py-3\">\n          <Skeleton shape=\"circle\" className=\"size-10 shrink-0\" />\n          <view className=\"grow basis-0 gap-1\">\n            <Skeleton className=\"w-2/3\" />\n            <Skeleton className=\"w-1/3\" />\n          </view>\n        </view>\n      ))}\n    </SkeletonGroup>\n  );\n}"
         },
         {
           "name": "CardLoading",

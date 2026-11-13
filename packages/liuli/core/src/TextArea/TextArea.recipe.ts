@@ -11,7 +11,7 @@ export const textAreaRecipe = {
   box: {
     base: 'rounded-control border border-line-strong bg-surface transition duration-150 ease-out focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/20',
     status: { error: 'border-danger', warning: 'border-warning', success: 'border-line-strong' } satisfies Record<FieldStatusType, string>,
-    disabled: 'bg-text/5 border-line',
+    disabled: 'bg-text/5 border-text/8',
   },
   editor: {
     base: 'self-stretch px-3 py-2 bg-transparent text-text placeholder:text-muted disabled:text-faint',

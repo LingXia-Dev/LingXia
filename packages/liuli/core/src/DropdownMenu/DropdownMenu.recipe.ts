@@ -51,6 +51,6 @@ export const dropdownMenuRecipe = {
     base: 'gap-0.5',
   },
   divider: {
-    base: 'h-px -mx-1 my-1 bg-line',
+    base: 'h-px -mx-1 my-1 bg-text/8',
   },
 } as const;

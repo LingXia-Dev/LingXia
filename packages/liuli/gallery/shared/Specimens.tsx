@@ -40,8 +40,8 @@ export function ShapeAndSpacingSpecimen() {
 export function ElevationSpecimen() {
   return (
     <view className="mb-5 flex-row items-end gap-3">
-      <view className="w-12 h-9 rounded-control border border-text/8 bg-surface-raised shadow-[0_1px_2px_rgb(0_0_0/0.06),0_3px_8px_rgb(0_0_0/0.08)]" />
-      <view className="w-14 h-11 rounded-container border border-text/8 bg-surface-raised shadow-[0_2px_4px_rgb(0_0_0/0.10),0_10px_22px_rgb(0_0_0/0.22)]" />
+      <view className="w-12 h-9 rounded-control border border-text/12 bg-surface-raised shadow-[0_1px_2px_rgb(0_0_0/0.06),0_3px_8px_rgb(0_0_0/0.08)]" />
+      <view className="w-14 h-11 rounded-container border border-text/12 bg-surface-raised shadow-[0_2px_4px_rgb(0_0_0/0.10),0_10px_22px_rgb(0_0_0/0.22)]" />
     </view>
   );
 }
@@ -71,7 +71,7 @@ export function SignInSpecimen() {
 
 export function SettingsSpecimen() {
   return (
-    <view className="w-28 rounded-control border border-text/10 bg-surface divide-y divide-text/8">
+    <view className="w-28 rounded-control border border-text/12 bg-surface divide-y divide-text/8">
       <view className="h-5 flex-row items-center px-2"><view className="w-12 h-1.5 rounded-full bg-text/25" /></view>
       <view className="h-5 flex-row items-center justify-between px-2">
         <view className="w-9 h-1.5 rounded-full bg-text/25" />
@@ -84,7 +84,7 @@ export function SettingsSpecimen() {
 
 export function UploadsSpecimen() {
   return (
-    <view className="w-28 gap-2 rounded-control border border-text/10 bg-surface p-2.5">
+    <view className="w-28 gap-2 rounded-control border border-text/12 bg-surface p-2.5">
       <view className="w-16 h-1.5 rounded-full bg-text/25" />
       <ProgressBar label="Upload" isLabelHidden size="sm" value={64} />
     </view>

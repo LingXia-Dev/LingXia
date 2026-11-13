@@ -17,7 +17,7 @@ export const dialogParts = {
  */
 export const dialogRecipe = {
   panel: {
-    base: 'w-[90%] max-h-[85vh] p-5 gap-4 rounded-dialog border border-text/10 bg-surface-raised shadow-modal transition duration-200 ease-out starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-96 motion-safe:exit:scale-96',
+    base: 'w-[90%] max-h-[85vh] p-5 gap-4 rounded-dialog border border-text/12 bg-surface-raised shadow-modal transition duration-200 ease-out starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-96 motion-safe:exit:scale-96',
     size: { sm: 'max-w-[360px]', md: 'max-w-[480px]', lg: 'max-w-[640px]' } satisfies Record<DialogSize, string>,
   },
   header: {

@@ -17,7 +17,7 @@ Details hides secondary content behind a row the person opens when they need it:
 ```tsx
 import { Details } from '@liulidesign/core/Details';
 
-const surface = 'gap-1 rounded-container border border-text/10 bg-surface px-5 pt-4 pb-1';
+const surface = 'gap-1 rounded-container border border-text/12 bg-surface px-5 pt-4 pb-1';
 
 /** One disclosure under the text it qualifies: the summary opens and closes the content under it. */
 export function Single() {

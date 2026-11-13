@@ -44,7 +44,7 @@ export function Values() {
 export function WithControl() {
   const signedIn = useLocal('signedIn', true);
   return (
-    <view className="overflow-hidden rounded-container border border-line bg-surface">
+    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
       <Item
         label="Account"
         description={signedIn.value ? 'Signed in' : 'Signed out'}
@@ -64,7 +64,7 @@ export function WithControl() {
 
 export function Disabled() {
   return (
-    <view className="overflow-hidden rounded-container border border-line bg-surface">
+    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
       <Item
         label="Export history"
         description="Download every change as a file"
@@ -81,7 +81,7 @@ export function Disabled() {
 /** The home tile. */
 export function Specimen() {
   return (
-    <view className="w-28 overflow-hidden rounded-container border border-text/10 bg-surface">
+    <view className="w-28 overflow-hidden rounded-container border border-text/12 bg-surface">
       <Item label="Alerts" description="On" hasChevron onClick={() => {}} />
     </view>
   );
@@ -89,7 +89,7 @@ export function Specimen() {
 
 export function StatePressable() {
   return (
-    <view className="overflow-hidden rounded-container border border-text/10 bg-surface">
+    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
       <Item label="Wi-Fi" description="Home" hasChevron onClick={() => {}} />
     </view>
   );
@@ -97,7 +97,7 @@ export function StatePressable() {
 
 export function StateDisabled() {
   return (
-    <view className="overflow-hidden rounded-container border border-text/10 bg-surface">
+    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
       <Item label="Wi-Fi" description="Off" hasChevron isDisabled onClick={() => {}} />
     </view>
   );
@@ -106,7 +106,7 @@ export function StateDisabled() {
 /** A row that deletes or ends something; the danger tone marks it before it is pressed. */
 export function Destructive() {
   return (
-    <view className="overflow-hidden rounded-container border border-line bg-surface">
+    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
       <Item label="Delete account" description="Removes your notes from every device" tone="danger" hasChevron onClick={() => {}} data-testid="delete-row" />
     </view>
   );

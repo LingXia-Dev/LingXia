@@ -18,7 +18,7 @@ export const bottomSheetParts = {
  */
 export const bottomSheetRecipe = {
   panel: {
-    base: 'mt-auto mb-0 w-full max-w-[640px] px-5 pt-2 gap-4 rounded-t-dialog border border-b-0 border-text/10 bg-surface-raised shadow-modal transition duration-300 ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
+    base: 'mt-auto mb-0 w-full max-w-[640px] px-5 pt-2 gap-4 rounded-t-dialog border border-b-0 border-text/12 bg-surface-raised shadow-modal transition duration-300 ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
     detents: {
       fit: 'max-h-[90vh]',
       expandable: 'h-[90vh]',

@@ -73,7 +73,7 @@ import { Item } from '@liulidesign/core/Item';
 export function WithControl() {
   const signedIn = useLocal('signedIn', true);
   return (
-    <view className="overflow-hidden rounded-container border border-line bg-surface">
+    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
       <Item
         label="Account"
         description={signedIn.value ? 'Signed in' : 'Signed out'}
@@ -99,7 +99,7 @@ import { Item } from '@liulidesign/core/Item';
 
 export function Disabled() {
   return (
-    <view className="overflow-hidden rounded-container border border-line bg-surface">
+    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
       <Item
         label="Export history"
         description="Download every change as a file"
@@ -128,7 +128,7 @@ const notes = [
 /** A row that deletes or ends something; the danger tone marks it before it is pressed. */
 export function Destructive() {
   return (
-    <view className="overflow-hidden rounded-container border border-line bg-surface">
+    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
       <Item label="Delete account" description="Removes your notes from every device" tone="danger" hasChevron onClick={() => {}} data-testid="delete-row" />
     </view>
   );
