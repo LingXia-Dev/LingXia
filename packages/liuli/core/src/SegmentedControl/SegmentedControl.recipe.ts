@@ -9,8 +9,8 @@ export const segmentedControlParts = {
 } as const;
 
 /**
- * A sunken track of equal segments with one raised thumb that slides to the chosen segment, as the
- * segmented Tabs draw it; reduced motion lands the thumb at once.
+ * A sunken track of equal segments with one raised thumb that slides to the chosen segment; the
+ * pieces are the segmented Tabs' too. Reduced motion lands the thumb at once.
  */
 export const segmentedControlRecipe = {
   root: {

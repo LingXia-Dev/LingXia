@@ -1,5 +1,3 @@
-import type { TabsVariant } from './Tabs';
-
 export const tabsParts = {
   root: 'view',
   frame: 'view',
@@ -14,7 +12,8 @@ export const tabsParts = {
 /**
  * A row of equal-width tabs over one panel. The indicator is one box a tab wide that slides to the
  * chosen tab; reduced motion lands it at once. Keyboard focus is a fill on an underline tab, kept
- * 4 px above the indicator by the frame's padding, and a ring on a segment.
+ * 4 px above the indicator by the frame's padding. The segmented variant draws SegmentedControl's
+ * medium pieces (track, thumb, segment, label), so the two never drift apart.
  */
 export const tabsRecipe = {
   root: {
@@ -22,14 +21,11 @@ export const tabsRecipe = {
   },
   frame: {
     base: '',
-    variant: {
-      underline: 'pb-1 border-b border-line',
-      segmented: 'p-0.5 rounded-control bg-surface-sunken',
-    } satisfies Record<TabsVariant, string>,
+    underline: 'pb-1 border-b border-text/8',
   },
   /** Inside the frame's padding, so a tab's width is exactly a share of the list. */
   list: {
-    base: 'relative flex-row',
+    base: 'grow relative flex-row',
   },
   track: {
     base: 'absolute inset-0 rtl:-scale-x-100',
@@ -37,21 +33,16 @@ export const tabsRecipe = {
   },
   indicator: {
     base: 'absolute start-0 transition-transform duration-200 ease-spring',
-    variant: {
-      underline: '-bottom-[5px] h-0.5 rounded-full bg-accent',
-      segmented: 'inset-y-0 rounded-segment border border-text/6 bg-surface-raised shadow-contact',
-    } satisfies Record<TabsVariant, string>,
+    underline: '-bottom-[5px] h-0.5 rounded-full bg-accent',
   },
   tab: {
-    base: 'grow shrink basis-0 min-w-0 flex-row items-center justify-center px-2 transition-colors duration-150 ease-out disabled:opacity-40',
-    variant: {
-      underline: 'h-control-md rounded-control focus-visible:bg-text/7',
-      segmented: 'h-8 rounded-segment focus-visible:ring-2 focus-visible:ring-focus',
-    } satisfies Record<TabsVariant, string>,
+    base: 'grow shrink basis-0 min-w-0 flex-row items-center justify-center transition-colors duration-150 ease-out disabled:opacity-40',
+    underline: 'h-control-md px-2 rounded-control focus-visible:bg-text/7',
   },
   /** A label too long for its share of the row is cut short rather than spilling into the next tab. */
   label: {
-    base: 'text-footnote font-medium truncate',
+    base: 'font-medium truncate',
+    underline: 'text-footnote',
     selected: 'text-text',
     unselected: 'text-muted',
   },

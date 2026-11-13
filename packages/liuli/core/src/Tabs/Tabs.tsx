@@ -1,4 +1,5 @@
 import { cx, useId, type Child } from '@lingxia/view';
+import { segmentedControlRecipe as s } from '../SegmentedControl/SegmentedControl.recipe';
 import { tabsRecipe as r } from './Tabs.recipe';
 
 export type TabsVariant = 'underline' | 'segmented';
@@ -35,16 +36,17 @@ export function Tabs({ label, items, value, onChange, variant = 'underline', chi
   const id = useId();
   const index = Math.max(0, items.findIndex(item => item.value === value));
   const chosen = items[index];
+  const segmented = variant === 'segmented';
   return (
     <view className={cx(r.root.base, className)}>
-      <view className={cx(r.frame.base, r.frame.variant[variant])}>
+      <view className={cx(r.frame.base, segmented ? s.root.base : r.frame.underline)}>
       <view role="tablist" aria-label={label} data-testid={testId} className={r.list.base}>
         {/* One box a tab wide, moved by its own width per tab. It moves in a left-to-right box that
             right-to-left mirrors, so the same translate slides it toward the end either way. */}
         <view aria-hidden className={r.track.base}>
           <view dir="ltr" className={r.track.inner}>
             <view
-              className={cx(r.indicator.base, r.indicator.variant[variant])}
+              className={cx(r.indicator.base, segmented ? s.thumb.base : r.indicator.underline)}
               style={{ width: `${100 / Math.max(1, items.length)}%`, translate: [`${index * 100}%`, 0] }}
             />
           </view>
@@ -61,9 +63,9 @@ export function Tabs({ label, items, value, onChange, variant = 'underline', chi
               disabled={item.isDisabled}
               data-testid={testId && `${testId}-${item.value}`}
               onClick={() => { if (!isSelected) onChange(item.value); }}
-              className={cx(r.tab.base, r.tab.variant[variant])}
+              className={cx(r.tab.base, segmented ? cx(s.segment.base, s.segment.size.md) : r.tab.underline)}
             >
-              <text className={cx(r.label.base, isSelected ? r.label.selected : r.label.unselected)}>{item.label}</text>
+              <text className={cx(r.label.base, segmented ? s.label.size.md : r.label.underline, isSelected ? r.label.selected : r.label.unselected)}>{item.label}</text>
             </button>
           );
         })}

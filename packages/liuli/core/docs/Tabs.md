@@ -136,7 +136,7 @@ export function Filter() {
 - Home, End: The first or last tab..
 - Press target: md 40 px.
 - The chosen state is in the text weight and colour and in the indicator, never in colour alone.
-- The segmented control is 36 px tall, with its 32 px segments; it suits pointer and compact layouts.
+- The segmented variant is drawn from SegmentedControl's pieces at its medium size: 40 px tall, level with a medium Button.
 - The segmented thumb's edge is decorative and has no contrast minimum: the chosen segment is carried by its label and the raised thumb.
 
 | Contrast | Pair | Minimum | Light | Dark |
