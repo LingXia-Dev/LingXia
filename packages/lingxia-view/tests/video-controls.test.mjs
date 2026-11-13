@@ -263,3 +263,23 @@ test('the overlay shows an error in the middle with Retry, and full screen has a
   delete globalThis.__lingxiaVideoCommand;
   delete globalThis.__lingxiaVideoOrientation;
 });
+
+test('the overlay scrubber touch box ends above the buttons and draws its line there', () => {
+  reset();
+  globalThis.__lingxiaVideoCommand = () => '';
+  const render = () => {
+    const hero = useVideo('hero');
+    return h('view', {}, h('video', { player: hero, src: 'a.mp4' }), h(VideoControls, { player: hero, overlay: true, 'data-testid': 'bar' }));
+  };
+  const nodes = () => { const out = decode(prepare(render, { env: { pointer: 'coarse' } })); commit(); return out; };
+  nodes();
+  const list = nodes();
+  const bar = list.find(node => node.testId === 'bar-bar').props;
+  const scrub = list.find(node => node.testId === 'bar-scrub').props;
+  // The slider box (absolute in the bar) ends where the button row starts, the bar's top padding.
+  assert.equal(scrub.insetTop + scrub.height, bar.paddingTop);
+  assert.ok(scrub.height >= 44, 'a full touch target');
+  // The track centres in the box below its top padding: 2 above the row.
+  assert.equal(scrub.insetTop + scrub.paddingTop + (scrub.height - scrub.paddingTop) / 2, bar.paddingTop - 2);
+  delete globalThis.__lingxiaVideoCommand;
+});

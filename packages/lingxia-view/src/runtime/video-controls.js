@@ -156,7 +156,7 @@ export function VideoControls({ player, overlay = false, labels, className, 'dat
   const scrubber = style => !live && h('slider', { ...seekProps, dir: 'ltr',
     secondaryValue: known ? Math.min(duration, now + (player.buffered ?? 0)) : 0,
     'aria-valuetext': `${clock(at)} / ${known ? clock(duration) : '--:--'}`,
-    style: { position: 'absolute', height: 28, paddingLeft: 0, paddingRight: 0, ...style,
+    style: { position: 'absolute', paddingLeft: 0, paddingRight: 0, ...style,
       trackPart: { height: holding ? 5 : 3, borderRadius: 999, backgroundColor: 'on-media/25' },
       secondaryPart: { backgroundColor: 'on-media/45' },
       rangePart: { backgroundColor: 'accent' },
@@ -167,15 +167,18 @@ export function VideoControls({ player, overlay = false, labels, className, 'dat
     style: { width: box, height: box, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', color: INK } }, glyph('settings', size));
   const left = h('view', { style: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 } }, play, time);
   const right = h('view', { style: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 } }, settings, mute, screen);
-  // The line sits in the bar's top band, clear of its edge and of the icons below it.
-  const lineAt = full ? 12 : 10;
+  // The line sits in the bar's top band, clear of its edge and of the icons below it. The
+  // scrubber's touch box ends just under the line and grows up into the picture, so no part of it
+  // lies over the buttons (a later sibling wins a shared point); top padding puts the line there.
+  const lineAt = full ? 14 : 12;
+  const rowAt = lineAt + 2;
   const inset = full ? 16 : 8;
   const radius = full ? 20 : 16;
-  const barHeight = lineAt + 4 + box + (full ? 4 : 0);
+  const barHeight = rowAt + box + (full ? 4 : 0);
   const lift = { transition: fadeMotion };
   const bar = h('view', { 'data-testid': id('bar'), style: { position: 'absolute', left: inset + pad.left, right: inset + pad.right, bottom: (full ? 12 : 8) + pad.bottom,
-    ...glass, borderRadius: radius, paddingTop: lineAt + 4, paddingBottom: full ? 4 : 0, paddingLeft: 2, paddingRight: 2, ...lift } },
-    scrubber({ top: lineAt - 14, left: 12, right: 12 }),
+    ...glass, borderRadius: radius, paddingTop: rowAt, paddingBottom: full ? 4 : 0, paddingLeft: 2, paddingRight: 2, ...lift } },
+    scrubber({ top: rowAt - box, height: box, paddingTop: box - 2 * (rowAt - lineAt), paddingBottom: 0, left: 12, right: 12 }),
     h('view', { style: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' } }, left, right));
   // Full screen: a way out at the top start, clear of the notch.
   const close = full && h('view', { style: { position: 'absolute', top: 12 + (pad.top ?? 0), left: inset + pad.left, ...lift } },
@@ -227,7 +230,9 @@ export function VideoControls({ player, overlay = false, labels, className, 'dat
     h('button', { 'data-testid': id('surface'), 'aria-hidden': true,
       onClick: precise || fresh ? toggle : () => shown.set({ since: player.currentTime, hidden: up && playing }),
       style: { ...fill, zIndex: up || fresh ? 0 : 2, backgroundColor: 'transparent' } }),
-    centre && h('view', { style: { ...fill, alignItems: 'center', justifyContent: 'center', zIndex: 1 } }, centre),
+    // The large play and Retry sit above the bar, so the scrubber's touch box never takes them on a
+    // short picture; the loading ring stays under it.
+    centre && h('view', { style: { ...fill, alignItems: 'center', justifyContent: 'center', zIndex: loading && !error ? 1 : 2 } }, centre),
     h('view', { 'data-testid': id('chrome'), style: { ...fill, zIndex: 1, opacity: up ? 1 : 0, transition: fadeMotion } }, bar, close),
     sheet);
 }
