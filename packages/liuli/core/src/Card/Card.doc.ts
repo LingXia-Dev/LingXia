@@ -53,9 +53,9 @@ export const doc: ComponentDoc = {
   ],
   gaps: [
     {
-      missing: 'Choice cards reported as a radio group with a position.',
-      needs: 'radio controls that take children, as checkbox does',
-      today: 'Each card is a button reported as selected.',
+      missing: 'A focus ring that stays distinct on a selected card.',
+      needs: 'ring offset: a gap between the box and its ring',
+      today: 'The selected border and the focus ring sit in the same place.',
     },
   ],
   related: ['Item', 'Button'],

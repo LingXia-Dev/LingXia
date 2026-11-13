@@ -151,6 +151,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Choice cards reported as a radio group with a position. | radio controls that take children, as checkbox does | Each card is a button reported as selected. |
+| A focus ring that stays distinct on a selected card. | ring offset: a gap between the box and its ring | The selected border and the focus ring sit in the same place. |
 
 Related: Item, Button.

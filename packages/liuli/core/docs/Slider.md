@@ -161,10 +161,4 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use a slider for an exact number the person knows; use a text input.
 - Don't: Act on every change when the work is slow; apply when the value settles.
 
-## Not yet
-
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| The pressed thumb staying grown while it is dragged. | active part styles held for the whole drag on the slider primitive | The thumb grows on a press that has not moved yet, and returns to its rest size once it moves. |
-
 Related: ProgressBar.

@@ -825,13 +825,18 @@
         },
         {
           "missing": "The disabled reason shown to sighted users.",
-          "needs": "a focusable disabled state and a hint popover opened by focus or long press",
+          "needs": "a focusable disabled state, so a hint note can open from it",
           "today": "The reason is read as the description; nothing is drawn."
         },
         {
           "missing": "Announcing that loading started.",
           "needs": "an announcement without a mounted live region",
           "today": "Busy state only; a page that needs speech keeps its own status line."
+        },
+        {
+          "missing": "A keyboard focus ring that shows on a filled button.",
+          "needs": "ring offset: a gap between the box and its ring",
+          "today": "A ring on the fill blends into it, so Button draws no focus style of its own."
         }
       ],
       "related": [
@@ -1067,9 +1072,9 @@
       ],
       "gaps": [
         {
-          "missing": "Choice cards reported as a radio group with a position.",
-          "needs": "radio controls that take children, as checkbox does",
-          "today": "Each card is a button reported as selected."
+          "missing": "A focus ring that stays distinct on a selected card.",
+          "needs": "ring offset: a gap between the box and its ring",
+          "today": "The selected border and the focus ring sit in the same place."
         }
       ],
       "related": [
@@ -1719,7 +1724,7 @@
       "gaps": [
         {
           "missing": "A theme-wide motion token for the enter and exit timing.",
-          "needs": "duration and easing tokens in the theme pack",
+          "needs": "duration and easing utilities that read the theme pack's motion tokens",
           "today": "duration-200 ease-out in the recipe."
         }
       ],
@@ -2020,13 +2025,8 @@
       ],
       "gaps": [
         {
-          "missing": "Checkbox and radio items.",
-          "needs": "checkable menu item roles",
-          "today": "Plain items; show the current choice in the trigger label instead."
-        },
-        {
           "missing": "Submenus and side placement.",
-          "needs": "inline-start and inline-end position areas, and hover or focus opening",
+          "needs": "inline-start and inline-end position areas",
           "today": "One level; top or bottom only."
         },
         {
@@ -2473,18 +2473,7 @@
           "source": "import { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** A row that deletes or ends something; the danger tone marks it before it is pressed. */\nexport function Destructive() {\n  return (\n    <view className=\"overflow-hidden rounded-container border border-line bg-surface\">\n      <Item label=\"Delete account\" description=\"Removes your notes from every device\" tone=\"danger\" hasChevron onClick={() => {}} data-testid=\"delete-row\" />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
-        {
-          "missing": "Rows reported as items of a list, with their position.",
-          "needs": "a listitem role on a pressable row, or list position on a button",
-          "today": "Rows are buttons or plain views; the list itself is not announced."
-        },
-        {
-          "missing": "Swipe to reveal row actions.",
-          "needs": "a horizontal drag with snap points that closes other open rows",
-          "today": "Put actions in a DropdownMenu at the end of a plain row."
-        }
-      ],
+      "gaps": [],
       "related": [
         "DropdownMenu",
         "Card"
@@ -2712,13 +2701,7 @@
           "source": "import { Spinner } from '@liulidesign/core/ProgressBar';\n\nexport function Spinners() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <Spinner label=\"Loading\" size=\"sm\" />\n      <Spinner label=\"Loading messages\" data-testid=\"spinner\" />\n      <Spinner label=\"Loading\" size=\"lg\" />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
-        {
-          "missing": "Finding a progress bar by role in device tests.",
-          "needs": "progressbar in the test locator roles",
-          "today": "Device checks find it by `data-testid`; Node tests read its role."
-        }
-      ],
+      "gaps": [],
       "related": [
         "Button"
       ],
@@ -3540,13 +3523,7 @@
           "source": "import { Slider } from '@liulidesign/core/Slider';\n\nexport function Sizes() {\n  return (\n    <view className=\"gap-4\">\n      <Slider value={30} onChange={() => {}} label=\"Small\" size=\"sm\" />\n      <Slider value={60} onChange={() => {}} label=\"Medium\" />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
-        {
-          "missing": "The pressed thumb staying grown while it is dragged.",
-          "needs": "active part styles held for the whole drag on the slider primitive",
-          "today": "The thumb grows on a press that has not moved yet, and returns to its rest size once it moves."
-        }
-      ],
+      "gaps": [],
       "related": [
         "ProgressBar"
       ],
@@ -3769,7 +3746,13 @@
           "source": "import { Switch } from '@liulidesign/core/Switch';\n\nexport function Sizes() {\n  return (\n    <view className=\"gap-3\">\n      <Switch value onChange={() => {}} label=\"Small, for dense rows\" size=\"sm\" />\n      <Switch value onChange={() => {}} label=\"Medium\" />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [],
+      "gaps": [
+        {
+          "missing": "Keyboard focus shown only by the thumb ring or the row fill.",
+          "needs": "the switch primitive's built-in focus ring giving way to authored focus styles",
+          "today": "The built-in ring also draws around the track."
+        }
+      ],
       "related": [
         "CheckboxInput",
         "Item"
@@ -4561,8 +4544,13 @@
       "gaps": [
         {
           "missing": "Opening on hover with a mouse, after a short delay, and on keyboard focus.",
-          "needs": "pointer enter and leave events, or a hover-triggered popover (HTML's interest invokers)",
+          "needs": "a hint popover that a tap elsewhere closes, as a light-dismiss popover does",
           "today": "The note opens on a press only."
+        },
+        {
+          "missing": "A live trigger shown pressed in the gallery.",
+          "needs": "a way to hold a view in a forced state (pressed, open) for display",
+          "today": "The pressed and open pictures are still drawings."
         }
       ],
       "related": [

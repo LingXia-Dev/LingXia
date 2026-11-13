@@ -57,18 +57,7 @@ export const doc: ComponentDoc = {
     { name: 'Disabled', title: 'Disabled, with the reason' },
     { name: 'Destructive', title: 'A destructive row' },
   ],
-  gaps: [
-    {
-      missing: 'Rows reported as items of a list, with their position.',
-      needs: 'a listitem role on a pressable row, or list position on a button',
-      today: 'Rows are buttons or plain views; the list itself is not announced.',
-    },
-    {
-      missing: 'Swipe to reveal row actions.',
-      needs: 'a horizontal drag with snap points that closes other open rows',
-      today: 'Put actions in a DropdownMenu at the end of a plain row.',
-    },
-  ],
+  gaps: [],
   related: ['DropdownMenu', 'Card'],
   gallery: {
     specimen: 'Specimen',

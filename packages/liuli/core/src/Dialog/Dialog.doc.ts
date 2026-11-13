@@ -54,7 +54,7 @@ export const doc: ComponentDoc = {
   gaps: [
     {
       missing: 'A theme-wide motion token for the enter and exit timing.',
-      needs: 'duration and easing tokens in the theme pack',
+      needs: 'duration and easing utilities that read the theme pack\'s motion tokens',
       today: 'duration-200 ease-out in the recipe.',
     },
   ],

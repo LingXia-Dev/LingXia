@@ -132,6 +132,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Opening on hover with a mouse, after a short delay, and on keyboard focus. | pointer enter and leave events, or a hover-triggered popover (HTML's interest invokers) | The note opens on a press only. |
+| Opening on hover with a mouse, after a short delay, and on keyboard focus. | a hint popover that a tap elsewhere closes, as a light-dismiss popover does | The note opens on a press only. |
+| A live trigger shown pressed in the gallery. | a way to hold a view in a forced state (pressed, open) for display | The pressed and open pictures are still drawings. |
 
 Related: DropdownMenu, Dialog.

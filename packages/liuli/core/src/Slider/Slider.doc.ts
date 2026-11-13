@@ -58,13 +58,7 @@ export const doc: ComponentDoc = {
     { name: 'Position', title: 'A position in a recording, with what has loaded' },
     { name: 'Sizes', title: 'Small and medium' },
   ],
-  gaps: [
-    {
-      missing: 'The pressed thumb staying grown while it is dragged.',
-      needs: 'active part styles held for the whole drag on the slider primitive',
-      today: 'The thumb grows on a press that has not moved yet, and returns to its rest size once it moves.',
-    },
-  ],
+  gaps: [],
   related: ['ProgressBar'],
   gallery: {
     specimen: 'Specimen',

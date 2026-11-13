@@ -63,13 +63,8 @@ export const doc: ComponentDoc = {
   ],
   gaps: [
     {
-      missing: 'Checkbox and radio items.',
-      needs: 'checkable menu item roles',
-      today: 'Plain items; show the current choice in the trigger label instead.',
-    },
-    {
       missing: 'Submenus and side placement.',
-      needs: 'inline-start and inline-end position areas, and hover or focus opening',
+      needs: 'inline-start and inline-end position areas',
       today: 'One level; top or bottom only.',
     },
     {

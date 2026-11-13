@@ -142,6 +142,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| A theme-wide motion token for the enter and exit timing. | duration and easing tokens in the theme pack | duration-200 ease-out in the recipe. |
+| A theme-wide motion token for the enter and exit timing. | duration and easing utilities that read the theme pack's motion tokens | duration-200 ease-out in the recipe. |
 
 Related: Button, DropdownMenu.

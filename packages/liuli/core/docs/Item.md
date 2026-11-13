@@ -190,11 +190,4 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use a row for a single action; that is a Button.
 - Don't: Rely on the end value alone on a pressable row; it is not read, so repeat it in `description` when it matters.
 
-## Not yet
-
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| Rows reported as items of a list, with their position. | a listitem role on a pressable row, or list position on a button | Rows are buttons or plain views; the list itself is not announced. |
-| Swipe to reveal row actions. | a horizontal drag with snap points that closes other open rows | Put actions in a DropdownMenu at the end of a plain row. |
-
 Related: DropdownMenu, Card.

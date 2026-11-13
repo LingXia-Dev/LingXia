@@ -156,7 +156,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
 | A 44 px press target around the sm and md sizes. | hit slop: a press area larger than the painted box | The press area equals the box; the docs steer touch layouts to lg. |
-| The disabled reason shown to sighted users. | a focusable disabled state and a hint popover opened by focus or long press | The reason is read as the description; nothing is drawn. |
+| The disabled reason shown to sighted users. | a focusable disabled state, so a hint note can open from it | The reason is read as the description; nothing is drawn. |
 | Announcing that loading started. | an announcement without a mounted live region | Busy state only; a page that needs speech keeps its own status line. |
+| A keyboard focus ring that shows on a filled button. | ring offset: a gap between the box and its ring | A ring on the fill blends into it, so Button draws no focus style of its own. |
 
 Related: DropdownMenu, Dialog.

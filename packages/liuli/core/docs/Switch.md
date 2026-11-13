@@ -114,4 +114,10 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use a switch on a form with a Save button; use a CheckboxInput.
 - Don't: Put the state in the label ("Wi-Fi on"); the switch shows it.
 
+## Not yet
+
+| Missing | Needs | Meanwhile |
+| --- | --- | --- |
+| Keyboard focus shown only by the thumb ring or the row fill. | the switch primitive's built-in focus ring giving way to authored focus styles | The built-in ring also draws around the track. |
+
 Related: CheckboxInput, Item.

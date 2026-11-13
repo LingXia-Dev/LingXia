@@ -69,13 +69,18 @@ export const doc: ComponentDoc = {
     },
     {
       missing: 'The disabled reason shown to sighted users.',
-      needs: 'a focusable disabled state and a hint popover opened by focus or long press',
+      needs: 'a focusable disabled state, so a hint note can open from it',
       today: 'The reason is read as the description; nothing is drawn.',
     },
     {
       missing: 'Announcing that loading started.',
       needs: 'an announcement without a mounted live region',
       today: 'Busy state only; a page that needs speech keeps its own status line.',
+    },
+    {
+      missing: 'A keyboard focus ring that shows on a filled button.',
+      needs: 'ring offset: a gap between the box and its ring',
+      today: 'A ring on the fill blends into it, so Button draws no focus style of its own.',
     },
   ],
   related: ['DropdownMenu', 'Dialog'],

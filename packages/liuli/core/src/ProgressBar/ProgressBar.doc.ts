@@ -56,13 +56,7 @@ export const doc: ComponentDoc = {
     { name: 'Compact', title: 'Thin, under its own heading' },
     { name: 'Spinners', title: 'Spinner sizes' },
   ],
-  gaps: [
-    {
-      missing: 'Finding a progress bar by role in device tests.',
-      needs: 'progressbar in the test locator roles',
-      today: 'Device checks find it by `data-testid`; Node tests read its role.',
-    },
-  ],
+  gaps: [],
   related: ['Button'],
   gallery: {
     specimen: 'Specimen',

@@ -55,8 +55,13 @@ export const doc: ComponentDoc = {
   gaps: [
     {
       missing: 'Opening on hover with a mouse, after a short delay, and on keyboard focus.',
-      needs: 'pointer enter and leave events, or a hover-triggered popover (HTML\'s interest invokers)',
+      needs: 'a hint popover that a tap elsewhere closes, as a light-dismiss popover does',
       today: 'The note opens on a press only.',
+    },
+    {
+      missing: 'A live trigger shown pressed in the gallery.',
+      needs: 'a way to hold a view in a forced state (pressed, open) for display',
+      today: 'The pressed and open pictures are still drawings.',
     },
   ],
   related: ['DropdownMenu', 'Dialog'],

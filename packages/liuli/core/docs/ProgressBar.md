@@ -139,10 +139,4 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use ProgressBar as a gauge the user sets; that is a slider.
 - Don't: Put a Spinner inside a Button; Button has its own loading state.
 
-## Not yet
-
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| Finding a progress bar by role in device tests. | progressbar in the test locator roles | Device checks find it by `data-testid`; Node tests read its role. |
-
 Related: Button.

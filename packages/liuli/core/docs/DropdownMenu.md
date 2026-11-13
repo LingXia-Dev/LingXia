@@ -206,8 +206,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Checkbox and radio items. | checkable menu item roles | Plain items; show the current choice in the trigger label instead. |
-| Submenus and side placement. | inline-start and inline-end position areas, and hover or focus opening | One level; top or bottom only. |
+| Submenus and side placement. | inline-start and inline-end position areas | One level; top or bottom only. |
 | Opening by long press or secondary click. | a long-press and secondary-click invoker | Tap on the trigger only. |
 | Anchoring when opened from code with isOpen. | a popover anchor that does not depend on which control opened it | Opened from code it is placed by its classes; the trigger is the normal way in. |
 | A destructive item in danger-coloured text. | a text-grade danger role (4.5:1 on surface-raised) | The icon carries the danger colour; the text stays in the text role. |

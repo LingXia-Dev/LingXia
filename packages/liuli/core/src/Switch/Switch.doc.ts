@@ -55,7 +55,13 @@ export const doc: ComponentDoc = {
     { name: 'InList', title: 'As list rows' },
     { name: 'Sizes', title: 'Small and medium' },
   ],
-  gaps: [],
+  gaps: [
+    {
+      missing: 'Keyboard focus shown only by the thumb ring or the row fill.',
+      needs: 'the switch primitive\'s built-in focus ring giving way to authored focus styles',
+      today: 'The built-in ring also draws around the track.',
+    },
+  ],
   related: ['CheckboxInput', 'Item'],
   gallery: {
     specimen: 'Specimen',
