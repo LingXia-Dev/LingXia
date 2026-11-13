@@ -58,6 +58,8 @@
     "./ToggleButton/recipe": "./src/ToggleButton/ToggleButton.recipe.ts",
     "./Toast": "./src/Toast/Toast.tsx",
     "./Toast/recipe": "./src/Toast/Toast.recipe.ts",
+    "./SegmentedControl": "./src/SegmentedControl/SegmentedControl.tsx",
+    "./SegmentedControl/recipe": "./src/SegmentedControl/SegmentedControl.recipe.ts",
     "./package.json": "./package.json"
   },
   "lingxia": {

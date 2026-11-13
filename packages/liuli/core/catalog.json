@@ -3454,6 +3454,207 @@
       }
     },
     {
+      "name": "SegmentedControl",
+      "import": "@liulidesign/core/SegmentedControl",
+      "exports": [
+        "SegmentedControl"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "summary": "One value from a few, as a row of segments with a thumb on the chosen one",
+      "description": "SegmentedControl sets one value from two to five short choices that fit a row: a unit, a theme, a sort order. It is a radio group drawn as equal segments, with a raised thumb that slides to the chosen one. It sets a value; to switch what a panel shows, use Tabs.",
+      "keywords": [
+        "segmented control",
+        "segments",
+        "radio",
+        "choice",
+        "switcher",
+        "units",
+        "mode",
+        "picker"
+      ],
+      "props": [
+        {
+          "name": "bind",
+          "type": "Local<string>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false,
+          "description": "The chosen segment's value."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: string) => void)",
+          "required": false,
+          "description": "Runs with the segment chosen by a tap or by arrowing onto it."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Names the group for assistive tech: \"Units\", \"Sort\"."
+        },
+        {
+          "name": "options",
+          "type": "readonly SegmentedOption[]",
+          "required": true,
+          "description": "Two to five choices, in order; they share the row equally."
+        },
+        {
+          "name": "size",
+          "type": "SegmentedControlSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the group; each segment gets `<testid>-<value>`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "track": "view",
+        "thumb": "view",
+        "segment": "button",
+        "label": "text"
+      },
+      "accessibility": {
+        "pattern": "radioGroup",
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "checked",
+            "from": "value, or bind"
+          },
+          {
+            "state": "disabled",
+            "from": "options[].isDisabled"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Into the row, on the chosen segment; again, out of it."
+          },
+          {
+            "keys": "Left, Right",
+            "effect": "The previous or next segment, chosen on arrival."
+          }
+        ],
+        "target": {
+          "sm": 28,
+          "md": 36
+        },
+        "contrast": [
+          {
+            "what": "chosen label",
+            "pair": [
+              "text",
+              "surface-raised"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "other labels",
+            "pair": [
+              "text-muted",
+              "surface-sunken"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The chosen segment is in the raised thumb and the label's colour together, and is read as checked.",
+          "Segments are 28 and 36 px tall, below the 44 pt touch minimum; keep it to pointer layouts and compact rows with room around them.",
+          "The thumb's edge is decorative and has no contrast minimum: the chosen segment is carried by its label and the raised thumb."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Units",
+          "title": "A unit for the numbers below it",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { SegmentedControl } from '@liulidesign/core/SegmentedControl';\n\n/** A unit for the numbers below it, bound to a View-local cell. */\nexport function Units() {\n  const unit = useLocal('unit', 'km');\n  const distance = unit.value === 'km' ? '12.4 km' : '7.7 mi';\n  return (\n    <view className=\"gap-3\">\n      <SegmentedControl\n        label=\"Units\"\n        options={[{ value: 'km', label: 'Kilometres' }, { value: 'mi', label: 'Miles' }]}\n        bind={unit}\n        data-testid=\"units\"\n      />\n      <view className=\"gap-0.5\">\n        <text className=\"text-footnote text-muted\">This week</text>\n        <text className=\"text-title font-semibold text-text tabular-nums\" data-testid=\"distance\">{distance}</text>\n      </view>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Appearance",
+          "title": "A setting row",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { SegmentedControl } from '@liulidesign/core/SegmentedControl';\n\nconst themes = [\n  { value: 'system', label: 'System' },\n  { value: 'light', label: 'Light' },\n  { value: 'dark', label: 'Dark' },\n];\n\n/** A setting row: the control sits at the end, sized to its segments. */\nexport function Appearance() {\n  const theme = useLocal('theme', 'system');\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <text className=\"grow basis-0 text-body text-text\">Appearance</text>\n      <SegmentedControl label=\"Appearance\" options={themes} value={theme.value} onChange={next => theme.set(next)} size=\"sm\" className=\"w-56\" data-testid=\"appearance\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { SegmentedControl } from '@liulidesign/core/SegmentedControl';\n\nconst themes = [\n  { value: 'system', label: 'System' },\n  { value: 'light', label: 'Light' },\n  { value: 'dark', label: 'Dark' },\n];\n\nexport function Sizes() {\n  return (\n    <view className=\"gap-3\">\n      <SegmentedControl label=\"Small\" options={themes} value=\"light\" onChange={() => {}} size=\"sm\" />\n      <SegmentedControl label=\"Medium\" options={themes} value=\"light\" onChange={() => {}} />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Segments as wide as their labels, with the thumb following.",
+          "needs": "a way to read a laid-out box's position and width from View, or a shared-element layout motion between siblings",
+          "today": "Segments share the row equally, so the thumb moves by a segment's width."
+        },
+        {
+          "missing": "Icon-only segments.",
+          "needs": "an icon set for Liuli",
+          "today": "Segments carry a text label."
+        }
+      ],
+      "related": [
+        "Tabs",
+        "RadioGroup",
+        "ToggleButton"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "One of a few",
+        "order": 8,
+        "page": {
+          "lead": "Use a segmented control to set one value from a few short choices, applied at once.",
+          "hero": "Units",
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small and medium"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateTwo",
+              "title": "Two choices"
+            },
+            {
+              "name": "StateFive",
+              "title": "Five choices"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "A disabled segment"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Appearance",
+              "title": "At the end of a setting row"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Select",
       "import": "@liulidesign/core/Select",
       "exports": [

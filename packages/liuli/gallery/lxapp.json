@@ -21,6 +21,7 @@
     { "name": "switch", "path": "pages/switch/index" },
     { "name": "slider", "path": "pages/slider/index" },
     { "name": "text-area", "path": "pages/text-area/index" },
+    { "name": "segmented-control", "path": "pages/segmented-control/index" },
     { "name": "field", "path": "pages/field/index" },
     { "name": "badge", "path": "pages/badge/index" },
     { "name": "progress-bar", "path": "pages/progress-bar/index" },

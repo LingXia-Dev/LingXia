@@ -14,6 +14,7 @@ import { Specimen as FieldSpecimen } from '../../../core/src/Field/Field.example
 import { Specimen as ItemSpecimen } from '../../../core/src/Item/Item.examples';
 import { Specimen as ProgressBarSpecimen } from '../../../core/src/ProgressBar/ProgressBar.examples';
 import { Specimen as RadioGroupSpecimen } from '../../../core/src/RadioGroup/RadioGroup.examples';
+import { Specimen as SegmentedControlSpecimen } from '../../../core/src/SegmentedControl/SegmentedControl.examples';
 import { Specimen as SelectSpecimen } from '../../../core/src/Select/Select.examples';
 import { Specimen as SkeletonSpecimen } from '../../../core/src/Skeleton/Skeleton.examples';
 import { Specimen as SliderSpecimen } from '../../../core/src/Slider/Slider.examples';
@@ -165,8 +166,17 @@ export function render({ actions }: View<Actions>) {
           <TextAreaSpecimen />
         </Tile>
         <Tile
+          name={"SegmentedControl"}
+          tagline={"One of a few"}
+          onOpen={() => actions.open({ page: "segmented-control" })}
+          testId={"open-segmented-control"}
+        >
+          <SegmentedControlSpecimen />
+        </Tile>
+        <Tile
           name={"Field"}
           tagline={"Label, help, status"}
+          isWide
           onOpen={() => actions.open({ page: "field" })}
           testId={"open-field"}
         >
