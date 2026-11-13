@@ -208,6 +208,17 @@ spec('switch: a tap flips it; Space flips it back', { start: { page: 'switch' },
   await expect(sync).toBeChecked();
 });
 
+spec('switch: a tap on its help text flips it', { start: { page: 'switch' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  const sync = view.getByRole('switch', { name: 'Sync over mobile data' });
+  await expect(sync).toBeChecked();
+  const box = await sync.boundingBox();
+  // The help line is the switch's last line, at its start; the box holds both lines.
+  if (box.height < 36) throw new Error(`switch box ${box.height} tall holds only its label`);
+  await view.swipe({ from: [box.x + 24, box.y + box.height - 10], to: [box.x + 24, box.y + box.height - 10], durationMs: 60 });
+  await expect(sync).not.toBeChecked();
+});
+
 spec('details: a row opens and closes; an accordion keeps one open', { start: { page: 'details' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const summary = (id: string) => view.testId(`${id}-summary`);

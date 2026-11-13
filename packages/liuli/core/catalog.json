@@ -3601,7 +3601,7 @@
       "category": "inputs",
       "status": "preview",
       "summary": "A setting that turns on or off the moment it flips",
-      "description": "Switch turns one setting on or off and applies it at once, with no Save. The label and the track are one press target; help text below is read as the description.",
+      "description": "Switch turns one setting on or off and applies it at once, with no Save. The label, its help text and the track are one press target; the help text is read as the description.",
       "keywords": [
         "switch",
         "toggle",
@@ -3680,6 +3680,8 @@
       "parts": {
         "root": "view",
         "control": "switch",
+        "text": "view",
+        "label": "text",
         "description": "text"
       },
       "accessibility": {
@@ -3747,7 +3749,7 @@
           "The standalone switch is 32 px tall at both sizes; the row variant gives it a 48 px row.",
           "The off track is decorative and has no contrast minimum: off is carried by the thumb at the start and the missing accent.",
           "Disabled and on, the track keeps its accent at reduced strength, so the state still reads.",
-          "Keyboard focus rings a standalone switch; on a row it is a fill across the row, as on an Item."
+          "Keyboard focus rings a standalone switch; on a row it is a fill across the row and its help text, as on an Item."
         ]
       },
       "examples": [
@@ -3767,13 +3769,7 @@
           "source": "import { Switch } from '@liulidesign/core/Switch';\n\nexport function Sizes() {\n  return (\n    <view className=\"gap-3\">\n      <Switch value onChange={() => {}} label=\"Small, for dense rows\" size=\"sm\" />\n      <Switch value onChange={() => {}} label=\"Medium\" />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
-        {
-          "missing": "Help text that toggles the switch when tapped.",
-          "needs": "a switch that takes element children, as a checkbox does",
-          "today": "Only the label row is the press target; the help text sits outside it."
-        }
-      ],
+      "gaps": [],
       "related": [
         "CheckboxInput",
         "Item"

@@ -8,6 +8,7 @@ test('Basic: named by its label, described by its help text, and a toggle reache
   assert.equal(control.tag, 'switch');
   assert.equal(control.props.accessibilityLabel, 'Sync over mobile data');
   assert.deepEqual(described(screen, control), ['Photos wait for Wi-Fi either way.']);
+  assert.ok(JSON.stringify(control.children).includes('Photos wait for Wi-Fi either way.'), 'the help text is inside the press target');
   assert.equal(control.props.checked, 1);
   screen.toggle(control, false);
   assert.equal(screen.getByTestId('sync').props.checked, 0);

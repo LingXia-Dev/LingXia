@@ -7,13 +7,14 @@ export const doc: ComponentDoc = {
   summary: 'A setting that turns on or off the moment it flips',
   description:
     'Switch turns one setting on or off and applies it at once, with no Save. ' +
-    'The label and the track are one press target; help text below is read as the description.',
+    'The label, its help text and the track are one press target; the help text is read as the description.',
   keywords: ['switch', 'toggle', 'on off', 'setting', 'preference', 'enable', 'disable'],
   propsType: 'SwitchProps',
   recipe: { map: 'switchRecipe', parts: 'switchParts' },
   anatomy: [
-    { part: 'control', required: true, description: 'The switch primitive: the label at the start, the track and thumb at the end, and the accessible node.' },
-    { part: 'description', required: false, description: 'Help text under the label, read as the description.' },
+    { part: 'control', required: true, description: 'The switch primitive: its content at the start, the track and thumb at the end, and the accessible node.' },
+    { part: 'label', required: true, description: 'The visible label, also the name.' },
+    { part: 'description', required: false, description: 'Help text under the label, inside the press target, read as the description.' },
   ],
   accessibility: {
     pattern: 'switch',
@@ -36,7 +37,7 @@ export const doc: ComponentDoc = {
       'The standalone switch is 32 px tall at both sizes; the row variant gives it a 48 px row.',
       'The off track is decorative and has no contrast minimum: off is carried by the thumb at the start and the missing accent.',
       'Disabled and on, the track keeps its accent at reduced strength, so the state still reads.',
-      'Keyboard focus rings a standalone switch; on a row it is a fill across the row, as on an Item.',
+      'Keyboard focus rings a standalone switch; on a row it is a fill across the row and its help text, as on an Item.',
     ],
   },
   guidance: {
@@ -54,13 +55,7 @@ export const doc: ComponentDoc = {
     { name: 'InList', title: 'As list rows' },
     { name: 'Sizes', title: 'Small and medium' },
   ],
-  gaps: [
-    {
-      missing: 'Help text that toggles the switch when tapped.',
-      needs: 'a switch that takes element children, as a checkbox does',
-      today: 'Only the label row is the press target; the help text sits outside it.',
-    },
-  ],
+  gaps: [],
   related: ['CheckboxInput', 'Item'],
   gallery: {
     specimen: 'Specimen',

@@ -8,7 +8,7 @@ A setting that turns on or off the moment it flips. Status: preview.
 import { Switch } from '@liulidesign/core/Switch';
 ```
 
-Switch turns one setting on or off and applies it at once, with no Save. The label and the track are one press target; help text below is read as the description.
+Switch turns one setting on or off and applies it at once, with no Save. The label, its help text and the track are one press target; the help text is read as the description.
 
 ## Examples
 
@@ -80,8 +80,9 @@ export function Sizes() {
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
-| control | `<switch>` | yes | The switch primitive: the label at the start, the track and thumb at the end, and the accessible node. |
-| description | `<text>` | no | Help text under the label, read as the description. |
+| control | `<switch>` | yes | The switch primitive: its content at the start, the track and thumb at the end, and the accessible node. |
+| label | `<text>` | yes | The visible label, also the name. |
+| description | `<text>` | no | Help text under the label, inside the press target, read as the description. |
 
 ## Accessibility
 
@@ -95,7 +96,7 @@ export function Sizes() {
 - The standalone switch is 32 px tall at both sizes; the row variant gives it a 48 px row.
 - The off track is decorative and has no contrast minimum: off is carried by the thumb at the start and the missing accent.
 - Disabled and on, the track keeps its accent at reduced strength, so the state still reads.
-- Keyboard focus rings a standalone switch; on a row it is a fill across the row, as on an Item.
+- Keyboard focus rings a standalone switch; on a row it is a fill across the row and its help text, as on an Item.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
@@ -112,11 +113,5 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Use a switch only when the change applies at once.
 - Don't: Use a switch on a form with a Save button; use a CheckboxInput.
 - Don't: Put the state in the label ("Wi-Fi on"); the switch shows it.
-
-## Not yet
-
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| Help text that toggles the switch when tapped. | a switch that takes element children, as a checkbox does | Only the label row is the press target; the help text sits outside it. |
 
 Related: CheckboxInput, Item.

@@ -48,14 +48,19 @@ export function Switch(props: SwitchProps) {
     'data-state': (props.bind ? props.bind.value : props.value) ? 'on' : 'off',
     className: cx(r.control.base, r.control.size[size], r.control.variant[variant]),
   };
+  const content = (
+    <view className={r.text.base}>
+      <text className={cx(r.label.base, isDisabled && r.label.disabled)}>{label}</text>
+      {description !== undefined && <text id={helpId} className={r.description.base}>{description}</text>}
+    </view>
+  );
   return (
     <view className={cx(r.root.base, r.root.variant[variant], className)}>
       {props.bind ? (
-        <switch bind={props.bind} {...semantics}>{label}</switch>
+        <switch bind={props.bind} {...semantics}>{content}</switch>
       ) : (
-        <switch value={props.value} onChange={next => props.onChange(next)} {...semantics}>{label}</switch>
+        <switch value={props.value} onChange={next => props.onChange(next)} {...semantics}>{content}</switch>
       )}
-      {description !== undefined && <text id={helpId} className={cx(r.description.base, r.description.size[size])}>{description}</text>}
     </view>
   );
 }
