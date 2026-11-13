@@ -3,7 +3,7 @@ import { expect, spec } from '@lingxia/test';
 // Liuli's gallery on a device: every page opens, and each control answers taps and keys as its
 // accessibility pattern says. States are asserted as a screen reader hears them: checked, selected, expanded.
 
-const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 // Every tile on the home page, in its order; core's gallery.test.mjs keeps this equal to the manifest.
 const pages = [
@@ -189,6 +189,40 @@ spec('item: rows in an ItemList are read as list items of a named list', { start
   await expect(view.getByRole('button', { name: 'Trip to the coast' })).toBeVisible();
 });
 
+spec('uploads: each section is a named list, every card a list item', { start: { page: 'uploads' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  await expect(view.getByRole('list', { name: 'In progress' })).toBeVisible();
+  await expect(view.getByRole('list', { name: 'Done today' })).toBeAttached();
+  await expect(view.getByRole('listitem')).toHaveCount(4);
+});
+
+spec('text area: typing reaches it, it grows, and Send submits the reply', { start: { page: 'text-area' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  const note = view.getByRole('textbox', { name: 'Delivery note' });
+  const before = (await note.boundingBox())!.height;
+  await note.fill('Blue door.\nRing twice.\nLeave it with the neighbour.\nThank you.');
+  await expect(note).toHaveValue('Blue door.\nRing twice.\nLeave it with the neighbour.\nThank you.');
+  expect((await note.boundingBox())!.height).toBeGreaterThan(before);
+  const reply = view.getByRole('textbox', { name: 'Reply' });
+  await reply.fill('On my way');
+  await reply.press('Enter');
+  await expect(view.testId('sent')).toHaveText('On my way');
+  await expect(reply).toHaveValue('');
+});
+
+spec('empty state: its title is a heading, and its action works', { start: { page: 'empty-state' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  await expect(view.getByRole('heading', { name: 'No notebooks yet' })).toBeVisible();
+  await view.testId('create').click();
+  await expect(view.getByRole('heading', { name: 'Notebook created' })).toBeVisible();
+});
+
+spec('skeleton: one busy status per loading group, named by what is loading', { start: { page: 'skeleton' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  await expect(view.getByRole('status', { name: 'Loading notes' })).toBeVisible();
+  await t.attach('skeleton.png', await view.screenshot());
+});
+
 spec('select: a choice lands in the box; a required select clears its error', { start: { page: 'select' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const country = view.getByRole('combobox', { name: 'Country' });
@@ -292,4 +326,127 @@ spec('banner: the action runs; dismiss removes it', { start: { page: 'banner' },
   await expect(view.testId('payment-action')).toHaveText('Card updated');
   await view.getByRole('button', { name: 'Dismiss' }).first().click();
   await expect(view.testId('payment')).toHaveCount(0);
+});
+
+spec('toggle button: a tap presses it and filters the list; Space releases it', { start: { page: 'toggle-button' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  const unread = view.getByRole('button', { name: 'Unread' });
+  await expect(unread).not.toBePressed();
+  await unread.click();
+  await expect(unread).toBePressed();
+  await expect(view.testId('count')).toHaveText('2 notes');
+  await unread.press('Space');
+  await expect(unread).not.toBePressed();
+  await expect(view.testId('count')).toHaveText('4 notes');
+});
+
+spec('segmented control: a named radio group; a tap and an arrow choose', { start: { page: 'segmented-control' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  await expect(view.getByRole('radiogroup', { name: 'Units' })).toBeAttached();
+  const miles = view.getByRole('radio', { name: 'Miles' });
+  await miles.click();
+  await expect(miles).toBeChecked();
+  await expect(view.testId('distance')).toHaveText('7.7 mi');
+  await miles.press('ArrowLeft');
+  await expect(view.getByRole('radio', { name: 'Kilometres' })).toBeChecked();
+  await expect(view.testId('distance')).toHaveText('12.4 km');
+  await t.attach('segmented-control.png', await view.screenshot());
+});
+
+spec('toast: Undo restores the note; tones queue and close by themselves; one with Undo waits for a swipe', { start: { page: 'toast' }, timeout: 90_000 }, async (t) => {
+  const view = t.app.view;
+  const toast = view.testId('toast');
+  await view.testId('archive-q3-plan').click();
+  await expect(toast).toBeVisible();
+  await expect(view.testId('archive-q3-plan')).toHaveCount(0);
+  await t.attach('toast.png', await view.screenshot());
+  await view.testId('toast-action').click();
+  await expect(toast).toHaveCount(0);
+  await expect(view.testId('archive-q3-plan')).toBeAttached();
+  await view.testId('show-success').click();
+  await view.testId('show-danger').click();
+  await expect(toast).toHaveCount(1);
+  await expect(toast).toContainText('Changes saved');
+  await toast.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(toast).toContainText('Could not save the note');
+  await expect(toast).toHaveCount(0, { timeout: 9_000 });
+  await view.testId('archive-reading-list').click();
+  await expect(toast).toBeVisible();
+  await pause(6_000);
+  await expect(toast).toBeVisible();
+  const box = await toast.boundingBox();
+  await view.swipe({ from: [box.x + box.width / 2, box.y + box.height / 2], to: [box.x + box.width + 120, box.y + box.height / 2], durationMs: 120 });
+  await expect(toast).toHaveCount(0);
+});
+
+spec('bottom sheet: opens as a named dialog; a row closes it; a drag down dismisses it', { start: { page: 'bottom-sheet' }, timeout: 90_000 }, async (t) => {
+  const view = t.app.view;
+  await view.testId('move-open').click();
+  const sheet = view.getByRole('dialog', { name: 'Move to' });
+  await expect(sheet).toBeVisible();
+  await t.attach('bottom-sheet.png', await view.screenshot());
+  await view.testId('folder-Travel').click();
+  await expect(sheet).toHaveCount(0);
+  await expect(view.testId('folder')).toHaveText('In Travel');
+  await view.testId('move-open').click();
+  await expect(sheet).toBeVisible();
+  const box = await sheet.boundingBox();
+  await view.swipe({ from: [box.x + box.width / 2, box.y + 12], to: [box.x + box.width / 2, box.y + box.height + 200], durationMs: 200 });
+  await expect(sheet).toHaveCount(0);
+  await view.testId('comments-open').click();
+  const comments = view.getByRole('dialog', { name: 'Comments' });
+  await expect(comments).toBeVisible();
+  // Halfway: its top edge sits in the lower half of the screen.
+  expect((await comments.boundingBox()).y).toBeGreaterThan((await view.viewport()).height / 2);
+  await t.attach('bottom-sheet-half.png', await view.screenshot());
+  await view.getByRole('button', { name: 'Close' }).click();
+  await expect(comments).toHaveCount(0);
+});
+
+spec('popover: opens a named panel; a control inside keeps it open; Escape closes it and returns focus', { start: { page: 'popover' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  const trigger = view.testId('options');
+  const panel = view.testId('options-panel');
+  await trigger.click();
+  await expect(panel).toBeVisible();
+  await expect(trigger).toBeExpanded();
+  await t.attach('popover.png', await view.screenshot());
+  await panel.getByRole('switch', { name: 'Dates' }).click();
+  await expect(view.testId('summary')).toHaveText('Previews and Dates');
+  await expect(panel).toBeVisible();
+  const vp = await view.viewport();
+  await view.swipe({ from: [vp.width / 2, vp.height - 40], to: [vp.width / 2, vp.height - 40], durationMs: 60 });
+  await expect(panel).toHaveCount(0);
+  await trigger.press('Enter');
+  await expect(panel).toBeVisible();
+  await panel.press('Escape');
+  await expect(panel).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
+spec('date input: a tap opens the picker; a filled day reaches the page; a return before leaving is invalid', { start: { page: 'date-input' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  const due = view.testId('due');
+  await due.click();
+  await expect(view.testId('lx-picker-cancel')).toBeVisible();
+  await t.attach('date-picker.png', await view.screenshot());
+  await view.testId('lx-picker-cancel').click();
+  await expect(view.testId('lx-picker-cancel')).toHaveCount(0);
+  await due.fill('2026-12-01');
+  await expect(view.testId('due-value')).toHaveText('Due 2026-12-01');
+  const back = view.testId('back');
+  await back.fill('2026-12-10');
+  await expect(back).toHaveAttribute('aria-invalid', 'true');
+});
+
+spec('time input: a tap opens the picker; a filled time reaches the page', { start: { page: 'time-input' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  const remind = view.testId('remind');
+  await remind.click();
+  await expect(view.testId('lx-picker-cancel')).toBeVisible();
+  await t.attach('time-picker.png', await view.screenshot());
+  await view.testId('lx-picker-cancel').click();
+  await expect(view.testId('lx-picker-cancel')).toHaveCount(0);
+  await remind.fill('07:30');
+  await expect(view.testId('remind-value')).toHaveText('Set for 07:30');
 });
