@@ -405,6 +405,7 @@
         "budget": {
           "overruns": 0
         },
+        "chromeSnapshot": 0,
         "commit": 1,
         "composite": null,
         "evalMs": {
@@ -512,6 +513,7 @@
         "budget": {
           "overruns": 0
         },
+        "chromeSnapshot": 0,
         "commit": 1,
         "composite": null,
         "evalMs": {
