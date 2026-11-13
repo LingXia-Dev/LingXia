@@ -19,6 +19,18 @@ test('image lifecycle callbacks are committed handles and retry keys are bounded
   throwsOn(() => h('image', { src: 'photo.png', onError: true }), /UI_IMAGE/);
 });
 
+test('a view or button takes pointer enter and leave callbacks as committed handles', () => {
+  let crossed = '';
+  const render = () => h('view', { onPointerEnter: () => { crossed += '+'; }, onPointerLeave: () => { crossed += '-'; } }, h('button', { onPointerEnter() {} }, 'Go'));
+  const { props } = rendered(render);
+  prepare(render, {}); discard();
+  assert.equal(dispatch(props.onPointerEnter), true);
+  assert.equal(dispatch(props.onPointerLeave), true);
+  assert.equal(crossed, '+-');
+  throwsOn(() => h('text', { onPointerEnter() {} }, 'Hi'), /UI_PROP/);
+  throwsOn(() => h('view', { onPointerLeave: 'nope' }), /UI_PROP/);
+});
+
 test('image alternative text distinguishes descriptions from decorative images and bounds UTF-8', () => {
   for (const alt of ['', 'A mountain lake', '图片'.repeat(170)]) assert.equal(rendered(() => h('image', { src: 'photo.png', alt })).props.imageAlt, alt);
   for (const alt of [null, 1, true, {}, '   ', '\0', '图片'.repeat(171), '\ud800']) throwsOn(() => h('image', { src: 'photo.png', alt }), /UI_IMAGE/);

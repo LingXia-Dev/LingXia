@@ -50,6 +50,8 @@ Children: any elements and text. Renders as `column`.
 | `onDragStart` | `() => void` |  |
 | `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 | `aria-actions` | `string` |  |
+| `onPointerEnter` | `() => void` |  |
+| `onPointerLeave` | `() => void` |  |
 
 ## `<page>`
 
@@ -84,6 +86,8 @@ Children: text, or noninteractive content elements (a composed control).
 | `onDragStart` | `() => void` |  |
 | `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 | `aria-actions` | `string` |  |
+| `onPointerEnter` | `() => void` |  |
+| `onPointerLeave` | `() => void` |  |
 
 ## `<scroll>`
 

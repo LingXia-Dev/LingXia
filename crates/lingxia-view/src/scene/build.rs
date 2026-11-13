@@ -1212,6 +1212,14 @@ impl Renderer {
                 drag_scrim: record.number(field::DRAG_SCRIM) == Some(1.0),
                 element_id: record.string(field::ELEMENT_ID).map(str::to_owned),
                 interest_for: record.string(field::INTEREST_FOR).map(str::to_owned),
+                on_pointer: [field::ON_POINTER_ENTER, field::ON_POINTER_LEAVE].map(|id| {
+                    record
+                        .fields
+                        .iter()
+                        .find(|(field, _)| *field == id)
+                        .and_then(|(_, value)| value.as_u64())
+                        .filter(|handle| *handle != 0)
+                }),
                 aria_actions: record
                     .string(field::ARIA_ACTIONS)
                     .map(|ids| ids.split(' ').map(str::to_owned).collect())

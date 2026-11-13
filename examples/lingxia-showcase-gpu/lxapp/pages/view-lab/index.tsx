@@ -395,6 +395,9 @@ function Focus() {
   const open = useLocal('dialog-open', false);
   const choice = useLocal('dialog-choice', 'none');
   const close = (value: string) => { choice.set(value); open.set(false); };
+  // Pointer crossings on nested boxes, as a sequence a spec can read: O = outer box, I = inner button.
+  const crossings = useLocal('lab-crossings', '');
+  const cross = (mark: string) => () => crossings.set(crossings.value + mark);
   return (
     <Section title="Keyboard focus" testId="lab-focus">
       <text className="text-xs text-muted">With a keyboard: Tab to Open, press Enter; focus stays in the dialog and returns to Open when it closes.</text>
@@ -406,6 +409,10 @@ function Focus() {
       </view>
       <view id="lab-interest-hint" popover="hint" role="tooltip" data-testid="lab-interest-hint" className="max-w-56 px-3 py-2 rounded-lg border border-line bg-surface-raised">
         <text className="text-xs text-text">Rest the pointer here, or Tab to it, to read this.</text>
+      </view>
+      <view data-testid="lab-crossing" onPointerEnter={cross('O+')} onPointerLeave={cross('O-')} className="flex-row items-center gap-3 p-3 rounded-xl border border-line">
+        <button data-testid="lab-crossing-inner" onPointerEnter={cross('I+')} onPointerLeave={cross('I-')} onClick={() => crossings.set('')} className="rounded-lg px-3 py-1.5 bg-surface-sunken hover:bg-accent-soft text-sm">Clear</button>
+        <text data-testid="lab-crossing-log" className="text-xs text-muted">{crossings.value || 'Move a mouse over this box'}</text>
       </view>
       <dialog open={open.value} onClose={() => close('escape')} data-testid="lab-focus-dialog" aria-label="Confirm payment" className="w-72 gap-3 p-4 rounded-xl border border-line bg-surface">
         <text role="heading" headingLevel={3} className="text-sm font-semibold">Confirm payment</text>

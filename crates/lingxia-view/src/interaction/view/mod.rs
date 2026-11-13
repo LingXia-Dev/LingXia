@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 mod accessibility;
 mod automation;
+mod crossing;
 pub use automation::AutomationAct;
 mod effects;
 mod keyboard;
@@ -129,6 +130,8 @@ pub struct ViewInteraction {
     moved_frames: u32,
     /// A geometry-only change not yet reported to accessibility.
     moved: bool,
+    /// Elements with a crossing callback the fine pointer is over, outermost first.
+    pointer_over: Vec<crossing::Over>,
 }
 
 /// What a presentation produced besides pixels.
@@ -385,6 +388,7 @@ impl ViewInteraction {
         self.accessibility_focus = None;
         self.dispatches.clear();
         self.activation = None;
+        self.pointer_over.clear();
         effects.push(Effect::ClearFocusRing);
         effects
     }

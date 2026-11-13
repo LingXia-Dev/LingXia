@@ -126,6 +126,14 @@ pub enum Dispatch {
         region: String,
         index: usize,
     },
+    /// A fine pointer crossed an element's box: its `onPointerEnter` or `onPointerLeave`.
+    PointerCrossing {
+        commit: CommitTicket,
+        handle: u64,
+        /// The element, to find its callback in a newer View.
+        identity: String,
+        enter: bool,
+    },
     /// A `drag` element's `onDragEvent`: `{phase: start|end|settle, index, velocity}`.
     DragEvent {
         commit: CommitTicket,

@@ -286,6 +286,37 @@ spec('a hint shows after a key rests focus on its trigger and Escape hides it', 
   await expect(trigger).toBeFocused();
 });
 
+spec('a mouse crossing nested boxes calls enter outermost first and leave innermost first', { start: { page: 'view-lab' } }, async (t) => {
+  const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
+  if (os !== 'macos' && os !== 'windows') t.skip('needs a mouse: desktop pointer input');
+  const view = t.app.view;
+  const desktop = t.automation.desktop;
+  await view.testId('lab-tab-input').click();
+  const log = view.testId('lab-crossing-log');
+  // The pointer goes to the host window as background input; the window is never focused.
+  const host = (await desktop.windows()).find(w => w.visible && /gpu/i.test(`${w.title} ${w.process}`));
+  expect(host, 'the host window').toBeTruthy();
+  const snap = await desktop.snapshot({ window: host!.id });
+  const find = (node: typeof snap.ax, name: string): typeof snap.ax | undefined =>
+    !node ? undefined : node.name === name ? node : (node.children ?? []).map(child => find(child, name)).find(Boolean);
+  const clear = find(snap.ax, 'Clear');
+  expect(clear, 'the Clear button in the AX tree').toBeTruthy();
+  const at = (dx: number): [number, number] => [Math.round(clear!.rect.x + clear!.rect.w / 2 + dx), Math.round(clear!.rect.y + clear!.rect.h / 2)];
+  const away: [number, number] = [host!.bounds.x + 8, host!.bounds.y + host!.bounds.h - 8];
+  const move = (point: [number, number]) => desktop.pointer.move({ at: point, window: host!.id });
+  await move(away);
+  await expect(log).toHaveText('Move a mouse over this box');
+  // Onto the inner button: the outer box enters first.
+  await move(at(0));
+  await expect(log).toHaveText('O+I+');
+  // Off the button but inside the box (the gap before the log text): only the button leaves.
+  await move(at(clear!.rect.w / 2 + 6));
+  await expect(log).toHaveText('O+I+I-');
+  await move(at(0));
+  await move(away);
+  await expect(log).toHaveText('O+I+I-I+I-O-');
+});
+
 type Fixture = Parameters<Parameters<typeof spec>[2]>[0];
 
 const apart = (a: number[], b: number[]) => a.some((value, i) => Math.abs(value - b[i]) > 40);

@@ -687,6 +687,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         if !visible {
             self.inner.set_hovered(None);
             self.inner.lose_interest();
+            self.inner.pointer_crossing(None);
         }
         self.inner.set_visible(visible);
     }
@@ -1058,6 +1059,13 @@ impl<A: PlatformAdapter> ViewHost<A> {
         };
         self.inner.set_hovered(identity);
         self.inner.interest_hovered(trigger);
+        let logical = point.and_then(|[x, y]| {
+            let main = self.inner.main();
+            let scale = main.interaction.frame()?.scale;
+            let scale = if scale > 0.0 { scale } else { 1.0 };
+            Some([x / scale, y / scale])
+        });
+        self.inner.pointer_crossing(logical);
     }
 
     /// A wheel or trackpad scroll; returns whether a region moved.
@@ -1115,6 +1123,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
             // Not every platform reports the pointer leaving a window that lost focus.
             self.inner.set_hovered(None);
             self.inner.lose_interest();
+            self.inner.pointer_crossing(None);
         }
     }
 

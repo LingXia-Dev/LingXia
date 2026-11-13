@@ -5575,3 +5575,52 @@ fn an_interest_trigger_shows_its_hint_after_a_rest_and_hides_it_after_the_grace(
     run_frames(&platform, &host, 4);
     assert!(!shown(&host), "Escape closes the hint");
 }
+
+#[test]
+fn a_fine_pointer_crossing_a_box_calls_its_enter_and_leave_without_bubbling() {
+    let worker = ViewWorker::spawn("test-pointer-crossing").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = source(
+        "function render(){const log=useLocal('log','');const add=s=>()=>log.set(log.value+s);return h('page',{},h('view',{onPointerEnter:add('O+'),onPointerLeave:add('O-'),style:{width:200,height:100}},h('button',{onPointerEnter:add('I+'),onPointerLeave:add('I-'),onClick(){},style:{width:80,height:40}},'In')),h('text',{'data-testid':'log'},log.value||'-'))}",
+    );
+    let host = platform.host(&worker, &page, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let log = |host: &ViewHost<Fake>| {
+        host.automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"log\"]"}))
+            .unwrap()["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let step = |point: Option<[f32; 2]>| {
+        host.hover(point);
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 2);
+    };
+    step(Some([180.0, 120.0]));
+    assert_eq!(log(&host), "O+", "the outer box only");
+    step(Some([40.0, 40.0]));
+    assert_eq!(
+        log(&host),
+        "O+I+",
+        "the inner button enters; the outer hears nothing more"
+    );
+    step(Some([44.0, 42.0]));
+    assert_eq!(log(&host), "O+I+", "moving inside fires nothing");
+    step(Some([180.0, 120.0]));
+    assert_eq!(
+        log(&host),
+        "O+I+I-",
+        "leaving the button does not leave its parent"
+    );
+    step(Some([40.0, 40.0]));
+    host.window_focus(false);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 2);
+    assert_eq!(
+        log(&host),
+        "O+I+I-I+I-O-",
+        "a window losing focus leaves innermost first"
+    );
+}

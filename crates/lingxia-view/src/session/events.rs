@@ -206,6 +206,28 @@ impl ViewSession {
         }
     }
 
+    /// A fine pointer crossed `identity`'s box. A re-render renumbers callbacks without a new
+    /// commit, so the element's current callback runs; the frame's handle only if it is gone.
+    pub fn pointer_crossing(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        handle: u64,
+        identity: &str,
+        enter: bool,
+    ) -> Result<bool, String> {
+        let current = self
+            .retained
+            .as_ref()
+            .and_then(|retained| retained.nodes.iter().find(|node| node.identity == identity))
+            .map(|node| node.on_pointer[usize::from(!enter)]);
+        match current {
+            Some(Some(handle)) => self.dispatch_handle(handle),
+            Some(None) => Ok(false),
+            None if self.presented_commit(generation) => self.dispatch_handle(handle),
+            None => Ok(false),
+        }
+    }
+
     /// Resolve and dispatch selection against committed geometry and callback identity.
     pub fn select_plot(
         &mut self,

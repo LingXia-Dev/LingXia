@@ -130,6 +130,12 @@ impl<A: PlatformAdapter> Inner<A> {
         self.apply_pointer_state(identity, hovered);
     }
 
+    /// A fine pointer at a logical point, or gone: elements it crossed hear enter or leave.
+    pub(super) fn pointer_crossing(self: &Arc<Self>, point: Option<[f32; 2]>) {
+        let effects = self.main().interaction.pointer_crossing(point);
+        self.deliver(effects);
+    }
+
     pub(super) fn set_hovered(self: &Arc<Self>, identity: Option<String>) {
         let pressed = {
             let mut main = self.main();
@@ -327,6 +333,18 @@ impl<A: PlatformAdapter> Inner<A> {
                     page,
                     false,
                     Box::new(move |session| session.snap_event(commit, handle, &region, index)),
+                ),
+                Dispatch::PointerCrossing {
+                    commit,
+                    handle,
+                    identity,
+                    enter,
+                } => self.activate(
+                    page,
+                    false,
+                    Box::new(move |session| {
+                        session.pointer_crossing(commit, handle, &identity, enter)
+                    }),
                 ),
                 Dispatch::DragEvent {
                     commit,

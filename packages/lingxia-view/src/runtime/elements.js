@@ -63,6 +63,7 @@ const handle = () => nextHandle++;
 export const handlesIssued = () => nextHandle;
 /** Marks callbacks as issued without issuing one: a recalled subtree carries its own. */
 export const skipHandle = () => { nextHandle++; };
+const pointerCrossing = ['onPointerEnter', 'onPointerLeave'];
 const callbackOf = (callback, kind = 'void', isolated = false) => ({ callback, kind, isolated });
 
 const dataProp = /^data-[a-z][a-z0-9-]*$/;
@@ -426,6 +427,13 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     }, 'text');
   }
   if (props[scrimMark]) wire('dragScrim', 1);
+  // A fine pointer crossing the box; a finger never hovers, so touch fires neither.
+  for (const key of pointerCrossing) {
+    if (props[key] === undefined) continue;
+    if (tag !== 'view' && tag !== 'button') throw Error(`UI_PROP: ${key} belongs to a <view> or <button>`);
+    if (typeof props[key] !== 'function') throw Error(`UI_PROP: ${key} takes a function`);
+    on(key, props[key]);
+  }
   if (props['aria-actions'] !== undefined) {
     // The ids of the controls behind a swipe row: assistive tech offers them as the row's own actions.
     const ids = typeof props['aria-actions'] === 'string' ? props['aria-actions'].trim().split(/\s+/) : [];
