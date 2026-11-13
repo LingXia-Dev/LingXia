@@ -8,7 +8,7 @@ const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 // Every tile on the home page, in its order; core's gallery.test.mjs keeps this equal to the manifest.
 const pages = [
   'colour', 'typography', 'shape-and-spacing', 'elevation', 'motion',
-  'button', 'tabs', 'text-input', 'select', 'checkbox-input', 'radio-group', 'switch', 'slider', 'field',
+  'button', 'tabs', 'text-input', 'select', 'checkbox-input', 'radio-group', 'switch', 'slider', 'text-area', 'field',
   'badge', 'progress-bar', 'banner', 'dialog', 'dropdown-menu', 'tooltip', 'card', 'item', 'details', 'avatar', 'video-player', 'video-controls',
   'sign-in', 'settings', 'uploads',
 ];

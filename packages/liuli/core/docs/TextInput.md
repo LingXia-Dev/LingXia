@@ -96,10 +96,10 @@ export function Disabled() {
 | `hasClear` | `boolean` | `false` | A button that empties the text, shown while there is text. |
 | `clearLabel` | `string` |  | The clear button's accessible name; required with `hasClear`. |
 | `placeholder` | `string` |  | A hint shown while empty; never a substitute for `label`. |
-| `type` | `"number" \| "text" \| "password" \| "email" \| "tel" \| "search"` | `'text'` | `search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`. |
-| `inputMode` | `"text" \| "email" \| "tel" \| "numeric" \| "decimal"` |  |  |
+| `type` | `"number" \| "text" \| "tel" \| "email" \| "search" \| "password"` | `'text'` | `search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`. |
+| `inputMode` | `"text" \| "numeric" \| "decimal" \| "tel" \| "email"` |  |  |
 | `autoComplete` | `AutoComplete` |  |  |
-| `enterKeyHint` | `"search" \| "enter" \| "done" \| "go" \| "next" \| "previous" \| "send"` |  | The label of the keyboard's action key; `onSubmit` runs on it. |
+| `enterKeyHint` | `"enter" \| "done" \| "go" \| "next" \| "previous" \| "search" \| "send"` |  | The label of the keyboard's action key; `onSubmit` runs on it. |
 | `autoCapitalize` | `"none" \| "sentences" \| "words" \| "characters"` |  |  |
 | `hasSpellCheck` | `boolean` |  | Unset follows the platform. |
 | `hasAutoFocus` | `boolean` | `false` | Focus it when it first appears. |

@@ -17,6 +17,7 @@ import { Specimen as SelectSpecimen } from '../../../core/src/Select/Select.exam
 import { Specimen as SliderSpecimen } from '../../../core/src/Slider/Slider.examples';
 import { Specimen as SwitchSpecimen } from '../../../core/src/Switch/Switch.examples';
 import { Specimen as TabsSpecimen } from '../../../core/src/Tabs/Tabs.examples';
+import { Specimen as TextAreaSpecimen } from '../../../core/src/TextArea/TextArea.examples';
 import { Specimen as TextInputSpecimen } from '../../../core/src/TextInput/TextInput.examples';
 import { Specimen as TooltipSpecimen } from '../../../core/src/Tooltip/Tooltip.examples';
 import { Specimen as VideoControlsSpecimen } from '../../../core/src/VideoControls/VideoControls.examples';
@@ -145,9 +146,16 @@ export function render({ actions }: View<Actions>) {
           <SliderSpecimen />
         </Tile>
         <Tile
+          name={"TextArea"}
+          tagline={"Several lines"}
+          onOpen={() => actions.open({ page: "text-area" })}
+          testId={"open-text-area"}
+        >
+          <TextAreaSpecimen />
+        </Tile>
+        <Tile
           name={"Field"}
           tagline={"Label, help, status"}
-          isWide
           onOpen={() => actions.open({ page: "field" })}
           testId={"open-field"}
         >

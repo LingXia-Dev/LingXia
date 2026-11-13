@@ -48,6 +48,8 @@
     "./VideoControls/recipe": "./src/VideoControls/VideoControls.recipe.ts",
     "./VideoPlayer": "./src/VideoPlayer/VideoPlayer.tsx",
     "./VideoPlayer/recipe": "./src/VideoPlayer/VideoPlayer.recipe.ts",
+    "./TextArea": "./src/TextArea/TextArea.tsx",
+    "./TextArea/recipe": "./src/TextArea/TextArea.recipe.ts",
     "./package.json": "./package.json"
   },
   "lingxia": {
