@@ -127,3 +127,34 @@ test('on touch every picker sheet opens with Cancel, a title and Done on top', (
     assert.equal(hasPicker(), false, `${request.kind}: Done commits`);
   }
 });
+
+test('on touch an empty date field opens with nothing chosen; today is a ring, and Done waits for a tap', () => {
+  reset();
+  const view = () => h('view', {});
+  const env = { pointer: 'coarse', contentLanguage: 'en' };
+  const day = id => nodes.find(n => n.testId === `lx-picker-day-${id}`);
+  open({ kind: 'date', value: '', today: '2026-11-13' });
+  let nodes = render(view, env);
+  assert.equal(nodes.filter(n => n.testId.startsWith('lx-picker-day-') && n.props.stateSelected === 1).length, 0, 'nothing chosen');
+  assert.notEqual(day('2026-11-13').props.stateSelected, 1, 'today is not the choice');
+  assert.equal(nodes.find(n => n.testId === 'lx-picker-done').props.enabled, 0, 'Done is inert until a day is picked');
+  dispatch(nodes.find(n => n.testId === 'lx-picker-done').props.onClick);
+  assert.equal(takePickerResults(), '[]', 'Done without a choice commits nothing');
+  assert.equal(hasPicker(), true);
+  dispatch(day('2026-11-20').props.onClick);
+  nodes = render(view, env);
+  assert.equal(day('2026-11-20').props.stateSelected, 1, 'the tapped day is chosen');
+  assert.notEqual(nodes.find(n => n.testId === 'lx-picker-done').props.enabled, 0);
+  dispatch(nodes.find(n => n.testId === 'lx-picker-done').props.onClick);
+  assert.deepEqual(JSON.parse(takePickerResults()), [{ identity: '/i:0:0/i:0:0', value: '2026-11-20' }]);
+});
+
+test('on touch a date field with a value opens with that day chosen', () => {
+  reset();
+  open({ kind: 'date', value: '2026-10-29', today: '2026-11-13' });
+  const nodes = render(() => h('view', {}), { pointer: 'coarse', contentLanguage: 'en' });
+  const chosen = nodes.filter(n => n.testId.startsWith('lx-picker-day-') && n.props.stateSelected === 1).map(n => n.testId);
+  assert.deepEqual(chosen, ['lx-picker-day-2026-10-29']);
+  dispatch(nodes.find(n => n.testId === 'lx-picker-done').props.onClick);
+  assert.equal(JSON.parse(takePickerResults())[0].value, '2026-10-29');
+});

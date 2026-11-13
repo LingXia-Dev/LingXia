@@ -4886,7 +4886,17 @@
     }
     if (kind === "date") {
       const low = parseDate(min), high = parseDate(max);
-      picker = { kind, key, identity, min: low, max: high, value: parseDate(value), focus: clampDate(parseDate(value) ?? today(), low, high) };
+      picker = {
+        kind,
+        key,
+        identity,
+        min: low,
+        max: high,
+        value: parseDate(value),
+        pick: parseDate(value),
+        keyed: false,
+        focus: clampDate(parseDate(value) ?? today(), low, high)
+      };
     } else {
       picker = { kind, key, identity, step: Number(step), value: parseTime(value) ?? { hour: 9, minute: 0 }, min: parseTime(min), max: parseTime(max) };
     }
@@ -4957,6 +4967,7 @@
       const moved = moveDate(picker.focus, key, rtl);
       if (!moved) return false;
       picker.focus = clampDate(moved, picker.min, picker.max);
+      picker.keyed = true;
       return true;
     }
     if (key === "Enter") {
@@ -5005,8 +5016,8 @@
     const rows = Array.from({ length: 6 }, (_, week) => cells.slice(week * 7, week * 7 + 7));
     const cell2 = ({ date, inMonth }) => {
       const id = iso2(date), enabled = within(date, min, max);
-      const selected = titled ? value && compare(date, value) === 0 : compare(date, focus) === 0;
-      const focused = compare(date, focus) === 0, isToday = compare(date, now2) === 0;
+      const selected = titled ? value && compare(date, value) === 0 : picker.pick !== null && compare(date, picker.pick) === 0;
+      const focused = (titled || picker.keyed) && compare(date, focus) === 0, isToday = compare(date, now2) === 0;
       const name = words.full(date.day, words.months[date.month - 1], date.year, words.longDays[weekday(date.year, date.month, date.day)]);
       return h(
         "button",
@@ -5019,7 +5030,7 @@
           disabled: !enabled,
           onClick: () => {
             if (titled) settle(id);
-            else picker.focus = date;
+            else picker.pick = picker.focus = date;
           },
           style: {
             width: 36,
@@ -5188,9 +5199,15 @@
     const words = wordsFor(env?.contentLanguage ?? env?.displayLanguage);
     const touch = (env?.pointer ?? "coarse") === "coarse";
     const body = picker.kind === "date" ? dateBody(words, env, !touch) : picker.kind === "time" ? timeBody(words, env) : selectBody(touch);
-    const commit2 = () => picker.kind === "date" ? settle(iso2(picker.focus)) : picker.kind === "time" ? settle(timeIso(picker.value)) : picker.pick >= 0 ? settleSelect(picker.pick) : settle(null);
+    const unpicked = picker.kind === "date" && picker.pick === null;
+    const commit2 = () => picker.kind === "date" ? picker.pick !== null && settle(iso2(picker.pick)) : picker.kind === "time" ? settle(timeIso(picker.value)) : picker.pick >= 0 ? settleSelect(picker.pick) : settle(null);
     const cancel = (style2) => h("button", { "data-testid": "lx-picker-cancel", onClick: () => settle(null), style: style2 }, words.cancel);
-    const done = (style2) => h("button", { "data-testid": "lx-picker-done", onClick: commit2, style: style2 }, words.done);
+    const done = (style2) => h("button", {
+      "data-testid": "lx-picker-done",
+      onClick: commit2,
+      disabled: unpicked,
+      style: unpicked ? { ...style2, color: "text-faint" } : style2
+    }, words.done);
     const monthTitle = picker.kind === "date" && words.title(words.months[picker.focus.month - 1], picker.focus.year);
     const text2 = { paddingTop: 8, paddingBottom: 8, paddingLeft: 4, paddingRight: 4, fontSize: 16, backgroundColor: "transparent" };
     const toolbar = touch && h(

@@ -37,7 +37,9 @@ export function openPicker({ identity, kind, value, min, max, step, today: day, 
   }
   if (kind === 'date') {
     const low = parseDate(min), high = parseDate(max);
-    picker = { kind, key, identity, min: low, max: high, value: parseDate(value), focus: clampDate(parseDate(value) ?? today(), low, high) };
+    // `pick` is the day a tap chose, apart from `focus`: an empty field opens on today with nothing chosen.
+    picker = { kind, key, identity, min: low, max: high, value: parseDate(value), pick: parseDate(value), keyed: false,
+      focus: clampDate(parseDate(value) ?? today(), low, high) };
   } else {
     picker = { kind, key, identity, step: Number(step), value: parseTime(value) ?? { hour: 9, minute: 0 }, min: parseTime(min), max: parseTime(max) };
   }
@@ -103,6 +105,7 @@ export function pickerKey(key, rtl = false) {
     const moved = moveDate(picker.focus, key, rtl);
     if (!moved) return false;
     picker.focus = clampDate(moved, picker.min, picker.max);
+    picker.keyed = true;
     return true;
   }
   if (key === 'Enter') { settle(timeIso(picker.value)); return true; }
@@ -139,12 +142,12 @@ function dateBody(words, env, titled) {
   const rows = Array.from({ length: 6 }, (_, week) => cells.slice(week * 7, week * 7 + 7));
   const cell = ({ date, inMonth }) => {
     const id = iso(date), enabled = within(date, min, max);
-    // On touch a tap picks and Done commits, so the picked day shows as chosen.
-    const selected = titled ? value && compare(date, value) === 0 : compare(date, focus) === 0;
-    const focused = compare(date, focus) === 0, isToday = compare(date, now) === 0;
+    // On touch a tap picks and Done commits, so the picked day shows as chosen; today is only a ring.
+    const selected = titled ? value && compare(date, value) === 0 : picker.pick !== null && compare(date, picker.pick) === 0;
+    const focused = (titled || picker.keyed) && compare(date, focus) === 0, isToday = compare(date, now) === 0;
     const name = words.full(date.day, words.months[date.month - 1], date.year, words.longDays[weekday(date.year, date.month, date.day)]);
     return h('button', { key: id, 'data-testid': `lx-picker-day-${id}`, role: 'gridcell', 'aria-label': name, 'aria-selected': Boolean(selected),
-      disabled: !enabled, onClick: () => { if (titled) settle(id); else picker.focus = date; },
+      disabled: !enabled, onClick: () => { if (titled) settle(id); else picker.pick = picker.focus = date; },
       style: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
         backgroundColor: selected ? 'accent' : focused ? 'surface-sunken' : 'transparent',
         borderWidth: isToday && !selected ? 1 : 0, borderColor: 'accent',
@@ -238,10 +241,13 @@ export function pickerNode(env) {
   const words = wordsFor(env?.contentLanguage ?? env?.displayLanguage);
   const touch = (env?.pointer ?? 'coarse') === 'coarse';
   const body = picker.kind === 'date' ? dateBody(words, env, !touch) : picker.kind === 'time' ? timeBody(words, env) : selectBody(touch);
-  const commit = () => picker.kind === 'date' ? settle(iso(picker.focus))
+  const unpicked = picker.kind === 'date' && picker.pick === null;
+  const commit = () => picker.kind === 'date' ? (picker.pick !== null && settle(iso(picker.pick)))
     : picker.kind === 'time' ? settle(timeIso(picker.value)) : picker.pick >= 0 ? settleSelect(picker.pick) : settle(null);
   const cancel = style => h('button', { 'data-testid': 'lx-picker-cancel', onClick: () => settle(null), style }, words.cancel);
-  const done = style => h('button', { 'data-testid': 'lx-picker-done', onClick: commit, style }, words.done);
+  // Done waits for a day on an empty date field.
+  const done = style => h('button', { 'data-testid': 'lx-picker-done', onClick: commit, disabled: unpicked,
+    style: unpicked ? { ...style, color: 'text-faint' } : style }, words.done);
   const monthTitle = picker.kind === 'date' && words.title(words.months[picker.focus.month - 1], picker.focus.year);
   // Touch: a toolbar on top, as iOS's and WeChat's picker sheets have, clear of the home indicator.
   const text = { paddingTop: 8, paddingBottom: 8, paddingLeft: 4, paddingRight: 4, fontSize: 16, backgroundColor: 'transparent' };
