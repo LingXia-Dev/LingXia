@@ -41,4 +41,12 @@
     from { transform: translateX(-100%); }
     to { transform: translateX(250%); }
   }
+
+  /* Skeleton: a soft band crosses the box, then rests a moment before the next pass. */
+  --animate-skeleton-glint: skeleton-glint 2.4s ease-in-out infinite;
+  @keyframes skeleton-glint {
+    0% { transform: translateX(-100%); }
+    60% { transform: translateX(100%); }
+    100% { transform: translateX(100%); }
+  }
 }

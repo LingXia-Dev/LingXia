@@ -52,6 +52,8 @@
     "./TextArea/recipe": "./src/TextArea/TextArea.recipe.ts",
     "./EmptyState": "./src/EmptyState/EmptyState.tsx",
     "./EmptyState/recipe": "./src/EmptyState/EmptyState.recipe.ts",
+    "./Skeleton": "./src/Skeleton/Skeleton.tsx",
+    "./Skeleton/recipe": "./src/Skeleton/Skeleton.recipe.ts",
     "./package.json": "./package.json"
   },
   "lingxia": {

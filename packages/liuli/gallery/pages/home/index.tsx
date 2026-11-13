@@ -15,6 +15,7 @@ import { Specimen as ItemSpecimen } from '../../../core/src/Item/Item.examples';
 import { Specimen as ProgressBarSpecimen } from '../../../core/src/ProgressBar/ProgressBar.examples';
 import { Specimen as RadioGroupSpecimen } from '../../../core/src/RadioGroup/RadioGroup.examples';
 import { Specimen as SelectSpecimen } from '../../../core/src/Select/Select.examples';
+import { Specimen as SkeletonSpecimen } from '../../../core/src/Skeleton/Skeleton.examples';
 import { Specimen as SliderSpecimen } from '../../../core/src/Slider/Slider.examples';
 import { Specimen as SwitchSpecimen } from '../../../core/src/Switch/Switch.examples';
 import { Specimen as TabsSpecimen } from '../../../core/src/Tabs/Tabs.examples';
@@ -195,6 +196,15 @@ export function render({ actions }: View<Actions>) {
           testId={"open-empty-state"}
         >
           <EmptyStateSpecimen />
+        </Tile>
+        <Tile
+          name={"Skeleton"}
+          tagline={"Content on its way"}
+          isWide
+          onOpen={() => actions.open({ page: "skeleton" })}
+          testId={"open-skeleton"}
+        >
+          <SkeletonSpecimen />
         </Tile>
       </Category>
       <Category title={"Overlays"}>

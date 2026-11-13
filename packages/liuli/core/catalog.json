@@ -3712,6 +3712,145 @@
       }
     },
     {
+      "name": "Skeleton",
+      "import": "@liulidesign/core/Skeleton",
+      "exports": [
+        "Skeleton",
+        "SkeletonGroup"
+      ],
+      "category": "feedback",
+      "status": "preview",
+      "summary": "Quiet shapes that stand in for content while it loads",
+      "description": "Skeleton draws faint lines, blocks and circles in the shape of content that is on its way, so the page keeps its layout and does not jump when the content lands. SkeletonGroup, from the same import, wraps the shapes for one piece of content and tells assistive tech what is loading. A soft glint crosses each shape; it stops under reduced motion.",
+      "keywords": [
+        "skeleton",
+        "placeholder",
+        "loading",
+        "shimmer",
+        "ghost",
+        "content loader",
+        "busy"
+      ],
+      "props": [
+        {
+          "name": "shape",
+          "type": "SkeletonShape",
+          "required": false,
+          "description": "`text` draws lines at the body text height; `block` and `circle` take their size from `className`.",
+          "default": "'text'"
+        },
+        {
+          "name": "lines",
+          "type": "number",
+          "required": false,
+          "description": "With `text`, how many lines; the last is shorter, as a paragraph's is.",
+          "default": "1"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Size and placement: `h-32`, `size-10`, `w-2/3`."
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {
+        "SkeletonGroup": [
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "What is loading, read once by assistive tech: \"Loading notes\"."
+          },
+          {
+            "name": "children",
+            "type": "Child",
+            "required": true,
+            "description": "Skeletons laid out as the content will be."
+          },
+          {
+            "name": "className",
+            "type": "string",
+            "required": false,
+            "description": ""
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
+        ]
+      },
+      "parts": {
+        "group": "view",
+        "lines": "view",
+        "bone": "view",
+        "glint": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [
+          {
+            "state": "busy",
+            "from": "SkeletonGroup, always"
+          }
+        ],
+        "keyboard": [],
+        "contrast": [],
+        "notes": [
+          "Each shape is hidden from assistive tech. SkeletonGroup is a status region named by `label` and marked busy, so the loading is said once, not per shape.",
+          "The shapes are decorative and need no contrast; the content that replaces them meets its own.",
+          "With reduced motion the glint stays out of view and the shapes are still."
+        ]
+      },
+      "examples": [
+        {
+          "name": "ListLoading",
+          "title": "A list loading",
+          "source": "import { Skeleton, SkeletonGroup } from '@liulidesign/core/Skeleton';\n\n/** A list loading: rows shaped as the rows that will arrive, named once as what is loading. */\nexport function ListLoading() {\n  return (\n    <SkeletonGroup label=\"Loading notes\" className=\"gap-0 overflow-hidden rounded-container border border-text/10 bg-surface divide-y divide-text/8\" data-testid=\"loading-notes\">\n      {['a', 'b', 'c'].map(key => (\n        <view key={key} className=\"flex-row items-center gap-3 px-4 py-3\">\n          <Skeleton shape=\"circle\" className=\"size-10 shrink-0\" />\n          <view className=\"grow basis-0 gap-1\">\n            <Skeleton className=\"w-2/3\" />\n            <Skeleton className=\"w-1/3\" />\n          </view>\n        </view>\n      ))}\n    </SkeletonGroup>\n  );\n}"
+        },
+        {
+          "name": "CardLoading",
+          "title": "A card loading",
+          "source": "import { Card } from '@liulidesign/core/Card';\nimport { Skeleton, SkeletonGroup } from '@liulidesign/core/Skeleton';\n\n/** A card loading: a picture, a heading and a paragraph. */\nexport function CardLoading() {\n  return (\n    <Card>\n      <SkeletonGroup label=\"Loading the article\" data-testid=\"loading-article\">\n        <Skeleton shape=\"block\" className=\"h-32 self-stretch\" />\n        <Skeleton className=\"w-1/2\" />\n        <Skeleton lines={3} data-testid=\"paragraph\" />\n      </SkeletonGroup>\n    </Card>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "related": [
+        "EmptyState",
+        "ProgressBar"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Content on its way",
+        "order": 5,
+        "page": {
+          "lead": "Use skeletons where content is about to appear, shaped like it, so the page keeps its layout while it loads.",
+          "hero": "ListLoading",
+          "variants": [
+            {
+              "name": "Shapes",
+              "title": "Lines, a circle and a block"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "CardLoading",
+              "title": "A card loading"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Slider",
       "import": "@liulidesign/core/Slider",
       "exports": [
