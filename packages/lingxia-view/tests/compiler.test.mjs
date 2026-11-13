@@ -538,6 +538,53 @@ export function render() {
   });
 });
 
+const ROW_PARTS = `import { List, cx } from '@lingxia/view';
+const r = { tone: { bar: 'bg-surface', overlay: 'opacity-50' }, fade: 'opacity-0', chip: 'backdrop-blur-sm' };
+function Controls({ variant = 'overlay', on }) {
+  const overlay = variant === 'overlay';
+  const tone = overlay ? 'overlay' : 'bar';
+  if (!overlay) {
+    return <view className={r.tone[tone]}><text>bar</text></view>;
+  }
+  return <view className={cx(r.fade, { 'opacity-25': on })}><text>overlay</text></view>;
+}
+function Chip({ flat }) {
+  return <view className={flat ? 'bg-surface' : r.chip} />;
+}
+function Player({ variant, wide }) {
+  return <view>
+    <Controls variant={variant} />
+    <dialog open={wide} aria-label="Full"><Controls variant="overlay" /></dialog>
+    <view popover id="tip"><view className="opacity-75" /></view>
+  </view>;
+}
+const items = ['a', 'b'];
+`;
+
+async function rowLayers(rows) {
+  let found;
+  await project({ 'page.tsx': `${ROW_PARTS}export function render() {\n  return <view>\n${rows.map(row => `    <List items={items} getKey={i => i} renderItem={i => ${row}} />\n`).join('')}  </view>;\n}` }, async (root, build) => {
+    const { warnings } = await build();
+    found = warnings.map(line => /UI_PERF: (\S+) composites/.exec(line)?.[1]).filter(Boolean).sort();
+  });
+  return found;
+}
+
+test('UI_PERF row layers follow the branch a literal prop selects; dialog and popover content is not row content', async () => {
+  // variant="bar" passes through Player to Controls: the overlay branch and the map's overlay key never render.
+  assert.deepEqual(await rowLayers(['<Player variant="bar" />', '<Chip flat />']), []);
+  // An absent prop without a spread is undefined; a default fills it.
+  assert.deepEqual(await rowLayers(['<Controls />']), ['opacity-0']);
+  // A view whose popover is false stays in the row.
+  assert.deepEqual(await rowLayers(['<view popover={false} id="inline"><view className="opacity-80" /></view>']), ['opacity-80']);
+});
+
+test('UI_PERF row layers stay on for a prop the row computes and for a spread', async () => {
+  assert.deepEqual(await rowLayers(['<Controls variant={i} on={i === "b"} />']), ['opacity-0', 'opacity-25', 'opacity-50']);
+  assert.deepEqual(await rowLayers(['<Chip {...{ flat: i === "a" }} />']), ['backdrop-blur-sm']);
+  assert.deepEqual(await rowLayers(['<Chip flat {...{ flat: i === "a" }} />']), ['backdrop-blur-sm']);
+});
+
 test('UI_STYLE_STATIC warns on a style object of fixed values only; computed and style-only values stay quiet', async () => {
   await project({
     'page.tsx': `import { useView } from '@lingxia/view';

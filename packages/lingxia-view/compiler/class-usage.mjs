@@ -9,21 +9,28 @@ export function stringLiterals(checker, node) {
 }
 
 /** The class text an expression can evaluate to: `stringLiterals`, plus template pieces and the
- * arguments of `cx` from `@lingxia/view`. Each piece is `{ text, node }`. */
-export function classPieces(checker, node) {
-  return pieces(checker, node, new Set(), true);
+ * arguments of `cx` from `@lingxia/view`. Each piece is `{ text, node }`. `known(node)` may name a
+ * condition's or map key's value (`{ value }`) so only the branch or key it selects is followed. */
+export function classPieces(checker, node, known = () => undefined) {
+  return pieces(checker, node, new Set(), true, known);
 }
 
-function pieces(checker, node, seen, classes) {
+function pieces(checker, node, seen, classes, known = () => undefined) {
   if (!node || seen.has(node)) return [];
   seen = new Set(seen).add(node);
-  const next = child => pieces(checker, child, seen, classes);
+  const next = child => pieces(checker, child, seen, classes, known);
   if (ts.isStringLiteralLike(node)) return [{ text: node.text, node }];
   if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isNonNullExpression(node))
     return next(node.expression);
-  if (ts.isConditionalExpression(node)) return [...next(node.whenTrue), ...next(node.whenFalse)];
+  if (ts.isConditionalExpression(node)) {
+    const test = known(node.condition);
+    if (test) return next(test.value ? node.whenTrue : node.whenFalse);
+    return [...next(node.whenTrue), ...next(node.whenFalse)];
+  }
   if (ts.isBinaryExpression(node)) {
-    if (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return next(node.right);
+    const left = known(node.left);
+    if (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return left && !left.value ? [] : next(node.right);
+    if (left && node.operatorToken.kind === ts.SyntaxKind.BarBarToken) return next(left.value ? node.left : node.right);
     if ([ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(node.operatorToken.kind))
       return [...next(node.left), ...next(node.right)];
   }
@@ -42,8 +49,8 @@ function pieces(checker, node, seen, classes) {
   }
   if (ts.isElementAccessExpression(node)) {
     const type = checker.getTypeAtLocation(node.expression);
-    const properties = ts.isStringLiteralLike(node.argumentExpression)
-      ? [type.getProperty(node.argumentExpression.text)] : type.getProperties();
+    const key = ts.isStringLiteralLike(node.argumentExpression) ? { value: node.argumentExpression.text } : known(node.argumentExpression);
+    const properties = key && typeof key.value === 'string' ? [type.getProperty(key.value)] : type.getProperties();
     return properties.flatMap(symbol => {
       const declaration = symbol?.valueDeclaration;
       if (declaration && ts.isShorthandPropertyAssignment(declaration))
@@ -53,16 +60,18 @@ function pieces(checker, node, seen, classes) {
   }
   if (!classes) return [];
   if (ts.isTemplateExpression(node)) return [...templatePieces(node), ...node.templateSpans.flatMap(span => next(span.expression))];
-  if (ts.isCallExpression(node) && isCx(checker, node.expression)) return node.arguments.flatMap(argument => cxPieces(argument, next));
+  if (ts.isCallExpression(node) && isCx(checker, node.expression)) return node.arguments.flatMap(argument => cxPieces(argument, next, known));
   return [];
 }
 
 /** `cx` arguments: class text, arrays of it, and `{ 'class names': condition }` maps. */
-function cxPieces(node, next) {
+function cxPieces(node, next, known = () => undefined) {
   while (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node)) node = node.expression;
-  if (ts.isArrayLiteralExpression(node)) return node.elements.flatMap(element => cxPieces(element, next));
+  if (ts.isArrayLiteralExpression(node)) return node.elements.flatMap(element => cxPieces(element, next, known));
   if (ts.isObjectLiteralExpression(node))
     return node.properties.flatMap(property => {
+      const on = ts.isPropertyAssignment(property) ? known(property.initializer) : undefined;
+      if (on && !on.value) return [];
       const name = property.name;
       if (name && (ts.isStringLiteralLike(name) || ts.isIdentifier(name))) return [{ text: name.text, node: name }];
       return name && ts.isComputedPropertyName(name) ? next(name.expression) : [];
