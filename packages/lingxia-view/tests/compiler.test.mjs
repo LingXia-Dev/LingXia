@@ -212,15 +212,30 @@ test('class usage follows cx arguments, class maps and template pieces', async (
   });
 });
 
-test('dev builds name the author column of a runtime error on a JSX line', { todo: 'the source map maps the __loc-annotated text, so columns after a JSX site drift right' }, async () => {
-  const line = '  return <view><text>{first.price.toFixed(2)}</text></view>;';
-  await project({ 'page.tsx': `function Total() {\n  const first = {};\n${line}\n}\nexport function render() {\n  return <view><Total/></view>;\n}` }, async root => {
+async function authorColumn(body, lineNumber) {
+  let column;
+  await project({ 'page.tsx': `${body}\nexport function render() {\n  return <view><Total/></view>;\n}` }, async root => {
     await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
     await load(root);
     const error = (() => { try { describePage(); } catch (error) { return error; } })();
-    const column = Number(/\n {2}at page\.tsx:3:(\d+)/.exec(error.message)?.[1]);
-    assert.ok(column > line.indexOf('first') && column <= line.indexOf('(2)') + 1, `column ${column} of ${JSON.stringify(line)}`);
+    column = Number(new RegExp(`\\n {2}at page\\.tsx:${lineNumber}:(\\d+)`).exec(error.message)?.[1]);
   });
+  return column;
+}
+
+test('dev builds name the author column of a runtime error on a JSX line', async () => {
+  const line = '  return <view><text>{first.price.toFixed(2)}</text></view>;';
+  const column = await authorColumn(`function Total() {\n  const first = {};\n${line}\n}`, 3);
+  assert.ok(column > line.indexOf('first') && column <= line.indexOf('(2)') + 1, `column ${column} of ${JSON.stringify(line)}`);
+});
+
+test('dev build columns hold after two JSX sites on one line and inside a multi-line element', async () => {
+  const line = '  const a = <text>x</text>, b = <text>y</text>; return <view>{a}{b}{first.price.toFixed(2)}</view>;';
+  const column = await authorColumn(`function Total() {\n  const first = {};\n${line}\n}`, 3);
+  assert.ok(column > line.indexOf('first') && column <= line.indexOf('(2)') + 1, `column ${column} of ${JSON.stringify(line)}`);
+  const inner = '      {first.price.toFixed(2)}';
+  const multi = await authorColumn(`function Total() {\n  const first = {};\n  return <view\n    style={{ width: 1 }}>\n    <text>\n${inner}\n    </text>\n  </view>;\n}`, 6);
+  assert.ok(multi > inner.indexOf('first') && multi <= inner.indexOf('(2)') + 1, `column ${multi} of ${JSON.stringify(inner)}`);
 });
 
 test('runtime errors in compiled pages name the JSX site and component chain', async () => {

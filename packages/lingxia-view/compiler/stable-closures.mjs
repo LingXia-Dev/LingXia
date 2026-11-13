@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import { parseSource } from './source.mjs';
+import { spliceInserts } from './insertion-map.mjs';
 
 const functionLike = node => ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node) ||
   ts.isMethodDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node) || ts.isConstructorDeclaration(node);
@@ -141,7 +142,7 @@ function handedOn(fn) {
  * the same values, a render gets back the function an earlier render made, so props holding it
  * compare equal and the subtree built from them can stand.
  */
-export function stabilizeClosures(source, filename, label) {
+export function stabilizeClosures(source, filename, label, log) {
   if (!/=>|function/.test(source)) return source;
   const file = parseSource(filename, source);
   const moduleNames = ownDeclarations(file), edits = [];
@@ -161,9 +162,7 @@ export function stabilizeClosures(source, filename, label) {
     splices.push({ at: end, rank: 0, order: start, text: `), [${names.join(', ')}])` });
   }
   splices.sort((a, b) => b.at - a.at || a.rank - b.rank || a.order - b.order);
-  let output = source;
-  for (const { at, text } of splices) output = output.slice(0, at) + text + output.slice(at);
-  return output;
+  return spliceInserts(source, splices.map(({ at, text }) => [at, text]), log);
 }
 
 const volatileGlobals = new Set(['Date', 'performance']);

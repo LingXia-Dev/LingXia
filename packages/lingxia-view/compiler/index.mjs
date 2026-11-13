@@ -3,6 +3,7 @@ import ts from 'typescript';
 import { collectClassUsage } from './class-usage.mjs';
 import { perfWarnings } from './perf.mjs';
 import { stabilizeClosures, volatileComponent, ownDeclarations } from './stable-closures.mjs';
+import { spliceInserts, insertionMapComment } from './insertion-map.mjs';
 import { staticStyleWarnings } from './static-style.mjs';
 import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
@@ -14,7 +15,7 @@ import { authored, packageOf, sourceLabel } from './packages.mjs';
 import { existsSync, statSync } from 'node:fs';
 import { colorProblem, seriesProblem } from '../src/style/color.js';
 import { readFile, mkdir, writeFile, copyFile, realpath } from 'node:fs/promises';
-import { resolve, dirname, join, relative, isAbsolute, sep } from 'node:path';
+import { resolve, dirname, join, relative, isAbsolute, sep, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { elements, style as styleTable, commonProps, limits } from '../src/generated/contract.js';
 import { classElementProblem, appliesTo, gridProblem, gridRefuses, propHint, tagHint } from '../src/style/hints.js';
@@ -167,7 +168,7 @@ const moduleContext = declaration => ts.isVariableDeclaration(declaration) && ts
   Boolean(declaration.parent.flags & ts.NodeFlags.Const);
 
 // Each JSX site carries its source position so runtime errors name the line that built the node.
-export function annotate(source, filename, label) {
+export function annotate(source, filename, label, log) {
   const file = parseSource(filename, source);
   const inserts = [];
   const visit = node => {
@@ -178,16 +179,14 @@ export function annotate(source, filename, label) {
     ts.forEachChild(node, visit);
   };
   visit(file);
-  let output = source;
-  for (const [at, text] of inserts.sort((a, b) => b[0] - a[0])) output = output.slice(0, at) + text + output.slice(at);
-  return output;
+  return spliceInserts(source, inserts.sort((a, b) => b[0] - a[0]), log);
 }
 
 /**
  * Gives each `useId()` call its site, `<enclosing function>#<ordinal>`: ids then survive edits
  * elsewhere in the module and hot swaps.
  */
-export function stampIds(source, filename) {
+export function stampIds(source, filename, log) {
   if (!source.includes('useId(')) return source;
   const file = parseSource(filename, source);
   const inserts = [], counts = new Map();
@@ -202,9 +201,7 @@ export function stampIds(source, filename) {
     ts.forEachChild(node, visit);
   };
   visit(file);
-  let output = source;
-  for (const [at, text] of inserts.sort((a, b) => b[0] - a[0])) output = output.slice(0, at) + text + output.slice(at);
-  return output;
+  return spliceInserts(source, inserts.sort((a, b) => b[0] - a[0]), log);
 }
 
 /**
@@ -295,8 +292,9 @@ function report(problems, page) {
 const analyses = new Map();
 let analysisHits = 0, analysisMisses = 0;
 // `label` names the file in source positions, `id` in component and closure ids.
-function analyse(path, contents, label, id, loader, literalColors) {
-  const key = `${literalColors}\0${label}\0${id}\0${path}`;
+// `dev` builds map the transformed text back to the author's for esbuild's source map.
+function analyse(path, contents, label, id, loader, literalColors, dev) {
+  const key = `${literalColors}\0${dev}\0${label}\0${id}\0${path}`;
   const cached = analyses.get(key);
   if (cached?.contents === contents) { analysisHits++; return cached; }
   analysisMisses++;
@@ -308,9 +306,13 @@ function analyse(path, contents, label, id, loader, literalColors) {
     ts.forEachChild(node, collect);
   };
   collect(file);
+  const stages = dev ? [] : undefined;
+  const stamped = stampIds(contents, path, stages);
+  const transformed = loader.endsWith('x') ? stabilizeClosures(annotate(stamped, path, id, stages), path, id, stages) : stamped;
+  const annotated = identify(transformed, path, id);
   const analysed = {
     contents, file, names, problems: audit(contents, path, { literalColors }),
-    annotated: identify(loader.endsWith('x') ? stabilizeClosures(annotate(stampIds(contents, path), path, id), path, id) : stampIds(contents, path), path, id),
+    annotated: dev ? annotated + insertionMapComment(contents, annotated, stages, basename(path)) : annotated,
   };
   analyses.delete(key);
   if (analyses.size >= 512) analyses.delete(analyses.keys().next().value);
@@ -433,7 +435,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
             const contents = await readFile(path, 'utf8');
             const loader = path.endsWith('.tsx') ? 'tsx' : path.endsWith('.ts') ? 'ts' : path.endsWith('.jsx') ? 'jsx' : 'js';
             const label = relative(root, path).split('\\').join('/');
-            const analysed = analyse(path, contents, label, sourceLabel(root, path), loader, literalColors);
+            const analysed = analyse(path, contents, label, sourceLabel(root, path), loader, literalColors, dev);
             problems.push(...analysed.problems);
             sourceFiles.push(analysed.file);
             for (const name of analysed.names) candidates.add(name);
