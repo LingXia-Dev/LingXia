@@ -5,6 +5,7 @@ import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 import { spec, expect } from "../dist/index.js";
 import { reset, trackPublicSurface } from "../dist/runner.js";
 import { looksSecretKey } from "../dist/redact.js";
+import { inlineChars } from "../dist/report.js";
 
 afterEach(() => {
   reset();
@@ -435,7 +436,7 @@ test("spec.fail grades a body assertion xfail, a pass xpass, and a timeout timeo
   assert.equal(protocol.timeout, 1);
 });
 
-test("failed specs attach forensics and report.html stays a single inlined file", async () => {
+test("failed specs attach forensics and report.html shows them from the files beside it", async () => {
   const world = createWorld();
   world.add({ testId: "home-name", visible: true, value: "" });
   const { attachments } = installFakeHost(world, { logs: "bridge: setData\nconsole: boom" });
@@ -460,9 +461,35 @@ test("failed specs attach forensics and report.html stays a single inlined file"
   const html = decodeAttachment(attachments, "report.html");
   assert.match(html, /<!DOCTYPE html>/);
   assert.doesNotMatch(html, /cdn\.|unpkg|jsdelivr|https:\/\/fonts/);
-  assert.match(html, /data:image\/png;base64,/);
-  assert.match(html, /attachments\/fails-for-forensics\/attempt-0\/failure\.png/);
+  assert.doesNotMatch(html, /data:image\//);
+  assert.match(html, /<img alt="failure\.png" src="attachments\/fails-for-forensics\/attempt-0\/failure\.png"/);
   assert.match(html, /failure\.png &middot; failure evidence for this attempt/);
+});
+
+test("screenshots leave the app as they are taken; the report keeps no copy", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+  // A real-sized shot: 1 MiB of base64 per screenshot.
+  const big = "A".repeat(1 << 20);
+  let held = -1;
+
+  spec("many shots", async (t) => {
+    for (let i = 0; i < 50; i += 1) await t.attach(`shot-${i}.png`, { mimeType: "image/png", base64: big });
+    await t.attach("notes.txt", "small text still previews");
+    held = inlineChars();
+  });
+  spec("slashed id", { id: "pages/notes save" }, async (t) => {
+    await t.attach("one.png", { mimeType: "image/png", base64: big });
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(held, "small text still previews".length);
+  const html = decodeAttachment(attachments, "report.html");
+  assert.ok(html.length < 200_000, `report.html grew with the shots: ${html.length} chars`);
+  assert.match(html, /src="attachments\/many-shots\/attempt-0\/shot-49\.png"/);
+  assert.match(html, /small text still previews/);
+  // A `/` in a spec id is `%2F` in the directory name; the link must reach that literal name.
+  assert.match(html, /src="attachments\/pages%252Fnotes%2520save\/attempt-0\/one\.png"/);
 });
 
 test("omits the log tail when the host has no ring", async () => {

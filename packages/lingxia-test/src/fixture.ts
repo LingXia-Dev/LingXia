@@ -647,11 +647,7 @@ export class LiveFixture implements Fixture {
     }
     const path = `attachments/${this.specId}/${name}`;
     await this.host.attach(path, payload);
-    if (payload.mimeType.startsWith("image/")) {
-      rememberInline(this.specId, name, {
-        dataUrl: `data:${payload.mimeType};base64,${payload.base64}`,
-      });
-    } else if (isPreviewable(payload.mimeType)) {
+    if (isPreviewable(payload.mimeType)) {
       rememberInline(this.specId, name, { text: previewText(data, payload) });
     }
     const current = this.stepStack[this.stepStack.length - 1];
