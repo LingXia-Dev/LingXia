@@ -178,7 +178,7 @@ extension SidebarGroupHeaderView: NSDraggingSource {
 class SidebarGroupView: NSView, NSTextFieldDelegate {
 
     struct Layout {
-        static let headerHeight: CGFloat = 36
+        static let headerHeight: CGFloat = 40
         static let headerCornerRadius: CGFloat = 6
         static let groupInset: CGFloat = 8
         static let headerHPadding: CGFloat = 8
@@ -186,7 +186,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         static let closeButtonSize: CGFloat = 16
         static let itemTopPadding: CGFloat = 2
         /// Sidebar app tile. Raster `AppIcon.png` is a square; the shell clips it.
-        static let appIconSize: CGFloat = 16
+        static let appIconSize: CGFloat = 20
     }
 
     let appId: String
@@ -393,7 +393,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
 
         // App name (left-aligned in header)
         appNameLabel.translatesAutoresizingMaskIntoConstraints = false
-        appNameLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        appNameLabel.font = NSFont.systemFont(ofSize: 14, weight: .semibold)
         appNameLabel.lineBreakMode = .byTruncatingTail
         appNameLabel.maximumNumberOfLines = 1
         appNameLabel.delegate = self
