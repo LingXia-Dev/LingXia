@@ -85,6 +85,26 @@ impl LocalizedText {
     }
 }
 
+/// The entry of `languages` a reader of `language` reads best: the exact tag,
+/// then the closest of the same language, then the first. `None` for an empty list.
+pub fn narrow<'a>(language: &str, languages: &'a [String]) -> Option<&'a str> {
+    let wanted = Tag::parse(language);
+    let mut best: Option<(i32, &str)> = None;
+    for tag in languages {
+        let candidate = Tag::parse(tag);
+        if candidate == wanted {
+            return Some(tag);
+        }
+        if let Some(score) = wanted.affinity(&candidate)
+            && best.is_none_or(|(top, _)| score > top)
+        {
+            best = Some((score, tag));
+        }
+    }
+    best.map(|(_, tag)| tag)
+        .or_else(|| languages.first().map(String::as_str))
+}
+
 /// The parts of a tag that decide which text a reader can read.
 #[derive(Debug, PartialEq, Eq)]
 struct Tag {
@@ -227,6 +247,16 @@ mod tests {
 
     fn map(value: serde_json::Value) -> LocalizedText {
         serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn narrows_the_display_language_to_the_languages_an_app_is_written_in() {
+        let languages: Vec<String> = ["en", "zh-Hans", "zh-Hant"].map(String::from).into();
+        assert_eq!(narrow("EN_us", &languages), Some("en"));
+        assert_eq!(narrow("zh-CN", &languages), Some("zh-Hans"));
+        assert_eq!(narrow("zh-TW", &languages), Some("zh-Hant"));
+        assert_eq!(narrow("ja-JP", &languages), Some("en"), "the first is the fallback");
+        assert_eq!(narrow("ja-JP", &[]), None);
     }
 
     #[test]

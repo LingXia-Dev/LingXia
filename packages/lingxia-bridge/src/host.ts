@@ -1,5 +1,6 @@
 import {
   BRIDGE_CONFIG,
+  getContentLanguage,
   getDisplayLanguage,
   getPlatformOS,
   isDesktop,
@@ -22,6 +23,8 @@ export interface LxHost {
   readonly canDock: boolean;
   /** The BCP-47 tag in effect, as Logic's `lx.host.displayLanguage.get()`. */
   readonly displayLanguage: string;
+  /** `displayLanguage` narrowed to the `languages` in lxapp.json: the language to pick this lxapp's copy in. */
+  readonly contentLanguage: string;
   /** Which kind of machine this is; fixed for the document. A narrowed desktop window is still `desktop`. */
   readonly formFactor: 'mobile' | 'desktop';
   /** The operating system, for the rare OS-specific feature; not a layout fact. */
@@ -38,6 +41,7 @@ function read(): LxHost {
     sizeClass: surface.sizeClass,
     canDock: surface.canDock,
     displayLanguage: getDisplayLanguage(),
+    contentLanguage: getContentLanguage(),
     formFactor: isDesktop() ? 'desktop' : 'mobile',
     os: getPlatformOS(),
     runner: BRIDGE_CONFIG.runner === true,
@@ -48,6 +52,7 @@ function same(a: LxHost, b: LxHost): boolean {
   return a.sizeClass === b.sizeClass
     && a.canDock === b.canDock
     && a.displayLanguage === b.displayLanguage
+    && a.contentLanguage === b.contentLanguage
     && a.formFactor === b.formFactor
     && a.os === b.os
     && a.runner === b.runner;

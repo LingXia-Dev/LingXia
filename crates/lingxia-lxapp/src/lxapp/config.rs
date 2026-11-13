@@ -101,6 +101,10 @@ pub(crate) struct LxAppConfig {
     /// How every page of the lxapp renders: `webview` (default) or `gpu`.
     #[serde(default)]
     pub(crate) renderer: crate::page::config::PageRenderer,
+
+    /// The languages the lxapp's text is written in, the first being its fallback.
+    #[serde(default)]
+    pub(crate) languages: Vec<String>,
 }
 
 impl LxAppConfig {

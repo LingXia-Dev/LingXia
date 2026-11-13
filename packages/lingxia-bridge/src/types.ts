@@ -10,6 +10,8 @@ export interface BridgeConfig {
   hostClass?: 'mobile' | 'desktop';
   /** Effective host display language; distinct from the raw system locale. */
   displayLanguage?: string;
+  /** `displayLanguage` narrowed to the languages the lxapp is written in. */
+  contentLanguage?: string;
   /** The lxapp's adaptive context when this document was built; see `surface-context.ts`. */
   surfaceContext?: unknown;
   /** The host revision of `surfaceContext`, so a later push can supersede it. */
@@ -171,11 +173,11 @@ declare global {
   interface Window {
     __LX_BRIDGE_CFG?: BridgeConfig;
     /** Host push for a display language changed while the page is open. */
-    __lingxiaApplyDisplayLanguage?: (language: string, revision?: number) => void;
+    __lingxiaApplyDisplayLanguage?: (language: string, revision?: number, content?: string) => void;
     /** Host push: the user tried to leave a page that holds the leave guard. */
     __lingxiaDispatchLeaveRequest?: (reason: 'back' | 'home') => void;
     /** Shared by every copy of the bridge module in this document. */
-    __lxDisplayLanguage?: { value: string; revision?: number; listeners: Set<() => void> };
+    __lxDisplayLanguage?: { value: string; revision?: number; content?: string; listeners: Set<() => void> };
     /** Host push for the page's adaptive context; see `surface-context.ts`. */
     __lingxiaApplySurfaceContext?: (context: unknown, revision?: unknown) => void;
     /** Shared by every copy of the bridge module in this document. */

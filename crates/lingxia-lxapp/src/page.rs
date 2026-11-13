@@ -1606,7 +1606,12 @@ impl PageInstance {
     /// the document loaded found no bridge to deliver to.
     pub(crate) fn push_display_language(&self) {
         let (language, revision) = crate::lxapp::view_display_language_snapshot();
-        self.push_view_environment(PageViewEnvironment::DisplayLanguage { language, revision });
+        let content = self.owning_lxapp().content_language(&language);
+        self.push_view_environment(PageViewEnvironment::DisplayLanguage {
+            language,
+            content,
+            revision,
+        });
     }
 
     /// Run a host-to-View script in this page's document, if it has one.

@@ -30,9 +30,13 @@ impl ViewSession {
         if value["animatorDurationScale"] == 0.0 {
             value["reducedMotion"] = serde_json::json!(true);
         }
-        // Direction follows the display language and is exposed as `env.direction`.
+        // Until the host narrows it, the lxapp's text is taken to be in the display language.
+        if value["contentLanguage"].as_str().is_none_or(str::is_empty) {
+            value["contentLanguage"] = value["displayLanguage"].clone();
+        }
+        // Direction follows the lxapp's text and is exposed as `env.direction`.
         let rtl =
-            crate::text::fonts::right_to_left(value["displayLanguage"].as_str().unwrap_or(""));
+            crate::text::fonts::right_to_left(value["contentLanguage"].as_str().unwrap_or(""));
         value["direction"] = serde_json::json!(if rtl { "rtl" } else { "ltr" });
         if self.renderer.rtl != rtl {
             self.renderer.rtl = rtl;
@@ -64,7 +68,7 @@ impl ViewSession {
             crate::layout::list_layout::invalidate_measurements(&mut self.lists);
             self.reveal_input = true;
         }
-        let locale = value["displayLanguage"]
+        let locale = value["contentLanguage"]
             .as_str()
             .and_then(crate::text::fonts::locale);
         if self.renderer.locale != locale {

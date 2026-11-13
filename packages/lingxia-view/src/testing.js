@@ -96,6 +96,7 @@ export function defaultEnv(overrides = {}) {
   return {
     theme: 'light', viewport, insets: edges, safeArea: edges, keyboard: { height: 0 }, pointer: 'coarse', os: 'node',
     formFactor: 'phone', sizeClass: viewport.width < 600 ? 'compact' : 'regular', displayLanguage: 'en-US',
+    contentLanguage: overrides.displayLanguage ?? 'en-US',
     reducedMotion: false, highContrast: false, animatorDurationScale: 1, hourCycle: 'h12', firstWeekday: 1,
     direction: 'ltr', canDock: false, ...overrides,
   };

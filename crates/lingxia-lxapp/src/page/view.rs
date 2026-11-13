@@ -33,6 +33,8 @@ pub(crate) fn gpu_factory() -> Option<Arc<dyn GpuPageViewFactory>> {
 pub enum PageViewEnvironment {
     DisplayLanguage {
         language: String,
+        /// `language` narrowed to the languages the lxapp is written in.
+        content: String,
         revision: u64,
     },
     SurfaceContext {
@@ -314,10 +316,15 @@ impl PageView {
             Self::Gpu(view) => view.update_environment(update),
             Self::Web(view) => {
                 let script = match update {
-                    PageViewEnvironment::DisplayLanguage { language, revision } => {
+                    PageViewEnvironment::DisplayLanguage {
+                        language,
+                        content,
+                        revision,
+                    } => {
                         let language = serde_json::to_string(&language)?;
+                        let content = serde_json::to_string(&content)?;
                         format!(
-                            "var f = window.__lingxiaApplyDisplayLanguage; if (f) f({language}, {revision});"
+                            "var f = window.__lingxiaApplyDisplayLanguage; if (f) f({language}, {revision}, {content});"
                         )
                     }
                     PageViewEnvironment::SurfaceContext { context, revision } => {

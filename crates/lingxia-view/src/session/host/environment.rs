@@ -3,7 +3,8 @@ use serde::Deserialize;
 /// Environment the runtime pushes and the platform cannot measure; each kind keeps its newest revision.
 #[derive(Default)]
 pub(super) struct HostEnvironment {
-    language: Option<(u64, String)>,
+    /// Revision, display language, and the lxapp's narrowing of it.
+    language: Option<(u64, String, Option<String>)>,
     surface: Option<(u64, SurfaceContext)>,
     /// The lxapp's theme pack, resolved into palette pushes for light, dark and their
     /// high-contrast variants.
@@ -38,6 +39,8 @@ enum Update {
     Language {
         revision: u64,
         language: String,
+        #[serde(default, rename = "contentLanguage")]
+        content: Option<String>,
     },
     Surface {
         revision: u64,
@@ -70,13 +73,18 @@ impl HostEnvironment {
             serde_json::from_str(update).map_err(|e| format!("UI_ENVIRONMENT: {e}"))?;
         let newer = |held: Option<u64>, revision| held.is_none_or(|held| revision > held);
         Ok(match update {
-            Update::Language { revision, language } => {
-                if language.is_empty() || language.len() > 128 {
+            Update::Language {
+                revision,
+                language,
+                content,
+            } => {
+                let invalid = |l: &str| l.is_empty() || l.len() > 128;
+                if invalid(&language) || content.as_deref().is_some_and(invalid) {
                     return Err("UI_ENVIRONMENT: invalid display language".into());
                 }
                 let newer = newer(self.language.as_ref().map(|l| l.0), revision);
                 if newer {
-                    self.language = Some((revision, language));
+                    self.language = Some((revision, language, content));
                 }
                 newer
             }
@@ -152,8 +160,9 @@ impl HostEnvironment {
 
     /// Overlays pushed values on the measured `env`; `canDock` is false until a surface push.
     pub(super) fn apply(&self, env: &mut serde_json::Value) {
-        if let Some((_, language)) = &self.language {
+        if let Some((_, language, content)) = &self.language {
             env["displayLanguage"] = language.as_str().into();
+            env["contentLanguage"] = content.as_deref().unwrap_or(language).into();
         }
         let surface = self.surface.as_ref().map(|s| &s.1);
         if let Some(context) = surface {
@@ -236,7 +245,20 @@ mod tests {
         host.apply(&mut env);
         assert_eq!(
             env,
-            json!({"displayLanguage": "zh-Hans-CN", "sizeClass": "regular", "canDock": true})
+            json!({"displayLanguage": "zh-Hans-CN", "contentLanguage": "zh-Hans-CN",
+                "sizeClass": "regular", "canDock": true})
+        );
+        assert!(
+            host.update(
+                r#"{"kind":"language","revision":6,"language":"zh-Hans-CN","contentLanguage":"en"}"#
+            )
+            .unwrap()
+        );
+        host.apply(&mut env);
+        assert_eq!(env["displayLanguage"], "zh-Hans-CN");
+        assert_eq!(
+            env["contentLanguage"], "en",
+            "the lxapp's narrowing rides with the language"
         );
     }
 
@@ -308,6 +330,7 @@ mod tests {
             r#"{"kind":"surface","revision":1,"context":{"sizeClass":"huge","canDock":true,"width":0,"height":0}}"#,
             r#"{"kind":"surface","revision":1,"context":{"sizeClass":"compact","width":0,"height":0}}"#,
             r#"{"kind":"language","revision":1,"language":""}"#,
+            r#"{"kind":"language","revision":1,"language":"en","contentLanguage":""}"#,
             r#"{"kind":"theme","revision":1}"#,
             r#"{"kind":"theme","revision":1,"pack":{"name":"x","version":2}}"#,
             r##"{"kind":"theme","revision":1,"pack":{"name":"x","version":1,"appearance":{"light":{"text":"#ffffff"}}}}"##,

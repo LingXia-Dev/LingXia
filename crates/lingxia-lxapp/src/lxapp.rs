@@ -1726,6 +1726,13 @@ impl LxApp {
         self.config().renderer
     }
 
+    /// `display` narrowed to the languages lxapp.json lists; `display` itself when it lists none.
+    pub fn content_language(&self, display: &str) -> String {
+        let config = self.config();
+        localized_text::narrow(display, &config.languages)
+            .map_or_else(|| display.to_string(), str::to_string)
+    }
+
     pub(crate) fn config(&self) -> std::sync::MutexGuard<'_, LxAppConfig> {
         self.config
             .lock()
@@ -5574,6 +5581,7 @@ mod manifest_reload_tests {
             page.push_surface_context_value(r#"{"aside":true}"#, 7);
             page.push_view_environment(PageViewEnvironment::DisplayLanguage {
                 language: "zh-CN".into(),
+                content: "zh-CN".into(),
                 revision: 8,
             });
             page.park_view();

@@ -98,6 +98,7 @@ impl LxApp {
             bridge_nonce,
             Some(bootstrap),
             None,
+            Some(&self.content_language(&super::display_language())),
         )?;
         if let Ok(app_css_data) = self.read_bytes("lxapp.css") {
             injected_data = self.inject_css(&injected_data, &app_css_data, path)?;
@@ -108,7 +109,10 @@ impl LxApp {
     /// Get 404 page content with path injection
     fn get_404_page(&self, failed_path: &str, bridge_nonce: Option<&str>) -> Vec<u8> {
         let escaped_path = escape_js_string(failed_path);
-        let bridge_script = build_bridge_config_script(bridge_nonce);
+        let bridge_script = build_bridge_config_script(
+            bridge_nonce,
+            Some(&self.content_language(&super::display_language())),
+        );
         let csp_meta = self.content_security_policy_meta();
         let html = format!(
             r#"<!DOCTYPE html>
@@ -190,8 +194,15 @@ impl LxApp {
         // Seed the page's adaptive context, so `useLxHost()` has a
         // value from the first frame; the host pushes changes after that.
         let seed = super::surface::view_surface_context_seed(&self.appid);
-        inject_bridge_config_with_bootstrap(html_data, bridge_nonce, None, seed.as_deref())
-            .expect("ordinary bridge config injection has a safe fallback")
+        let content = self.content_language(&super::display_language());
+        inject_bridge_config_with_bootstrap(
+            html_data,
+            bridge_nonce,
+            None,
+            seed.as_deref(),
+            Some(&content),
+        )
+        .expect("ordinary bridge config injection has a safe fallback")
     }
 
     /// Inject CSS into HTML content
@@ -242,9 +253,10 @@ fn inject_bridge_config_with_bootstrap(
     bridge_nonce: Option<&str>,
     bootstrap: Option<ControlDocumentBootstrap>,
     extra_config: Option<&str>,
+    content_language: Option<&str>,
 ) -> Result<Vec<u8>, LxAppError> {
     let html_str = String::from_utf8_lossy(html_data);
-    let mut script_tag = build_bridge_config_script(bridge_nonce);
+    let mut script_tag = build_bridge_config_script(bridge_nonce, content_language);
     if let Some(extra) = extra_config {
         script_tag.push_str(extra);
     }
@@ -389,9 +401,12 @@ fn build_connect_src_policy() -> String {
     }
 }
 
-fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
+fn build_bridge_config_script(bridge_nonce: Option<&str>, content_language: Option<&str>) -> String {
     let bridge_os = lingxia_platform::os_label();
     let display_language = escape_js_string(&super::display_language());
+    let content_kv = content_language.map_or_else(String::new, |language| {
+        format!(r#",contentLanguage:"{}""#, escape_js_string(language))
+    });
 
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     let apple_downstream_url = Some(escape_js_string(
@@ -441,8 +456,8 @@ fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
     );
 
     let generated_kv = format!(
-        r#",displayLanguage:"{}"{}{}{}"#,
-        display_language, host_class_kv, nonce_kv, apple_downstream_kv
+        r#",displayLanguage:"{}"{}{}{}{}"#,
+        display_language, content_kv, host_class_kv, nonce_kv, apple_downstream_kv
     );
 
     // Merge rather than overwrite so developer-provided config can coexist.
@@ -623,7 +638,7 @@ mod tests {
         )
         .unwrap();
         let trusted =
-            inject_bridge_config_with_bootstrap(html.as_bytes(), None, Some(bootstrap), None)
+            inject_bridge_config_with_bootstrap(html.as_bytes(), None, Some(bootstrap), None, None)
                 .unwrap();
         let trusted = String::from_utf8(trusted).unwrap();
         let bootstrap_at = trusted
@@ -642,11 +657,12 @@ mod tests {
             None,
             Some(bootstrap),
             None,
+            None,
         )
         .is_err());
 
         let ordinary =
-            inject_bridge_config_with_bootstrap(b"<html><head></head></html>", None, None, None)
+            inject_bridge_config_with_bootstrap(b"<html><head></head></html>", None, None, None, None)
                 .unwrap();
         assert!(
             !String::from_utf8(ordinary)
@@ -656,6 +672,7 @@ mod tests {
 
         let ordinary = inject_bridge_config_with_bootstrap(
             b"<html><head><script src=\"lx://assets/bridge-runtime.js\"></script></head></html>",
+            None,
             None,
             None,
             None,

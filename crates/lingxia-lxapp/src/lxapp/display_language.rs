@@ -738,13 +738,15 @@ fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
         .map(|entry| (entry.key().clone(), entry.value().clone()))
         .collect();
     for (appid, app) in apps {
+        // WebView documents took the language from the broadcast above; this adds what the
+        // lxapp narrows it to.
+        let content = app.content_language(update.effective.as_str());
         for page in app.live_page_instances() {
-            if page.renderer() == crate::PageRenderer::Gpu {
-                page.push_view_environment(crate::page::PageViewEnvironment::DisplayLanguage {
-                    language: update.effective.to_string(),
-                    revision: update.revision,
-                });
-            }
+            page.push_view_environment(crate::page::PageViewEnvironment::DisplayLanguage {
+                language: update.effective.to_string(),
+                content: content.clone(),
+                revision: update.revision,
+            });
         }
         crate::appservice::event_bus::publish_app_event(
             &appid,

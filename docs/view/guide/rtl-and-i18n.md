@@ -12,7 +12,7 @@ const chevron: VectorPath[] = [{ d: 'M9 6l6 6-6 6', fill: 'none', stroke: 'curre
 
 export function render() {
   const { env } = useView();
-  const t = env.displayLanguage.startsWith('ar') ? messages.ar : messages.en;
+  const t = env.contentLanguage.startsWith('ar') ? messages.ar : messages.en;
   return (
     <page className="p-4 gap-2">
       <text role="heading" className="text-xl font-semibold text-start">{t.title}</text>
@@ -90,8 +90,10 @@ Do not mirror icons that show real-world things (a clock, a play button, a check
 ## Display language
 
 `env.displayLanguage` is the BCP 47 tag of the UI language (`en-US`, `zh-CN`, `ar`); the page
-re-renders when it changes. It is also the shaping locale, so Han characters use the regional face
-that language expects.
+re-renders when it changes. `env.contentLanguage` is that language narrowed to the `languages` your
+lxapp.json lists (`["en", "ar"]`: `ar-EG` gives `ar`, `ja-JP` gives `en`); pick your messages by it.
+It is also the shaping locale and sets `env.direction`, so Han characters use the regional face the
+text's language expects.
 
 The View has no `Intl`. Keep message tables in plain objects as above, or let Logic translate and pass
 strings in `view.data`. Format numbers, currencies, dates and plural forms in Logic. Localize the

@@ -18,7 +18,7 @@ globalThis.__lingxiaViewHost = { uiAbi: 1, maxField, features: ['candidate-trans
 const env = {
   theme: 'light', viewport: { width: 390, height: 844 }, insets: { top: 47, right: 0, bottom: 34, left: 0 },
   keyboard: { height: 0 }, pointer: 'coarse', os: 'android', formFactor: 'phone', sizeClass: 'compact',
-  displayLanguage: 'en-US', reducedMotion: false, direction: 'ltr', canDock: false, runner: false, renderer: { fallback: null },
+  displayLanguage: 'en-US', contentLanguage: 'en-US', reducedMotion: false, direction: 'ltr', canDock: false, runner: false, renderer: { fallback: null },
 };
 
 async function chapters() {

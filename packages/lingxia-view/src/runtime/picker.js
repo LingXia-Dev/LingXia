@@ -235,7 +235,7 @@ const clock = ({ hour, minute }, words, env) => {
 /** The open picker above the page, or null. */
 export function pickerNode(env) {
   if (!picker) return null;
-  const words = wordsFor(env?.displayLanguage);
+  const words = wordsFor(env?.contentLanguage ?? env?.displayLanguage);
   const touch = (env?.pointer ?? 'coarse') === 'coarse';
   const body = picker.kind === 'date' ? dateBody(words, env, !touch) : picker.kind === 'time' ? timeBody(words, env) : selectBody(touch);
   const commit = () => picker.kind === 'date' ? settle(iso(picker.focus))

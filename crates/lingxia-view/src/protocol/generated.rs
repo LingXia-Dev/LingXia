@@ -609,6 +609,7 @@ pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
     ("formFactor", "device"),
     ("sizeClass", "push"),
     ("displayLanguage", "device"),
+    ("contentLanguage", "session"),
     ("reducedMotion", "device"),
     ("highContrast", "device"),
     ("animatorDurationScale", "device"),

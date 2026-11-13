@@ -263,6 +263,8 @@ export interface Env {
   /** `compact` below 600 logical pixels of page width, else `regular`. */
   readonly sizeClass: "compact" | "regular";
   readonly displayLanguage: string;
+  /** The language the lxapp's text is in: `displayLanguage` narrowed to the `languages` its lxapp.json lists. Built-in words, direction and glyph forms follow it. */
+  readonly contentLanguage: string;
   /** The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it. */
   readonly reducedMotion: boolean;
   /** The system asks for increased contrast; the palette resolves its high-contrast variant. */
@@ -273,7 +275,7 @@ export interface Env {
   readonly hourCycle: "h12" | "h23";
   /** The first day of the week, 1 = Sunday to 7 = Saturday: the user's system setting, else the custom of `displayLanguage`. */
   readonly firstWeekday: number;
-  /** Inline direction derived from `displayLanguage`. */
+  /** Inline direction derived from `contentLanguage`. */
   readonly direction: "ltr" | "rtl";
   /** Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it. */
   readonly canDock: boolean;

@@ -82,10 +82,12 @@ lx.host.control?.appearance.setPreference('dark');
 - Logic `watch(cb)` calls `cb` with the current value synchronously, before it
   returns its unsubscribe. Use it to re-set strings you hand to native chrome
   (titles, tab labels, modals).
-- View: `useLxHost().displayLanguage`, and `<html lang>` / `<html dir>` are set
-  for you. The View's `subscribe(cb)` fires only on change; read `get()` first.
-- Narrowing to the catalogs you ship is yours: `ja-JP` with only `en`/`zh`
-  renders `en` while the product stays `ja-JP`.
+- View: `useLxHost().displayLanguage`. The View's `subscribe(cb)` fires only
+  on change; read `get()` first.
+- List the languages you ship in lxapp.json `languages` (`["en", "zh"]`, first
+  is the fallback). The View's `contentLanguage` (`useLxHost()`, GPU `env`) is
+  the display language narrowed to them — `ja-JP` gives `en` — and sets
+  `<html lang>` / `<html dir>` and built-in control words. Logic narrows itself.
 - `lingxia dev --display-language` shadows the effective language; there
   `get()` and `getPreference()` disagree and `setPreference` shows no effect.
   Test a Settings screen without the flag.

@@ -25,7 +25,8 @@ my-lxapp/
 └── shared/
 ```
 
-- `lxapp.json` — `appId`, `appName`, `version`, `minRuntime`, `pages`. `appName`
+- `lxapp.json` — `appId`, `appName`, `version`, `minRuntime`, `pages`, and
+  optional `languages` ([Product settings](./lx-api.md#product-settings)). `appName`
   is only a fallback; the app registry's name wins. It declares no network
   hosts or privileges: those are [host grants](../native/permissions.md),
   unrestricted by default.
@@ -256,7 +257,7 @@ Read `useLxPage()` during component setup/render; pass its actions into helpers.
 ### Host facts
 
 ```ts
-const { sizeClass, canDock, displayLanguage, formFactor, os, runner } = useLxHost();
+const { sizeClass, canDock, displayLanguage, contentLanguage, formFactor, os, runner } = useLxHost();
 ```
 
 `getHost()` / `subscribeHost(cb)` in `@lingxia/html`;
@@ -270,8 +271,9 @@ nothing. It never changes while a window is dragged.
   unfolded fold is `mobile`.
 - `os` — `'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown'`, for
   OS-specific features only. `runner` is `true` in the dev Runner.
-- `displayLanguage` — the product language; the runtime also sets
-  `<html lang>` and `<html dir>`. See [Product settings](./lx-api.md#product-settings).
+- `displayLanguage` — the product language; `contentLanguage` — it narrowed to
+  lxapp.json `languages`, which sets `<html lang>` and `<html dir>`; pick copy by
+  it. See [Product settings](./lx-api.md#product-settings).
 
 `formFactor`, `os`, and `runner` are fixed for a page's life. A Runner phone
 frame reports `mobile` while `os` names the desktop; switching form factor

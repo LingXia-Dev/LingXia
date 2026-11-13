@@ -267,9 +267,16 @@ impl GpuPageView for Endpoint {
             return Ok(());
         }
         let update = match update {
-            PageViewEnvironment::DisplayLanguage { language, revision } => {
-                serde_json::json!({"kind":"language","revision":revision,"language":language})
-            }
+            PageViewEnvironment::DisplayLanguage {
+                language,
+                content,
+                revision,
+            } => serde_json::json!({
+                "kind": "language",
+                "revision": revision,
+                "language": language,
+                "contentLanguage": content,
+            }),
             PageViewEnvironment::SurfaceContext { context, revision } => {
                 serde_json::json!({"kind":"surface","revision":revision,"context":context})
             }

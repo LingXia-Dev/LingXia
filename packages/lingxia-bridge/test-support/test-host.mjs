@@ -22,6 +22,7 @@ assert.deepEqual(first, {
   sizeClass: 'regular',
   canDock: true,
   displayLanguage: 'en-US',
+  contentLanguage: 'en-US',
   formFactor: 'desktop',
   os: 'macOS',
   runner: false,
@@ -67,6 +68,22 @@ assert.equal(getHost().displayLanguage, 'fr-FR');
 window.__lingxiaApplyDisplayLanguage('en-US');
 assert.equal(getHost().displayLanguage, 'en-US', 'a push without a revision still applies');
 stopLanguages();
+
+// An lxapp written in fewer languages than the user reads narrows the display
+// language; <html lang> and the copy follow the narrowing. The page's own push
+// repeats the broadcast's revision to add it.
+window.__lingxiaApplyDisplayLanguage('zh-CN', 7);
+assert.equal(getHost().contentLanguage, 'zh-CN', 'without a narrowing, content follows');
+window.__lingxiaApplyDisplayLanguage('zh-CN', 7, 'en');
+assert.equal(getHost().displayLanguage, 'zh-CN');
+assert.equal(getHost().contentLanguage, 'en');
+assert.equal(document.documentElement.lang, 'en');
+window.__lingxiaApplyDisplayLanguage('zh-CN', 7);
+assert.equal(getHost().contentLanguage, 'en', 'the bare broadcast never undoes the narrowing');
+window.__lingxiaApplyDisplayLanguage('ja-JP', 8);
+assert.equal(getHost().contentLanguage, 'en', 'a narrowed lxapp waits for its page push');
+window.__lingxiaApplyDisplayLanguage('ar-EG', 9, 'ar');
+assert.equal(document.documentElement.dir, 'rtl', 'direction comes from the content language');
 
 // The runtime stamps <html dir> with <html lang>.
 assert.equal(textDirection('ar-EG'), 'rtl');

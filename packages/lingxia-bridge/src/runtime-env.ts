@@ -15,8 +15,13 @@ interface DisplayLanguageStore {
   value: string;
   /** Host revision of `value`; 0 for the value baked into the bridge config. */
   revision?: number;
+  /** `value` narrowed to the languages the lxapp is written in. */
+  content?: string;
   listeners: Set<(language: string) => void>;
 }
+
+const bootLanguage = () => BRIDGE_CONFIG.displayLanguage?.trim() || 'en-US';
+const bootContent = () => BRIDGE_CONFIG.contentLanguage?.trim() || bootLanguage();
 
 /**
  * One store per document, deliberately on `window`.
@@ -28,7 +33,8 @@ interface DisplayLanguageStore {
  * one the framework hooks read, would answer with the boot value forever.
  */
 const fallbackStore: DisplayLanguageStore = {
-  value: BRIDGE_CONFIG.displayLanguage?.trim() || 'en-US',
+  value: bootLanguage(),
+  content: bootContent(),
   listeners: new Set(),
 };
 
@@ -36,7 +42,8 @@ function store(): DisplayLanguageStore {
   if (typeof window === 'undefined') return fallbackStore;
   if (!window.__lxDisplayLanguage) {
     window.__lxDisplayLanguage = {
-      value: BRIDGE_CONFIG.displayLanguage?.trim() || 'en-US',
+      value: bootLanguage(),
+      content: bootContent(),
       listeners: new Set(),
     };
   }
@@ -62,12 +69,12 @@ export function textDirection(tag: string): 'ltr' | 'rtl' {
 }
 
 /**
- * `lang` and `dir` on `<html>` follow the display language, so a page never
- * sets either: CSS logical properties and `:dir()` just work.
+ * `lang` and `dir` on `<html>` follow the language the lxapp's text is in, so
+ * a page never sets either: CSS logical properties and `:dir()` just work.
  */
 function stampDocumentLanguage(): void {
   if (typeof document !== 'undefined' && document.documentElement) {
-    const language = store().value;
+    const language = getContentLanguage();
     document.documentElement.lang = language;
     document.documentElement.dir = textDirection(language);
   }
@@ -86,15 +93,24 @@ stampDocumentLanguage();
  * host revision it took effect at and an older one never overwrites a newer
  * one. A push without a revision applies as it always did.
  */
-function applyDisplayLanguage(next: unknown, revision?: unknown): void {
+function applyDisplayLanguage(next: unknown, revision?: unknown, content?: unknown): void {
   const normalized = typeof next === 'string' ? next.trim() : '';
+  const narrowed = typeof content === 'string' ? content.trim() : '';
   const current = store();
   if (typeof revision === 'number' && Number.isFinite(revision)) {
-    if (revision <= (current.revision ?? 0)) return;
+    // The page's own push repeats the broadcast's revision to add the lxapp's narrowing.
+    const held = current.revision ?? 0;
+    if (revision < held || (revision === held && !narrowed)) return;
     current.revision = revision;
   }
-  if (!normalized || normalized === current.value) return;
+  if (!normalized) return;
+  const before = current.value;
+  const beforeContent = getContentLanguage();
+  // Without a narrowing, text that followed the display language keeps following it.
+  const nextContent = narrowed || (beforeContent === before ? normalized : beforeContent);
+  if (normalized === before && nextContent === beforeContent) return;
   current.value = normalized;
+  current.content = nextContent;
   stampDocumentLanguage();
   for (const listener of [...current.listeners]) listener(normalized);
 }
@@ -109,6 +125,12 @@ if (typeof window !== 'undefined' && !window.__lingxiaApplyDisplayLanguage) {
 
 export function getDisplayLanguage(): string {
   return store().value;
+}
+
+/** The display language narrowed to the `languages` the lxapp's lxapp.json lists. */
+export function getContentLanguage(): string {
+  const current = store();
+  return current.content || current.value;
 }
 
 /**

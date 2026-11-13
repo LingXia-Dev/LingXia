@@ -160,6 +160,7 @@ fn a_lease_disposes_once_and_leaves_no_index_behind() {
     endpoint
         .update_environment(PageViewEnvironment::DisplayLanguage {
             language: "en".into(),
+            content: "en".into(),
             revision: 1,
         })
         .unwrap();

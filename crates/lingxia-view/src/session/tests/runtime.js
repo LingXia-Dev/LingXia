@@ -5055,7 +5055,7 @@
   };
   function pickerNode(env) {
     if (!picker) return null;
-    const words = wordsFor(env?.displayLanguage);
+    const words = wordsFor(env?.contentLanguage ?? env?.displayLanguage);
     const touch = (env?.pointer ?? "coarse") === "coarse";
     const body = picker.kind === "date" ? dateBody(words, env, !touch) : picker.kind === "time" ? timeBody(words, env) : selectBody(touch);
     const commit2 = () => picker.kind === "date" ? settle(iso2(picker.focus)) : picker.kind === "time" ? settle(timeIso(picker.value)) : picker.pick >= 0 ? settleSelect(picker.pick) : settle(null);

@@ -50,6 +50,14 @@ test('on touch a tap picks a day and Done commits it; Cancel and Escape keep the
   assert.deepEqual(JSON.parse(takePickerResults())[0].value, null);
 });
 
+test('the sheet speaks the language the lxapp is written in, not the display language', () => {
+  reset();
+  open({ kind: 'date', value: '2026-10-29' });
+  const nodes = render(() => h('view', {}), { pointer: 'coarse', displayLanguage: 'zh-Hans-CN', contentLanguage: 'en' });
+  assert.equal(nodes.find(n => n.testId === 'lx-picker-title').text, 'October 2026');
+  pickerKey('Escape'); takePickerResults();
+});
+
 test('a time picker honours the step and the hour cycle, and takes typed digits', () => {
   reset();
   const view = () => h('view', {});
