@@ -64,6 +64,42 @@ export interface DropdownMenuItemProps {
   'data-testid'?: string;
 }
 
+export interface DropdownMenuCheckboxItemProps {
+  /** The item's text and its accessible name. */
+  label: string;
+  /** A second line, read as the item's description. */
+  description?: string;
+  isChecked: boolean;
+  /** Runs with the new state; the menu stays open. */
+  onCheckedChange: (isChecked: boolean) => void;
+  /** @default false */
+  isDisabled?: boolean;
+  'data-testid'?: string;
+}
+
+export interface DropdownMenuRadioGroupProps {
+  /** The checked item's value; `null` while none is. */
+  value: string | null;
+  /** Runs with the value of the item chosen; the menu stays open. */
+  onChange: (value: string) => void;
+  /** `DropdownMenuRadioItem`s. */
+  children: Child;
+  /** Names the choices for assistive input when the menu's label does not, as in a menu with other items. */
+  label?: string;
+}
+
+export interface DropdownMenuRadioItemProps {
+  /** What the group's `onChange` carries. */
+  value: string;
+  /** The item's text and its accessible name. */
+  label: string;
+  /** A second line, read as the item's description. */
+  description?: string;
+  /** @default false */
+  isDisabled?: boolean;
+  'data-testid'?: string;
+}
+
 // `span-inline-end` spans from the trigger's start edge toward the inline end, so the menu's start
 // edge lines up with the trigger's; logical, so it mirrors in RTL.
 const areas = {
@@ -72,6 +108,7 @@ const areas = {
 } as const satisfies Record<DropdownMenuPlacement, Record<DropdownMenuAlignment, string>>;
 
 const MenuSize = createContext<ButtonSize | null>(null);
+const RadioGroup = createContext<DropdownMenuRadioGroupProps | null>(null);
 
 /**
  * A button that opens a menu of actions. The menu has the View's menu keyboard: arrows, Home, End
@@ -157,6 +194,66 @@ export function DropdownMenuItem({
         <text className={r.itemLabel.base}>{label}</text>
         {description !== undefined && <text id={descriptionId} className={r.itemDescription.base}>{description}</text>}
       </view>
+    </button>
+  );
+}
+
+/** An item that turns one option on or off, checked at its end. */
+export function DropdownMenuCheckboxItem({ label, description, isChecked, onCheckedChange, isDisabled = false, 'data-testid': testId }: DropdownMenuCheckboxItemProps) {
+  return (
+    <CheckableItem role="menuitemcheckbox" label={label} description={description} isChecked={isChecked} isDisabled={isDisabled}
+      onClick={() => onCheckedChange(!isChecked)} testId={testId} owner="DropdownMenuCheckboxItem" />
+  );
+}
+
+/** DropdownMenuRadioItems of which one is checked. It draws nothing of its own; set it off with dividers. */
+export function DropdownMenuRadioGroup(props: DropdownMenuRadioGroupProps) {
+  return (
+    <RadioGroup.Provider value={props}>
+      <view role="group" aria-label={props.label} className={r.radioGroup.base}>{props.children}</view>
+    </RadioGroup.Provider>
+  );
+}
+
+/** One choice in a DropdownMenuRadioGroup, checked at its end while it is the group's value. */
+export function DropdownMenuRadioItem({ value, label, description, isDisabled = false, 'data-testid': testId }: DropdownMenuRadioItemProps) {
+  const group = useContext(RadioGroup);
+  if (group === null) throw Error('DropdownMenuRadioItem: place it inside a DropdownMenuRadioGroup');
+  return (
+    <CheckableItem role="menuitemradio" label={label} description={description} isChecked={group.value === value} isDisabled={isDisabled}
+      onClick={() => { if (group.value !== value) group.onChange(value); }} testId={testId} owner="DropdownMenuRadioItem" />
+  );
+}
+
+function CheckableItem(props: {
+  role: 'menuitemcheckbox' | 'menuitemradio';
+  label: string;
+  description: string | undefined;
+  isChecked: boolean;
+  isDisabled: boolean;
+  onClick: () => void;
+  testId: string | undefined;
+  owner: string;
+}) {
+  const size = useContext(MenuSize);
+  const descriptionId = `${useId()}-description`;
+  if (size === null) throw Error(`${props.owner}: place it inside a DropdownMenu`);
+  return (
+    <button
+      role={props.role}
+      aria-checked={props.isChecked}
+      aria-label={props.label}
+      aria-describedby={props.description !== undefined ? descriptionId : undefined}
+      disabled={props.isDisabled}
+      onClick={props.onClick}
+      data-testid={props.testId}
+      className={cx(r.item.base, r.item.size[size])}
+    >
+      <view className={r.itemText.base}>
+        <text className={r.itemLabel.base}>{props.label}</text>
+        {props.description !== undefined && <text id={descriptionId} className={r.itemDescription.base}>{props.description}</text>}
+      </view>
+      {props.isChecked && <vector aria-hidden paths={glyphs.check} viewBox={glyphBox} className={r.itemCheck.base} />}
     </button>
   );
 }

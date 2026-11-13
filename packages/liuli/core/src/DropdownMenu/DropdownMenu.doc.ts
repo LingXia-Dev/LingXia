@@ -7,15 +7,18 @@ export const doc: ComponentDoc = {
   summary: 'Button that opens a short menu of actions',
   description:
     'DropdownMenu groups a few related actions behind one button: sort options, a "more" menu on a row, account actions. ' +
-    'Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu.',
+    'Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu. ' +
+    'DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one ' +
+    'choice; both keep the menu open.',
   keywords: ['dropdown', 'menu', 'more', 'overflow', 'kebab', 'actions', 'popover', 'context'],
   propsType: 'DropdownMenuProps',
-  otherPropsTypes: ['DropdownMenuItemProps'],
+  otherPropsTypes: ['DropdownMenuItemProps', 'DropdownMenuCheckboxItemProps', 'DropdownMenuRadioGroupProps', 'DropdownMenuRadioItemProps'],
   recipe: { map: 'dropdownMenuRecipe', parts: 'dropdownMenuParts' },
   anatomy: [
     { part: 'chevron', required: false, description: 'The trigger is a Button-styled popover invoker; the chevron marks it as opening a menu.' },
     { part: 'menu', required: true, description: 'A popover with the menu role, anchored to the trigger, in the top layer.' },
     { part: 'item', required: true, description: 'DropdownMenuItem: a menu item button with icon, label and description.' },
+    { part: 'itemCheck', required: false, description: 'A check at the end of a checked checkbox or radio item; hidden from assistive tech.' },
     { part: 'divider', required: false, description: 'DropdownMenuDivider: a hairline between groups; hidden from assistive tech.' },
   ],
   accessibility: {
@@ -24,6 +27,7 @@ export const doc: ComponentDoc = {
     description: [],
     states: [
       { state: 'expanded', from: 'the trigger, while the menu is open (set by the View)' },
+      { state: 'checked', from: "a checkbox item's isChecked; a radio item matching its group's value" },
       { state: 'disabled', from: "isDisabled; an item's isDisabled" },
     ],
     keyboard: [
@@ -42,6 +46,7 @@ export const doc: ComponentDoc = {
       'An item is named by its label and then its description, both inside the item.',
       'Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.',
       'A tap outside, Escape and back close the menu; that tap reaches nothing else.',
+      'Checkbox and radio items are read as checked or not, and keep the menu open so the change can be seen.',
     ],
   },
   guidance: {
@@ -60,6 +65,7 @@ export const doc: ComponentDoc = {
     { name: 'More', title: 'Icon-only "more" menu on a row' },
     { name: 'InList', title: 'A menu on every row' },
     { name: 'Value', title: 'A menu that sets a value' },
+    { name: 'Checkable', title: 'Options and a choice, checked' },
   ],
   gaps: [
     {
@@ -94,6 +100,7 @@ export const doc: ComponentDoc = {
       variants: [
         { name: 'More', title: 'Icon only, at the end of a row' },
         { name: 'Value', title: 'Showing the current choice' },
+        { name: 'Checkable', title: 'Checkbox and radio items' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large triggers' }],
       states: [

@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Basic, More, Value, Sizes, StateEnabled, StateDisabled, InList } from '../../../core/src/DropdownMenu/DropdownMenu.examples';
+import { Basic, More, Value, Checkable, Sizes, StateEnabled, StateDisabled, InList } from '../../../core/src/DropdownMenu/DropdownMenu.examples';
 import { GalleryPage, Lead, PageSection, Stage, StageGrid } from '../../shared/Layout';
 
 export function render() {
@@ -14,6 +14,9 @@ export function render() {
         </Stage>
         <Stage caption={"Showing the current choice"}>
           <Value />
+        </Stage>
+        <Stage caption={"Checkbox and radio items"}>
+          <Checkable />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

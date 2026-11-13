@@ -1,5 +1,12 @@
 import { useLocal, type VectorPath } from '@lingxia/view';
-import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from './DropdownMenu';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuDivider,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from './DropdownMenu';
 
 const dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];
 const trash: VectorPath[] = [{ d: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }];
@@ -118,17 +125,38 @@ export function StateEnabled() {
   );
 }
 
-/** A menu that sets a value: the trigger shows the choice, and the label stays its name. */
+/** A menu that sets a value: the trigger shows the choice, and the menu checks it. */
 export function Value() {
   const appearance = useLocal('appearance', 'System');
   return (
     <view className="flex-row items-center gap-3">
       <text className="grow basis-0 text-body text-text">Appearance</text>
       <DropdownMenu label="Appearance" value={appearance.value} variant="ghost" size="sm" alignment="end" data-testid="appearance">
-        {['System', 'Light', 'Dark'].map(option => (
-          <DropdownMenuItem key={option} label={option} onClick={() => appearance.set(option)} data-testid={`appearance-${option}`} />
-        ))}
+        <DropdownMenuRadioGroup value={appearance.value} onChange={next => appearance.set(next)}>
+          {['System', 'Light', 'Dark'].map(option => (
+            <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`appearance-${option}`} />
+          ))}
+        </DropdownMenuRadioGroup>
       </DropdownMenu>
     </view>
+  );
+}
+
+/** Options turned on and off, and one choice among several, in one menu that stays open while they change. */
+export function Checkable() {
+  const completed = useLocal('completed', true);
+  const archived = useLocal('archived', false);
+  const grouping = useLocal('grouping', 'Day');
+  return (
+    <DropdownMenu label="View" data-testid="view-menu">
+      <DropdownMenuCheckboxItem label="Show completed" isChecked={completed.value} onCheckedChange={next => completed.set(next)} data-testid="show-completed" />
+      <DropdownMenuCheckboxItem label="Show archived" isChecked={archived.value} onCheckedChange={next => archived.set(next)} data-testid="show-archived" />
+      <DropdownMenuDivider />
+      <DropdownMenuRadioGroup label="Group by" value={grouping.value} onChange={next => grouping.set(next)}>
+        {['Day', 'Week', 'Month'].map(option => (
+          <DropdownMenuRadioItem key={option} value={option} label={`Group by ${option.toLowerCase()}`} data-testid={`group-${option}`} />
+        ))}
+      </DropdownMenuRadioGroup>
+    </DropdownMenu>
   );
 }

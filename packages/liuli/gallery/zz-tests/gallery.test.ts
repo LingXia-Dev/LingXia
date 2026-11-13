@@ -90,6 +90,24 @@ spec('dropdown: Enter opens on the first item; Down then Enter runs the second',
   await expect(view.testId('order')).toHaveText('Last updated');
 });
 
+spec('dropdown: checkbox and radio items check and keep the menu open; arrows reach them', { start: { page: 'dropdown-menu' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  const menu = view.getByRole('menu', { name: 'View' });
+  await view.testId('view-menu').click();
+  await expect(menu).toBeVisible();
+  await expect(view.testId('show-completed')).toBeChecked();
+  await view.testId('show-archived').click();
+  await expect(view.testId('show-archived')).toBeChecked();
+  await expect(menu).toBeVisible();
+  await view.testId('group-Week').click();
+  await expect(view.testId('group-Week')).toBeChecked();
+  await expect(view.testId('group-Day')).not.toBeChecked();
+  await expect(menu).toBeVisible();
+  await view.testId('group-Week').press('ArrowDown');
+  await expect(view.testId('group-Month')).toBeFocused();
+  await expect(view.testId('group-Week')).toBeChecked();
+});
+
 spec('text input: an invalid email is marked; typing reaches the field', { start: { page: 'text-input' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const email = view.getByRole('textbox', { name: 'Email' });

@@ -80,3 +80,43 @@ test('Value: the trigger shows the choice, is named by its label and described b
   screen.press(screen.getByTestId('appearance-Dark'));
   assert.deepEqual(described(screen, screen.getByTestId('appearance')), ['Dark']);
 });
+
+test('Value: the chosen option is a checked radio item, and choosing another moves the check', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Value');
+  screen.press(screen.getByTestId('appearance'));
+  const option = name => screen.getByTestId(`appearance-${name}`);
+  assert.equal(option('System').props.role, 'menuitemradio');
+  assert.equal(option('System').props.stateChecked, 1);
+  assert.equal(option('Dark').props.stateChecked, 0);
+  screen.press(option('Dark'));
+  assert.equal(option('Dark').props.stateChecked, 1);
+  assert.equal(option('System').props.stateChecked, 0);
+});
+
+test('Checkable: a checkbox item flips; a radio item checks one; the check is drawn only', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Checkable');
+  screen.press(screen.getByTestId('view-menu'));
+  const completed = screen.getByTestId('show-completed');
+  assert.equal(completed.props.role, 'menuitemcheckbox');
+  assert.equal(completed.props.accessibilityLabel, 'Show completed');
+  assert.equal(completed.props.stateChecked, 1);
+  assert.ok(completed.children.some(node => node.tag === 'vector' && node.props.accessibilityHidden), 'a hidden check');
+  assert.ok(!screen.getByTestId('show-archived').children.some(node => node.tag === 'vector'), 'no check while off');
+  screen.press(completed);
+  assert.equal(screen.getByTestId('show-completed').props.stateChecked, 0);
+  screen.press(screen.getByTestId('group-Week'));
+  assert.equal(screen.getByTestId('group-Week').props.stateChecked, 1);
+  assert.equal(screen.getByTestId('group-Day').props.stateChecked, 0);
+});
+
+test('a radio item outside a DropdownMenuRadioGroup fails, naming the fix', async () => {
+  await assert.rejects(async () => {
+    const screen = await renderPage(`
+      import { DropdownMenu, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';
+      export function render() {
+        return <page><DropdownMenu label="Menu" data-testid="menu"><DropdownMenuRadioItem value="a" label="A" /></DropdownMenu></page>;
+      }
+    `);
+    screen.press(screen.getByTestId('menu'));
+  }, /DropdownMenuRadioGroup/);
+});

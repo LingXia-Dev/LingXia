@@ -1827,12 +1827,15 @@
       "exports": [
         "DropdownMenu",
         "DropdownMenuItem",
+        "DropdownMenuCheckboxItem",
+        "DropdownMenuRadioGroup",
+        "DropdownMenuRadioItem",
         "DropdownMenuDivider"
       ],
       "category": "overlays",
       "status": "preview",
       "summary": "Button that opens a short menu of actions",
-      "description": "DropdownMenu groups a few related actions behind one button: sort options, a \"more\" menu on a row, account actions. Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu.",
+      "description": "DropdownMenu groups a few related actions behind one button: sort options, a \"more\" menu on a row, account actions. Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu. DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one choice; both keep the menu open.",
       "keywords": [
         "dropdown",
         "menu",
@@ -1993,6 +1996,104 @@
             "required": false,
             "description": ""
           }
+        ],
+        "DropdownMenuCheckboxItem": [
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "The item's text and its accessible name."
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "required": false,
+            "description": "A second line, read as the item's description."
+          },
+          {
+            "name": "isChecked",
+            "type": "boolean",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "onCheckedChange",
+            "type": "(isChecked: boolean) => void",
+            "required": true,
+            "description": "Runs with the new state; the menu stays open."
+          },
+          {
+            "name": "isDisabled",
+            "type": "boolean",
+            "required": false,
+            "description": "",
+            "default": "false"
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
+        ],
+        "DropdownMenuRadioGroup": [
+          {
+            "name": "value",
+            "type": "string | null",
+            "required": true,
+            "description": "The checked item's value; `null` while none is."
+          },
+          {
+            "name": "onChange",
+            "type": "(value: string) => void",
+            "required": true,
+            "description": "Runs with the value of the item chosen; the menu stays open."
+          },
+          {
+            "name": "children",
+            "type": "Child",
+            "required": true,
+            "description": "`DropdownMenuRadioItem`s."
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": false,
+            "description": "Names the choices for assistive input when the menu's label does not, as in a menu with other items."
+          }
+        ],
+        "DropdownMenuRadioItem": [
+          {
+            "name": "value",
+            "type": "string",
+            "required": true,
+            "description": "What the group's `onChange` carries."
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "The item's text and its accessible name."
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "required": false,
+            "description": "A second line, read as the item's description."
+          },
+          {
+            "name": "isDisabled",
+            "type": "boolean",
+            "required": false,
+            "description": "",
+            "default": "false"
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
         ]
       },
       "parts": {
@@ -2003,6 +2104,8 @@
         "itemText": "view",
         "itemLabel": "text",
         "itemDescription": "text",
+        "itemCheck": "vector",
+        "radioGroup": "view",
         "divider": "view"
       },
       "accessibility": {
@@ -2013,6 +2116,10 @@
           {
             "state": "expanded",
             "from": "the trigger, while the menu is open (set by the View)"
+          },
+          {
+            "state": "checked",
+            "from": "a checkbox item's isChecked; a radio item matching its group's value"
           },
           {
             "state": "disabled",
@@ -2067,7 +2174,8 @@
         "notes": [
           "An item is named by its label and then its description, both inside the item.",
           "Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.",
-          "A tap outside, Escape and back close the menu; that tap reaches nothing else."
+          "A tap outside, Escape and back close the menu; that tap reaches nothing else.",
+          "Checkbox and radio items are read as checked or not, and keep the menu open so the change can be seen."
         ]
       },
       "examples": [
@@ -2089,7 +2197,12 @@
         {
           "name": "Value",
           "title": "A menu that sets a value",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\n\n/** A menu that sets a value: the trigger shows the choice, and the label stays its name. */\nexport function Value() {\n  const appearance = useLocal('appearance', 'System');\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <text className=\"grow basis-0 text-body text-text\">Appearance</text>\n      <DropdownMenu label=\"Appearance\" value={appearance.value} variant=\"ghost\" size=\"sm\" alignment=\"end\" data-testid=\"appearance\">\n        {['System', 'Light', 'Dark'].map(option => (\n          <DropdownMenuItem key={option} label={option} onClick={() => appearance.set(option)} data-testid={`appearance-${option}`} />\n        ))}\n      </DropdownMenu>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';\n\n/** A menu that sets a value: the trigger shows the choice, and the menu checks it. */\nexport function Value() {\n  const appearance = useLocal('appearance', 'System');\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <text className=\"grow basis-0 text-body text-text\">Appearance</text>\n      <DropdownMenu label=\"Appearance\" value={appearance.value} variant=\"ghost\" size=\"sm\" alignment=\"end\" data-testid=\"appearance\">\n        <DropdownMenuRadioGroup value={appearance.value} onChange={next => appearance.set(next)}>\n          {['System', 'Light', 'Dark'].map(option => (\n            <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`appearance-${option}`} />\n          ))}\n        </DropdownMenuRadioGroup>\n      </DropdownMenu>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Checkable",
+          "title": "Options and a choice, checked",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';\n\n/** Options turned on and off, and one choice among several, in one menu that stays open while they change. */\nexport function Checkable() {\n  const completed = useLocal('completed', true);\n  const archived = useLocal('archived', false);\n  const grouping = useLocal('grouping', 'Day');\n  return (\n    <DropdownMenu label=\"View\" data-testid=\"view-menu\">\n      <DropdownMenuCheckboxItem label=\"Show completed\" isChecked={completed.value} onCheckedChange={next => completed.set(next)} data-testid=\"show-completed\" />\n      <DropdownMenuCheckboxItem label=\"Show archived\" isChecked={archived.value} onCheckedChange={next => archived.set(next)} data-testid=\"show-archived\" />\n      <DropdownMenuDivider />\n      <DropdownMenuRadioGroup label=\"Group by\" value={grouping.value} onChange={next => grouping.set(next)}>\n        {['Day', 'Week', 'Month'].map(option => (\n          <DropdownMenuRadioItem key={option} value={option} label={`Group by ${option.toLowerCase()}`} data-testid={`group-${option}`} />\n        ))}\n      </DropdownMenuRadioGroup>\n    </DropdownMenu>\n  );\n}"
         }
       ],
       "gaps": [
@@ -2132,6 +2245,10 @@
             {
               "name": "Value",
               "title": "Showing the current choice"
+            },
+            {
+              "name": "Checkable",
+              "title": "Checkbox and radio items"
             }
           ],
           "sizes": [

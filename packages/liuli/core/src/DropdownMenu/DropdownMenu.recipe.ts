@@ -9,6 +9,8 @@ export const dropdownMenuParts = {
   itemText: 'view',
   itemLabel: 'text',
   itemDescription: 'text',
+  itemCheck: 'vector',
+  radioGroup: 'view',
   divider: 'view',
 } as const;
 
@@ -39,6 +41,14 @@ export const dropdownMenuRecipe = {
   },
   itemDescription: {
     base: 'text-footnote text-muted',
+  },
+  /** The check at the end of a checked checkbox or radio item. */
+  itemCheck: {
+    base: 'size-4 shrink-0 text-accent',
+  },
+  /** Spaced as the menu spaces its items. */
+  radioGroup: {
+    base: 'gap-0.5',
   },
   divider: {
     base: 'h-px -mx-1 my-1 bg-line',

@@ -3,7 +3,7 @@ import { Avatar } from '@liulidesign/core/Avatar';
 import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
 import { Dialog } from '@liulidesign/core/Dialog';
-import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';
 import { Item, ItemList } from '@liulidesign/core/Item';
 import { RadioGroup } from '@liulidesign/core/RadioGroup';
 import { Slider } from '@liulidesign/core/Slider';
@@ -48,7 +48,9 @@ function ChoiceRow({ label, help, value, options, onChange, testId }: { label: s
       description={help}
       endContent={
         <DropdownMenu label={label} value={value} variant="ghost" size="sm" alignment="end" data-testid={testId}>
-          {options.map(option => <DropdownMenuItem key={option} label={option} onClick={() => onChange(option)} data-testid={`${testId}-${option.toLowerCase()}`} />)}
+          <DropdownMenuRadioGroup value={value} onChange={onChange}>
+            {options.map(option => <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`${testId}-${option.toLowerCase()}`} />)}
+          </DropdownMenuRadioGroup>
         </DropdownMenu>
       }
     />

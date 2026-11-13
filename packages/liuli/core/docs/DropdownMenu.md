@@ -5,10 +5,10 @@
 Button that opens a short menu of actions. Status: preview.
 
 ```ts
-import { DropdownMenu, DropdownMenuItem, DropdownMenuDivider } from '@liulidesign/core/DropdownMenu';
+import { DropdownMenu, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuDivider } from '@liulidesign/core/DropdownMenu';
 ```
 
-DropdownMenu groups a few related actions behind one button: sort options, a "more" menu on a row, account actions. Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu.
+DropdownMenu groups a few related actions behind one button: sort options, a "more" menu on a row, account actions. Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu. DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one choice; both keep the menu open.
 
 ## Examples
 
@@ -111,20 +111,48 @@ export function InList() {
 
 ```tsx
 import { useLocal } from '@lingxia/view';
-import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';
 
-/** A menu that sets a value: the trigger shows the choice, and the label stays its name. */
+/** A menu that sets a value: the trigger shows the choice, and the menu checks it. */
 export function Value() {
   const appearance = useLocal('appearance', 'System');
   return (
     <view className="flex-row items-center gap-3">
       <text className="grow basis-0 text-body text-text">Appearance</text>
       <DropdownMenu label="Appearance" value={appearance.value} variant="ghost" size="sm" alignment="end" data-testid="appearance">
-        {['System', 'Light', 'Dark'].map(option => (
-          <DropdownMenuItem key={option} label={option} onClick={() => appearance.set(option)} data-testid={`appearance-${option}`} />
-        ))}
+        <DropdownMenuRadioGroup value={appearance.value} onChange={next => appearance.set(next)}>
+          {['System', 'Light', 'Dark'].map(option => (
+            <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`appearance-${option}`} />
+          ))}
+        </DropdownMenuRadioGroup>
       </DropdownMenu>
     </view>
+  );
+}
+```
+
+### Options and a choice, checked
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';
+
+/** Options turned on and off, and one choice among several, in one menu that stays open while they change. */
+export function Checkable() {
+  const completed = useLocal('completed', true);
+  const archived = useLocal('archived', false);
+  const grouping = useLocal('grouping', 'Day');
+  return (
+    <DropdownMenu label="View" data-testid="view-menu">
+      <DropdownMenuCheckboxItem label="Show completed" isChecked={completed.value} onCheckedChange={next => completed.set(next)} data-testid="show-completed" />
+      <DropdownMenuCheckboxItem label="Show archived" isChecked={archived.value} onCheckedChange={next => archived.set(next)} data-testid="show-archived" />
+      <DropdownMenuDivider />
+      <DropdownMenuRadioGroup label="Group by" value={grouping.value} onChange={next => grouping.set(next)}>
+        {['Day', 'Week', 'Month'].map(option => (
+          <DropdownMenuRadioItem key={option} value={option} label={`Group by ${option.toLowerCase()}`} data-testid={`group-${option}`} />
+        ))}
+      </DropdownMenuRadioGroup>
+    </DropdownMenu>
   );
 }
 ```
@@ -162,6 +190,36 @@ export function Value() {
 | `variant` | `DropdownMenuItemVariant` | `'default'` | `destructive` tints the icon with the danger role; the text stays readable. |
 | `data-testid` | `string` |  |  |
 
+## DropdownMenuCheckboxItem props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `label` (required) | `string` |  | The item's text and its accessible name. |
+| `description` | `string` |  | A second line, read as the item's description. |
+| `isChecked` (required) | `boolean` |  |  |
+| `onCheckedChange` (required) | `(isChecked: boolean) => void` |  | Runs with the new state; the menu stays open. |
+| `isDisabled` | `boolean` | `false` |  |
+| `data-testid` | `string` |  |  |
+
+## DropdownMenuRadioGroup props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `value` (required) | `string \| null` |  | The checked item's value; `null` while none is. |
+| `onChange` (required) | `(value: string) => void` |  | Runs with the value of the item chosen; the menu stays open. |
+| `children` (required) | `Child` |  | `DropdownMenuRadioItem`s. |
+| `label` | `string` |  | Names the choices for assistive input when the menu's label does not, as in a menu with other items. |
+
+## DropdownMenuRadioItem props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `value` (required) | `string` |  | What the group's `onChange` carries. |
+| `label` (required) | `string` |  | The item's text and its accessible name. |
+| `description` | `string` |  | A second line, read as the item's description. |
+| `isDisabled` | `boolean` | `false` |  |
+| `data-testid` | `string` |  |  |
+
 ## Anatomy
 
 | Part | Element | Required | Description |
@@ -169,6 +227,7 @@ export function Value() {
 | chevron | `<vector>` | no | The trigger is a Button-styled popover invoker; the chevron marks it as opening a menu. |
 | menu | `<view>` | yes | A popover with the menu role, anchored to the trigger, in the top layer. |
 | item | `<button>` | yes | DropdownMenuItem: a menu item button with icon, label and description. |
+| itemCheck | `<vector>` | no | A check at the end of a checked checkbox or radio item; hidden from assistive tech. |
 | divider | `<view>` | no | DropdownMenuDivider: a hairline between groups; hidden from assistive tech. |
 
 ## Accessibility
@@ -176,7 +235,7 @@ export function Value() {
 - Pattern: menuButton.
 - Name: label.
 - Description: none.
-- States: expanded (from the trigger, while the menu is open (set by the View)); disabled (from isDisabled; an item's isDisabled).
+- States: expanded (from the trigger, while the menu is open (set by the View)); checked (from a checkbox item's isChecked; a radio item matching its group's value); disabled (from isDisabled; an item's isDisabled).
 - Enter, Space on the trigger: opens the menu on its first item.
 - Up, Down: moves between items, wrapping.
 - Home, End: first and last item.
@@ -186,6 +245,7 @@ export function Value() {
 - An item is named by its label and then its description, both inside the item.
 - Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.
 - A tap outside, Escape and back close the menu; that tap reaches nothing else.
+- Checkbox and radio items are read as checked or not, and keep the menu open so the change can be seen.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
