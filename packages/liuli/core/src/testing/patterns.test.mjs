@@ -45,6 +45,14 @@ test('settings: each group is a list named by its heading, every row a list item
   assert.deepEqual(lists.map(rows), [1, 5, 3, 1]);
 });
 
+test('uploads: each section is a list named by its heading, every card a list item', async () => {
+  const screen = await open('uploads');
+  const lists = screen.queryAll(node => node.props.role === 'list');
+  assert.deepEqual(lists.map(list => list.props.accessibilityLabel), ['In progress', 'Done today']);
+  const rows = list => screen.queryAll(node => node.props.role === 'listitem' && list.children.includes(node)).length;
+  assert.deepEqual(lists.map(rows), [3, 1]);
+});
+
 test('uploads: a failed upload retries, and the photos finish', async () => {
   const screen = await open('uploads');
   screen.press(screen.getByTestId('retry'));

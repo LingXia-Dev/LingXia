@@ -48,59 +48,69 @@ export function render() {
       </view>
 
       <PageSection title="In progress">
-        <view className="gap-3">
-          <Card padding="sm">
-            <view className="gap-3">
-              <Heading
-                name="Site photos.zip"
-                detail={photosDone ? '182 MB' : `${sent.value} of 182 MB`}
-                status={photosDone ? <Badge label="Uploaded" tone="success" size="sm" /> : paused.value ? <Badge label="Paused" tone="warning" size="sm" /> : undefined}
-              />
-              {!photosDone && (
-                <>
-                  <ProgressBar label="Site photos.zip" isLabelHidden value={sent.value} max={182} data-testid="photos" />
-                  <view className="flex-row justify-end gap-2">
-                    <Button label={paused.value ? 'Resume' : 'Pause'} size="sm" variant="ghost" onClick={() => paused.set(!paused.value)} data-testid="pause" />
-                    <Button label="Send more" size="sm" isDisabled={paused.value} onClick={() => sent.set(Math.min(182, sent.value + 22))} data-testid="send-more" />
-                  </view>
-                </>
-              )}
-            </view>
-          </Card>
-
-          <Card padding="sm">
-            <view className="gap-3">
-              <Heading name="Interview.mov" detail="1.4 GB" />
-              <view className="flex-row items-center gap-2">
-                <Spinner label="Waiting" size="sm" />
-                <text className="text-footnote text-muted">Waiting for Wi-Fi</text>
+        <view role="list" aria-label="In progress" className="gap-3" data-testid="in-progress">
+          <view role="listitem">
+            <Card padding="sm">
+              <view className="gap-3">
+                <Heading
+                  name="Site photos.zip"
+                  detail={photosDone ? '182 MB' : `${sent.value} of 182 MB`}
+                  status={photosDone ? <Badge label="Uploaded" tone="success" size="sm" /> : paused.value ? <Badge label="Paused" tone="warning" size="sm" /> : undefined}
+                />
+                {!photosDone && (
+                  <>
+                    <ProgressBar label="Site photos.zip" isLabelHidden value={sent.value} max={182} data-testid="photos" />
+                    <view className="flex-row justify-end gap-2">
+                      <Button label={paused.value ? 'Resume' : 'Pause'} size="sm" variant="ghost" onClick={() => paused.set(!paused.value)} data-testid="pause" />
+                      <Button label="Send more" size="sm" isDisabled={paused.value} onClick={() => sent.set(Math.min(182, sent.value + 22))} data-testid="send-more" />
+                    </view>
+                  </>
+                )}
               </view>
-            </view>
-          </Card>
+            </Card>
+          </view>
 
-          <Card padding="sm">
-            <view className="gap-3">
-              <Heading
-                name="Budget 2026.xlsx"
-                detail={retried.value ? 'Trying again' : 'The connection dropped'}
-                status={retried.value ? undefined : <Badge label="Failed" tone="danger" size="sm" />}
-              />
-              {retried.value ? (
-                <ProgressBar label="Budget 2026.xlsx" isLabelHidden data-testid="budget" />
-              ) : (
-                <view className="flex-row justify-end">
-                  <Button label="Retry" size="sm" onClick={() => retried.set(true)} data-testid="retry" />
+          <view role="listitem">
+            <Card padding="sm">
+              <view className="gap-3">
+                <Heading name="Interview.mov" detail="1.4 GB" />
+                <view className="flex-row items-center gap-2">
+                  <Spinner label="Waiting" size="sm" />
+                  <text className="text-footnote text-muted">Waiting for Wi-Fi</text>
                 </view>
-              )}
-            </view>
-          </Card>
+              </view>
+            </Card>
+          </view>
+
+          <view role="listitem">
+            <Card padding="sm">
+              <view className="gap-3">
+                <Heading
+                  name="Budget 2026.xlsx"
+                  detail={retried.value ? 'Trying again' : 'The connection dropped'}
+                  status={retried.value ? undefined : <Badge label="Failed" tone="danger" size="sm" />}
+                />
+                {retried.value ? (
+                  <ProgressBar label="Budget 2026.xlsx" isLabelHidden data-testid="budget" />
+                ) : (
+                  <view className="flex-row justify-end">
+                    <Button label="Retry" size="sm" onClick={() => retried.set(true)} data-testid="retry" />
+                  </view>
+                )}
+              </view>
+            </Card>
+          </view>
         </view>
       </PageSection>
 
       <PageSection title="Done today">
-        <Card padding="sm">
-          <Heading name="Quarterly report.pdf" detail="4.2 MB · 09:12" status={<Badge label="Uploaded" tone="success" size="sm" />} />
-        </Card>
+        <view role="list" aria-label="Done today" data-testid="done-today">
+          <view role="listitem">
+            <Card padding="sm">
+              <Heading name="Quarterly report.pdf" detail="4.2 MB · 09:12" status={<Badge label="Uploaded" tone="success" size="sm" />} />
+            </Card>
+          </view>
+        </view>
       </PageSection>
     </GalleryPage>
   );
