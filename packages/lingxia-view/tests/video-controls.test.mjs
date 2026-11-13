@@ -283,3 +283,28 @@ test('the overlay scrubber touch box ends above the buttons and draws its line t
   assert.equal(scrub.insetTop + scrub.paddingTop + (scrub.height - scrub.paddingTop) / 2, bar.paddingTop - 2);
   delete globalThis.__lingxiaVideoCommand;
 });
+
+test('a paused seek that reports zero on its way keeps the bar and shows no large play', () => {
+  reset();
+  globalThis.__lingxiaVideoCommand = () => '';
+  const render = () => {
+    const hero = useVideo('hero');
+    return h('view', {}, h('video', { player: hero, src: 'a.mp4' }), h(VideoControls, { player: hero, overlay: true, 'data-testid': 'bar' }));
+  };
+  const nodes = () => { const out = decode(prepare(render, { env: { pointer: 'coarse' } })); commit(); return out; };
+  const by = (list, testId) => list.find(node => node.testId === testId);
+  const report = next => {
+    const video = nodes().find(node => node.tag === 'video');
+    dispatch(video.props.onVideoEvent, JSON.stringify({ status: { ...status, ...next }, events: [] }));
+  };
+  report({ paused: true, currentTime: 1, duration: 6 });
+  dispatch(by(nodes(), 'bar-scrub').props.onSliderChange, 3.6);
+  report({ paused: true, currentTime: 0, duration: 6, seeking: true });
+  let list = nodes();
+  assert.equal(by(list, 'bar-chrome').props.opacity, 1, 'held while the drag is on');
+  assert.equal(by(list, 'bar-start'), undefined);
+  report({ paused: true, currentTime: 0, duration: 6, seeking: true });
+  list = nodes();
+  assert.equal(by(list, 'bar-start'), undefined, 'and while the seek is on');
+  delete globalThis.__lingxiaVideoCommand;
+});

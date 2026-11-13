@@ -5302,7 +5302,7 @@
     const { since, hidden } = shown.value;
     const elapsed = now2 >= since ? now2 - since : now2;
     const playing = !paused && !ended;
-    const fresh2 = paused && !ended && !asked.value && now2 === 0 && !error;
+    const fresh2 = paused && !ended && !asked.value && now2 === 0 && !error && !holding && !player.seeking;
     const pinned = loading || !!error || !playing || holding || menu.value;
     const up = !fresh2 && (pinned || precise || !hidden && elapsed < SHOWN_S);
     const pad2 = edge ?? { top: 0, left: 0, right: 0, bottom: 0 };

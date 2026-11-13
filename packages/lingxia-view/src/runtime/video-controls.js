@@ -136,7 +136,8 @@ export function VideoControls({ player, overlay = false, labels, className, 'dat
   const { since, hidden } = shown.value;
   const elapsed = now >= since ? now - since : now;
   const playing = !paused && !ended;
-  const fresh = paused && !ended && !asked.value && now === 0 && !error;
+  // A seek can report 0 on its way (Harmony); a drag or seek is never the first play.
+  const fresh = paused && !ended && !asked.value && now === 0 && !error && !holding && !player.seeking;
   // Kept up whatever the pointer does: paused, loading, an error, an open menu, a drag in progress.
   const pinned = loading || !!error || !playing || holding || menu.value;
   // Touch: a tap shows the controls; a stretch of playback or a tap on the picture hides them.
