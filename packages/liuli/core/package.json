@@ -60,6 +60,8 @@
     "./Toast/recipe": "./src/Toast/Toast.recipe.ts",
     "./SegmentedControl": "./src/SegmentedControl/SegmentedControl.tsx",
     "./SegmentedControl/recipe": "./src/SegmentedControl/SegmentedControl.recipe.ts",
+    "./BottomSheet": "./src/BottomSheet/BottomSheet.tsx",
+    "./BottomSheet/recipe": "./src/BottomSheet/BottomSheet.recipe.ts",
     "./package.json": "./package.json"
   },
   "lingxia": {

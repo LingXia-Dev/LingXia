@@ -9,7 +9,7 @@ const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const pages = [
   'colour', 'typography', 'shape-and-spacing', 'elevation', 'motion',
   'button', 'toggle-button', 'tabs', 'text-input', 'select', 'checkbox-input', 'radio-group', 'switch', 'slider', 'text-area', 'segmented-control', 'field',
-  'badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast', 'dialog', 'dropdown-menu', 'tooltip', 'card', 'item', 'details', 'avatar', 'video-player', 'video-controls',
+  'badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast', 'dialog', 'dropdown-menu', 'tooltip', 'bottom-sheet', 'card', 'item', 'details', 'avatar', 'video-player', 'video-controls',
   'sign-in', 'settings', 'uploads',
 ];
 

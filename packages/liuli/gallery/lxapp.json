@@ -32,6 +32,7 @@
     { "name": "dialog", "path": "pages/dialog/index" },
     { "name": "dropdown-menu", "path": "pages/dropdown-menu/index" },
     { "name": "tooltip", "path": "pages/tooltip/index" },
+    { "name": "bottom-sheet", "path": "pages/bottom-sheet/index" },
     { "name": "card", "path": "pages/card/index" },
     { "name": "item", "path": "pages/item/index" },
     { "name": "details", "path": "pages/details/index" },

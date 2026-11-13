@@ -1,0 +1,177 @@
+<!-- Generated from the doc file by scripts/generate.mjs; do not edit. -->
+
+# BottomSheet
+
+A modal panel on the bottom edge that drags between detents and off to close. Status: preview.
+
+```ts
+import { BottomSheet } from '@liulidesign/core/BottomSheet';
+```
+
+BottomSheet holds a short task or a choice that belongs to the page under it: where to move a note, the comments on it. It is a dialog on the bottom edge, in reach of a thumb. A `fit` sheet is as tall as its content; an `expandable` one opens halfway and drags up to nearly the full height. Dragging it off screen closes it.
+
+## Examples
+
+### A choice, as tall as its list
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Button } from '@liulidesign/core/Button';
+import { Item, ItemList } from '@liulidesign/core/Item';
+import { BottomSheet } from '@liulidesign/core/BottomSheet';
+
+const moveTargets = ['Inbox', 'Travel', 'Work', 'Recipes'];
+
+/** Choosing where a note goes: a sheet as tall as its list, dragged down or tapped outside to cancel. */
+export function MoveTo() {
+  const open = useLocal('open', false);
+  const folder = useLocal('folder', 'Inbox');
+  return (
+    <view className="gap-3">
+      <Button label="Move note" width="content" onClick={() => open.set(true)} data-testid="move-open" />
+      <text className="text-footnote text-muted" data-testid="folder">{`In ${folder.value}`}</text>
+      <BottomSheet isOpen={open.value} onOpenChange={next => open.set(next)} label="Move to" data-testid="move">
+        <ItemList label="Folders">
+          {moveTargets.map(name => (
+            <Item key={name} label={name} onClick={() => { folder.set(name); open.set(false); }} data-testid={`folder-${name}`} />
+          ))}
+        </ItemList>
+      </BottomSheet>
+    </view>
+  );
+}
+```
+
+### A long list, opening halfway
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Button } from '@liulidesign/core/Button';
+import { BottomSheet } from '@liulidesign/core/BottomSheet';
+
+const comments = [
+  ['Ana', 'Can we move the review to Thursday?'],
+  ['Kai', 'Thursday works. I will update the plan.'],
+  ['Mira', 'Added the budget numbers under Q3.'],
+  ['Ana', 'Thanks. The hiring section still needs dates.'],
+  ['Kai', 'I will add them after the sync.'],
+  ['Mira', 'Linked the research notes as well.'],
+] as const;
+
+/** A long list: the sheet opens halfway and drags up to nearly the full height. */
+export function Comments() {
+  const open = useLocal('open', false);
+  return (
+    <view className="gap-3">
+      <Button label="Show comments" width="content" onClick={() => open.set(true)} data-testid="comments-open" />
+      <BottomSheet
+        isOpen={open.value}
+        onOpenChange={next => open.set(next)}
+        label="Comments"
+        closeLabel="Close"
+        detents="expandable"
+        data-testid="comments"
+      >
+        {comments.map(([who, text], index) => (
+          <view key={`c${index}`} className="gap-0.5">
+            <text className="text-footnote font-semibold text-text">{who}</text>
+            <text className="text-body text-text">{text}</text>
+          </view>
+        ))}
+      </BottomSheet>
+    </view>
+  );
+}
+```
+
+### A question that must be answered
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Button } from '@liulidesign/core/Button';
+import { BottomSheet } from '@liulidesign/core/BottomSheet';
+
+/** A step that must be answered: no drag off, no tap outside. */
+export function Required() {
+  const open = useLocal('open', false);
+  const answer = useLocal('answer', '');
+  return (
+    <view className="gap-3">
+      <Button label="Leave notebook" variant="destructive" width="content" onClick={() => open.set(true)} data-testid="leave-open" />
+      {answer.value !== '' && <text className="text-footnote text-muted" data-testid="answer">{answer.value}</text>}
+      <BottomSheet
+        isOpen={open.value}
+        onOpenChange={next => open.set(next)}
+        label="Leave this notebook?"
+        description="You lose access to its notes until someone invites you again."
+        dismissOn="none"
+        data-testid="leave"
+        actions={
+          <>
+            <Button label="Stay" onClick={() => { answer.set('Stayed'); open.set(false); }} data-testid="stay" />
+            <Button label="Leave" variant="destructive" onClick={() => { answer.set('Left'); open.set(false); }} data-testid="leave-confirm" />
+          </>
+        }
+      />
+    </view>
+  );
+}
+```
+
+## Props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `isOpen` (required) | `boolean` |  | Whether it is shown. A closed sheet renders nothing, so local state inside starts over. |
+| `onOpenChange` (required) | `(isOpen: boolean) => void` |  | Called with `false` on a close request: Escape, back, the backdrop or a drag off screen per `dismissOn`, the close button. |
+| `label` (required) | `string` |  | The title, and the sheet's accessible name. |
+| `isLabelHidden` | `boolean` | `false` | Keeps `label` as the name without drawing it as a title. |
+| `description` | `string` |  | One or two sentences under the title, read as the sheet's description. |
+| `children` | `Child` |  | The body; it scrolls when the sheet reaches its height. |
+| `actions` | `Child` |  | The footer, typically Buttons, the main action last. |
+| `closeLabel` | `string` |  | Shows a close button in the header, named by this text. |
+| `dismissOn` | `DialogDismissOn` | `'any'` | Which requests close it; with `none` it cannot be dragged off either. |
+| `detents` | `BottomSheetDetents` | `'fit'` |  |
+| `className` | `string` |  | Classes for the panel. |
+| `data-testid` | `string` |  |  |
+
+## Anatomy
+
+| Part | Element | Required | Description |
+| --- | --- | --- | --- |
+| panel | `<dialog>` | yes | The dialog on the bottom edge, rounded at the top; it follows the finger between its detents. |
+| grabber | `<view>` | yes | The handle at the top edge; decoration, hidden from assistive tech. |
+| header | `<view>` | no | The title, and the close button when `closeLabel` is set. |
+| description | `<text>` | no | One or two sentences under the title, read as the description. |
+| body | `<scroll>` | no | `children`, scrolling when the sheet reaches its height; a drag in it moves the sheet first. |
+| footer | `<view>` | no | `actions`, end-aligned, wrapping when narrow. |
+
+## Accessibility
+
+- Pattern: dialog.
+- Name: label.
+- Description: description.
+- States: modal (from isOpen).
+- Escape: onOpenChange(false), unless dismissOn is none.
+- Up, Down: With the sheet focused, the next detent up or down..
+- Screen readers announce the sheet as adjustable: increment and decrement step it between detents.
+- Android back, the screen reader dismiss gesture and a drag off screen are close requests, like Escape.
+- The sheet pads its bottom by the safe area, so its last control clears the home indicator.
+
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| title | `text` on `surface-raised` | 4.5:1 | 16.26:1 | 11.83:1 |
+| description | `text-muted` on `surface-raised` | 4.5:1 | 5.89:1 | 5.67:1 |
+
+Ratios are computed from @lingxia/view/theme and rounded down.
+
+## Guidance
+
+- Do: Use it for a choice or a short task about what is under it, on touch layouts.
+- Do: Use `expandable` for a list that can grow long; `fit` for a few rows or a question.
+- Do: Keep the main action in reach at the bottom.
+- Don't: Open a sheet from a sheet; finish or close the first.
+- Don't: Use `dismissOn="none"` unless the step must be answered.
+- Don't: Put a whole page in a sheet; navigate to the page.
+
+Related: Dialog, DropdownMenu.

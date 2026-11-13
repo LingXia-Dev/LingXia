@@ -3,6 +3,7 @@ import type { View } from '@lingxia/view';
 import { Specimen as AvatarSpecimen } from '../../../core/src/Avatar/Avatar.examples';
 import { Specimen as BadgeSpecimen } from '../../../core/src/Badge/Badge.examples';
 import { Specimen as BannerSpecimen } from '../../../core/src/Banner/Banner.examples';
+import { Specimen as BottomSheetSpecimen } from '../../../core/src/BottomSheet/BottomSheet.examples';
 import { Specimen as ButtonSpecimen } from '../../../core/src/Button/Button.examples';
 import { Specimen as CardSpecimen } from '../../../core/src/Card/Card.examples';
 import { Specimen as CheckboxInputSpecimen } from '../../../core/src/CheckboxInput/CheckboxInput.examples';
@@ -253,11 +254,18 @@ export function render({ actions }: View<Actions>) {
         <Tile
           name={"Tooltip"}
           tagline={"A note on demand"}
-          isWide
           onOpen={() => actions.open({ page: "tooltip" })}
           testId={"open-tooltip"}
         >
           <TooltipSpecimen />
+        </Tile>
+        <Tile
+          name={"BottomSheet"}
+          tagline={"In reach of a thumb"}
+          onOpen={() => actions.open({ page: "bottom-sheet" })}
+          testId={"open-bottom-sheet"}
+        >
+          <BottomSheetSpecimen />
         </Tile>
       </Category>
       <Category title={"Content"}>
