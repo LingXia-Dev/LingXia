@@ -68,16 +68,42 @@ test('navigateToApp presents an open lxapp again after the caller came back to t
     expect(shown).toEqual({ main: appId, current: appId });
   };
 
-  await t.step('home opens chat', () => hop(app, CHAT_APP_ID));
+  // Home's App onShow/onHide counts: each hop must reach the app it leaves
+  // or enters, not only change what is on screen.
+  const homeLifecycle = (): Promise<{ shows: number; hides: number }> => (
+    app.logic.eval(({ getApp }) => {
+      const lifecycle = (getApp() as unknown as {
+        globalData?: { lifecycle?: { shows?: number; hides?: number } };
+      } | null)?.globalData?.lifecycle;
+      return { shows: lifecycle?.shows ?? 0, hides: lifecycle?.hides ?? 0 };
+    })
+  );
+  const expectHomeEvent = async (key: 'shows' | 'hides', before: number, step: string) => {
+    await eventually(homeLifecycle, (counts) => counts[key] > before, {
+      describe: `home App ${key === 'shows' ? 'onShow' : 'onHide'} after ${step}`,
+    });
+  };
+
+  await t.step('home opens chat', async () => {
+    const before = await homeLifecycle();
+    await hop(app, CHAT_APP_ID);
+    await expectHomeEvent('hides', before.hides, 'opening chat');
+  });
   await t.step('chat brings home back to the front', async () => {
     const chat = t.automation.lxapp(CHAT_APP_ID);
     await eventually(() => chat.logic.eval(() => true), (ready) => ready === true, {
       describe: 'chat Logic runtime to answer',
       retryIf: () => true,
     });
+    const before = await homeLifecycle();
     await hop(chat, SHOWCASE_APP_ID);
+    await expectHomeEvent('shows', before.shows, 'chat brought it back');
   });
   // The regression: chat stayed on top of the lxapp stack while home was on
   // screen, so this resolved without presenting anything.
-  await t.step('home opens the still-open chat again', () => hop(app, CHAT_APP_ID));
+  await t.step('home opens the still-open chat again', async () => {
+    const before = await homeLifecycle();
+    await hop(app, CHAT_APP_ID);
+    await expectHomeEvent('hides', before.hides, 'opening chat again');
+  });
 });

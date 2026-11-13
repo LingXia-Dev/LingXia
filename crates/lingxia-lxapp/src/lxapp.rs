@@ -3939,15 +3939,35 @@ impl LxApp {
                 .unwrap_or_else(|err| err.into_inner())
                 .startup_options
                 .clone();
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            let is_panel = matches!(
+                stored.open_mode,
+                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
+            );
+            // Windows' show_lxapp never reaches on_lxapp_opened, which sends
+            // the outgoing app onHide and this one onShow with the new query.
+            #[cfg(target_os = "windows")]
+            {
+                let query =
+                    (!stored.query.is_empty()).then(|| PageQueryInput::Raw(stored.query.clone()));
+                self.create_page_instance(
+                    PageOwner::Scene(SceneId("system".to_string())),
+                    PageTarget::Path(current_path.clone()),
+                    query,
+                    if is_panel {
+                        PresentationKind::Panel
+                    } else {
+                        PresentationKind::Window
+                    },
+                    None,
+                )?;
+            }
             // Activate the main in the graph before the host shows it. Windows
             // needs the row before the webview covers the previous main; macOS
             // never activates a main that is already a switcher row itself.
             #[cfg(any(target_os = "windows", target_os = "macos"))]
-            if !matches!(
-                stored.open_mode,
-                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
-            ) {
-                self.set_active_main();
+            if !is_panel {
+                self.set_active_main_in_graph();
             }
             self.runtime.show_lxapp(ShowLxApp {
                 appid: self.appid.clone(),
@@ -4115,7 +4135,7 @@ impl LxApp {
                 None,
             )?;
             if !is_panel {
-                self.set_active_main();
+                self.set_active_main_in_graph();
             }
         }
 
@@ -4127,7 +4147,7 @@ impl LxApp {
             lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
         ) && self.main_surface_content(&self.appid).is_some()
         {
-            self.set_active_main();
+            self.set_active_main_in_graph();
         }
 
         self.runtime.show_lxapp(ShowLxApp {
