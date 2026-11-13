@@ -1,4 +1,5 @@
 import { window } from '@kit.ArkUI';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common, Configuration, EnvironmentCallback } from '@kit.AbilityKit';
 import { Lingxia } from '../app/Lingxia';
 import { GpuFeedback, GpuPageModel, GpuRecovery, GpuSelectionHandles } from './GpuPages';
@@ -28,6 +29,9 @@ const MENU_HEIGHT = 40;
 const MENU_GAP = 8;
 /** A handle's knob radius, and the touch target around it, vp. */
 const KNOB = 7;
+// Window stop/start lines sit with the container's in the device log.
+const LOG_DOMAIN = 0x0000;
+const LOG_TAG = 'LingXia.Container';
 const HANDLE_TOUCH = 40;
 
 /**
@@ -46,6 +50,11 @@ export struct GpuPage {
   @Prop floor: ResourceColor = Color.White;
   private rect: GpuRect = new GpuRect();
   private win: window.Window | null = null;
+  /** This page's own window listeners: `off` without them drops every page's on the window. */
+  private onAvoidArea: ((options: window.AvoidAreaOptions) => void) | null = null;
+  private onWindowVisible: ((visible: boolean) => void) | null = null;
+  /** Set once the page goes, so a window lookup still in flight subscribes nothing. */
+  private gone: boolean = false;
   /** The newest system configuration (font size, appearance) and the subscription that brings it. */
   private config: Configuration | null = null;
   private environment: number = -1;
@@ -62,6 +71,7 @@ export struct GpuPage {
   private actions: Resource[] = [$r('app.string.lx_gpu_retry'), $r('app.string.lx_gpu_reload')];
 
   aboutToAppear(): void {
+    this.gone = false;
     if (!this.page.mounted) {
       this.page.mounted = gpuPageMount(this.page.token, this.page.content);
     }
@@ -80,9 +90,21 @@ export struct GpuPage {
     // This component's own window: the last-created one is a float's sub-window while it exists.
     const named: window.Window | undefined = this.ownWindow();
     (named !== undefined ? Promise.resolve(named) : window.getLastWindow(context)).then((win: window.Window) => {
+      if (this.gone) {
+        return;
+      }
       this.win = win;
-      win.on('avoidAreaChange', () => this.remeasure());
-      win.on('windowVisibilityChange', (visible: boolean) => gpuPageWindowVisible(this.page.token, visible));
+      const onAvoidArea = (_options: window.AvoidAreaOptions): void => {
+        this.remeasure();
+      };
+      const onWindowVisible = (visible: boolean): void => {
+        hilog.info(LOG_DOMAIN, LOG_TAG, `gpu window visible token=${this.page.token} visible=${visible}`);
+        gpuPageWindowVisible(this.page.token, visible);
+      };
+      this.onAvoidArea = onAvoidArea;
+      this.onWindowVisible = onWindowVisible;
+      win.on('avoidAreaChange', onAvoidArea);
+      win.on('windowVisibilityChange', onWindowVisible);
       this.remeasure();
     });
   }
@@ -101,8 +123,19 @@ export struct GpuPage {
       (Lingxia.context as common.UIAbilityContext).getApplicationContext().off('environment', this.environment);
       this.environment = -1;
     }
-    this.win?.off('avoidAreaChange');
-    this.win?.off('windowVisibilityChange');
+    this.gone = true;
+    const win = this.win;
+    const onAvoidArea = this.onAvoidArea;
+    const onWindowVisible = this.onWindowVisible;
+    if (win !== null && onAvoidArea !== null) {
+      win.off('avoidAreaChange', onAvoidArea);
+    }
+    if (win !== null && onWindowVisible !== null) {
+      win.off('windowVisibilityChange', onWindowVisible);
+    }
+    this.onAvoidArea = null;
+    this.onWindowVisible = null;
+    this.win = null;
     this.page.onScreen = null;
   }
 
