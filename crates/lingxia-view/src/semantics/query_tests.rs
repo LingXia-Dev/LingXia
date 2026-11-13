@@ -548,6 +548,41 @@ fn a_match_reports_the_aria_states_a_screen_reader_announces() {
 }
 
 #[test]
+fn any_drag_element_reads_its_point_as_its_value_whatever_its_role() {
+    // Two pages: an open modal sheet takes the rest of its page out of the accessibility tree.
+    let panel = interaction(
+        "h('view',{},h('view',{'data-testid':'panel',drag:'x',dragSnapPoints:[0,40,80],bind:useLocal('at',1),'aria-label':'Panel',style:{width:120,height:40}}))",
+    );
+    let i = interaction(
+        "h('view',{},h('dialog',{open:true,onClose(){},'aria-label':'Sheet','data-testid':'sheet',drag:'y',dragSnapPoints:[0,'50%','100%'],style:{marginTop:'auto',height:100}},h('text',{},'Hi')))",
+    );
+    let read = |i: &ViewInteraction, id: &str| {
+        let m = i
+            .automation_query(&format!("[data-testid=\"{id}\"]"), None, false, None)
+            .unwrap();
+        (
+            m["role"].as_str().map(str::to_owned),
+            m["value"].as_str().map(str::to_owned),
+        )
+    };
+    assert_eq!(
+        read(&panel, "panel"),
+        (Some("slider".into()), Some("2".into()))
+    );
+    assert_eq!(read(&i, "sheet"), (Some("dialog".into()), Some("1".into())));
+    // A screen reader reads the same point from the sheet's range.
+    let p = i.semantics().unwrap();
+    let index = p
+        .frame
+        .nodes
+        .iter()
+        .position(|n| n.test_id == "sheet")
+        .unwrap();
+    let range = p.node(p.ids.id(index).unwrap()).unwrap().range.unwrap();
+    assert_eq!((range.min, range.max, range.value), (1.0, 3.0, 1.0));
+}
+
+#[test]
 fn a_click_on_a_controls_label_lands_on_the_control() {
     let row = |disabled: bool| {
         format!(

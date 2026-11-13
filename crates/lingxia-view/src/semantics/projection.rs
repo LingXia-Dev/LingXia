@@ -734,13 +734,13 @@ impl Projection<'_> {
                     value: range.value,
                 })
                 .or_else(|| progress.as_ref().map(|(range, _)| range.clone()))
+                // Any drag element reports its point, whatever role it keeps (a sheet, a swipe row).
                 .or_else(|| {
-                    drag.filter(|_| role == Role::Slider)
-                        .map(|(at, count)| Range {
-                            min: 1.0,
-                            max: count as f64,
-                            value: (at + 1) as f64,
-                        })
+                    drag.map(|(at, count)| Range {
+                        min: 1.0,
+                        max: count as f64,
+                        value: (at + 1) as f64,
+                    })
                 }),
             text_field,
             parent,
