@@ -130,6 +130,9 @@ pub struct NodeSnapshot {
     /// `onPointerEnter` and `onPointerLeave` handles: a fine pointer crossing the box.
     #[serde(skip)]
     pub on_pointer: [Option<u64>; 2],
+    /// A slider's `onPressChange` handle.
+    #[serde(skip)]
+    pub on_press: Option<u64>,
     /// The ids of the controls behind a swipe row, offered as its own actions.
     #[serde(skip)]
     pub aria_actions: Vec<String>,

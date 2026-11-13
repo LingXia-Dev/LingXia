@@ -1,3 +1,4 @@
+import { resetPresses, refreshPresses } from './press.js';
 import { render, page, outsideRender } from './state.js';
 import { h, resetArena, clearArena } from './nodes.js';
 import { resolveNode, listTag } from './elements.js';
@@ -149,6 +150,9 @@ function commitCandidate() {
   }
   candidate.resources = definitions;
   page.resources = next;
+  const pressable = new Map();
+  for (const entry of candidate.callbacks.values()) if (entry.press) pressable.set(entry.press.identity, entry.press.callback);
+  refreshPresses(pressable);
 }
 
 // Native drops the candidate. A frame the target merely declined keeps pending updates
@@ -193,7 +197,7 @@ export function discard(keepUpdates = false) {
 
 export function reset() {
   outsideRender('reset');
-  discard(); page.updates.clear(); page.committed = null; page.locals.clear(); page.callbacks.clear();
+  discard(); page.updates.clear(); page.committed = null; page.locals.clear(); page.callbacks.clear(); resetPresses();
   for (const resource of page.resources.values()) resource.dispose();
   page.resources.clear();
   resetActions();

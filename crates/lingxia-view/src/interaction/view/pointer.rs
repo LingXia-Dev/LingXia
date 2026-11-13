@@ -22,6 +22,12 @@ pub struct Pointer {
 impl ViewInteraction {
     /// A gesture the View does not consume returns no effects and `false`.
     pub fn pointer(&mut self, event: Pointer, page: PageTicket) -> (bool, Vec<Effect>) {
+        let (consumed, mut effects) = self.pointer_event(event, page);
+        effects.extend(self.sync_slider_press());
+        (consumed, effects)
+    }
+
+    fn pointer_event(&mut self, event: Pointer, page: PageTicket) -> (bool, Vec<Effect>) {
         if self.inert {
             return (false, Vec::new());
         }

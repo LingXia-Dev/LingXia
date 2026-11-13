@@ -126,6 +126,14 @@ pub enum Dispatch {
         region: String,
         index: usize,
     },
+    /// A finger went down on a slider or left it: its `onPressChange`.
+    SliderPress {
+        commit: CommitTicket,
+        handle: u64,
+        /// The slider, to find its callback in a newer View.
+        identity: String,
+        pressed: bool,
+    },
     /// A fine pointer crossed an element's box: its `onPointerEnter` or `onPointerLeave`.
     PointerCrossing {
         commit: CommitTicket,

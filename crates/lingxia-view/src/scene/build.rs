@@ -1261,6 +1261,12 @@ impl Renderer {
                     })
                     .flatten(),
                 interest_for: record.string(field::INTEREST_FOR).map(str::to_owned),
+                on_press: record
+                    .fields
+                    .iter()
+                    .find(|(field, _)| *field == field::ON_SLIDER_PRESS)
+                    .and_then(|(_, value)| value.as_u64())
+                    .filter(|handle| *handle != 0),
                 on_pointer: [field::ON_POINTER_ENTER, field::ON_POINTER_LEAVE].map(|id| {
                     record
                         .fields

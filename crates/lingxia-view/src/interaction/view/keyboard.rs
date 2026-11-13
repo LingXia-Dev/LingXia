@@ -447,7 +447,9 @@ impl ViewInteraction {
         self.slider.cancel();
         self.pending_focus = None;
         self.keyboard_focus = None;
-        vec![Effect::ClearFocusRing]
+        let mut effects = vec![Effect::ClearFocusRing];
+        effects.extend(self.sync_slider_press());
+        effects
     }
 
     // ---- accessibility -------------------------------------------------

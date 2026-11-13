@@ -5685,3 +5685,88 @@ fn a_tap_elsewhere_closes_a_hint_whatever_opened_it_and_still_reaches_what_it_hi
     );
 }
 
+
+/// A page whose slider logs `onPressChange` as T/F; `extra` is spliced into its render.
+fn press_page(platform: &Platform, worker: &Arc<ViewWorker>, extra: &str) -> ViewHost<Fake> {
+    let page = source(&format!(
+        "function render(){{const v=useLocal('v',5);const log=useLocal('log','');const gone=useLocal('gone',false);const off=useLocal('off',false);const press=p=>{{log.set(log.value+(p?'T':'F'));{extra}}};return h('page',{{}},gone.value?h('view',{{style:{{height:40}}}}):h('slider',{{'data-testid':'s',bind:v,max:10,disabled:off.value,'aria-label':'Level',onPressChange:press,style:{{width:80,height:40}}}}),h('text',{{'data-testid':'log'}},log.value||'-'))}}"
+    ));
+    let host = platform.host(worker, &page, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    host
+}
+
+fn press_log(host: &ViewHost<Fake>) -> String {
+    host.automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"log\"]"}))
+        .unwrap()["text"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+/// Down on the slider's middle, frames, then `after_down` frames later the finger lifts there.
+fn hold_slider(platform: &Platform, host: &ViewHost<Fake>) -> (String, String) {
+    let node = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"s\"]"}))
+        .unwrap();
+    let r = |key: &str| node["rect"][key].as_f64().unwrap() as f32;
+    let at = |phase| Pointer {
+        phase,
+        x: (r("left") + r("width") / 2.0) * 2.0,
+        y: (r("top") + r("height") / 2.0) * 2.0,
+        slop: 8.0,
+        velocity: [0.0; 2],
+        min_fling: 50.0,
+    };
+    // Frames, not settle: a disable starts the parts' colour transition, which needs a clock.
+    host.pointer(at(PointerPhase::Down));
+    run_frames(platform, host, 20);
+    let held = press_log(host);
+    host.pointer(at(PointerPhase::Up));
+    run_frames(platform, host, 20);
+    (held, press_log(host))
+}
+
+#[test]
+fn a_held_slider_hears_one_press_and_one_release_though_its_callback_is_renumbered() {
+    let worker = ViewWorker::spawn("test-press-renumber").unwrap();
+    let platform = Platform::new(&[&worker]);
+    // The press re-renders the page, and every render issues new callback handles.
+    let host = press_page(&platform, &worker, "");
+    let (held, released) = hold_slider(&platform, &host);
+    assert_eq!(held, "T", "a still finger is pressed, once");
+    assert_eq!(
+        released, "TF",
+        "the release reaches the renumbered callback, once"
+    );
+}
+
+#[test]
+fn a_still_finger_stays_pressed_while_the_slider_re_renders_under_it() {
+    let worker = ViewWorker::spawn("test-press-still").unwrap();
+    let platform = Platform::new(&[&worker]);
+    // The press moves the value, as a landed seek does, while the finger rests.
+    let host = press_page(&platform, &worker, "if(p)v.set(9);");
+    let (held, released) = hold_slider(&platform, &host);
+    assert_eq!(held, "T");
+    assert_eq!(released, "TF");
+}
+
+#[test]
+fn a_slider_removed_or_disabled_mid_press_still_hears_exactly_one_release() {
+    for (name, worker, extra) in [
+        ("removed", "test-press-removed", "if(p)gone.set(true);"),
+        ("disabled", "test-press-disabled", "if(p)off.set(true);"),
+    ] {
+        let worker = ViewWorker::spawn(worker).unwrap();
+        let platform = Platform::new(&[&worker]);
+        let host = press_page(&platform, &worker, extra);
+        let (held, released) = hold_slider(&platform, &host);
+        assert_eq!(
+            held, "TF",
+            "{name}: the release comes without the finger lifting"
+        );
+        assert_eq!(released, "TF", "{name}: and never twice");
+    }
+}

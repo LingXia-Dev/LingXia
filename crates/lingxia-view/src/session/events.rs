@@ -206,6 +206,37 @@ impl ViewSession {
         }
     }
 
+    /// A slider's press began or ended. A press runs the element's current callback, as a
+    /// re-render renumbers them; a release needs no callback, so a slider gone since still hears it.
+    pub fn slider_press(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        handle: u64,
+        identity: &str,
+        pressed: bool,
+    ) -> Result<bool, String> {
+        if !pressed {
+            return self.execute(|| {
+                self.context
+                    .eval(Source::from_bytes(
+                        "typeof __lingxiaReleasePress === 'function' && __lingxiaReleasePress()",
+                    ))
+                    .map_err(|e| crate::engine::js_error(&self.context, e))
+            });
+        }
+        let current = self
+            .retained
+            .as_ref()
+            .and_then(|retained| retained.nodes.iter().find(|node| node.identity == identity))
+            .map(|node| node.on_press);
+        match current {
+            Some(Some(handle)) => self.dispatch_handle(handle),
+            Some(None) => Ok(false),
+            None if self.presented_commit(generation) => self.dispatch_handle(handle),
+            None => Ok(false),
+        }
+    }
+
     /// A fine pointer crossed `identity`'s box. A re-render renumbers callbacks without a new
     /// commit, so the element's current callback runs; the frame's handle only if it is gone.
     pub fn pointer_crossing(

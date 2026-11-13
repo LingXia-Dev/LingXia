@@ -223,6 +223,7 @@ Binding: `bind={local}` with a `useLocal<number>` cell, or `value` plus `onChang
 | `aria-label` | `string` | yes |
 | `aria-valuetext` | `string` |  |
 | `disabled` | `boolean` |  |
+| `onPressChange` | `(pressed: boolean) => void` |  |
 
 ## `<dialog>`
 

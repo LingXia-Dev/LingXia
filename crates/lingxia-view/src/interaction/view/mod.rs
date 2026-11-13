@@ -103,6 +103,8 @@ pub struct ViewInteraction {
     reach: ReachTracker,
     ids: SemanticIds,
     slider: SliderInput,
+    /// The slider whose `onPressChange` last heard true: identity, handle and its commit.
+    slider_press: Option<(String, u64, CommitTicket)>,
     gesture: Gesture,
     keyboard_focus: Option<usize>,
     pending_focus: Option<PendingFocus>,
@@ -404,7 +406,41 @@ impl ViewInteraction {
         if self.hover.take().is_some() || self.exploring.take().is_some() {
             effects.extend(self.hover_to(None));
         }
+        effects.extend(self.sync_slider_press());
         effects
+    }
+
+    /// Tell `onPressChange` what the slider gesture became: a false for the slider let go,
+    /// then a true for the one now held. Every entry that can change the gesture calls this.
+    fn sync_slider_press(&mut self) -> Option<Effect> {
+        let held = self
+            .slider
+            .gesture_node()
+            .and_then(|node| Some((node.identity.to_string(), node.on_press?)));
+        if self.slider_press.as_ref().map(|(identity, ..)| identity)
+            == held.as_ref().map(|(identity, _)| identity)
+        {
+            return None;
+        }
+        let commit = self.frame.as_ref().map(|frame| frame.commit);
+        if let Some((identity, handle, at)) = self.slider_press.take() {
+            self.dispatches.push(Dispatch::SliderPress {
+                commit: commit.unwrap_or(at),
+                handle,
+                identity,
+                pressed: false,
+            });
+        }
+        if let (Some((identity, handle)), Some(commit)) = (held, commit) {
+            self.slider_press = Some((identity.clone(), handle, commit));
+            self.dispatches.push(Dispatch::SliderPress {
+                commit,
+                handle,
+                identity,
+                pressed: true,
+            });
+        }
+        Some(Effect::Dispatch)
     }
 
     fn cancel_press(&mut self) -> Vec<Effect> {
@@ -590,6 +626,7 @@ impl ViewInteraction {
         if self.slider.pending.is_some() {
             effects.push(Effect::Number);
         }
+        effects.extend(self.sync_slider_press());
         Presented { effects, reach }
     }
 
@@ -608,6 +645,20 @@ impl ViewInteraction {
     // ---- pointer -------------------------------------------------------
 
     fn activate(
+        &mut self,
+        index: usize,
+        point: Option<[f32; 2]>,
+        word: bool,
+        selection: Option<i64>,
+    ) -> Vec<Effect> {
+        self.slider.cancel();
+        let released = self.sync_slider_press();
+        let mut effects = self.activate_target(index, point, word, selection);
+        effects.extend(released);
+        effects
+    }
+
+    fn activate_target(
         &mut self,
         index: usize,
         point: Option<[f32; 2]>,

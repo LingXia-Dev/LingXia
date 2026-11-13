@@ -79,6 +79,17 @@ impl ViewInteraction {
         action: AccessibilityAction,
         page: PageTicket,
     ) -> (bool, Vec<Effect>) {
+        let (handled, mut effects) = self.accessibility_action(id, action, page);
+        effects.extend(self.sync_slider_press());
+        (handled, effects)
+    }
+
+    fn accessibility_action(
+        &mut self,
+        id: u32,
+        action: AccessibilityAction,
+        page: PageTicket,
+    ) -> (bool, Vec<Effect>) {
         if self.inert
             && !matches!(
                 action,

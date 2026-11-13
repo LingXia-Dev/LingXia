@@ -1,3 +1,4 @@
+import { pressChange } from './press.js';
 import { elements, admission, limits, commonProps } from '../generated/contract.js';
 import { resolveClasses, classGeneration } from '../style/classes.js';
 import { classElementProblem, gridProblem, gridRefuses, tagHint } from '../style/hints.js';
@@ -64,7 +65,7 @@ export const handlesIssued = () => nextHandle;
 /** Marks callbacks as issued without issuing one: a recalled subtree carries its own. */
 export const skipHandle = () => { nextHandle++; };
 const pointerCrossing = ['onPointerEnter', 'onPointerLeave'];
-const callbackOf = (callback, kind = 'void', isolated = false) => ({ callback, kind, isolated });
+const callbackOf = (callback, kind = 'void', isolated = false, press = undefined) => ({ callback, kind, isolated, press });
 
 const dataProp = /^data-[a-z][a-z0-9-]*$/;
 
@@ -490,6 +491,13 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         const next = check.sliderValue(props, value);
         if (next !== props.value) props.onChange(next);
       }, 'number');
+      if (props.onPressChange !== undefined) {
+        if (typeof props.onPressChange !== 'function') throw Error('UI_SLIDER: onPressChange takes a function');
+        const report = props.onPressChange;
+        // Kept while disabled: a press that a disable ends still reaches its current callback.
+        if (!dropped('onSliderPress')) result.handlers.push(['onSliderPress', handle(),
+          callbackOf(() => pressChange(identity, report), 'void', false, { identity, callback: report })]);
+      }
       break;
     case 'input': case 'textarea':
       check.label(props.accessibilityLabel, 'UI_INPUT');

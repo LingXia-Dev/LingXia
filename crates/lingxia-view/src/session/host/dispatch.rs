@@ -334,6 +334,18 @@ impl<A: PlatformAdapter> Inner<A> {
                     false,
                     Box::new(move |session| session.snap_event(commit, handle, &region, index)),
                 ),
+                Dispatch::SliderPress {
+                    commit,
+                    handle,
+                    identity,
+                    pressed,
+                } => self.activate(
+                    page,
+                    false,
+                    Box::new(move |session| {
+                        session.slider_press(commit, handle, &identity, pressed)
+                    }),
+                ),
                 Dispatch::PointerCrossing {
                     commit,
                     handle,
