@@ -139,10 +139,10 @@ spec('kit video controls show the player full screen and Escape brings it back',
   await view.testId('lab-tab-media').click();
   await view.testId('lab-video-controls-play').click();
   await view.testId('lab-video-controls-fullscreen').click();
-  const layer = view.getByRole('dialog', { name: 'Full screen video' });
+  const layer = view.testId('lab-video-controls-fullscreen-view');
   await expect(layer).toBeVisible();
   // The same player, so the full screen bar reads its time as it plays on.
-  const time = view.testId('lx-fullscreen-controls-time');
+  const time = view.testId('lab-video-controls-full-time');
   const seconds = async () => Number(/^\d+:(\d+)/.exec(await time.textContent())?.[1] ?? NaN);
   const start = await seconds();
   await expect.poll(seconds, { timeout: 5_000 }).toBeGreaterThan(start);
@@ -154,7 +154,7 @@ spec('kit video controls show the player full screen and Escape brings it back',
   expect((await t.app.nav.current()).name).toBe('view-lab');
   await view.testId('lab-video-controls-fullscreen').click();
   await expect(layer).toBeVisible();
-  await view.testId('lx-fullscreen-controls-fullscreen').click();
+  await view.testId('lab-video-controls-full-fullscreen').click();
   await expect(layer).not.toBeAttached();
 });
 
@@ -173,10 +173,10 @@ spec('a landscape full-screen video turns the window and leaving gives it back',
   }
   await view.testId('lab-video-controls-play').click();
   await view.testId('lab-video-controls-fullscreen').click();
-  const layer = view.getByRole('dialog', { name: 'Full screen video' });
+  const layer = view.testId('lab-video-controls-fullscreen-view');
   await expect(layer).toBeVisible();
   await expect.poll(wide, { timeout: 5_000 }).toBe(true);
-  await view.testId('lx-fullscreen-controls-fullscreen').click();
+  await view.testId('lab-video-controls-full-fullscreen').click();
   await expect(layer).not.toBeAttached();
   await expect.poll(wide, { timeout: 5_000 }).toBe(before);
 });

@@ -3740,7 +3740,13 @@
           "source": "import { Slider } from '@liulidesign/core/Slider';\n\nexport function Sizes() {\n  return (\n    <view className=\"gap-4\">\n      <Slider value={30} onChange={() => {}} label=\"Small\" size=\"sm\" />\n      <Slider value={60} onChange={() => {}} label=\"Medium\" />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [],
+      "gaps": [
+        {
+          "missing": "A tone for use over a picture, sizing of the control box, and a forced left-to-right direction.",
+          "needs": "a media tone and part-level layout props on Slider",
+          "today": "VideoControls builds its scrubber on `<slider>` directly."
+        }
+      ],
       "related": [
         "ProgressBar"
       ],
@@ -4815,6 +4821,471 @@
             {
               "name": "InForm",
               "title": "Next to a field label"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "VideoControls",
+      "import": "@liulidesign/core/VideoControls",
+      "exports": [
+        "VideoControls"
+      ],
+      "category": "content",
+      "status": "preview",
+      "summary": "Play, seek, mute, speed, quality and full screen for a useVideo player",
+      "description": "VideoControls drives a `useVideo` player: over the picture as a quiet bar that hides on touch while it plays, or as a row under it. Full screen is a dialog over the page that shows the same player again with these controls. Prefer `VideoPlayer`, which pairs the picture and the controls.",
+      "keywords": [
+        "video",
+        "player",
+        "controls",
+        "scrubber",
+        "seek",
+        "media",
+        "playback",
+        "fullscreen"
+      ],
+      "props": [
+        {
+          "name": "player",
+          "type": "Video",
+          "required": true,
+          "description": "The `useVideo` player they drive."
+        },
+        {
+          "name": "labels",
+          "type": "VideoControlsLabels",
+          "required": true,
+          "description": "Every word they show or speak."
+        },
+        {
+          "name": "variant",
+          "type": "VideoControlsVariant",
+          "required": false,
+          "description": "`overlay` lays them over the picture: put them after the `<video>` in a `relative` parent that holds only that video. `bar` is a row under it.",
+          "default": "'overlay'"
+        },
+        {
+          "name": "poster",
+          "type": "string",
+          "required": false,
+          "description": "The picture full screen shows until the player has a frame; pass the `<video>`'s poster."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "Prefixes each control's test id: `<id>-play`, `<id>-scrub`, `<id>-fullscreen`."
+        }
+      ],
+      "otherProps": {
+        "VideoControlsLabels": [
+          {
+            "name": "play",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "pause",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "replay",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "mute",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "unmute",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "seek",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "fullscreen",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "exitFullscreen",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "settings",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "rate",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "quality",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "auto",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "live",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "loading",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "failed",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "retry",
+            "type": "string",
+            "required": true,
+            "description": ""
+          }
+        ]
+      },
+      "parts": {
+        "root": "view",
+        "surface": "button",
+        "centre": "view",
+        "start": "button",
+        "loading": "view",
+        "error": "view",
+        "chrome": "view",
+        "bar": "view",
+        "scrubber": "slider",
+        "row": "view",
+        "button": "button",
+        "glyph": "vector",
+        "time": "text",
+        "live": "text",
+        "menu": "view",
+        "chip": "button",
+        "fullscreen": "dialog"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [
+          {
+            "state": "pressed",
+            "from": "mute and full screen"
+          },
+          {
+            "state": "expanded",
+            "from": "the settings menu"
+          },
+          {
+            "state": "busy",
+            "from": "play while the player loads"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Arrow keys on the scrubber",
+            "effect": "seek by 0.1 s steps"
+          },
+          {
+            "keys": "Escape",
+            "effect": "leaves full screen"
+          }
+        ],
+        "contrast": [
+          {
+            "what": "icons and time",
+            "pair": [
+              "on-media",
+              "media"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "progress line",
+            "pair": [
+              "on-media",
+              "media"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "progress against the unplayed track",
+            "pair": [
+              "on-media",
+              "on-media/25"
+            ],
+            "over": "media",
+            "minimum": "3:1"
+          },
+          {
+            "what": "chosen speed or quality",
+            "pair": [
+              "media",
+              "on-media"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "speed or quality under the picture",
+            "pair": [
+              "text",
+              "surface-sunken"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "chosen speed or quality under the picture",
+            "pair": [
+              "on-accent",
+              "accent"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The scrubber reads its position as \"m:ss / m:ss\" and runs left to right in every language.",
+          "Over the picture the accent is not used: progress, the chosen chip and LIVE paint in the media roles.",
+          "Faded controls stay in the tree, so a screen reader reaches every one of them."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Overlay",
+          "title": "Over the picture",
+          "source": "import { useVideo } from '@lingxia/view';\nimport { VideoControls, type VideoControlsLabels } from '@liulidesign/core/VideoControls';\n\nconst clip = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4';\nconst poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';\nconst labels: VideoControlsLabels = {\n  play: 'Play', pause: 'Pause', replay: 'Replay', mute: 'Mute', unmute: 'Unmute', seek: 'Seek',\n  fullscreen: 'Full screen', exitFullscreen: 'Exit full screen', settings: 'Playback settings',\n  rate: 'Playback speed', quality: 'Quality', auto: 'Auto', live: 'LIVE', loading: 'Loading',\n  failed: 'This video cannot play right now', retry: 'Retry',\n};\n\n/** Over the picture: a large play first, then a quiet bar that hides on touch while it plays. */\nexport function Overlay() {\n  const player = useVideo('liuli-controls-overlay');\n  return (\n    <view className=\"relative aspect-video overflow-hidden rounded-xl\">\n      <video player={player} src={clip} poster={poster} aria-label=\"Big Buck Bunny\" className=\"size-full\" />\n      <VideoControls player={player} labels={labels} poster={poster} data-testid=\"overlay-controls\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Bar",
+          "title": "As a row under the picture",
+          "source": "import { useVideo } from '@lingxia/view';\nimport { VideoControls, type VideoControlsLabels } from '@liulidesign/core/VideoControls';\n\nconst clip = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4';\nconst poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';\nconst labels: VideoControlsLabels = {\n  play: 'Play', pause: 'Pause', replay: 'Replay', mute: 'Mute', unmute: 'Unmute', seek: 'Seek',\n  fullscreen: 'Full screen', exitFullscreen: 'Exit full screen', settings: 'Playback settings',\n  rate: 'Playback speed', quality: 'Quality', auto: 'Auto', live: 'LIVE', loading: 'Loading',\n  failed: 'This video cannot play right now', retry: 'Retry',\n};\n\n/** A row under the picture, for a small player or a page that keeps the picture clear. */\nexport function Bar() {\n  const player = useVideo('liuli-controls-bar');\n  return (\n    <view className=\"gap-1\">\n      <view className=\"aspect-video overflow-hidden rounded-xl\">\n        <video player={player} src={clip} poster={poster} aria-label=\"Big Buck Bunny\" className=\"size-full\" />\n      </view>\n      <VideoControls player={player} labels={labels} variant=\"bar\" poster={poster} data-testid=\"bar-controls\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Hiding the bar when a mouse leaves the picture.",
+          "needs": "pointer enter and leave on components",
+          "today": "with a mouse the bar stays up."
+        },
+        {
+          "missing": "Double-tap to skip.",
+          "needs": "a double-tap gesture",
+          "today": "drag the scrubber."
+        }
+      ],
+      "related": [
+        "VideoPlayer",
+        "Slider"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Drive a video",
+        "order": 6,
+        "page": {
+          "lead": "Use VideoControls beside your own <video> when VideoPlayer does not fit the layout.",
+          "stage": "bare",
+          "hero": "Overlay",
+          "variants": [
+            {
+              "name": "Bar",
+              "title": "A row under the picture"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "VideoPlayer",
+      "import": "@liulidesign/core/VideoPlayer",
+      "exports": [
+        "VideoPlayer"
+      ],
+      "category": "content",
+      "status": "preview",
+      "summary": "A video with its controls, over the picture or under it, and full screen",
+      "description": "VideoPlayer shows a `useVideo` player with VideoControls: play, seek, mute, speed and quality, and full screen as a dialog over the page. The page keeps the player, so Logic and the page drive the same video.",
+      "keywords": [
+        "video",
+        "player",
+        "movie",
+        "stream",
+        "hls",
+        "media",
+        "playback",
+        "fullscreen"
+      ],
+      "props": [
+        {
+          "name": "player",
+          "type": "Video",
+          "required": true,
+          "description": "The `useVideo` player it shows; the page and Logic drive the same one."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "What the video shows, its accessible name."
+        },
+        {
+          "name": "labels",
+          "type": "VideoControlsLabels",
+          "required": true,
+          "description": "Every word the controls show or speak."
+        },
+        {
+          "name": "src",
+          "type": "string",
+          "required": false,
+          "description": "One file or stream. Give it or `sources`."
+        },
+        {
+          "name": "sources",
+          "type": "readonly VideoSource[]",
+          "required": false,
+          "description": "The same video at several qualities; their labels become the quality menu."
+        },
+        {
+          "name": "poster",
+          "type": "string",
+          "required": false,
+          "description": "Shown until the first frame, here and full screen."
+        },
+        {
+          "name": "variant",
+          "type": "VideoPlayerVariant",
+          "required": false,
+          "description": "`overlay` lays the controls over the picture; `bar` puts them in a row under it.",
+          "default": "'overlay'"
+        },
+        {
+          "name": "isAutoPlay",
+          "type": "boolean",
+          "required": false,
+          "description": "Starts playing once it can, muted where the platform requires it.",
+          "default": "false"
+        },
+        {
+          "name": "isLooping",
+          "type": "boolean",
+          "required": false,
+          "description": "Starts again at the end.",
+          "default": "false"
+        },
+        {
+          "name": "onError",
+          "type": "((error: VideoError) => void)",
+          "required": false,
+          "description": "Runs when the video fails; the controls already show the error and Retry."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Classes for the frame, such as its aspect ratio or width."
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the video; the controls take `<id>-controls`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "frame": "view",
+        "video": "video",
+        "controls": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "controls",
+            "pair": [
+              "on-media",
+              "media"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The video is named by `label`; every control is named by `labels`."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Standard",
+          "title": "Controls over the picture",
+          "source": "import { useVideo } from '@lingxia/view';\nimport type { VideoControlsLabels } from '@liulidesign/core/VideoControls';\nimport { VideoPlayer } from '@liulidesign/core/VideoPlayer';\n\nconst sources = [360, 720, 1080].map(height => ({\n  src: `https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/${height}/Big_Buck_Bunny_${height}_10s_1MB.mp4`,\n  label: `${height}p`,\n}));\nconst poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';\nconst labels: VideoControlsLabels = {\n  play: 'Play', pause: 'Pause', replay: 'Replay', mute: 'Mute', unmute: 'Unmute', seek: 'Seek',\n  fullscreen: 'Full screen', exitFullscreen: 'Exit full screen', settings: 'Playback settings',\n  rate: 'Playback speed', quality: 'Quality', auto: 'Auto', live: 'LIVE', loading: 'Loading',\n  failed: 'This video cannot play right now', retry: 'Retry',\n};\n\n/** The picture with its controls over it; the qualities fill the settings menu. */\nexport function Standard() {\n  const player = useVideo('liuli-player-standard');\n  return <VideoPlayer player={player} label=\"Big Buck Bunny\" labels={labels} sources={sources} poster={poster} data-testid=\"standard\" />;\n}"
+        },
+        {
+          "name": "UnderThePicture",
+          "title": "Controls under the picture",
+          "source": "import { useVideo } from '@lingxia/view';\nimport type { VideoControlsLabels } from '@liulidesign/core/VideoControls';\nimport { VideoPlayer } from '@liulidesign/core/VideoPlayer';\n\nconst sources = [360, 720, 1080].map(height => ({\n  src: `https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/${height}/Big_Buck_Bunny_${height}_10s_1MB.mp4`,\n  label: `${height}p`,\n}));\nconst poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';\nconst labels: VideoControlsLabels = {\n  play: 'Play', pause: 'Pause', replay: 'Replay', mute: 'Mute', unmute: 'Unmute', seek: 'Seek',\n  fullscreen: 'Full screen', exitFullscreen: 'Exit full screen', settings: 'Playback settings',\n  rate: 'Playback speed', quality: 'Quality', auto: 'Auto', live: 'LIVE', loading: 'Loading',\n  failed: 'This video cannot play right now', retry: 'Retry',\n};\n\n/** The controls in a row under the picture. */\nexport function UnderThePicture() {\n  const player = useVideo('liuli-player-bar');\n  return <VideoPlayer player={player} label=\"Big Buck Bunny\" labels={labels} src={sources[0].src} poster={poster} variant=\"bar\" data-testid=\"under\" />;\n}"
+        }
+      ],
+      "gaps": [],
+      "related": [
+        "VideoControls"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Watch a video",
+        "order": 5,
+        "page": {
+          "lead": "Use VideoPlayer to show a video with standard controls.",
+          "stage": "bare",
+          "hero": "Standard",
+          "variants": [
+            {
+              "name": "UnderThePicture",
+              "title": "Controls under the picture"
             }
           ]
         }

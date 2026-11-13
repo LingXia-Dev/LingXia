@@ -81,7 +81,7 @@ spec('a finger on the covered tab bar strip in full screen stays with the video'
   const device = harmonyDevice(t);
   await view.testId('lab-tab-media').click();
   await view.testId('lab-video-controls-fullscreen').click();
-  const layer = view.getByRole('dialog', { name: 'Full screen video' });
+  const layer = view.testId('lab-video-controls-fullscreen-view');
   await expect(layer).toBeVisible();
   // A landscape picture turns the window.
   await expect.poll(async () => { const area = await view.viewport(); return area.width > area.height; }, { timeout: 5_000 }).toBe(true);
@@ -98,7 +98,7 @@ spec('a finger on the covered tab bar strip in full screen stays with the video'
   await expect(layer).toBeVisible();
   // More's panel lists the tabs past the bar.
   expect((await device.nodes()).some(node => ['ToDo', '待办'].includes(node.text)), 'More stays closed').toBe(false);
-  await view.testId('lx-fullscreen-controls-fullscreen').click();
+  await view.testId('lab-video-controls-full-fullscreen').click();
   await expect(layer).not.toBeAttached();
   await expect.poll(async () => { const area = await view.viewport(); return area.height > area.width; }, { timeout: 5_000 }).toBe(true);
 });

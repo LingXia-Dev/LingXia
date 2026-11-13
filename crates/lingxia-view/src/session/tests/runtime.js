@@ -12,7 +12,6 @@
     Details: () => Details,
     List: () => List,
     Summary: () => Summary,
-    VideoControls: () => VideoControls,
     childrenToArray: () => childrenToArray,
     commit: () => commit,
     configureActions: () => configureActions,
@@ -587,13 +586,13 @@
   }
   function gridLine(name, value, lines) {
     const axis = name.startsWith("gridColumn") ? "Column" : "Row";
-    const line2 = lines[axis] ?? (lines[axis] = {});
-    if (name.endsWith("Start")) line2.start = gridEdge(name, value);
-    else if (name.endsWith("End")) line2.end = gridEdge(name, value);
+    const line = lines[axis] ?? (lines[axis] = {});
+    if (name.endsWith("Start")) line.start = gridEdge(name, value);
+    else if (name.endsWith("End")) line.end = gridEdge(name, value);
     else {
       const parts2 = String(value).split("/");
       if (parts2.length > 2) invalid(name);
-      line2.shorthand = [gridEdge(name, parts2[0]), parts2[1] === void 0 ? "auto" : gridEdge(name, parts2[1])];
+      line.shorthand = [gridEdge(name, parts2[0]), parts2[1] === void 0 ? "auto" : gridEdge(name, parts2[1])];
     }
   }
   var translateLength = (value) => finite(value) ? Math.abs(value) <= 16384 : typeof value === "string" && /^-?(?:\d+(?:\.\d+)?|\.\d+)%$/.test(value) && Math.abs(parseFloat(value)) <= 1e3;
@@ -848,9 +847,9 @@
     }
     if (Object.keys(transform).length) out.transform = JSON.stringify(transform);
     for (const axis of ["Column", "Row"]) {
-      const line2 = lines[axis];
-      if (!line2) continue;
-      const start = line2.start ?? line2.shorthand?.[0] ?? "auto", end = line2.end ?? line2.shorthand?.[1] ?? "auto";
+      const line = lines[axis];
+      if (!line) continue;
+      const start = line.start ?? line.shorthand?.[0] ?? "auto", end = line.end ?? line.shorthand?.[1] ?? "auto";
       out[`grid${axis}`] = end === "auto" ? start : `${start} / ${end}`;
     }
     if (style2.lineHeight !== void 0 || typeof lineHeight === "object") {
@@ -1598,7 +1597,7 @@
       if (site) base.uiFrames.push(site);
     }
     if (base.uiFrames.length < 12) base.uiFrames.push(frame);
-    base.message = [base.uiMessage, ...base.uiFrames.map((line2) => `  at ${line2}`)].join("\n");
+    base.message = [base.uiMessage, ...base.uiFrames.map((line) => `  at ${line}`)].join("\n");
     return base;
   }
   function bridgeError(code, message, data) {
@@ -1623,7 +1622,7 @@
   var base64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   function decode() {
     const lines = [];
-    let source2 = 0, line2 = 0, column = 0;
+    let source2 = 0, line = 0, column = 0;
     for (const text2 of sourceMap.mappings.split(";")) {
       const segments = [];
       let generated = 0;
@@ -1644,9 +1643,9 @@
         generated += values[0];
         if (values.length < 4) continue;
         source2 += values[1];
-        line2 += values[2];
+        line += values[2];
         column += values[3];
-        segments.push([generated, source2, line2, column]);
+        segments.push([generated, source2, line, column]);
       }
       lines.push(segments);
     }
@@ -2800,7 +2799,6 @@
   function resetVideos() {
     fullscreenName = null;
     latest2.clear();
-    posters.clear();
     syncOrientation();
   }
   var orientation = "";
@@ -2811,9 +2809,6 @@
     orientation = next;
     globalThis.__lingxiaVideoOrientation?.(next);
   }
-  var posters = /* @__PURE__ */ new Map();
-  var videoPoster = (name, poster) => posters.set(name, poster);
-  var posterOf = (name) => posters.get(name);
   function fullscreenHandler(name, handler) {
     var _a;
     const handlers = (_a = render.candidate).fullscreenHandlers ?? (_a.fullscreenHandlers = /* @__PURE__ */ new Map());
@@ -2912,6 +2907,59 @@
       if ([...reader.read].some((field2) => !same(current[field2], next[field2]))) reader.binding.set(next);
       else cell2.value = next;
     }
+  }
+
+  // src/runtime/fullscreen.js
+  function shownInDialog(name) {
+    var _a;
+    ((_a = render.candidate).fullscreenDrawn ?? (_a.fullscreenDrawn = /* @__PURE__ */ new Set())).add(name);
+  }
+  function fullscreenDrawn() {
+    const name = fullscreenPlayer();
+    return name !== null && render.candidate.fullscreenDrawn?.has(name) === true;
+  }
+  function resolveBare(resolve) {
+    const kept2 = render.candidate.fullscreenDrawn;
+    render.candidate.fullscreenDrawn = new Set(kept2);
+    try {
+      return resolve();
+    } finally {
+      render.candidate.fullscreenDrawn = kept2;
+    }
+  }
+  function BareFullscreen({ name }) {
+    const player = useVideo(name);
+    return h(
+      "dialog",
+      {
+        open: true,
+        closedby: "closerequest",
+        onClose: () => player.exitFullscreen(),
+        "aria-label": "Full screen video",
+        "data-testid": "lx-fullscreen-video",
+        style: {
+          width: "100%",
+          height: "100%",
+          maxWidth: "100%",
+          maxHeight: "100%",
+          marginTop: 0,
+          marginBottom: 0,
+          marginLeft: 0,
+          marginRight: 0,
+          paddingTop: 0,
+          paddingBottom: 0,
+          paddingLeft: 0,
+          paddingRight: 0,
+          borderRadius: 0,
+          backgroundColor: "#000000"
+        }
+      },
+      h("video", { player, style: { width: "100%", flexGrow: 1, objectFit: "contain" } })
+    );
+  }
+  function fullscreenFallback() {
+    const name = fullscreenPlayer();
+    return name === null || fullscreenDrawn() ? null : h(BareFullscreen, { name, key: `lx-fullscreen:${name}` });
   }
 
   // src/runtime/elements.js
@@ -3458,10 +3506,8 @@
         if (props.src !== void 0) wire("videoSrc", props.src);
         if (props.sources !== void 0) wire("videoSources", JSON.stringify(props.sources.map(({ src, label: label2 }) => ({ src, label: label2 }))));
         wire("videoPlayer", name === void 0 ? `el:${identity}` : `name:${name}`);
-        if (props.poster !== void 0) {
-          wire("videoPoster", props.poster);
-          if (name !== void 0) videoPoster(name, props.poster);
-        }
+        if (name !== void 0 && parent.inDialog) shownInDialog(name);
+        if (props.poster !== void 0) wire("videoPoster", props.poster);
         if (source2 !== void 0) wire("videoPaused", +(props.paused ?? !props.autoPlay));
         for (const [key, prop] of videoFlags) if (props[prop] !== void 0) wire(key, +props[prop]);
         if (props.playbackRate !== void 0) wire("videoRate", props.playbackRate);
@@ -3572,6 +3618,7 @@
           every: style2.every,
           sibling: { index: position, count: flat.length },
           inControl: parent.inControl || admission.tags[element.wire].children === "content",
+          inDialog: parent.inDialog || tag === "dialog",
           popovers: props[popoverScope] ?? parent.popovers,
           contexts: parent.contexts
         });
@@ -4939,7 +4986,7 @@
     const shift = (months) => {
       picker.focus = clampDate(addMonths(picker.focus, months), min, max);
     };
-    const iconButton2 = (testId, label2, d, months) => h(
+    const iconButton = (testId, label2, d, months) => h(
       "button",
       {
         "data-testid": testId,
@@ -4998,8 +5045,8 @@
         "view",
         { style: { flexDirection: "row", alignItems: "center", gap: 4, justifyContent: titled ? "start" : "space-between" } },
         titled && h("text", { "data-testid": "lx-picker-title", "aria-live": "polite", style: { flexGrow: 1, fontSize: 16, fontWeight: 600, color: "text", paddingLeft: 8 } }, title),
-        iconButton2("lx-picker-previous", words.previous, "M12.5 4l-6 6 6 6", -1),
-        iconButton2("lx-picker-next", words.next, "M7.5 4l6 6-6 6", 1)
+        iconButton("lx-picker-previous", words.previous, "M12.5 4l-6 6 6 6", -1),
+        iconButton("lx-picker-next", words.next, "M7.5 4l6 6-6 6", 1)
       ),
       h(
         "view",
@@ -5218,405 +5265,6 @@
     results = [];
   }
 
-  // src/runtime/video-controls.js
-  var W = 1.75;
-  var solid = (d) => ({ d, fill: "currentColor", stroke: "currentColor", strokeWidth: W, strokeLinejoin: "round", strokeLinecap: "round" });
-  var line = (d) => ({ d, fill: "none", stroke: "currentColor", strokeWidth: W, strokeLinejoin: "round", strokeLinecap: "round" });
-  var speaker = "M5 10v4h2.75l4 3.25V6.75l-4 3.25z";
-  var icons2 = {
-    play: [solid("M8.25 6.6v10.8a.75.75 0 0 0 1.14.64l8.6-5.4a.75.75 0 0 0 0-1.28l-8.6-5.4a.75.75 0 0 0-1.14.64z")],
-    pause: [solid("M8.25 6.5h1.25v11H8.25zM14.5 6.5h1.25v11H14.5z")],
-    replay: [line("M5.5 12a6.5 6.5 0 1 0 1.9-4.6M5.5 4.9v3.35h3.35")],
-    sound: [line(speaker), line("M15 9.75a3.25 3.25 0 0 1 0 4.5M17.5 7.5a6.5 6.5 0 0 1 0 9")],
-    muted: [line(speaker), line("M15.5 10l4 4M19.5 10l-4 4")],
-    enter: [line("M5.5 9.25v-2.5a1.25 1.25 0 0 1 1.25-1.25h2.5M14.75 5.5h2.5a1.25 1.25 0 0 1 1.25 1.25v2.5M18.5 14.75v2.5a1.25 1.25 0 0 1-1.25 1.25h-2.5M9.25 18.5h-2.5a1.25 1.25 0 0 1-1.25-1.25v-2.5")],
-    exit: [line("M9.25 5.5V8A1.25 1.25 0 0 1 8 9.25H5.5M18.5 9.25H16A1.25 1.25 0 0 1 14.75 8V5.5M14.75 18.5V16A1.25 1.25 0 0 1 16 14.75h2.5M5.5 14.75H8A1.25 1.25 0 0 1 9.25 16v2.5")],
-    settings: [line("M4.75 8h7.5M17.25 8h2M4.75 16h2M11.75 16h7.5"), line("M12.25 8a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M6.75 16a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0")],
-    close: [line("M6.5 9.5l5.5 5.5 5.5-5.5")]
-  };
-  var glyph = (name, size = 20) => h("vector", { "aria-hidden": true, paths: icons2[name], viewBox: [0, 0, 24, 24], style: { width: size, height: size } });
-  var LABELS = Object.freeze({
-    play: "Play",
-    pause: "Pause",
-    replay: "Replay",
-    mute: "Mute",
-    unmute: "Unmute",
-    seek: "Seek",
-    fullscreen: "Full screen",
-    exitFullscreen: "Exit full screen",
-    quality: "Quality",
-    auto: "Auto",
-    rate: "Playback speed",
-    live: "LIVE",
-    retry: "Retry",
-    loading: "Loading",
-    settings: "Playback settings",
-    failed: "This video cannot play right now"
-  });
-  var RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
-  var HOLD_MS = 1500;
-  var reached = /* @__PURE__ */ new WeakSet();
-  var clock3 = (seconds) => {
-    const s = Math.max(0, Math.floor(seconds));
-    const m = Math.floor(s / 60);
-    const two = (n) => String(n).padStart(2, "0");
-    return m >= 60 ? `${Math.floor(m / 60)}:${two(m % 60)}:${two(s % 60)}` : `${m}:${two(s % 60)}`;
-  };
-  var iconButton = (color, testId, label2, icon, onClick, extra = {}, size = 20, box = 44) => h(
-    "button",
-    {
-      "data-testid": testId,
-      "aria-label": label2,
-      onClick,
-      ...extra,
-      style: { width: box, height: box, alignItems: "center", justifyContent: "center", backgroundColor: "transparent", color }
-    },
-    glyph(icon, size)
-  );
-  var INK = "on-media";
-  var fill2 = { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 };
-  var soft = [0.25, 0.1, 0.25, 1];
-  var fadeMotion = { properties: ["opacity", "transform"], durationMs: 220, delayMs: 0, easing: soft };
-  var spin2 = {
-    name: "lx-video-spin",
-    durationMs: 900,
-    delayMs: 0,
-    iterations: null,
-    whenReduced: "base",
-    easing: "linear",
-    opacity: null,
-    transforms: [{ kind: "rotate", angle: [{ offset: 0, value: 0 }, { offset: 1, value: 360 }] }]
-  };
-  var glass = { backgroundColor: "media" };
-  var SHOWN_S = 3;
-  var edges = Symbol("edges");
-  var spoken = /* @__PURE__ */ new Map();
-  function VideoControls({ player, overlay = false, labels, className, "data-testid": testId, [edges]: edge }) {
-    if (playerName(player) === void 0) throw Error("UI_PROP: player must be a useVideo handle");
-    if (typeof overlay !== "boolean") throw Error("UI_PROP: overlay must be boolean");
-    const say = labels ? { ...LABELS, ...labels } : edge ? spoken.get(playerName(player)) ?? LABELS : LABELS;
-    if (!edge) spoken.set(playerName(player), say);
-    const id = (part) => testId && `${testId}-${part}`;
-    const held2 = useLocal("held", null);
-    const asked = useLocal("asked", false);
-    const shown = useLocal("shown", { since: player.currentTime, hidden: false });
-    const { paused, ended, muted, duration, readyState, qualities, buffering, error, fullscreen } = player;
-    const live = duration === null && readyState !== "empty";
-    const known = typeof duration === "number" && duration > 0;
-    const now2 = player.currentTime;
-    const hold = held2.value;
-    if (hold !== null && Math.abs(now2 - hold.value) <= 0.5) reached.add(hold);
-    const holding = hold !== null && !reached.has(hold) && Date.now() - hold.at < HOLD_MS;
-    const at = known ? Math.min(holding ? hold.value : now2, duration) : 0;
-    const loading = !error && ((!paused || asked.value) && readyState !== "ready" || !paused && buffering);
-    const wake = (fn) => (...args) => {
-      if (overlay) shown.set({ since: player.currentTime, hidden: false });
-      return fn(...args);
-    };
-    const scrub = (value) => {
-      if (overlay) shown.set({ since: value, hidden: false });
-      held2.set({ value, at: Date.now() });
-      player.seek(value).catch(() => held2.set(null));
-    };
-    const toggle2 = wake(() => {
-      asked.set(paused || ended);
-      return ended ? player.seek(0).then(() => player.play()) : paused ? player.play() : player.pause();
-    });
-    const retry = wake(() => {
-      asked.set(true);
-      return player.retry().then(() => player.play());
-    });
-    const playLabel = ended ? say.replay : paused ? say.play : say.pause;
-    const playIcon = ended ? "replay" : paused ? "play" : "pause";
-    const seekProps = { "data-testid": id("scrub"), "aria-label": say.seek, min: 0, max: known ? duration : 1, step: 0.1, value: at, disabled: !known, onChange: scrub };
-    const qualityOptions = [{ value: "auto", label: say.auto }, ...qualities.map((name) => ({ value: name, label: name }))];
-    const full = edge !== void 0;
-    const box = full ? 48 : 44;
-    const size = full ? 22 : 20;
-    const fg = overlay ? INK : "text";
-    const mute = iconButton(fg, id("mute"), muted ? say.unmute : say.mute, muted ? "muted" : "sound", wake(() => player.setMuted(!muted)), { "aria-pressed": muted }, size, box);
-    const screen = iconButton(
-      fg,
-      id("fullscreen"),
-      fullscreen ? say.exitFullscreen : say.fullscreen,
-      fullscreen ? "exit" : "enter",
-      wake(() => fullscreen ? player.exitFullscreen() : player.requestFullscreen()),
-      { "aria-pressed": fullscreen },
-      size,
-      box
-    );
-    const play = iconButton(fg, id("play"), playLabel, playIcon, toggle2, { "aria-busy": loading || buffering }, size, box);
-    if (!overlay) {
-      return h(
-        "view",
-        { className, "data-testid": testId, ...className ? {} : { style: { color: fg } } },
-        error && h(
-          "view",
-          { "data-testid": id("error"), role: "alert", style: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 11, paddingRight: 11 } },
-          h("text", { style: { flexGrow: 1, flexBasis: 0, fontSize: 12, color: "danger" } }, error.message),
-          error.recoverable && h("button", { "data-testid": id("retry"), onClick: () => player.retry(), style: { fontSize: 12 } }, say.retry)
-        ),
-        h(
-          "view",
-          { style: { flexDirection: "row", alignItems: "center", gap: 2 } },
-          play,
-          live ? h("text", { "data-testid": id("live"), style: { flexGrow: 1, fontSize: 12, fontWeight: 600, color: "accent" } }, say.live) : h("slider", { ...seekProps, style: { flexGrow: 1, flexBasis: 0 } }),
-          !live && h(
-            "text",
-            { "data-testid": id("time"), style: { fontSize: 12, color: "text-muted", fontVariantNumeric: "tabular-nums" } },
-            `${clock3(at)} / ${known ? clock3(duration) : "--:--"}`
-          ),
-          mute,
-          qualities.length > 0 && h("select", {
-            "data-testid": id("quality"),
-            "aria-label": say.quality,
-            value: player.quality,
-            options: qualityOptions,
-            onChange: (quality) => player.setQuality(quality),
-            style: { fontSize: 12 }
-          }),
-          screen
-        )
-      );
-    }
-    const env = useView().env;
-    const precise = env?.pointer === "fine";
-    const menu = useLocal("menu", false);
-    const { since, hidden } = shown.value;
-    const elapsed = now2 >= since ? now2 - since : now2;
-    const playing = !paused && !ended;
-    const fresh2 = paused && !ended && !asked.value && now2 === 0 && !error && !holding && !player.seeking;
-    const pinned = loading || !!error || !playing || holding || menu.value;
-    const up = !fresh2 && (pinned || precise || !hidden && elapsed < SHOWN_S);
-    const pad2 = edge ?? { top: 0, left: 0, right: 0, bottom: 0 };
-    const time = live ? h("text", { "data-testid": id("live"), style: { fontSize: 12, fontWeight: 600, color: "accent", paddingLeft: 4 } }, say.live) : h(
-      "text",
-      { "data-testid": id("time"), style: { fontSize: full ? 13 : 12, color: INK, fontVariantNumeric: "tabular-nums", paddingLeft: 2 } },
-      clock3(at),
-      h("span", { style: { color: "on-media/70" } }, ` / ${known ? clock3(duration) : "--:--"}`)
-    );
-    const scrubber = (style2) => !live && h("slider", {
-      ...seekProps,
-      dir: "ltr",
-      secondaryValue: known ? Math.min(duration, now2 + (player.buffered ?? 0)) : 0,
-      "aria-valuetext": `${clock3(at)} / ${known ? clock3(duration) : "--:--"}`,
-      style: {
-        position: "absolute",
-        paddingLeft: 0,
-        paddingRight: 0,
-        ...style2,
-        trackPart: { height: holding ? 5 : 3, borderRadius: 999, backgroundColor: "on-media/25" },
-        secondaryPart: { backgroundColor: "on-media/45" },
-        rangePart: { backgroundColor: "accent" },
-        // Always 12 wide, so the track ends stay put; it shows while held.
-        thumbPart: { width: 12, height: 12, borderRadius: 999, backgroundColor: holding ? "on-media" : "transparent" }
-      }
-    });
-    const settings = h("button", {
-      "data-testid": id("settings"),
-      "aria-label": say.settings,
-      "aria-expanded": menu.value,
-      onClick: wake(() => menu.set(!menu.value)),
-      style: { width: box, height: box, alignItems: "center", justifyContent: "center", backgroundColor: "transparent", color: INK }
-    }, glyph("settings", size));
-    const left = h("view", { style: { flexDirection: "row", alignItems: "center", flexShrink: 0 } }, play, time);
-    const right = h("view", { style: { flexDirection: "row", alignItems: "center", flexShrink: 0 } }, settings, mute, screen);
-    const lineAt = full ? 14 : 12;
-    const rowAt = lineAt + 2;
-    const inset = full ? 16 : 8;
-    const radius = full ? 20 : 16;
-    const barHeight = rowAt + box + (full ? 4 : 0);
-    const lift = { transition: fadeMotion };
-    const bar = h(
-      "view",
-      { "data-testid": id("bar"), style: {
-        position: "absolute",
-        left: inset + pad2.left,
-        right: inset + pad2.right,
-        bottom: (full ? 12 : 8) + pad2.bottom,
-        ...glass,
-        borderRadius: radius,
-        paddingTop: rowAt,
-        paddingBottom: full ? 4 : 0,
-        paddingLeft: 2,
-        paddingRight: 2,
-        ...lift
-      } },
-      scrubber({ top: rowAt - box, height: box, paddingTop: box - 2 * (rowAt - lineAt), paddingBottom: 0, left: 12, right: 12 }),
-      h("view", { style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" } }, left, right)
-    );
-    const close = full && h(
-      "view",
-      { style: { position: "absolute", top: 12 + (pad2.top ?? 0), left: inset + pad2.left, ...lift } },
-      h(
-        "view",
-        { style: { ...glass, borderRadius: 999 } },
-        iconButton(INK, id("close"), say.exitFullscreen, "close", wake(() => player.exitFullscreen()), {}, size, box)
-      )
-    );
-    const pick = (fn) => wake(() => {
-      menu.set(false);
-      return fn();
-    });
-    const chip = (testId2, label2, chosen, onClick) => h(
-      "button",
-      {
-        "data-testid": testId2,
-        "aria-pressed": chosen,
-        onClick: pick(onClick),
-        style: {
-          height: 44,
-          minWidth: 48,
-          paddingLeft: 10,
-          paddingRight: 10,
-          borderRadius: 12,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: chosen ? "accent" : "on-media/25"
-        }
-      },
-      h("text", { style: { fontSize: 14, fontWeight: chosen ? 600 : 400, color: chosen ? "on-accent" : INK, fontVariantNumeric: "tabular-nums" } }, label2)
-    );
-    const chips = (label2, items) => h("view", { role: "group", "aria-label": label2, style: { flexDirection: "row", flexWrap: "wrap", gap: 6 } }, ...items);
-    const sheet = menu.value && h(
-      "view",
-      { style: { ...fill2, zIndex: 3 } },
-      // A tap anywhere else on the picture closes it.
-      h("button", { "data-testid": id("menu-dismiss"), "aria-hidden": true, onClick: () => menu.set(false), style: { ...fill2, backgroundColor: "transparent" } }),
-      h(
-        "view",
-        { style: {
-          position: "absolute",
-          top: inset + pad2.top,
-          bottom: (full ? 12 : 8) + pad2.bottom,
-          left: inset + pad2.left,
-          right: inset + pad2.right,
-          alignItems: "flex-end",
-          justifyContent: "flex-end"
-        } },
-        h(
-          "view",
-          {
-            "data-testid": id("menu"),
-            role: "group",
-            "aria-label": say.settings,
-            style: { flexShrink: 1, overflow: "hidden", ...glass, borderRadius: radius }
-          },
-          // Two rows without headings fit above the bar of a phone's 16:9 inline video; the rows' names are for screen readers.
-          h(
-            "view",
-            { style: { gap: 8, paddingTop: 8, paddingBottom: 8, paddingLeft: 8, paddingRight: 8 } },
-            chips(say.rate, RATES.map((r) => chip(id(`rate-${r}`), `${r}\xD7`, player.playbackRate === r, () => player.setPlaybackRate(r)))),
-            qualities.length > 0 && chips(say.quality, ["auto", ...qualities].map((q) => chip(id(`quality-${q}`), q === "auto" ? say.auto : q, player.quality === q, () => player.setQuality(q))))
-          )
-        ),
-        // Holds the menu above the bar while there is room, and gives way first when there is not.
-        h("view", { style: { height: barHeight + 8, flexShrink: 1e3 } })
-      )
-    );
-    const disc = full ? 72 : 60;
-    const errorPanel = error && h(
-      "view",
-      {
-        "data-testid": id("error"),
-        role: "alert",
-        "aria-label": say.failed,
-        style: { ...glass, borderRadius: 18, alignItems: "center", gap: 10, maxWidth: 280, paddingTop: 14, paddingBottom: error.recoverable ? 12 : 14, paddingLeft: 18, paddingRight: 18 }
-      },
-      h("text", { style: { fontSize: 14, fontWeight: 500, color: INK, textAlign: "center" } }, say.failed),
-      error.recoverable && h(
-        "button",
-        {
-          "data-testid": id("retry"),
-          onClick: retry,
-          style: { height: 44, minWidth: 96, paddingLeft: 18, paddingRight: 18, borderRadius: 999, alignItems: "center", justifyContent: "center", backgroundColor: "on-media/25" }
-        },
-        h("text", { style: { fontSize: 14, fontWeight: 600, color: INK } }, say.retry)
-      )
-    );
-    const centre = errorPanel || (loading ? h(
-      "view",
-      {
-        role: "progressbar",
-        "aria-label": say.loading,
-        "data-testid": id("loading"),
-        style: { ...glass, width: disc, height: disc, borderRadius: 999, alignItems: "center", justifyContent: "center" }
-      },
-      h("vector", {
-        "aria-hidden": true,
-        viewBox: [0, 0, 24, 24],
-        style: { width: disc * 0.46, height: disc * 0.46, animation: spin2 },
-        paths: [
-          { d: "M12 3.5a8.5 8.5 0 1 1 0 17a8.5 8.5 0 1 1 0-17", fill: "none", stroke: "on-media/25", strokeWidth: W },
-          { d: "M12 3.5a8.5 8.5 0 0 1 8.5 8.5", fill: "none", stroke: INK, strokeWidth: W, strokeLinecap: "round" }
-        ]
-      })
-    ) : fresh2 && h("button", {
-      "data-testid": id("start"),
-      "aria-label": say.play,
-      "aria-hidden": true,
-      onClick: toggle2,
-      style: { ...glass, width: disc, height: disc, borderRadius: 999, alignItems: "center", justifyContent: "center", color: INK, paddingLeft: 2 }
-    }, glyph("play", disc * 0.5)));
-    return h(
-      "view",
-      { className, "data-testid": testId, style: { ...fill2, color: INK } },
-      h("button", {
-        "data-testid": id("surface"),
-        "aria-hidden": true,
-        onClick: precise || fresh2 ? toggle2 : () => shown.set({ since: player.currentTime, hidden: up && playing }),
-        style: { ...fill2, zIndex: up || fresh2 ? 0 : 2, backgroundColor: "transparent" }
-      }),
-      // The large play and Retry sit above the bar, so the scrubber's touch box never takes them on a
-      // short picture; the loading ring stays under it.
-      centre && h("view", { style: { ...fill2, alignItems: "center", justifyContent: "center", zIndex: loading && !error ? 1 : 2 } }, centre),
-      h("view", { "data-testid": id("chrome"), style: { ...fill2, zIndex: 1, opacity: up ? 1 : 0, transition: fadeMotion } }, bar, close),
-      sheet
-    );
-  }
-  VideoControls.__lxid = "@lingxia/view#VideoControls";
-  function FullscreenVideo({ name }) {
-    const player = useVideo(name);
-    const safeArea = { top: 0, left: 0, right: 0, bottom: 0, ...useView().env?.safeArea };
-    return h(
-      "dialog",
-      {
-        open: true,
-        closedby: "closerequest",
-        onClose: () => player.exitFullscreen(),
-        "aria-label": "Full screen video",
-        "data-testid": "lx-fullscreen-video",
-        style: {
-          width: "100%",
-          height: "100%",
-          maxWidth: "100%",
-          maxHeight: "100%",
-          marginTop: 0,
-          marginBottom: 0,
-          marginLeft: 0,
-          marginRight: 0,
-          paddingTop: 0,
-          paddingBottom: 0,
-          paddingLeft: 0,
-          paddingRight: 0,
-          borderRadius: 0,
-          backgroundColor: "#000000"
-        }
-      },
-      h(
-        "view",
-        { style: { flexGrow: 1, justifyContent: "center" } },
-        // Until the player has a frame the full screen view shows what the page's view does.
-        h("video", { player, poster: posterOf(name), style: { width: "100%", flexGrow: 1, objectFit: "contain" } }),
-        h(VideoControls, { player, overlay: true, [edges]: safeArea, "data-testid": "lx-fullscreen-controls" })
-      )
-    );
-  }
-  function fullscreenNode() {
-    const name = fullscreenPlayer();
-    return name === null ? null : h(FullscreenVideo, { name, key: `lx-fullscreen:${name}` });
-  }
-
   // src/runtime/tree.js
   function List({ items, getKey, renderItem, getItemHeight, ...props }) {
     if (!Object.isFrozen(items) && typeof globalThis.__lingxiaWarn === "function") warnUnfrozen(props, renderItem);
@@ -5699,13 +5347,14 @@
         1,
         { tag: candidate.tree.element, typography: candidate.tree.typography }
       ), env));
-      const fullscreen = fullscreenNode();
-      if (fullscreen) candidate.tree.children.push(resolveNode(
-        fullscreen,
+      const fallback = fullscreenFallback();
+      const bare = fallback && resolveBare(() => resolveNode(
+        fallback,
         `root/${candidate.tree.element}/key:"lx-fullscreen"`,
         1,
         { tag: candidate.tree.element, typography: candidate.tree.typography }
       ));
+      if (bare) candidate.tree.children.push(bare);
       const picker2 = pickerNode(env);
       if (picker2) {
         const layer2 = resolveNode(
@@ -5727,6 +5376,9 @@
       }
       const encoding = now();
       try {
+        const wire = encodeTree(candidate.tree, windows);
+        if (!bare || !fullscreenDrawn()) return wire;
+        candidate.tree.children = candidate.tree.children.filter((child) => child !== bare);
         return encodeTree(candidate.tree, windows);
       } finally {
         spent("encode", encoding);

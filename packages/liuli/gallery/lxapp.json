@@ -30,6 +30,8 @@
     { "name": "item", "path": "pages/item/index" },
     { "name": "details", "path": "pages/details/index" },
     { "name": "avatar", "path": "pages/avatar/index" },
+    { "name": "video-player", "path": "pages/video-player/index" },
+    { "name": "video-controls", "path": "pages/video-controls/index" },
     { "name": "sign-in", "path": "pages/sign-in/index" },
     { "name": "settings", "path": "pages/settings/index" },
     { "name": "uploads", "path": "pages/uploads/index" }

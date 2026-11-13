@@ -155,7 +155,7 @@ export interface Video {
   /** `"auto"` or the label chosen with `setQuality`; `qualities` are the labels to choose from. */
   readonly quality: string; readonly qualities: readonly string[];
   readonly error: VideoError | null;
-  /** Shown full screen: one more view of this player over the page, with the standard bar. */
+  /** Shown full screen: the page draws it in an open dialog holding a `<video>` of this player; without one, the bare picture fills the window. */
   readonly fullscreen: boolean;
   play(): Promise<void>; pause(): Promise<void>; seek(seconds: number): Promise<void>;
   setMuted(muted: boolean): Promise<void>; setVolume(volume: number): Promise<void>; setPlaybackRate(rate: number): Promise<void>;
@@ -213,11 +213,6 @@ export declare function Summary(props: { className?: string; children?: Child })
 export declare function Pager(props: { bind?: Local<number>; defaultPage?: number; dots?: boolean; "aria-label": string; className?: string; "data-testid"?: string; children?: Child }): JSX.Element;
 /** An amount done, as HTML's progress: a bar or a ring, indeterminate without `value`. A screen reader hears `value` / `max` (100) as a percentage unless `aria-valuetext` says otherwise. */
 export declare function Progress(props: { value?: number; max?: number; variant?: "bar" | "ring"; size?: number; "aria-label": string; "aria-valuetext"?: string; className?: string; "data-testid"?: string }): JSX.Element;
-/** The words `<VideoControls>` says; each defaults to English. */
-export interface VideoControlsLabels { play: string; pause: string; replay: string; mute: string; unmute: string; seek: string; fullscreen: string; exitFullscreen: string; quality: string; auto: string; rate: string; live: string; retry: string; loading: string; settings: string; failed: string }
-/** The standard controls for a `useVideo` player: play/pause (replay once ended), a scrubber that holds a dragged position until the player reaches it, the time or a Live badge, mute, speed and quality, full screen, and a recoverable error's Retry. `overlay` lays them over the picture as a bar on its bottom edge, a large play before the first play and a menu that stays inside the box: put it after the `<video>` in a `relative` parent holding only that video. On touch the bar hides after a few seconds of playback and a tap brings it back; it stays up while paused, loading, failed, dragged or with its menu open. `labels` puts its words in the page's language, full screen included. */
-export declare function VideoControls(props: { player: Video; overlay?: boolean; labels?: Partial<VideoControlsLabels>; className?: string; "data-testid"?: string }): JSX.Element;
-
 export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }
 /** Strokes around the box (`outer`, after an `offset` gap) and inside its border (`inner`); they never take layout space. */
 export interface Ring {

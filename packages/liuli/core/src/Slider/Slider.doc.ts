@@ -58,7 +58,13 @@ export const doc: ComponentDoc = {
     { name: 'Position', title: 'A position in a recording, with what has loaded' },
     { name: 'Sizes', title: 'Small and medium' },
   ],
-  gaps: [],
+  gaps: [
+    {
+      missing: 'A tone for use over a picture, sizing of the control box, and a forced left-to-right direction.',
+      needs: 'a media tone and part-level layout props on Slider',
+      today: 'VideoControls builds its scrubber on `<slider>` directly.',
+    },
+  ],
   related: ['ProgressBar'],
   gallery: {
     specimen: 'Specimen',

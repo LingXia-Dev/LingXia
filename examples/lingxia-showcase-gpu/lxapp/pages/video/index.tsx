@@ -1,6 +1,8 @@
-import { List, useVideo, VideoControls, type View } from '@lingxia/view';
+import { List, useVideo, type View } from '@lingxia/view';
+import { VideoControls } from '@liulidesign/core/VideoControls';
 import '../../theme/index.css';
 import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../../shared/public-video';
+import { VIDEO_LABELS } from '../../shared/video-labels';
 
 const clips = ['public/video/pattern.mp4', 'public/video/fractal.mp4'];
 // Every third row plays a clip under a text overlay, so a scroll moves video between plain rows.
@@ -17,7 +19,7 @@ function Portrait() {
         <video data-testid="video-portrait" player={video} src="public/video/portrait.mp4" muted loop aria-label="Portrait clip" className="w-36 rounded-xl" />
       </view>
       {/* Under the clip at full width: beside it the bar ran out of room for full screen. */}
-      <VideoControls player={video} data-testid="video-portrait-controls" />
+      <VideoControls player={video} labels={VIDEO_LABELS} variant="bar" data-testid="video-portrait-controls" />
     </view>
   );
 }

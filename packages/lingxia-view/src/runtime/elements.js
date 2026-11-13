@@ -16,7 +16,8 @@ import { keyPositions } from './keys.js';
 import { expand, invokerHandler, interestTrigger, popoverScope, dragClose, scrimMark } from './toplayer.js';
 import { recall, enter, leave, remember } from './memo.js';
 import { isProvider, provide } from './context.js';
-import { playerName, videoStatus, fullscreenHandler, videoPoster } from './video.js';
+import { playerName, videoStatus, fullscreenHandler } from './video.js';
+import { shownInDialog } from './fullscreen.js';
 
 const videoFlags = [['videoMuted', 'muted'], ['videoLoop', 'loop']];
 const videoEvents = [['loadedmetadata', 'onLoadedMetadata'], ['play', 'onPlay'], ['playing', 'onPlaying'], ['pause', 'onPause'],
@@ -560,10 +561,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (props.sources !== undefined) wire('videoSources', JSON.stringify(props.sources.map(({ src, label }) => ({ src, label }))));
       // A named player is the page's; a bare <video> owns one keyed by its place in the tree.
       wire('videoPlayer', name === undefined ? `el:${identity}` : `name:${name}`);
-      if (props.poster !== undefined) {
-        wire('videoPoster', props.poster);
-        if (name !== undefined) videoPoster(name, props.poster);
-      }
+      if (name !== undefined && parent.inDialog) shownInDialog(name);
+      if (props.poster !== undefined) wire('videoPoster', props.poster);
       // Without autoPlay a player waits on its first frame, as HTML's; `paused` wins over it.
       if (source !== undefined) wire('videoPaused', +(props.paused ?? !props.autoPlay));
       for (const [key, prop] of videoFlags) if (props[prop] !== undefined) wire(key, +props[prop]);
@@ -656,6 +655,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         tag, typography: style.typography, direction, extra: position < last ? style.children : undefined, every: style.every,
         sibling: { index: position, count: flat.length },
         inControl: parent.inControl || admission.tags[element.wire].children === 'content',
+        inDialog: parent.inDialog || tag === 'dialog',
         popovers: props[popoverScope] ?? parent.popovers, contexts: parent.contexts,
       });
       // A component's fragment opens in its place, named under the component's slot or key.

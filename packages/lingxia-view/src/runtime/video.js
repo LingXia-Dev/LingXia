@@ -19,7 +19,7 @@ const latest = new Map();
 /** The name of the player shown full screen, or null. */
 export const fullscreenPlayer = () => fullscreenName;
 
-export function resetVideos() { fullscreenName = null; latest.clear(); posters.clear(); syncOrientation(); }
+export function resetVideos() { fullscreenName = null; latest.clear(); syncOrientation(); }
 
 // The window turns to the full-screen picture's shape: landscape until a picture says it is tall,
 // and left be for a square one.
@@ -33,12 +33,6 @@ function syncOrientation() {
 }
 
 /** A <video> view's onFullscreenChange for player `name`, collected as the page renders. */
-// Kept by name, not per render: a page view reused from memo does not set it again.
-const posters = new Map();
-/** The poster a page's `<video>` gives its named player, for the full screen view of it. */
-export const videoPoster = (name, poster) => posters.set(name, poster);
-export const posterOf = name => posters.get(name);
-
 export function fullscreenHandler(name, handler) {
   const handlers = render.candidate.fullscreenHandlers ??= new Map();
   if (!handlers.has(name)) handlers.set(name, []);

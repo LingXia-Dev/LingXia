@@ -1,8 +1,10 @@
-import { createContext, Details, Fragment, List, Pager as KitPagerView, Progress, Summary, useContext, useId, useLocal, useVideo, useView, VideoControls, type Local, type VectorPath } from '@lingxia/view';
+import { createContext, Details, Fragment, List, Pager as KitPagerView, Progress, Summary, useContext, useId, useLocal, useVideo, useView, type Local, type VectorPath } from '@lingxia/view';
+import { VideoControls } from '@liulidesign/core/VideoControls';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 import type { LabPageData } from '../../shared/lab-types';
 import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../../shared/public-video';
+import { VIDEO_LABELS } from '../../shared/video-labels';
 
 // GPU-only renderer fixtures: one section per View capability, addressed by testId.
 // One group renders at a time: a whole-lab render exceeds the per-render budget on slower phones.
@@ -285,7 +287,7 @@ function Media() {
     <Section title="Media" testId="lab-video">
       <view className="relative rounded-xl overflow-hidden">
         <video data-testid="lab-video-player" player={clip} {...source} loop={!packaged} />
-        <VideoControls player={clip} overlay data-testid="lab-video-controls" />
+        <VideoControls player={clip} labels={VIDEO_LABELS} poster={packaged ? 'public/video/fractal-poster.jpg' : undefined} data-testid="lab-video-controls" />
       </view>
       {/* Specs only: a spinner beside the player commits the page every frame; the bar must still follow it. */}
       {packaged ? <Progress variant="ring" size={24} aria-label="Loading next" data-testid="lab-video-spinner" /> : (
@@ -293,7 +295,7 @@ function Media() {
           <text className="text-sm text-muted">HLS: the stream's renditions are its qualities.</text>
           <view className="relative rounded-xl overflow-hidden">
             <video data-testid="lab-stream-player" player={stream} src={PUBLIC_STREAM} aria-label="HLS test stream" />
-            <VideoControls player={stream} overlay data-testid="lab-stream-controls" />
+            <VideoControls player={stream} labels={VIDEO_LABELS} data-testid="lab-stream-controls" />
           </view>
         </view>
       )}

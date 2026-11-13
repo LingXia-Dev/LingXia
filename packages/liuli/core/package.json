@@ -44,6 +44,10 @@
     "./Switch/recipe": "./src/Switch/Switch.recipe.ts",
     "./Tabs": "./src/Tabs/Tabs.tsx",
     "./Tabs/recipe": "./src/Tabs/Tabs.recipe.ts",
+    "./VideoControls": "./src/VideoControls/VideoControls.tsx",
+    "./VideoControls/recipe": "./src/VideoControls/VideoControls.recipe.ts",
+    "./VideoPlayer": "./src/VideoPlayer/VideoPlayer.tsx",
+    "./VideoPlayer/recipe": "./src/VideoPlayer/VideoPlayer.recipe.ts",
     "./package.json": "./package.json"
   },
   "lingxia": {

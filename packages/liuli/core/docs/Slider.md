@@ -161,4 +161,10 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use a slider for an exact number the person knows; use a text input.
 - Don't: Act on every change when the work is slow; apply when the value settles.
 
+## Not yet
+
+| Missing | Needs | Meanwhile |
+| --- | --- | --- |
+| A tone for use over a picture, sizing of the control box, and a forced left-to-right direction. | a media tone and part-level layout props on Slider | VideoControls builds its scrubber on `<slider>` directly. |
+
 Related: ProgressBar.

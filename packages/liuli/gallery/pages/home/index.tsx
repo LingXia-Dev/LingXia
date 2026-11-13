@@ -19,6 +19,8 @@ import { Specimen as SwitchSpecimen } from '../../../core/src/Switch/Switch.exam
 import { Specimen as TabsSpecimen } from '../../../core/src/Tabs/Tabs.examples';
 import { Specimen as TextInputSpecimen } from '../../../core/src/TextInput/TextInput.examples';
 import { Specimen as TooltipSpecimen } from '../../../core/src/Tooltip/Tooltip.examples';
+import { Specimen as VideoControlsSpecimen } from '../../../core/src/VideoControls/VideoControls.examples';
+import { Specimen as VideoPlayerSpecimen } from '../../../core/src/VideoPlayer/VideoPlayer.examples';
 import { Category, GalleryPage, Masthead, Tile } from '../../shared/Layout';
 import { ColourSpecimen, TypographySpecimen, ShapeAndSpacingSpecimen, ElevationSpecimen, MotionSpecimen, SignInSpecimen, SettingsSpecimen, UploadsSpecimen } from '../../shared/Specimens';
 
@@ -238,6 +240,22 @@ export function render({ actions }: View<Actions>) {
           testId={"open-avatar"}
         >
           <AvatarSpecimen />
+        </Tile>
+        <Tile
+          name={"VideoPlayer"}
+          tagline={"Watch a video"}
+          onOpen={() => actions.open({ page: "video-player" })}
+          testId={"open-video-player"}
+        >
+          <VideoPlayerSpecimen />
+        </Tile>
+        <Tile
+          name={"VideoControls"}
+          tagline={"Drive a video"}
+          onOpen={() => actions.open({ page: "video-controls" })}
+          testId={"open-video-controls"}
+        >
+          <VideoControlsSpecimen />
         </Tile>
       </Category>
       <Category title={"Patterns"}>
