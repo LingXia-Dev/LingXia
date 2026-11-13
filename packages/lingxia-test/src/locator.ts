@@ -585,6 +585,8 @@ export class PageLocator implements Locator {
       let reason = "not attached";
       // Preserve the last driver failure as the timeout cause.
       let cause: unknown;
+      // The native act's last refusal: the stability wait it restarts must not hide it.
+      let refusal: { reason: string; cause: unknown } | undefined;
       const until = async (budget: ActionDeadline): Promise<boolean> => {
         while (!budget.expired()) {
           try {
@@ -620,7 +622,10 @@ export class PageLocator implements Locator {
               previousRect = rect;
               if (last.enabled === false) reason = "element is disabled";
               else if ((verb === "fill" || verb === "type") && last.editable === false) reason = "element is not editable";
-              else if (!stable) reason = "element is moving";
+              else if (!stable) {
+                reason = refusal?.reason ?? "element is moving";
+                cause = refusal?.cause;
+              }
               else {
                 // A GPU page has no DOM to probe; the native act refuses what it cannot take.
                 const check = last.renderer === "gpu" ? true : await this.actionability(last.index, verb, budget);
@@ -637,6 +642,7 @@ export class PageLocator implements Locator {
                     }
                     reason = error instanceof Error ? error.message : String(error);
                     cause = error;
+                    refusal = { reason, cause };
                     previousRect = undefined;
                   }
                 }

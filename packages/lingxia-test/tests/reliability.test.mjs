@@ -184,6 +184,24 @@ test('a native pre-dispatch rejection is retried safely', async () => {
   assert.equal(element.clicked, 1);
 });
 
+test('a click the page keeps refusing times out naming the refusal, not movement', async () => {
+  const world = createWorld();
+  world.add({testId:'scrim', renderer:'gpu', rect:{left:0, top:0, width:40, height:40}, inViewport:true});
+  world.app.page.click = async () => {
+    throw Object.assign(new Error('Element not interactable: [data-testid="scrim"] is not enabled'), { code: 'E_ELEMENT_NOT_INTERACTABLE' });
+  };
+  installFakeHost(world);
+  // The stability wait restarts after each refusal, so the deadline lands on either half;
+  // each deadline leaves room for several refused clicks, even on a loaded machine.
+  for (const timeout of [600, 675, 750, 825, 900]) spec(`refused ${timeout}`, t => t.app.view.testId('scrim').click({timeout}));
+  const report = await run();
+  assert.equal(report.failed, 5);
+  for (const failed of report.cases) {
+    assert.match(failed.error.message, /is not enabled/);
+    assert.doesNotMatch(failed.error.message, /element is moving/);
+  }
+});
+
 test('page-scoped indexed locators preserve target on every read and input', async () => {
   const world = createWorld();
   world.add({testId:'field', visible:true, enabled:true, editable:true});
