@@ -1,6 +1,7 @@
 //! Interest invokers: a pointer resting on an `interestFor` button, or a key focusing it, shows
 //! its hint after a delay; losing interest hides it after a grace, so the pointer can cross the
-//! gap into the hint. The View only learns the outcome.
+//! gap into the hint. The View only learns the outcome. A press anywhere but on a shown hint or
+//! its control closes it, and the press still reaches what it landed on.
 use super::{Guard, Inner};
 use crate::platform::PlatformAdapter;
 use std::sync::Arc;
@@ -42,6 +43,76 @@ impl<A: PlatformAdapter> Inner<A> {
             main.interest.focused = None;
         }
         self.interest_changed();
+    }
+
+    /// A press at a device-pixel point closes every open hint it is not on, nor on its control.
+    pub(super) fn dismiss_hints_at(self: &Arc<Self>, point: [f32; 2]) {
+        let keep = {
+            let main = self.main();
+            let Some(frame) = main.interaction.frame() else {
+                return;
+            };
+            if !frame.nodes.iter().any(|node| node.hint.is_some()) {
+                return;
+            }
+            let scale = if frame.scale > 0.0 { frame.scale } else { 1.0 };
+            let point = [point[0] / scale, point[1] / scale];
+            let on = |identity: &str| {
+                frame.nodes.iter().any(|node| {
+                    let own = &*node.identity;
+                    (own == identity
+                        || own.len() > identity.len()
+                            && own.starts_with(identity)
+                            && own.as_bytes()[identity.len()] == b'/')
+                        && crate::interaction::frame::contains(node, point, false)
+                })
+            };
+            frame
+                .nodes
+                .iter()
+                .filter_map(|node| {
+                    let (id, invoker) = node.hint.as_ref()?;
+                    // The layer itself may span the page; only its panel counts as the hint.
+                    let panel = frame.nodes.iter().any(|child| {
+                        let own = &*child.identity;
+                        own.len() > node.identity.len()
+                            && own.starts_with(&*node.identity)
+                            && own.as_bytes()[node.identity.len()] == b'/'
+                            && crate::interaction::frame::contains(child, point, false)
+                    });
+                    (panel || invoker.as_deref().is_some_and(on)).then(|| id.clone())
+                })
+                .collect::<Vec<_>>()
+        };
+        {
+            // The press decides now; a delayed interest show must not reopen what it closed.
+            let mut main = self.main();
+            main.interest.timer += 1;
+            let kept = main.interest.shown.as_deref().is_some_and(|trigger| {
+                main.interaction.frame().is_some_and(|frame| {
+                    frame
+                        .nodes
+                        .iter()
+                        .find(|node| &*node.identity == trigger)
+                        .and_then(|node| node.interest_for.as_ref())
+                        .is_some_and(|target| keep.contains(target))
+                })
+            });
+            if !kept {
+                main.interest.shown = None;
+                main.interest.hovered = None;
+            }
+        }
+        self.work(
+            Guard::Page(self.lifecycle.page()),
+            move |_, session| session.dismiss_hints(&keep),
+            |inner, result| {
+                if matches!(result, Some(Ok(true))) && !inner.main().disposed {
+                    inner.main().dirty = true;
+                    inner.schedule();
+                }
+            },
+        );
     }
 
     /// The View names a trigger by its hint's id and its place among that hint's triggers,

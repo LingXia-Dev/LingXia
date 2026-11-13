@@ -17,6 +17,7 @@ use std::sync::Arc;
 pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeSnapshot {
     NodeSnapshot {
         close_request: false,
+        hint: None,
         drag_scrim: false,
         element_id: None,
         interest_for: None,

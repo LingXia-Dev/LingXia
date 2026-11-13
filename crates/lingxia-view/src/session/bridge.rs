@@ -212,6 +212,21 @@ impl ViewSession {
         })
     }
 
+    /// A press landed away from these open hints: every other open hint closes. True when one did.
+    pub fn dismiss_hints(&self, keep: &[String]) -> Result<bool, String> {
+        let keep = serde_json::to_string(keep).map_err(|e| e.to_string())?;
+        self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    format!(
+                        "typeof __lingxiaDismissHints === 'function' && __lingxiaDismissHints({keep})"
+                    )
+                    .as_bytes(),
+                ))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })
+    }
+
     /// A toast deadline passed; true when it hid the toast still showing.
     pub fn overlay_timer(&self, token: u64) -> Result<bool, String> {
         self.execute(|| {

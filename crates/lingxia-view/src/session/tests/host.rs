@@ -5639,3 +5639,49 @@ fn a_fine_pointer_crossing_a_box_calls_its_enter_and_leave_without_bubbling() {
         "a window losing focus leaves innermost first"
     );
 }
+
+#[test]
+fn a_tap_elsewhere_closes_a_hint_whatever_opened_it_and_still_reaches_what_it_hit() {
+    let worker = ViewWorker::spawn("test-hint-dismiss").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = source(
+        "function render(){const n=useLocal('n',0);return h('page',{},h('button',{popoverTarget:'tip','data-testid':'open',style:{width:100,height:40}},'Open'),h('button',{'data-testid':'other',onClick(){n.set(n.value+1)},style:{width:100,height:40,marginTop:100}},String(n.value)),h('view',{id:'tip',popover:'hint','data-testid':'tip',style:{width:60,height:30,backgroundColor:'#ff0000'}}))}",
+    );
+    let host = platform.host(&worker, &page, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let query = |host: &ViewHost<Fake>, id: &str| {
+        host.automation_request(
+            &serde_json::json!({"op": "query", "css": format!("[data-testid=\"{id}\"]")}),
+        )
+        .unwrap_or(serde_json::Value::Null)
+    };
+    let shown = |host: &ViewHost<Fake>| query(host, "tip")["rect"].is_object();
+    let press = |host: &ViewHost<Fake>, id: &str| {
+        let node = query(host, id);
+        let r = |key: &str| node["rect"][key].as_f64().unwrap() as f32;
+        let [x, y] = [r("left") + r("width") / 2.0, r("top") + r("height") / 2.0];
+        tap(host, x * 2.0, y * 2.0);
+        platform.settle(&[host]);
+        run_frames(&platform, host, 4);
+    };
+    press(&host, "open");
+    assert!(shown(&host), "the invoker's tap opens the hint");
+    press(&host, "tip");
+    assert!(shown(&host), "a tap on the hint keeps it");
+    press(&host, "other");
+    assert!(!shown(&host), "a tap elsewhere closes it");
+    assert_eq!(
+        query(&host, "other")["text"],
+        "1",
+        "and the tap still reaches the button it landed on"
+    );
+    press(&host, "open");
+    assert!(shown(&host));
+    press(&host, "open");
+    assert!(
+        !shown(&host),
+        "a tap on its own invoker toggles it shut, not shut and open again"
+    );
+}
+

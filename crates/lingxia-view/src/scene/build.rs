@@ -1246,6 +1246,20 @@ impl Renderer {
                 close_request: record.number(field::TOP_LAYER) == Some(1.0),
                 drag_scrim: record.number(field::DRAG_SCRIM) == Some(1.0),
                 element_id: record.string(field::ELEMENT_ID).map(str::to_owned),
+                hint: (record.number(field::HINT) == Some(1.0))
+                    .then(|| {
+                        let id = records
+                            .iter()
+                            .find(|child| child.parent == Some(index))?
+                            .string(field::ELEMENT_ID)?;
+                        let name = format!("--lx-popover-{id}");
+                        let invoker = records
+                            .iter()
+                            .position(|other| other.string(field::ANCHOR_NAME) == Some(&name))
+                            .map(|other| Arc::<str>::from(identities[other].as_str()));
+                        Some((id.to_owned(), invoker))
+                    })
+                    .flatten(),
                 interest_for: record.string(field::INTEREST_FOR).map(str::to_owned),
                 on_pointer: [field::ON_POINTER_ENTER, field::ON_POINTER_LEAVE].map(|id| {
                     record

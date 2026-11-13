@@ -121,6 +121,9 @@ pub struct NodeSnapshot {
     /// A control's `id`, which a swipe row's `aria-actions` names.
     #[serde(skip)]
     pub element_id: Option<String>,
+    /// An open hint's top layer: the hint's id and the identity of the control it sits against.
+    #[serde(skip)]
+    pub hint: Option<(String, Option<std::sync::Arc<str>>)>,
     /// The hint popover a pointer resting on this button or a key focusing it shows.
     #[serde(skip)]
     pub interest_for: Option<String>,

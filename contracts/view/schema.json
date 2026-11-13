@@ -301,7 +301,8 @@
     {"id": 231, "key": "interestFor", "wire": "interestFor", "ignorable": true, "kind": "element-id", "tags": ["button"]},
     {"id": 232, "key": "onPointerEnter", "wire": "onPointerEnter", "kind": "handle", "tags": ["column", "button"]},
     {"id": 233, "key": "onPointerLeave", "wire": "onPointerLeave", "kind": "handle", "tags": ["column", "button"]},
-    {"id": 234, "key": "ring", "wire": "ring", "kind": "ring"}
+    {"id": 234, "key": "ring", "wire": "ring", "kind": "ring"},
+    {"id": 235, "key": "hint", "wire": "hint", "kind": "flag", "ignorable": true, "tags": ["column"]}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},

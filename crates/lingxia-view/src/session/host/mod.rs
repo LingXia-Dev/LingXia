@@ -997,6 +997,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         }
         if event.phase == crate::interaction::view::PointerPhase::Down {
             self.inner.dismiss_editor_menu();
+            self.inner.dismiss_hints_at([event.x, event.y]);
         }
         self.inner.input_now();
         let pressed = matches!(
