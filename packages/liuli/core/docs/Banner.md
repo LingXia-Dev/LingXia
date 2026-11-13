@@ -73,7 +73,7 @@ export function OverList() {
         action={{ label: 'Retry now', onClick: () => retried.set(true) }}
         data-testid="sync"
       />
-      <view className="rounded-container border border-text/10 bg-surface divide-y divide-text/8">
+      <view className="overflow-hidden rounded-container border border-text/10 bg-surface divide-y divide-text/8">
         {['Q3 plan', 'Reading list', 'Interview notes'].map(note => (
           <view key={note} className="px-4 py-3"><text className="text-body text-text">{note}</text></view>
         ))}

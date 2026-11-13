@@ -31,7 +31,7 @@ export function PageSection({ title, children }: { title: string; children: Chil
 export function Stage({ caption, bare = false, children }: { caption?: string; bare?: boolean; children: Child }) {
   return (
     <view className="gap-2">
-      <view className={bare ? 'grow gap-3' : 'grow gap-3 rounded-container border border-text/10 bg-surface p-5'}>{children}</view>
+      <view className={bare ? 'grow gap-3' : 'grow gap-3 overflow-hidden rounded-container border border-text/10 bg-surface p-5'}>{children}</view>
       {caption !== undefined && <text className="text-footnote text-muted">{caption}</text>}
     </view>
   );

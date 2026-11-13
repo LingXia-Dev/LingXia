@@ -34,7 +34,7 @@ function Group({ title, footer, children }: { title: string; footer?: string; ch
   return (
     <view className="gap-2">
       <text role="heading" headingLevel={2} className="px-1 text-footnote font-medium text-muted">{title}</text>
-      <view className="rounded-container border border-text/10 bg-surface divide-y divide-text/8">{children}</view>
+      <view className="overflow-hidden rounded-container border border-text/10 bg-surface divide-y divide-text/8">{children}</view>
       {footer !== undefined && <text className="px-1 text-footnote text-muted">{footer}</text>}
     </view>
   );

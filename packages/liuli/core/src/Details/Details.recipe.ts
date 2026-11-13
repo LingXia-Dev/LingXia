@@ -10,7 +10,7 @@ export const detailsParts = {
 /** A disclosure row: the summary is the press target, the chevron turns as it opens. */
 export const detailsRecipe = {
   group: {
-    base: 'rounded-container border border-text/10 bg-surface divide-y divide-text/8',
+    base: 'overflow-hidden rounded-container border border-text/10 bg-surface divide-y divide-text/8',
   },
   root: {
     base: '',
