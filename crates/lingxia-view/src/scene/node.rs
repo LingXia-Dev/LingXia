@@ -118,6 +118,10 @@ pub struct NodeSnapshot {
     /// A dialog backdrop whose opacity follows how much of its dragged panel is on screen.
     #[serde(skip)]
     pub drag_scrim: bool,
+    /// A shown top layer's panel (a dialog's or popover's box): presses over it never reach
+    /// what lies beneath, its backdrop included.
+    #[serde(skip)]
+    pub panel: bool,
     /// Authored `disabled`, its own or its radio group's: the element takes no input at all.
     #[serde(skip)]
     pub disabled: bool,

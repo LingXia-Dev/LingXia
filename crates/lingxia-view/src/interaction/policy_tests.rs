@@ -20,6 +20,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         hint: None,
         close_after: None,
         drag_scrim: false,
+        panel: false,
         disabled: false,
         element_id: None,
         interest_for: None,

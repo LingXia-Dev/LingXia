@@ -69,11 +69,22 @@ impl PresentedFrame {
         order.into_iter()
     }
 
-    /// The topmost interactive node under a logical point.
+    /// The topmost interactive node under a logical point; an open top-layer panel over the
+    /// point keeps it from everything beneath, its own backdrop included.
     pub fn hit(&self, point: [f32; 2]) -> Option<usize> {
-        self.hit_order()
-            .find(|(_, node)| hit_target(node) && contains(node, point, false))
-            .map(|(index, _)| index)
+        let mut panel: Option<&NodeSnapshot> = None;
+        for (index, node) in self.hit_order() {
+            if panel.is_some_and(|panel| !descends(node, panel)) {
+                continue;
+            }
+            if hit_target(node) && contains(node, point, false) {
+                return Some(index);
+            }
+            if node.panel && panel.is_none() && contains(node, point, false) {
+                panel = Some(node);
+            }
+        }
+        None
     }
 
     /// The topmost node with a `hover:` delta under a logical point.
@@ -311,6 +322,13 @@ pub fn contains(node: &NodeSnapshot, point: [f32; 2], own_shape: bool) -> bool {
         return false;
     }
     node.clips.iter().all(|clip| clip.contains(point))
+}
+
+/// `node` sits inside `ancestor`'s subtree.
+pub fn descends(node: &NodeSnapshot, ancestor: &NodeSnapshot) -> bool {
+    node.identity.len() > ancestor.identity.len()
+        && node.identity.starts_with(&*ancestor.identity)
+        && node.identity.as_bytes()[ancestor.identity.len()] == b'/'
 }
 
 pub fn contains_content(node: &NodeSnapshot, point: [f32; 2]) -> bool {

@@ -1245,6 +1245,10 @@ impl Renderer {
                 }),
                 close_request: record.number(field::TOP_LAYER) == Some(1.0),
                 drag_scrim: record.number(field::DRAG_SCRIM) == Some(1.0),
+                panel: record.tag != tag::BUTTON
+                    && record
+                        .parent
+                        .is_some_and(|p| records[p].number(field::TOP_LAYER).is_some()),
                 disabled: record.number(field::ENABLED) == Some(0.0)
                     || record.parent.is_some_and(|p| {
                         records[p].tag == tag::RADIO
