@@ -33,9 +33,9 @@ const initialDevices = [
 function Group({ title, footer, children }: { title: string; footer?: string; children: Child }) {
   return (
     <view className="gap-2">
-      <text role="heading" headingLevel={2} className="px-1 text-footnote font-medium text-muted">{title}</text>
+      <text role="heading" headingLevel={2} className="text-footnote font-medium text-muted">{title}</text>
       <ItemList label={title}>{children}</ItemList>
-      {footer !== undefined && <text className="px-1 text-footnote text-muted">{footer}</text>}
+      {footer !== undefined && <text className="text-footnote text-muted">{footer}</text>}
     </view>
   );
 }
@@ -80,7 +80,7 @@ export function render() {
       </Group>
 
       <view className="gap-2">
-        <text role="heading" headingLevel={2} className="px-1 text-footnote font-medium text-muted">Plan</text>
+        <text role="heading" headingLevel={2} className="text-footnote font-medium text-muted">Plan</text>
         <RadioGroup bind={plan} label="Plan" isLabelHidden options={plans} variant="card" data-testid="plan" />
       </view>
 

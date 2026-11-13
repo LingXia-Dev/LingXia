@@ -72,7 +72,7 @@ export function render() {
       <PageSection title="Your own typeface">
         <Stage caption="Liuli names no typeface, so its components take the page's">
           <text className="text-body text-text">
-            Bundle the font file, declare it with @font-face in your theme, point --font-sans at it and set font-sans on each page. Text inherits its family from the page, so every Liuli component follows.
+            Bundle the font file, declare it with @font-face in your theme, point ‑‑font‑sans at it and set font‑sans on each page. Text inherits its family from the page, so every Liuli component follows.
           </text>
           <view className="rounded-control bg-surface-sunken p-3">
             <text className="whitespace-pre-wrap font-mono text-caption text-text">{fontSample}</text>

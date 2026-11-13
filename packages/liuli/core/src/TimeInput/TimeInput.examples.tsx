@@ -46,5 +46,5 @@ export function StateDisabled() {
 
 /** The home tile. */
 export function Specimen() {
-  return <TimeInput label="Start" isLabelHidden value="09:30" onChange={() => {}} size="sm" className="w-36" />;
+  return <TimeInput label="Start" isLabelHidden value="09:30" onChange={() => {}} size="sm" className="w-28" />;
 }

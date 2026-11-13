@@ -14,7 +14,7 @@ export function render() {
         </Stage>
       </PageSection>
       <PageSection title={"States"}>
-        <StageGrid>
+        <StageGrid stack>
           <Stage caption={"Empty"}>
             <StateEmpty />
           </Stage>

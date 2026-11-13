@@ -67,8 +67,8 @@ export function StateDisabledOn() {
 export function Specimen() {
   return (
     <view className="flex-row gap-2">
-      <ToggleButton label="Unread" size="sm" isPressed onPressedChange={() => {}} />
-      <ToggleButton label="Starred" size="sm" isPressed={false} onPressedChange={() => {}} />
+      <ToggleButton label="Bold" size="sm" isPressed onPressedChange={() => {}} />
+      <ToggleButton label="Italic" size="sm" isPressed={false} onPressedChange={() => {}} />
     </view>
   );
 }

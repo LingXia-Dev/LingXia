@@ -1911,6 +1911,7 @@
               "title": "Small, medium and large"
             }
           ],
+          "statesLayout": "stack",
           "states": [
             {
               "name": "StateEmpty",
@@ -6480,6 +6481,7 @@
               "title": "Small, medium and large"
             }
           ],
+          "statesLayout": "stack",
           "states": [
             {
               "name": "StateEmpty",

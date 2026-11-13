@@ -70,6 +70,7 @@ export const doc: ComponentDoc = {
       lead: 'Use a date field to take one day, picked from a month.',
       hero: 'DueDate',
       sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],
+      statesLayout: 'stack',
       states: [
         { name: 'StateEmpty', title: 'Empty' },
         { name: 'StateFilled', title: 'Filled' },

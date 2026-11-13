@@ -70,6 +70,7 @@ export const doc: ComponentDoc = {
       lead: 'Use a time field to take a time of day, in the user\'s own clock.',
       hero: 'Reminder',
       sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],
+      statesLayout: 'stack',
       states: [
         { name: 'StateEmpty', title: 'Empty' },
         { name: 'StateFilled', title: 'Filled' },

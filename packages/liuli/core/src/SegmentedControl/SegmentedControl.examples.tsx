@@ -76,7 +76,7 @@ export function StateDisabled() {
   );
 }
 
-/** The home tile. */
+/** The home tile: two short segments, so it fits a half tile at 360 pt. */
 export function Specimen() {
-  return <SegmentedControl label="Appearance" options={themes} value="light" onChange={() => {}} size="sm" className="w-52" />;
+  return <SegmentedControl label="Layout" options={[{ value: 'list', label: 'List' }, { value: 'grid', label: 'Grid' }]} value="list" onChange={() => {}} size="sm" className="w-32" />;
 }

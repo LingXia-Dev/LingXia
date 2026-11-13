@@ -41,8 +41,8 @@ export function Stage({ caption, bare = false, children }: { caption?: string; b
 }
 
 /** Stages side by side, two to a row; used for a component's states. */
-export function StageGrid({ children }: { children: Child }) {
-  return <view className="grid grid-cols-2 gap-x-3 gap-y-6">{children}</view>;
+export function StageGrid({ children, stack = false }: { children: Child; stack?: boolean }) {
+  return <view className={stack ? 'grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-6' : 'grid grid-cols-2 gap-x-3 gap-y-6'}>{children}</view>;
 }
 
 /** A component page's opening: when to use it, then the hero specimen. */

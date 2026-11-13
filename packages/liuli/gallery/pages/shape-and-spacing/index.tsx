@@ -55,10 +55,11 @@ export function render() {
       </PageSection>
       <PageSection title="Control heights">
         <Stage caption="Buttons, inputs and menu triggers share these three; prefer large on touch layouts">
-          <view className="flex-row items-end gap-3">
+          <view className="gap-3">
             {heights.map(height => (
-              <view key={height.name} className={`grow basis-0 items-center justify-center rounded-control border border-line-strong ${height.bar}`}>
-                <text className="text-footnote text-text">{`${height.name} · ${height.value}`}</text>
+              <view key={height.name} className={`flex-row items-center justify-between rounded-control border border-line-strong px-4 ${height.bar}`}>
+                <text className="text-body text-text">{height.name}</text>
+                <text className="text-footnote text-muted">{height.value}</text>
               </view>
             ))}
           </view>
@@ -81,12 +82,12 @@ export function render() {
         </text>
         <StageGrid>
           <Stage caption="A row: a rounded fill">
-            <view className="-mx-2 flex-row items-center rounded-control bg-text/7 px-2 py-2.5">
+            <view className="-mx-2 h-control-md flex-row items-center rounded-control bg-text/7 px-2">
               <text className="text-body text-text">Notifications</text>
             </view>
           </Stage>
-          <Stage caption="A box: a ring on its corners">
-            <view className="h-control-md items-center justify-center rounded-control border border-line-strong ring-2 ring-focus">
+          <Stage caption="A box: an offset ring">
+            <view className="h-control-md items-center justify-center rounded-control border border-line-strong ring-2 ring-focus ring-offset-2">
               <text className="text-body text-text">Save</text>
             </view>
           </Stage>

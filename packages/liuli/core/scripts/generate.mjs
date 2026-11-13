@@ -188,7 +188,7 @@ function galleryPage(doc) {
       const refs = page[key];
       if (!refs?.length) continue;
       lines.push(`      <PageSection title=${jsx(title)}>`);
-      if (key === 'states') lines.push('        <StageGrid>', ...refs.flatMap(ref => stage(ref, '          ')), '        </StageGrid>');
+      if (key === 'states') lines.push(page.statesLayout === 'stack' ? '        <StageGrid stack>' : '        <StageGrid>', ...refs.flatMap(ref => stage(ref, '          ')), '        </StageGrid>');
       else lines.push(...refs.flatMap(ref => stage(ref, '        ')));
       lines.push('      </PageSection>');
     }

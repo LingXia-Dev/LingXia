@@ -59,5 +59,5 @@ export function StateDisabled() {
 
 /** The home tile. */
 export function Specimen() {
-  return <DateInput label="Due date" isLabelHidden value="2026-12-18" onChange={() => {}} size="sm" className="w-44" />;
+  return <DateInput label="Due date" isLabelHidden value="2026-12-18" onChange={() => {}} size="sm" className="w-32" />;
 }
