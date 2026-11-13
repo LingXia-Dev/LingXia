@@ -150,6 +150,17 @@ struct DevOptions {
     #[arg(long)]
     reinstall: bool,
 
+    /// Run the host app already installed on the phone: no native build or install. The
+    /// lxapps still build from this tree and the app reloads them when it connects. Refused
+    /// when the app is not installed, or its View cannot render the lxapps' GPU pages
+    #[arg(long)]
+    installed: bool,
+
+    /// With `--installed`, and implying it: do not launch the app either. The session waits
+    /// for the app to connect when someone opens it
+    #[arg(long)]
+    no_launch: bool,
+
     /// Runner simulator device for `lingxia dev` on an lxapp or web URL (macOS and
     /// Windows runners): e.g. `iphone-15-pro`, `ipad`, `desktop-1440`. Only
     /// affects the lxapp runner window; ignored for native host apps.
@@ -1128,6 +1139,11 @@ fn run() -> Result<()> {
                 device: dev_options.device,
                 platform_arg: dev_options.platform,
                 reinstall: dev_options.reinstall,
+                installed: (dev_options.installed || dev_options.no_launch).then_some(
+                    commands::dev::InstalledHost {
+                        launch: !dev_options.no_launch,
+                    },
+                ),
                 env_version: dev_options.build_options.env_version,
                 extra_native_features: dev_options.build_options.native_features,
                 with_provider: dev_options.build_options.with_provider,

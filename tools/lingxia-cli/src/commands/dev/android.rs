@@ -3,10 +3,22 @@ use super::*;
 
 pub(super) fn execute_android(mut ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Android);
-    take_over_target_session(&ctx.project_root, platform_name)?;
     let platform = platform::android::AndroidPlatform::new();
     let (device_id, build_target) =
         platform::android::resolve_dev_device_target(ctx.device.as_deref())?;
+    let application_id = match ctx.installed {
+        Some(_) => ctx
+            .config
+            .resolved_package_id_with_suffix("android", &ctx.resolved_env)?,
+        None => String::new(),
+    };
+    take_over_after_installed_check(
+        ctx.installed.is_some(),
+        || platform::android::app_installed(Some(&device_id), &application_id),
+        &application_id,
+        &device_id,
+        || take_over_target_session(&ctx.project_root, platform_name),
+    )?;
     println!(
         "  {} Android device {} ({})",
         "→".cyan(),
@@ -16,14 +28,7 @@ pub(super) fn execute_android(mut ctx: DevContext) -> Result<()> {
     ctx.device = Some(device_id);
     let build_targets = vec![build_target];
     let stop_requested = ctx.stop_requested.clone();
-    let mut server = server::start_server_fixed_with_stop(
-        &ctx.project_root,
-        "127.0.0.1",
-        platform_name,
-        ctx.resolved_env.version,
-        stop_requested.clone(),
-        None,
-    )?;
+    let mut server = start_platform_server(&ctx, "127.0.0.1", platform_name, None)?;
     let host_ws_url = server.ws_url();
     let device_ws_url = loopback_ws_url(server.port());
     let session = server.session().clone();
@@ -36,6 +41,42 @@ pub(super) fn execute_android(mut ctx: DevContext) -> Result<()> {
             &build_targets,
             Some(&device_ws_url),
         )?;
+
+        if let Some(installed) = ctx.installed {
+            let package_id = ctx.config.resolved_package_id("android")?;
+            let application_id = ctx
+                .config
+                .resolved_package_id_with_suffix("android", &ctx.resolved_env)?;
+            server.expect_installed_host();
+            let steps = if installed.launch { 2 } else { 1 };
+            println!(
+                "{}",
+                format!("Step 1/{steps}: Preparing dev connection...").bold()
+            );
+            let _forward = DevPortForward::android(ctx.device.as_deref(), server.port())?;
+            let _session_registration = log_store::register_session(
+                &ctx.project_root,
+                &session,
+                platform_name,
+                &host_ws_url,
+            )?;
+            if installed.launch {
+                println!("{}", "Step 2/2: Launching app...".bold());
+                platform.run(&RunConfig {
+                    device_id: ctx.device.clone(),
+                    package_id,
+                    application_id: Some(application_id.clone()),
+                    main_activity: None,
+                    restart: false,
+                })?;
+            } else {
+                print_installed_waiting(&application_id, server.port());
+            }
+            print_mobile_dev_started("Android", &[]);
+            ctx.watch_embedded_lxapps(&mut server);
+            wait_for_interrupt(stop_requested)?;
+            return finish_installed(&server);
+        }
 
         // Step 1: Build
         println!("{}", "Step 1/4: Building...".bold());

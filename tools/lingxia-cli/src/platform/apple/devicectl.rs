@@ -368,37 +368,26 @@ pub fn launch_app(bundle_id: &str, device_id: Option<&str>, restart: bool) -> Re
     DeviceCtl::launch_app(&installed_id, &device_identifier, restart)
 }
 
+/// Whether exactly `bundle_id` (env suffix included) is installed on the device.
+pub fn app_installed(bundle_id: &str, device_id: Option<&str>) -> Result<bool> {
+    DeviceCtl::ensure_available()?;
+    let device_identifier = if let Some(id) = device_id {
+        DeviceCtl::get_device(id)?.identifier
+    } else {
+        DeviceCtl::wait_for_device(30)?.identifier
+    };
+    Ok(installed_bundle_ids(&device_identifier)?
+        .iter()
+        .any(|installed| installed == bundle_id))
+}
+
 /// Pick the installed bundle id matching `base_id` (canonical) or
 /// `base_id.<single-segment>` (env-suffixed via Xcode build settings).
 /// When several coexist, prefer the canonical id.
 fn resolve_installed_bundle_id(base_id: &str, device_identifier: &str) -> Result<Option<String>> {
-    let output = Command::new("xcrun")
-        .args([
-            "devicectl",
-            "device",
-            "info",
-            "apps",
-            "--device",
-            device_identifier,
-            "--json-output",
-            "-",
-        ])
-        .output()
-        .context("Failed to run devicectl info apps")?;
-    if !output.status.success() {
-        return Err(anyhow!(
-            "devicectl info apps failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    let parsed: AppListOutput = serde_json::from_slice(&output.stdout)
-        .context("Failed to parse devicectl info apps JSON")?;
     let prefix = format!("{base_id}.");
-    let mut matches: Vec<String> = parsed
-        .result
-        .apps
+    let mut matches: Vec<String> = installed_bundle_ids(device_identifier)?
         .into_iter()
-        .map(|a| a.bundle_identifier)
         .filter(|pkg| {
             pkg == base_id
                 || pkg
@@ -422,6 +411,36 @@ fn resolve_installed_bundle_id(base_id: &str, device_identifier: &str) -> Result
         );
     }
     Ok(Some(matches.remove(0)))
+}
+
+fn installed_bundle_ids(device_identifier: &str) -> Result<Vec<String>> {
+    let output = Command::new("xcrun")
+        .args([
+            "devicectl",
+            "device",
+            "info",
+            "apps",
+            "--device",
+            device_identifier,
+            "--json-output",
+            "-",
+        ])
+        .output()
+        .context("Failed to run devicectl info apps")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "devicectl info apps failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let parsed: AppListOutput = serde_json::from_slice(&output.stdout)
+        .context("Failed to parse devicectl info apps JSON")?;
+    Ok(parsed
+        .result
+        .apps
+        .into_iter()
+        .map(|a| a.bundle_identifier)
+        .collect())
 }
 
 /// List connected iOS devices.

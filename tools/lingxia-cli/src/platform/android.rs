@@ -1178,6 +1178,25 @@ fn adb_command(device_id: Option<&str>) -> Command {
     command
 }
 
+/// Whether exactly `application_id` (env suffix included) is installed.
+pub fn app_installed(device_id: Option<&str>, application_id: &str) -> Result<bool> {
+    let output = adb_command(device_id)
+        .arg("shell")
+        .args(["pm", "list", "packages", application_id])
+        .output()
+        .with_context(|| "Failed to execute adb shell pm list packages")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "adb shell pm list packages failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let listed = format!("package:{application_id}");
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .any(|line| line.trim() == listed))
+}
+
 /// Pick the installed application id matching `base_id` (canonical) or
 /// `base_id.<single-segment>` (env-suffixed via Gradle's
 /// `applicationIdSuffix`): `preferred` when installed, else the canonical id.

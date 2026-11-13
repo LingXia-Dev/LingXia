@@ -77,6 +77,8 @@ pub struct DevExecuteOptions {
     pub device: Option<String>,
     pub platform_arg: Option<String>,
     pub reinstall: bool,
+    /// `--installed` / `--no-launch`: run the host app already on the phone.
+    pub installed: Option<InstalledHost>,
     pub env_version: Option<String>,
     pub extra_native_features: Vec<String>,
     pub with_provider: Vec<String>,
@@ -96,6 +98,13 @@ pub struct DevExecuteOptions {
     /// `mocks/config.json`.
     pub mock: Option<lingxia_control_protocol::mock::MockMode>,
     pub action: Option<DevSessionAction>,
+}
+
+/// A session on the host app already installed: nothing native is built or installed.
+#[derive(Clone, Copy)]
+pub struct InstalledHost {
+    /// Launch it (`--installed`), or wait for someone to open it (`--no-launch`).
+    pub launch: bool,
 }
 
 pub enum DevSessionAction {
@@ -124,6 +133,7 @@ struct DevContext {
     progress: Option<String>,
     device: Option<String>,
     reinstall: bool,
+    installed: Option<InstalledHost>,
     resolved_env: crate::config::ResolvedEnv,
     extra_native_features: Vec<String>,
     stop_requested: Arc<AtomicBool>,
@@ -146,12 +156,34 @@ fn host_only_flag(options: &DevExecuteOptions, runner_requested: bool) -> Option
         (options.headless, "`--headless`"),
         (options.display_language.is_some(), "`--display-language`"),
         (options.reinstall, "`--reinstall`"),
+        (
+            options.installed.is_some(),
+            "`--installed` or `--no-launch`",
+        ),
         (options.env_version.is_some(), "`--env`"),
         (options.provider_path.is_some(), "`--provider-path`"),
         (options.progress.is_some(), "`--progress`"),
     ]
     .into_iter()
     .find_map(|(set, flag)| set.then_some(flag))
+}
+
+/// What `--installed` cannot honour: a desktop app has no installed copy to run, and
+/// `--reinstall` has nothing to reinstall. Native features and providers also come from the
+/// environment, so they are ignored rather than refused.
+fn refuse_installed(platform: &PlatformType, options: &DevExecuteOptions) -> Result<()> {
+    if matches!(platform, PlatformType::MacOs | PlatformType::Windows) {
+        return Err(anyhow!(
+            "`--installed` runs the host app already on a phone (android, ios, harmony); \
+             a desktop session builds and starts its own app."
+        ));
+    }
+    if options.reinstall {
+        return Err(anyhow!(
+            "`--installed` runs the app as it is installed; drop it to rebuild and `--reinstall`."
+        ));
+    }
+    Ok(())
 }
 
 /// `--mock all` needs `--env dev`. Function mocks run in the local
@@ -199,6 +231,74 @@ fn persistent_device_token() -> Result<String> {
         let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
     }
     Ok(token)
+}
+
+/// The dev server: on its fixed port, which an `--installed` app must find, so a busy port
+/// fails it rather than moving.
+fn start_platform_server(
+    ctx: &DevContext,
+    host: &str,
+    platform_name: &str,
+    auth_token: Option<String>,
+) -> Result<server::DevServerHandle> {
+    let (root, env, stop) = (
+        &ctx.project_root,
+        ctx.resolved_env.version,
+        ctx.stop_requested.clone(),
+    );
+    if ctx.installed.is_some() {
+        server::start_server_installed(root, host, platform_name, env, stop, auth_token)
+    } else {
+        server::start_server_fixed_with_stop(root, host, platform_name, env, stop, auth_token)
+    }
+}
+
+/// After an `--installed` session: why the app's hello ended it, if it did.
+fn finish_installed(server: &server::DevServerHandle) -> Result<()> {
+    match server.installed_refusal() {
+        Some(refusal) => Err(anyhow!(refusal)),
+        None => Ok(()),
+    }
+}
+
+/// `--installed` refuses an app that is not on the phone: it would launch nothing, or wait
+/// forever for a connect.
+fn refuse_missing_app(on_device: bool, app_id: &str, device: &str) -> Result<()> {
+    if on_device {
+        return Ok(());
+    }
+    Err(anyhow!(
+        "{app_id} is not installed on {device}. Run `lingxia dev` without `--installed` to \
+         build and install it."
+    ))
+}
+
+/// The takeover of this target's running session, after `--installed` found its app: a
+/// missing app leaves that session as it is.
+fn take_over_after_installed_check(
+    installed: bool,
+    app_on_device: impl FnOnce() -> Result<bool>,
+    app_id: &str,
+    device: &str,
+    take_over: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    if installed {
+        refuse_missing_app(app_on_device()?, app_id, device)?;
+    }
+    take_over()
+}
+
+/// What a session on an installed app tells its user once it serves.
+fn print_installed_waiting(app_id: &str, port: u16) {
+    println!(
+        "  {} Waiting for {} to connect on port {port}: open it, or bring it to the front, on the phone.",
+        "•".cyan(),
+        app_id.cyan()
+    );
+    println!(
+        "    An app built from another checkout of this project dials a different port and \
+         never connects here."
+    );
 }
 
 fn prepare_dev_host_assets(
@@ -441,6 +541,12 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
     }
 
     if let Some(target) = runner::resolve_dev_target(&project_root, options.target.as_deref())? {
+        if options.installed.is_some() {
+            return Err(anyhow!(
+                "`--installed` runs a host app already on a phone; the desktop Runner is not \
+                 installed. Run `lingxia dev` in the host project with `-p android|ios|harmony`."
+            ));
+        }
         return runner::execute_runner_dev(project_root, target, options, stop_requested);
     }
     if runner_requested {
@@ -463,10 +569,12 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
     }
 
     println!();
-    println!(
-        "{}",
-        "Development Mode: Build -> Install -> Launch".bold().cyan()
-    );
+    let mode = match options.installed {
+        None => "Development Mode: Build -> Install -> Launch",
+        Some(InstalledHost { launch: true }) => "Development Mode: Installed app -> Launch",
+        Some(InstalledHost { launch: false }) => "Development Mode: Installed app",
+    };
+    println!("{}", mode.bold().cyan());
     println!();
 
     // Config is required for all project commands.
@@ -532,6 +640,10 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
         })?;
     }
 
+    if options.installed.is_some() {
+        refuse_installed(&platform_type, &options)?;
+    }
+
     let resolved_env =
         crate::commands::build::resolve_build_env(&config, options.env_version.as_deref())?;
     crate::commands::build::validate_extra_native_features(
@@ -543,7 +655,8 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
 
     // Inject requested provider crate(s); guard restores on drop after serving
     // stops (ctrlc-driven graceful return).
-    let provider_guard = if options.with_provider.is_empty() {
+    // An installed app is not rebuilt, so nothing is injected.
+    let provider_guard = if options.with_provider.is_empty() || options.installed.is_some() {
         None
     } else {
         let rust_lib_name = config.get_rust_lib_name().ok_or_else(|| {
@@ -572,6 +685,7 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
         progress: options.progress,
         device: options.device,
         reinstall: options.reinstall,
+        installed: options.installed,
         resolved_env,
         extra_native_features,
         stop_requested,
@@ -1411,6 +1525,96 @@ mod tests {
         refuse_mock_outside_dev(Some(MockMode::None), Some("prod")).unwrap();
         refuse_mock_outside_dev(None, Some("prod")).unwrap();
     }
+    #[test]
+    fn installed_runs_only_a_phone_app_as_it_is() {
+        let options = |reinstall| DevExecuteOptions {
+            target: None,
+            release: false,
+            progress: None,
+            device: None,
+            platform_arg: None,
+            reinstall,
+            installed: Some(InstalledHost { launch: false }),
+            env_version: None,
+            extra_native_features: Vec::new(),
+            with_provider: Vec::new(),
+            provider_path: None,
+            runner_device: None,
+            display_language: None,
+            headless: false,
+            background: false,
+            json: false,
+            name: None,
+            mock: None,
+            action: None,
+        };
+        for platform in [
+            PlatformType::Android,
+            PlatformType::Ios,
+            PlatformType::Harmony,
+        ] {
+            refuse_installed(&platform, &options(false)).unwrap();
+        }
+        for platform in [PlatformType::MacOs, PlatformType::Windows] {
+            let error = refuse_installed(&platform, &options(false)).unwrap_err();
+            assert!(error.to_string().contains("already on a phone"), "{error}");
+        }
+        let error = refuse_installed(&PlatformType::Android, &options(true)).unwrap_err();
+        assert!(error.to_string().contains("--reinstall"), "{error}");
+        let error = refuse_missing_app(false, "app.example.dev", "SERIAL").unwrap_err();
+        assert!(
+            error.to_string().contains("not installed on SERIAL"),
+            "{error}"
+        );
+        refuse_missing_app(true, "app.example.dev", "SERIAL").unwrap();
+    }
+
+    #[test]
+    fn a_missing_installed_app_leaves_the_running_session_alone() {
+        let mut took_over = false;
+        let error = take_over_after_installed_check(
+            true,
+            || Ok(false),
+            "app.example.dev",
+            "SERIAL",
+            || {
+                took_over = true;
+                Ok(())
+            },
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("not installed"), "{error}");
+        assert!(!took_over, "the running session is not taken over");
+        take_over_after_installed_check(
+            true,
+            || Ok(true),
+            "a",
+            "b",
+            || {
+                took_over = true;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert!(took_over);
+        let mut checked = false;
+        take_over_after_installed_check(
+            false,
+            || {
+                checked = true;
+                Ok(false)
+            },
+            "a",
+            "b",
+            || Ok(()),
+        )
+        .unwrap();
+        assert!(
+            !checked,
+            "a build session does not look for an installed app"
+        );
+    }
+
     use lingxia_control_protocol::dev_session::broker::SessionInfo;
     use std::path::Path;
 

@@ -2,21 +2,26 @@ use super::*;
 
 pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Ios);
-    take_over_target_session(&ctx.project_root, platform_name)?;
+    let installed_id = match ctx.installed {
+        Some(_) => ctx
+            .config
+            .resolved_package_id_with_suffix("ios", &ctx.resolved_env)?,
+        None => String::new(),
+    };
+    take_over_after_installed_check(
+        ctx.installed.is_some(),
+        || platform::apple::devicectl::app_installed(&installed_id, ctx.device.as_deref()),
+        &installed_id,
+        ctx.device.as_deref().unwrap_or("the device"),
+        || take_over_target_session(&ctx.project_root, platform_name),
+    )?;
     let platform = platform::ios::IosPlatform::new();
     let stop_requested = ctx.stop_requested.clone();
     // The iOS device reaches the host over Wi-Fi, so this bind is open and
     // carries the persistent session token. `[::]` takes IPv4 too: the
     // device's mDNS lookup of this Mac may answer with an IPv6 address.
     let auth_token = persistent_device_token()?;
-    let mut server = server::start_server_fixed_with_stop(
-        &ctx.project_root,
-        "[::]",
-        platform_name,
-        ctx.resolved_env.version,
-        stop_requested.clone(),
-        Some(auth_token.clone()),
-    )?;
+    let mut server = start_platform_server(&ctx, "[::]", platform_name, Some(auth_token.clone()))?;
     let host_ws_url = lingxia_control_protocol::dev_session::ws_url_with_token(
         &loopback_ws_url(server.port()),
         &auth_token,
@@ -30,6 +35,35 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
     let run_result = (|| -> Result<()> {
         let platforms_to_build = vec![PlatformType::Ios];
         prepare_dev_host_assets(&ctx, &platforms_to_build, &[], Some(&device_ws_url))?;
+
+        if let Some(installed) = ctx.installed {
+            let bundle_id = ctx
+                .config
+                .resolved_package_id_with_suffix("ios", &ctx.resolved_env)?;
+            server.expect_installed_host();
+            let _session_registration = log_store::register_session(
+                &ctx.project_root,
+                &session,
+                platform_name,
+                &host_ws_url,
+            )?;
+            if installed.launch {
+                println!("{}", "Step 1/1: Launching...".bold());
+                platform.run(&RunConfig {
+                    package_id: bundle_id.clone(),
+                    application_id: None,
+                    main_activity: None,
+                    device_id: ctx.device.clone(),
+                    restart: false,
+                })?;
+            } else {
+                print_installed_waiting(&bundle_id, server.port());
+            }
+            print_mobile_dev_started("iOS", &[("Bundle ID", bundle_id.as_str())]);
+            ctx.watch_embedded_lxapps(&mut server);
+            wait_for_interrupt(stop_requested)?;
+            return finish_installed(&server);
+        }
 
         // Step 1: Build
         println!("{}", "Step 1/3: Building...".bold());

@@ -114,6 +114,9 @@ lingxia dev --background --mock all        # answer from mocks/ (CI against mock
   warning; the session handshake still refuses an unknown protocol.
 - **Home lxapp.** Inside a host app whose `homeAppId` is this lxapp, the Runner
   draws no capsule on it, as the host does; other lxapps it opens keep theirs.
+- **Installed app.** On a phone, `--installed` skips the native build and install, launches the
+  app already there, and reloads its lxapps from this tree; `--no-launch` also waits for someone to
+  open it. It refuses an app that is missing or whose View cannot render the lxapps' GPU pages.
 - **Devices.** Android and Harmony get reverse port forwarding. iOS devices
   connect over the LAN, so the device must reach the Mac; set
   `LINGXIA_DEV_HOST` to override the detected address.

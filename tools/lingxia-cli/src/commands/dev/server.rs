@@ -92,6 +92,21 @@ impl DevServerHandle {
         self.state.present(app_id)
     }
 
+    /// `--installed`: the app runs the lxapps it last synced, so each embedded one reloads from
+    /// this tree on connect; a View too old for them ends the session at the hello.
+    pub fn expect_installed_host(&self) {
+        self.state.expect_installed_host();
+    }
+
+    /// Why an `--installed` session ended at the app's hello, if it did.
+    pub fn installed_refusal(&self) -> Option<String> {
+        self.state
+            .installed_refusal
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
     /// Watch local lxapp sources and rebuild + reload them on save.
     /// The watcher thread starts even when nothing is watchable yet, so a
     /// standalone lxapp can attach later. A watcher failure is reported and
@@ -230,6 +245,11 @@ pub(crate) struct DevServerState {
     /// App ids rebuilt while the runtime could not restart them. A reconnect
     /// restarts them.
     stale: Mutex<std::collections::BTreeSet<String>>,
+    /// `--installed`: the app was not built by this session, so a View that cannot render
+    /// its GPU lxapps ends the session instead of waiting for a rebuild.
+    installed_host: AtomicBool,
+    /// Why an `--installed` session ended at the app's hello.
+    installed_refusal: Mutex<Option<String>>,
 }
 
 #[derive(Clone)]
@@ -314,6 +334,8 @@ impl DevServerState {
             presented: Mutex::new(Vec::new()),
             present_lock: Mutex::new(()),
             stale: Mutex::new(std::collections::BTreeSet::new()),
+            installed_host: AtomicBool::new(false),
+            installed_refusal: Mutex::new(None),
         }
     }
 
@@ -693,6 +715,28 @@ impl DevServerState {
 
     /// The View wire each GPU lxapp this session serves was compiled for.
     fn view_needs(&self) -> Vec<(String, ViewWire)> {
+        let mut dists = self.configured_dists();
+        for item in self.lock_attached().iter() {
+            dists.push((item.app_id.clone(), item.source.join("dist")));
+        }
+        dists
+            .into_iter()
+            .filter_map(|(app_id, dist)| {
+                super::lxapp_manifest::view_requirement(&dist).map(|need| (app_id, need))
+            })
+            .collect()
+    }
+
+    fn expect_installed_host(&self) {
+        self.installed_host.store(true, Ordering::Release);
+        let mut stale = self.lock_stale();
+        for (app_id, _) in self.configured_dists() {
+            stale.insert(app_id);
+        }
+    }
+
+    /// Each lxapp the project serves, with its dist: the host's bundles, or the lxapp itself.
+    fn configured_dists(&self) -> Vec<(String, PathBuf)> {
         let mut dists = Vec::new();
         if self.project_root.join("lingxia.yaml").is_file() {
             if let Ok(config) = crate::config::LingXiaConfig::load(&self.project_root) {
@@ -717,23 +761,32 @@ impl DevServerState {
         } else if let Ok(app_id) = super::lxapp_watch::read_app_id(&self.project_root) {
             dists.push((app_id, self.project_root.join("dist")));
         }
-        for item in self.lock_attached().iter() {
-            dists.push((item.app_id.clone(), item.source.join("dist")));
-        }
         dists
-            .into_iter()
-            .filter_map(|(app_id, dist)| {
-                super::lxapp_manifest::view_requirement(&dist).map(|need| (app_id, need))
-            })
-            .collect()
     }
 
     /// At a runtime's hello: say which served GPU lxapps its View cannot render, rather than
     /// leave each page to fail with UI_COMPAT.
-    fn report_view_wire(&self, build: Option<&lingxia_control_protocol::dev_session::PeerBuild>) {
+    /// True when an `--installed` session refuses the app: the connection then ends unserved.
+    fn report_view_wire(
+        &self,
+        build: Option<&lingxia_control_protocol::dev_session::PeerBuild>,
+    ) -> bool {
         let needs = self.view_needs();
         if needs.is_empty() {
-            return;
+            return false;
+        }
+        if self.installed_host.load(Ordering::Acquire) {
+            if let Some(refusal) = installed_refusal(build.and_then(|build| build.view), &needs) {
+                eprintln!("  ✗ {refusal}");
+                *self
+                    .installed_refusal
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(refusal);
+                // Nothing to reload into an app that cannot render it.
+                self.lock_stale().clear();
+                self.stop_flag.store(true, Ordering::Release);
+                return true;
+            }
         }
         match build.and_then(|build| build.view) {
             Some(have) => {
@@ -748,6 +801,7 @@ impl DevServerState {
                  UI_COMPAT, rebuild and reinstall it with `lingxia dev`."
             ),
         }
+        false
     }
 
     /// After an lxapp (re)build: a served GPU lxapp that now needs more than the connected
@@ -1635,6 +1689,34 @@ pub fn start_server_fixed_with_stop(
     }
 }
 
+/// `--installed`: the app dials the fixed port it was built with, so a busy port is an error
+/// rather than a fallback the app would never find.
+pub fn start_server_installed(
+    project_root: &Path,
+    host: &str,
+    platform: &str,
+    app_env: AppEnv,
+    stop_flag: Arc<AtomicBool>,
+    auth_token: Option<String>,
+) -> Result<DevServerHandle> {
+    let _preparation = crate::build_prepare::Scope::enter();
+    let port = dev_port(&project_root.to_string_lossy(), platform);
+    start_server_on_with_stop(
+        project_root,
+        &format!("{host}:{port}"),
+        platform,
+        app_env,
+        stop_flag,
+        auth_token,
+    )
+    .with_context(|| {
+        format!(
+            "dev port {port} is busy, and the installed app dials only that port. Stop the \
+             session holding it (`lingxia dev stop`)"
+        )
+    })
+}
+
 pub fn start_server_fixed_with_roots(
     session_root: &Path,
     content_root: &Path,
@@ -1787,7 +1869,9 @@ fn handle_connection(
     match role {
         DevSessionRole::Runtime => {
             state.runtime_rejected.store(false, Ordering::Release);
-            state.report_view_wire(peer_build.as_ref());
+            if state.report_view_wire(peer_build.as_ref()) {
+                return Ok(());
+            }
             state.set_runtime_build(peer_build);
             handle_devtool_connection(websocket, writer, state)
         }
@@ -2345,6 +2429,34 @@ fn newly_refused(
         }
     }
     fresh
+}
+
+/// Why an `--installed` app cannot serve this tree's GPU lxapps: its View is too old for one,
+/// or it predates the wire report. An installed app is never rebuilt, so the session ends.
+fn installed_refusal(have: Option<ViewWire>, needs: &[(String, ViewWire)]) -> Option<String> {
+    const REBUILD: &str = "Run `lingxia dev` without `--installed` (or `--no-launch`) to rebuild \
+                           and reinstall it.";
+    let Some(have) = have else {
+        let gpu = needs.first()?;
+        return Some(format!(
+            "The installed app predates the View wire report, so it cannot say whether it renders \
+             {}'s GPU pages. {REBUILD}",
+            gpu.0
+        ));
+    };
+    let (app_id, need) = needs.iter().find(|(_, need)| !have.renders(need))?;
+    let why = if have.ui_abi != need.ui_abi {
+        format!(
+            "UI ABI {}, but {app_id} needs UI ABI {}",
+            have.ui_abi, need.ui_abi
+        )
+    } else {
+        format!(
+            "wire fields up to {}, but {app_id} needs field {}",
+            have.max_field, need.max_field
+        )
+    };
+    Some(format!("The installed app's View knows {why}. {REBUILD}"))
 }
 
 /// Why the app's View cannot render `app_id`'s compiled pages, and what to do.
@@ -2929,6 +3041,59 @@ mod tests {
             &mut false,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn an_installed_app_is_refused_only_when_its_view_cannot_render_a_gpu_lxapp() {
+        let wire = |max_field| super::ViewWire {
+            ui_abi: 1,
+            max_field,
+        };
+        let needs = vec![("demo".to_string(), wire(234))];
+        assert_eq!(super::installed_refusal(Some(wire(234)), &needs), None);
+        assert_eq!(super::installed_refusal(Some(wire(300)), &needs), None);
+        assert_eq!(
+            super::installed_refusal(None, &[]),
+            None,
+            "WebView-only lxapps need no View"
+        );
+        let older = super::installed_refusal(Some(wire(233)), &needs).unwrap();
+        assert!(
+            older.contains("up to 233, but demo needs field 234"),
+            "{older}"
+        );
+        assert!(older.contains("without `--installed`"), "{older}");
+        let unknown = super::installed_refusal(None, &needs).unwrap();
+        assert!(
+            unknown.contains("predates the View wire report"),
+            "{unknown}"
+        );
+    }
+
+    #[test]
+    fn an_installed_session_reloads_every_embedded_lxapp_when_the_app_connects() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path().join("lingxia.yaml"),
+            "app:\n  projectName: demo-host\n  packageId: app.example.demohost\n  productName: Demo Host\n  \
+             productVersion: 1.0.0\n  platforms: [android]\n  homeAppId: demo\nresources:\n  bundles:\n    \
+             - type: lxapp\n      appId: demo\n      path: lxapp\n",
+        )
+        .unwrap();
+        let state = Arc::new(DevServerState::new(
+            root.path().to_path_buf(),
+            Arc::new(AtomicBool::new(false)),
+            None,
+            false,
+        ));
+        state.expect_installed_host();
+        assert!(
+            state.lock_stale().contains("demo"),
+            "reloaded from this tree on connect"
+        );
+        // No GPU pages built yet: an app of any age serves them.
+        assert!(!state.report_view_wire(None));
+        assert!(!state.stop_flag.load(std::sync::atomic::Ordering::Acquire));
     }
 
     #[test]

@@ -565,6 +565,14 @@ fn resolve_installed_harmony_bundle(
     Ok(pick_installed_package_variant(base_id, &installed))
 }
 
+/// Whether exactly `bundle_name` (env suffix included) is installed.
+pub fn bundle_installed(device_id: Option<&str>, bundle_name: &str) -> Result<bool> {
+    let hdc = ensure_command("hdc")?;
+    Ok(list_installed_harmony_bundles(&hdc, device_id)?
+        .iter()
+        .any(|installed| installed == bundle_name))
+}
+
 fn list_installed_harmony_bundles(hdc: &Path, device_id: Option<&str>) -> Result<Vec<String>> {
     let mut cmd = Command::new(hdc);
     if let Some(device_id) = device_id {
