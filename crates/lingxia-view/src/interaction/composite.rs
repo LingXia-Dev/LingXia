@@ -1,7 +1,7 @@
 //! Composite widgets: a container whose items share one Tab stop, with arrow keys moving focus
 //! between them (roving focus). Membership comes from the laid-out tree, since a kit cannot list
 //! the items it composes.
-use super::frame::{PresentedFrame, activatable, interactive};
+use super::frame::{PresentedFrame, clickable, hit_target};
 use crate::scene::node::NodeSnapshot;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,7 +53,7 @@ impl Composite {
             Self::Tree => role == Some("treeitem"),
             // Any control, except one whose arrows already mean something of its own.
             Self::Toolbar => {
-                interactive(node)
+                hit_target(node)
                     && node.range.is_none()
                     && node.select.is_none()
                     && node.drag.is_none()
@@ -178,7 +178,7 @@ impl Composites {
             .filter(|index| {
                 self.container_of(*index)
                     .is_some_and(|(owner, _)| owner == container)
-                    && activatable(&frame.nodes[*index])
+                    && clickable(&frame.nodes[*index])
                     && super::keyboard::candidate(frame, *index, &revealable)
             })
             .collect()

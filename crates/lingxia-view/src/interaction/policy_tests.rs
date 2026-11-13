@@ -20,6 +20,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         hint: None,
         close_after: None,
         drag_scrim: false,
+        disabled: false,
         element_id: None,
         interest_for: None,
         on_pointer: [None; 2],
@@ -529,6 +530,7 @@ fn projection_exposes_roles_ranges_masked_text_and_only_enabled_actions() {
     assert!(field.focused && field.actions.contains(&Action::SetText));
     assert_eq!(semantics.input_focus(), ids.id(1));
     let mut disabled = volume;
+    disabled.disabled = true;
     disabled.range.as_mut().unwrap().enabled = false;
     let presented = frame(vec![disabled]);
     let semantics = Projection {

@@ -5,6 +5,7 @@ import { perfWarnings } from './perf.mjs';
 import { stabilizeClosures, volatileComponent, ownDeclarations } from './stable-closures.mjs';
 import { spliceInserts, insertionMapComment } from './insertion-map.mjs';
 import { staticStyleWarnings } from './static-style.mjs';
+import { inertControlWarnings } from './inert-controls.mjs';
 import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
 import { compileUtilities, tailwindWarm } from './tailwind.mjs';
@@ -373,7 +374,7 @@ async function packageTokens(root, packages, problems) {
  * Compiles GPU pages. `pages` are page source paths relative to `root`, the pages of an lxapp whose
  * `lxapp.json` declares `"renderer": "gpu"`. Output is `<base>.js` beside a copy of the page config,
  * when the page has one; a page config naming a renderer is refused.
- * Returns the `UI_PERF` and `UI_STYLE_STATIC` warnings (also printed; they never stop the build), whether Tailwind ran
+ * Returns the `UI_PERF`, `UI_STYLE_STATIC` and `UI_INERT` warnings (also printed; they never stop the build), whether Tailwind ran
  * warm, and how many files were analysed afresh.
  */
 /**
@@ -480,7 +481,14 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       warnings.push(...lines.text.split('\n'));
       console.warn(`${page}: ${lines.count} performance warning${lines.count === 1 ? '' : 's'}\n${lines.text}`);
     }
-    const statics = staticStyleWarnings(sourceFiles.filter(file => !file.fileName.includes(`${sep}node_modules${sep}`)));
+    const own = sourceFiles.filter(file => !file.fileName.includes(`${sep}node_modules${sep}`));
+    const inert = inertControlWarnings(own);
+    if (inert.length) {
+      const lines = report(inert.map(line => packageRelative(root, line)), rel);
+      warnings.push(...lines.text.split('\n'));
+      console.warn(`${page}: ${lines.count} control warning${lines.count === 1 ? '' : 's'}\n${lines.text}`);
+    }
+    const statics = staticStyleWarnings(own);
     if (statics.length) {
       const lines = report(statics.map(line => packageRelative(root, line)), rel);
       warnings.push(...lines.text.split('\n'));

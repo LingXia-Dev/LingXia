@@ -442,6 +442,7 @@ const errorNotes = {
   UI_INPUT: 'Invalid editor prop, binding or text.',
   UI_KEY: 'A non-string or duplicate sibling key, or a component keyed by its own function name.',
   UI_LEAVE: 'Invalid `useLeaveGuard` call or answer.',
+  UI_INERT: 'A build warning; the page still builds: a `<button>`, `<checkbox>`, `<switch>`, `<radio>`, `<select>` or `<slider>` with no handler, `bind` or `disabled`. It is enabled and focusable but does nothing; add the handler, or mark it disabled.',
   UI_LIMIT: 'A page limit was exceeded.',
   UI_LIST: 'Invalid list description, keys, anchor or row height.',
   UI_LOCAL: 'A duplicate `useLocal` name in one component, or `set` on an unmounted cell.',

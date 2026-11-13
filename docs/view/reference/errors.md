@@ -44,6 +44,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_GRID` | native | An invalid grid track list or line. |
 | `UI_ID` | runtime, native | Two elements with one `id` (list rows included), a popover without an id, an id with spaces, or a `popoverTarget` naming no popover on the page. |
 | `UI_IMAGE` | runtime, native | Invalid image source, alt, retry key or callback, or a failed load. |
+| `UI_INERT` | build | A build warning; the page still builds: a `<button>`, `<checkbox>`, `<switch>`, `<radio>`, `<select>` or `<slider>` with no handler, `bind` or `disabled`. It is enabled and focusable but does nothing; add the handler, or mark it disabled. |
 | `UI_INPUT` | runtime, native | Invalid editor prop, binding or text. |
 | `UI_KEY` | build, runtime, native | A non-string or duplicate sibling key, or a component keyed by its own function name. |
 | `UI_LEAVE` | runtime, native | Invalid `useLeaveGuard` call or answer. |

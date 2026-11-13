@@ -2,7 +2,7 @@
 //! actions, relations and geometry. Adapters map it to OS APIs and nothing else.
 use super::ids::SemanticIds;
 use crate::interaction::frame::{
-    PresentedFrame, editable, plot_can_clear, plot_enabled, slider_enabled, visible,
+    PresentedFrame, clickable, editable, plot_can_clear, plot_enabled, slider_enabled, visible,
 };
 use crate::scene::node::{NodeSnapshot, ScrollAxis};
 use serde::Serialize;
@@ -382,7 +382,6 @@ impl Projection<'_> {
         if !hidden && node.accessibility_hidden.unwrap_or(false) {
             return None;
         }
-        let activatable = node.on_click.is_some_and(|handle| handle != 0);
         // Links act like buttons: focusable, named by their text, clicked to activate.
         let button = matches!(node.tag, "button" | "link");
         let check = node.checked.is_some();
@@ -510,23 +509,13 @@ impl Projection<'_> {
         } else {
             node.text.clone()
         };
-        let mut enabled = match input {
-            Some(input) => input.enabled,
-            None if select.is_some() => select.is_some_and(|select| select.on_select.is_some()),
-            // An `interestFor` trigger acts by showing its hint, so it is not a disabled button.
-            None => {
-                !(button || check)
-                    || activatable
-                    || node.drag.is_some()
-                    || node.interest_for.is_some()
-            }
-        };
+        // Enabled is what the author wrote: a control without a handler is enabled but does nothing.
+        let mut enabled = !node.disabled && input.is_none_or(|input| input.enabled);
         let mut actions = Vec::new();
         let mut focusable = button || check || input.is_some() || select.is_some();
         if let Some(range) = &node.range {
-            enabled = slider_enabled(node);
             focusable = true;
-            if enabled {
+            if slider_enabled(node) {
                 actions.push(Action::SetProgress);
                 if range.value < range.max {
                     actions.push(Action::ScrollForward);
@@ -563,9 +552,6 @@ impl Projection<'_> {
         let mut position = None;
         if node.tag == "radio" {
             let members: Vec<_> = self.members(node).collect();
-            enabled = members
-                .iter()
-                .any(|(_, member)| member.on_click.is_some_and(|h| h != 0));
             children = members
                 .iter()
                 .filter_map(|(index, _)| self.ids.id(*index))
@@ -594,9 +580,7 @@ impl Projection<'_> {
                 position = Some((row, 1));
             }
         }
-        let mut clickable = (button || check || input.is_some() || select.is_some())
-            && enabled
-            && node.range.is_none();
+        let mut clickable = (clickable(node) || editable(node)) && node.range.is_none();
         if plot_enabled(node) {
             focusable = true;
             clickable = true;

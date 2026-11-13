@@ -1245,6 +1245,11 @@ impl Renderer {
                 }),
                 close_request: record.number(field::TOP_LAYER) == Some(1.0),
                 drag_scrim: record.number(field::DRAG_SCRIM) == Some(1.0),
+                disabled: record.number(field::ENABLED) == Some(0.0)
+                    || record.parent.is_some_and(|p| {
+                        records[p].tag == tag::RADIO
+                            && records[p].number(field::ENABLED) == Some(0.0)
+                    }),
                 element_id: record.string(field::ELEMENT_ID).map(str::to_owned),
                 hint: (record.number(field::HINT) == Some(1.0))
                     .then(|| {

@@ -72,7 +72,7 @@ impl PresentedFrame {
     /// The topmost interactive node under a logical point.
     pub fn hit(&self, point: [f32; 2]) -> Option<usize> {
         self.hit_order()
-            .find(|(_, node)| interactive(node) && contains(node, point, false))
+            .find(|(_, node)| hit_target(node) && contains(node, point, false))
             .map(|(index, _)| index)
     }
 
@@ -135,18 +135,18 @@ impl PresentedFrame {
         }
         self.index_of(&previous.identity).filter(|index| {
             let node = &self.nodes[*index];
-            activatable(node) && !editable(node) && visible(node)
+            clickable(node) && !editable(node) && visible(node)
         })
     }
 
     /// The same control in this frame, when only its callback handles changed.
     pub fn rebind(&self, previous: &NodeSnapshot) -> Option<usize> {
-        if editable(previous) || !activatable(previous) || previous.identity.is_empty() {
+        if editable(previous) || !clickable(previous) || previous.identity.is_empty() {
             return None;
         }
         let key = stable_content(previous);
         self.nodes.iter().position(|node| {
-            activatable(node) && node.identity == previous.identity && stable_content(node) == key
+            clickable(node) && node.identity == previous.identity && stable_content(node) == key
         })
     }
 }
@@ -187,31 +187,110 @@ pub fn plot_can_clear(node: &NodeSnapshot) -> bool {
             .is_some_and(|plot| plot.selected_index >= 0)
 }
 
-pub(crate) fn activatable(node: &NodeSnapshot) -> bool {
-    node.on_click.is_some_and(|handle| handle != 0)
-        || plot_enabled(node)
-        || node
-            .select
-            .as_ref()
-            .is_some_and(|select| select.on_select.is_some())
+/// What a node can do, decided once here so every input path agrees.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Acts(u8);
+
+impl Acts {
+    /// A control kind HTML focuses whatever its handlers: enabled unless authored disabled.
+    pub const CONTROL: Self = Self(1);
+    /// A click, a choice or a plot selection runs a callback.
+    pub const ACTIVATE: Self = Self(1 << 1);
+    pub const EDIT: Self = Self(1 << 2);
+    /// A slider takes new values.
+    pub const ADJUST: Self = Self(1 << 3);
+    pub const DRAG: Self = Self(1 << 4);
+    /// An `interestFor` trigger shows its hint.
+    pub const INTEREST: Self = Self(1 << 5);
+    /// A pointer crossing it is reported; it takes no focus and no hit.
+    pub const CROSSING: Self = Self(1 << 6);
+
+    const FOCUS: Self = Self(
+        Self::CONTROL.0
+            | Self::ACTIVATE.0
+            | Self::EDIT.0
+            | Self::ADJUST.0
+            | Self::DRAG.0
+            | Self::INTEREST.0,
+    );
+    const HIT: Self = Self(Self::ACTIVATE.0 | Self::EDIT.0 | Self::ADJUST.0 | Self::DRAG.0);
+
+    pub fn any(self, of: Self) -> bool {
+        self.0 & of.0 != 0
+    }
 }
 
-/// A `drag` element with somewhere to go: keys and assistive input step it between points.
+impl std::ops::BitOr for Acts {
+    type Output = Self;
+    fn bitor(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+}
+
+/// The element kinds that stay focusable and enabled without a handler, as in HTML.
+const CONTROLS: &[&str] = &[
+    "button",
+    "checkbox",
+    "switch",
+    "radio-option",
+    "select",
+    "input",
+    "search",
+    "textarea",
+    "slider",
+];
+
+pub fn acts(node: &NodeSnapshot) -> Acts {
+    let mut acts = Acts::default();
+    let mut add = |on: bool, act: Acts| {
+        if on {
+            acts = acts | act;
+        }
+    };
+    add(
+        !node.disabled && CONTROLS.contains(&node.tag),
+        Acts::CONTROL,
+    );
+    add(
+        node.on_click.is_some_and(|handle| handle != 0)
+            || plot_enabled(node)
+            || node
+                .select
+                .as_ref()
+                .is_some_and(|select| select.on_select.is_some()),
+        Acts::ACTIVATE,
+    );
+    add(editable(node), Acts::EDIT);
+    add(slider_enabled(node), Acts::ADJUST);
+    add(draggable(node), Acts::DRAG);
+    add(
+        !node.disabled && node.interest_for.is_some(),
+        Acts::INTEREST,
+    );
+    add(node.on_pointer.iter().any(Option::is_some), Acts::CROSSING);
+    acts
+}
+
+/// A click, keyboard Activate or accessibility Click runs something here.
+pub fn clickable(node: &NodeSnapshot) -> bool {
+    acts(node).any(Acts::ACTIVATE)
+}
+
+/// A drag element with somewhere to go: keys and assistive input step it between points.
 pub fn draggable(node: &NodeSnapshot) -> bool {
     node.drag
         .as_ref()
         .is_some_and(|drag| !drag.ghost && drag.points.len() > 1)
 }
 
-/// Targets of pointer activation and keyboard focus.
-pub fn interactive(node: &NodeSnapshot) -> bool {
-    activatable(node) || editable(node) || slider_enabled(node)
+/// Targets of pointer presses and hover.
+pub fn hit_target(node: &NodeSnapshot) -> bool {
+    acts(node).any(Acts::HIT)
 }
 
-/// Keyboard focus may rest here; an `interestFor` button with no click still takes focus,
-/// so a key can show its hint.
+/// Keyboard focus may rest here.
 pub fn focusable(node: &NodeSnapshot) -> bool {
-    interactive(node) || draggable(node) || node.interest_for.is_some()
+    acts(node).any(Acts::FOCUS)
 }
 
 /// Inside the visible box, optionally the node's own rounded shape, and every ancestor clip.

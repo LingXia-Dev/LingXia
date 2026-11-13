@@ -118,6 +118,9 @@ pub struct NodeSnapshot {
     /// A dialog backdrop whose opacity follows how much of its dragged panel is on screen.
     #[serde(skip)]
     pub drag_scrim: bool,
+    /// Authored `disabled`, its own or its radio group's: the element takes no input at all.
+    #[serde(skip)]
+    pub disabled: bool,
     /// A control's `id`, which a swipe row's `aria-actions` names.
     #[serde(skip)]
     pub element_id: Option<String>,

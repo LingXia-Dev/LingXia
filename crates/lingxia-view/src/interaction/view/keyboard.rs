@@ -297,7 +297,7 @@ impl ViewInteraction {
                 Key::Up if !horizontal => self.drag.step(&node.identity, -1),
                 Key::Home => self.drag.go(&node.identity, 0),
                 Key::End => self.drag.go(&node.identity, drag.points.len() - 1),
-                Key::Activate if !frame::interactive(node) => return (true, Vec::new()),
+                Key::Activate if !frame::hit_target(node) => return (true, Vec::new()),
                 _ => None,
             };
             if release.is_some() {

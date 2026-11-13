@@ -263,7 +263,7 @@ impl ViewInteraction {
             {
                 (true, self.activate(index, None, false, Some(item as i64)))
             }
-            AccessibilityAction::Click if frame::interactive(node) && node.range.is_none() => {
+            AccessibilityAction::Click if frame::hit_target(node) && node.range.is_none() => {
                 (true, self.activate(index, None, false, None))
             }
             _ => (false, Vec::new()),

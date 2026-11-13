@@ -124,7 +124,7 @@ impl ViewInteraction {
             // A click on content inside a control lands on that control, as a finger's does.
             if matches!(act, AutomationAct::Click | AutomationAct::DoubleClick)
                 && let Some(frame) = &self.frame
-                && !crate::interaction::frame::interactive(&frame.nodes[node])
+                && !crate::interaction::frame::hit_target(&frame.nodes[node])
                 && !(act == AutomationAct::DoubleClick && frame.nodes[node].selectable.is_some())
                 && let Some(control) = control_ancestor(frame, node)
             {

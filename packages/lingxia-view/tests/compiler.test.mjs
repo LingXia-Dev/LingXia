@@ -606,6 +606,32 @@ export function render() {
   });
 });
 
+test('UI_INERT warns on a control with no handler, bind or disabled; invokers, menu items and spreads stay quiet', async () => {
+  await project({
+    'page.tsx': `import { useLocal } from '@lingxia/view';
+export function render() {
+  const on = useLocal('on', false);
+  const more = { onClick() {} };
+  return <view>
+    <select aria-label="Size" options={[{ value: 's', label: 'S' }]} />
+    <button>Idle</button>
+    <switch aria-label="Wifi" bind={on} />
+    <button disabled>Off</button>
+    <button popoverTarget="tip">Open</button>
+    <button {...more}>Spread</button>
+    <view id="tip" popover><text>tip</text></view>
+  </view>;
+}`,
+  }, async (root, build) => {
+    const { warnings } = await build();
+    await load(root);
+    const inert = warnings.filter(line => line.includes('UI_INERT'));
+    assert.deepEqual(inert.map(line => line.replace(/: UI_INERT: .*/, '')), ['page.tsx:6:5', 'page.tsx:7:5']);
+    assert.match(inert[0], /this <select> does nothing: add onChange or bind, or mark it disabled/);
+    assert.match(inert[1], /this <button> does nothing: add onClick, or mark it disabled/);
+  });
+});
+
 test('a component keyed by its own function name fails the build: release builds rename functions', () => {
   flags('function A(){return <text>a</text>} const parts=[A]; export function render(){ return <view>{parts.map(Part => <Part key={Part.name} />)}</view>; }',
     /UI_KEY: Part\.name is not a stable key; release builds rename functions, so key by a label or index/);

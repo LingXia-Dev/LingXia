@@ -102,7 +102,8 @@ element that is inserted together with its message is not announced.
 ## Order and focus
 
 The screen reader and the hardware keyboard follow tree order. `order-*` and `flex-*-reverse` change only
-the visual order, so keep the tree in reading order. Disabled controls are exposed as disabled.
+the visual order, so keep the tree in reading order. A control is enabled unless you disable it: one with no
+handler, such as a `<select>` without `onChange`, is announced and focusable but does nothing.
 
 ## Text size
 

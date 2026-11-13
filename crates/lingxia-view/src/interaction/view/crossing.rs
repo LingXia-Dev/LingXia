@@ -3,7 +3,7 @@
 //! ancestors with a callback hear their own crossing, outermost first on entry and innermost
 //! first on exit.
 use super::{Dispatch, Effect, ViewInteraction};
-use crate::interaction::frame::{PresentedFrame, contains, interactive};
+use crate::interaction::frame::{Acts, PresentedFrame, acts, contains, hit_target};
 
 /// An element the pointer is over: its identity and its leave callback.
 #[derive(Clone, Debug, PartialEq)]
@@ -17,8 +17,7 @@ fn over(frame: &PresentedFrame, point: [f32; 2]) -> Vec<(usize, Option<u64>)> {
     // Layout wrappers and transparent layers take no pointer; a control or a box with a crossing
     // callback does, so a dialog's backdrop over the box makes the pointer leave it.
     let Some((_, target)) = frame.hit_order().find(|(_, node)| {
-        (node.on_pointer.iter().any(Option::is_some) || interactive(node))
-            && contains(node, point, false)
+        (acts(node).any(Acts::CROSSING) || hit_target(node)) && contains(node, point, false)
     }) else {
         return Vec::new();
     };

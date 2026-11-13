@@ -151,7 +151,8 @@ export function render() {
 }
 ```
 
-A disabled switch or checkbox that is on keeps its accent at reduced strength.
+A disabled switch or checkbox that is on keeps its accent at reduced strength. To centre a composed switch's
+or checkbox's content, use `my-auto` or `self-center` on it, not `grow`: `grow` takes the free space first.
 
 ## Radio
 

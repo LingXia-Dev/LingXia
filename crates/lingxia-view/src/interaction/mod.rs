@@ -1,4 +1,6 @@
 //! Platform-neutral input, editor and selection policy.
+#[cfg(test)]
+mod acts_tests;
 pub mod chrome;
 pub mod composite;
 pub(crate) mod content_hash;
