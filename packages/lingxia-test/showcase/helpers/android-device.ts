@@ -50,8 +50,8 @@ export function androidDevice(t: Fixture) {
     size: () => request<{ width: number; height: number }>('size'),
     /** Whether the OS accepts injected taps, swipes and keys from adb. */
     canInject: async () => (await request<{ ok: boolean }>('inject')).ok,
-    /** Turn the phone as a user does with auto-rotate off; `auto` gives the sensor back. */
-    rotate: (orientation: 'portrait' | 'landscape' | 'auto') => request('rotate', { orientation }),
+    /** Turn the phone as a user does with auto-rotate off; `restore` puts back the rotation settings found before the first turn. */
+    rotate: (orientation: 'portrait' | 'landscape' | 'restore') => request('rotate', { orientation }),
     swipe: (input: { x1: number; y1: number; x2: number; y2: number; duration: number }) => request('swipe', input),
     /** Colours of the composited screen (every window and surface) at screen pixels, as `[r, g, b]`. */
     pixels: async (points: readonly (readonly [number, number])[]) =>

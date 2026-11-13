@@ -26,6 +26,16 @@ export function screenPixels(raw, points) {
 export function createAndroidDeviceFixture(runAdb, token = randomBytes(24).toString('hex')) {
   let busy = false;
   let injects;
+  // The rotation settings before the first turn; `restore` puts back exactly these.
+  let found;
+  const setting = async (name) => (await runAdb(['shell', 'settings', 'get', 'system', name])).trim();
+  const put = (name, value) => runAdb(['shell', 'settings', 'put', 'system', name, value]);
+  const restoreRotation = async () => {
+    if (!found) return;
+    await put('user_rotation', found.user);
+    await put('accelerometer_rotation', found.auto);
+    found = undefined;
+  };
   const server = createServer(async (request, response) => {
     const reply = (status, body) => {
       response.writeHead(status, { 'content-type': 'application/json' });
@@ -81,13 +91,15 @@ export function createAndroidDeviceFixture(runAdb, token = randomBytes(24).toStr
       }
       let input;
       try { input = JSON.parse(body); } catch { return reply(400, { error: 'invalid JSON' }); }
-      if (operation === 'rotate' && ['portrait', 'landscape', 'auto'].includes(input?.orientation)) {
-        // As a user turns the phone with auto-rotate off; `auto` gives the sensor back.
-        if (input.orientation === 'auto') {
-          await runAdb(['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '1']);
+      if (operation === 'rotate' && ['portrait', 'landscape', 'restore'].includes(input?.orientation)) {
+        // As a user turns the phone with auto-rotate off. The phone is someone's: `restore` puts
+        // back the settings found before the first turn, never a guess such as auto-rotate on.
+        if (input.orientation === 'restore') {
+          await restoreRotation();
         } else {
-          await runAdb(['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0']);
-          await runAdb(['shell', 'settings', 'put', 'system', 'user_rotation', input.orientation === 'landscape' ? '1' : '0']);
+          found ??= { auto: await setting('accelerometer_rotation'), user: await setting('user_rotation') };
+          await put('accelerometer_rotation', '0');
+          await put('user_rotation', input.orientation === 'landscape' ? '1' : '0');
         }
         return reply(200, { ok: true });
       }
@@ -115,7 +127,7 @@ export function createAndroidDeviceFixture(runAdb, token = randomBytes(24).toStr
       busy = false;
     }
   });
-  return { server, token };
+  return { server, token, restoreRotation };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -123,7 +135,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (!process.argv.includes('--device') || !argument('--device')) throw new Error('--device is required');
   const adb = process.argv.includes('--adb') ? argument('--adb') : 'adb';
   const serial = argument('--device');
-  const { server, token } = createAndroidDeviceFixture(async (args, { binary = false } = {}) => {
+  const { server, token, restoreRotation } = createAndroidDeviceFixture(async (args, { binary = false } = {}) => {
     const result = await execute(adb, ['-s', serial, ...args], { timeout: 15000, maxBuffer: (binary ? 64 : 2) * 1024 * 1024,
       windowsHide: true, ...(binary ? { encoding: 'buffer' } : {}) });
     return result.stdout;
@@ -131,5 +143,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   server.listen(process.argv.includes('--port') ? Number(argument('--port')) : 0, '127.0.0.1', () => {
     process.stdout.write(`http://127.0.0.1:${server.address().port}/${token}\n`);
   });
-  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.close(() => process.exit(0)));
+  // A run cut short must not leave the phone turned.
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => restoreRotation().catch(() => {}).finally(() => server.close(() => process.exit(0))));
+  }
 }

@@ -46,20 +46,31 @@ test('a failed UI dump never returns an old hierarchy', async (t) => {
   assert.ok(calls.every((args) => args[1] === 'uiautomator'));
 });
 
-test('rotate turns auto-rotate off and sets the user rotation, or gives the sensor back', async (t) => {
+test('rotate turns auto-rotate off and sets the user rotation, and restore puts back what it found', async (t) => {
   const calls = [];
-  const { server, token } = createAndroidDeviceFixture(async (args) => { calls.push(args); return ''; });
+  const settings = { accelerometer_rotation: '0', user_rotation: '3' };
+  const { server, token } = createAndroidDeviceFixture(async (args) => {
+    calls.push(args);
+    return args[2] === 'get' ? `${settings[args[4]]}\n` : '';
+  });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
   const post = (body) => fetch(`http://127.0.0.1:${server.address().port}/${token}/rotate`, { method: 'POST', body: JSON.stringify(body) });
   assert.equal((await post({ orientation: 'sideways; reboot' })).status, 400);
+  assert.equal((await post({ orientation: 'auto' })).status, 400, 'no turn forces auto-rotate on');
   assert.equal((await post({ orientation: 'landscape' })).status, 200);
-  assert.equal((await post({ orientation: 'auto' })).status, 200);
+  assert.equal((await post({ orientation: 'portrait' })).status, 200);
+  assert.equal((await post({ orientation: 'restore' })).status, 200);
+  assert.equal((await post({ orientation: 'restore' })).status, 200);
+  const put = (name, value) => ['shell', 'settings', 'put', 'system', name, value];
   assert.deepEqual(calls, [
-    ['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0'],
-    ['shell', 'settings', 'put', 'system', 'user_rotation', '1'],
-    ['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '1'],
-  ]);
+    ['shell', 'settings', 'get', 'system', 'accelerometer_rotation'],
+    ['shell', 'settings', 'get', 'system', 'user_rotation'],
+    put('accelerometer_rotation', '0'), put('user_rotation', '1'),
+    // The second turn keeps the first record: the phone's own settings, not the fixture's.
+    put('accelerometer_rotation', '0'), put('user_rotation', '0'),
+    put('user_rotation', '3'), put('accelerometer_rotation', '0'),
+  ], 'a locked phone stays locked; a second restore writes nothing');
 });
 
 test('pixels reads the composited screen at the given points, whichever header the device writes', async (t) => {

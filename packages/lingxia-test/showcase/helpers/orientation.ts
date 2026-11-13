@@ -4,9 +4,9 @@ import { androidDevice } from './android-device.js';
 /**
  * Turn the device as a user does: a phone through the device fixture (auto
  * rotation off, the user rotation set), a desktop window by resizing it.
- * `auto` hands a phone back to its sensor and leaves a window as it is.
+ * `restore` gives a phone back its own rotation settings and leaves a window as it is.
  */
-export function turn(t: Fixture, orientation: 'portrait' | 'landscape' | 'auto'): Promise<void> {
+export function turn(t: Fixture, orientation: 'portrait' | 'landscape' | 'restore'): Promise<void> {
   return t.step(`device.turn ${orientation}`, () => turnNow(t, orientation));
 }
 
@@ -36,11 +36,11 @@ export async function requireTurn(t: Fixture): Promise<void> {
   }
 }
 
-async function turnNow(t: Fixture, orientation: 'portrait' | 'landscape' | 'auto'): Promise<void> {
+async function turnNow(t: Fixture, orientation: 'portrait' | 'landscape' | 'restore'): Promise<void> {
   if (await android(t)) {
     if (!t.arg('androidDevice', { required: false })) t.skip(NO_DEVICE);
     await androidDevice(t).rotate(orientation);
     return;
   }
-  if (orientation !== 'auto') await t.app.window.orient(orientation);
+  if (orientation !== 'restore') await t.app.window.orient(orientation);
 }

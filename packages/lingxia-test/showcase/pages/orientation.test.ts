@@ -21,7 +21,7 @@ spec('a page that follows the device turns with it', {
   const start = await wide(view);
   // Leave the device or window as the spec found it.
   await requireTurn(t);
-  t.defer(async () => { await turn(t, start ? 'landscape' : 'portrait'); await turn(t, 'auto'); });
+  t.defer(async () => { await turn(t, start ? 'landscape' : 'portrait'); await turn(t, 'restore'); });
 
   await turn(t, 'landscape');
   await expect.poll(() => wide(view), { timeout: 10_000 }).toBe(true);
@@ -40,7 +40,7 @@ spec('a landscape page lies down while the phone is upright, and the next page s
 }, async (t) => {
   const { app } = bindFixture(t, 'ORIENT-LANDSCAPE-001');
   await requireTurn(t);
-  t.defer(async () => { await turn(t, 'auto'); });
+  t.defer(async () => { await turn(t, 'restore'); });
   await turn(t, 'portrait');
   await app.nav.relaunch({ page: 'home' });
   await expect.poll(() => wide(app.view), { timeout: 10_000 }).toBe(false);
