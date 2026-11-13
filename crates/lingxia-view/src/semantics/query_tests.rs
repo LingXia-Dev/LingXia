@@ -658,12 +658,13 @@ fn a_progressbar_reads_its_share_or_its_value_text_and_has_no_value_while_indete
     };
     assert_eq!(found("up")["role"], "progressbar");
     assert_eq!(found("up")["value"], "42");
-    let tree = i.automation_tree().unwrap().to_string();
-    assert!(
-        tree.contains(r#""value":{"max":100.0,"min":0.0,"now":42.0,"text":"42%"}"#),
+    let tree = i.automation_tree().unwrap();
+    assert_eq!(
+        tree["nodes"][0]["value"],
+        serde_json::json!({"max":100.0,"min":0.0,"now":42.0,"text":"42%"}),
         "{tree}"
     );
-    assert!(tree.contains(r#""text":"Step 2 of 5""#), "{tree}");
+    assert_eq!(tree["nodes"][1]["value"]["text"], "Step 2 of 5", "{tree}");
     assert_eq!(found("spin")["role"], "progressbar");
     assert!(found("spin")["value"].is_null());
 }

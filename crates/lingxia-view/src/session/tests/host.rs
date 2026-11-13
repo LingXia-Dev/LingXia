@@ -5236,28 +5236,43 @@ fn a_select_sheet_is_drivable_and_a_choice_made_elsewhere_closes_it() {
         platform.settle(&[&host]);
         acted
     };
-    let tree = || {
-        host.automation_request(&serde_json::json!({"op":"tree"}))
-            .unwrap()
-            .to_string()
-    };
+    fn flatten<'a>(node: &'a serde_json::Value, out: &mut Vec<&'a serde_json::Value>) {
+        out.push(node);
+        for child in node["children"].as_array().into_iter().flatten() {
+            flatten(child, out);
+        }
+    }
     act(
         "[data-testid=\"country\"]",
         serde_json::json!({"kind":"click"}),
     )
     .unwrap();
     // The touch picker: a dialog named by the select, Cancel, Done and the options.
-    let sheet = tree();
+    let sheet = host
+        .automation_request(&serde_json::json!({"op":"tree"}))
+        .unwrap();
+    let mut nodes = Vec::new();
+    for node in sheet["nodes"].as_array().into_iter().flatten() {
+        flatten(node, &mut nodes);
+    }
+    let has = |want: serde_json::Value| {
+        nodes.iter().any(|node| {
+            want.as_object()
+                .unwrap()
+                .iter()
+                .all(|(key, value)| &node[key] == value)
+        })
+    };
     for part in [
-        "\"name\":\"Country\",\"role\":\"dialog\"",
-        "\"testId\":\"lx-picker-cancel\"",
-        "\"testId\":\"lx-picker-done\"",
-        "\"name\":\"France\",\"role\":\"option\",\"selected\":false",
+        serde_json::json!({"name":"Country","role":"dialog"}),
+        serde_json::json!({"testId":"lx-picker-cancel"}),
+        serde_json::json!({"testId":"lx-picker-done"}),
+        serde_json::json!({"name":"France","role":"option","selected":false}),
     ] {
-        assert!(sheet.contains(part), "{part} in {sheet}");
+        assert!(has(part.clone()), "{part} in {sheet}");
     }
     assert!(
-        !sheet.contains("\"selected\":true"),
+        !has(serde_json::json!({"selected":true})),
         "no value, no tick: {sheet}"
     );
     // The select is behind a modal: out of role queries, still reached by its test id.

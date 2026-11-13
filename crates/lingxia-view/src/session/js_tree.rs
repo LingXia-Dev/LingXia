@@ -93,7 +93,11 @@ fn build(ctx: &JSContext, value: &Value, depth: usize) -> JSResult<JSValue> {
         }
         Value::Object(map) => {
             let object = JSObject::new(ctx);
-            for (key, item) in map {
+            // Code point order whatever serde_json's `preserve_order`: the isolate files a replayed
+            // new key in that order (runtime/data.js), so a whole tree must iterate the same way.
+            let mut entries: Vec<_> = map.iter().collect();
+            entries.sort_unstable_by(|a, b| a.0.cmp(b.0));
+            for (key, item) in entries {
                 let item = build(ctx, item, depth + 1)?;
                 if key == "__proto__" {
                     // An own property, as JSON.parse makes it; a plain set would replace the prototype.

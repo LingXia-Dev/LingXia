@@ -203,9 +203,10 @@ fn keys_on_its_axis_and_assistive_input_step_through_the_points_in_order() {
     );
     assert!(semantic.focusable && semantic.actions.contains(&Action::ScrollBackward));
     assert!(!semantic.actions.contains(&Action::ScrollForward));
-    let tree = interaction.automation_tree().unwrap().to_string();
-    assert!(
-        tree.contains(r#""drag":{"axis":"y","count":3,"index":2}"#),
+    let tree = interaction.automation_tree().unwrap();
+    assert_eq!(
+        tree["nodes"][0]["drag"],
+        serde_json::json!({"axis":"y","count":3,"index":2}),
         "{tree}"
     );
     let (handled, _) = interaction.accessibility(id, AccessibilityAction::ScrollForward, page);

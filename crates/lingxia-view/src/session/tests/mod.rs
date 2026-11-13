@@ -2277,10 +2277,17 @@ fn the_view_isolate_replays_writes_into_its_own_data() {
     use serde_json::json;
     let source = source("function render({data}){return h('text',{},JSON.stringify(data))}");
     let mut session = ViewSession::new_with_logic(&source, true).unwrap();
-    // The isolate's keys must iterate as the replica's whole tree would arrive.
+    // The replayed copy iterates its keys as the replica's whole tree arrives in a fresh isolate,
+    // whatever serde_json's `preserve_order`.
     let rendered = |session: &mut ViewSession| {
         let text = session.render(300, 500, 1.0).unwrap().nodes[0].text.clone();
-        assert_eq!(text, session.state.data().unwrap().to_string());
+        let mut whole = ViewSession::new_with_logic(&source, true).unwrap();
+        whole
+            .write_state(state_write(&json!({"v":2,"kind":"state.snapshot","rev":0,
+                "state":session.state.data().unwrap()})))
+            .unwrap();
+        let fresh = whole.render(300, 500, 1.0).unwrap().nodes[0].text.clone();
+        assert_eq!(text, fresh, "a replay and a whole tree iterate alike");
         serde_json::from_str::<serde_json::Value>(&text).unwrap()
     };
     session
