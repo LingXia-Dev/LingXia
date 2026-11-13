@@ -116,6 +116,30 @@ fn a_shown_dialog_holds_the_top_layer_until_its_exit_ends() {
 }
 
 #[test]
+fn an_anchored_popover_stays_clear_of_the_bars_over_the_page() {
+    let module = super::source(
+        "function render(){return h('page',{},h('button',{popoverTarget:'menu','data-testid':'more',style:{position:'absolute',left:10,top:60,width:40,height:10}},'M'),h('view',{id:'menu',popover:'auto','data-testid':'menu',style:{width:60,height:15}}))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let mut env = environment();
+    // A tab bar 30 high: below the trigger fits the surface but lands under the bar.
+    env["insets"]["bottom"] = 30.into();
+    page.set_environment(env).unwrap();
+    page.set_animation_surface(Some(SURFACE), Duration::ZERO)
+        .unwrap();
+    let shot = run(&mut page, 0).pop().unwrap();
+    click(&mut page, &shot, "more");
+    let shot = run(&mut page, 100).pop().unwrap();
+    let [_, y, _, height] = shot.node("menu").bounds;
+    assert!(height > 0.0, "the menu shows");
+    assert!(
+        y + height <= 70.0,
+        "the menu clears the tab bar: {y} + {height}"
+    );
+    assert!(y >= 20.0, "and the top bar");
+}
+
+#[test]
 fn a_popover_leaves_the_chrome_over_the_page() {
     let (_, shot) = opened("popover");
     assert!(

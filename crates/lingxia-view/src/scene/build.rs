@@ -1478,6 +1478,16 @@ impl Renderer {
                 .map(|(record, collapsed)| record.number(field::TOP_LAYER).is_some() && !collapsed)
                 .collect(),
             selection_fill: palette.role(Role::Selection),
+            unobscured: {
+                let [top, right, bottom, left] = self.safe_area.insets;
+                let bottom = bottom.max(self.safe_area.keyboard);
+                [
+                    left,
+                    top,
+                    (f32::from(width) / scale - left - right).max(0.0),
+                    (f32::from(height) / scale - top - bottom).max(0.0),
+                ]
+            },
             paint_styles,
             commands,
             nodes,

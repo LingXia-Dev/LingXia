@@ -69,6 +69,8 @@ pub(crate) struct RetainedLayout {
     pub(crate) stickies: Vec<Option<crate::scene::sticky::Sticky>>,
     /// The node a popover sits against, by identity; composition places it below or above.
     pub(crate) anchors: Vec<Option<(String, crate::scene::anchor::Area)>>,
+    /// The surface less the bars and keyboard over it: an anchored popover stays inside.
+    pub(crate) unobscured: [f32; 4],
     pub(crate) backdrops: Vec<Option<(f32, f32)>>,
     pub(crate) masks: Vec<Option<Arc<Vec<crate::scene::mask::MaskLayer>>>>,
     pub(crate) blurs: Vec<f32>,
@@ -546,8 +548,12 @@ impl RetainedLayout {
                 let mut natural = self.nodes[index].bounds;
                 natural[0] -= translation[0];
                 natural[1] -= translation[1];
-                let [dx, dy] =
-                    crate::scene::anchor::place(natural, nodes[target].bounds, viewport, *area);
+                let [dx, dy] = crate::scene::anchor::place(
+                    natural,
+                    nodes[target].bounds,
+                    self.unobscured,
+                    *area,
+                );
                 translation = [translation[0] - dx, translation[1] - dy];
             }
             // A drag element sits at its offset, its whole subtree with it.
