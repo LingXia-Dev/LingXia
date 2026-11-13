@@ -11,10 +11,12 @@ import WebKit
 /// that mounts the page — the shell's view controller and the Runner's
 /// simulator alike.
 ///
-/// A trackpad or wheel pull is measured like `PullToRefreshHelper` on iOS and
+/// A trackpad pull is measured like `PullToRefreshHelper` on iOS and
 /// Android — a 150pt ceiling and the same rubber band, with the 80pt trigger
 /// measured after the band, roughly 70pt of trackpad travel here — but the
-/// page itself never moves: a desktop page stays put under the pointer.
+/// page itself never moves: a desktop page stays put under the pointer. A
+/// mouse wheel never pulls: it has no release, so scrolling to the top would
+/// keep firing refreshes.
 ///
 /// Most desktop refreshes have no pull behind them (the context menu, ⌘R,
 /// `lx.startPullDownRefresh()`), so a running refresh always shows the same
@@ -37,11 +39,6 @@ final class MacPullToRefreshController {
     private static let minVisibleDuration: TimeInterval = 0.6
     /// iOS's, for the mobile presentation.
     private static let mobileMinVisibleDuration: TimeInterval = 0.4
-    /// A classic mouse wheel reports no phases, so there is no release to wait
-    /// for: the gesture is over once the notches stop arriving.
-    private static let wheelIdleTimeout: TimeInterval = 0.2
-    /// Points per line for a wheel that reports coarse deltas.
-    private static let wheelLineHeight: CGFloat = 16
 
     /// Set by the runner while it simulates a mobile host. Shipped macOS hosts
     /// are desktops and never set it.
@@ -83,7 +80,6 @@ final class MacPullToRefreshController {
     private var refreshShownAt: Date?
     // Set while the bar keeps running after a stop to honour minVisibleDuration.
     private var pendingFinish: DispatchWorkItem?
-    private var lastWheelAt: Date?
 
     // MARK: - Attachment
 
@@ -249,22 +245,15 @@ final class MacPullToRefreshController {
     /// Returns true when the event belongs to a pull and must not reach WebKit.
     ///
     /// WebKit does not bounce a short page on macOS and exposes no equivalent
-    /// of iOS's `alwaysBounceVertical`, so the pull is driven from the wheel
+    /// of iOS's `alwaysBounceVertical`, so the pull is driven from the scroll
     /// deltas rather than read off an overscroll that may never happen.
     func handleScrollWheel(_ event: NSEvent) -> Bool {
         guard enabled, isMounted, !isRefreshing else { return false }
 
-        // A trackpad names the phases of its gesture; a wheel names none.
-        guard event.phase.isEmpty, event.momentumPhase.isEmpty else {
-            return handleGesture(event)
-        }
-        return handleWheelNotch(delta: Self.points(from: event))
-    }
-
-    private static func points(from event: NSEvent) -> CGFloat {
-        event.hasPreciseScrollingDeltas
-            ? event.scrollingDeltaY
-            : event.scrollingDeltaY * wheelLineHeight
+        // A trackpad names the phases of its gesture; a mouse wheel names none
+        // and only scrolls.
+        guard !event.phase.isEmpty || !event.momentumPhase.isEmpty else { return false }
+        return handleGesture(event)
     }
 
     private func handleGesture(_ event: NSEvent) -> Bool {
@@ -293,7 +282,7 @@ final class MacPullToRefreshController {
             return false
         }
 
-        let delta = Self.points(from: event)
+        let delta = event.scrollingDeltaY
         if !isPulling {
             guard atTop, delta > 0 else { return false }
             isPulling = true
@@ -301,38 +290,6 @@ final class MacPullToRefreshController {
             mobile = Self.presentsMobile
         }
         return accumulate(delta)
-    }
-
-    /// A wheel has no release, so the gesture ends when the notches stop.
-    private func handleWheelNotch(delta: CGFloat) -> Bool {
-        let now = Date()
-        if !isPulling {
-            // Only a fresh burst can pull. The notches that carried the page to
-            // the top belong to that scroll, and so does the overshoot they run
-            // into once it gets there — a wheel almost always overshoots, and
-            // treating that as a pull would bounce the page on every arrival.
-            let continuing = lastWheelAt.map { now.timeIntervalSince($0) < Self.wheelIdleTimeout }
-                ?? false
-            lastWheelAt = now
-            guard !continuing, atTop, delta > 0 else { return false }
-            isPulling = true
-            pull = 0
-            mobile = Self.presentsMobile
-        }
-        lastWheelAt = now
-        let consumed = accumulate(delta)
-        guard isPulling else { return consumed }
-        // A wheel has no release to wait for, and its notches can arrive slower
-        // than the idle timeout: waiting for the gesture to "end" would unwind
-        // every pull before it ever reached the trigger. Crossing the trigger
-        // is the commitment; the timer only unwinds one that stops short.
-        if Self.rubberBand(pull) >= Self.triggerDistance {
-            isPulling = false
-            startRefreshing()
-            return true
-        }
-        scheduleWheelRelease(after: now)
-        return consumed
     }
 
     private func accumulate(_ delta: CGFloat) -> Bool {
@@ -345,15 +302,6 @@ final class MacPullToRefreshController {
         }
         applyPull()
         return true
-    }
-
-    /// Unwind a wheel pull that stopped short of the trigger.
-    private func scheduleWheelRelease(after stamp: Date) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.wheelIdleTimeout) { [weak self] in
-            guard let self, self.isPulling, self.lastWheelAt == stamp else { return }
-            self.isPulling = false
-            self.cancelPull()
-        }
     }
 
     private func release() {
