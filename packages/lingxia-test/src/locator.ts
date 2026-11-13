@@ -9,7 +9,7 @@ import {
   isTransientTransportError,
 } from "./deadline.js";
 import { resolveHost } from "./host.js";
-import { displayLocation } from "./ids.js";
+import { callerLocation, displayLocation } from "./ids.js";
 import type {
   ActionOptions,
   InputOptions,
@@ -143,6 +143,8 @@ export interface LocatorRefine {
   name?: string | RegExp;
   /** Pick the last match (`.last()`); `LocatorTarget.index` picks from the start. */
   last?: boolean;
+  /** Built by `Locator.getByRole`: the selector is a descendant chain. */
+  scoped?: boolean;
 }
 
 /** Marks a locator across module copies, so `expect(locator)` retries it. */
@@ -193,6 +195,31 @@ export const ROLE_SELECTORS: Readonly<Record<LocatorRole, string>> = {
   menuitemradio: '[role="menuitemradio"]',
 };
 
+/** The top-level parts of a selector list; commas inside quotes or brackets stay. */
+function selectorParts(selector: string): string[] {
+  const parts: string[] = [];
+  let start = 0, quote: string | undefined, escaped = false, bracket = false;
+  for (let at = 0; at < selector.length; at++) {
+    const c = selector[at];
+    if (escaped) escaped = false;
+    else if (quote) { if (c === "\\") escaped = true; else if (c === quote) quote = undefined; }
+    else if (c === '"' || c === "'") quote = c;
+    else if (c === "[") bracket = true;
+    else if (c === "]") bracket = false;
+    else if (c === "," && !bracket) { parts.push(selector.slice(start, at).trim()); start = at + 1; }
+  }
+  parts.push(selector.slice(start).trim());
+  return parts.filter(Boolean);
+}
+
+/** `inner` inside any match of `outer`, as one selector list (descendant combinator). */
+export function descendantSelector(outer: string, inner: string): string {
+  return selectorParts(outer).flatMap((scope) => selectorParts(inner).map((part) => `${scope} ${part}`)).join(", ");
+}
+
+// A GPU host that predates descendant chains lists no such form in its refusal.
+const SCOPED_GPU_QUERIES = "descendant chains";
+
 export function roleSelector(role: string): string {
   if (!Object.prototype.hasOwnProperty.call(ROLE_SELECTORS, role)) {
     throw new TypeError(`getByRole: unknown role ${JSON.stringify(role)}; known: ${Object.keys(ROLE_SELECTORS).join(", ")}`);
@@ -236,6 +263,26 @@ export class PageLocator implements Locator {
     const { index: _index, ...options } = this.options;
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
       options, this.room, { ...this.refine, last: true });
+  }
+
+  getByRole(role: LocatorRole, options?: { name?: string | RegExp }): Locator {
+    const name = options?.name;
+    if (name !== undefined && typeof name !== "string" && !(name instanceof RegExp)) {
+      throw new TypeError("getByRole() name must be a string or RegExp");
+    }
+    const narrowed = this.refine.last ? "last()"
+      : this.options.index !== undefined ? `nth(${this.options.index})`
+      : this.refine.hasText !== undefined ? "filter({ hasText })"
+      : this.refine.name !== undefined ? "getByRole(..., { name })"
+      : undefined;
+    if (narrowed) {
+      throw new TypeError(`getByRole() cannot scope to a locator narrowed with ${narrowed}: a scope is every match ` +
+        "of its selector. Scope with view.testId(), view.css() or view.getByRole() without a name, and narrow the inner locator instead");
+    }
+    const frame = callerLocation();
+    return new PageLocator(this.page, this.guard, this.record, descendantSelector(this.selector, roleSelector(role)),
+      { source: frame.file, line: frame.line, column: frame.column }, this.options, this.room,
+      { ...(name === undefined ? {} : { name }), scoped: true });
   }
 
   filter(options: LocatorFilterOptions): Locator {
@@ -384,7 +431,8 @@ export class PageLocator implements Locator {
    * against what is left of it, so a query that never returns fails `verb`.
    */
   async resolve(deadline?: ActionDeadline, verb = "resolve", attributes: readonly string[] = []): Promise<LocatorResolve> {
-    const query = () => this.page.query({ page: this.options.page, css: this.selector, all: true });
+    const query = () => this.page.query({ page: this.options.page, css: this.selector, all: true })
+      .catch((error: unknown) => { throw this.scopedRefusal(error); });
     const all = await this.guard(() =>
       deadline ? deadline.call("page.query", query, () => this.callContext(verb)) : query(),
     );
@@ -489,6 +537,16 @@ export class PageLocator implements Locator {
     const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
     for (const name of names) out[name] = typeof record[name] === "string" ? record[name] as string : null;
     return out;
+  }
+
+  /** An old GPU host refusing a scoped query says so in words, keeping the driver code. */
+  private scopedRefusal(error: unknown): unknown {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!this.refine.scoped || errorCode(error) !== "E_SELECTOR_UNSUPPORTED" && !message.startsWith("E_SELECTOR_UNSUPPORTED")) return error;
+    if (message.includes(SCOPED_GPU_QUERIES)) return error;
+    return Object.assign(new Error(`this app's View predates scoped queries; rebuild the host to use Locator.getByRole (${formatValue(this.selector)})`), {
+      code: "E_SELECTOR_UNSUPPORTED", cause: error,
+    });
   }
 
   missText(resolved: LocatorResolve): string {

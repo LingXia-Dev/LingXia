@@ -960,3 +960,50 @@ test("view.settled rejects at its timeout while the page keeps presenting", asyn
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
 });
+test("Locator.getByRole finds a role inside every match of its scope", async () => {
+  const world = createWorld();
+  const bar = world.add({ tag: "div", testId: "bar", role: "toolbar" });
+  world.add({ tag: "button", text: "Save", parent: bar });
+  const nested = world.add({ tag: "div", parent: bar });
+  const share = world.add({ tag: "div", role: "button", text: "Share", parent: nested });
+  world.add({ tag: "button", text: "Save" });
+  const { attachments } = installFakeHost(world);
+
+  spec("scoped roles", async (t) => {
+    await expect(t.app.view.getByRole("button")).toHaveCount(3);
+    const inBar = t.app.view.testId("bar").getByRole("button");
+    assert.equal(inBar.selector.split(", ").every((part) => part.startsWith('[data-testid="bar"] ')), true);
+    await expect(inBar).toHaveCount(2);
+    await expect(t.app.view.getByRole("toolbar").getByRole("button", { name: "Share" })).toHaveCount(1);
+    await t.app.view.css('[data-testid="bar"]').getByRole("button", { name: "Share" }).click({ timeout: 500 });
+    assert.equal(share.clicked, 1);
+    await expect(t.app.view.testId("bar").getByRole("heading")).toHaveCount(0);
+    assert.throws(() => t.app.view.testId("bar").first().getByRole("button"), /narrowed with nth\(0\).*view\.testId\(\)/s);
+    assert.throws(() => t.app.view.testId("bar").last().getByRole("button"), /narrowed with last\(\)/);
+    assert.throws(() => t.app.view.testId("bar").filter({ hasText: "x" }).getByRole("button"), /narrowed with filter\(\{ hasText \}\)/);
+    assert.throws(() => t.app.view.getByRole("toolbar", { name: "x" }).getByRole("button"), /narrowed with getByRole\(\.\.\., \{ name \}\)/);
+    assert.throws(() => t.app.view.testId("bar").getByRole("banner"), /unknown role "banner"/);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
+});
+
+test("an app whose View predates scoped queries says so instead of a raw selector refusal", async () => {
+  const world = createWorld({ scopedQueries: false });
+  world.add({ tag: "div", testId: "bar" });
+  const { attachments } = installFakeHost(world);
+
+  spec("old host", async (t) => {
+    await expect(t.app.view.testId("bar")).toHaveCount(1);
+    const error = await t.app.view.testId("bar").getByRole("button").count().then(() => undefined, (e) => e);
+    assert.equal(error?.code, "E_SELECTOR_UNSUPPORTED");
+    assert.match(error.message, /this app's View predates scoped queries; rebuild the host/);
+    // A css selector the host rejects outside getByRole keeps the driver's own words.
+    const raw = await t.app.view.css('[data-testid="bar"] button').count().then(() => undefined, (e) => e);
+    assert.match(raw?.message ?? "", /^E_SELECTOR_UNSUPPORTED: /);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
+});

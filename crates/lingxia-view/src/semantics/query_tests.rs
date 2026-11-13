@@ -707,3 +707,38 @@ fn the_visible_rect_is_the_box_less_scroll_clips_and_covered_edges() {
     assert_eq!(half["visibleRect"]["top"], 330.0);
     assert_eq!(half["visibleRect"]["height"], 10.0);
 }
+
+#[test]
+fn a_descendant_chain_scopes_a_role_query_to_a_subtree() {
+    let i = interaction(
+        "h('view',{},h('view',{'data-testid':'bar',role:'toolbar'},h('button',{onClick(){}},'Save'),h('view',{},h('button',{onClick(){}},'Share'))),h('button',{onClick(){}},'Save'),h('view',{'data-testid':'empty'}))",
+    );
+    let all = |selector: &str| i.automation_query(selector, None, true, None).unwrap();
+    let texts = |value: serde_json::Value| -> Vec<String> {
+        value["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["text"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(texts(all("button")), ["Save", "Share", "Save"]);
+    assert_eq!(
+        texts(all(
+            "[data-testid=\"bar\"] button, [data-testid=\"bar\"] [role=\"button\"]"
+        )),
+        ["Save", "Share"]
+    );
+    assert_eq!(texts(all("[role=\"toolbar\"] div button")), ["Share"]);
+    assert_eq!(all("[data-testid=\"empty\"] button")["count"], 0);
+    // The scope is an ancestor, never the node itself.
+    assert_eq!(
+        all("[data-testid=\"bar\"] [data-testid=\"bar\"]")["count"],
+        0
+    );
+    assert!(
+        i.automation_query("[data-testid=\"bar\"] > button", None, true, None)
+            .unwrap_err()
+            .starts_with("E_SELECTOR_UNSUPPORTED")
+    );
+}

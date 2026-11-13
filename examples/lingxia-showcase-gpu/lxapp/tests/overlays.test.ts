@@ -26,6 +26,19 @@ spec('a dialog hides the page behind it until it closes', { covers: ['view:dialo
   await expect(view.testId('lab-overlay-last')).toHaveText('last: cancel');
 });
 
+spec('role queries scoped to a dialog find only its own controls', { covers: ['view:dialog'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-feedback').click();
+  await view.testId('lab-overlay-confirm').click();
+  const dialog = view.testId('lab-dialog');
+  await expect(dialog.getByRole('heading')).toHaveText('Delete note?');
+  await expect(dialog.getByRole('button')).toHaveCount(2);
+  await expect(view.testId('lab-overlay-more').getByRole('button')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(view.getByRole('dialog')).not.toBeAttached();
+  await expect(view.testId('lab-overlay-last')).toHaveText('last: cancel');
+});
+
 spec('a sheet holds its own scroll and closes from its button', { covers: ['view:dialog'], start: { page: 'view-lab' } }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-tab-feedback').click();

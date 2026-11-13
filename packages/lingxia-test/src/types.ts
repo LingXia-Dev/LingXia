@@ -251,6 +251,12 @@ export interface Locator {
   readonly selector: string;
   /** Wait until the locator reaches `state`; rejects at the timeout. */
   waitFor(options?: LocatorWaitOptions): Promise<void>;
+  /**
+   * Elements with `role` inside any match of this locator, optionally with an
+   * exact accessible `name`. This locator must not be narrowed with `nth()`,
+   * `first()`, `last()`, `filter()` or a role `name`.
+   */
+  getByRole(role: LocatorRole, options?: { name?: string | RegExp }): Locator;
   click(options?: ActionOptions): Promise<void>;
   /** Double-click: on text and editors, selects the word at the center (a long press on touch). */
   dblclick(options?: ActionOptions): Promise<void>;

@@ -6,7 +6,7 @@ use crate::scene::node::NodeSnapshot;
 use serde_json::{Value, json};
 
 /// Selector forms GPU pages answer; anything else is rejected by name.
-pub const SUPPORTED: &str = "tag names (button, a, input, textarea, img, h1-h6, ul, li, dialog, div, span), [data-testid=\"…\"], [data-*] and [data-*=\"…\"] (authored data-* props), [role=\"…\"], [aria-label=\"…\"], [placeholder=\"…\"], [type=\"…\"], [href], comma lists of these";
+pub const SUPPORTED: &str = "tag names (button, a, input, textarea, img, h1-h6, ul, li, dialog, div, span), [data-testid=\"…\"], [data-*] and [data-*=\"…\"] (authored data-* props), [role=\"…\"], [aria-label=\"…\"], [placeholder=\"…\"], [type=\"…\"], [href], descendant chains of these (`A B`), comma lists of those";
 
 #[derive(Debug, PartialEq)]
 struct Simple {
@@ -73,27 +73,69 @@ fn data_name(name: &str) -> bool {
     })
 }
 
-fn parse(selector: &str) -> Result<Vec<Simple>, String> {
+/// One comma part: ancestors outermost first, the subject last.
+type Chain = Vec<Simple>;
+
+fn parse(selector: &str) -> Result<Vec<Chain>, String> {
     if selector.trim().is_empty() {
         return Err("selector must not be empty".into());
     }
     let mut parts = Vec::new();
-    let (mut start, mut quote, mut escaped) = (0, None, false);
+    let mut chain = Vec::new();
+    let (mut start, mut quote, mut escaped, mut bracket) = (0, None, false, false);
+    let close = |chain: &mut Chain, at: usize, start: usize| -> Result<(), String> {
+        if !selector[start..at].trim().is_empty() {
+            chain.push(simple(&selector[start..at])?);
+        }
+        Ok(())
+    };
     for (at, c) in selector.char_indices() {
         match (quote, c) {
             _ if escaped => escaped = false,
             (Some(_), '\\') => escaped = true,
             (Some(q), c) if c == q => quote = None,
+            (Some(_), _) => {}
             (None, '"' | '\'') => quote = Some(c),
-            (None, ',') => {
-                parts.push(simple(&selector[start..at])?);
+            (None, '[') => bracket = true,
+            (None, ']') => bracket = false,
+            (None, c) if c.is_whitespace() && !bracket => {
+                close(&mut chain, at, start)?;
+                start = at + c.len_utf8();
+            }
+            (None, ',') if !bracket => {
+                close(&mut chain, at, start)?;
+                if chain.is_empty() {
+                    return Err(unsupported(selector.trim()));
+                }
+                parts.push(std::mem::take(&mut chain));
                 start = at + 1;
             }
             _ => {}
         }
     }
-    parts.push(simple(&selector[start..])?);
+    close(&mut chain, selector.len(), start)?;
+    if chain.is_empty() {
+        return Err(unsupported(selector.trim()));
+    }
+    parts.push(chain);
     Ok(parts)
+}
+
+/// The node's ancestors, nearest first: the nodes whose identity is a `/`-prefix of its own.
+fn ancestors<'a>(
+    by_identity: &'a std::collections::HashMap<&'a str, usize>,
+    identity: &'a str,
+) -> impl Iterator<Item = usize> + 'a {
+    let mut rest = identity;
+    std::iter::from_fn(move || {
+        loop {
+            let cut = rest.rfind('/')?;
+            rest = &rest[..cut];
+            if let Some(index) = by_identity.get(rest) {
+                return Some(*index);
+            }
+        }
+    })
 }
 
 /// The HTML-like element a GPU node answers to, so one locator works on both renderers.
@@ -225,25 +267,59 @@ fn truncate(text: &str, max: Option<usize>) -> (String, bool) {
 }
 
 /// Matching node indices in reading (source) order. A test id matches hidden
-/// nodes too, so tests can assert that something is hidden.
+/// nodes too, so tests can assert that something is hidden. An ancestor in a
+/// chain matches any node, as a DOM ancestor would.
 pub fn select(projection: &Projection, selector: &str) -> Result<Vec<usize>, String> {
-    let selectors = parse(selector)?;
-    Ok(projection
-        .frame
-        .nodes
-        .iter()
-        .enumerate()
-        .filter(|(index, node)| {
-            let semantic = projection.ids.id(*index).and_then(|id| projection.node(id));
-            let element = virtual_element(node, semantic.as_ref());
-            let name = semantic.as_ref().map(|s| s.name.as_str()).unwrap_or("");
-            let reachable = semantic.is_some()
-                || selectors
+    let chains = parse(selector)?;
+    let nodes = &projection.frame.nodes;
+    let test_id_only = chains.iter().all(|chain| {
+        chain
+            .last()
+            .is_some_and(|s| s.attributes.iter().any(|(a, _)| a == "data-testid"))
+    });
+    let element_at = |index: usize| {
+        let semantic = projection.ids.id(index).and_then(|id| projection.node(id));
+        let element = virtual_element(&nodes[index], semantic.as_ref());
+        let name = semantic
+            .as_ref()
+            .map(|s| s.name.clone())
+            .unwrap_or_default();
+        (semantic.is_some(), element, name)
+    };
+    let scoped = chains.iter().any(|chain| chain.len() > 1);
+    let by_identity: std::collections::HashMap<&str, usize> = if scoped {
+        nodes
+            .iter()
+            .enumerate()
+            .map(|(index, node)| (&*node.identity, index))
+            .collect()
+    } else {
+        Default::default()
+    };
+    let chain_matches = |chain: &Chain, index: usize, element: &Virtual, name: &str| {
+        let (subject, outer) = chain.split_last().expect("chains are never empty");
+        if !matches(subject, element, &nodes[index], name) {
+            return false;
+        }
+        // Right to left, each ancestor simple takes the nearest ancestor that matches.
+        let mut wanted = outer.iter().rev().peekable();
+        for ancestor in ancestors(&by_identity, &nodes[index].identity) {
+            let Some(simple) = wanted.peek() else { break };
+            let (_, element, name) = element_at(ancestor);
+            if matches(simple, &element, &nodes[ancestor], &name) {
+                wanted.next();
+            }
+        }
+        wanted.peek().is_none()
+    };
+    Ok((0..nodes.len())
+        .filter(|index| {
+            let (semantic, element, name) = element_at(*index);
+            (semantic || test_id_only)
+                && chains
                     .iter()
-                    .all(|s| s.attributes.iter().any(|(a, _)| a == "data-testid"));
-            reachable && selectors.iter().any(|s| matches(s, &element, node, name))
+                    .any(|chain| chain_matches(chain, *index, &element, &name))
         })
-        .map(|(index, _)| index)
         .collect())
 }
 
@@ -542,25 +618,38 @@ mod tests {
     #[test]
     fn parses_the_locator_subset_and_names_the_rest() {
         assert_eq!(parse("button, [role=\"button\"]").unwrap().len(), 2);
+        let chain = &parse("[data-testid=\"bar\"]  [role=\"tab\"], a").unwrap()[0];
+        assert_eq!(chain.len(), 2);
+        assert_eq!(chain[1].attributes[0].1.as_deref(), Some("tab"));
         assert_eq!(
-            parse("[data-testid=\"save \\\"now\\\"\"]").unwrap()[0].attributes[0]
+            parse("[aria-label=\"Pay now\"] button").unwrap()[0][0].attributes[0]
+                .1
+                .as_deref(),
+            Some("Pay now")
+        );
+        assert_eq!(
+            parse("[data-testid=\"save \\\"now\\\"\"]").unwrap()[0][0].attributes[0]
                 .1
                 .as_deref(),
             Some("save \"now\"")
         );
         assert_eq!(
-            parse("input[type=\"text\"]").unwrap()[0].tag.as_deref(),
+            parse("input[type=\"text\"]").unwrap()[0][0].tag.as_deref(),
             Some("input")
         );
         assert!(parse("a[href]").is_ok());
         assert_eq!(
-            parse("[aria-label=\"Pay, now\"], button").unwrap()[0].attributes[0]
+            parse("[aria-label=\"Pay, now\"], button").unwrap()[0][0].attributes[0]
                 .1
                 .as_deref(),
             Some("Pay, now")
         );
         for selector in [
             "div > span",
+            "div ~ span",
+            "div + span",
+            "div,",
+            ", div",
             ".card",
             "#main",
             "li:first-child",

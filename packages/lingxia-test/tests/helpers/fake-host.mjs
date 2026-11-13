@@ -163,8 +163,18 @@ export function createWorld(options = {}) {
 
   function matches(element, css) {
     // Role selectors are comma lists of `tag`, `tag[attr="v"]` and `[role="v"]`.
-    if (css.includes(", ")) return css.split(", ").some((part) => matchesOne(element, part));
-    return matchesOne(element, css);
+    if (css.includes(", ")) return css.split(", ").some((part) => matchesChain(element, part));
+    return matchesChain(element, css);
+  }
+
+  // `A B`: B with an ancestor (`element.parent`) matching A.
+  function matchesChain(element, css) {
+    const chain = css.split(/\s+(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+    if (!matchesOne(element, chain.pop())) return false;
+    for (let node = element.parent; node && chain.length; node = node.parent) {
+      if (matchesOne(node, chain[chain.length - 1])) chain.pop();
+    }
+    return chain.length === 0;
   }
 
   function matchesOne(element, css) {
@@ -242,6 +252,10 @@ export function createWorld(options = {}) {
   const page = {
     gesture,
     async query({ css, all, index = 0, page: pageName }) {
+      // A GPU host built before descendant chains refuses them by name.
+      if (options.scopedQueries === false && /\S\s+\S/.test(css.replace(/"[^"]*"/g, '""'))) {
+        throw Object.assign(new Error(`E_SELECTOR_UNSUPPORTED: \`${css}\` on a GPU page; supported: tag names, [data-testid="…"], comma lists of these`), { code: "E_SELECTOR_UNSUPPORTED" });
+      }
       const found = queryAll(css, pageEntry("query", pageName));
       if (all) {
         return {

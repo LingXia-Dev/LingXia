@@ -94,7 +94,7 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 |---|---|
 | Relaunch mid-spec | `t.app.nav.relaunch({ page, query? })` |
 | Navigate | `t.app.nav.to` / `.redirect` / `.switchTab` / `.back`; `.press('back' \| 'home')` presses the navigation bar button (leave guard included) |
-| Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })` |
+| Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.getByRole(role, { name })`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`; `locator.getByRole(...)` searches inside every match of an un-narrowed locator |
 | Another page (below the current one, on a surface) | `(await t.app.page({ name })).view`; [Pages](#pages) |
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)` |
 | Read an element once | `locator.textContent()` / `.inputValue()` / `.getAttribute(name)` / `.boundingBox()` / `.count()` / `.isVisible()`; no retry, so assert with `expect(locator)` |
