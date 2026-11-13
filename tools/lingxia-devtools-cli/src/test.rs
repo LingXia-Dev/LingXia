@@ -251,6 +251,9 @@ pub struct TestOptions {
     /// can replay. Credentials and secret values are redacted
     #[arg(long, value_name = "DIR", help_heading = "Output")]
     record_network: Option<PathBuf>,
+
+    #[command(flatten)]
+    visual: crate::test_visual::VisualArgs,
 }
 
 /// `lxdev test <subcommand>`.
@@ -633,6 +636,7 @@ impl ListOptions {
             pretty: self.pretty,
             verbose: false,
             record_network: None,
+            visual: Default::default(),
         }
     }
 }
@@ -660,6 +664,9 @@ fn execute_inner(info: &SessionInfo, options: TestOptions, selection: Selection)
     ensure_writable_dir(options.output_dir.as_ref().unwrap_or(&results_root))?;
     if let Some(dir) = &options.record_network {
         ensure_writable_dir(dir)?;
+    }
+    if options.visual.visual.is_some() {
+        options.visual.baseline_root()?;
     }
     let last_failed = options
         .last_failed
@@ -811,6 +818,25 @@ fn execute_inner(info: &SessionInfo, options: TestOptions, selection: Selection)
                 .push(format!("--record-network: {error:#}")),
         }
     }
+    let visual = options.visual.visual.and_then(|mode| {
+        let run = crate::test_visual::Run {
+            output_dir: &output_dir,
+            target: &info.target,
+            args: &options.visual,
+            run_id: &run_id,
+        };
+        let sidecars = crate::test_visual::sidecars(&outcome.artifacts);
+        match crate::test_visual::process(&run, &sidecars) {
+            Ok(summary) => {
+                outcome.run_errors.extend(summary.failures());
+                Some((mode, summary))
+            }
+            Err(error) => {
+                outcome.run_errors.push(format!("--visual: {error:#}"));
+                None
+            }
+        }
+    });
     if let Some(isolation) = &isolation
         && let Err(error) = isolation.finish(
             retained_profile,
@@ -849,6 +875,17 @@ fn execute_inner(info: &SessionInfo, options: TestOptions, selection: Selection)
                 "error".red(),
                 output_dir.display()
             );
+        }
+    }
+    if let Some((mode, summary)) = &visual {
+        if let Err(error) = crate::test_visual::write_report(&output_dir, summary, *mode) {
+            eprintln!(
+                "{} the visual report could not be written: {error:#}",
+                "error".red()
+            );
+        }
+        if !machine {
+            crate::test_visual::print(summary, *mode, &output_dir);
         }
     }
     let rerun = Rerun::new(info, &selection, &options, &secrets);
@@ -1580,6 +1617,9 @@ fn run_control(
     }
     if let Some(keys) = secrets.secret_keys_json() {
         control.insert(SECRET_ARGS_KEY.to_string(), keys);
+    }
+    if let Some(mode) = options.visual.control() {
+        control.insert("visual".to_string(), mode.to_string());
     }
     if let Some(grep) = &options.grep {
         control.insert("grep".to_string(), grep.clone());

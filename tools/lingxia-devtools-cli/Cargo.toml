@@ -29,6 +29,8 @@ sha2 = "0.11"
 serde_yaml_ng = "0.10"
 # `lxdev test list --grep` without a session.
 regex = "1"
+# `--visual`: decode shots, encode diffs.
+png = "0.17"
 
 # `lxdev test` bundler — the same Oxc components as lingxia-cli's Logic
 # bundler, but a dedicated entry mode (no Page()/App() rewrites).

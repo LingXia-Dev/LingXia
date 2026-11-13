@@ -24,6 +24,7 @@ mod test_secrets;
 mod test_select;
 mod test_spec_check;
 mod test_state;
+mod test_visual;
 
 use project::SessionSelector;
 

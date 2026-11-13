@@ -3942,6 +3942,7 @@ dependencies = [
  "oxc_sourcemap 8.1.2",
  "oxc_span 0.149.0",
  "oxc_transformer 0.149.0",
+ "png 0.17.16",
  "regex",
  "serde",
  "serde_json",

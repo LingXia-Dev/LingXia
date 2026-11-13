@@ -112,6 +112,7 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 | Fast-forward Logic time | `t.app.clock`; [Test clock](#test-clock) |
 | Toasts, confirm dialogs, action sheets | `t.app.dialogs`; [Dialogs](#dialogs) |
 | GPU page frame pacing | `t.app.metrics({ windowMs? })`: frame time p50/p95/p99 ms, `dropped`, `jank`, `inputToPresent`, `firstPresentMs`, `revealMs`, `firstPresentAt`, `reveal` counters; `t.app.hud(true)` draws them over the page |
+| Compare screens against baselines | `t.visual.shot(name, { mask })`; [Visual baselines](#visual-baselines) |
 | GPU page look for screenshots | `t.app.view.environment({ theme: 'dark', still: true })` pins theme and stills motion for this spec only (device settings untouched; `null` clears); `t.app.view.settled()` waits until no frame presents for 500 ms |
 | Inputs | `t.arg('k')` from `--arg` / `--secret-arg`; [Secrets](#secrets) |
 | Cleanup | `t.defer(fn)` (LIFO, always runs); `spec.afterEach` |
@@ -474,6 +475,21 @@ spec('deleting asks first', async (t) => {
   from the first call on it.
 - Each spec starts with nothing recorded or queued. Outside a test run
   dialogs draw as usual.
+
+## Visual baselines
+
+`await t.app.view.environment({ theme: 'dark', still: true })`, then
+`await t.visual.shot('home', { mask: [t.app.view.testId('clock')] })` attaches
+the settled page; mask rects are in the screenshot's own pixels.
+
+- `lxdev test --visual compare` fails a shot that changed against this device's
+  baseline at its screen size; a shot with a baseline only at another size (a
+  fold, a resized layout) fails as a size mismatch, one with none is `new`.
+- `lxdev test --visual accept` makes each pinned shot the baseline (the old one
+  is kept as `.prev`); an unpinned shot is refused.
+- `--only SHOT` limits either to a shot name or `<spec id>/<name>`;
+  `--baseline-dir DIR` replaces `~/.lingxia/visual` (`<app>/<device>/<WxH>/` below it).
+- `visual.html` and the end of `report.html` show before | after | diff, changed first.
 
 ## Isolated app data
 
