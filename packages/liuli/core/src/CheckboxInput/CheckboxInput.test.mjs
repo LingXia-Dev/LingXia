@@ -43,5 +43,9 @@ test('the status message starts under the label, past the box and the row gap', 
   const row = screen.getByTestId('terms').children[0];
   const box = row.children[0];
   assert.equal(region.props.paddingLeft ?? region.props.paddingInlineStart, box.props.width + row.props.gap);
-  assert.equal(screen.getByTestId('terms').props.paddingLeft, 0, 'no inset before the box');
+  const control = screen.getByTestId('terms').props;
+  const margin = control.marginLeft ?? control.marginInlineStart;
+  const padding = control.paddingLeft ?? control.paddingInlineStart;
+  assert.ok(padding > 0, 'the focus fill reaches past the box');
+  assert.equal(margin + padding, 0, 'no net inset before the box');
 });

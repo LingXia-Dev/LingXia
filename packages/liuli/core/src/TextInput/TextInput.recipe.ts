@@ -27,7 +27,7 @@ export const textInputRecipe = {
     size: { sm: 'text-footnote', md: 'text-body', lg: 'text-base' } satisfies Record<FieldSize, string>,
   },
   clear: {
-    base: 'size-8 -me-1.5 items-center justify-center rounded-full text-muted hover:bg-text/5 active:bg-text/8',
+    base: 'size-8 -me-1.5 items-center justify-center rounded-full text-muted hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus',
   },
   clearIcon: {
     base: 'size-4',

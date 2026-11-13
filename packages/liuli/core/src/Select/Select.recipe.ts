@@ -9,7 +9,7 @@ export const selectParts = { field: 'Field', control: 'select' } as const;
  */
 export const selectRecipe = {
   control: {
-    base: 'px-3 rounded-control border border-line-strong bg-surface text-text placeholder:text-muted transition duration-150 ease-out focus:border-accent focus:ring-3 focus:ring-accent/20 disabled:bg-text/5 disabled:border-line disabled:text-faint',
+    base: 'px-3 rounded-control border border-line-strong bg-surface text-text placeholder:text-muted transition duration-150 ease-out focus-visible:ring-2 focus-visible:ring-focus disabled:bg-text/5 disabled:border-line disabled:text-faint',
     size: {
       sm: 'min-h-control-sm text-footnote',
       md: 'min-h-control-md text-body',

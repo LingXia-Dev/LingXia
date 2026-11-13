@@ -46,7 +46,7 @@ export const bannerRecipe = {
     base: 'mt-1 -ms-3 -mb-1.5',
   },
   dismiss: {
-    base: 'size-8 -mt-1 shrink-0 items-center justify-center rounded-full text-muted hover:bg-text/6 active:bg-text/10',
+    base: 'size-8 -mt-1 shrink-0 items-center justify-center rounded-full text-muted hover:bg-text/6 active:bg-text/10 focus-visible:ring-2 focus-visible:ring-focus',
   },
   dismissIcon: {
     base: 'size-4',

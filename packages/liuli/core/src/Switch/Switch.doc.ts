@@ -36,6 +36,7 @@ export const doc: ComponentDoc = {
       'The standalone switch is 32 px tall at both sizes; the row variant gives it a 48 px row.',
       'The off track is decorative and has no contrast minimum: off is carried by the thumb at the start and the missing accent.',
       'Disabled and on, the track keeps its accent at reduced strength, so the state still reads.',
+      'Keyboard focus rings a standalone switch; on a row it is a fill across the row, as on an Item.',
     ],
   },
   guidance: {

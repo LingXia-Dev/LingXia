@@ -24,7 +24,7 @@ export const dropdownMenuRecipe = {
   },
   item: {
     /** Concentric with the menu: its radius less the menu's padding. */
-    base: 'flex-row items-center gap-3 px-3 py-2 rounded-control text-start text-text hover:bg-text/5 active:bg-text/8 disabled:opacity-40',
+    base: 'flex-row items-center gap-3 px-3 py-2 rounded-control text-start text-text hover:bg-text/5 active:bg-text/8 focus-visible:bg-text/8 disabled:opacity-40',
     size: { sm: 'min-h-control-sm', md: 'min-h-control-md', lg: 'min-h-control-lg' } satisfies Record<ButtonSize, string>,
   },
   itemIcon: {

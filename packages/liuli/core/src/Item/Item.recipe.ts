@@ -14,7 +14,7 @@ export const itemParts = {
 export const itemRecipe = {
   root: {
     base: 'flex-row items-center gap-3 px-4 py-2.5 min-h-control-lg self-stretch text-start',
-    pressable: 'transition-colors duration-150 ease-out hover:bg-text/4 active:bg-text/7 disabled:opacity-40',
+    pressable: 'transition-colors duration-150 ease-out hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7 disabled:opacity-40',
   },
   start: {
     base: 'shrink-0 items-center justify-center text-muted',

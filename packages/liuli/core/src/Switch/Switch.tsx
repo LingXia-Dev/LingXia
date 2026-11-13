@@ -46,7 +46,7 @@ export function Switch(props: SwitchProps) {
     disabled: isDisabled,
     'data-testid': testId,
     'data-state': (props.bind ? props.bind.value : props.value) ? 'on' : 'off',
-    className: cx(r.control.base, r.control.size[size]),
+    className: cx(r.control.base, r.control.size[size], r.control.variant[variant]),
   };
   return (
     <view className={cx(r.root.base, r.root.variant[variant], className)}>

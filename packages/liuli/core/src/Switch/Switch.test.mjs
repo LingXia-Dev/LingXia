@@ -28,3 +28,10 @@ test('the track turns to the accent when on, and the thumb rings on keyboard foc
   assert.match(screen.getByTestId('sync').props.trackStyle, /"line-strong\/45"/);
   assert.match(control.props.focusVisibleStyle.thumbStyle, /focus/);
 });
+
+test('a row shows keyboard focus as a fill, not a thumb ring', async () => {
+  const screen = await renderExample('Switch/Switch', 'InList');
+  const focus = screen.getByTestId('mentions').props.focusVisibleStyle;
+  assert.ok(focus.background !== undefined || focus.backgroundColor !== undefined, JSON.stringify(focus));
+  assert.equal(focus.thumbStyle, undefined);
+});
