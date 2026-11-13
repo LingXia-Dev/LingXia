@@ -21,6 +21,7 @@ import { Specimen as SwitchSpecimen } from '../../../core/src/Switch/Switch.exam
 import { Specimen as TabsSpecimen } from '../../../core/src/Tabs/Tabs.examples';
 import { Specimen as TextAreaSpecimen } from '../../../core/src/TextArea/TextArea.examples';
 import { Specimen as TextInputSpecimen } from '../../../core/src/TextInput/TextInput.examples';
+import { Specimen as ToastSpecimen } from '../../../core/src/Toast/Toast.examples';
 import { Specimen as ToggleButtonSpecimen } from '../../../core/src/ToggleButton/ToggleButton.examples';
 import { Specimen as TooltipSpecimen } from '../../../core/src/Tooltip/Tooltip.examples';
 import { Specimen as VideoControlsSpecimen } from '../../../core/src/VideoControls/VideoControls.examples';
@@ -208,11 +209,18 @@ export function render({ actions }: View<Actions>) {
         <Tile
           name={"Skeleton"}
           tagline={"Content on its way"}
-          isWide
           onOpen={() => actions.open({ page: "skeleton" })}
           testId={"open-skeleton"}
         >
           <SkeletonSpecimen />
+        </Tile>
+        <Tile
+          name={"Toast"}
+          tagline={"Just happened"}
+          onOpen={() => actions.open({ page: "toast" })}
+          testId={"open-toast"}
+        >
+          <ToastSpecimen />
         </Tile>
       </Category>
       <Category title={"Overlays"}>

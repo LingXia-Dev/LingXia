@@ -5288,6 +5288,187 @@
       }
     },
     {
+      "name": "Toast",
+      "import": "@liulidesign/core/Toast",
+      "exports": [
+        "Toast",
+        "useToast",
+        "ToastRegion"
+      ],
+      "category": "feedback",
+      "status": "preview",
+      "summary": "A short message about something that just happened, over the bottom of the screen",
+      "description": "A toast confirms an action that worked away from where it was pressed, or offers to undo it: a note archived, a link copied. A page holds one `ToastRegion`; `useToast()` shows a toast from anywhere inside it. One shows at a time and the rest wait in order; a toast with the same `id` replaces the one queued, so a running count updates in place. One without an action closes by itself after `duration`; one with an action stays until it is closed.",
+      "keywords": [
+        "toast",
+        "snackbar",
+        "notification",
+        "undo",
+        "message",
+        "confirmation",
+        "feedback",
+        "status"
+      ],
+      "props": [
+        {
+          "name": "message",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "tone",
+          "type": "BannerTone",
+          "required": false,
+          "description": "",
+          "default": "'neutral'"
+        },
+        {
+          "name": "action",
+          "type": "ToastAction",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "onDismiss",
+          "type": "(() => void)",
+          "required": false,
+          "description": "Shows a dismiss button."
+        },
+        {
+          "name": "dismissLabel",
+          "type": "string",
+          "required": false,
+          "description": "The dismiss button's name, with `onDismiss`."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the toast; the action gets `<testid>-action`, the dismiss button `<testid>-dismiss`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "region": "view",
+        "toast": "view",
+        "icon": "vector",
+        "message": "text",
+        "action": "Button",
+        "dismiss": "button",
+        "announcer": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Reaches the action and the dismiss button after the page."
+          },
+          {
+            "keys": "Escape",
+            "effect": "Nothing on the toast; it stays with what has focus."
+          }
+        ],
+        "target": {
+          "md": 36
+        },
+        "contrast": [
+          {
+            "what": "message",
+            "pair": [
+              "text",
+              "surface-raised"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "dismiss icon",
+            "pair": [
+              "text-muted",
+              "surface-raised"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "action",
+            "pair": [
+              "accent",
+              "surface-raised"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "Each new message is announced politely; a danger toast is announced assertively.",
+          "The announcement comes from live text that lives as long as the region, as a region inserted with its message is not announced.",
+          "The tone is in the glyph and the words, never in colour alone.",
+          "A toast without an action closes after `duration`; the count pauses while it is pressed, under a resting pointer or holding focus. A toast with an action stays until closed.",
+          "A toast is not modal: Escape and back go to whatever has focus, never to the toast. The dismiss button is its keyboard path."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Archive",
+          "title": "Archive with Undo",
+          "source": "import { ToastRegion } from '@liulidesign/core/Toast';\n\n/** Archiving a note, with Undo: the toast stays until Undo, dismiss or a swipe closes it. */\nexport function Archive() {\n  return (\n    <ToastRegion dismissLabel=\"Dismiss\">\n      <Notes />\n    </ToastRegion>\n  );\n}"
+        },
+        {
+          "name": "Tones",
+          "title": "Tones, queued",
+          "source": "import { ToastRegion } from '@liulidesign/core/Toast';\n\n/** One per tone; pressed in a row, they queue and show one at a time. */\nexport function Tones() {\n  return (\n    <ToastRegion dismissLabel=\"Dismiss\">\n      <ToneButtons />\n    </ToastRegion>\n  );\n}"
+        },
+        {
+          "name": "Progress",
+          "title": "Updated in place",
+          "source": "import { ToastRegion } from '@liulidesign/core/Toast';\n\n/** A progress message updated in place by its id, rather than queued behind itself. */\nexport function Progress() {\n  return (\n    <ToastRegion dismissLabel=\"Dismiss\">\n      <Uploader />\n    </ToastRegion>\n  );\n}"
+        },
+        {
+          "name": "Faces",
+          "title": "Each face, at phone width",
+          "source": "import { Toast } from '@liulidesign/core/Toast';\n\n/**\n * Each face at the width a toast takes on a phone: a message, success, with Undo, and danger with\n * Retry. Spaced and padded so each shadow ends before the next card and the stage's edge.\n */\nexport function Faces() {\n  return (\n    <view className=\"gap-5 pb-6\">\n      <Toast message=\"Note moved to Travel\" onDismiss={() => {}} dismissLabel=\"Dismiss\" />\n      <Toast message=\"Changes saved\" tone=\"success\" onDismiss={() => {}} dismissLabel=\"Dismiss\" />\n      <Toast message={'\"Q3 plan\" archived'} action={{ label: 'Undo', onClick: () => {} }} onDismiss={() => {}} dismissLabel=\"Dismiss\" />\n      <Toast message=\"Could not save the note\" tone=\"danger\" action={{ label: 'Retry', onClick: () => {} }} onDismiss={() => {}} dismissLabel=\"Dismiss\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "related": [
+        "Banner",
+        "Dialog"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Just happened",
+        "order": 6,
+        "page": {
+          "lead": "Use a toast to confirm an action that worked, or to offer to undo it.",
+          "hero": "Archive",
+          "variants": [
+            {
+              "name": "Tones",
+              "title": "Neutral, info, success, warning and danger, one at a time"
+            },
+            {
+              "name": "Progress",
+              "title": "A count updated in place"
+            },
+            {
+              "name": "Faces",
+              "title": "A message, success, with Undo, and danger with Retry"
+            }
+          ],
+          "inContext": []
+        }
+      }
+    },
+    {
       "name": "ToggleButton",
       "import": "@liulidesign/core/ToggleButton",
       "exports": [

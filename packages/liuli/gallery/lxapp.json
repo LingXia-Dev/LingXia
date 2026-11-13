@@ -27,6 +27,7 @@
     { "name": "banner", "path": "pages/banner/index" },
     { "name": "empty-state", "path": "pages/empty-state/index" },
     { "name": "skeleton", "path": "pages/skeleton/index" },
+    { "name": "toast", "path": "pages/toast/index" },
     { "name": "dialog", "path": "pages/dialog/index" },
     { "name": "dropdown-menu", "path": "pages/dropdown-menu/index" },
     { "name": "tooltip", "path": "pages/tooltip/index" },
