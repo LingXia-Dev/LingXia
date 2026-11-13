@@ -155,3 +155,32 @@ fn an_editor_scrolled_out_of_view_keeps_focus() {
     );
     assert_eq!(focused(&frame), [1], "and still focused");
 }
+
+#[test]
+fn a_submit_that_clears_a_focused_textarea_repaints_it_empty() {
+    use crate::text::input::Edit;
+    let mut page = ViewSession::new(&super::source(
+        "function render(){const draft=useLocal('draft','');const sent=useLocal('sent','');return h('view',{},h('textarea',{key:'reply',bind:draft,autoFocus:true,onSubmit:()=>{sent.set(draft.value);draft.set('')}}),h('text',{},'['+sent.value+']'))}",
+    ))
+    .unwrap();
+    let frame = page.layout(300, 400, 1.0).unwrap();
+    let reply = frame.nodes[1].identity.clone();
+    let token = frame.nodes[1].input.as_ref().unwrap().edit_token.unwrap();
+    let typed = [Edit::Replace {
+        text: "Thanks".into(),
+        cursor: 1,
+        composing: false,
+    }];
+    page.edit_input(token, &reply, &typed, false).unwrap();
+    page.layout(300, 400, 1.0).unwrap();
+    page.edit_input(token, &reply, &[], true).unwrap();
+    let frame = page.layout(300, 400, 1.0).unwrap();
+    assert_eq!(frame.nodes[2].text, "[Thanks]");
+    let input = frame.nodes[1].input.as_ref().unwrap();
+    assert!(input.edit_token.is_some(), "still focused");
+    let shown = input
+        .edit
+        .as_ref()
+        .map_or(input.value.as_str(), |edit| edit.text.as_str());
+    assert_eq!(shown, "");
+}

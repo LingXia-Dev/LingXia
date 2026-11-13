@@ -79,14 +79,25 @@ pub struct Editor {
     composition: Option<Range<usize>>,
     controlled: String,
     published: String,
+    /// Values sent to Logic as input that it has not echoed back yet, oldest first.
+    unechoed: std::collections::VecDeque<String>,
+    /// Values already echoed; one arriving again out of order must not end a composition.
+    echoed: std::collections::VecDeque<String>,
     focused: bool,
     history: History,
 }
 
+/// Unechoed values kept; Logic that never echoes cannot grow the list.
+const MAX_UNECHOED: usize = 16;
+
 impl Editor {
     pub(crate) fn projected_value_bytes(&self, value: &str, enabled: bool) -> usize {
         if self.focused && enabled {
-            self.visual.raw_text().len() + self.published.len() + value.len() + self.history.bytes()
+            self.visual.raw_text().len()
+                + self.published.len()
+                + self.unechoed_bytes()
+                + value.len()
+                + self.history.bytes()
         } else {
             value.len() * 3
                 + if self.keeps_history(value) {
@@ -100,7 +111,15 @@ impl Editor {
         self.visual.raw_text().len()
             + self.controlled.len()
             + self.published.len()
+            + self.unechoed_bytes()
             + self.history.bytes()
+    }
+    fn unechoed_bytes(&self) -> usize {
+        self.unechoed
+            .iter()
+            .chain(&self.echoed)
+            .map(String::len)
+            .sum()
     }
     pub fn new(value: &str) -> Result<Self, Error> {
         check_size(value)?;
@@ -112,6 +131,8 @@ impl Editor {
             composition: None,
             controlled: value.into(),
             published: value.into(),
+            unechoed: Default::default(),
+            echoed: Default::default(),
             focused: false,
             history: History::default(),
         })
@@ -160,7 +181,7 @@ impl Editor {
             if matches!(edit, Edit::Blur) && next.composition.take().is_some() {
                 let text = next.visual.raw_text().to_owned();
                 if text != next.published {
-                    next.published = text.clone();
+                    next.publish(text.clone());
                     input = Some(text);
                 }
             }
@@ -171,8 +192,9 @@ impl Editor {
             // Every value change is input, composing or not, as DOM `input` events are.
             let text = next.visual.raw_text();
             if next.focused && text != next.published {
-                next.published = text.into();
-                input = Some(next.published.clone());
+                let text = text.to_owned();
+                next.publish(text.clone());
+                input = Some(text);
             }
         }
         // Restore exact composition and its approximate visual selection together.
@@ -252,11 +274,38 @@ impl Editor {
             }
             Edit::Value(value) => {
                 check_size(&value)?;
+                // An echo of input this editor sent: Logic caught up, the text already shows it.
+                if let Some(at) = self.unechoed.iter().position(|sent| *sent == value) {
+                    for sent in self.unechoed.drain(..=at) {
+                        if self.echoed.len() == MAX_UNECHOED {
+                            self.echoed.pop_front();
+                        }
+                        self.echoed.push_back(sent);
+                    }
+                    self.controlled = value;
+                    if !self.focused {
+                        self.install_value(self.controlled.clone());
+                    }
+                    return Ok(false);
+                }
                 if value == self.controlled && (self.focused || self.visual.raw_text() == value) {
                     return Ok(false);
                 }
+                // An earlier echo arriving late, while the IME composes: Logic is behind, not speaking.
+                if self.focused && self.composition.is_some() && self.echoed.contains(&value) {
+                    return Ok(false);
+                }
                 self.controlled = value.clone();
-                if !self.focused {
+                if self.focused {
+                    // Logic changed the value itself (a submit clearing it): show it now, ending
+                    // any composition, with the caret at the end; no input event.
+                    if value != self.visual.raw_text() {
+                        self.unechoed.clear();
+                        self.echoed.clear();
+                        self.install_value(value);
+                        self.selection = [self.visual.raw_text().len(); 2];
+                    }
+                } else {
                     self.install_value(value);
                 }
                 return Ok(false);
@@ -393,6 +442,15 @@ impl Editor {
         }
         self.composition = None;
         self.published = value;
+    }
+
+    /// `text` goes to Logic as input; its echo will come back as a value.
+    fn publish(&mut self, text: String) {
+        if self.unechoed.len() == MAX_UNECHOED {
+            self.unechoed.pop_front();
+        }
+        self.unechoed.push_back(text.clone());
+        self.published = text;
     }
 
     fn keeps_history(&self, value: &str) -> bool {
@@ -614,15 +672,18 @@ mod tests {
             client.replace("shi", true).snapshot.composition,
             Some([2, 5])
         );
-        client.edit(Edit::Value("迟到的回显".into())).unwrap();
+        // A late echo of an earlier composition value is input Logic caught up with, not a change.
+        client.edit(Edit::Value("你好sh".into())).unwrap();
         assert_eq!(client.editor.snapshot().text, "你好shi");
+        assert_eq!(client.editor.snapshot().composition, Some([2, 5]));
         let committed = client.replace("世界", false);
         assert_eq!(committed.input.as_deref(), Some("你好世界"));
         assert_eq!(committed.snapshot.selection, [4, 4]);
         assert_eq!(committed.snapshot.composition, None);
         assert_eq!(client.edit(Edit::FinishComposition).unwrap().input, None);
         client.edit(Edit::Blur).unwrap();
-        assert_eq!(client.editor.snapshot().text, "迟到的回显");
+        // Blur shows what Logic holds: the last echo it sent.
+        assert_eq!(client.editor.snapshot().text, "你好sh");
         assert_eq!(client.replace_unfocused(), Error::NotFocused);
     }
     impl Client {
@@ -646,7 +707,6 @@ mod tests {
             })
             .unwrap();
         assert_eq!(client.replace("好", false).snapshot.text, "A好B");
-        client.edit(Edit::Value("server".into())).unwrap();
         client.replace("😀", true);
         let before = client.editor.snapshot();
         assert_eq!(
@@ -670,8 +730,74 @@ mod tests {
             Error::TooLong
         );
         assert_eq!(client.editor.snapshot(), before);
+        client.edit(Edit::Value("server".into())).unwrap();
         client.edit(Edit::Blur).unwrap();
         assert_eq!(client.editor.snapshot().text, "server");
+    }
+
+    #[test]
+    fn a_value_logic_sets_while_focused_shows_at_once_and_echoes_do_not() {
+        let mut client = Client::new("");
+        client.replace("h", false);
+        client.replace("i", false);
+        client.replace("!", false);
+        // Logic is behind the typing: a late echo of an earlier value changes nothing.
+        client.edit(Edit::Value("h".into())).unwrap();
+        assert_eq!(client.editor.snapshot().text, "hi!");
+        // Nor does one that skips a value Logic coalesced.
+        client.edit(Edit::Value("hi!".into())).unwrap();
+        assert_eq!(client.editor.snapshot().text, "hi!");
+        // Logic clears the field on submit: it shows while still focused, caret at the end.
+        let change = client.edit(Edit::Value(String::new())).unwrap();
+        assert_eq!(change.snapshot.text, "");
+        assert_eq!(change.input, None, "Logic set it; no input event");
+        assert!(change.snapshot.focused);
+        // The echo of the typing before the clear no longer counts: the next value applies.
+        client.edit(Edit::Value("draft".into())).unwrap();
+        let shown = client.editor.snapshot();
+        assert_eq!((shown.text.as_str(), shown.selection), ("draft", [5, 5]));
+        assert!(!shown.can_undo, "an external value starts a new history");
+        // Typing continues after it.
+        assert_eq!(client.replace("s", false).input.as_deref(), Some("drafts"));
+    }
+
+    #[test]
+    fn late_out_of_order_echoes_never_end_a_composition_or_move_the_caret() {
+        let mut client = Client::new("");
+        client.replace("n", true);
+        client.replace("ni", true);
+        let composing = client.replace("你", true).snapshot;
+        for echo in ["n", "你", "ni"] {
+            let change = client.edit(Edit::Value(echo.into())).unwrap();
+            assert_eq!(change.snapshot, composing, "echo {echo:?}");
+            assert_eq!(change.input, None);
+        }
+        // The composition commits as usual afterwards.
+        assert_eq!(client.replace("你", false).input, None, "already published");
+        assert_eq!(client.editor.snapshot().composition, None);
+    }
+
+    #[test]
+    fn a_page_that_transforms_its_input_installs_once() {
+        let mut client = Client::new("");
+        assert_eq!(client.replace("a", false).input.as_deref(), Some("a"));
+        let change = client.edit(Edit::Value("A".into())).unwrap();
+        assert_eq!((change.snapshot.text.as_str(), change.input), ("A", None));
+        // Its own value back again changes nothing and sends nothing.
+        let again = client.edit(Edit::Value("A".into())).unwrap();
+        assert_eq!((again.snapshot, again.input), (change.snapshot, None));
+        assert_eq!(client.replace("b", false).input.as_deref(), Some("Ab"));
+    }
+
+    #[test]
+    fn a_value_set_during_composition_ends_it() {
+        let mut client = Client::new("");
+        client.replace("ni", true);
+        let change = client.edit(Edit::Value("你好".into())).unwrap();
+        assert_eq!(change.snapshot.text, "你好");
+        assert_eq!(change.snapshot.composition, None);
+        assert_eq!(change.snapshot.selection, [2, 2]);
+        assert_eq!(change.input, None);
     }
 
     #[test]
