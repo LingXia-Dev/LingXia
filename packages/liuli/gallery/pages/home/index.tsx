@@ -9,6 +9,7 @@ import { Specimen as CheckboxInputSpecimen } from '../../../core/src/CheckboxInp
 import { Specimen as DetailsSpecimen } from '../../../core/src/Details/Details.examples';
 import { Specimen as DialogSpecimen } from '../../../core/src/Dialog/Dialog.examples';
 import { Specimen as DropdownMenuSpecimen } from '../../../core/src/DropdownMenu/DropdownMenu.examples';
+import { Specimen as EmptyStateSpecimen } from '../../../core/src/EmptyState/EmptyState.examples';
 import { Specimen as FieldSpecimen } from '../../../core/src/Field/Field.examples';
 import { Specimen as ItemSpecimen } from '../../../core/src/Item/Item.examples';
 import { Specimen as ProgressBarSpecimen } from '../../../core/src/ProgressBar/ProgressBar.examples';
@@ -182,11 +183,18 @@ export function render({ actions }: View<Actions>) {
         <Tile
           name={"Banner"}
           tagline={"Stays until fixed"}
-          isWide
           onOpen={() => actions.open({ page: "banner" })}
           testId={"open-banner"}
         >
           <BannerSpecimen />
+        </Tile>
+        <Tile
+          name={"EmptyState"}
+          tagline={"Nothing here yet"}
+          onOpen={() => actions.open({ page: "empty-state" })}
+          testId={"open-empty-state"}
+        >
+          <EmptyStateSpecimen />
         </Tile>
       </Category>
       <Category title={"Overlays"}>

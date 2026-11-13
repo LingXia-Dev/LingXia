@@ -2277,6 +2277,198 @@
       }
     },
     {
+      "name": "EmptyState",
+      "import": "@liulidesign/core/EmptyState",
+      "exports": [
+        "EmptyState"
+      ],
+      "category": "feedback",
+      "status": "preview",
+      "summary": "What a page or list shows when it has nothing in it yet, and the way forward",
+      "description": "EmptyState fills the space a list, page or panel would use when there is nothing to show: before the first item, after a search finds nothing, or when content is out of reach. It is a title, an optional description and actions, and an optional picture the app supplies. It draws no fill, border or illustration of its own.",
+      "keywords": [
+        "empty state",
+        "empty",
+        "blank slate",
+        "no results",
+        "nothing here",
+        "zero state",
+        "first run",
+        "placeholder"
+      ],
+      "props": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "description": "What is empty, said plainly: \"No notes yet\". Drawn as a heading."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "What to do about it, in one or two sentences."
+        },
+        {
+          "name": "media",
+          "type": "Child",
+          "required": false,
+          "description": "A picture above the title: an icon or the app's own illustration; hidden from assistive tech. Liuli draws none."
+        },
+        {
+          "name": "actions",
+          "type": "Child",
+          "required": false,
+          "description": "One or two Buttons under the text; the first is the way forward."
+        },
+        {
+          "name": "headingLevel",
+          "type": "1 | 2 | 3 | 4 | 5 | 6",
+          "required": false,
+          "description": "The title's heading level in the page outline.",
+          "default": "2"
+        },
+        {
+          "name": "size",
+          "type": "EmptyStateSize",
+          "required": false,
+          "description": "`sm` sits inside a card or a list; `md` fills a page or a panel.",
+          "default": "'md'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "media": "view",
+        "text": "view",
+        "title": "text",
+        "description": "text",
+        "actions": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "title",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "title on the page",
+            "pair": [
+              "text",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "description",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "description on the page",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The title is a heading, so a screen reader can jump to it; set `headingLevel` to fit the page outline.",
+          "The picture is decorative and hidden; say everything that matters in the title and description.",
+          "It is not announced when it appears. After a search, the app reports the count in its own status line if it needs to be spoken."
+        ]
+      },
+      "examples": [
+        {
+          "name": "FirstRun",
+          "title": "First run, with the action that starts it",
+          "source": "import { useLocal, type VectorPath } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { EmptyState } from '@liulidesign/core/EmptyState';\n\nconst notebook: VectorPath[] = [\n  { d: 'M6 3.5h11a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H6zM6 3.5v17M9.5 8h5.5M9.5 11.5h5.5', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' },\n];\n\n/** A first-run screen: what will be here, and the one action that starts it. */\nexport function FirstRun() {\n  const created = useLocal('created', false);\n  return (\n    <EmptyState\n      title={created.value ? 'Notebook created' : 'No notebooks yet'}\n      description=\"Notebooks keep related notes together, and sync to your other devices.\"\n      media={<vector aria-hidden paths={notebook} viewBox={[0, 0, 24, 24]} className=\"size-full\" />}\n      actions={<Button label=\"New notebook\" variant=\"primary\" onClick={() => created.set(true)} data-testid=\"create\" />}\n      data-testid=\"first-run\"\n    />\n  );\n}"
+        },
+        {
+          "name": "NoResults",
+          "title": "No results, with a way back",
+          "source": "import { useLocal, type VectorPath } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { EmptyState } from '@liulidesign/core/EmptyState';\n\nconst search: VectorPath[] = [\n  { d: 'M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13zM15.5 15.5L20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' },\n];\n\n/** No results: say what was searched, and offer a way back. */\nexport function NoResults() {\n  const query = useLocal('query', 'invoice 2019');\n  return (\n    <EmptyState\n      title=\"No matching notes\"\n      description={`Nothing matches \"${query.value}\". Check the spelling, or search all folders.`}\n      media={<vector aria-hidden paths={search} viewBox={[0, 0, 24, 24]} className=\"size-full\" />}\n      actions={\n        <>\n          <Button label=\"Clear search\" variant=\"ghost\" onClick={() => query.set('')} />\n          <Button label=\"Search all folders\" />\n        </>\n      }\n      data-testid=\"no-results\"\n    />\n  );\n}"
+        },
+        {
+          "name": "InCard",
+          "title": "Small, inside a card",
+          "source": "import { Card } from '@liulidesign/core/Card';\nimport { EmptyState } from '@liulidesign/core/EmptyState';\n\n/** Small, inside a card: no picture, one line. */\nexport function InCard() {\n  return (\n    <Card>\n      <text role=\"heading\" headingLevel={3} className=\"text-callout font-semibold text-text\">Shared with you</text>\n      <EmptyState size=\"sm\" headingLevel={4} title=\"Nothing shared yet\" description=\"Notes others share with you appear here.\" data-testid=\"in-card\" />\n    </Card>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "related": [
+        "Skeleton",
+        "Banner",
+        "Button"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Nothing here yet",
+        "order": 4,
+        "page": {
+          "lead": "Use an empty state when a list or page has nothing to show yet, to say why and offer the way forward.",
+          "hero": "FirstRun",
+          "variants": [
+            {
+              "name": "NoResults",
+              "title": "No results, with a way back"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small for a card or list, medium for a page"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateTitleOnly",
+              "title": "A title only"
+            },
+            {
+              "name": "StateWithPicture",
+              "title": "With a picture"
+            },
+            {
+              "name": "StateWithAction",
+              "title": "With an action"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "InCard",
+              "title": "Inside a card"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Field",
       "import": "@liulidesign/core/Field",
       "exports": [

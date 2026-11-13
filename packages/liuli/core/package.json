@@ -50,6 +50,8 @@
     "./VideoPlayer/recipe": "./src/VideoPlayer/VideoPlayer.recipe.ts",
     "./TextArea": "./src/TextArea/TextArea.tsx",
     "./TextArea/recipe": "./src/TextArea/TextArea.recipe.ts",
+    "./EmptyState": "./src/EmptyState/EmptyState.tsx",
+    "./EmptyState/recipe": "./src/EmptyState/EmptyState.recipe.ts",
     "./package.json": "./package.json"
   },
   "lingxia": {
