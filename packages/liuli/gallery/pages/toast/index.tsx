@@ -9,7 +9,7 @@ export function render() {
         <Archive />
       </Lead>
       <PageSection title={"Variants"}>
-        <Stage caption={"Neutral, info, success, warning and danger, one at a time"}>
+        <Stage caption={"Info, success, warning and danger, one at a time"}>
           <Tones />
         </Stage>
         <Stage caption={"A count updated in place"}>

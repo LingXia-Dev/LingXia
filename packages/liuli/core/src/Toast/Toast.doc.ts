@@ -73,7 +73,7 @@ export const doc: ComponentDoc = {
       lead: 'Use a toast to confirm an action that worked, or to offer to undo it.',
       hero: 'Archive',
       variants: [
-        { name: 'Tones', title: 'Neutral, info, success, warning and danger, one at a time' },
+        { name: 'Tones', title: 'Info, success, warning and danger, one at a time' },
         { name: 'Progress', title: 'A count updated in place' },
         { name: 'Faces', title: 'A message, success, with Undo, and danger with Retry' },
       ],

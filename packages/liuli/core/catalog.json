@@ -6655,7 +6655,7 @@
         {
           "name": "Faces",
           "title": "Each face, at phone width",
-          "source": "import { Toast } from '@liulidesign/core/Toast';\n\n/**\n * Each face at the width a toast takes on a phone: a message, success, with Undo, and danger with\n * Retry. Spaced and padded so each shadow ends before the next card and the stage's edge.\n */\nexport function Faces() {\n  return (\n    <view className=\"gap-5 pb-6\">\n      <Toast message=\"Note moved to Travel\" onDismiss={() => {}} dismissLabel=\"Dismiss\" />\n      <Toast message=\"Changes saved\" tone=\"success\" onDismiss={() => {}} dismissLabel=\"Dismiss\" />\n      <Toast message={'\"Q3 plan\" archived'} action={{ label: 'Undo', onClick: () => {} }} onDismiss={() => {}} dismissLabel=\"Dismiss\" />\n      <Toast message=\"Could not save the note\" tone=\"danger\" action={{ label: 'Retry', onClick: () => {} }} onDismiss={() => {}} dismissLabel=\"Dismiss\" />\n    </view>\n  );\n}"
+          "source": "import { Toast } from '@liulidesign/core/Toast';\n\n/**\n * Each face at the width a toast takes on a phone: a message, success, with Undo, and danger with\n * Retry. 32 px apart and below, the raised shadow's reach (8 px down plus a 24 px blur), so each\n * shadow ends before the next card and the stage's edge.\n */\nexport function Faces() {\n  return (\n    <view className=\"gap-8 pb-8\">\n      <Toast message=\"Note moved to Travel\" onDismiss={() => {}} dismissLabel=\"Dismiss\" />\n      <Toast message=\"Changes saved\" tone=\"success\" onDismiss={() => {}} dismissLabel=\"Dismiss\" />\n      <Toast message={'\"Q3 plan\" archived'} action={{ label: 'Undo', onClick: () => {} }} onDismiss={() => {}} dismissLabel=\"Dismiss\" />\n      <Toast message=\"Could not save the note\" tone=\"danger\" action={{ label: 'Retry', onClick: () => {} }} onDismiss={() => {}} dismissLabel=\"Dismiss\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -6673,7 +6673,7 @@
           "variants": [
             {
               "name": "Tones",
-              "title": "Neutral, info, success, warning and danger, one at a time"
+              "title": "Info, success, warning and danger, one at a time"
             },
             {
               "name": "Progress",

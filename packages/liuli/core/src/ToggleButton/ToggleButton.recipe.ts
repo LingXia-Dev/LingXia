@@ -11,7 +11,7 @@ export const toggleButtonRecipe = {
   root: {
     base: 'flex-row items-center justify-center rounded-control border transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     off: 'bg-surface text-text border-text/12 shadow-[0_1px_2px_rgb(0_0_0/0.05)] hover:bg-text/5 active:bg-text/8 disabled:bg-text/6 disabled:text-muted disabled:border-transparent disabled:shadow-none',
-    on: 'bg-accent-soft text-text border-accent/40 hover:bg-accent/16 active:bg-accent/20 disabled:bg-accent-soft disabled:text-muted disabled:border-accent/20',
+    on: 'bg-accent-soft text-text border-accent/40 hover:bg-accent/16 active:bg-accent/20 disabled:bg-accent-soft/50 disabled:text-faint disabled:border-transparent',
     size: {
       sm: 'min-h-control-sm px-3',
       md: 'min-h-control-md px-4',

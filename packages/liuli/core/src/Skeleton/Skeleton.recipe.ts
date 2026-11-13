@@ -14,7 +14,8 @@ export const skeletonRecipe = {
     base: 'self-stretch gap-2',
   },
   bone: {
-    base: 'relative overflow-hidden bg-text/7',
+    /** 1.22:1 on surface and canvas alike in light (7 % faded to 1.15 on white); 1.3:1 in dark. */
+    base: 'relative overflow-hidden bg-text/10',
     shape: {
       /** The body text's x-height band, centred in its line. */
       text: 'h-3 my-[5px] rounded-full',

@@ -84,11 +84,12 @@ export function Progress() {
 
 /**
  * Each face at the width a toast takes on a phone: a message, success, with Undo, and danger with
- * Retry. Spaced and padded so each shadow ends before the next card and the stage's edge.
+ * Retry. 32 px apart and below, the raised shadow's reach (8 px down plus a 24 px blur), so each
+ * shadow ends before the next card and the stage's edge.
  */
 export function Faces() {
   return (
-    <view className="gap-5 pb-6">
+    <view className="gap-8 pb-8">
       <Toast message="Note moved to Travel" onDismiss={() => {}} dismissLabel="Dismiss" />
       <Toast message="Changes saved" tone="success" onDismiss={() => {}} dismissLabel="Dismiss" />
       <Toast message={'"Q3 plan" archived'} action={{ label: 'Undo', onClick: () => {} }} onDismiss={() => {}} dismissLabel="Dismiss" />
