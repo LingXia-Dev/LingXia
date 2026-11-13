@@ -5,7 +5,7 @@ TSX and Tailwind classes, inspired by Astryx. The package ships TSX source; the 
 compiles it with the app's pages, checks every class it uses, and names its files by package in
 errors.
 
-Status: preview. Nineteen components, each unit-tested in Node and driven on devices by the gallery's
+Status: preview. Thirty-one components, each unit-tested in Node and driven on devices by the gallery's
 specs (`../gallery/zz-tests`).
 
 ## What it needs
@@ -41,24 +41,36 @@ export function render() {
 | Import | What |
 | --- | --- |
 | `@liulidesign/core/Button` | Button: variants, sizes, loading, async `clickAction` |
+| `@liulidesign/core/ToggleButton` | ToggleButton: one option on or off, down while on |
 | `@liulidesign/core/Field` | Field: label, help text and status around a raw control |
 | `@liulidesign/core/TextInput` | TextInput: one-line editor, bound or controlled, optional clear button |
+| `@liulidesign/core/TextArea` | TextArea: several lines that grow with the text, optional send on Return |
 | `@liulidesign/core/Select` | Select: one choice from a list that opens on demand |
+| `@liulidesign/core/SegmentedControl` | SegmentedControl: one value from a few, as segments with a sliding thumb |
+| `@liulidesign/core/DateInput` | DateInput: a day, picked from a month |
+| `@liulidesign/core/TimeInput` | TimeInput: a time of day, picked from hours and minutes |
 | `@liulidesign/core/CheckboxInput` | CheckboxInput: one on/off choice with label and help text |
 | `@liulidesign/core/RadioGroup` | RadioGroup: one choice from a short list, as rows or cards |
 | `@liulidesign/core/Switch` | Switch: a setting that takes effect at once, alone or as a row |
 | `@liulidesign/core/Slider` | Slider: a value along a track, alone or as a row |
 | `@liulidesign/core/Tabs` | Tabs: underline or segmented, over one panel |
 | `@liulidesign/core/Dialog` | Dialog: modal panel, `isOpen` + `onOpenChange` |
+| `@liulidesign/core/BottomSheet` | BottomSheet: a modal panel on the bottom edge, fit or expandable |
 | `@liulidesign/core/DropdownMenu` | DropdownMenu, DropdownMenuItem, DropdownMenuDivider, DropdownMenuCheckboxItem, DropdownMenuRadioGroup, DropdownMenuRadioItem |
 | `@liulidesign/core/Tooltip` | Tooltip: an info button that opens a short note |
+| `@liulidesign/core/Popover` | Popover: a button that opens a panel of content above or below it |
 | `@liulidesign/core/Item` | Item and ItemList: a list row, and the list that reads rows with their position |
 | `@liulidesign/core/Card` | Card, ClickableCard and ClickableCardGroup: grouped content, one pressable card, or cards that choose one value |
 | `@liulidesign/core/Details` | Details and DetailsGroup: a row that shows and hides content, and an accordion |
 | `@liulidesign/core/Banner` | Banner: a message about the page that stays until resolved |
+| `@liulidesign/core/Toast` | ToastRegion, useToast and Toast: a short message over the bottom of the screen |
 | `@liulidesign/core/Badge` | Badge: a short status or category label |
 | `@liulidesign/core/Avatar` | Avatar and AvatarGroup: a person as a picture or initials |
 | `@liulidesign/core/ProgressBar` | ProgressBar and Spinner: an amount done, or a wait |
+| `@liulidesign/core/Skeleton` | Skeleton and SkeletonGroup: shapes that stand in for loading content |
+| `@liulidesign/core/EmptyState` | EmptyState: what a page or list shows with nothing in it yet |
+| `@liulidesign/core/VideoPlayer` | VideoPlayer: a video with Liuli's controls |
+| `@liulidesign/core/VideoControls` | VideoControls: play, scrub, time, mute, settings and full screen, over or under a `<video>` |
 
 Each also exports its class recipe at `@liulidesign/core/<Name>/recipe`, for styling a raw primitive
 to match. The full reference for each component (props, anatomy, accessibility, examples) is in
