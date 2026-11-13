@@ -186,7 +186,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         static let closeButtonSize: CGFloat = 16
         static let itemTopPadding: CGFloat = 2
         /// Sidebar app tile. Raster `AppIcon.png` is a square; the shell clips it.
-        static let appIconSize: CGFloat = 20
+        static let appIconSize: CGFloat = 18
     }
 
     let appId: String

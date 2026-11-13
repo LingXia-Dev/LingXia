@@ -696,17 +696,17 @@ class SidebarView: NSView {
         /// Bottom dock height — tall enough for one row of icon buttons plus breathing room.
         static let footerHeight: CGFloat = 48
         /// sidebar action row height — matches the tabbar item rhythm above.
-        static let footerButtonSize: CGFloat = 30
+        static let footerButtonSize: CGFloat = 34
         /// Rendered glyph size inside footer icon buttons.
         static let footerIconSize: CGFloat = 16
         /// Vertical inset of the sidebar action flow. Horizontally it is
         /// `footerHInset`, leaving 130pt of flow width in the standard 148pt rail.
         static let footerInset: CGFloat = 6
-        /// iconAxis − row internal padding (7) − half icon (9): footer button
-        /// icons center on the shared first-column axis. Horizontal only —
+        /// iconAxis − half the square row cell (17): footer button icons
+        /// center on the shared first-column axis. Horizontal only —
         /// the vertical insets keep `footerInset` so rows still fit the
         /// fixed `footerHeight`.
-        static let footerHInset: CGFloat = iconAxis - 16
+        static let footerHInset: CGFloat = iconAxis - footerButtonSize / 2
         /// Rows shown before the sidebar action area caps and scrolls internally.
         static let footerMaxRows: CGFloat = 5
     }
@@ -2679,7 +2679,7 @@ class SidebarView: NSView {
         let icon = NSImageView()
         icon.translatesAutoresizingMaskIntoConstraints = false
         let hostIcon = LxIcon.hostAppImage()
-        icon.image = hostIcon.map { TabBarHelper.appTileIcon($0, size: 16) }
+        icon.image = hostIcon.map { TabBarHelper.appTileIcon($0, size: SidebarGroupView.Layout.appIconSize) }
             ?? Self.designIcon("icon_globe")
             ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
         icon.imageScaling = .scaleProportionallyDown
@@ -2697,8 +2697,8 @@ class SidebarView: NSView {
                 constant: SidebarGroupView.Layout.headerHPadding
             ),
             icon.centerYAnchor.constraint(equalTo: browserRootHeader.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 16),
-            icon.heightAnchor.constraint(equalToConstant: 16),
+            icon.widthAnchor.constraint(equalToConstant: SidebarGroupView.Layout.appIconSize),
+            icon.heightAnchor.constraint(equalToConstant: SidebarGroupView.Layout.appIconSize),
             label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
             label.trailingAnchor.constraint(
                 lessThanOrEqualTo: browserRootHeader.trailingAnchor,
@@ -3173,7 +3173,7 @@ private final class SidebarActionFlowView: NSView {
     static let gap: CGFloat = 4
     /// Between icon buttons in a row; the header's action spacing.
     private static let iconGap: CGFloat = 2
-    private static let rowHeight: CGFloat = 30
+    private static let rowHeight: CGFloat = SidebarView.Layout.footerButtonSize
 
     private var entries: [SidebarActionRowView] = []
     private var lastLayoutWidth: CGFloat = 0
@@ -3302,7 +3302,7 @@ private enum SidebarActionChromePalette {
 @MainActor
 final class SidebarActionRowView: NSView {
     private static let iconSize: CGFloat = 18
-    private static let cellHeight: CGFloat = 34
+    private static let cellHeight: CGFloat = SidebarView.Layout.footerButtonSize
 
     var onClick: (() -> Void)?
     /// The sidebar draws the name above the cell; the system tooltip opens
