@@ -1638,6 +1638,7 @@ export class LiveFixture implements Fixture {
       toBeSelected: (options?: ExpectOptions) => this.retryLocator(locator, "toBeSelected", inverted, withMessage(options), true),
       toBeExpanded: (options?: ExpectOptions) => this.retryLocator(locator, "toBeExpanded", inverted, withMessage(options), true),
       toBePressed: (options?: ExpectOptions) => this.retryLocator(locator, "toBePressed", inverted, withMessage(options), true),
+      toBeBusy: (options?: ExpectOptions) => this.retryLocator(locator, "toBeBusy", inverted, withMessage(options), true),
       toHaveText: (expected: string | RegExp, options?: ExpectOptions) =>
         this.retryLocator(locator, "toHaveText", inverted, withMessage(options), expected),
       toContainText: (expected: string | RegExp, options?: ExpectOptions) =>
@@ -2024,11 +2025,12 @@ function locatorActual(matcher: string, resolved: LocatorResolve | undefined, ex
 }
 
 /** State matchers and the match field each reads. */
-const stateMatchers: Record<string, "checked" | "selected" | "expanded" | "pressed"> = {
+const stateMatchers: Record<string, "checked" | "selected" | "expanded" | "pressed" | "busy"> = {
   toBeChecked: "checked",
   toBeSelected: "selected",
   toBeExpanded: "expanded",
   toBePressed: "pressed",
+  toBeBusy: "busy",
 };
 
 function matchLocator(
@@ -2048,7 +2050,8 @@ function matchLocator(
   const state = stateMatchers[matcher];
   if (state) {
     if (resolved.count !== 1) throw new Error(`Expected one attached element, received ${resolved.count}`);
-    const actual = resolved[state] ?? null;
+    // `aria-busy` absent is not busy, as for a screen reader.
+    const actual = resolved[state] ?? (state === "busy" ? false : null);
     // An element without the state is neither: `not.toBeChecked()` on a plain button is a wrong locator.
     if (actual === null) {
       const name = inverted ? `not.${matcher}` : matcher;

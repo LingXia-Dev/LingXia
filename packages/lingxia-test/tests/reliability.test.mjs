@@ -151,6 +151,7 @@ test('ARIA state matchers read the match and refuse an element without the state
   world.add({testId:'more', expanded:true});
   const bold = world.add({testId:'bold', pressed:false});
   world.add({testId:'plain'});
+  const save = world.add({testId:'save', busy:true});
   installFakeHost(world);
   spec('states', async t => {
     await expect(t.app.view.testId('agree')).toBeChecked();
@@ -158,6 +159,11 @@ test('ARIA state matchers read the match and refuse an element without the state
     await expect(t.app.view.testId('more')).toBeExpanded();
     setTimeout(() => { bold.pressed = true; }, 50);
     await expect(t.app.view.testId('bold')).toBePressed();
+    await expect(t.app.view.testId('save')).toBeBusy();
+    setTimeout(() => { save.busy = false; }, 50);
+    await expect(t.app.view.testId('save')).not.toBeBusy();
+    // Without aria-busy an element is not busy, unlike the other states.
+    await expect(t.app.view.testId('plain')).not.toBeBusy();
   });
   spec('plain checked', t => expect(t.app.view.testId('plain')).toBeChecked({timeout:200}));
   spec('plain not checked', t => expect(t.app.view.testId('plain')).not.toBeChecked({timeout:200}));

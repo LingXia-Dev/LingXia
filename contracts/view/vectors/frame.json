@@ -12,6 +12,7 @@
         "attributes": {
           "data-testid": "name"
         },
+        "busy": null,
         "checked": null,
         "count": 1,
         "editable": true,
@@ -87,6 +88,7 @@
             "attributes": {
               "data-testid": "name"
             },
+            "busy": null,
             "checked": null,
             "count": 5,
             "editable": true,
@@ -134,6 +136,7 @@
             "attributes": {
               "data-testid": "day"
             },
+            "busy": null,
             "checked": null,
             "count": 5,
             "editable": true,
@@ -181,6 +184,7 @@
             "attributes": {
               "data-testid": "level"
             },
+            "busy": null,
             "checked": null,
             "count": 5,
             "editable": false,
@@ -223,6 +227,7 @@
             "attributes": {
               "data-testid": "on"
             },
+            "busy": null,
             "checked": true,
             "count": 5,
             "editable": false,
@@ -265,6 +270,7 @@
             "attributes": {
               "data-testid": "remember"
             },
+            "busy": null,
             "checked": true,
             "count": 5,
             "editable": false,

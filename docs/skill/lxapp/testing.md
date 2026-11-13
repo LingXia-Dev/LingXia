@@ -100,7 +100,7 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 | Read an element once | `locator.textContent()` / `.inputValue()` / `.getAttribute(name)` / `.boundingBox()` / `.count()` / `.isVisible()`; no retry, so assert with `expect(locator)` |
 | Native window input | `t.app.window.pointer` / `.key`; independent of pages |
 | Swipe, drag, fling, pull to refresh, edge back | `t.app.view.swipe` / `.drag` / `.fling` / `.pullToRefresh` / `.touch`, `t.app.gesture.*`; [Gestures](#gestures) |
-| Assert UI | `expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()` / `.toBeChecked()` / `.toBeSelected()` / `.toBeExpanded()` / `.toBePressed()` (fail either way on an element without that state); `.not` |
+| Assert UI | `expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()` / `.toBeChecked()` / `.toBeSelected()` / `.toBeExpanded()` / `.toBePressed()` (fail either way on an element without that state) / `.toBeBusy()` (`aria-busy`; absent is not busy); `.not` |
 | Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
 | Page data, page actions, Logic eval | [Pages](#pages), [Logic eval](#logic-eval) |
 | Wait until a value is ready | `t.waitFor(read, { until })` returns it; `expect.poll(read).toBe(x)` asserts it |

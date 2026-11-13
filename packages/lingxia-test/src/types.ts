@@ -1173,6 +1173,8 @@ export interface LocatorMatchers extends NeedsMatcher<"expect(locator) checks no
   toBeExpanded(options?: ExpectOptions): Promise<void>;
   /** `aria-pressed` is true. */
   toBePressed(options?: ExpectOptions): Promise<void>;
+  /** `aria-busy` is true; an element without it is not busy. */
+  toBeBusy(options?: ExpectOptions): Promise<void>;
   toHaveText(expected: string | RegExp, options?: ExpectOptions): Promise<void>;
   /** The text contains `expected` (exact substring) or matches the RegExp. */
   toContainText(expected: string | RegExp, options?: ExpectOptions): Promise<void>;

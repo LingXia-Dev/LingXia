@@ -799,6 +799,8 @@ public final class GpuFrame {
         public Boolean selected() { if (json.isNull("selected")) return null; return json.optBoolean("selected"); }
         /** `expanded`: bool? */
         public Boolean expanded() { if (json.isNull("expanded")) return null; return json.optBoolean("expanded"); }
+        /** `busy`: bool? */
+        public Boolean busy() { if (json.isNull("busy")) return null; return json.optBoolean("busy"); }
         /** `text`: string? */
         public String text() { return json.isNull("text") ? null : json.optString("text", null); }
         /** `text_truncated`: bool? */

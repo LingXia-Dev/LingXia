@@ -54,6 +54,8 @@ export interface QueryMatch {
   selected?: boolean | null;
   /** `aria-expanded`, or a `<summary>`'s `<details>` open state; null when the element has none. */
   expanded?: boolean | null;
+  /** `aria-busy`; null when absent. */
+  busy?: boolean | null;
   /** On a GPU page: `data-testid`, the authored `data-*` props and `aria-invalid`/`-required`/`-describedby`. */
   attributes?: Record<string, string>;
   rect?: {
@@ -70,12 +72,13 @@ export interface QueryMatch {
 }
 
 /** The ARIA states a match reports; a host that predates them reports none. */
-function states(match: QueryMatch | undefined): Pick<LocatorResolve, "checked" | "pressed" | "selected" | "expanded"> {
+function states(match: QueryMatch | undefined): Pick<LocatorResolve, "checked" | "pressed" | "selected" | "expanded" | "busy"> {
   return {
     checked: match?.checked ?? null,
     pressed: match?.pressed ?? null,
     selected: match?.selected ?? null,
     expanded: match?.expanded ?? null,
+    busy: match?.busy ?? null,
   };
 }
 
@@ -121,6 +124,7 @@ export interface LocatorResolve {
   pressed?: boolean | null;
   selected?: boolean | null;
   expanded?: boolean | null;
+  busy?: boolean | null;
   rect?: QueryMatch["rect"];
   visibleRect?: QueryMatch["visibleRect"];
   renderer?: "gpu";

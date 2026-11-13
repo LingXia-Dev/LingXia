@@ -472,6 +472,7 @@ pub fn describe(
         "pressed": node.states[0],
         "selected": node.states[1],
         "expanded": node.states[2],
+        "busy": node.states[3],
         "text": text,
         "text_truncated": text_truncated,
         "value": value.as_ref().map(|(v, _)| v.clone()),

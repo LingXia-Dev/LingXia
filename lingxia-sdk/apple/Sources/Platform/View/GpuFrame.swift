@@ -794,6 +794,7 @@ public struct GpuFrameAutomationElement: Decodable, Sendable {
     public let pressed: Bool?
     public let selected: Bool?
     public let expanded: Bool?
+    public let busy: Bool?
     public let text: String?
     public let textTruncated: Bool?
     public let value: String?
@@ -823,6 +824,7 @@ public struct GpuFrameAutomationElement: Decodable, Sendable {
         case pressed = "pressed"
         case selected = "selected"
         case expanded = "expanded"
+        case busy = "busy"
         case text = "text"
         case textTruncated = "text_truncated"
         case value = "value"
