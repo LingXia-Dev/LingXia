@@ -66,6 +66,30 @@ fn locators_match_test_ids_roles_names_and_tags_in_reading_order() {
 }
 
 #[test]
+fn a_test_id_clicks_an_aria_hidden_control_that_role_queries_never_find() {
+    let mut i = interaction(
+        "h('view',{},h('button',{'data-testid':'scrim','aria-hidden':true,'aria-label':'Close',onClick(){},style:{width:100,height:40}}))",
+    );
+    let page = PageTicket::new(1);
+    assert_eq!(
+        i.automation_query("[aria-label=\"Close\"]", None, false, None)
+            .unwrap()["exists"],
+        false
+    );
+    let effects = i
+        .automate(
+            "[data-testid=\"scrim\"]",
+            None,
+            AutomationAct::Click,
+            false,
+            page,
+        )
+        .unwrap();
+    assert!(effects.contains(&Effect::Dispatch));
+    assert!(matches!(i.take_dispatch()[..], [Dispatch::Click { .. }]));
+}
+
+#[test]
 fn actions_take_the_assistive_input_paths_and_refuse_disabled_targets() {
     let mut i = interaction(PAGE);
     let page = PageTicket::new(1);

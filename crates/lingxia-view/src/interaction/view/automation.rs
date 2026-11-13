@@ -135,7 +135,7 @@ impl ViewInteraction {
                 .id(node)
                 .ok_or_else(|| format!("Element not interactable: {selector} is hidden"))?;
             let described = query::describe(&projection, node, position, matches.len(), None);
-            let semantic = projection.node(id);
+            let semantic = projection.acting_node(id);
             (
                 id,
                 described["value"].as_str().unwrap_or_default().to_owned(),
@@ -237,7 +237,19 @@ impl ViewInteraction {
             AutomationAct::Type(text) => AccessibilityAction::SetText(value + &text),
         };
         let inert = self.inert;
-        let (handled, effects) = self.accessibility(id, action, page);
+        // Assistive input never reaches an `aria-hidden` control; a click lands as a tap does.
+        let hidden = self
+            .ids
+            .index(id)
+            .zip(self.frame.clone())
+            .filter(|(index, frame)| frame.nodes[*index].accessibility_hidden.unwrap_or(false));
+        let (handled, effects) = match hidden {
+            Some((index, _)) if click && !inert => {
+                let effects = self.activate(index, None, false, None);
+                (!effects.is_empty(), effects)
+            }
+            _ => self.accessibility(id, action, page),
+        };
         if !handled {
             let reason = if inert {
                 "the page is behind an open dialog; act inside the dialog or close it"

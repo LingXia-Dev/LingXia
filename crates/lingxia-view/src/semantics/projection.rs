@@ -361,11 +361,25 @@ impl Projection<'_> {
         self.reachable_node(id)
     }
 
+    /// [`Self::node`] as input sees it: `aria-hidden` keeps a control from assistive tech, not
+    /// from a tap, so a test id that targets one acts on it.
+    pub fn acting_node(&self, id: u32) -> Option<SemanticNode> {
+        let index = self.ids.index(id)?;
+        if self.covered(self.frame.node(index)?) {
+            return None;
+        }
+        self.semantic_node(id, true)
+    }
+
     /// [`Self::node`] for a control a closed swipe row covers too, to name the row's actions.
     fn reachable_node(&self, id: u32) -> Option<SemanticNode> {
+        self.semantic_node(id, false)
+    }
+
+    fn semantic_node(&self, id: u32, hidden: bool) -> Option<SemanticNode> {
         let index = self.ids.index(id)?;
         let node = self.frame.node(index)?;
-        if node.accessibility_hidden.unwrap_or(false) {
+        if !hidden && node.accessibility_hidden.unwrap_or(false) {
             return None;
         }
         let activatable = node.on_click.is_some_and(|handle| handle != 0);
