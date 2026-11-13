@@ -64,3 +64,19 @@ spec('a menu moves its focus with arrows, Home and End and jumps by a typed lett
   await item('Rename').press('Enter');
   await expect(view.testId('lab-overlay-last')).toHaveText('last: Rename');
 });
+
+spec('Escape closes a light-dismiss popover from its trigger or its content', { covers: ['view:popover', 'view:a11y'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-layout').click();
+  const more = view.testId('lab-choice-alpha-more');
+  const menu = view.testId('lab-choices-menu');
+  await more.click();
+  await expect(menu).toBeVisible();
+  // A key goes to the focused element and the top layer, as a keyboard's does, while the popover is open.
+  await more.press('Escape');
+  await expect(menu).not.toBeAttached();
+  await more.click();
+  await expect(menu).toBeVisible();
+  await menu.press('Escape');
+  await expect(menu).not.toBeAttached();
+});
