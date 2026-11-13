@@ -18,10 +18,12 @@ pub enum Property {
     Layout,
     /// A slider's part sizes and colours, eased on a fixed curve whatever the node's transition.
     Parts,
+    /// Moves with `shadow`, as Tailwind's rings are box shadows.
+    Ring,
 }
 
 /// The paint properties; `Layout` is reconciled on its own.
-const PROPERTIES: [Property; 7] = [
+const PROPERTIES: [Property; 8] = [
     Property::Opacity,
     Property::Transform,
     Property::Background,
@@ -29,11 +31,12 @@ const PROPERTIES: [Property; 7] = [
     Property::Border,
     Property::Shadow,
     Property::Parts,
+    Property::Ring,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TransitionDef {
-    properties: [bool; 8],
+    properties: [bool; 9],
     duration: Duration,
     delay: Duration,
     timing: Timing,
@@ -62,7 +65,7 @@ impl TransitionDef {
             return Err(invalid());
         }
         let wire: Wire = serde_json::from_str(source).map_err(|_| invalid())?;
-        let mut properties = [false; 8];
+        let mut properties = [false; 9];
         for name in &wire.properties {
             let index = [
                 "opacity",
@@ -80,6 +83,7 @@ impl TransitionDef {
                 return Err(invalid());
             }
         }
+        properties[Property::Ring as usize] = properties[Property::Shadow as usize];
         let limit = crate::protocol::limits::TRANSITION_MS as f64;
         let time = |ms: f64, minimum: f64| {
             (ms.is_finite() && ms >= minimum && ms <= limit)
@@ -110,7 +114,7 @@ impl TransitionDef {
 
     /// Only slider parts: 150 ms on the standard ease, as Tailwind's default transition.
     pub fn parts() -> Self {
-        let mut properties = [false; 8];
+        let mut properties = [false; 9];
         properties[Property::Parts as usize] = true;
         Self {
             properties,
@@ -241,6 +245,7 @@ pub struct Resolved {
     pub foreground: [u8; 4],
     pub border: Option<[u8; 4]>,
     pub shadows: Option<Vec<ShadowLayer>>,
+    pub(crate) ring: Option<crate::scene::ring::RingValue>,
     /// Where layout put the box, before its own transform; `None` when it cannot take one.
     pub position: Option<[f64; 2]>,
     /// A slider's part sizes and colours.
@@ -253,6 +258,7 @@ enum Value {
     Transform(Decomposed),
     Color([u8; 4]),
     Shadows(Vec<ShadowLayer>),
+    Ring(crate::scene::ring::RingValue),
     Offset([f64; 2]),
     Parts(crate::scene::slider::PartValues),
 }
@@ -268,6 +274,7 @@ impl Resolved {
             Property::Shadow => self.shadows.clone().map(Value::Shadows),
             Property::Layout => None,
             Property::Parts => self.parts.clone().map(Value::Parts),
+            Property::Ring => self.ring.map(Value::Ring),
         }
     }
 }
@@ -281,6 +288,17 @@ fn mix(from: &Value, to: &Value, t: f64) -> Value {
             Value::Offset([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t])
         }
         (Value::Parts(a), Value::Parts(b)) => Value::Parts(a.mix(b, t)),
+        (Value::Ring(a), Value::Ring(b)) => {
+            let lerp = |x: f32, y: f32| (f64::from(x) + (f64::from(y) - f64::from(x)) * t) as f32;
+            Value::Ring(crate::scene::ring::RingValue {
+                width: lerp(a.width, b.width).max(0.0),
+                offset: lerp(a.offset, b.offset).max(0.0),
+                color: mix_oklab(a.color, b.color, t),
+                offset_color: mix_oklab(a.offset_color, b.offset_color, t),
+                inner_width: lerp(a.inner_width, b.inner_width).max(0.0),
+                inner_color: mix_oklab(a.inner_color, b.inner_color, t),
+            })
+        }
         (Value::Shadows(a), Value::Shadows(b)) => Value::Shadows(
             (0..a.len().max(b.len()))
                 .map(|i| {
@@ -656,6 +674,7 @@ pub struct Overrides {
     pub foreground: Option<[u8; 4]>,
     pub border: Option<[u8; 4]>,
     pub shadows: Option<Vec<ShadowLayer>>,
+    pub(crate) ring: Option<crate::scene::ring::RingValue>,
     pub parts: Option<crate::scene::slider::PartValues>,
 }
 
@@ -935,6 +954,7 @@ impl Transitions {
                 (Property::Shadow, Value::Shadows(v)) => overrides.shadows = Some(v),
                 (Property::Layout, Value::Offset(v)) => offset = Some(v),
                 (Property::Parts, Value::Parts(v)) => overrides.parts = Some(v),
+                (Property::Ring, Value::Ring(v)) => overrides.ring = Some(v),
                 _ => return Err("UI_TRANSITION: mismatched value".into()),
             }
         }
@@ -1018,6 +1038,7 @@ mod tests {
             foreground: [0, 0, 0, 255],
             border: None,
             shadows: Some(Vec::new()),
+            ring: Some(Default::default()),
             position: Some([0.0; 2]),
             parts: None,
         }

@@ -105,6 +105,7 @@ pub(crate) struct Part {
     pub border: f32,
     pub border_color: Option<String>,
     pub shadow: Option<String>,
+    pub ring: Option<String>,
     pub scale: [f32; 2],
 }
 
@@ -118,6 +119,7 @@ impl Default for Part {
             border: 0.0,
             border_color: None,
             shadow: None,
+            ring: None,
             scale: [1.0; 2],
         }
     }
@@ -150,6 +152,7 @@ impl Part {
                 }
                 field::BORDER_COLOR => part.border_color = value.as_str().map(str::to_owned),
                 field::BOX_SHADOW => part.shadow = value.as_str().map(str::to_owned),
+                field::RING => part.ring = value.as_str().map(str::to_owned),
                 field::TRANSFORM => {
                     let source = value.as_str().ok_or("UI_TRANSFORM: invalid transform")?;
                     let scale = crate::scene::transform::StaticTransform::parse(source)?
@@ -414,7 +417,45 @@ pub(crate) fn paint(
             style: crate::scene::border::LineStyle::Solid,
         });
     }
+    thumb_ring(&thumb, bounds, radius, accent, palette, commands)?;
     Ok(slots)
+}
+
+/// A thumb's `ring-*`: strokes around (or inside) the knob, `currentColor` being the accent.
+fn thumb_ring(
+    thumb: &Part,
+    bounds: [f32; 4],
+    radius: f32,
+    accent: [u8; 4],
+    palette: &crate::theme::Palette,
+    commands: &mut Vec<Paint>,
+) -> Result<(), String> {
+    let Some(ring) = thumb
+        .ring
+        .as_deref()
+        .map(crate::scene::ring::Ring::parse)
+        .transpose()?
+        .flatten()
+    else {
+        return Ok(());
+    };
+    ring.resolve(|tint| {
+        if tint == "currentColor" {
+            Ok(accent)
+        } else {
+            palette.resolve(tint)
+        }
+    })?
+    .paint(
+        &crate::scene::ring::RingBox {
+            bounds,
+            radius,
+            corners: None,
+            border: [thumb.border; 4],
+        },
+        commands,
+    );
+    Ok(())
 }
 
 /// A switch track's width and height: its `track:` part, else 52 × 32.
@@ -537,6 +578,7 @@ pub(crate) fn paint_switch(
             style: crate::scene::border::LineStyle::Solid,
         });
     }
+    thumb_ring(&thumb, knob, round, switch.on, palette, commands)?;
     Ok((slots, bounds, radius))
 }
 

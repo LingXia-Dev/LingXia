@@ -9,7 +9,7 @@ import { keyPayload } from './keys.js';
 import { resolveNode, handlesIssued } from './elements.js';
 import { finishTopLayerRow } from './toplayer.js';
 
-const structured = new Set(['backgroundGradient', 'boxShadow', 'animation']);
+const structured = new Set(['backgroundGradient', 'boxShadow', 'ring', 'animation']);
 const encodeValue = (key, value) => structured.has(key) && value !== 'none' ? JSON.stringify(value) : value;
 
 export function copyTree(node) {

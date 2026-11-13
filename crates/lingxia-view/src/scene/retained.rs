@@ -31,6 +31,14 @@ pub(crate) struct InputLayout {
     pub(crate) color: [u8; 4],
 }
 
+/// A box's ring strokes in `commands`, empty when it has none, so one can fade in.
+#[derive(Clone, Debug)]
+pub(crate) struct RingSlot {
+    pub(crate) commands: Range<usize>,
+    pub(crate) value: crate::scene::ring::RingValue,
+    pub(crate) border: [f32; 4],
+}
+
 /// Where a node's transitionable paint sits in `commands`, as the scene resolved it.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct PaintStyle {
@@ -40,6 +48,7 @@ pub(crate) struct PaintStyle {
     pub(crate) border: Option<usize>,
     /// Analytic shadow layers in authored order; `None` once a layer rasterized.
     pub(crate) shadows: Option<Vec<usize>>,
+    pub(crate) ring: Option<RingSlot>,
     pub(crate) foreground: [u8; 4],
     pub(crate) own_color: bool,
     /// Text commands and the record whose inherited colour they paint.
@@ -264,6 +273,9 @@ impl RetainedLayout {
                 style.shadows = style
                     .shadows
                     .map(|layers| layers.into_iter().map(shift).collect());
+                if let Some(ring) = &mut style.ring {
+                    ring.commands = shift(ring.commands.start)..shift(ring.commands.end);
+                }
                 style.texts = style
                     .texts
                     .into_iter()
@@ -364,6 +376,7 @@ impl RetainedLayout {
                     })
                     .collect()
             }),
+            ring: style.ring.as_ref().map(|ring| ring.value),
             position: Some([f64::from(x - moved[0]), f64::from(y - moved[1])]),
             parts: style
                 .slider
@@ -784,6 +797,19 @@ impl RetainedLayout {
             let background = overrides.and_then(|o| o.background);
             let border = overrides.and_then(|o| o.border);
             let shadows = overrides.and_then(|o| o.shadows.as_ref());
+            let ring = paint_style
+                .ring
+                .as_ref()
+                .zip(overrides.and_then(|o| o.ring))
+                .map(|(slot, value)| {
+                    let target = crate::scene::ring::RingBox {
+                        bounds: node.bounds,
+                        radius: paint_style.radius,
+                        corners: paint_style.corners,
+                        border: slot.border,
+                    };
+                    (slot.commands.clone(), value, target)
+                });
             let first = self.ranges[index].start;
             let reshaped;
             let own = match (
@@ -799,6 +825,14 @@ impl RetainedLayout {
             };
             for (offset, paint) in own.iter().enumerate() {
                 let command = first + offset;
+                if let Some((slot, value, target)) = &ring {
+                    if command == slot.start {
+                        value.paint(target, &mut painted);
+                    }
+                    if slot.contains(&command) {
+                        continue;
+                    }
+                }
                 let tint = |color: &[u8; 4], replaced: Option<[u8; 4]>, slot: Option<usize>| {
                     replaced.filter(|_| slot == Some(command)).unwrap_or(*color)
                 };
@@ -1127,6 +1161,11 @@ impl RetainedLayout {
                     }
                     _ => unreachable!("retained paint has no clipping commands"),
                 }
+            }
+            if let Some((slot, value, target)) = &ring
+                && slot.start == first + own.len()
+            {
+                value.paint(target, &mut painted);
             }
             if let Some(color) = background.filter(|_| paint_style.background.is_none()) {
                 let at = painted

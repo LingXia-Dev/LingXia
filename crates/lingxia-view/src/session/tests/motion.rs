@@ -169,6 +169,37 @@ fn a_focused_switch_and_checkbox_ring_their_indicator_not_their_box() {
 }
 
 #[test]
+fn an_authored_focus_visible_style_replaces_a_switchs_built_in_ring() {
+    use crate::scene::paint::Paint;
+    let module = super::source(
+        "function render(){const on=useLocal('on',true);return h('page',{},h('switch',{'data-testid':'s',bind:on,'aria-label':'Wi-Fi',className:'fv:x'}))}",
+    )
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureClasses([{name:'fv:x',when:{state:'focusVisible'},style:{backgroundColor:'#00ff00'}}]);__lingxiaPublish(render);",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let display = page.layout(400, 200, 1.0).unwrap();
+    let focus = page.renderer.palette.role(lingxia_theme::Role::Focus);
+    let switch = display
+        .nodes
+        .iter()
+        .find(|n| n.test_id == "s")
+        .unwrap()
+        .clone();
+    assert!(switch.focus_visible_style, "the author styled its focus");
+    page.set_control_focus(Some(&switch.identity));
+    let display = page.layout(400, 200, 1.0).unwrap();
+    assert!(
+        !display
+            .commands
+            .iter()
+            .any(|p| matches!(p, Paint::Border { color, .. } if *color == focus)),
+        "no built-in track ring under the author's own focus style"
+    );
+}
+
+#[test]
 fn group_pressed_paint_applies_to_the_pressed_controls_descendants() {
     let module = super::source(
         "function render(){return h('page',{},h('button',{'data-testid':'b',onClick(){},className:'group',style:{width:100,height:40,padding:0}},h('view',{'data-testid':'disc',className:'group-active:opacity-50',style:{width:20,height:20}})),h('view',{'data-testid':'outside',className:'group-active:opacity-50',style:{width:20,height:20}}))}",

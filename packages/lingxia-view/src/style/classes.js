@@ -118,9 +118,16 @@ function cascade(rules, meta) {
     style.boxShadow = (shadow.composite === false ? shadow.fixedLayers ?? [] : shadow.layers ?? []).map(({ useColor, ...layer }) => ({
       ...layer, color: useColor && shadow.color !== undefined ? shadow.color : layer.color,
     }));
-    if (shadow.composite !== false && shadow.ringWidth > 0)
-      style.boxShadow.unshift({ offsetX: 0, offsetY: 0, blur: 0, spread: shadow.ringWidth, color: shadow.ringColor ?? 'currentColor' });
     if (style.boxShadow.length > 8) throw Error('UI_STYLE: too many box shadows');
+    // Rings are strokes, not shadow layers: the offset is a real gap unless a role fills it.
+    const ring = {};
+    if (shadow.composite !== false && shadow.ringWidth > 0) {
+      ring.outer = { width: shadow.ringWidth, offset: shadow.ringOffset ?? 0, color: shadow.ringColor ?? 'currentColor' };
+      if (shadow.ringOffsetColor !== undefined) ring.outer.offsetColor = shadow.ringOffsetColor;
+    }
+    if (shadow.composite !== false && shadow.insetRingWidth > 0)
+      ring.inner = { width: shadow.insetRingWidth, color: shadow.insetRingColor ?? 'currentColor' };
+    style.ring = ring.outer || ring.inner ? ring : 'none';
   }
   return style;
 }

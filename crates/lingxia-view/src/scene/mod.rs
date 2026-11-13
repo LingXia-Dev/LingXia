@@ -17,6 +17,7 @@ pub(crate) mod node;
 pub(crate) mod paint;
 pub(crate) mod plot;
 pub(crate) mod retained;
+pub(crate) mod ring;
 pub(crate) mod shadow;
 pub(crate) mod slider;
 pub(crate) mod sticky;

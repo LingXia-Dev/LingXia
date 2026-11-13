@@ -479,6 +479,34 @@ impl Renderer {
                     ),
                 });
             }
+            let ring = match record
+                .string(field::RING)
+                .map(crate::scene::ring::Ring::parse)
+                .transpose()?
+                .flatten()
+            {
+                Some(ring) => ring.resolve(|tint| {
+                    color(if tint == "currentColor" {
+                        colors[index]
+                    } else {
+                        tint
+                    })
+                })?,
+                None => Default::default(),
+            };
+            let target = crate::scene::ring::RingBox {
+                bounds,
+                radius,
+                corners,
+                border: border_widths,
+            };
+            let start = commands.len();
+            ring.paint(&target, &mut commands);
+            paint_style.ring = Some(crate::scene::retained::RingSlot {
+                commands: start..commands.len(),
+                value: ring,
+                border: border_widths,
+            });
             if record.tag == tag::VECTOR {
                 let vector = crate::scene::vector::Vector::parse_with(
                     record.string(field::VECTOR_SOURCE).unwrap(),
@@ -1005,7 +1033,13 @@ impl Renderer {
                     paint_style.slider = Some(slots);
                     indicator = (track, radius);
                 }
-                if focused {
+                // An authored `focus-visible:` style, on the control or a part, replaces the built-in ring.
+                if focused
+                    && !record
+                        .fields
+                        .iter()
+                        .any(|(id, _)| *id == field::FOCUS_VISIBLE_STYLE)
+                {
                     // A focus ring 2 px outside the indicator, as the platform rings other controls.
                     let ([ix, iy, iw, ih], radius) = indicator;
                     commands.push(Paint::Border {
@@ -1158,6 +1192,7 @@ impl Renderer {
                 paint_style.shadows = Some(Vec::new());
                 paint_style.background = None;
                 paint_style.border = None;
+                paint_style.ring = None;
                 paint_style.texts.clear();
             }
             if let Some(layers) = &mut paint_style.shadows {

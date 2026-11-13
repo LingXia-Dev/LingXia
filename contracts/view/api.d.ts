@@ -219,6 +219,11 @@ export interface VideoControlsLabels { play: string; pause: string; replay: stri
 export declare function VideoControls(props: { player: Video; overlay?: boolean; labels?: Partial<VideoControlsLabels>; className?: string; "data-testid"?: string }): JSX.Element;
 
 export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }
+/** Strokes around the box (`outer`, after an `offset` gap) and inside its border (`inner`); they never take layout space. */
+export interface Ring {
+  outer?: { width: number; offset?: number; color?: string; offsetColor?: string };
+  inner?: { width: number; color?: string };
+}
 export interface GradientStop { offset: number; color: string }
 /** Positions are fractions of the box; conic angles are degrees clockwise from the top. */
 export type BackgroundGradient =

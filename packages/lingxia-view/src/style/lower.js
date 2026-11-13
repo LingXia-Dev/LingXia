@@ -2,7 +2,7 @@ import { declaredFamily } from '../runtime/fonts.js';
 import { elements, style as table } from '../generated/contract.js';
 import { fieldOptions, field } from '../generated/wire.js';
 import { limits, options } from '../generated/contract.js';
-import { normalizeShadows } from './shadow.js';
+import { normalizeRing, normalizeShadows } from './shadow.js';
 import { appliesTo } from './hints.js';
 import { normalizeGradient } from './gradient.js';
 import { wireColorProblem } from './color.js';
@@ -303,6 +303,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       }
       case 'gradient': out[key] = normalizeGradient(value); break;
       case 'shadow': out[key] = normalizeShadows(value); break;
+      case 'ring': out[key] = normalizeRing(value); break;
       case 'backdrop': [out[key[0]], out[key[1]]] = backdrop(name, value); break;
       case 'animation': { const lowered = animation(value); if (lowered !== undefined) out[key] = lowered; break; }
       case 'transform': transformPart(name, value, transform); break;
@@ -381,7 +382,7 @@ function partRecord(name, value, env) {
   for (const key of ['width', 'height']) if (value[key] !== undefined && !(finite(value[key]) && value[key] >= 0 && value[key] <= 1024)) invalid(`${name}.${key}`);
   const pairs = [];
   for (const [key, lowered] of Object.entries(lowerStyle('view', value, env).fields))
-    pairs.push(field[key], key === 'boxShadow' && lowered !== 'none' ? JSON.stringify(lowered) : lowered);
+    pairs.push(field[key], (key === 'boxShadow' || key === 'ring') && lowered !== 'none' ? JSON.stringify(lowered) : lowered);
   return JSON.stringify(pairs);
 }
 

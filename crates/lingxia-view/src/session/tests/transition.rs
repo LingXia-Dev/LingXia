@@ -218,6 +218,47 @@ fn a_background_fades_in_from_transparent_and_shadows_interpolate_per_layer() {
 }
 
 #[test]
+fn a_ring_eases_in_and_out_with_shadow_and_snaps_without_it() {
+    for (properties, eased) in [(&["shadow"][..], true), (&["bg"][..], false)] {
+        let mut page = page(
+            transition(properties, 200),
+            "backgroundColor:'#ffffff'",
+            "ring:{outer:{width:4,color:'#000000'}}",
+            "''",
+        );
+        let (display, _) = present(&mut page, frame_time(0));
+        assert_eq!(pixel(&display, 50, 41), [255, 255, 255, 255]);
+        press(&mut page, &display, true);
+        present(&mut page, Duration::from_millis(100));
+        let (display, _) = present(&mut page, Duration::from_millis(200));
+        let (edge, outside) = (pixel(&display, 50, 41), pixel(&display, 50, 43));
+        if eased {
+            assert!(
+                (100..160).contains(&edge[0]),
+                "half width, half alpha: {edge:?}"
+            );
+            assert_eq!(outside, [255, 255, 255, 255], "not yet full width");
+        } else {
+            assert_eq!((edge[0], outside[0]), (0, 0), "snapped");
+        }
+        let (display, _) = present(&mut page, Duration::from_millis(300));
+        assert_eq!(pixel(&display, 50, 43)[0], 0);
+        press(&mut page, &display, false);
+        present(&mut page, Duration::from_millis(400));
+        let (display, _) = present(&mut page, Duration::from_millis(500));
+        let edge = pixel(&display, 50, 41);
+        if eased {
+            assert!((100..160).contains(&edge[0]), "fading out: {edge:?}");
+        } else {
+            assert_eq!(edge, [255, 255, 255, 255]);
+        }
+        let (display, wakeup) = present(&mut page, Duration::from_millis(700));
+        assert_eq!(pixel(&display, 50, 41), [255, 255, 255, 255]);
+        assert_eq!(wakeup, Wakeup::None);
+    }
+}
+
+#[test]
 fn hit_geometry_follows_the_presented_transform_mid_flight() {
     let mut page = page(
         transition(&["transform"], 200),
@@ -627,4 +668,50 @@ fn a_focus_change_on_the_scroll_path_composes_a_frame_ahead_once() {
     sampled(&mut page, 1, false, None, false).unwrap();
     let down = HashMap::from([(scroll, 400.0)]);
     sampled(&mut page, 1, false, Some(&down), true).unwrap();
+}
+
+#[test]
+fn a_ring_strokes_past_a_real_gap_beside_a_shadow_and_an_inset_ring_sits_inside_in_both_themes() {
+    use lingxia_theme::Role;
+    let module = super::source(
+        "function render(){return h('page',{},h('view',{style:{position:'absolute',left:20,top:20,width:100,height:40,backgroundColor:'accent',borderRadius:8,ring:{outer:{width:2,offset:2,color:'focus'}},boxShadow:[{offsetX:0,offsetY:20,blur:0,spread:0,color:'#00ff00'}]}}),h('view',{style:{position:'absolute',left:140,top:20,width:50,height:30,backgroundColor:'surface',ring:{inner:{width:3,color:'accent'}}}}))}",
+    );
+    for theme in ["light", "dark"] {
+        let mut page = ViewSession::new(&module).unwrap();
+        page.set_environment(json!({"theme":theme,"insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false}))
+            .unwrap();
+        let shot = shoot(page.layout(200, 100, 1.0).unwrap(), false);
+        let role = |role| page.renderer.palette.role(role);
+        assert_eq!(
+            pixel(&shot, 60, 30),
+            role(Role::Accent),
+            "{theme}: the fill"
+        );
+        assert_eq!(
+            pixel(&shot, 60, 18),
+            role(Role::Canvas),
+            "{theme}: the offset is a gap the canvas shows through"
+        );
+        assert_eq!(pixel(&shot, 60, 16), role(Role::Focus), "{theme}: the ring");
+        assert_eq!(
+            pixel(&shot, 60, 70)[..3],
+            [0, 255, 0],
+            "{theme}: the shadow still draws"
+        );
+        assert_eq!(
+            pixel(&shot, 141, 35),
+            role(Role::Accent),
+            "{theme}: inset ring"
+        );
+        assert_eq!(
+            pixel(&shot, 165, 35),
+            role(Role::Surface),
+            "{theme}: inside it"
+        );
+        assert_eq!(
+            pixel(&shot, 138, 35),
+            role(Role::Canvas),
+            "{theme}: nothing outside"
+        );
+    }
 }

@@ -54,7 +54,7 @@ pub const PARTS: [usize; 4] = [
     field::THUMB_STYLE,
 ];
 /// What a slider part record may carry.
-pub const PART_FIELDS: [usize; 15] = [
+pub const PART_FIELDS: [usize; 16] = [
     field::BACKGROUND,
     field::WIDTH,
     field::HEIGHT,
@@ -69,16 +69,18 @@ pub const PART_FIELDS: [usize; 15] = [
     field::BORDER_LEFT_WIDTH,
     field::BORDER_COLOR,
     field::BOX_SHADOW,
+    field::RING,
     field::TRANSFORM,
 ];
 /// Paint-only fields a state delta may carry; a slider's parts change only its drawing.
-pub const FOCUS_PAINT_FIELDS: [usize; 12] = [
+pub const FOCUS_PAINT_FIELDS: [usize; 13] = [
     field::COLOR,
     field::BACKGROUND,
     field::OPACITY,
     field::BORDER_COLOR,
     field::BACKGROUND_GRADIENT,
     field::BOX_SHADOW,
+    field::RING,
     field::PLACEHOLDER_COLOR,
     field::TRANSFORM,
     field::TRACK_STYLE,

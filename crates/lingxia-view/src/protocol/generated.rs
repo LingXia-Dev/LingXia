@@ -268,6 +268,7 @@ pub mod field {
     pub const INTEREST_FOR: usize = 231;
     pub const ON_POINTER_ENTER: usize = 232;
     pub const ON_POINTER_LEAVE: usize = 233;
+    pub const RING: usize = 234;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video"];
@@ -508,6 +509,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("interestFor", "element-id"),
     ("onPointerEnter", "handle"),
     ("onPointerLeave", "handle"),
+    ("ring", "ring"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -945,4 +947,5 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON]), parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON]), parent: None },
+    FieldAdmission { tags: None, parent: None },
 ];

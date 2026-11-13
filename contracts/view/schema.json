@@ -300,7 +300,8 @@
     {"id": 230, "key": "sliderSecondary", "wire": "secondaryValue", "kind": "slider-number", "tags": ["slider"]},
     {"id": 231, "key": "interestFor", "wire": "interestFor", "ignorable": true, "kind": "element-id", "tags": ["button"]},
     {"id": 232, "key": "onPointerEnter", "wire": "onPointerEnter", "kind": "handle", "tags": ["column", "button"]},
-    {"id": 233, "key": "onPointerLeave", "wire": "onPointerLeave", "kind": "handle", "tags": ["column", "button"]}
+    {"id": 233, "key": "onPointerLeave", "wire": "onPointerLeave", "kind": "handle", "tags": ["column", "button"]},
+    {"id": 234, "key": "ring", "wire": "ring", "kind": "ring"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
@@ -493,6 +494,7 @@
     "borderStyle": {"type": "\"solid\" | \"dashed\" | \"dotted\"", "group": "box", "lower": "option", "wire": "borderStyle", "css": "border-style"},
     "borderColor": {"type": "string | \"currentColor\"", "group": "box", "lower": "color", "wire": "borderColor", "paint": true, "css": "border-color"},
     "boxShadow": {"type": "ReadonlyArray<BoxShadow> | \"none\"", "group": "box", "lower": "shadow", "wire": "boxShadow", "paint": true},
+    "ring": {"type": "Ring | \"none\"", "group": "box", "lower": "ring", "wire": "ring", "paint": true},
     "backdropFilter": {"type": "string", "group": "box", "lower": "backdrop", "wire": ["backdropBlur", "backdropSaturation"]},
     "translate": {"type": "number | `${number}%` | readonly [number | `${number}%`, number | `${number}%`]", "group": "box", "lower": "transform", "wire": "transform", "paint": true},
     "rotate": {"type": "number", "group": "box", "lower": "transform", "wire": "transform", "paint": true},

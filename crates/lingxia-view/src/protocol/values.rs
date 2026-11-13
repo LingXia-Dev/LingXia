@@ -290,6 +290,12 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             value.as_u64() == Some(1),
             "UI_STYLE: invalid automatic height",
         ),
+        field::RING => crate::scene::ring::Ring::parse(
+            value
+                .as_str()
+                .ok_or("UI_SHADOW: expected an encoded ring")?,
+        )
+        .map(drop),
         field::BOX_SHADOW => crate::scene::shadow::BoxShadow::parse(
             value
                 .as_str()

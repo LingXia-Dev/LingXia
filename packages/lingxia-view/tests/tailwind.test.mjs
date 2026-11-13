@@ -267,7 +267,7 @@ test('state variants lower to state styles and disabled replaces the cascade', a
   const button = rendered(() => h('button', { className: 'bg-surface active:bg-surface-sunken disabled:opacity-50', disabled: true }, 'Save')).props;
   assert.deepEqual([button.opacity, button.pressedStyle, button.enabled], [0.5, undefined, 0]);
   assert.ok(rendered(() => h('input', { className: 'focus:bg-danger' })).props.focusStyle.background);
-  assert.equal(resolveClasses('focus-visible:ring-2').focusVisible.boxShadow[0].spread, 2);
+  assert.deepEqual(resolveClasses('focus-visible:ring-2').focusVisible.ring, { outer: { width: 2, offset: 0, color: 'currentColor' } });
   assert.ok(rendered(() => h('button', { className: 'focus-visible:ring-2' }, 'Save')).props.focusVisibleStyle);
 });
 
@@ -365,10 +365,10 @@ test('outer shadows preserve layers, color overrides, variants and CSS order', a
 });
 
 test('arbitrary outer shadows retain currentColor and reject unsupported or excessive geometry', async () => {
-  await use(['shadow-[0_2px_4px]', 'shadow-[2px_4px_0_3px_#ff0000]', 'shadow-[0_0_257px_black]', 'inset-shadow-sm', 'ring-offset-2', '[box-shadow:var(--tw-shadow)]', '[box-shadow:1_2_red]']);
+  await use(['shadow-[0_2px_4px]', 'shadow-[2px_4px_0_3px_#ff0000]', 'shadow-[0_0_257px_black]', 'inset-shadow-sm', '[box-shadow:var(--tw-shadow)]', '[box-shadow:1_2_red]']);
   assert.deepEqual(classStyle('shadow-[0_2px_4px]').boxShadow, [{ offsetX: 0, offsetY: 2, blur: 4, spread: 0, color: 'currentColor' }]);
   assert.deepEqual(classStyle('shadow-[2px_4px_0_3px_#ff0000]').boxShadow, [{ offsetX: 2, offsetY: 4, blur: 0, spread: 3, color: '#ff0000ff' }]);
-  for (const name of ['shadow-[0_0_257px_black]', 'inset-shadow-sm', 'ring-offset-2', '[box-shadow:var(--tw-shadow)]', '[box-shadow:1_2_red]'])
+  for (const name of ['shadow-[0_0_257px_black]', 'inset-shadow-sm', '[box-shadow:var(--tw-shadow)]', '[box-shadow:1_2_red]'])
     assert.throws(() => classStyle(name), /UI_CLASS/);
 });
 
@@ -388,16 +388,24 @@ test('shadow tokens and arbitrary variables expand to every layer they hold in e
   assert.throws(() => classStyle('shadow-[var(--nine)]'), /too many box shadows/);
 });
 
-test('outer rings compose before shadows and fixed shadows replace the composition', async () => {
-  await use(['ring-2', 'ring-0', 'ring-accent/30', 'shadow-lg', 'shadow-none', 'focus:ring-2', 'focus:ring-accent/30', 'ring-offset-2', 'ring-inset', '[box-shadow:none]']);
+test('rings are strokes beside the shadows: an offset is a gap a role may fill, an inset ring sits inside', async () => {
+  await use(['ring-2', 'ring-0', 'ring-accent/30', 'shadow-lg', 'shadow-none', 'focus:ring-2', 'focus:ring-accent/30', 'ring-offset-2', 'ring-offset-surface',
+    'inset-ring-2', 'inset-ring-line', 'ring-inset', '[box-shadow:none]', 'focus-visible:ring-offset-2']);
   const style = classStyle('ring-2 ring-accent/30 shadow-lg');
-  assert.equal(style.boxShadow.length, 3); assert.equal(style.boxShadow[0].spread, 2); assert.equal(style.boxShadow[0].color, 'accent/30');
-  assert.equal(classStyle('ring-2 shadow-none').boxShadow[0].spread, 2);
-  assert.deepEqual(classStyle('ring-0').boxShadow, []);
-  assert.deepEqual(classStyle('ring-2 [box-shadow:none]').boxShadow, []);
+  assert.equal(style.boxShadow.length, 2, 'the shadow keeps its own layers');
+  assert.deepEqual(style.ring, { outer: { width: 2, offset: 0, color: 'accent/30' } });
+  assert.deepEqual(classStyle('ring-2 shadow-none').ring.outer.width, 2);
+  assert.deepEqual(classStyle('ring-2 ring-offset-2').ring, { outer: { width: 2, offset: 2, color: 'currentColor' } });
+  assert.deepEqual(classStyle('ring-2 ring-offset-2 ring-offset-surface').ring.outer.offsetColor, 'surface');
+  assert.deepEqual(classStyle('inset-ring-2 inset-ring-line').ring, { inner: { width: 2, color: 'line' } });
+  assert.deepEqual(classStyle('ring-2 inset-ring-2').ring, { outer: { width: 2, offset: 0, color: 'currentColor' }, inner: { width: 2, color: 'currentColor' } });
+  assert.equal(classStyle('ring-0').ring, 'none');
+  assert.equal(classStyle('ring-2 [box-shadow:none]').ring, 'none');
   assert.deepEqual(classStyle('focus:ring-2 focus:ring-accent/30'), {});
-  assert.equal(resolveClasses('focus:ring-2 focus:ring-accent/30').focus.boxShadow[0].spread, 2);
-  for (const name of ['ring-offset-2', 'ring-inset']) assert.throws(() => classStyle(name), /unsupported shadow property/);
+  assert.equal(resolveClasses('focus:ring-2 focus:ring-accent/30').focus.ring.outer.width, 2);
+  assert.equal(resolveClasses('ring-2 focus-visible:ring-offset-2').focusVisible.ring.outer.offset, 2);
+  assert.throws(() => classStyle('ring-inset'), /use inset-ring/);
+  assert.equal(node('view', { className: 'ring-2 ring-offset-2' }).ring, '{"outer":{"width":2,"offset":2,"color":"currentColor"}}');
 });
 
 test('gradient utilities compose across classes using Tailwind cascade and theme', async () => {

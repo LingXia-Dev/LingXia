@@ -215,7 +215,8 @@ function utilities(system, rules) {
     'Every utility of Tailwind\'s default theme, run through the native lowering and grouped by family.',
     'Colour families accept only roles (`bg-surface`, `text-muted`); your `@theme` tokens add other names (`rounded-card`); arbitrary values',
     '(`w-[72px]`, `grid-cols-[1fr_auto]`) follow the rules of the family they extend. A supported utility',
-    'is still refused on an element that does not render its style ([styles.md](styles.md)).', ''];
+    'is still refused on an element that does not render its style ([styles.md](styles.md)).',
+    'Unlike Tailwind, `ring-offset-<n>` leaves a transparent gap between box and ring; `ring-offset-<role>` fills it. Rings are strokes, not shadows, yet they ease with `transition` and `transition-shadow`.', ''];
   for (const [title] of [...sections, ['Other']]) {
     const rows = grouped[title];
     if (rows?.length) out.push(`## ${title}`, '', table(['Family', 'Supported', 'Refused'],
@@ -255,7 +256,7 @@ function variants(schema, system, rules) {
   const line = part => `\`<slider>\`; its ${part}: \`bg-*\`, \`h-*\`, \`rounded-*\`; after \`active:\` \`hover:\` \`focus-visible:\` or \`disabled:\`, eased over 150 ms`;
   const parts = { track: '`<slider>` and `<switch>`; its track: `bg-*`, `h-*`, `rounded-*`, and `w-*` on a switch; after `active:` `hover:` `focus-visible:` or `disabled:`, and `checked:` on a switch, eased over 150 ms',
     range: line('range, min to value'), secondary: line('secondary range, min to `secondaryValue`'),
-    thumb: '`<slider>` and `<switch>`; its thumb: `bg-*`, `size-*`, `rounded-*`, `border-*`, `shadow-*`, `ring-*`, `scale-*`; after a state like the track' };
+    thumb: '`<slider>` and `<switch>`; its thumb: `bg-*`, `size-*`, `rounded-*`, `border-*`, `shadow-*`, `ring-*` (with `ring-offset-*`, `inset-ring-*`), `scale-*`; after a state like the track' };
   const admission = {
     focus: `${on('focusStyle')}; paint only`, 'focus-visible': `${on('focusVisibleStyle')}; while focused from a key, switch or assistive tool (editors on any focus); paint only`, active: `${on('pressedStyle')}; paint only`,
     hover: 'any element, while a mouse, stylus or trackpad is over it; paint only', disabled: `${disableable}; replaces the whole class cascade`,

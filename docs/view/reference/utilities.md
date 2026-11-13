@@ -6,6 +6,7 @@ Every utility of Tailwind's default theme, run through the native lowering and g
 Colour families accept only roles (`bg-surface`, `text-muted`); your `@theme` tokens add other names (`rounded-card`); arbitrary values
 (`w-[72px]`, `grid-cols-[1fr_auto]`) follow the rules of the family they extend. A supported utility
 is still refused on an element that does not render its style ([styles.md](styles.md)).
+Unlike Tailwind, `ring-offset-<n>` leaves a transparent gap between box and ring; `ring-offset-<role>` fills it. Rings are strokes, not shadows, yet they ease with `transition` and `transition-shadow`.
 
 ## Layout
 
@@ -211,6 +212,7 @@ is still refused on an element that does not render its style ([styles.md](style
 | --- | --- | --- |
 | `backdrop-blur` | `backdrop-blur-2xl`, `backdrop-blur-3xl`, `backdrop-blur-lg`, `backdrop-blur-md`, `backdrop-blur-none`, … (8) |  |
 | `backdrop-saturate` | `backdrop-saturate-0`, `backdrop-saturate-50`, `backdrop-saturate-100`, `backdrop-saturate-150`, `backdrop-saturate-200` |  |
+| `inset-ring` | `inset-ring`, `inset-ring-0`, `inset-ring-1`, `inset-ring-2`, `inset-ring-4`, … (40) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
 | `mask` | `mask-none` | mask-position (9); mask-clip (7); mask-origin (6) |
 | `mask-b-from` | `mask-b-from-0`, `mask-b-from-0%`, `mask-b-from-0.5`, `mask-b-from-1`, `mask-b-from-1.5`, … (377) | unsupported color (2) |
 | `mask-b-to` | `mask-b-to-0`, `mask-b-to-0%`, `mask-b-to-0.5`, `mask-b-to-1`, `mask-b-to-1.5`, … (377) | unsupported color (2) |
@@ -225,7 +227,8 @@ is still refused on an element that does not render its style ([styles.md](style
 | `mask-y-from` | `mask-y-from-0`, `mask-y-from-0%`, `mask-y-from-0.5`, `mask-y-from-1`, `mask-y-from-1.5`, … (377) | unsupported color (2) |
 | `mask-y-to` | `mask-y-to-0`, `mask-y-to-0%`, `mask-y-to-0.5`, `mask-y-to-1`, `mask-y-to-1.5`, … (377) | unsupported color (2) |
 | `opacity` | `opacity-0`, `opacity-5`, `opacity-10`, `opacity-15`, `opacity-20`, … (21) |  |
-| `ring` | `ring`, `ring-0`, `ring-1`, `ring-2`, `ring-4`, … (40) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2); unsupported shadow property (1) |
+| `ring` | `ring`, `ring-0`, `ring-1`, `ring-2`, `ring-4`, … (40) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2); ring-inset (1) |
+| `ring-offset` | `ring-offset-0`, `ring-offset-1`, `ring-offset-2`, `ring-offset-4`, `ring-offset-8`, … (39) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
 | `shadow` | `shadow`, `shadow-2xl`, `shadow-2xs`, `shadow-accent`, `shadow-accent-soft`, … (43) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (3); inset shadows are not supported yet (1) |
 
 ## Transforms
@@ -328,7 +331,6 @@ These compile but set nothing the renderer draws:
 | `indent` | 70 | text-indent (70) |
 | `inset-be` | 125 | inset-block-end (125) |
 | `inset-bs` | 125 | inset-block-start (125) |
-| `inset-ring` | 330 | unsupported shadow property (330) |
 | `inset-shadow` | 329 | unsupported shadow property (329) |
 | `invert` | 6 | invert (1); invert-0 (1); invert-100 (1) |
 | `invisible` | 1 | visibility (1) |
@@ -358,7 +360,6 @@ These compile but set nothing the renderer draws:
 | `perspective-origin` | 9 | perspective-origin (9) |
 | `pointer` | 2 | pointer-events (2) |
 | `resize` | 4 | resize (4) |
-| `ring-offset` | 329 | unsupported shadow property (329) |
 | `rotate-x` | 18 | transform (18) |
 | `rotate-y` | 18 | transform (18) |
 | `rotate-z` | 18 | transform (18) |

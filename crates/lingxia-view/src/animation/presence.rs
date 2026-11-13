@@ -82,6 +82,20 @@ pub(crate) fn apply(
                         .collect::<Result<_, String>>()?,
                 );
             }
+            field::RING if resolved.ring.is_some() => {
+                let source = value.as_str().ok_or_else(invalid)?;
+                let foreground = resolved.foreground;
+                resolved.ring = Some(match crate::scene::ring::Ring::parse(source)? {
+                    Some(ring) => ring.resolve(|tint| {
+                        if tint == "currentColor" {
+                            Ok(foreground)
+                        } else {
+                            palette.resolve(tint)
+                        }
+                    })?,
+                    None => Default::default(),
+                });
+            }
             // Other paint fields do not transition; layout fields are refused by the compiler.
             _ => {}
         }

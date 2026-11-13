@@ -403,6 +403,25 @@ function shadowDeclaration(prop, raw, local, shadow) {
     if (width < 0 || width > 1024) unsupported('ring exceeds native bounds');
     shadow.ringWidth = width;
   }
+  else if (prop === '--tw-ring-offset-width') {
+    const offset = number(variables(raw,local),true);
+    if (offset < 0 || offset > 1024) unsupported('ring offset exceeds native bounds');
+    shadow.ringOffset = offset;
+  }
+  else if (prop === '--tw-ring-offset-color') shadow.ringOffsetColor = roleColor(variables(raw,local));
+  else if (prop === '--tw-ring-offset-shadow') {
+    // The band CSS paints in the offset colour; the native ring leaves a gap unless a role fills it.
+    if (!/^var\(--tw-ring-inset,\)\s+0 0 0 var\(--tw-ring-offset-width\) var\(--tw-ring-offset-color\)$/i.test(raw)) unsupported(`unsupported ring offset: ${raw}`);
+  }
+  else if (prop === '--tw-inset-ring-color') shadow.insetRingColor = roleColor(variables(raw,local));
+  else if (prop === '--tw-inset-ring-shadow') {
+    const match = raw.match(/^inset 0 0 0 (.+?) var\(--tw-inset-ring-color, currentcolor\)$/i);
+    if (!match) unsupported(`unsupported inset ring geometry: ${raw}`);
+    const width = number(variables(match[1],local),true);
+    if (width < 0 || width > 1024) unsupported('inset ring exceeds native bounds');
+    shadow.insetRingWidth = width;
+  }
+  else if (prop === '--tw-ring-inset') unsupported('ring-inset (use inset-ring-*)');
   else if (prop === 'box-shadow') {
     shadow.enabled = true;
     const composite = 'var(--tw-inset-shadow),var(--tw-inset-ring-shadow),var(--tw-ring-offset-shadow),var(--tw-ring-shadow),var(--tw-shadow)';
@@ -948,7 +967,8 @@ function inert(name) {
 }
 
 const paintsColor = result => Object.keys(result.style).some(key => styleTable[key]?.lower === 'color') ||
-  Boolean(result.gradient) || result.shadow?.color !== undefined || result.shadow?.ringColor !== undefined;
+  Boolean(result.gradient) || result.shadow?.color !== undefined || result.shadow?.ringColor !== undefined
+  || result.shadow?.ringOffsetColor !== undefined || result.shadow?.insetRingColor !== undefined;
 
 // A warm dev compiler rebuilds one page per save; Tailwind's compile of the theme is the slow part.
 const compilers = new Map();
