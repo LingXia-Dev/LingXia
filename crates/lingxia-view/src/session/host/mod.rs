@@ -1431,8 +1431,75 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 self.set_hud(on);
                 Ok(serde_json::json!({ "hud": on }))
             }
+            Some("environment") => self.set_test_environment(request),
             other => Err(format!("E_UNSUPPORTED: automation op {other:?}")),
         }
+    }
+
+    /// `{op: "environment", theme?: "light"|"dark", still?: bool}` pins the page for a test run;
+    /// `{op: "environment", clear: true}` restores it. Answers the override in force.
+    fn set_test_environment(
+        &self,
+        request: &serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        if request["read"] == true {
+            return Ok(self.test_environment_answer());
+        }
+        let test = if request["clear"] == true {
+            None
+        } else {
+            let dark = match &request["theme"] {
+                serde_json::Value::Null => None,
+                theme if theme == "dark" => Some(true),
+                theme if theme == "light" => Some(false),
+                _ => return Err("E_INVALID_ARG: environment theme is \"light\" or \"dark\"".into()),
+            };
+            let still = match &request["still"] {
+                serde_json::Value::Null => false,
+                still => still
+                    .as_bool()
+                    .ok_or("E_INVALID_ARG: environment still is a boolean")?,
+            };
+            Some(environment::TestOverride { dark, still })
+        };
+        let (changed, restart) = {
+            let mut main = self.inner.main();
+            let was_still = main.host_environment.still();
+            let changed = main.host_environment.set_test(test);
+            let still = main.host_environment.still();
+            if still {
+                main.caret.hidden = false;
+            }
+            // A caret held steady blinks again once the page is no longer still.
+            let restart = (was_still && !still && main.caret.running).then(|| {
+                main.caret.timer += 1;
+                main.caret.timer
+            });
+            (changed, restart)
+        };
+        if let Some(timer) = restart {
+            self.inner.blink(timer);
+        }
+        if changed {
+            self.request_frame();
+        }
+        Ok(self.test_environment_answer())
+    }
+
+    /// The pin in force, with the presented frame's text scale and language,
+    /// which a visual baseline records but no test may set.
+    fn test_environment_answer(&self) -> serde_json::Value {
+        let main = self.inner.main();
+        let test = main.host_environment.test();
+        let presented = main.presented_environment.as_ref().map(|env| &env.value);
+        let fact = |key: &str| presented.and_then(|env| env.get(key)).cloned();
+        let theme = |dark: bool| if dark { "dark" } else { "light" };
+        serde_json::json!({
+            "theme": test.and_then(|test| test.dark).map(theme),
+            "still": test.is_some_and(|test| test.still),
+            "textScale": fact("textScale"),
+            "displayLanguage": fact("displayLanguage"),
+        })
     }
 
     fn automation_call(&self) -> Result<u64, String> {
@@ -2139,6 +2206,11 @@ impl<A: PlatformAdapter> Inner<A> {
                 {
                     let mut main = inner.main();
                     if main.caret.timer != timer || !main.caret.running {
+                        return;
+                    }
+                    // A still page keeps its caret shown and stops ticking until it moves again.
+                    if main.host_environment.still() {
+                        main.caret.hidden = false;
                         return;
                     }
                     main.caret.hidden = !main.caret.hidden;

@@ -1290,7 +1290,7 @@ mod tests {
         assert_eq!(output["first"], 1);
         assert_eq!(output["second"], 2);
         assert!(output["twice"].as_str().unwrap().contains("still open"));
-        let none = serde_json::json!({ "routes": 0, "scenarios": 0, "clocks": 0, "droppedTimers": 0, "dialogs": 0 });
+        let none = serde_json::json!({ "routes": 0, "scenarios": 0, "clocks": 0, "droppedTimers": 0, "dialogs": 0, "environments": 0 });
         assert_eq!(output["swept"], none);
         assert!(output["again"].as_str().unwrap().contains("is not open"));
         assert_eq!(output["revoked"], none);
@@ -1300,6 +1300,63 @@ mod tests {
                 .unwrap()
                 .contains("revoked: abandoned")
         );
+    }
+
+    #[test]
+    fn an_attempt_end_clears_the_page_environment_it_pinned() {
+        use crate::view_env::tests::{DARK, pin, sent};
+        let runtime = AutomationRuntime::new().expect("automation runtime");
+        let source = r#"
+(async () => {
+  const host = globalThis.__LINGXIA_AUTOMATION_HOST__;
+  const attempt = host.beginAttempt();
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  return await host.endAttempt(attempt);
+})()
+"#;
+        let started = start(&runtime, source, 5_000);
+        let page = pin(&started.run_id, Some(1), "env-manager-attempt");
+        let response = wait_for_terminal(&runtime, &started.run_id);
+        let swept = response.result.expect("result").output.expect("output");
+        assert_eq!(swept["environments"], 1, "{swept}");
+        assert_eq!(sent(&page), vec![Some(DARK), None]);
+    }
+
+    #[test]
+    fn an_aborted_run_clears_the_page_environments_it_pinned() {
+        use crate::view_env::tests::{pin, wait_cleared};
+        let runtime = AutomationRuntime::new().expect("automation runtime");
+        let started = start(&runtime, SLOW_PROGRAM, 30_000);
+        let page = pin(&started.run_id, None, "env-manager-abort");
+        runtime
+            .cancel(AutomationCancelArgs {
+                run_id: started.run_id.clone(),
+                reason: Some("aborted by test".to_string()),
+            })
+            .expect("cancel run");
+        assert_eq!(
+            wait_for_terminal(&runtime, &started.run_id).state,
+            AutomationRunState::Cancelled
+        );
+        wait_cleared(&page);
+    }
+
+    #[test]
+    fn a_lost_controller_clears_the_page_environments_its_run_pinned() {
+        use crate::view_env::tests::{DARK, pin, sent, wait_cleared};
+        let runtime =
+            AutomationRuntime::with_controller_lease(Duration::from_millis(500)).expect("runtime");
+        let started = start(&runtime, SLOW_PROGRAM, 30_000);
+        let page = pin(&started.run_id, Some(3), "env-manager-lost");
+        assert_eq!(sent(&page), vec![Some(DARK)]);
+        std::thread::sleep(Duration::from_millis(1_500));
+        let error = poll_once(&runtime, &started.run_id)
+            .result
+            .expect("terminal result")
+            .error
+            .expect("lease error");
+        assert_eq!(error.name, "ControllerLost");
+        wait_cleared(&page);
     }
 
     #[test]

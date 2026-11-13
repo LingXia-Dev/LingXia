@@ -64,6 +64,7 @@ import type {
   NavOptions,
   NavWaitOptions,
   TestView,
+  ViewEnvironment,
   ViewSettledOptions,
   WaitForOptions,
 } from "./types.js";
@@ -1405,6 +1406,17 @@ export class LiveFixture implements Fixture {
           this.readRetrying(() => (bound ? page().screenshot(target) : page().screenshot())));
       },
       settled: (options?: ViewSettledOptions) => this.viewSettled(page, target, options),
+      environment: (pin: ViewEnvironment | null) => this.act("page.environment", summarise(pin), async () => {
+        if (pin !== null && (typeof pin !== "object"
+          || (pin.theme !== undefined && pin.theme !== null && pin.theme !== "light" && pin.theme !== "dark")
+          || (pin.still !== undefined && typeof pin.still !== "boolean"))) {
+          throw new TypeError("view.environment() takes { theme?: 'light' | 'dark' | null, still?: boolean } or null");
+        }
+        // The host binding's fields are optional but not nullable: the device theme is an absent one.
+        const options = pin === null ? { clear: true as const }
+          : { ...(pin.theme ? { theme: pin.theme } : {}), still: pin.still ?? false };
+        await page().environment({ ...options, ...target });
+      }),
       scroll: (options) => {
         if (options && "page" in options) {
           throw new TypeError("view.scroll() takes no page option: bind another page with t.app.page({ name }) and use its view");

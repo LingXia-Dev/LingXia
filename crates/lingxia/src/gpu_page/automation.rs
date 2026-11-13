@@ -2,7 +2,7 @@
 //! which answers on its UI thread after the presented frame.
 use super::NativePage;
 use base64::Engine;
-use lingxia_automation::gpu::{GpuAction, GpuFuture, GpuPageAutomation};
+use lingxia_automation::gpu::{GpuAction, GpuFuture, GpuPageAutomation, TestEnvironment};
 use serde_json::{Value, json};
 use std::sync::Weak;
 use tokio::sync::oneshot;
@@ -131,6 +131,21 @@ impl GpuPageAutomation for GpuAutomation {
 
     fn hud(&self, on: bool) -> GpuFuture<Value> {
         self.request(json!({"op": "hud", "on": on}))
+    }
+
+    fn environment(&self, pin: Option<TestEnvironment>) -> GpuFuture<Value> {
+        self.request(match pin {
+            Some(pin) => json!({
+                "op": "environment",
+                "theme": pin.dark.map(|dark| if dark { "dark" } else { "light" }),
+                "still": pin.still,
+            }),
+            None => json!({"op": "environment", "clear": true}),
+        })
+    }
+
+    fn environment_facts(&self) -> GpuFuture<Value> {
+        self.request(json!({"op": "environment", "read": true}))
     }
 
     fn screenshot(&self) -> GpuFuture<Vec<u8>> {

@@ -287,6 +287,7 @@ const PAGE_DRIVER_API = [
   'action',
   'click',
   'dblclick',
+  'environment',
   'eval',
   'fill',
   'gesture',

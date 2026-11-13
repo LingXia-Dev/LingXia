@@ -324,6 +324,7 @@ impl RunShared {
         crate::network::clear_run(&self.run_id);
         crate::clock::clear_run(&self.run_id);
         crate::dialogs::clear_run(&self.run_id);
+        crate::view_env::clear_run(&self.run_id);
         if !self.companion_owner_touched.load(Ordering::SeqCst) {
             self.profile_finish().run(Ok(()));
             return true;

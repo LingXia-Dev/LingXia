@@ -659,6 +659,15 @@ export interface Screenshot {
   height: number;
 }
 
+/** `page.environment()`: the pin in force and what a visual baseline records but a test cannot set. */
+export interface PageTestEnvironment {
+  theme: "light" | "dark" | null;
+  still: boolean;
+  /** The platform's text-size curve, `[authored, rendered]` rows; `null` at the default size. */
+  textScale: Array<[number, number]> | null;
+  displayLanguage: string | null;
+}
+
 /** Element-level automation of the selected lxapp's page WebViews. */
 export interface PageDriver {
   /** Evaluate in the page WebView. T describes the expected JSON result; it is not runtime validation. */
@@ -702,6 +711,12 @@ export interface PageDriver {
   uiFrame(options?: PageFrameOptions): Promise<PageUiFrame>;
   /** Draw the renderer's frame-statistics HUD over a GPU page, or stop. */
   hud(options: PageTarget & { on: boolean }): Promise<{ hud: boolean }>;
+  /**
+   * Pin a GPU page's theme and still its motion (reduced motion on, caret steady)
+   * for this test run, or `clear`; device settings are untouched. The attempt's
+   * end and the run's end clear it. Only inside a host automation run, except `{ read: true }`.
+   */
+  environment(options: PageTarget & ({ theme?: "light" | "dark"; still?: boolean } | { clear: true } | { read: true })): Promise<PageTestEnvironment>;
   /** App-window pointer input at page coordinates (`lxdev lxapp page pointer`). */
   readonly pointer: PagePointer;
   /** App-window keyboard input (`lxdev lxapp page key`). */

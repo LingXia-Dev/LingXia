@@ -56,6 +56,7 @@ pub(crate) fn init_automation_context(
     );
     crate::clock::attach_run_scope(ctx, shared.run_id.clone(), admission(shared), live(shared));
     crate::dialogs::attach_run_scope(ctx, shared.run_id.clone(), admission(shared), live(shared));
+    crate::view_env::attach_run_scope(ctx, shared.run_id.clone(), admission(shared));
     if let Some(profile) = shared.profile() {
         crate::profile::attach_run_scope(
             ctx,
@@ -299,6 +300,8 @@ struct Reclaimed {
     dropped_timers: f64,
     /// Dialog watches the attempt left open.
     dialogs: f64,
+    /// GPU pages whose environment the attempt pinned.
+    environments: f64,
 }
 
 fn attempt_error(message: impl Into<String>) -> RongJSError {
@@ -329,6 +332,7 @@ async fn reclaim(
         Err(err) => failed.push(err),
     }
     reclaimed.dialogs = crate::dialogs::reclaim_attempt(run_id, attempt) as f64;
+    reclaimed.environments = crate::view_env::reclaim_attempt(run_id, attempt).await as f64;
     if failed.is_empty() {
         Ok(reclaimed)
     } else {

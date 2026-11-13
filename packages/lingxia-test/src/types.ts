@@ -449,6 +449,12 @@ export interface ViewSettledOptions {
   timeout?: number;
 }
 
+/** `view.environment()`: a spec's override of a GPU page's look. */
+export interface ViewEnvironment {
+  theme?: "light" | "dark" | null;
+  still?: boolean;
+}
+
 export interface TestView {
   testId(id: string): Locator;
   css(selector: string): Locator;
@@ -472,6 +478,12 @@ export interface TestView {
    * never settles, so this rejects at `timeout`.
    */
   settled(options?: ViewSettledOptions): Promise<void>;
+  /**
+   * Show the GPU page in `theme` (`null`: the device's) and, with `still`, with
+   * reduced motion and a steady caret, for this spec only; `null` clears it.
+   * Device and app settings are untouched; the spec's end clears it.
+   */
+  environment(pin: ViewEnvironment | null): Promise<void>;
   /** Scroll the page DOM by a pixel delta (nearest scrollable container). */
   scroll(options?: Omit<PageScrollOptions, "page">): Promise<void>;
   /** A real swipe at page CSS pixels; see [Gestures]. */

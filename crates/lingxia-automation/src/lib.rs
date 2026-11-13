@@ -50,6 +50,8 @@ mod resolve;
 pub mod runtime;
 mod shell;
 mod terminal;
+#[cfg(feature = "runtime")]
+mod view_env;
 
 use lxapp::host::AppResourceGrant;
 use lxapp::{LxApp, lx};

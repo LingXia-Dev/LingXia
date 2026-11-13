@@ -118,6 +118,8 @@ export function createWorld(options = {}) {
   const evalCalls = new Map();
   let instances = 0;
   let hudOn = false;
+  /** What `page.environment` was sent, in order. */
+  const environments = [];
   // Every landing is a new page instance, as navigation is on a real host.
   const landedPage = (name) =>
     ({ name, path: `pages/${name}/index`, instanceId: `p${++instances}`, current: true, inStack: true, ready: true, webviewAttached: true });
@@ -330,6 +332,12 @@ export function createWorld(options = {}) {
       hudOn = on;
       return { hud: on };
     },
+    async environment(options) {
+      pageEntry("environment", options.page);
+      if (options.read) return { theme: null, still: false, textScale: [[0, 0], [17, 20]], displayLanguage: "en-US" };
+      environments.push(options);
+      return options.clear ? { theme: null, still: false } : { theme: options.theme ?? null, still: options.still };
+    },
     async screenshot(...args) {
       // The host binding's options are optional but not nullable.
       if (args.length > 0 && args[0] === undefined) throw new TypeError("Not JS Object");
@@ -511,6 +519,7 @@ export function createWorld(options = {}) {
     elements,
     app,
     get hud() { return hudOn; },
+    environments,
     /** The app's Logic opening dialogs (`logic`), and whether the runner watches them. */
     dialogs,
     navCalls,

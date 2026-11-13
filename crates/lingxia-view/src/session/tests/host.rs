@@ -18,6 +18,9 @@ use std::sync::{Arc, Mutex};
 use std::thread::ThreadId;
 use std::time::Duration;
 
+#[path = "test_environment.rs"]
+mod test_environment;
+
 #[derive(Default)]
 struct Log {
     prepared: Vec<ThreadId>,

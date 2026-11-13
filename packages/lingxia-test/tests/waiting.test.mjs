@@ -1007,3 +1007,21 @@ test("an app whose View predates scoped queries says so instead of a raw selecto
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
 });
+
+test("view.environment pins a GPU page's theme and stillness or clears it", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+
+  spec("environment", async (t) => {
+    await t.app.view.environment({ theme: "dark", still: true });
+    await t.app.view.environment({ still: true });
+    await t.app.view.environment(null);
+    await assert.rejects(t.app.view.environment({ theme: "sepia" }), TypeError);
+    await assert.rejects(t.app.view.environment(), TypeError);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
+  const sent = world.environments.map(({ page, ...rest }) => rest);
+  assert.deepEqual(sent, [{ theme: "dark", still: true }, { still: true }, { clear: true }]);
+});

@@ -279,10 +279,64 @@ struct JSFrameOptions {
     window_ms: Option<u64>,
 }
 
+#[derive(FromJSObject, Default)]
+struct JSEnvironmentOptions {
+    page: Option<String>,
+    theme: Option<String>,
+    still: Option<bool>,
+    clear: Option<bool>,
+    read: Option<bool>,
+}
+
 #[derive(FromJSObject)]
 struct JSHudOptions {
     page: Option<String>,
     on: bool,
+}
+
+#[cfg(feature = "runtime")]
+async fn set_environment(
+    ctx: &JSContext,
+    app: &Arc<LxApp>,
+    options: &JSEnvironmentOptions,
+) -> Result<serde_json::Value, String> {
+    let pin = if options.clear == Some(true) {
+        None
+    } else {
+        Some(crate::view_env::parse_pin(
+            options.theme.as_deref(),
+            options.still,
+        )?)
+    };
+    let (instance, page) = auto::page_gpu(app, options.page.as_deref())?;
+    crate::view_env::set_in_run(ctx, &instance, page, pin).await
+}
+
+#[cfg(feature = "runtime")]
+async fn read_environment(
+    page: Arc<dyn lxapp::automation::gpu::GpuPageAutomation>,
+) -> Result<serde_json::Value, String> {
+    crate::view_env::read(page).await
+}
+
+#[cfg(not(feature = "runtime"))]
+async fn read_environment(
+    page: Arc<dyn lxapp::automation::gpu::GpuPageAutomation>,
+) -> Result<serde_json::Value, String> {
+    page.environment_facts().await
+}
+
+#[cfg(not(feature = "runtime"))]
+async fn set_environment(
+    _: &JSContext,
+    _: &Arc<LxApp>,
+    _: &JSEnvironmentOptions,
+) -> Result<serde_json::Value, String> {
+    Err(
+        "E_UNSUPPORTED: a page's environment is pinned only inside a host automation run \
+         (lxdev test); this host is built without it"
+            .into(),
+    )
 }
 
 /// The fields `waitFor` reads off the shared query payload.
@@ -762,6 +816,30 @@ impl JSPageDriver {
         let value = auto::page_hud(&app, options.page.as_deref(), options.on)
             .await
             .map_err(fail(&app, options.page.as_deref()))?;
+        json_to_js(&ctx, &value)
+    }
+
+    /// Pin a GPU page's theme and still its motion for this test run, or
+    /// clear it (`{ clear: true }`); the attempt's end clears it too.
+    /// `{ read: true }` answers the pin with the page's text scale and language.
+    #[js_method]
+    async fn environment(
+        &self,
+        ctx: JSContext,
+        options: JSEnvironmentOptions,
+    ) -> JSResult<JSValue> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
+        let page_name = options.page.as_deref();
+        let value = if options.read == Some(true) {
+            // Reading changes nothing, so it needs no run.
+            match auto::page_gpu(&app, page_name) {
+                Ok((_, page)) => read_environment(page).await,
+                Err(error) => Err(error),
+            }
+        } else {
+            set_environment(&ctx, &app, &options).await
+        }
+        .map_err(fail(&app, page_name))?;
         json_to_js(&ctx, &value)
     }
 

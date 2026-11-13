@@ -760,6 +760,16 @@ pub async fn page_hud(
     }
 }
 
+/// The GPU page `page_name` resolves to, with its page instance id; for a
+/// test-run override that must outlive the call.
+pub fn page_gpu(
+    app: &Arc<LxApp>,
+    page_name: Option<&str>,
+) -> Result<(String, Arc<dyn gpu::GpuPageAutomation>), String> {
+    gpu::instance_backend(app, page_name)?
+        .ok_or_else(|| "E_UNSUPPORTED: a test environment is for GPU pages".into())
+}
+
 /// Roles and names a WebView page exposes, nested like the GPU projection.
 const DOM_TREE_SCRIPT: &str = r#"(() => {
   const roles = { A: "link", BUTTON: "button", TEXTAREA: "textbox", IMG: "img", UL: "list", OL: "list", LI: "listitem", DIALOG: "dialog",

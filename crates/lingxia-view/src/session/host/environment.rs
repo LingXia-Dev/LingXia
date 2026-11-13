@@ -11,6 +11,16 @@ pub(super) struct HostEnvironment {
     theme: Option<(u64, [serde_json::Value; 4])>,
     /// The View's last run read a host-context key, so a surface push must rebuild it.
     ignores_host_context: bool,
+    /// A test run's override (`view.environment`); only automation sets it.
+    test: Option<TestOverride>,
+}
+
+/// What a test run pins for a page: its theme, and stillness (no motion, a steady caret).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct TestOverride {
+    /// `Some(true)` dark, `Some(false)` light, `None` as measured.
+    pub(super) dark: Option<bool>,
+    pub(super) still: bool,
 }
 
 /// Environment keys a surface push sets that only the View reads.
@@ -106,6 +116,19 @@ impl HostEnvironment {
         })
     }
 
+    /// Replace the test override; true when it changed.
+    pub(super) fn set_test(&mut self, test: Option<TestOverride>) -> bool {
+        std::mem::replace(&mut self.test, test) != test
+    }
+
+    pub(super) fn test(&self) -> Option<TestOverride> {
+        self.test
+    }
+
+    pub(super) fn still(&self) -> bool {
+        self.test.is_some_and(|test| test.still)
+    }
+
     pub(super) fn set_reads_host_context(&mut self, reads: bool) {
         self.ignores_host_context = !reads;
     }
@@ -160,6 +183,20 @@ impl HostEnvironment {
 
     /// Overlays pushed values on the measured `env`; `canDock` is false until a surface push.
     pub(super) fn apply(&self, env: &mut serde_json::Value) {
+        if let Some(test) = self.test {
+            if let Some(dark) = test.dark
+                && (env["theme"] == "dark") != dark
+            {
+                env["theme"] = if dark { "dark" } else { "light" }.into();
+                // A pushed palette was resolved for the measured theme.
+                if let Some(object) = env.as_object_mut() {
+                    object.remove("palette");
+                }
+            }
+            if test.still {
+                env["reducedMotion"] = true.into();
+            }
+        }
         if let Some((_, language, content)) = &self.language {
             env["displayLanguage"] = language.as_str().into();
             env["contentLanguage"] = content.as_deref().unwrap_or(language).into();
@@ -220,6 +257,49 @@ fn palettes(pack: &lingxia_theme::Pack, revision: u64) -> Result<[serde_json::Va
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_test_override_pins_the_theme_and_stills_motion_until_cleared() {
+        let mut host = HostEnvironment::default();
+        let measured = json!({"theme": "light", "reducedMotion": false, "palette": {"revision": 1, "colors": []}});
+        let applied = |host: &HostEnvironment| {
+            let mut env = measured.clone();
+            host.apply(&mut env);
+            env
+        };
+        assert_eq!(applied(&host)["palette"]["revision"], 1);
+        let dark = TestOverride {
+            dark: Some(true),
+            still: true,
+        };
+        assert!(host.set_test(Some(dark)));
+        assert!(!host.set_test(Some(dark)));
+        let env = applied(&host);
+        assert_eq!(
+            (env["theme"].as_str(), env["reducedMotion"].as_bool()),
+            (Some("dark"), Some(true))
+        );
+        // The platform's palette was for light; the dark look resolves its own.
+        assert!(env.get("palette").is_none());
+        assert!(host.still());
+        // Pinning the measured theme keeps its palette.
+        host.set_test(Some(TestOverride {
+            dark: Some(false),
+            still: false,
+        }));
+        let env = applied(&host);
+        assert_eq!(
+            (
+                env["theme"].as_str(),
+                env["reducedMotion"].as_bool(),
+                env["palette"]["revision"].as_i64()
+            ),
+            (Some("light"), Some(false), Some(1))
+        );
+        assert!(host.set_test(None));
+        assert_eq!(applied(&host)["theme"], "light");
+        assert!(!host.still());
+    }
 
     #[test]
     fn pushes_overlay_the_measured_environment_by_revision() {

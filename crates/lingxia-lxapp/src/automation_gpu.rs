@@ -81,6 +81,28 @@ pub trait GpuPageAutomation: Send + Sync {
     fn hud(&self, _on: bool) -> GpuFuture<Value> {
         Box::pin(async { Err("E_UNSUPPORTED: this GPU page binding has no HUD".to_owned()) })
     }
+    /// Pin the page's theme and still its motion for a test, or clear (`None`).
+    /// Answers as [`Self::environment_facts`].
+    fn environment(&self, _pin: Option<TestEnvironment>) -> GpuFuture<Value> {
+        Box::pin(async {
+            Err("E_UNSUPPORTED: this GPU page binding has no test environment".to_owned())
+        })
+    }
+    /// The pin in force with the presented frame's `textScale` and `displayLanguage`.
+    fn environment_facts(&self) -> GpuFuture<Value> {
+        Box::pin(async {
+            Err("E_UNSUPPORTED: this GPU page binding has no test environment".to_owned())
+        })
+    }
+}
+
+/// A test run's override of a GPU page's environment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TestEnvironment {
+    /// `Some(true)` dark, `Some(false)` light, `None` the device's theme.
+    pub dark: Option<bool>,
+    /// Reduced motion on and the caret held steady.
+    pub still: bool,
 }
 
 type Registry = Mutex<HashMap<String, Weak<dyn GpuPageAutomation>>>;
@@ -103,18 +125,24 @@ pub(super) fn backend(
     app: &Arc<LxApp>,
     page: Option<&str>,
 ) -> Result<Option<Arc<dyn GpuPageAutomation>>, String> {
+    Ok(instance_backend(app, page)?.map(|(_, page)| page))
+}
+
+/// [`backend`] with the page instance id it is registered under.
+pub(super) fn instance_backend(
+    app: &Arc<LxApp>,
+    page: Option<&str>,
+) -> Result<Option<(String, Arc<dyn GpuPageAutomation>)>, String> {
     let Ok((instance, _)) = resolve_page(app, page) else {
         return Ok(None);
     };
     if instance.renderer() != crate::PageRenderer::Gpu {
         return Ok(None);
     }
+    let id = instance.instance_id_string();
     let pages = registry().lock().unwrap_or_else(|e| e.into_inner());
-    match pages
-        .get(&instance.instance_id_string())
-        .and_then(Weak::upgrade)
-    {
-        Some(page) => Ok(Some(page)),
+    match pages.get(&id).and_then(Weak::upgrade) {
+        Some(page) => Ok(Some((id, page))),
         None => Err("E_PAGE_NOT_READY: the GPU page has not presented".into()),
     }
 }
