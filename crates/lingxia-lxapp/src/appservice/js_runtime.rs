@@ -1745,12 +1745,11 @@ mod worker_assignment_tests {
                 .unwrap();
                 let done = || ctx.global().get::<_, bool>("__done").unwrap();
 
+                // An engine that drains when the outermost native call returns
+                // may already have run it; the pump must cover the one that
+                // does not.
                 let resolve = ctx.global().get::<_, JSFunc>("__resolve").unwrap();
                 resolve.call::<_, ()>(None, ()).unwrap();
-                assert!(
-                    !done(),
-                    "a native call queues the continuation without running it"
-                );
 
                 let (tx, _rx) = tokio::sync::oneshot::channel();
                 let message = super::ServiceMessage::Eval {
