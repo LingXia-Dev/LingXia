@@ -32,7 +32,7 @@ export const switchRecipe = {
   },
   /** Centred against the track; the primitive lays it out beside the track. */
   text: {
-    base: 'min-w-0 gap-0.5 self-center',
+    base: 'min-w-0 gap-0.5 self-stretch my-auto',
   },
   label: {
     base: 'text-body text-text',
