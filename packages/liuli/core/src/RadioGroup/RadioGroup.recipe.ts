@@ -23,7 +23,7 @@ export const radioGroupRecipe = {
     variant: {
       /** A row: keyboard focus is a fill, with room past the circle and text. */
       list: '-mx-2 px-2 py-1.5 rounded-control transition-colors duration-150 ease-out focus-visible:bg-text/7',
-      card: 'p-4 rounded-container border bg-surface transition-colors duration-150 ease-out hover:bg-text/3 active:bg-text/6 focus-visible:ring-2 focus-visible:ring-focus',
+      card: 'p-4 rounded-container border bg-surface transition-colors duration-150 ease-out hover:bg-text/3 active:bg-text/6 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     } satisfies Record<RadioGroupVariant, string>,
     /** A card's edge carries the choice: the accent ring, beside the filled circle. */
     card: {

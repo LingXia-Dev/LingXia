@@ -13,7 +13,7 @@ export const tooltipParts = {
  */
 export const tooltipRecipe = {
   trigger: {
-    base: 'items-center justify-center rounded-full text-muted transition-colors duration-150 ease-out hover:bg-text/6 active:bg-text/10 focus-visible:ring-2 focus-visible:ring-focus',
+    base: 'items-center justify-center rounded-full text-muted transition-colors duration-150 ease-out hover:bg-text/6 active:bg-text/10 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     /** The glyph stays small; the press area does not. */
     size: { sm: 'size-8', md: 'size-10' } satisfies Record<TooltipSize, string>,
   },

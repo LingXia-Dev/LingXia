@@ -25,7 +25,7 @@ export const segmentedControlRecipe = {
     base: 'absolute start-0 inset-y-0 rounded-segment border border-text/6 bg-surface-raised shadow-contact transition-transform duration-200 ease-spring',
   },
   segment: {
-    base: 'grow shrink basis-0 min-w-0 flex-row items-center justify-center px-1 rounded-segment transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-40',
+    base: 'grow shrink basis-0 min-w-0 flex-row items-center justify-center px-1 rounded-segment transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:opacity-40',
     /** With the root's padding, the row is control-sm or control-md tall, level with a Button or field of that size. */
     size: { sm: 'h-7', md: 'h-9' } satisfies Record<SegmentedControlSize, string>,
   },

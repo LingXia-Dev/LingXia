@@ -35,7 +35,7 @@ export const bottomSheetRecipe = {
     base: 'grow basis-0 pt-1 text-title font-semibold tracking-tight text-text',
   },
   close: {
-    base: 'size-8 -me-1.5 items-center justify-center rounded-full text-muted hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus',
+    base: 'size-8 -me-1.5 items-center justify-center rounded-full text-muted hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
   },
   closeIcon: {
     base: 'size-5',

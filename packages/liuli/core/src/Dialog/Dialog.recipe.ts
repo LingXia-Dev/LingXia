@@ -27,7 +27,7 @@ export const dialogRecipe = {
     base: 'grow basis-0 text-title font-semibold tracking-tight text-text',
   },
   close: {
-    base: 'size-8 -me-1.5 -mt-1 items-center justify-center rounded-full text-muted hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus',
+    base: 'size-8 -me-1.5 -mt-1 items-center justify-center rounded-full text-muted hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
   },
   closeIcon: {
     base: 'size-5',

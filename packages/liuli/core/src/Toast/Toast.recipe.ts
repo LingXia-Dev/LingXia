@@ -37,7 +37,7 @@ export const toastRecipe = {
     base: 'shrink-0',
   },
   dismiss: {
-    base: 'size-9 shrink-0 items-center justify-center rounded-full text-muted hover:bg-text/6 active:bg-text/10 focus-visible:ring-2 focus-visible:ring-focus',
+    base: 'size-9 shrink-0 items-center justify-center rounded-full text-muted hover:bg-text/6 active:bg-text/10 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
   },
   dismissIcon: {
     base: 'size-4',
