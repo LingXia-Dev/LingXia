@@ -5,10 +5,10 @@
 A surface that groups related content, or one pressable choice. Status: preview.
 
 ```ts
-import { Card, ClickableCard } from '@liulidesign/core/Card';
+import { Card, ClickableCard, ClickableCardGroup } from '@liulidesign/core/Card';
 ```
 
-Card groups a heading, text and actions that belong together. ClickableCard, from the same import, makes the whole card one button, for opening an item or choosing one of a few options; it is named by a short `label` and must not contain other controls.
+Card groups a heading, text and actions that belong together. ClickableCard, from the same import, makes the whole card one button, for opening an item or choosing one of a few options; it is named by a short `label` and must not contain other controls. ClickableCardGroup makes cards with a `value` one radio group.
 
 ## Examples
 
@@ -62,24 +62,23 @@ export function WithActions() {
 
 ```tsx
 import { useLocal } from '@lingxia/view';
-import { ClickableCard } from '@liulidesign/core/Card';
+import { ClickableCard, ClickableCardGroup } from '@liulidesign/core/Card';
 
 const plans = [
   { id: 'monthly', name: 'Monthly', price: '€4 a month' },
   { id: 'yearly', name: 'Yearly', price: '€40 a year' },
 ] as const;
 
-/** Choosing one of several: the chosen card is reported as selected. */
+/** Choosing one of several: the cards are a radio group, and the chosen one is checked. */
 export function Choice() {
-  const plan = useLocal('plan', 'monthly');
+  const plan = useLocal<string | null>('plan', 'monthly');
   return (
-    <view className="flex-row gap-3">
+    <ClickableCardGroup label="Plan" bind={plan} className="flex-row" data-testid="plans">
       {plans.map(item => (
         <ClickableCard
           key={item.id}
+          value={item.id}
           label={`${item.name}, ${item.price}`}
-          isSelected={plan.value === item.id}
-          onClick={() => plan.set(item.id)}
           className="grow basis-0"
           data-testid={`plan-${item.id}`}
         >
@@ -87,7 +86,7 @@ export function Choice() {
           <text className="text-footnote text-muted">{item.price}</text>
         </ClickableCard>
       ))}
-    </view>
+    </ClickableCardGroup>
   );
 }
 ```
@@ -106,14 +105,28 @@ export function Choice() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `label` (required) | `string` |  | The accessible name: a short summary of the card, since its content is not read separately. |
-| `onClick` (required) | `() => void` |  |  |
-| `isSelected` | `boolean` | `false` | Marks the card as the chosen one among several; reported as selected. |
-| `isDisabled` | `boolean` | `false` |  |
 | `children` (required) | `Child` |  |  |
 | `variant` | `CardVariant` | `'outlined'` | `outlined` sits on the page, `raised` floats above it, `sunken` groups content inside another surface. |
 | `padding` | `CardPadding` | `'md'` | The inset and the gap between children. |
 | `className` | `string` |  |  |
+| `data-testid` | `string` |  |  |
+| `label` (required) | `string` |  | The accessible name: a short summary of the card, since its content is not read separately. |
+| `isDisabled` | `boolean` | `false` |  |
+| `onClick` | `(() => void) \| (() => void)` |  | Runs after the group's choice. |
+| `isSelected` | `boolean` | `false` | Marks the card as the chosen one among several; reported as selected. |
+| `value` | `string` |  | Inside a `ClickableCardGroup`: what the group's value carries when this card is chosen. |
+
+## ClickableCardGroup props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `bind` | `Local<string \| null>` |  | A View-local cell the group reads and writes; use it or `value` with `onChange`. |
+| `value` | `string \| null` |  | The chosen card's value; `null` while none is chosen. |
+| `onChange` | `((value: string) => void)` |  | Runs with the card chosen by a tap or by arrowing onto it. |
+| `label` (required) | `string` |  | Names the group for assistive input. |
+| `children` (required) | `Child` |  | ClickableCards, each with a `value`. |
+| `isDisabled` | `boolean` | `false` |  |
+| `className` | `string` |  | Lays the cards out: a row or a column, and the gap. |
 | `data-testid` | `string` |  |  |
 
 ## Anatomy
@@ -121,16 +134,19 @@ export function Choice() {
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
 | root | `<view>` | yes | A `view` for Card, a `button` for ClickableCard; fill, border, radius and inset. |
+| group | `<view>` | no | ClickableCardGroup's radio group: one Tab stop, named by its label. |
 
 ## Accessibility
 
 - Pattern: button.
 - Name: label.
 - Description: none.
-- States: selected (from isSelected (ClickableCard)); disabled (from isDisabled (ClickableCard)).
+- States: selected (from isSelected (ClickableCard)); checked (from the group's value or bind (ClickableCard in a ClickableCardGroup)); disabled (from isDisabled (ClickableCard)).
+- Up / Left, Down / Right: In a ClickableCardGroup: the previous or next card, chosen on arrival..
 - Card is not a control; its content is read in order. The button pattern applies to ClickableCard.
 - ClickableCard is read as its `label` only, so the label summarises what the card shows.
 - Selection is a thicker accent border as well as a colour, so it does not rest on colour alone.
+- In a ClickableCardGroup each card is a radio: checked, not selected, and the group takes one Tab stop.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
@@ -142,6 +158,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Use a plain Card with Buttons inside when a card has actions.
 - Do: Give a ClickableCard a label that a listener can choose by: "Yearly, 40 a year".
+- Do: Put cards that choose one value in a ClickableCardGroup, not side by side with isSelected.
 - Do: Keep the card variant the same for cards that sit side by side.
 - Don't: Put a Button, a menu or an input inside a ClickableCard; the View refuses a control inside a button.
 - Don't: Nest a raised card inside another raised card.

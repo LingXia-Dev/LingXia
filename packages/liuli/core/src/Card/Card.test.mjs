@@ -17,17 +17,30 @@ test('WithActions: the buttons inside a plain card stay their own controls', asy
   assert.equal(screen.getByTestId('turn-on').props.accessibilityLabel, 'Turn on');
 });
 
-test('Choice: each card is one button named by its label; pressing one moves the selection', async () => {
+test('Choice: the cards are a radio group named by its label; pressing one checks it', async () => {
   const screen = await renderExample('Card/Card', 'Choice');
   const card = id => screen.getByTestId(`plan-${id}`);
+  const group = screen.getByTestId('plans');
+  assert.equal(group.props.role, 'radiogroup');
+  assert.equal(group.props.accessibilityLabel, 'Plan');
   assert.equal(card('monthly').tag, 'button');
+  assert.equal(card('monthly').props.role, 'radio');
   assert.equal(card('yearly').props.accessibilityLabel, 'Yearly, €40 a year');
-  assert.equal(card('monthly').props.stateSelected, 1);
-  assert.equal(card('yearly').props.stateSelected, undefined);
-  screen.press(card('yearly'));
+  assert.equal(card('monthly').props.stateChecked, 1);
+  assert.equal(card('yearly').props.stateChecked, 0);
   assert.equal(card('monthly').props.stateSelected, undefined);
-  assert.equal(card('yearly').props.stateSelected, 1);
+  screen.press(card('yearly'));
+  assert.equal(card('monthly').props.stateChecked, 0);
+  assert.equal(card('yearly').props.stateChecked, 1);
   assert.equal(card('yearly').props.borderColor, 'accent');
+});
+
+test('ClickableCard: alone, a chosen card is reported as selected, not checked', async () => {
+  const screen = await renderExample('Card/Card', 'StateSelected');
+  const [card] = screen.queryAll(node => node.tag === 'button');
+  assert.equal(card.props.stateSelected, 1);
+  assert.equal(card.props.role, undefined);
+  assert.equal(card.props.stateChecked, undefined);
 });
 
 test('ClickableCard: a control inside is refused by the View', async () => {

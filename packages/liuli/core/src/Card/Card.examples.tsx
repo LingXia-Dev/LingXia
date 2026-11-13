@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Button } from '../Button/Button';
-import { Card, ClickableCard } from './Card';
+import { Card, ClickableCard, ClickableCardGroup } from './Card';
 
 export function Variants() {
   return (
@@ -40,17 +40,16 @@ const plans = [
   { id: 'yearly', name: 'Yearly', price: '€40 a year' },
 ] as const;
 
-/** Choosing one of several: the chosen card is reported as selected. */
+/** Choosing one of several: the cards are a radio group, and the chosen one is checked. */
 export function Choice() {
-  const plan = useLocal('plan', 'monthly');
+  const plan = useLocal<string | null>('plan', 'monthly');
   return (
-    <view className="flex-row gap-3">
+    <ClickableCardGroup label="Plan" bind={plan} className="flex-row" data-testid="plans">
       {plans.map(item => (
         <ClickableCard
           key={item.id}
+          value={item.id}
           label={`${item.name}, ${item.price}`}
-          isSelected={plan.value === item.id}
-          onClick={() => plan.set(item.id)}
           className="grow basis-0"
           data-testid={`plan-${item.id}`}
         >
@@ -58,7 +57,7 @@ export function Choice() {
           <text className="text-footnote text-muted">{item.price}</text>
         </ClickableCard>
       ))}
-    </view>
+    </ClickableCardGroup>
   );
 }
 

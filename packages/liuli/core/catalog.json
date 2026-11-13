@@ -906,12 +906,13 @@
       "import": "@liulidesign/core/Card",
       "exports": [
         "Card",
-        "ClickableCard"
+        "ClickableCard",
+        "ClickableCardGroup"
       ],
       "category": "content",
       "status": "preview",
       "summary": "A surface that groups related content, or one pressable choice",
-      "description": "Card groups a heading, text and actions that belong together. ClickableCard, from the same import, makes the whole card one button, for opening an item or choosing one of a few options; it is named by a short `label` and must not contain other controls.",
+      "description": "Card groups a heading, text and actions that belong together. ClickableCard, from the same import, makes the whole card one button, for opening an item or choosing one of a few options; it is named by a short `label` and must not contain other controls. ClickableCardGroup makes cards with a `value` one radio group.",
       "keywords": [
         "card",
         "panel",
@@ -960,32 +961,6 @@
       "otherProps": {
         "ClickableCard": [
           {
-            "name": "label",
-            "type": "string",
-            "required": true,
-            "description": "The accessible name: a short summary of the card, since its content is not read separately."
-          },
-          {
-            "name": "onClick",
-            "type": "() => void",
-            "required": true,
-            "description": ""
-          },
-          {
-            "name": "isSelected",
-            "type": "boolean",
-            "required": false,
-            "description": "Marks the card as the chosen one among several; reported as selected.",
-            "default": "false"
-          },
-          {
-            "name": "isDisabled",
-            "type": "boolean",
-            "required": false,
-            "description": "",
-            "default": "false"
-          },
-          {
             "name": "children",
             "type": "Child",
             "required": true,
@@ -1016,11 +991,95 @@
             "type": "string",
             "required": false,
             "description": ""
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "The accessible name: a short summary of the card, since its content is not read separately."
+          },
+          {
+            "name": "isDisabled",
+            "type": "boolean",
+            "required": false,
+            "description": "",
+            "default": "false"
+          },
+          {
+            "name": "onClick",
+            "type": "(() => void) | (() => void)",
+            "required": false,
+            "description": "Runs after the group's choice."
+          },
+          {
+            "name": "isSelected",
+            "type": "boolean",
+            "required": false,
+            "description": "Marks the card as the chosen one among several; reported as selected.",
+            "default": "false"
+          },
+          {
+            "name": "value",
+            "type": "string",
+            "required": false,
+            "description": "Inside a `ClickableCardGroup`: what the group's value carries when this card is chosen."
+          }
+        ],
+        "ClickableCardGroup": [
+          {
+            "name": "bind",
+            "type": "Local<string | null>",
+            "required": false,
+            "description": "A View-local cell the group reads and writes; use it or `value` with `onChange`."
+          },
+          {
+            "name": "value",
+            "type": "string | null",
+            "required": false,
+            "description": "The chosen card's value; `null` while none is chosen."
+          },
+          {
+            "name": "onChange",
+            "type": "((value: string) => void)",
+            "required": false,
+            "description": "Runs with the card chosen by a tap or by arrowing onto it."
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "Names the group for assistive input."
+          },
+          {
+            "name": "children",
+            "type": "Child",
+            "required": true,
+            "description": "ClickableCards, each with a `value`."
+          },
+          {
+            "name": "isDisabled",
+            "type": "boolean",
+            "required": false,
+            "description": "",
+            "default": "false"
+          },
+          {
+            "name": "className",
+            "type": "string",
+            "required": false,
+            "description": "Lays the cards out: a row or a column, and the gap."
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": ""
           }
         ]
       },
       "parts": {
-        "root": "view"
+        "root": "view",
+        "group": "view"
       },
       "accessibility": {
         "pattern": "button",
@@ -1032,11 +1091,20 @@
             "from": "isSelected (ClickableCard)"
           },
           {
+            "state": "checked",
+            "from": "the group's value or bind (ClickableCard in a ClickableCardGroup)"
+          },
+          {
             "state": "disabled",
             "from": "isDisabled (ClickableCard)"
           }
         ],
-        "keyboard": [],
+        "keyboard": [
+          {
+            "keys": "Up / Left, Down / Right",
+            "effect": "In a ClickableCardGroup: the previous or next card, chosen on arrival."
+          }
+        ],
         "contrast": [
           {
             "what": "selected border",
@@ -1050,7 +1118,8 @@
         "notes": [
           "Card is not a control; its content is read in order. The button pattern applies to ClickableCard.",
           "ClickableCard is read as its `label` only, so the label summarises what the card shows.",
-          "Selection is a thicker accent border as well as a colour, so it does not rest on colour alone."
+          "Selection is a thicker accent border as well as a colour, so it does not rest on colour alone.",
+          "In a ClickableCardGroup each card is a radio: checked, not selected, and the group takes one Tab stop."
         ]
       },
       "examples": [
@@ -1067,7 +1136,7 @@
         {
           "name": "Choice",
           "title": "Choosing one card of several",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { ClickableCard } from '@liulidesign/core/Card';\n\nconst plans = [\n  { id: 'monthly', name: 'Monthly', price: '€4 a month' },\n  { id: 'yearly', name: 'Yearly', price: '€40 a year' },\n] as const;\n\n/** Choosing one of several: the chosen card is reported as selected. */\nexport function Choice() {\n  const plan = useLocal('plan', 'monthly');\n  return (\n    <view className=\"flex-row gap-3\">\n      {plans.map(item => (\n        <ClickableCard\n          key={item.id}\n          label={`${item.name}, ${item.price}`}\n          isSelected={plan.value === item.id}\n          onClick={() => plan.set(item.id)}\n          className=\"grow basis-0\"\n          data-testid={`plan-${item.id}`}\n        >\n          <text className=\"text-callout font-semibold text-text\">{item.name}</text>\n          <text className=\"text-footnote text-muted\">{item.price}</text>\n        </ClickableCard>\n      ))}\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ClickableCard, ClickableCardGroup } from '@liulidesign/core/Card';\n\nconst plans = [\n  { id: 'monthly', name: 'Monthly', price: '€4 a month' },\n  { id: 'yearly', name: 'Yearly', price: '€40 a year' },\n] as const;\n\n/** Choosing one of several: the cards are a radio group, and the chosen one is checked. */\nexport function Choice() {\n  const plan = useLocal<string | null>('plan', 'monthly');\n  return (\n    <ClickableCardGroup label=\"Plan\" bind={plan} className=\"flex-row\" data-testid=\"plans\">\n      {plans.map(item => (\n        <ClickableCard\n          key={item.id}\n          value={item.id}\n          label={`${item.name}, ${item.price}`}\n          className=\"grow basis-0\"\n          data-testid={`plan-${item.id}`}\n        >\n          <text className=\"text-callout font-semibold text-text\">{item.name}</text>\n          <text className=\"text-footnote text-muted\">{item.price}</text>\n        </ClickableCard>\n      ))}\n    </ClickableCardGroup>\n  );\n}"
         }
       ],
       "gaps": [

@@ -8,13 +8,14 @@ export const doc: ComponentDoc = {
   description:
     'Card groups a heading, text and actions that belong together. ClickableCard, from the same import, makes the whole ' +
     'card one button, for opening an item or choosing one of a few options; it is named by a short `label` and must not ' +
-    'contain other controls.',
+    'contain other controls. ClickableCardGroup makes cards with a `value` one radio group.',
   keywords: ['card', 'panel', 'tile', 'surface', 'container', 'box', 'clickable card', 'option card', 'choice'],
   propsType: 'CardProps',
-  otherPropsTypes: ['ClickableCardProps'],
+  otherPropsTypes: ['ClickableCardProps', 'ClickableCardGroupProps'],
   recipe: { map: 'cardRecipe', parts: 'cardParts' },
   anatomy: [
     { part: 'root', required: true, description: 'A `view` for Card, a `button` for ClickableCard; fill, border, radius and inset.' },
+    { part: 'group', required: false, description: 'ClickableCardGroup\'s radio group: one Tab stop, named by its label.' },
   ],
   accessibility: {
     pattern: 'button',
@@ -22,9 +23,12 @@ export const doc: ComponentDoc = {
     description: [],
     states: [
       { state: 'selected', from: 'isSelected (ClickableCard)' },
+      { state: 'checked', from: 'the group\'s value or bind (ClickableCard in a ClickableCardGroup)' },
       { state: 'disabled', from: 'isDisabled (ClickableCard)' },
     ],
-    keyboard: [],
+    keyboard: [
+      { keys: 'Up / Left, Down / Right', effect: 'In a ClickableCardGroup: the previous or next card, chosen on arrival.' },
+    ],
     contrast: [
       { what: 'selected border', pair: ['accent', 'surface'], minimum: '3:1' },
     ],
@@ -32,12 +36,14 @@ export const doc: ComponentDoc = {
       'Card is not a control; its content is read in order. The button pattern applies to ClickableCard.',
       'ClickableCard is read as its `label` only, so the label summarises what the card shows.',
       'Selection is a thicker accent border as well as a colour, so it does not rest on colour alone.',
+      'In a ClickableCardGroup each card is a radio: checked, not selected, and the group takes one Tab stop.',
     ],
   },
   guidance: {
     do: [
       'Use a plain Card with Buttons inside when a card has actions.',
       'Give a ClickableCard a label that a listener can choose by: "Yearly, 40 a year".',
+      'Put cards that choose one value in a ClickableCardGroup, not side by side with isSelected.',
       'Keep the card variant the same for cards that sit side by side.',
     ],
     dont: [

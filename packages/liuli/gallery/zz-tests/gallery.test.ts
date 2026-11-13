@@ -151,6 +151,18 @@ spec('radio group: a tap chooses; arrows move and choose; the required error cle
   await expect(reason).not.toHaveAttribute('aria-invalid', 'true');
 });
 
+spec('card choice: a tap checks a card; arrows move and choose', { start: { page: 'card' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  const plan = (id: string) => view.testId(`plan-${id}`);
+  await expect(plan('monthly')).toBeChecked();
+  await plan('yearly').click();
+  await expect(plan('yearly')).toBeChecked();
+  await expect(plan('monthly')).not.toBeChecked();
+  await plan('yearly').press('ArrowLeft');
+  await expect(plan('monthly')).toBeChecked();
+  await expect(plan('monthly')).toBeFocused();
+});
+
 spec('select: a choice lands in the box; a required select clears its error', { start: { page: 'select' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const country = view.getByRole('combobox', { name: 'Country' });
