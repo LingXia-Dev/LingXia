@@ -13,7 +13,8 @@ export const tabsParts = {
 
 /**
  * A row of equal-width tabs over one panel. The indicator is one box a tab wide that slides to the
- * chosen tab; reduced motion lands it at once.
+ * chosen tab; reduced motion lands it at once. Keyboard focus is a fill on an underline tab, kept
+ * 4 px above the indicator by the frame's padding, and a ring on a segment.
  */
 export const tabsRecipe = {
   root: {
@@ -22,7 +23,7 @@ export const tabsRecipe = {
   frame: {
     base: '',
     variant: {
-      underline: 'border-b border-line',
+      underline: 'pb-1 border-b border-line',
       segmented: 'p-0.5 rounded-control bg-surface-sunken',
     } satisfies Record<TabsVariant, string>,
   },
@@ -37,15 +38,15 @@ export const tabsRecipe = {
   indicator: {
     base: 'absolute start-0 transition-transform duration-200 ease-spring',
     variant: {
-      underline: '-bottom-px h-0.5 rounded-full bg-accent',
+      underline: '-bottom-[5px] h-0.5 rounded-full bg-accent',
       segmented: 'inset-y-0 rounded-segment border border-text/6 bg-surface-raised shadow-contact',
     } satisfies Record<TabsVariant, string>,
   },
   tab: {
     base: 'grow shrink basis-0 min-w-0 flex-row items-center justify-center px-2 transition-colors duration-150 ease-out disabled:opacity-40',
     variant: {
-      underline: 'h-control-md',
-      segmented: 'h-8 rounded-segment',
+      underline: 'h-control-md rounded-control focus-visible:bg-text/7',
+      segmented: 'h-8 rounded-segment focus-visible:ring-2 focus-visible:ring-focus',
     } satisfies Record<TabsVariant, string>,
   },
   /** A label too long for its share of the row is cut short rather than spilling into the next tab. */
