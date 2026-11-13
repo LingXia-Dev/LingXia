@@ -112,8 +112,12 @@ spec('kit video controls start a poster video on a tap, then pause, mute and scr
   await expect(button('Play')).toBeVisible();
   await button('Mute').click();
   await expect(button('Unmute')).toBeVisible();
-  // A drag to the far end seeks there and stays paused (at the end, the button offers Replay).
-  await view.drag(view.getByRole('slider', { name: 'Seek' }), { dx: 1000, dy: 0, durationMs: 400 });
+  // A drag to the far end seeks there and stays paused (at the end, the button offers Replay). It
+  // starts on the line: on a narrow bar the slider's touch box reaches down over the buttons.
+  const seek = await view.getByRole('slider', { name: 'Seek' }).boundingBox();
+  const finger = await view.touch([seek.x + seek.width / 10, seek.y + seek.height / 4]);
+  await finger.moveTo([seek.x + seek.width + 40, seek.y + seek.height / 4], { durationMs: 400 });
+  await finger.up();
   await expect.poll(seconds, { timeout: 5_000 }).toBeGreaterThanOrEqual(5);
   await expect(button('Pause')).toHaveCount(0);
 });
@@ -321,19 +325,21 @@ type Fixture = Parameters<Parameters<typeof spec>[2]>[0];
 
 const apart = (a: number[], b: number[]) => a.some((value, i) => Math.abs(value - b[i]) > 40);
 
-/** The colour just inside a control's left padding, brought on screen first. */
+/** The colour just inside a control's left padding, brought into the top of the screen first:
+ * a phone-sized screenshot decodes only down to the sampled row, so a poll stays quick. */
 async function fillOf(t: Fixture, locator: ReturnType<Fixture['app']['view']['testId']>) {
   const view = t.app.view;
-  await reveal(t, locator);
+  await reveal(t, locator, 0.4);
   const box = await locator.boundingBox();
   const viewport = await view.viewport();
   let scale = 1;
   const py = box.y + box.height / 2 - viewport.top;
+  const px = box.x + 6 - viewport.left;
   const shot = await decodePng((await view.screenshot()).base64, width => {
     scale = width / viewport.width;
     return Math.round(py * scale);
-  });
-  return shot.at(Math.round((box.x + 6 - viewport.left) * scale), Math.round(py * scale));
+  }, () => Math.round(px * scale));
+  return shot.at(Math.round(px * scale), Math.round(py * scale));
 }
 
 spec('a slider styled by parts reads its valuetext and grows its line and thumb while held', { start: { page: 'view-lab' } }, async (t) => {
@@ -341,7 +347,7 @@ spec('a slider styled by parts reads its valuetext and grows its line and thumb 
   await view.testId('lab-tab-input').click();
   const scrub = view.getByRole('slider', { name: 'Scrub' });
   await expect(scrub).toHaveAttribute('aria-valuetext', '0:30 of 3:00');
-  await reveal(t, scrub);
+  await reveal(t, scrub, 0.4);
   const box = await scrub.boundingBox();
   // The touch target is the slider's box though its thumb draws nothing at rest.
   const at: [number, number] = [box.x + box.width / 2, box.y + box.height / 2];
@@ -393,20 +399,20 @@ spec('a ring in the surface role paints the surface it sits on', { start: { page
 
 /** The colour of a switch's track near its inline end, where the thumb rests only when off. */
 async function trackFill(t: Fixture, locator: ReturnType<Fixture['app']['view']['testId']>) {
-  await reveal(t, locator);
+  await reveal(t, locator, 0.4);
   const box = await locator.boundingBox();
   const [pixel] = await sample(t, [[box.x + box.width - 12 - 40, box.y + box.height / 2]]);
   return pixel;
 }
 
 /** Swipe until the locator sits wholly on screen; one swipe moves at most a third of the viewport. */
-async function reveal(t: Fixture, locator: ReturnType<Fixture['app']['view']['testId']>) {
+async function reveal(t: Fixture, locator: ReturnType<Fixture['app']['view']['testId']>, within = 1) {
   const view = t.app.view;
   for (let attempt = 0; attempt < 12; attempt++) {
     const box = await locator.boundingBox();
     const viewport = await view.viewport();
-    if (box.y >= viewport.top + 8 && box.y + box.height <= viewport.top + viewport.height - 8) return;
-    const wanted = box.y + box.height / 2 - (viewport.top + viewport.height / 2);
+    if (box.y >= viewport.top + 8 && box.y + box.height <= viewport.top + viewport.height * within - 8) return;
+    const wanted = box.y + box.height / 2 - (viewport.top + viewport.height * within / 2);
     const dy = Math.sign(wanted) * Math.min(Math.abs(wanted), viewport.height / 3);
     const x = viewport.left + 12, y = viewport.top + viewport.height / 2;
     await view.swipe({ from: [x, y + dy / 2], to: [x, y - dy / 2], durationMs: 600 });
@@ -423,21 +429,21 @@ async function sample(t: Fixture, points: [number, number][]) {
   const shot = await decodePng((await view.screenshot()).base64, width => {
     scale = width / viewport.width;
     return Math.round((Math.max(...points.map(([, y]) => y)) - viewport.top + 2) * scale);
-  });
+  }, () => Math.round((Math.max(...points.map(([x]) => x)) - viewport.left + 2) * scale));
   return points.map(([x, y]) => shot.at(Math.round((x - viewport.left) * scale), Math.round((y - viewport.top) * scale)));
 }
 
 /** How many pixel rows the slider's line covers a quarter of the way along, where no thumb sits. */
 async function lineRows(t: Fixture, locator: ReturnType<Fixture['app']['view']['testId']>) {
   const view = t.app.view;
-  await reveal(t, locator);
+  await reveal(t, locator, 0.4);
   const box = await locator.boundingBox();
   const viewport = await view.viewport();
   let scale = 1;
   const shot = await decodePng((await view.screenshot()).base64, width => {
     scale = width / viewport.width;
     return Math.round((box.y + box.height - viewport.top) * scale);
-  });
+  }, () => Math.round((box.x + box.width / 4 - viewport.left) * scale));
   const x = Math.round((box.x + box.width / 4 - viewport.left) * scale);
   const top = Math.round((box.y - viewport.top) * scale), bottom = Math.round((box.y + box.height - viewport.top) * scale);
   const page = shot.at(x, top);
