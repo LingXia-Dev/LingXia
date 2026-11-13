@@ -24,8 +24,9 @@ export const checkboxInputRecipe = {
     /** A row: keyboard focus is a fill, given room past the box and text by the negative margins. */
     base: '-mx-2 px-2 -my-1 py-1 rounded-control transition-colors duration-150 ease-out disabled:opacity-40 focus-visible:bg-text/7',
   },
+  /** Centred in the primitive's minimum height when the content is shorter. */
   row: {
-    base: 'flex-row items-start gap-3 py-1',
+    base: 'flex-row items-start gap-3 py-1 my-auto',
   },
   box: {
     base: 'items-center justify-center rounded-checkbox border-2 transition-colors duration-150 ease-out',
