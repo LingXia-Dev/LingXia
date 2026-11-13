@@ -304,6 +304,20 @@ pub(crate) fn node_style(
         ]
         .iter()
         .all(|id| record.fields.iter().all(|(field, _)| field != id));
+    // A single-line control the author sizes vertically (a height, a min-height, or stretched
+    // across a row) keeps that size: no default vertical padding or touch height adds to it.
+    let sized_control = matches!(record.tag, tag::INPUT | tag::SEARCH | tag::SELECT)
+        && ([
+            field::HEIGHT,
+            field::HEIGHT_PERCENT,
+            field::HEIGHT_KEYWORD,
+            field::MIN_HEIGHT,
+            field::MIN_HEIGHT_PERCENT,
+        ]
+        .iter()
+        .any(|id| record.fields.iter().any(|(field, _)| field == id))
+            || (record.string(field::ALIGN_SELF) == Some("stretch")
+                && record.parent.is_some_and(|p| lays_out_in_row(&records[p]))));
     let padding = record.number(field::PADDING).unwrap_or(
         if matches!(
             record.tag,
@@ -340,7 +354,16 @@ pub(crate) fn node_style(
             field::PADDING_INLINE_END,
         ),
     ]
-    .map(|field| record.number(field).unwrap_or(padding));
+    .map(|field| {
+        let vertical = field == field::PADDING_TOP || field == field::PADDING_BOTTOM;
+        record.number(field).unwrap_or(
+            if vertical && sized_control && record.number(field::PADDING).is_none() {
+                0.0
+            } else {
+                padding
+            },
+        )
+    });
     let keyboard_above = safe.keyboard > safe.insets[2];
     if page {
         padding_top += safe.insets[0];
@@ -577,14 +600,15 @@ pub(crate) fn node_style(
             }),
             height: dimension(record, field::MIN_HEIGHT).unwrap_or(
                 if matches!(record.tag, tag::INPUT | tag::SEARCH)
-                    && dimension::<taffy::Dimension>(record, field::HEIGHT).is_none()
+                    && !sized_control
                     && record.number(field::HEIGHT_AUTO) != Some(1.0)
                 {
                     length(48.0)
                 } else if matches!(
                     record.tag,
-                    tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION | tag::SEARCH | tag::SLIDER
-                ) {
+                    tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION | tag::SLIDER
+                ) || (record.tag == tag::SEARCH && !sized_control)
+                {
                     length(44.0)
                 } else if matches!(record.tag, tag::SCROLL | tag::LIST)
                     || record.number(field::GROW).unwrap_or(0.0) > 0.0

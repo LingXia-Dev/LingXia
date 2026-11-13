@@ -49,6 +49,9 @@ pub struct Renderer {
 }
 
 #[cfg(test)]
+#[path = "tests/control_height.rs"]
+mod control_height_tests;
+#[cfg(test)]
 #[path = "tests/text_scale.rs"]
 mod text_scale_layout_tests;
 
