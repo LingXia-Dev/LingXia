@@ -5288,6 +5288,220 @@
       }
     },
     {
+      "name": "ToggleButton",
+      "import": "@liulidesign/core/ToggleButton",
+      "exports": [
+        "ToggleButton"
+      ],
+      "category": "actions",
+      "status": "preview",
+      "summary": "A button that turns one option on or off and stays down while on",
+      "description": "ToggleButton turns an option on or off where it applies, such as a filter over a list or a view option beside what it changes. It keeps its label in both states and reports pressed; while on it takes the soft accent fill. For a setting in a form use Switch; to choose one of a few values use SegmentedControl.",
+      "keywords": [
+        "toggle button",
+        "toggle",
+        "pressed",
+        "filter",
+        "chip",
+        "on off",
+        "option",
+        "button"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The text and the accessible name; it stays the same on and off (\"Unread\", not \"Show unread\"/\"Hide unread\")."
+        },
+        {
+          "name": "isPressed",
+          "type": "boolean",
+          "required": true,
+          "description": "Whether it is on."
+        },
+        {
+          "name": "onPressedChange",
+          "type": "(isPressed: boolean) => void",
+          "required": true,
+          "description": "Runs with the new state on a press."
+        },
+        {
+          "name": "size",
+          "type": "ToggleButtonSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "button",
+        "label": "text"
+      },
+      "accessibility": {
+        "pattern": "toggleButton",
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "pressed",
+            "from": "isPressed"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Enter, Space",
+            "effect": "Turns it on or off."
+          }
+        ],
+        "target": {
+          "sm": 32,
+          "md": 40,
+          "lg": 48
+        },
+        "contrast": [
+          {
+            "what": "label, off",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "label, on",
+            "pair": [
+              "text",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "boundary, off",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "disabled label, off, on a card",
+            "pair": [
+              "text-muted",
+              "text/6"
+            ],
+            "over": "surface",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "disabled label, on",
+            "pair": [
+              "text-muted",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The state is read as pressed and drawn as the fill and the edge, never as the label's colour alone.",
+          "Disabled keeps the soft fill when on, so a locked option still shows its state.",
+          "Sizes sm and md are below the 44 pt touch minimum; on touch layouts prefer lg or leave room around them."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Filters",
+          "title": "Filters over a list",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ToggleButton } from '@liulidesign/core/ToggleButton';\n\nconst notes = [\n  { title: 'Q3 plan', unread: true, starred: true },\n  { title: 'Reading list', unread: false, starred: true },\n  { title: 'Interview notes', unread: true, starred: false },\n  { title: 'Groceries', unread: false, starred: false },\n];\n\n/** Filters over a list: each one narrows it on its own. */\nexport function Filters() {\n  const unread = useLocal('unread', false);\n  const starred = useLocal('starred', false);\n  const shown = notes.filter(note => (!unread.value || note.unread) && (!starred.value || note.starred));\n  return (\n    <view className=\"gap-3\">\n      <view role=\"group\" aria-label=\"Filters\" className=\"flex-row flex-wrap gap-2\">\n        <ToggleButton label=\"Unread\" size=\"sm\" isPressed={unread.value} onPressedChange={next => unread.set(next)} data-testid=\"unread\" />\n        <ToggleButton label=\"Starred\" size=\"sm\" isPressed={starred.value} onPressedChange={next => starred.set(next)} data-testid=\"starred\" />\n      </view>\n      <text className=\"text-footnote text-muted\" data-testid=\"count\">{shown.length === 1 ? '1 note' : `${shown.length} notes`}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "WordWrap",
+          "title": "A view option",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ToggleButton } from '@liulidesign/core/ToggleButton';\n\n/** One view option, beside the thing it changes. */\nexport function WordWrap() {\n  const wrap = useLocal('wrap', true);\n  return (\n    <view className=\"gap-3\">\n      <ToggleButton label=\"Wrap lines\" isPressed={wrap.value} onPressedChange={next => wrap.set(next)} className=\"self-start\" data-testid=\"wrap\" />\n      <text className={wrap.value ? 'text-body text-text' : 'text-body text-text truncate'} data-testid=\"sample\">\n        Every line of this note is long enough to reach past the edge of a phone held upright.\n      </text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { ToggleButton } from '@liulidesign/core/ToggleButton';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row flex-wrap items-center gap-2\">\n      <ToggleButton label=\"Small\" size=\"sm\" isPressed onPressedChange={() => {}} />\n      <ToggleButton label=\"Medium\" isPressed onPressedChange={() => {}} />\n      <ToggleButton label=\"Large\" size=\"lg\" isPressed onPressedChange={() => {}} />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Icon-only toggle buttons, such as bold or italic in an editor toolbar.",
+          "needs": "an icon set for Liuli",
+          "today": "Toggle buttons carry a text label."
+        }
+      ],
+      "related": [
+        "Button",
+        "SegmentedControl",
+        "Switch"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Stays down while on",
+        "order": 2,
+        "page": {
+          "lead": "Use a toggle button to turn one option on or off right where it applies.",
+          "hero": "Filters",
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small, medium and large, on"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateOff",
+              "title": "Off"
+            },
+            {
+              "name": "StateOn",
+              "title": "On"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled, off"
+            },
+            {
+              "name": "StateDisabledOn",
+              "title": "Disabled, on"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "WordWrap",
+              "title": "A view option beside what it changes"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Tooltip",
       "import": "@liulidesign/core/Tooltip",
       "exports": [

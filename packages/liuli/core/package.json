@@ -54,6 +54,8 @@
     "./EmptyState/recipe": "./src/EmptyState/EmptyState.recipe.ts",
     "./Skeleton": "./src/Skeleton/Skeleton.tsx",
     "./Skeleton/recipe": "./src/Skeleton/Skeleton.recipe.ts",
+    "./ToggleButton": "./src/ToggleButton/ToggleButton.tsx",
+    "./ToggleButton/recipe": "./src/ToggleButton/ToggleButton.recipe.ts",
     "./package.json": "./package.json"
   },
   "lingxia": {

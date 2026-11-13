@@ -21,6 +21,7 @@ import { Specimen as SwitchSpecimen } from '../../../core/src/Switch/Switch.exam
 import { Specimen as TabsSpecimen } from '../../../core/src/Tabs/Tabs.examples';
 import { Specimen as TextAreaSpecimen } from '../../../core/src/TextArea/TextArea.examples';
 import { Specimen as TextInputSpecimen } from '../../../core/src/TextInput/TextInput.examples';
+import { Specimen as ToggleButtonSpecimen } from '../../../core/src/ToggleButton/ToggleButton.examples';
 import { Specimen as TooltipSpecimen } from '../../../core/src/Tooltip/Tooltip.examples';
 import { Specimen as VideoControlsSpecimen } from '../../../core/src/VideoControls/VideoControls.examples';
 import { Specimen as VideoPlayerSpecimen } from '../../../core/src/VideoPlayer/VideoPlayer.examples';
@@ -80,11 +81,18 @@ export function render({ actions }: View<Actions>) {
         <Tile
           name={"Button"}
           tagline={"Starts an action"}
-          isWide
           onOpen={() => actions.open({ page: "button" })}
           testId={"open-button"}
         >
           <ButtonSpecimen />
+        </Tile>
+        <Tile
+          name={"ToggleButton"}
+          tagline={"Stays down while on"}
+          onOpen={() => actions.open({ page: "toggle-button" })}
+          testId={"open-toggle-button"}
+        >
+          <ToggleButtonSpecimen />
         </Tile>
       </Category>
       <Category title={"Navigation"}>

@@ -18,6 +18,7 @@ export type Step =
   | { readonly expect: 'attached' | 'detached'; readonly role: LocatorRole }
   | { readonly expect: 'value'; readonly value: string }
   | { readonly expect: 'checked'; readonly checked: boolean }
+  | { readonly expect: 'pressed'; readonly pressed: boolean }
   | { readonly expect: 'disabled' | 'enabled'; readonly role: LocatorRole }
   | { readonly expect: 'handler-ran'; readonly times: number };
 
@@ -43,6 +44,17 @@ export const patterns = {
         { do: 'press-key', key: 'enter' }, { expect: 'handler-ran', times: 1 },
         { do: 'press-key', key: 'space' }, { expect: 'handler-ran', times: 2 },
       ],
+    },
+  },
+  toggleButton: {
+    role: 'button',
+    checks: {
+      'is found by its label': [{ do: 'find', role: 'button', name: 'label' }],
+      'a tap turns it on and off': [{ do: 'tap', role: 'button' }, { expect: 'pressed', pressed: true }, { do: 'tap', role: 'button' }, { expect: 'pressed', pressed: false }],
+      'keeps its name when on': [{ expect: 'name-stable-across-states' }],
+    },
+    keyboardChecks: {
+      'Space turns it on': [{ do: 'tab-to', role: 'button' }, { do: 'press-key', key: 'space' }, { expect: 'pressed', pressed: true }],
     },
   },
   checkbox: {
