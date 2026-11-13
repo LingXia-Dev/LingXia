@@ -124,6 +124,9 @@ pub struct NodeSnapshot {
     /// An open hint's top layer: the hint's id and the identity of the control it sits against.
     #[serde(skip)]
     pub hint: Option<(String, Option<std::sync::Arc<str>>)>,
+    /// An open manual popover's top layer that closes itself: the popover's id and its ms.
+    #[serde(skip)]
+    pub close_after: Option<(String, u32)>,
     /// The hint popover a pointer resting on this button or a key focusing it shows.
     #[serde(skip)]
     pub interest_for: Option<String>,

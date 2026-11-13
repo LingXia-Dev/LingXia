@@ -189,3 +189,41 @@ test('interestFor shows a hint on the core\'s word; a hint closes other hints, a
   assert.equal(interest('tip', 0, false), false, 'already hidden');
   assert.throws(() => render(() => h('page', {}, h('button', { interestFor: 'nope' }, 'X'))), /UI_ID: interestFor "nope"/);
 });
+
+test('closeAfter rides a manual popover\'s layer and its expiry closes it as a light dismiss does', async () => {
+  reset();
+  const { closeAfterExpired } = await import('../src/runtime/toplayer.js');
+  const calls = [];
+  const view = () => {
+    const shown = useLocal('shown', true);
+    return h('page', {}, h('view', { id: 'toast', popover: 'manual', open: shown.value, closeAfter: 4000,
+      onToggle: next => { calls.push(next); shown.set(next); }, 'data-testid': 'toast' }, h('text', {}, 'Saved')));
+  };
+  let nodes = render(view);
+  const layer = nodes.find(node => node.children.includes(byId(nodes, 'toast')));
+  assert.equal(layer.props.closeAfter, 4000);
+  assert.equal(closeAfterExpired('other'), false);
+  assert.equal(closeAfterExpired('toast'), true);
+  assert.deepEqual(calls, [false]);
+  nodes = render(view);
+  assert.equal(byId(nodes, 'toast'), undefined);
+  assert.equal(closeAfterExpired('toast'), false, 'a closed popover expires no more');
+  for (const bad of [
+    () => h('view', { id: 't', popover: 'auto', closeAfter: 1000 }),
+    () => h('view', { id: 't', popover: 'manual', closeAfter: 0 }),
+    () => h('view', { id: 't', popover: 'manual', closeAfter: 60001 }),
+    () => h('view', { id: 't', popover: 'manual', closeAfter: 1.5 }),
+    () => h('view', { closeAfter: 1000 }),
+  ]) assert.throws(() => render(() => h('page', {}, bad())), /UI_PROP/);
+});
+
+test('an older host gets no closeAfter field, and the popover stays open until the page closes it', () => {
+  reset();
+  const previous = globalThis.__lingxiaViewHost;
+  globalThis.__lingxiaViewHost = { maxField: 236 };
+  try {
+    const nodes = render(() => h('page', {}, h('view', { id: 'toast', popover: 'manual', open: true, closeAfter: 4000, 'data-testid': 'toast' })));
+    const layer = nodes.find(node => node.children.includes(byId(nodes, 'toast')));
+    assert.equal(layer.props.closeAfter, undefined);
+  } finally { globalThis.__lingxiaViewHost = previous; }
+});

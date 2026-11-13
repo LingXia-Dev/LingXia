@@ -52,6 +52,7 @@ Children: any elements and text. Renders as `column`.
 | `aria-actions` | `string` |  |
 | `onPointerEnter` | `() => void` |  |
 | `onPointerLeave` | `() => void` |  |
+| `closeAfter` | `number` |  |
 
 ## `<page>`
 

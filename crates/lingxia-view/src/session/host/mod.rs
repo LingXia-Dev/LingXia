@@ -29,6 +29,7 @@ mod glide;
 mod hot_swap;
 #[cfg(feature = "hot-swap")]
 pub use hot_swap::{SwapReporter, set_swap_reporter};
+mod autoclose;
 mod images;
 mod interest;
 mod pump;
@@ -407,6 +408,7 @@ struct Main<F> {
     styled_press: Option<String>,
     styled_hover: Option<String>,
     interest: interest::Interest,
+    autoclose: autoclose::Autoclose,
     styled_focus: Option<String>,
     caret: Caret,
     visible: bool,
@@ -614,6 +616,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     styled_press: None,
                     styled_hover: None,
                     interest: Default::default(),
+                    autoclose: Default::default(),
                     styled_focus: None,
                     caret: Caret::default(),
                     visible: false,
@@ -690,6 +693,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
             self.inner.pointer_crossing(None);
         }
         self.inner.set_visible(visible);
+        self.inner.sync_autoclose();
     }
 
     /// The presentation target was replaced or resized. A frame being built for the same size,
@@ -740,6 +744,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// reveal waits while it is stopped.
     pub fn window_visible(&self, visible: bool) {
         self.inner.window_visible(visible);
+        self.inner.sync_autoclose();
     }
 
     /// The platform slides this page in on a push or pop; `frame_metrics` reports the slide.
@@ -751,6 +756,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// Other windows cover this one completely, or no longer do; its surface stays live.
     pub fn window_covered(&self, covered: bool) {
         self.inner.window_covered(covered);
+        self.inner.sync_autoclose();
     }
 
     /// The presentation target is gone; nothing presents until it returns.
@@ -1009,6 +1015,16 @@ impl<A: PlatformAdapter> ViewHost<A> {
         {
             let mut main = self.inner.main();
             main.pointer_down = pressed;
+            let press = main.interaction.frame().map(|frame| {
+                let scale = if frame.scale > 0.0 { frame.scale } else { 1.0 };
+                [event.x / scale, event.y / scale]
+            });
+            // A press holds a popover by where it went down, wherever the finger moves.
+            if !pressed {
+                main.autoclose.set_press(None);
+            } else if event.phase == crate::interaction::view::PointerPhase::Down {
+                main.autoclose.set_press(press);
+            }
             if pressed {
                 main.telemetry.stats.pointer(at, [event.x, event.y]);
             }
@@ -1066,6 +1082,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
             let scale = if scale > 0.0 { scale } else { 1.0 };
             Some([x / scale, y / scale])
         });
+        self.inner.main().autoclose.set_pointer(logical);
+        self.inner.sync_autoclose();
         self.inner.pointer_crossing(logical);
     }
 
@@ -1783,6 +1801,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.styled_hover = None;
             main.styled_focus = None;
             main.interest.reset();
+            main.autoclose.reset();
             let effects = main.interaction.reset();
             main.interaction.set_inert(false);
             let mut cancelled = main.images.inflight_tokens();
@@ -1859,6 +1878,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.styled_hover = None;
             main.styled_focus = None;
             main.interest.reset();
+            main.autoclose.reset();
             // Input stops; automation reads a parked page as blank.
             let effects = main.interaction.park();
             for slot in main.automation_calls.values_mut() {

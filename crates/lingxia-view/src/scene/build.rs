@@ -1260,6 +1260,13 @@ impl Renderer {
                         Some((id.to_owned(), invoker))
                     })
                     .flatten(),
+                close_after: record.number(field::CLOSE_AFTER).and_then(|ms| {
+                    let id = records
+                        .iter()
+                        .filter(|child| child.parent == Some(index))
+                        .find_map(|child| child.string(field::ELEMENT_ID))?;
+                    Some((id.to_owned(), ms as u32))
+                }),
                 interest_for: record.string(field::INTEREST_FOR).map(str::to_owned),
                 on_press: record
                     .fields

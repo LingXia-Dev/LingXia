@@ -81,7 +81,7 @@ const backdropFade = { opacity: 1, transition: { properties: ['opacity'], durati
  * `<dialog>` and popovers expand to a top-layer box holding a backdrop and the panel; `null`
  * when closed, `undefined` for any other node. `finish` decorates the resolved layer.
  */
-const popoverProps = ['open', 'onToggle'];
+const popoverProps = ['open', 'onToggle', 'closeAfter'];
 export function expand(tag, props, children, identity, parent) {
   if (props[panelMark]) return undefined;
   if (tag === 'dialog') return dialog(props, children, identity, parent);
@@ -119,11 +119,13 @@ function dialog(props, children, identity, parent) {
 
 function popover(tag, props, children, identity, parent) {
   common(props, parent, 'popover');
-  const { popover: type, id, open, onToggle, ...rest } = props;
+  const { popover: type, id, open, onToggle, closeAfter, ...rest } = props;
   const kind = type === true || type === '' || type === 'auto' ? 'auto' : type === 'manual' || type === 'hint' ? type : null;
   if (!kind) throw Error('UI_PROP: popover is "auto", "manual" or "hint"');
   if (typeof id !== 'string' || !id.length || id.length > 256) throw Error('UI_ID: a popover needs an id of 1..256 characters');
   if (onToggle !== undefined && typeof onToggle !== 'function') throw Error('UI_PROP: onToggle');
+  if (closeAfter !== undefined && (kind !== 'manual' || !Number.isInteger(closeAfter) || closeAfter < 1 || closeAfter > 60000))
+    throw Error('UI_PROP: closeAfter takes 1..60000 ms on a popover="manual"');
   const top = collected();
   if (top.popovers.has(id)) throw Error(`UI_ID: two popovers have the id "${id}"`);
   const controlled = open !== undefined;
@@ -153,6 +155,8 @@ function popover(tag, props, children, identity, parent) {
       // A host older than the flag keeps hints open until their invoker or Escape closes them.
       const host = globalThis.__lingxiaViewHost;
       if (kind === 'hint' && !(host && fieldIds.hint > host.maxField)) result.wire.push(['hint', 1]);
+      // The host counts it down; an older host leaves the popover open until the page closes it.
+      if (closeAfter !== undefined && !(host && fieldIds.closeAfter > host.maxField)) result.wire.push(['closeAfter', closeAfter]);
       const panel = result.children.find(child => child.props?.key === 'panel');
       if (anchor && panel) panel.wire.push(['anchorTo', anchorName(id)]);
     },
@@ -179,6 +183,12 @@ export function toggle(id, next, from) {
   if (!entry.controlled) { if (next) uncontrolled.add(id); else uncontrolled.delete(id); page.invalidated = true; }
   entry.onToggle?.(next);
   return true;
+}
+
+/** The host's `closeAfter` count for popover `id` ran out: it closes as a light dismiss does. */
+export function closeAfterExpired(id) {
+  const entry = page.committed?.topLayer?.popovers.get(id);
+  return entry?.kind === 'manual' && entry.open ? toggle(id, false) : false;
 }
 
 /** A press landed away from the hints in `keep`: every other open hint closes, whatever opened it. */

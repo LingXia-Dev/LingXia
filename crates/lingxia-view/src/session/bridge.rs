@@ -227,6 +227,21 @@ impl ViewSession {
         })
     }
 
+    /// A `closeAfter` popover's time ran out; true when it closed one still open.
+    pub fn close_after(&self, id: &str) -> Result<bool, String> {
+        let id = serde_json::to_string(id).map_err(|e| e.to_string())?;
+        self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    format!(
+                        "typeof __lingxiaCloseAfter === 'function' && __lingxiaCloseAfter({id})"
+                    )
+                    .as_bytes(),
+                ))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })
+    }
+
     /// A toast deadline passed; true when it hid the toast still showing.
     pub fn overlay_timer(&self, token: u64) -> Result<bool, String> {
         self.execute(|| {

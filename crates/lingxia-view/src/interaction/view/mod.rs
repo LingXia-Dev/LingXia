@@ -470,6 +470,24 @@ impl ViewInteraction {
         self.keyboard_focus
     }
 
+    /// Whether keyboard or accessibility focus rests inside the element `identity`.
+    pub fn focus_within(&self, identity: &str) -> bool {
+        let Some(frame) = self.frame.as_deref() else {
+            return false;
+        };
+        let assistive = self.accessibility_focus.and_then(|id| self.ids.index(id));
+        [self.keyboard_focus, assistive]
+            .into_iter()
+            .flatten()
+            .filter_map(|index| frame.node(index))
+            .any(|node| {
+                let own = &*node.identity;
+                own.len() > identity.len()
+                    && own.starts_with(identity)
+                    && own.as_bytes()[identity.len()] == b'/'
+            })
+    }
+
     /// Adopt a presented frame and compute its side effects.
     pub fn presented(
         &mut self,

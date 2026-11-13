@@ -412,6 +412,10 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             value.as_u64().is_some_and(|v| v <= MAX_HANDLE),
             "UI_INPUT: invalid focus request",
         ),
+        field::CLOSE_AFTER => ensure(
+            value.as_u64().is_some_and(|v| (1..=60_000).contains(&v)),
+            "UI_PROP: closeAfter must be 1..60000 ms",
+        ),
         field::MAX_LENGTH => ensure(
             value.as_u64().is_some_and(|v| (1..=65536).contains(&v)),
             "UI_INPUT: maxLength must be 1..65536",

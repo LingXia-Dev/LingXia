@@ -38,6 +38,8 @@ impl<A: PlatformAdapter> Inner<A> {
         self.drag_later();
         self.snap_later();
         self.queue_edits(&mut effects);
+        // Every input and presented frame passes here, so a held popover pauses at once.
+        self.sync_autoclose();
         if effects.is_empty() {
             return;
         }
