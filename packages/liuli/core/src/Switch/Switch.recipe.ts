@@ -10,8 +10,9 @@ export const switchParts = {
 
 /**
  * The switch primitive holds the label and help text as its content and draws the track and thumb
- * at its end, so the whole block is the press target. Off is a quiet track, on is the accent; the
- * thumb is a raised disc with a hairline and contact shadow on both.
+ * at its end, so the whole block is the press target. The thumb is one white knob in every state;
+ * on, the track is the accent at 80 %, which deepens it in dark so the knob keeps 3:1 (3.8:1 in both
+ * appearances).
  */
 export const switchRecipe = {
   root: {
@@ -19,7 +20,7 @@ export const switchRecipe = {
     variant: { standalone: '', row: 'self-stretch px-4 py-2.5 min-h-control-lg justify-center' } satisfies Record<SwitchVariant, string>,
   },
   control: {
-    base: 'min-h-8 track:rounded-full track:bg-line-strong/45 checked:track:bg-accent thumb:rounded-full thumb:bg-surface-raised thumb:border thumb:border-text/10 thumb:shadow-contact disabled:checked:track:bg-accent/40 disabled:thumb:shadow-none',
+    base: 'min-h-8 track:rounded-full track:bg-line-strong/45 checked:track:bg-accent/80 thumb:rounded-full thumb:bg-on-media thumb:border thumb:border-text/12 thumb:shadow-contact disabled:checked:track:bg-accent/40 disabled:thumb:shadow-none',
     size: {
       sm: 'track:w-9 track:h-5 thumb:size-4',
       md: 'track:w-11 track:h-[26px] thumb:size-[22px]',

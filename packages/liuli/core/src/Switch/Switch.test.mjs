@@ -21,10 +21,10 @@ test('InList: each row is its own switch', async () => {
   assert.equal(screen.getByTestId('mentions').props.checked, 1);
 });
 
-test('the track turns to the accent when on, and the thumb rings on keyboard focus', async () => {
+test('the track turns to the deepened accent when on, and the thumb rings on keyboard focus', async () => {
   const screen = await renderExample('Switch/Switch', 'Basic');
   const control = screen.getByTestId('sync');
-  assert.match(control.props.trackStyle, /"accent"/);
+  assert.match(control.props.trackStyle, /"accent\/80"/);
   screen.toggle(control, false);
   assert.match(screen.getByTestId('sync').props.trackStyle, /"line-strong\/45"/);
   assert.match(control.props.focusVisibleStyle.thumbStyle, /focus/);

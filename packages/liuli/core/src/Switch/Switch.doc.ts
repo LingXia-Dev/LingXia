@@ -27,8 +27,8 @@ export const doc: ComponentDoc = {
     keyboard: [{ keys: 'Space', effect: 'Flips it.' }],
     target: { sm: 32, md: 32 },
     contrast: [
-      { what: 'track, on', pair: ['accent', 'surface'], minimum: '3:1' },
-      { what: 'thumb against the track, on', pair: ['surface-raised', 'accent'], minimum: '3:1' },
+      { what: 'track, on, against the surface', pair: ['surface', 'accent/80'], over: 'surface', minimum: '3:1' },
+      { what: 'thumb against the track, on', pair: ['on-media', 'accent/80'], over: 'surface', minimum: '3:1' },
       { what: 'keyboard focus ring', pair: ['focus', 'surface'], minimum: '3:1' },
       { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1' },
     ],

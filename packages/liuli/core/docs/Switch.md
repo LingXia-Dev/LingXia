@@ -100,8 +100,8 @@ export function Sizes() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| track, on | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
-| thumb against the track, on | `surface-raised` on `accent` | 3:1 | 5.62:1 | 5.28:1 |
+| track, on, against the surface | `surface` on `accent/80` over `surface` | 3:1 | 3.81:1 | 4.45:1 |
+| thumb against the track, on | `on-media` on `accent/80` over `surface` | 3:1 | 3.81:1 | 3.78:1 |
 | keyboard focus ring | `focus` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 
