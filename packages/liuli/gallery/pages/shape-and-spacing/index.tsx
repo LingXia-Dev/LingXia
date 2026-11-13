@@ -75,6 +75,23 @@ export function render() {
           ))}
         </Stage>
       </PageSection>
+      <PageSection title="Focus">
+        <text className="text-body text-muted">
+          Keyboard focus follows the shape. A control that is a row (a list item, a disclosure, a menu item, an underline tab, a checkbox, radio or switch row) fills with a rounded wash. A control that is a box (a button, a select, a text field, a radio card, a segment, a thumb) takes a ring that follows its corners.
+        </text>
+        <StageGrid>
+          <Stage caption="A row: a rounded fill">
+            <view className="-mx-2 flex-row items-center rounded-control bg-text/7 px-2 py-2.5">
+              <text className="text-body text-text">Notifications</text>
+            </view>
+          </Stage>
+          <Stage caption="A box: a ring on its corners">
+            <view className="h-control-md items-center justify-center rounded-control border border-line-strong ring-2 ring-focus">
+              <text className="text-body text-text">Save</text>
+            </view>
+          </Stage>
+        </StageGrid>
+      </PageSection>
       <PageSection title="Rhythm">
         <view className="rounded-container border border-text/10 bg-surface divide-y divide-text/8">
           {rhythm.map(entry => (
