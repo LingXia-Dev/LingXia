@@ -1,0 +1,82 @@
+import type { ComponentDoc } from '../doc';
+
+export const doc: ComponentDoc = {
+  name: 'TimeInput',
+  category: 'inputs',
+  status: 'preview',
+  summary: 'A labelled time field that opens an hour and minute picker',
+  description:
+    'TimeInput takes a time of day: a reminder, an alarm, the start of quiet hours. A tap opens the View\'s time picker, ' +
+    'in the user\'s 12- or 24-hour clock; `step` sets the minutes offered. It has Field\'s label, help text and status. ' +
+    'The value is `HH:MM` (or `HH:MM:SS`), or `\'\'` while empty.',
+  keywords: ['time input', 'time picker', 'clock', 'hour', 'minute', 'reminder', 'alarm', 'form', 'field'],
+  propsType: 'TimeInputProps',
+  recipe: { map: 'timeInputRecipe', parts: 'timeInputParts' },
+  anatomy: [
+    { part: 'box', required: true, description: 'TextInput\'s bordered box; it takes the focus colour while the field is focused and the status colour otherwise.' },
+    { part: 'input', required: true, description: 'The time editor; the time shows in the user\'s clock, and a tap opens the picker.' },
+    { part: 'icon', required: true, description: 'A clock mark at the end, hidden from assistive tech.' },
+  ],
+  accessibility: {
+    pattern: 'textbox',
+    name: 'label',
+    description: ['description, or disabledMessage while disabled', 'the status message'],
+    states: [
+      { state: 'disabled', from: 'isDisabled' },
+      { state: 'invalid', from: "status.type === 'error'" },
+      { state: 'required', from: 'isRequired' },
+    ],
+    keyboard: [
+      { keys: 'Enter, Space', effect: 'Opens the picker.' },
+      { keys: 'Escape', effect: 'Closes the picker without a change.' },
+      { keys: 'Return', effect: 'In the picker, picks; then onSubmit runs.' },
+      { keys: 'Digits', effect: 'In the picker, fill HH:MM.' },
+    ],
+    target: { sm: 32, md: 40, lg: 48 },
+    contrast: [
+      { what: 'value', pair: ['text', 'surface'], minimum: '4.5:1' },
+      { what: 'placeholder', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
+      { what: 'box boundary', pair: ['line-strong', 'surface'], minimum: '3:1' },
+      { what: 'end mark', pair: ['text-muted', 'surface'], minimum: '3:1' },
+    ],
+    notes: [
+      'The picker is the View\'s own, drawn in the theme\'s roles: a popover under the field with a pointer, a sheet with Cancel and Done on touch.',
+      'The picker follows the user\'s 12- or 24-hour setting; the value is always 24-hour.',
+      'Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg.',
+    ],
+  },
+  guidance: {
+    do: [
+      'Set `step` to the precision people need: 300 or 900 seconds for most schedules.',
+      'Say in the description what the time repeats on, if it does.',
+    ],
+    dont: [
+      'Use it for a duration; a time of day is not an amount of time.',
+      'Use it for a date and time together without a DateInput beside it.',
+    ],
+  },
+  examples: [
+    { name: 'Reminder', title: 'A daily reminder' },
+    { name: 'QuietHours', title: 'Every 15 minutes, within the evening' },
+    { name: 'Sizes', title: 'Sizes' },
+  ],
+  gaps: [],
+  related: ['DateInput', 'TextInput', 'Field'],
+  gallery: {
+    specimen: 'Specimen',
+    tagline: 'A time of day',
+    order: 10,
+    page: {
+      lead: 'Use a time field to take a time of day, in the user\'s own clock.',
+      hero: 'Reminder',
+      sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],
+      states: [
+        { name: 'StateEmpty', title: 'Empty' },
+        { name: 'StateFilled', title: 'Filled' },
+        { name: 'StateInvalid', title: 'Invalid' },
+        { name: 'StateDisabled', title: 'Disabled' },
+      ],
+      inContext: [{ name: 'QuietHours', title: 'Quiet hours' }],
+    },
+  },
+};

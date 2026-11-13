@@ -4,6 +4,9 @@
   "appName": "Liuli Gallery",
   "version": "0.1.0",
   "minRuntime": "0.28.0",
+  "languages": [
+    "en"
+  ],
   "pages": [
     { "name": "home", "path": "pages/home/index" },
     { "name": "colour", "path": "pages/colour/index" },
@@ -22,6 +25,8 @@
     { "name": "slider", "path": "pages/slider/index" },
     { "name": "text-area", "path": "pages/text-area/index" },
     { "name": "segmented-control", "path": "pages/segmented-control/index" },
+    { "name": "date-input", "path": "pages/date-input/index" },
+    { "name": "time-input", "path": "pages/time-input/index" },
     { "name": "field", "path": "pages/field/index" },
     { "name": "badge", "path": "pages/badge/index" },
     { "name": "progress-bar", "path": "pages/progress-bar/index" },

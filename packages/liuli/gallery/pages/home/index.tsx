@@ -7,6 +7,7 @@ import { Specimen as BottomSheetSpecimen } from '../../../core/src/BottomSheet/B
 import { Specimen as ButtonSpecimen } from '../../../core/src/Button/Button.examples';
 import { Specimen as CardSpecimen } from '../../../core/src/Card/Card.examples';
 import { Specimen as CheckboxInputSpecimen } from '../../../core/src/CheckboxInput/CheckboxInput.examples';
+import { Specimen as DateInputSpecimen } from '../../../core/src/DateInput/DateInput.examples';
 import { Specimen as DetailsSpecimen } from '../../../core/src/Details/Details.examples';
 import { Specimen as DialogSpecimen } from '../../../core/src/Dialog/Dialog.examples';
 import { Specimen as DropdownMenuSpecimen } from '../../../core/src/DropdownMenu/DropdownMenu.examples';
@@ -24,6 +25,7 @@ import { Specimen as SwitchSpecimen } from '../../../core/src/Switch/Switch.exam
 import { Specimen as TabsSpecimen } from '../../../core/src/Tabs/Tabs.examples';
 import { Specimen as TextAreaSpecimen } from '../../../core/src/TextArea/TextArea.examples';
 import { Specimen as TextInputSpecimen } from '../../../core/src/TextInput/TextInput.examples';
+import { Specimen as TimeInputSpecimen } from '../../../core/src/TimeInput/TimeInput.examples';
 import { Specimen as ToastSpecimen } from '../../../core/src/Toast/Toast.examples';
 import { Specimen as ToggleButtonSpecimen } from '../../../core/src/ToggleButton/ToggleButton.examples';
 import { Specimen as TooltipSpecimen } from '../../../core/src/Tooltip/Tooltip.examples';
@@ -174,6 +176,22 @@ export function render({ actions }: View<Actions>) {
           testId={"open-segmented-control"}
         >
           <SegmentedControlSpecimen />
+        </Tile>
+        <Tile
+          name={"DateInput"}
+          tagline={"One day"}
+          onOpen={() => actions.open({ page: "date-input" })}
+          testId={"open-date-input"}
+        >
+          <DateInputSpecimen />
+        </Tile>
+        <Tile
+          name={"TimeInput"}
+          tagline={"A time of day"}
+          onOpen={() => actions.open({ page: "time-input" })}
+          testId={"open-time-input"}
+        >
+          <TimeInputSpecimen />
         </Tile>
         <Tile
           name={"Field"}

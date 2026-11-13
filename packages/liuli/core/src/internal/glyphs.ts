@@ -31,6 +31,16 @@ export const glyphs = {
     { d: 'M12 11v5.5', ...line },
     { d: 'M12 7.5v0.01', ...line, strokeWidth: 2.5 },
   ],
+  /** A page of a calendar: the end mark of a date field. */
+  calendar: [
+    { d: 'M5.5 5h13a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-12A1.5 1.5 0 0 1 5.5 5z', ...line },
+    { d: 'M4 10h16M8.5 3v4M15.5 3v4', ...line },
+  ],
+  /** A clock face: the end mark of a time field. */
+  clock: [
+    { d: 'M12 2.75a9.25 9.25 0 1 0 0 18.5a9.25 9.25 0 1 0 0-18.5z', ...line },
+    { d: 'M12 7v5l3.5 2', ...line },
+  ],
   success: [
     { d: 'M12 2.75a9.25 9.25 0 1 0 0 18.5a9.25 9.25 0 1 0 0-18.5z', ...line },
     { d: 'M8 12.5l3 3 5-6', ...line },

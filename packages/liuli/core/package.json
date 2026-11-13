@@ -64,6 +64,10 @@
     "./BottomSheet/recipe": "./src/BottomSheet/BottomSheet.recipe.ts",
     "./Popover": "./src/Popover/Popover.tsx",
     "./Popover/recipe": "./src/Popover/Popover.recipe.ts",
+    "./DateInput": "./src/DateInput/DateInput.tsx",
+    "./DateInput/recipe": "./src/DateInput/DateInput.recipe.ts",
+    "./TimeInput": "./src/TimeInput/TimeInput.tsx",
+    "./TimeInput/recipe": "./src/TimeInput/TimeInput.recipe.ts",
     "./package.json": "./package.json"
   },
   "lingxia": {
