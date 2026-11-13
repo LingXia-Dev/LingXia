@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { h, prepare, commit, dispatch, useLocal, reset } from '../src/internal.js';
+import { h, listTag, prepare, commit, dispatch, useLocal, reset } from '../src/internal.js';
 import { escapeOverlay } from '../src/runtime/overlay.js';
 import { interest } from '../src/runtime/toplayer.js';
 import { page } from '../src/runtime/state.js';
@@ -75,6 +75,20 @@ test('popoverTarget toggles an uncontrolled popover anchored to its invoker; lig
   nodes = render(view);
   dispatch(byId(nodes, 'menu-backdrop').props.onClick);
   assert.equal(byId(render(view), 'menu'), undefined, 'a tap outside closes an auto popover');
+});
+
+test('an invoker in a list row anchors the popover it opens and announces it open', () => {
+  reset();
+  const view = () => h('page', {},
+    h('view', { id: 'menu', popover: true, 'data-testid': 'menu' }, h('text', {}, 'menu')),
+    h(listTag, { count: 3, height: () => 40, row: i => h('button', { popoverTarget: 'menu', 'data-testid': `more-${i}`, 'aria-label': 'More' }) }));
+  let nodes = render(view);
+  assert.equal(byId(nodes, 'more-0').props.stateExpanded, 0);
+  dispatch(byId(nodes, 'more-0').props.onClick);
+  nodes = render(view);
+  assert.equal(byId(nodes, 'menu').props.anchorTo, '--lx-popover-menu');
+  assert.equal(byId(nodes, 'more-0').props.anchorName, '--lx-popover-menu', 'the invoker in the row carries the anchor it opened');
+  assert.equal(byId(nodes, 'more-0').props.stateExpanded, 1);
 });
 
 test('a controlled popover follows open; opening one auto popover closes the others', () => {

@@ -1222,7 +1222,13 @@
   function finishTopLayer(tree) {
     const top = render.candidate.topLayer;
     for (const identity of [...opened.keys()]) if (!top?.entries.some((entry) => entry.identity === identity)) opened.delete(identity);
-    if (!top) return;
+    if (top) wireInvokers(top, tree);
+  }
+  function finishTopLayerRow(row) {
+    const top = render.candidate?.topLayer;
+    if (top) wireInvokers(top, row);
+  }
+  function wireInvokers(top, tree) {
     const invokers = new Map(top.invokers.map((entry) => [entry.identity, entry]));
     const interests = new Map(top.interests.map((entry) => [entry.identity, entry]));
     const walk = (node) => {
@@ -3884,6 +3890,7 @@
           const reads = render.cellReads, contextReads = render.contextReads;
           render.readsView = false;
           ({ row, key } = renderRow(node, i, cells, depth));
+          finishTopLayerRow(row);
           const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles && render.cellReads === reads && render.contextReads === contextReads && candidate.declarations.size === declarations && candidate.resources.size === resources;
           if (pure) node.list.pure.add(i);
           else node.list.pure.delete(i);

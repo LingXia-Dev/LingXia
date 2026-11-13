@@ -140,6 +140,27 @@ fn an_anchored_popover_stays_clear_of_the_bars_over_the_page() {
 }
 
 #[test]
+fn a_popover_opened_from_a_list_row_sits_against_its_row() {
+    let module = super::source(
+        "function render(){return h('page',{},h('view',{style:{height:40}}),h('view',{id:'menu',popover:'auto','data-testid':'menu',style:{width:60,height:15}}),h(listTag,{count:3,height:()=>20,style:{height:60},row:i=>h('button',{popoverTarget:'menu','data-testid':'more-'+i,style:{width:40,height:20}},'M')}))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    page.set_environment(environment()).unwrap();
+    page.set_animation_surface(Some(SURFACE), Duration::ZERO)
+        .unwrap();
+    let shot = run(&mut page, 0).pop().unwrap();
+    click(&mut page, &shot, "more-1");
+    let shot = run(&mut page, 100).pop().unwrap();
+    let [_, row_y, _, row_height] = shot.node("more-1").bounds;
+    let [_, y, _, height] = shot.node("menu").bounds;
+    assert!(height > 0.0, "the menu shows");
+    assert!(
+        (y - (row_y + row_height)).abs() <= 8.0 || (y + height - row_y).abs() <= 8.0,
+        "the menu sits against its row, not the surface origin: menu {y}, row {row_y}"
+    );
+}
+
+#[test]
 fn a_popover_leaves_the_chrome_over_the_page() {
     let (_, shot) = opened("popover");
     assert!(

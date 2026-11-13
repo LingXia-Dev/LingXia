@@ -196,7 +196,16 @@ export function interest(target, nth, show) {
 export function finishTopLayer(tree) {
   const top = render.candidate.topLayer;
   for (const identity of [...opened.keys()]) if (!top?.entries.some(entry => entry.identity === identity)) opened.delete(identity);
-  if (!top) return;
+  if (top) wireInvokers(top, tree);
+}
+
+/** A list row renders while the page encodes, after `finishTopLayer`: its invokers are wired here. */
+export function finishTopLayerRow(row) {
+  const top = render.candidate?.topLayer;
+  if (top) wireInvokers(top, row);
+}
+
+function wireInvokers(top, tree) {
   const invokers = new Map(top.invokers.map(entry => [entry.identity, entry]));
   const interests = new Map(top.interests.map(entry => [entry.identity, entry]));
   const walk = node => {

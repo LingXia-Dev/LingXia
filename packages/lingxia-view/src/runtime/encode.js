@@ -7,6 +7,7 @@ import { readNode, isNode } from './nodes.js';
 import { keyPayload } from './keys.js';
 
 import { resolveNode, handlesIssued } from './elements.js';
+import { finishTopLayerRow } from './toplayer.js';
 
 const structured = new Set(['backgroundGradient', 'boxShadow', 'animation']);
 const encodeValue = (key, value) => structured.has(key) && value !== 'none' ? JSON.stringify(value) : value;
@@ -198,6 +199,7 @@ function writeRows(node, window, index, depth, write) {
         const reads = render.cellReads, contextReads = render.contextReads;
         render.readsView = false;
         ({ row, key } = renderRow(node, i, cells, depth));
+        finishTopLayerRow(row);
         // Reusable in a later render only if it holds no state, callback or resource and read no state, context or View.
         const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles && render.cellReads === reads && render.contextReads === contextReads &&
           candidate.declarations.size === declarations && candidate.resources.size === resources;
