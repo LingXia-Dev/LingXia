@@ -74,6 +74,7 @@ export type {
   ViewElement,
   ViewFunction,
   ViewScope,
+  ViewSettledOptions,
   ViewWindow,
   WaitForCallOptions,
   WaitForOptions,

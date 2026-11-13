@@ -925,3 +925,38 @@ test("getByRole matches the role on either renderer and narrows by exact accessi
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
 });
+
+test("view.settled waits for a page that stops presenting and names an endless animation", async () => {
+  let frames = 0;
+  const started = Date.now();
+  // Presents for 300 ms, then stays still.
+  const world = createWorld({ frames: () => (Date.now() - started < 300 ? ++frames : frames) });
+  const { attachments } = installFakeHost(world);
+
+  spec("settled", async (t) => {
+    const begin = Date.now();
+    await t.app.view.settled({ quietMs: 200 });
+    assert.ok(Date.now() - begin >= 400, `settled after ${Date.now() - begin}ms`);
+    await assert.rejects(t.app.view.settled({ quietMs: 0 }), /positive number of ms/);
+    await assert.rejects(t.app.view.settled({ quietMs: 300, timeout: 300 }), /above quietMs/);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
+});
+
+test("view.settled rejects at its timeout while the page keeps presenting", async () => {
+  let frames = 0;
+  const world = createWorld({ frames: () => ++frames });
+  const { attachments } = installFakeHost(world);
+
+  spec("endless", async (t) => {
+    const error = await t.app.view.settled({ quietMs: 100, timeout: 400 }).then(() => undefined, (e) => e);
+    assert.equal(error?.name, "TimeoutError");
+    assert.match(error.message, /never 100ms without one/);
+    assert.match(error.message, /view\.environment\(\{ still: true \}\)/);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
+});

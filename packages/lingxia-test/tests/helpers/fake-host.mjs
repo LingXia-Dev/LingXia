@@ -112,6 +112,7 @@ function createDialogs() {
 }
 
 export function createWorld(options = {}) {
+  const worldFrames = options.frames;
   const elements = options.elements ? [...options.elements] : [];
   const evalResults = new Map();
   const evalCalls = new Map();
@@ -297,7 +298,7 @@ export function createWorld(options = {}) {
       const windowMs = options?.windowMs ?? 5000;
       const stats = { p50: 16.67, p95: 18.2, p99: 33.3, max: 40 };
       return {
-        renderer: "gpu", page: "1", commit: 3, firstPresentAt: 42, lastPresentAt: 900, frames: 120,
+        renderer: "gpu", page: "1", commit: 3, firstPresentAt: 42, lastPresentAt: 900, frames: worldFrames?.() ?? 120,
         workerQueueUs: { last: 0, p50: 0, max: 0 }, evalMs: { last: 0, max: 0 }, imageCacheBytes: 0,
         imageCacheEntries: 0, animationFrames: 0, wakeups: 0, hud: hudOn, nodes: 42,
         ...(gestureHost.pointer !== undefined && { pointer: gestureHost.pointer }),

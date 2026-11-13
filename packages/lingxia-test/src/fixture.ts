@@ -64,6 +64,7 @@ import type {
   NavOptions,
   NavWaitOptions,
   TestView,
+  ViewSettledOptions,
   WaitForOptions,
 } from "./types.js";
 import type {
@@ -83,6 +84,10 @@ import {
 import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, PageDriver, PageInfo, PageTarget } from "@lingxia/types/automation";
 
 export { TimeoutError };
+
+/** `view.settled()`: how long a page must present no frame. */
+const DEFAULT_SETTLED_QUIET_MS = 500;
+const SETTLED_POLL_MS = 50;
 
 /**
  * Thrown by `t.skip()`. It unwinds the spec like any throw, but the runtime
@@ -1403,6 +1408,7 @@ export class LiveFixture implements Fixture {
           // The driver's options are optional but not nullable: pass none rather than undefined.
           this.readRetrying(() => (bound ? page().screenshot(target) : page().screenshot())));
       },
+      settled: (options?: ViewSettledOptions) => this.viewSettled(page, target, options),
       scroll: (options) => {
         if (options && "page" in options) {
           throw new TypeError("view.scroll() takes no page option: bind another page with t.app.page({ name }) and use its view");
@@ -1417,6 +1423,43 @@ export class LiveFixture implements Fixture {
       refreshIndicator: () => gestures.refreshIndicator(),
       viewport: () => gestures.pageViewport(),
     };
+  }
+
+  /** `view.settled()`: the GPU page presents no frame for `quietMs`. */
+  private viewSettled(page: () => PageDriver, target: { page?: string }, options?: ViewSettledOptions): Promise<void> {
+    const quietMs = options?.quietMs ?? DEFAULT_SETTLED_QUIET_MS;
+    const timeout = options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
+    if (typeof quietMs !== "number" || !Number.isFinite(quietMs) || quietMs <= 0) {
+      return Promise.reject(new TypeError("view.settled({ quietMs }) takes a positive number of ms"));
+    }
+    if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= quietMs) {
+      return Promise.reject(new TypeError("view.settled({ timeout }) takes a number of ms above quietMs"));
+    }
+    return this.act("page.settled", `quietMs=${quietMs}`, async () => {
+      const deadline = new ActionDeadline(timeout, this.budgetRoom());
+      const read = () => deadline.call("page.uiFrame", () => this.readRetrying(() =>
+        target.page === undefined ? page().uiFrame() : page().uiFrame(target)), () => "waiting for the page to settle");
+      let frames = (await read()).frames;
+      let since = Date.now(), first = frames, started = since;
+      for (;;) {
+        if (Date.now() - since >= quietMs) return;
+        if (deadline.expired()) break;
+        await sleep(Math.min(SETTLED_POLL_MS, Math.max(1, deadline.remaining())));
+        let now: number;
+        try { now = (await read()).frames; } catch (error) {
+          if (error instanceof TimeoutError && deadline.expired()) break;
+          throw error;
+        }
+        if (now !== frames) { frames = now; since = Date.now(); }
+      }
+      const shown = frames - first, over = Date.now() - started;
+      throw new TimeoutError([
+        `Timed out after ${deadline.elapsed()}ms waiting for the page to settle: it presented ${shown} frame${shown === 1 ? "" : "s"} in ${over}ms ` +
+          `and never ${quietMs}ms without one.`,
+        "An endless animation (a spinner, a playing video, a blinking caret) never settles: freeze it with view.environment({ still: true }) or mask it.",
+        deadline.clampNote(),
+      ].filter(Boolean).join("\n"));
+    });
   }
 
   /** Count acts a GPU page dropped (the locator resends them). */

@@ -435,6 +435,14 @@ export type LocatorRole =
   | "tablist" | "tab" | "tabpanel" | "toolbar" | "tree" | "treeitem" | "listbox" | "option"
   | "menuitemcheckbox" | "menuitemradio";
 
+/** `view.settled()` options. */
+export interface ViewSettledOptions {
+  /** How long the page must present no frame, in ms (default 500). */
+  quietMs?: number;
+  /** Give up after this many ms (default: the action timeout); must exceed `quietMs`. */
+  timeout?: number;
+}
+
 export interface TestView {
   testId(id: string): Locator;
   css(selector: string): Locator;
@@ -452,6 +460,12 @@ export interface TestView {
   /** The same with a `timeout` (see `EvalOptions`). */
   eval<R, A extends unknown[]>(options: EvalOptions, fn: ViewFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
   screenshot(): Promise<Screenshot>;
+  /**
+   * Wait until the GPU page presents no frame for `quietMs` (default 500):
+   * transitions, image loads and scrolls have finished. An endless animation
+   * never settles, so this rejects at `timeout`.
+   */
+  settled(options?: ViewSettledOptions): Promise<void>;
   /** Scroll the page DOM by a pixel delta (nearest scrollable container). */
   scroll(options?: Omit<PageScrollOptions, "page">): Promise<void>;
   /** A real swipe at page CSS pixels; see [Gestures]. */
