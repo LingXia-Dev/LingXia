@@ -58,7 +58,20 @@ function placement(props, env) {
 }
 
 function layer(identity, env, ...children) {
-  return h('view', { style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: env?.keyboard?.height ?? 0, zIndex: layerZ + opened.get(identity) % 1000 } }, ...children);
+  return layerWith({}, identity, env, ...children);
+}
+
+function layerWith(style, identity, env, ...children) {
+  return h('view', { style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: env?.keyboard?.height ?? 0, zIndex: layerZ + opened.get(identity) % 1000, ...style } }, ...children);
+}
+
+// A popover placed by its classes lays out in the part of the surface the bars leave clear; its
+// backdrop, absolutely placed, still covers the whole layer.
+function clearOfBars(env) {
+  const insets = env?.insets;
+  if (!insets) return {};
+  return { paddingTop: insets.top, paddingRight: insets.right, paddingLeft: insets.left,
+    paddingBottom: Math.max(0, insets.bottom - (env.keyboard?.height ?? 0)) };
 }
 
 const backdropFade = { opacity: 1, transition: { properties: ['opacity'], durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] } };
@@ -126,11 +139,12 @@ function popover(tag, props, children, identity, parent) {
   const env = envOf(render.view);
   const style = anchor ? { ...rest.style, position: 'absolute', top: 0, left: 0 } : { ...placement(rest, env), ...rest.style };
   const testId = props['data-testid'];
+  const node = layerWith(anchor ? {} : clearOfBars(env), identity, env,
+    kind === 'auto' && h('button', { key: 'backdrop', 'aria-hidden': true, 'data-testid': testId && `${testId}-backdrop`, onClick: () => toggle(id, false),
+      style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'transparent' } }),
+    h(tag, { ...rest, id, key: 'panel', [panelMark]: true, [popoverScope]: [...scope, id], style }, ...children));
   return {
-    node: layer(identity, env,
-      kind === 'auto' && h('button', { key: 'backdrop', 'aria-hidden': true, 'data-testid': testId && `${testId}-backdrop`, onClick: () => toggle(id, false),
-        style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'transparent' } }),
-      h(tag, { ...rest, id, key: 'panel', [panelMark]: true, [popoverScope]: [...scope, id], style }, ...children)),
+    node,
     finish: result => {
       // A manual popover is in the top layer but takes no close request; a hint takes Escape.
       result.wire.push(['topLayer', kind === 'manual' ? 2 : 1]);

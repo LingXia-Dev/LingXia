@@ -91,6 +91,20 @@ test('an invoker in a list row anchors the popover it opens and announces it ope
   assert.equal(byId(nodes, 'more-0').props.stateExpanded, 1);
 });
 
+test('a popover placed by its classes lays out clear of the bars; its backdrop still covers them', () => {
+  reset();
+  const view = () => h('page', {},
+    h('view', { id: 'note', popover: true, open: true, 'data-testid': 'note' }, h('text', {}, 'note')));
+  const nodes = render(view, { insets: { top: 56, right: 0, bottom: 49, left: 0 }, keyboard: { height: 0 } });
+  const note = byId(nodes, 'note');
+  assert.equal(note.props.anchorTo, undefined);
+  const layer = note.parent;
+  assert.equal(layer.props.paddingTop, 56);
+  assert.equal(layer.props.paddingBottom, 49);
+  const backdrop = byId(nodes, 'note-backdrop');
+  assert.equal(backdrop.props.position, 'absolute', 'absolutely placed, the padding does not inset it');
+});
+
 test('a controlled popover follows open; opening one auto popover closes the others', () => {
   reset();
   const calls = [];

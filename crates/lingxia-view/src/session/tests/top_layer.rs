@@ -161,6 +161,24 @@ fn a_popover_opened_from_a_list_row_sits_against_its_row() {
 }
 
 #[test]
+fn a_popover_placed_by_its_classes_stays_clear_of_the_bars() {
+    let module = super::source(
+        "function render(){return h('page',{},h('view',{id:'note',popover:'auto',open:true,'data-testid':'note',style:{marginTop:0,marginLeft:0,width:60,height:15}}))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let mut env = environment();
+    env["insets"]["bottom"] = 30.into();
+    page.set_environment(env).unwrap();
+    page.set_animation_surface(Some(SURFACE), Duration::ZERO)
+        .unwrap();
+    let shot = run(&mut page, 100).pop().unwrap();
+    let [x, y, _, height] = shot.node("note").bounds;
+    assert!(height > 0.0, "the note shows");
+    assert_eq!(x, 0.0, "its classes place it at the start");
+    assert!(y >= 20.0, "below the top bar, not under it: {y}");
+}
+
+#[test]
 fn a_popover_leaves_the_chrome_over_the_page() {
     let (_, shot) = opened("popover");
     assert!(
