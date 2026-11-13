@@ -1,6 +1,8 @@
 import type { ItemTone } from './Item';
 
 export const itemParts = {
+  list: 'view',
+  listitem: 'view',
   root: 'view',
   start: 'view',
   text: 'view',
@@ -12,6 +14,12 @@ export const itemParts = {
 
 /** List row classes by part. A pressable row lands on a `button`, a plain one on a `view`. */
 export const itemRecipe = {
+  list: {
+    base: 'overflow-hidden rounded-container border border-text/10 bg-surface divide-y divide-text/8',
+  },
+  listitem: {
+    base: 'self-stretch',
+  },
   root: {
     base: 'flex-row items-center gap-3 px-4 py-2.5 min-h-control-lg self-stretch text-start',
     pressable: 'transition-colors duration-150 ease-out hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7 disabled:opacity-40',

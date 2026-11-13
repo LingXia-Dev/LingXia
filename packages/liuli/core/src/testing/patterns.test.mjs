@@ -37,6 +37,14 @@ test('settings: deleting the account asks first, and can be cancelled after', as
   assert.ok(has(screen, 'delete-account'));
 });
 
+test('settings: each group is a list named by its heading, every row a list item', async () => {
+  const screen = await open('settings');
+  const lists = screen.queryAll(node => node.props.role === 'list');
+  assert.deepEqual(lists.map(list => list.props.accessibilityLabel), ['Account', 'General', 'Signed-in devices', 'Danger zone']);
+  const rows = list => screen.queryAll(node => node.props.role === 'listitem' && list.children.includes(node)).length;
+  assert.deepEqual(lists.map(rows), [1, 5, 3, 1]);
+});
+
 test('uploads: a failed upload retries, and the photos finish', async () => {
   const screen = await open('uploads');
   screen.press(screen.getByTestId('retry'));

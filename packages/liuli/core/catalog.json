@@ -2370,12 +2370,13 @@
       "name": "Item",
       "import": "@liulidesign/core/Item",
       "exports": [
-        "Item"
+        "Item",
+        "ItemList"
       ],
       "category": "content",
       "status": "preview",
       "summary": "One row of a list: a label, a second line, and content at either end",
-      "description": "Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that opens or selects something; without it the row is plain content and its `endContent` may hold its own control. Rows carry no border or fill, so the container decides how a list is grouped and divided.",
+      "description": "Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that opens or selects something; without it the row is plain content and its `endContent` may hold its own control. Rows carry no border or fill; ItemList, from the same import, groups and divides them and reads them as a list.",
       "keywords": [
         "item",
         "row",
@@ -2457,8 +2458,37 @@
           "description": ""
         }
       ],
-      "otherProps": {},
+      "otherProps": {
+        "ItemList": [
+          {
+            "name": "children",
+            "type": "Child",
+            "required": true,
+            "description": "Rows: Items, or row variants of Switch and Slider."
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": false,
+            "description": "Names the list for assistive input, when the heading above it does not."
+          },
+          {
+            "name": "className",
+            "type": "string",
+            "required": false,
+            "description": ""
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
+        ]
+      },
       "parts": {
+        "list": "view",
+        "listitem": "view",
         "root": "view",
         "start": "view",
         "text": "view",
@@ -2512,6 +2542,7 @@
         "notes": [
           "The button pattern applies to a row with `onClick`. A plain row is not a control; its texts are read in order.",
           "On a pressable row the start and end content are drawn only, so the row is read as its label and second line.",
+          "In an ItemList each row is read with its position (\"2 of 3\"), whether it is a button or plain content.",
           "Every row is at least 48 px tall, above the 44 pt touch minimum."
         ]
       },
@@ -2519,12 +2550,12 @@
         {
           "name": "Navigation",
           "title": "Rows that open a page",
-          "source": "import { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** Rows that open a page: each is one button named by its title, with the second line as its description. */\nexport function Navigation() {\n  return (\n    <view className=\"overflow-hidden rounded-container border border-line bg-surface divide-y divide-line\">\n      {notes.map(note => (\n        <Item key={note.id} label={note.title} description={note.updated} hasChevron onClick={() => {}} data-testid={`note-${note.id}`} />\n      ))}\n    </view>\n  );\n}"
+          "source": "import { Item, ItemList } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** Rows that open a page, in a list: each is one button named by its title, read with its position. */\nexport function Navigation() {\n  return (\n    <ItemList label=\"Notes\" data-testid=\"notes\">\n      {notes.map(note => (\n        <Item key={note.id} label={note.title} description={note.updated} hasChevron onClick={() => {}} data-testid={`note-${note.id}`} />\n      ))}\n    </ItemList>\n  );\n}"
         },
         {
           "name": "Values",
           "title": "Read-only rows with values",
-          "source": "import { Item } from '@liulidesign/core/Item';\n\nconst folder = [{ d: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }] as const;\n\n/** A value at the end of a read-only row, and an icon at the start. */\nexport function Values() {\n  return (\n    <view className=\"overflow-hidden rounded-container border border-line bg-surface divide-y divide-line\">\n      <Item\n        label=\"Version\"\n        endContent={<text className=\"text-footnote text-muted\">2.4.1</text>}\n        data-testid=\"version\"\n      />\n      <Item\n        label=\"Storage\"\n        description=\"Photos and documents\"\n        startContent={<vector aria-hidden paths={folder} viewBox={[0, 0, 24, 24]} className=\"size-5\" />}\n        endContent={<text className=\"text-footnote text-muted\">7.2 GB</text>}\n      />\n    </view>\n  );\n}"
+          "source": "import { Item, ItemList } from '@liulidesign/core/Item';\n\nconst folder = [{ d: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }] as const;\n\n/** A value at the end of a read-only row, and an icon at the start. */\nexport function Values() {\n  return (\n    <ItemList label=\"About\">\n      <Item\n        label=\"Version\"\n        endContent={<text className=\"text-footnote text-muted\">2.4.1</text>}\n        data-testid=\"version\"\n      />\n      <Item\n        label=\"Storage\"\n        description=\"Photos and documents\"\n        startContent={<vector aria-hidden paths={folder} viewBox={[0, 0, 24, 24]} className=\"size-5\" />}\n        endContent={<text className=\"text-footnote text-muted\">7.2 GB</text>}\n      />\n    </ItemList>\n  );\n}"
         },
         {
           "name": "WithControl",

@@ -5,17 +5,17 @@
 One row of a list: a label, a second line, and content at either end. Status: preview.
 
 ```ts
-import { Item } from '@liulidesign/core/Item';
+import { Item, ItemList } from '@liulidesign/core/Item';
 ```
 
-Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that opens or selects something; without it the row is plain content and its `endContent` may hold its own control. Rows carry no border or fill, so the container decides how a list is grouped and divided.
+Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that opens or selects something; without it the row is plain content and its `endContent` may hold its own control. Rows carry no border or fill; ItemList, from the same import, groups and divides them and reads them as a list.
 
 ## Examples
 
 ### Rows that open a page
 
 ```tsx
-import { Item } from '@liulidesign/core/Item';
+import { Item, ItemList } from '@liulidesign/core/Item';
 
 const notes = [
   { id: 'n1', title: 'Groceries', updated: 'Edited today' },
@@ -23,14 +23,14 @@ const notes = [
   { id: 'n3', title: 'Reading list', updated: 'Edited last week' },
 ] as const;
 
-/** Rows that open a page: each is one button named by its title, with the second line as its description. */
+/** Rows that open a page, in a list: each is one button named by its title, read with its position. */
 export function Navigation() {
   return (
-    <view className="overflow-hidden rounded-container border border-line bg-surface divide-y divide-line">
+    <ItemList label="Notes" data-testid="notes">
       {notes.map(note => (
         <Item key={note.id} label={note.title} description={note.updated} hasChevron onClick={() => {}} data-testid={`note-${note.id}`} />
       ))}
-    </view>
+    </ItemList>
   );
 }
 ```
@@ -38,14 +38,14 @@ export function Navigation() {
 ### Read-only rows with values
 
 ```tsx
-import { Item } from '@liulidesign/core/Item';
+import { Item, ItemList } from '@liulidesign/core/Item';
 
 const folder = [{ d: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }] as const;
 
 /** A value at the end of a read-only row, and an icon at the start. */
 export function Values() {
   return (
-    <view className="overflow-hidden rounded-container border border-line bg-surface divide-y divide-line">
+    <ItemList label="About">
       <Item
         label="Version"
         endContent={<text className="text-footnote text-muted">2.4.1</text>}
@@ -57,7 +57,7 @@ export function Values() {
         startContent={<vector aria-hidden paths={folder} viewBox={[0, 0, 24, 24]} className="size-5" />}
         endContent={<text className="text-footnote text-muted">7.2 GB</text>}
       />
-    </view>
+    </ItemList>
   );
 }
 ```
@@ -151,10 +151,21 @@ export function Destructive() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
+## ItemList props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `children` (required) | `Child` |  | Rows: Items, or row variants of Switch and Slider. |
+| `label` | `string` |  | Names the list for assistive input, when the heading above it does not. |
+| `className` | `string` |  |  |
+| `data-testid` | `string` |  |  |
+
 ## Anatomy
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
+| list | `<view>` | no | ItemList: a bordered, divided list, read as a list. |
+| listitem | `<view>` | no | Around each row in an ItemList, Item or Switch and Slider rows alike; it carries the row's position. |
 | root | `<view>` | yes | A `button` when `onClick` is set, otherwise a `view`; at least the large control height. |
 | start | `<view>` | no | `startContent`: an icon or avatar. |
 | label | `<text>` | yes | The main text; it wraps rather than truncating. |
@@ -171,6 +182,7 @@ export function Destructive() {
 - Press target: lg 48 px.
 - The button pattern applies to a row with `onClick`. A plain row is not a control; its texts are read in order.
 - On a pressable row the start and end content are drawn only, so the row is read as its label and second line.
+- In an ItemList each row is read with its position ("2 of 3"), whether it is a button or plain content.
 - Every row is at least 48 px tall, above the 44 pt touch minimum.
 
 | Contrast | Pair | Minimum | Light | Dark |
@@ -185,7 +197,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Use `onClick` with `hasChevron` for a row that opens another page.
 - Do: Keep the label short and put detail in `description`.
-- Do: Group rows in a container with a border or fill and divide them (`divide-y divide-line`).
+- Do: Group rows in an ItemList, so the rows are divided and read with their position.
 - Don't: Put a button or other control in `endContent` of a row with `onClick`; the View refuses a button inside a button.
 - Don't: Use a row for a single action; that is a Button.
 - Don't: Rely on the end value alone on a pressable row; it is not read, so repeat it in `description` when it matters.

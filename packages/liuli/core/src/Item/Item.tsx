@@ -1,4 +1,4 @@
-import { cx, useId, type Child } from '@lingxia/view';
+import { childrenToArray, cx, useId, type Child } from '@lingxia/view';
 import { describedBy } from '../internal/describedBy';
 import { glyphBox, glyphs } from '../internal/glyphs';
 import { itemRecipe as r } from './Item.recipe';
@@ -64,5 +64,24 @@ export function Item(props: ItemProps) {
     >
       {content}
     </button>
+  );
+}
+
+export interface ItemListProps {
+  /** Rows: Items, or row variants of Switch and Slider. */
+  children: Child;
+  /** Names the list for assistive input, when the heading above it does not. */
+  label?: string;
+  className?: string;
+  'data-testid'?: string;
+}
+
+/** Rows in one bordered list, read as a list: each row reports its position. */
+export function ItemList({ children, label, className, 'data-testid': testId }: ItemListProps) {
+  // A button keeps its own role, so each row sits in a listitem that carries the position.
+  return (
+    <view role="list" aria-label={label} data-testid={testId} className={cx(r.list.base, className)}>
+      {childrenToArray(children).map((row, index) => <view key={String(index)} role="listitem" className={r.listitem.base}>{row}</view>)}
+    </view>
   );
 }

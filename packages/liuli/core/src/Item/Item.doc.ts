@@ -8,11 +8,14 @@ export const doc: ComponentDoc = {
   description:
     'Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that ' +
     'opens or selects something; without it the row is plain content and its `endContent` may hold its own control. ' +
-    'Rows carry no border or fill, so the container decides how a list is grouped and divided.',
+    'Rows carry no border or fill; ItemList, from the same import, groups and divides them and reads them as a list.',
   keywords: ['item', 'row', 'list', 'cell', 'list item', 'settings row', 'table row', 'navigation row'],
   propsType: 'ItemProps',
+  otherPropsTypes: ['ItemListProps'],
   recipe: { map: 'itemRecipe', parts: 'itemParts' },
   anatomy: [
+    { part: 'list', required: false, description: 'ItemList: a bordered, divided list, read as a list.' },
+    { part: 'listitem', required: false, description: 'Around each row in an ItemList, Item or Switch and Slider rows alike; it carries the row\'s position.' },
     { part: 'root', required: true, description: 'A `button` when `onClick` is set, otherwise a `view`; at least the large control height.' },
     { part: 'start', required: false, description: '`startContent`: an icon or avatar.' },
     { part: 'label', required: true, description: 'The main text; it wraps rather than truncating.' },
@@ -35,6 +38,7 @@ export const doc: ComponentDoc = {
     notes: [
       'The button pattern applies to a row with `onClick`. A plain row is not a control; its texts are read in order.',
       'On a pressable row the start and end content are drawn only, so the row is read as its label and second line.',
+      'In an ItemList each row is read with its position ("2 of 3"), whether it is a button or plain content.',
       'Every row is at least 48 px tall, above the 44 pt touch minimum.',
     ],
   },
@@ -42,7 +46,7 @@ export const doc: ComponentDoc = {
     do: [
       'Use `onClick` with `hasChevron` for a row that opens another page.',
       'Keep the label short and put detail in `description`.',
-      'Group rows in a container with a border or fill and divide them (`divide-y divide-line`).',
+      'Group rows in an ItemList, so the rows are divided and read with their position.',
     ],
     dont: [
       'Put a button or other control in `endContent` of a row with `onClick`; the View refuses a button inside a button.',

@@ -4,7 +4,7 @@ import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
 import { Dialog } from '@liulidesign/core/Dialog';
 import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
-import { Item } from '@liulidesign/core/Item';
+import { Item, ItemList } from '@liulidesign/core/Item';
 import { RadioGroup } from '@liulidesign/core/RadioGroup';
 import { Slider } from '@liulidesign/core/Slider';
 import { Switch } from '@liulidesign/core/Switch';
@@ -29,12 +29,12 @@ const initialDevices = [
   { id: 'tablet', name: 'MatePad 11', detail: 'Active 3 days ago', icon: phone },
 ];
 
-/** One titled group of rows, the way a settings screen reads. */
+/** One titled list of rows, the way a settings screen reads; the heading names the list. */
 function Group({ title, footer, children }: { title: string; footer?: string; children: Child }) {
   return (
     <view className="gap-2">
       <text role="heading" headingLevel={2} className="px-1 text-footnote font-medium text-muted">{title}</text>
-      <view className="overflow-hidden rounded-container border border-text/10 bg-surface divide-y divide-text/8">{children}</view>
+      <ItemList label={title}>{children}</ItemList>
       {footer !== undefined && <text className="px-1 text-footnote text-muted">{footer}</text>}
     </view>
   );

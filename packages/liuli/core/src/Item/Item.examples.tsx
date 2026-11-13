@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Button } from '../Button/Button';
-import { Item } from './Item';
+import { Item, ItemList } from './Item';
 
 const notes = [
   { id: 'n1', title: 'Groceries', updated: 'Edited today' },
@@ -10,21 +10,21 @@ const notes = [
 
 const folder = [{ d: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }] as const;
 
-/** Rows that open a page: each is one button named by its title, with the second line as its description. */
+/** Rows that open a page, in a list: each is one button named by its title, read with its position. */
 export function Navigation() {
   return (
-    <view className="overflow-hidden rounded-container border border-line bg-surface divide-y divide-line">
+    <ItemList label="Notes" data-testid="notes">
       {notes.map(note => (
         <Item key={note.id} label={note.title} description={note.updated} hasChevron onClick={() => {}} data-testid={`note-${note.id}`} />
       ))}
-    </view>
+    </ItemList>
   );
 }
 
 /** A value at the end of a read-only row, and an icon at the start. */
 export function Values() {
   return (
-    <view className="overflow-hidden rounded-container border border-line bg-surface divide-y divide-line">
+    <ItemList label="About">
       <Item
         label="Version"
         endContent={<text className="text-footnote text-muted">2.4.1</text>}
@@ -36,7 +36,7 @@ export function Values() {
         startContent={<vector aria-hidden paths={folder} viewBox={[0, 0, 24, 24]} className="size-5" />}
         endContent={<text className="text-footnote text-muted">7.2 GB</text>}
       />
-    </view>
+    </ItemList>
   );
 }
 

@@ -163,6 +163,14 @@ spec('card choice: a tap checks a card; arrows move and choose', { start: { page
   await expect(plan('monthly')).toBeFocused();
 });
 
+spec('item: rows in an ItemList are read as list items of a named list', { start: { page: 'item' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  await expect(view.getByRole('list', { name: 'Notes' })).toBeVisible();
+  await expect(view.getByRole('list', { name: 'About' })).toBeAttached();
+  await expect(view.getByRole('listitem')).toHaveCount(5);
+  await expect(view.getByRole('button', { name: 'Trip to the coast' })).toBeVisible();
+});
+
 spec('select: a choice lands in the box; a required select clears its error', { start: { page: 'select' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const country = view.getByRole('combobox', { name: 'Country' });

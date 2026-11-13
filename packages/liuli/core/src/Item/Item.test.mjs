@@ -13,6 +13,22 @@ test('Navigation: each row is one button named by its title, described by its se
   assert.equal(row.props.minHeight, 48);
 });
 
+test('ItemList: a named list whose rows sit in listitems, plain or pressable', async () => {
+  for (const [example, testId, rows] of [['Navigation', 'note-n2', 3], ['Values', 'version', 2]]) {
+    const screen = await renderExample('Item/Item', example);
+    const [list] = screen.queryAll(node => node.props.role === 'list');
+    assert.ok(list.props.accessibilityLabel, `${example}: the list is named`);
+    const items = screen.queryAll(node => node.props.role === 'listitem');
+    assert.equal(items.length, rows);
+    assert.ok(items.some(item => item.children.includes(screen.getByTestId(testId))), `${example}: the row is a listitem's child`);
+  }
+});
+
+test('an Item outside an ItemList is not wrapped', async () => {
+  const screen = await renderExample('Item/Item', 'WithControl');
+  assert.equal(screen.queryAll(node => node.props.role === 'listitem').length, 0);
+});
+
 test('a pressable row runs its onClick once per press', async () => {
   const screen = await renderPage(`
     import { Item } from '@liulidesign/core/Item';
