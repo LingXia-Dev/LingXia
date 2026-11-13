@@ -35,6 +35,14 @@ Not checked but required: every visible or spoken string arrives as a prop; the 
 same on every OS; no backdrop blur over moving content; every interactive component takes a
 `label` as its accessible name.
 
+- Keyboard focus follows the shape. A row takes `focus-visible:bg-text/7` with `rounded-control`
+  (pull it out to the row's edges with matching negative margin and padding); a box takes
+  `focus-visible:ring-2 focus-visible:ring-focus`. Never both on one control.
+- A group of choices is one View composite, a container role over item roles (`radiogroup` ›
+  `radio`, `menu` › `menuitemradio`): the group component provides the value through a context, the
+  items read it, and the View supplies the arrow keys. Rows read as a list sit in `list` ›
+  `listitem` views, which carry the position.
+
 ## Running
 
 ```sh

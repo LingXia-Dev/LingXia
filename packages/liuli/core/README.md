@@ -5,7 +5,8 @@ TSX and Tailwind classes, inspired by Astryx. The package ships TSX source; the 
 compiles it with the app's pages, checks every class it uses, and names its files by package in
 errors.
 
-Status: lab. Ten components, verified by Node unit tests and the compiler only, not yet on a device.
+Status: preview. Nineteen components, each unit-tested in Node and driven on devices by the gallery's
+specs (`../gallery/zz-tests`).
 
 ## What it needs
 
@@ -42,13 +43,22 @@ export function render() {
 | `@liulidesign/core/Button` | Button: variants, sizes, loading, async `clickAction` |
 | `@liulidesign/core/Field` | Field: label, help text and status around a raw control |
 | `@liulidesign/core/TextInput` | TextInput: one-line editor, bound or controlled, optional clear button |
+| `@liulidesign/core/Select` | Select: one choice from a list that opens on demand |
 | `@liulidesign/core/CheckboxInput` | CheckboxInput: one on/off choice with label and help text |
+| `@liulidesign/core/RadioGroup` | RadioGroup: one choice from a short list, as rows or cards |
+| `@liulidesign/core/Switch` | Switch: a setting that takes effect at once, alone or as a row |
+| `@liulidesign/core/Slider` | Slider: a value along a track, alone or as a row |
+| `@liulidesign/core/Tabs` | Tabs: underline or segmented, over one panel |
 | `@liulidesign/core/Dialog` | Dialog: modal panel, `isOpen` + `onOpenChange` |
-| `@liulidesign/core/DropdownMenu` | DropdownMenu, DropdownMenuItem, DropdownMenuDivider |
-| `@liulidesign/core/Item` | Item: a list row, pressable or holding its own control |
-| `@liulidesign/core/Card` | Card and ClickableCard: grouped content, or one pressable choice |
-| `@liulidesign/core/ProgressBar` | ProgressBar and Spinner: an amount done, or a wait |
+| `@liulidesign/core/DropdownMenu` | DropdownMenu, DropdownMenuItem, DropdownMenuDivider, DropdownMenuCheckboxItem, DropdownMenuRadioGroup, DropdownMenuRadioItem |
+| `@liulidesign/core/Tooltip` | Tooltip: an info button that opens a short note |
+| `@liulidesign/core/Item` | Item and ItemList: a list row, and the list that reads rows with their position |
+| `@liulidesign/core/Card` | Card, ClickableCard and ClickableCardGroup: grouped content, one pressable card, or cards that choose one value |
+| `@liulidesign/core/Details` | Details and DetailsGroup: a row that shows and hides content, and an accordion |
+| `@liulidesign/core/Banner` | Banner: a message about the page that stays until resolved |
 | `@liulidesign/core/Badge` | Badge: a short status or category label |
+| `@liulidesign/core/Avatar` | Avatar and AvatarGroup: a person as a picture or initials |
+| `@liulidesign/core/ProgressBar` | ProgressBar and Spinner: an amount done, or a wait |
 
 Each also exports its class recipe at `@liulidesign/core/<Name>/recipe`, for styling a raw primitive
 to match. The full reference for each component (props, anatomy, accessibility, examples) is in
@@ -60,6 +70,11 @@ to match. The full reference for each component (props, anatomy, accessibility, 
   status messages and disabled reasons are read as its description (`aria-describedby`).
 - Sizes `sm` and `md` are below the 44 pt touch minimum until hit slop exists; prefer `lg` on touch.
 - Booleans are `is*`/`has*`; values are `value` + `onChange` or `bind`; overlays are `isOpen` + `onOpenChange`; sizes are `sm`/`md`/`lg`.
+- Choices that belong together sit in a group component, which owns the value and the keyboard:
+  `RadioGroup`, `ClickableCardGroup`, `DropdownMenuRadioGroup`. Rows that belong together sit in an
+  `ItemList`, so each is read with its position.
+- Keyboard focus follows the shape: a row (list item, menu item, underline tab, checkbox, radio or
+  switch row) fills with a rounded wash; a box (select, text field, card, segment, thumb) takes a ring.
 - Liuli contains no copy: every visible or spoken string arrives as a prop.
 - Controls look the same on every OS.
 
