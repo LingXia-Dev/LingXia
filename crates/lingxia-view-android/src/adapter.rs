@@ -120,6 +120,7 @@ pub(super) struct AndroidAdapter {
     chrome_snapshot: AtomicU64,
     orientation: Mutex<Option<lingxia_view::scene::video::Orientation>>,
     /// Display frames keep coming for a playing video's new frames.
+    #[cfg(all(feature = "gpu", target_os = "android"))]
     ticking: Arc<AtomicBool>,
 }
 
@@ -181,6 +182,7 @@ impl AndroidAdapter {
             modal: Default::default(),
             chrome_snapshot: AtomicU64::new(0),
             orientation: Default::default(),
+            #[cfg(all(feature = "gpu", target_os = "android"))]
             ticking: Default::default(),
         }
     }

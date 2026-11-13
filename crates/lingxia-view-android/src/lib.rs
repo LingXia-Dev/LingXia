@@ -69,11 +69,20 @@ fn run<'a, T: Default>(
 /// The newest frame presenter `id` showed, for a window screenshot: the window capture leaves
 /// SurfaceViews out. Read on the render thread; the caller encodes.
 pub fn frame(id: i64) -> Option<(u32, u32, Vec<u8>)> {
-    let id = u64::try_from(id).ok().filter(|id| *id != 0)?;
-    render::run_now(move || gpu_surface::readback(id))?
-        .inspect_err(|error| adapter::log(&format!("UI_SURFACE: screenshot: {error}")))
-        .ok()
-        .flatten()
+    #[cfg(all(feature = "gpu", target_os = "android"))]
+    {
+        let id = u64::try_from(id).ok().filter(|id| *id != 0)?;
+        render::run_now(move || gpu_surface::readback(id))?
+            .inspect_err(|error| adapter::log(&format!("UI_SURFACE: screenshot: {error}")))
+            .ok()
+            .flatten()
+    }
+    // Without a GPU surface no presenter shows a frame.
+    #[cfg(not(all(feature = "gpu", target_os = "android")))]
+    {
+        let _ = id;
+        None
+    }
 }
 
 fn host<'a>(handle: jlong) -> Result<&'a Host, Error> {
