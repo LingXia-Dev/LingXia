@@ -23,4 +23,6 @@ pub mod scroll;
 pub mod slider;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod touch_target_tests;
 pub mod view;

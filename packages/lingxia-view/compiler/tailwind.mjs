@@ -139,7 +139,8 @@ function roleColor(value) {
 /** The Tailwind colour names for the roles: `text-muted` is `muted`, so the class reads `text-muted`. */
 // The View's own variants and utility: `exit:` styles a removed element's ghost; `track:`, `range:`,
 // `secondary:` and `thumb:` style a slider's parts; `transition-layout`
-// adds FLIP position motion to whatever `transition-*` sets; `ease-spring*` time a transition by a spring.
+// adds FLIP position motion to whatever `transition-*` sets; `ease-spring*` time a transition by a spring;
+// `touch-target-none` keeps a finger to the element's own box.
 export const viewExtensions = `@custom-variant exit (&:where(.lx-exit));
 @custom-variant track (&::-lx-track);
 @custom-variant range (&::-lx-range);
@@ -148,6 +149,12 @@ export const viewExtensions = `@custom-variant exit (&:where(.lx-exit));
 @theme {
   --ease-spring: spring(0);
   --ease-spring-bouncy: spring(0.25);
+}
+@utility touch-target-none {
+  --lx-touch-target: none;
+}
+@utility touch-target-auto {
+  --lx-touch-target: auto;
 }
 @utility transition-layout {
   --lx-transition-layout: 1;
@@ -777,6 +784,7 @@ function declarations(nodes, vars, root) {
     }
     // Border styles follow --tw-border-style, which only `border-solid|dashed|dotted` set.
     if (prop === '--tw-border-style') { style.borderStyle = longhand('border-style', variables(node.value, local).trim()); continue; }
+    if (prop === '--lx-touch-target') { style.touchTarget = variables(node.value, local).trim(); continue; }
     if (prop.startsWith('--')) continue;
     // Tailwind writes the prefixed twin of user-select; it carries nothing more.
     if (prop === '-webkit-user-select') continue;

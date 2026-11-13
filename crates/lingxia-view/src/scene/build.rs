@@ -1245,6 +1245,7 @@ impl Renderer {
                 }),
                 close_request: record.number(field::TOP_LAYER) == Some(1.0),
                 drag_scrim: record.number(field::DRAG_SCRIM) == Some(1.0),
+                touch_target_none: record.string(field::TOUCH_TARGET) == Some("none"),
                 panel: record.tag != tag::BUTTON
                     && record
                         .parent

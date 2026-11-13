@@ -15,7 +15,7 @@ pub(crate) mod calendar;
 mod chrome;
 mod environment;
 pub use chrome::HostChrome;
-pub use environment::{DeviceFacts, TABLET_SMALLEST_WIDTH, obscured};
+pub use environment::{DeviceFacts, TABLET_SMALLEST_WIDTH, obscured, touch_target};
 
 pub type Task = Box<dyn FnOnce() + Send>;
 

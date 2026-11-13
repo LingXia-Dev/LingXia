@@ -103,6 +103,19 @@ impl DeviceFacts {
     }
 }
 
+/// The smallest box a finger press reaches on this platform, logical pixels: the platform's
+/// minimum touch target (Android 48 dp, iOS and HarmonyOS 44 pt); none for a fine pointer.
+pub fn touch_target(env: &serde_json::Value) -> f32 {
+    if env["pointer"] == "fine" {
+        return 0.0;
+    }
+    match env["os"].as_str() {
+        Some("android") => 48.0,
+        Some("ios" | "harmony") => 44.0,
+        _ => 0.0,
+    }
+}
+
 /// The surface edges covered, logical pixels (top, right, bottom, left): by host and system
 /// bars and the keyboard, then by system bars and the keyboard alone.
 pub fn obscured(env: &serde_json::Value) -> [[f32; 4]; 2] {

@@ -124,6 +124,8 @@ pub struct ViewInteraction {
     composite_focus: std::collections::HashMap<String, String>,
     /// A mouse or trackpad drives the pointer: drags select text instead of scrolling.
     fine_pointer: bool,
+    /// The smallest box a finger press reaches, in logical px; 0 keeps presses to real boxes.
+    touch_target: f32,
     /// What drove the last input; focus moves, their ring and `focus-visible:` follow it.
     origin: FocusOrigin,
     /// Activations that could not be resolved against the presented frame.
@@ -338,6 +340,10 @@ impl ViewInteraction {
 
     pub fn set_fine_pointer(&mut self, fine: bool) {
         self.fine_pointer = fine;
+    }
+
+    pub fn set_touch_target(&mut self, minimum: f32) {
+        self.touch_target = minimum;
     }
 
     /// Edges covered by all bars and the keyboard, and by system bars and the keyboard alone.
@@ -634,7 +640,9 @@ impl ViewInteraction {
         });
         self.frame = Some(next);
         if let Some(point) = self.exploring {
-            let target = self.semantics().and_then(|semantics| semantics.hit(point));
+            let target = self
+                .semantics()
+                .and_then(|semantics| semantics.hit(point, self.touch_target));
             effects.extend(self.hover_to(target));
         }
         effects.extend(self.finish_keyboard(page));

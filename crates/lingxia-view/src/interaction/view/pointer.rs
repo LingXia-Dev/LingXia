@@ -45,13 +45,20 @@ impl ViewInteraction {
                 effects.push(Effect::StopFling);
                 effects.push(Effect::ClearFocusRing);
                 self.keyboard_focus = None;
+                let pressed = frame.press_hit(point, self.touch_target);
+                // A drag element reached through its touch target takes the drag from there.
+                let reached_drag = pressed
+                    .filter(|index| !frame::contains(&frame.nodes[*index], point, false))
+                    .map(|index| &frame.nodes[index])
+                    .filter(|node| node.drag.as_ref().is_some_and(|drag| !drag.ghost))
+                    .map(|node| node.identity.to_string());
                 self.gesture = Gesture {
-                    pressed: frame.hit(point),
+                    pressed,
                     pressed_commit: Some(frame.commit),
                     down: [event.x, event.y],
                     last: event.y,
                     target: frame.scroll_hit(point),
-                    drag: self.drag.hit(&frame, point),
+                    drag: reached_drag.or_else(|| self.drag.hit(&frame, point)),
                     touching: true,
                     ..Default::default()
                 };
@@ -323,9 +330,9 @@ impl ViewInteraction {
                             velocity: speed,
                         });
                     }
-                } else if let Some(index) =
-                    target.filter(|index| same_frame && frame.hit(point) == Some(*index))
-                {
+                } else if let Some(index) = target.filter(|index| {
+                    same_frame && frame.press_hit(point, self.touch_target) == Some(*index)
+                }) {
                     effects.push(Effect::Clicked);
                     effects.extend(self.activate(index, Some(point), false, None));
                 } else if !self.gesture.moved
@@ -339,7 +346,7 @@ impl ViewInteraction {
                     && same_frame
                     && !self.gesture.moved
                     && !self.gesture.long_pressed
-                    && frame.hit(point).is_none()
+                    && frame.press_hit(point, self.touch_target).is_none()
                 {
                     effects.push(Effect::Clicked);
                     effects.extend(self.dismiss_plots(frame.outside_plot_selections(point)));

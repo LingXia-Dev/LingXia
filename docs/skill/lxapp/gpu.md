@@ -70,6 +70,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   Needs `aria-label`: screen readers and arrow keys step it; specs read the point as `toHaveValue('1')`.
   A same-axis scroll inside it scrolls only once it is fully open (lowest offset) and returns to its top before it closes.
 - No other pointer, swipe, pinch or long-press handlers and no drag-and-drop.
+- On phones a finger reaches a control smaller than 44 pt (Android 48 dp) within that size around it, never over
+  another control; layout, `boundingBox()` and mouse input keep the real box. `touch-target-none` opts out.
 - `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
   `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear, radial or conic, ≤8).
 - Rich text: `<text>Read <span className="font-bold">this</span> or <link onClick={go}>that</link></text>`;

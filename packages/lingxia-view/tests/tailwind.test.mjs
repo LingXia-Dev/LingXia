@@ -281,6 +281,13 @@ test('starting and exit variants lower to presence states', async () => {
   assert.throws(() => rendered(() => h('view', { className: 'starting:p-2' })), /starting: supports paint properties only, not paddingTop/);
 });
 
+test('touch-target-none keeps a control to its own box on the wire', async () => {
+  await use(['touch-target-none', 'touch-target-auto']);
+  assert.equal(classStyle('touch-target-none').touchTarget, 'none');
+  assert.equal(classStyle('touch-target-none touch-target-auto').touchTarget, 'auto');
+  assert.equal(node('button', { className: 'touch-target-none', onClick() {} }).touchTarget, 'none');
+});
+
 test('transition-layout adds layout motion to whatever transition-* sets', async () => {
   await use(['transition-layout', 'transition-opacity', 'duration-300', 'transition-none']);
   assert.deepEqual(classStyle('transition-layout').transition.properties, ['layout']);

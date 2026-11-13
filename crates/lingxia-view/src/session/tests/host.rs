@@ -5692,6 +5692,8 @@ fn a_tap_elsewhere_closes_a_hint_whatever_opened_it_and_still_reaches_what_it_hi
 mod autoclose;
 #[path = "panel_press.rs"]
 mod panel_press;
+#[path = "touch_target.rs"]
+mod touch_target;
 
 /// A page whose slider logs `onPressChange` as T/F; `extra` is spliced into its render.
 fn press_page(platform: &Platform, worker: &Arc<ViewWorker>, extra: &str) -> ViewHost<Fake> {

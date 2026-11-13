@@ -122,6 +122,9 @@ pub struct NodeSnapshot {
     /// what lies beneath, its backdrop included.
     #[serde(skip)]
     pub panel: bool,
+    /// `touch-target-none`: a finger reaches it only inside its own box.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub touch_target_none: bool,
     /// Authored `disabled`, its own or its radio group's: the element takes no input at all.
     #[serde(skip)]
     pub disabled: bool,

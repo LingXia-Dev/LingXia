@@ -331,16 +331,27 @@ impl Projection<'_> {
             .collect()
     }
 
-    /// The topmost meaningful, visible node under a logical point.
-    pub fn hit(&self, point: [f32; 2]) -> Option<u32> {
-        self.frame
-            .hit_order()
-            .find(|(_, node)| {
+    /// The topmost meaningful, visible node under a logical point, or the small control a
+    /// finger there presses (`minimum` as in `press_hit`) when it lies inside it.
+    pub fn hit(&self, point: [f32; 2], minimum: f32) -> Option<u32> {
+        let exact = self.frame.hit_order().find(|(_, node)| {
+            meaningful(node)
+                && visible(node)
+                && crate::interaction::frame::contains(node, point, false)
+        });
+        let reached = self
+            .frame
+            .press_hit(point, minimum)
+            .filter(|index| Some(*index) != self.frame.hit(point))
+            .filter(|index| {
+                let node = &self.frame.nodes[*index];
                 meaningful(node)
-                    && visible(node)
-                    && crate::interaction::frame::contains(node, point, false)
-            })
-            .and_then(|(index, _)| self.ids.id(index))
+                    && exact
+                        .is_none_or(|(_, exact)| crate::interaction::frame::descends(node, exact))
+            });
+        reached
+            .or(exact.map(|(index, _)| index))
+            .and_then(|index| self.ids.id(index))
     }
 
     fn members(&self, group: &NodeSnapshot) -> impl Iterator<Item = (usize, &NodeSnapshot)> {

@@ -87,6 +87,36 @@ impl PresentedFrame {
         None
     }
 
+    /// What a finger at `point` presses: the exact hit, else a small target whose box grown to
+    /// `minimum` (logical px; 0 for a fine pointer) reaches the point. Only targets inside the
+    /// exact hit compete, the nearest edge winning and a tie going to the one painted higher.
+    pub fn press_hit(&self, point: [f32; 2], minimum: f32) -> Option<usize> {
+        let exact = self.hit(point);
+        if minimum <= 0.0 || point.iter().any(|value| !value.is_finite()) {
+            return exact;
+        }
+        let scope = exact.map(|index| &self.nodes[index]);
+        let order: Vec<_> = self.hit_order().collect();
+        let boxes = boxes_at(&self.nodes, &order, point);
+        let mut best: Option<(f32, usize)> = None;
+        for (rank, &(index, node)) in order.iter().enumerate() {
+            if Some(index) == exact
+                || node.touch_target_none
+                || !hit_target(node)
+                || scope.is_some_and(|scope| !descends(node, scope))
+            {
+                continue;
+            }
+            let Some(distance) = reach(node, point, minimum) else {
+                continue;
+            };
+            if !covered(&boxes, rank, node) && best.is_none_or(|(nearest, _)| distance < nearest) {
+                best = Some((distance, index));
+            }
+        }
+        best.map(|(_, index)| index).or(exact)
+    }
+
     /// The topmost node with a `hover:` delta under a logical point.
     pub fn hover_hit(&self, point: [f32; 2]) -> Option<usize> {
         self.hit_order()
@@ -322,6 +352,73 @@ pub fn contains(node: &NodeSnapshot, point: [f32; 2], own_shape: bool) -> bool {
         return false;
     }
     node.clips.iter().all(|clip| clip.contains(point))
+}
+
+/// The boxes that keep a touch band off `point`, by rank in `order`: controls and laid-out
+/// boxes; text, images and the full-surface box holding a top layer's panel let it through.
+fn boxes_at<'a>(
+    nodes: &[NodeSnapshot],
+    order: &[(usize, &'a NodeSnapshot)],
+    point: [f32; 2],
+) -> Vec<(usize, &'a NodeSnapshot)> {
+    let layers: Vec<&str> = nodes
+        .iter()
+        .filter(|node| node.panel)
+        .filter_map(|node| node.identity.rsplit_once('/').map(|(layer, _)| layer))
+        .collect();
+    order
+        .iter()
+        .enumerate()
+        .filter(|(_, (_, node))| {
+            (hit_target(node)
+                || !(matches!(node.tag, "text" | "span" | "image" | "vector")
+                    || layers.contains(&&*node.identity)))
+                && contains(node, point, false)
+        })
+        .map(|(rank, &(_, node))| (rank, node))
+        .collect()
+}
+
+/// A box painted above `node` (at a lower rank) that is neither its ancestor nor its content.
+fn covered(boxes: &[(usize, &NodeSnapshot)], rank: usize, node: &NodeSnapshot) -> bool {
+    boxes
+        .iter()
+        .take_while(|(above, _)| *above < rank)
+        .any(|(_, above)| !descends(node, above) && !descends(above, node))
+}
+
+/// How far `point` lies outside `node`'s box when that box, grown on each axis to `minimum`
+/// about its centre, reaches it through every clip; a link's lines grow only vertically.
+fn reach(node: &NodeSnapshot, point: [f32; 2], minimum: f32) -> Option<f32> {
+    if !visible(node) || !node.clips.iter().all(|clip| clip.contains(point)) {
+        return None;
+    }
+    let grow = |start: f32, size: f32| {
+        let size_to = size.max(minimum);
+        (start - (size_to - size) / 2.0, size_to)
+    };
+    let rects: &[[f32; 4]] = if node.hit_rects.is_empty() {
+        std::slice::from_ref(&node.bounds)
+    } else {
+        &node.hit_rects
+    };
+    rects
+        .iter()
+        .filter(|rect| rect[2] > 0.0 && rect[3] > 0.0)
+        .filter_map(|&[x, y, w, h]| {
+            let (gx, gw) = if node.hit_rects.is_empty() {
+                grow(x, w)
+            } else {
+                (x, w)
+            };
+            let (gy, gh) = grow(y, h);
+            inside_rect([gx, gy, gw, gh], point).then(|| {
+                let dx = (x - point[0]).max(point[0] - (x + w)).max(0.0);
+                let dy = (y - point[1]).max(point[1] - (y + h)).max(0.0);
+                dx.hypot(dy)
+            })
+        })
+        .min_by(f32::total_cmp)
 }
 
 /// `node` sits inside `ancestor`'s subtree.

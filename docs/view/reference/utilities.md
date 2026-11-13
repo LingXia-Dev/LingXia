@@ -278,6 +278,7 @@ Unlike Tailwind, `ring-offset-<n>` leaves a transparent gap between box and ring
 | --- | --- | --- |
 | `blur` | `blur-2xl`, `blur-3xl`, `blur-lg`, `blur-md`, `blur-none`, … (8) |  |
 | `snap` | `snap-align-none`, `snap-always`, `snap-center`, `snap-end`, `snap-none`, … (9) | proximity snapping (1); scroll-snap-type (1) |
+| `touch` | `touch-target-auto`, `touch-target-none` | touch-action (10) |
 
 ## Accepted without effect
 
@@ -401,7 +402,6 @@ These compile but set nothing the renderer draws:
 | `subpixel` | 1 | -webkit-font-smoothing (1) |
 | `tab` | 3 | tab-size (3) |
 | `table` | 11 | display (9); table-layout (2) |
-| `touch` | 10 | touch-action (10) |
 | `transform` | 11 | transform-box (5); transform (4); transform-style (2) |
 | `translate-z` | 70 | translate-z (70) |
 | `underline-offset` | 11 | text-underline-offset (11) |

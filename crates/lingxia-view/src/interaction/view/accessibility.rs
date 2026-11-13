@@ -46,9 +46,10 @@ impl ViewInteraction {
     /// Touch exploration at a device-pixel point; `None` ends exploration.
     pub fn explore(&mut self, point: Option<[f32; 2]>) -> (bool, Vec<Effect>) {
         self.exploring = point.map(|[x, y]| self.logical(x, y));
-        let target = self
-            .exploring
-            .and_then(|point| self.semantics().and_then(|semantics| semantics.hit(point)));
+        let target = self.exploring.and_then(|point| {
+            self.semantics()
+                .and_then(|semantics| semantics.hit(point, self.touch_target))
+        });
         let effects = self.hover_to(target);
         (self.hover.is_some(), effects)
     }
