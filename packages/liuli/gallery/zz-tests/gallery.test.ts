@@ -434,8 +434,11 @@ spec('date input: a tap opens the picker; a filled day reaches the page; a retur
   await expect(view.testId('lx-picker-cancel')).toHaveCount(0);
   await due.fill('2026-12-01');
   await expect(view.testId('due-value')).toHaveText('Due 2026-12-01');
+  // A committed date clamps to min, so reach the error as a person does: a valid return, then a later leave.
   const back = view.testId('back');
-  await back.fill('2026-12-10');
+  await back.fill('2026-12-20');
+  await expect(back).not.toHaveAttribute('aria-invalid', 'true');
+  await view.testId('leave').fill('2026-12-24');
   await expect(back).toHaveAttribute('aria-invalid', 'true');
 });
 
