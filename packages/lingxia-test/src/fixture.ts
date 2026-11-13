@@ -22,6 +22,7 @@ import { isTransientTransportError, matchesErrorCode } from "./deadline.js";
 import { checkJsonArgs, explainRemoteError, isRetryableRemoteError, functionDetail, logicScript, pageScript, type RemoteTarget } from "./remote.js";
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
 import {
+  LOCATOR_BRAND,
   PageLocator,
   normalizeText,
   sleep,
@@ -66,6 +67,9 @@ import type {
   TestView,
   ViewEnvironment,
   ViewSettledOptions,
+  TestVisual,
+  VisualShot,
+  VisualShotOptions,
   WaitForOptions,
 } from "./types.js";
 import type {
@@ -85,6 +89,12 @@ import {
 import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, PageDriver, PageInfo, PageTarget } from "@lingxia/types/automation";
 
 export { TimeoutError };
+
+/** Set by the runner from `lxdev test --visual`: each shot captures twice. */
+let visualPairs = false;
+export function shootVisualPairs(on: boolean): void {
+  visualPairs = on;
+}
 
 /** `view.settled()`: how long a page must present no frame. */
 const DEFAULT_SETTLED_QUIET_MS = 500;
@@ -129,6 +139,10 @@ export class LiveFixture implements Fixture {
   readonly observed = new Set<string>();
   readonly assertions: AssertionRecord[] = [];
   readonly attachments: AttachmentRef[] = [];
+  /** `t.visual.shot` names taken in this attempt, with where. */
+  private readonly shots = new Map<string, string>();
+  /** The spec's last `view.environment()` pin; `null` once cleared. */
+  private viewPin: ViewEnvironment | null = null;
   /** Acts a GPU page dropped and the locator resent. */
   actDropped = 0;
   /** Page renderers this spec's locators read. */
@@ -630,6 +644,96 @@ export class LiveFixture implements Fixture {
     const text = typeof reason === "string" && reason.trim().length > 0 ? reason : "failed as expected";
     this.xfailReason ??= text;
     throw new XfailSignal(text);
+  }
+
+  get visual(): TestVisual {
+    return { shot: (name: string, options?: VisualShotOptions) => this.visualShot(name, options, callerLocation()) };
+  }
+
+  /** The app and device a shot names, read once per attempt; `null` fields when unreadable. */
+  private visualSubject?: Promise<{ app: string | null; device: Record<string, string | null> | null }>;
+
+  private async visualShot(name: string, options: VisualShotOptions | undefined, at: { file: string; line: number; column: number }): Promise<VisualShot> {
+    if (typeof name !== "string" || !/^[A-Za-z0-9._-]{1,100}$/.test(name)) {
+      throw new TypeError(`t.visual.shot(name) takes 1-100 of [A-Za-z0-9._-], not ${formatValue(name)}`);
+    }
+    const here = displayLocation(at.file, at.line, at.column);
+    const earlier = this.shots.get(name);
+    if (earlier !== undefined) {
+      throw new TypeError(`t.visual.shot("${name}") at ${here} repeats the shot taken at ${earlier}: ` +
+        "a second shot under one name would hide the first page; name each shot");
+    }
+    const settle = options?.settle ?? true;
+    if (typeof settle !== "boolean" && (typeof settle !== "object" || settle === null)) {
+      throw new TypeError("t.visual.shot({ settle }) takes a boolean or view.settled() options");
+    }
+    const masks = options?.mask ?? [];
+    if (!Array.isArray(masks)) throw new TypeError("t.visual.shot({ mask }) takes an array of locators and rects");
+    for (const mask of masks) {
+      const rect = mask as { x?: unknown; y?: unknown; width?: unknown; height?: unknown };
+      const isRect = [rect.x, rect.y, rect.width, rect.height].every((n) => typeof n === "number" && Number.isFinite(n))
+        && (rect.width as number) > 0 && (rect.height as number) > 0;
+      if (!isRect && !(mask as { [LOCATOR_BRAND]?: true })[LOCATOR_BRAND]) {
+        throw new TypeError(`t.visual.shot({ mask }) takes locators and { x, y, width, height } rects, not ${formatValue(mask)}`);
+      }
+    }
+    this.shots.set(name, here);
+    const view = this.app.view;
+    if (settle !== false) await view.settled(settle === true ? undefined : settle);
+    // Masks resolve before the capture: one that finds nothing fails the shot before anything is attached.
+    const located = await Promise.all(masks.map(async (mask) => {
+      if (!(mask as { [LOCATOR_BRAND]?: true })[LOCATOR_BRAND]) return null;
+      return { box: await (mask as Locator).boundingBox(), from: mask instanceof PageLocator ? mask.selector : "locator" };
+    }));
+    const cssWidth = located.some(Boolean) ? (await view.viewport()).width : 0;
+    const shot = await view.screenshot();
+    const width = shot.width;
+    const height = shot.height;
+    // Attached before the twin is taken, so one capture is in flight at a time.
+    const ref = await this.guard(() => this.attachRaw(`visual/${name}.png`, { mimeType: "image/png", base64: shot.base64 }));
+    // A second capture of the unchanged page measures the device's own noise for `lxdev test --visual`.
+    const noise = visualPairs
+      ? await view.screenshot().then((twin) => this.guard(() => this.attachRaw(`visual/${name}.noise.png`, { mimeType: "image/png", base64: twin.base64 })))
+      : undefined;
+    this.visualSubject ??= (async () => ({
+      app: await this.app.info().then((info) => info.appId, () => this.pinned.appid ?? null),
+      device: await this.app.logic.eval(() => {
+        const lx = (globalThis as unknown as { lx: { getDeviceInfo(): Record<string, string>; host?: { displayLanguage?: { get(): string } } } }).lx;
+        const info = lx.getDeviceInfo();
+        let language: string | null = null;
+        try { language = lx.host?.displayLanguage?.get() ?? null; } catch { /* an older host */ }
+        return { brand: info.brand, model: info.model, marketName: info.marketName ?? null, osName: info.osName, osVersion: info.osVersion, language };
+      }).catch(() => null),
+    }))();
+    const subject = await this.visualSubject;
+    // What moves every pixel without being a regression: shown beside a change, never compared.
+    const facts = await this.pinned.driver.page.environment({ read: true }).catch(() => null);
+    // Locator boxes are page CSS pixels; the screenshot is device pixels of the same page.
+    const scale = cssWidth > 0 ? width / cssWidth : 1;
+    const regions = masks.map((mask, index) => {
+      const hit = located[index];
+      if (!hit) return { ...(mask as { x: number; y: number; width: number; height: number }), from: "rect" };
+      const { box, from } = hit;
+      return { x: Math.floor(box.x * scale), y: Math.floor(box.y * scale), width: Math.ceil(box.width * scale),
+        height: Math.ceil(box.height * scale), from };
+    });
+    const key = `${this.specId.replace(/(\/repeat-\d+)?\/attempt-\d+$/, "")}/${name}`;
+    await this.guard(() => this.attachRaw(`visual/${name}.json`, {
+      key,
+      ...subject,
+      png: ref.path,
+      noise: noise ? noise.path : null,
+      textScale: textScaleSummary(facts?.textScale),
+      language: facts?.displayLanguage ?? subject?.device?.language ?? null,
+      width,
+      height,
+      at: here,
+      // A reviewer must see an unsettled shot.
+      settled: settle,
+      environment: { pinned: this.viewPin !== null && this.viewPin.theme != null, theme: this.viewPin?.theme ?? null, still: this.viewPin?.still ?? false },
+      masks: regions,
+    }));
+    return { key, attachment: ref.path, width, height };
   }
 
   async attach(name: string, data: unknown): Promise<void> {
@@ -1416,6 +1520,7 @@ export class LiveFixture implements Fixture {
         const options = pin === null ? { clear: true as const }
           : { ...(pin.theme ? { theme: pin.theme } : {}), still: pin.still ?? false };
         await page().environment({ ...options, ...target });
+        this.viewPin = pin;
       }),
       scroll: (options) => {
         if (options && "page" in options) {
@@ -2120,6 +2225,29 @@ function summarise(input: unknown): string {
     }
   }
   return truncate(formatValue(input), 80);
+}
+
+/** Point sizes a text-scale curve is summarised at in a visual sidecar. */
+const TEXT_SCALE_SAMPLES = [11, 13, 15, 17, 20, 22, 28, 34];
+
+/**
+ * A sidecar notes the device's text scale as context only: null for the
+ * identity curve, else the scaled size at a few body and title sizes.
+ */
+export function textScaleSummary(curve: unknown): Array<[number, number]> | null {
+  if (!Array.isArray(curve) || curve.length === 0) return null;
+  const pairs = curve.filter((pair): pair is [number, number] =>
+    Array.isArray(pair) && typeof pair[0] === "number" && typeof pair[1] === "number");
+  if (pairs.every(([from, to]) => Math.abs(from - to) < 0.01)) return null;
+  const sorted = [...pairs].sort((a, b) => a[0] - b[0]);
+  return TEXT_SCALE_SAMPLES.map((size) => {
+    const above = sorted.findIndex(([from]) => from >= size);
+    if (above === -1) return [size, sorted[sorted.length - 1][1]] as [number, number];
+    const [x1, y1] = sorted[above];
+    if (x1 === size || above === 0) return [size, y1] as [number, number];
+    const [x0, y0] = sorted[above - 1];
+    return [size, Math.round((y0 + (y1 - y0) * (size - x0) / (x1 - x0)) * 100) / 100] as [number, number];
+  });
 }
 
 /** Text and JSON preview in the report; anything else is named, not embedded. */

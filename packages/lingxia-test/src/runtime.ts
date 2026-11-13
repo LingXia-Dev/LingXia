@@ -1,6 +1,6 @@
 import { matchesErrorCode } from "./deadline.js";
 import { expect, setExpectScope, setStrayAssertionSink, type LoggedAssertion } from "./expect.js";
-import { LiveFixture, SkipSignal, TimeoutError, XfailSignal, toReportError } from "./fixture.js";
+import { LiveFixture, SkipSignal, TimeoutError, XfailSignal, shootVisualPairs, toReportError } from "./fixture.js";
 import { formatValue } from "./format.js";
 import { attachText, bundledSources, resolveHost, warnVersionSkew, type ResolvedHost } from "./host.js";
 import { captureFrames, fileStem, isUnattributed, resolveOrigin, resolveOwner, slugTitle, type StackFrame } from "./ids.js";
@@ -793,6 +793,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   if (selected.length === 0 && control.passWithNoTests !== "1") {
     throw new Error("No tests matched this selection. Check the entry and filters, or use --pass-with-no-tests.");
   }
+  shootVisualPairs(control.visual === "compare" || control.visual === "accept");
   const repeatEach = Number(control.repeatEach ?? 1);
   if (!Number.isInteger(repeatEach) || repeatEach < 1 || repeatEach > 100) throw new Error("repeatEach must be between 1 and 100");
   const shuffleSeed = control.shuffle === undefined ? undefined : Number(control.shuffle);

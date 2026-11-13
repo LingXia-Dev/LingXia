@@ -449,6 +449,38 @@ export interface ViewSettledOptions {
   timeout?: number;
 }
 
+/** `t.visual.shot()` options. */
+export interface VisualShotOptions {
+  /**
+   * Regions left out of the comparison (clocks, carets, live data): a locator
+   * matching one visible element, or a rect in the screenshot's own pixels, the
+   * space `view.screenshot()` reports `width`/`height` in.
+   */
+  mask?: Array<Locator | { x: number; y: number; width: number; height: number }>;
+  /** Wait for `view.settled()` first (default true); `false` is recorded on the shot. */
+  settle?: boolean | ViewSettledOptions;
+}
+
+/** One recorded shot; `lxdev test --visual` compares it against its baseline after the run. */
+export interface VisualShot {
+  /** `<spec id>/<name>`: the baseline key, stable across runs. */
+  key: string;
+  /** The PNG attachment's path; a JSON sidecar beside it names the masks, theme and settling. */
+  attachment: string;
+  width: number;
+  height: number;
+}
+
+export interface TestVisual {
+  /**
+   * Capture the current page under `name` ([A-Za-z0-9._-], unique within the
+   * spec). The spec never fails on a difference; `lxdev test --visual compare`
+   * does. Pin the look with `view.environment()` first: an unpinned shot cannot
+   * become a baseline.
+   */
+  shot(name: string, options?: VisualShotOptions): Promise<VisualShot>;
+}
+
 /** `view.environment()`: a spec's override of a GPU page's look. */
 export interface ViewEnvironment {
   theme?: "light" | "dark" | null;
@@ -1259,6 +1291,8 @@ export interface Fixture {
   waitFor<T>(read: () => T | Promise<T>, options?: WaitForOptions<Awaited<T>>): Promise<Awaited<T>>;
   defer(cleanup: () => void | Promise<void>): void;
   attach(name: string, data: unknown): Promise<void>;
+  /** Screenshots compared against per-device baselines by `lxdev test --visual`. */
+  readonly visual: TestVisual;
   /**
    * Stop this spec and report it `skipped` with `reason`, for a precondition
    * only knowable at run time. Throws; deferred cleanup still runs. Call it

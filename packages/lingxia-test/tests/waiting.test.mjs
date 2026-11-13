@@ -904,6 +904,94 @@ test("t.app.metrics reads frame pacing with the presentation counters and t.app.
   assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
 });
 
+test("view.environment pins a GPU page's theme and stillness or clears it", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+
+  spec("environment", async (t) => {
+    await t.app.view.environment({ theme: "dark", still: true });
+    await t.app.view.environment({ still: true });
+    await t.app.view.environment(null);
+    await assert.rejects(t.app.view.environment({ theme: "sepia" }), TypeError);
+    await assert.rejects(t.app.view.environment(), TypeError);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
+  const sent = world.environments.map(({ page, ...rest }) => rest);
+  assert.deepEqual(sent, [{ theme: "dark", still: true }, { still: true }, { clear: true }]);
+});
+
+test("t.visual.shot attaches the png with a sidecar naming masks, theme and settling", async () => {
+  const world = createWorld();
+  world.add({ testId: "clock", visible: true, rect: { left: 10, top: 20, width: 30, height: 5, viewportWidth: 400, viewportHeight: 800 } });
+  world.app.page.screenshot = async () => ({ format: "png", base64: world.TINY_PNG, width: 800, height: 1600 });
+  const { attachments } = installFakeHost(world);
+  let duplicate;
+
+  spec("look", async (t) => {
+    const unpinned = await t.visual.shot("before", { settle: false });
+    assert.equal(unpinned.width, 800);
+    await t.app.view.environment({ theme: "dark", still: true });
+    const shot = await t.visual.shot("home", { mask: [t.app.view.testId("clock"), { x: 0, y: 0, width: 800, height: 48 }], settle: { quietMs: 50 } });
+    assert.match(shot.key, /look\/home$/);
+    assert.equal(shot.attachment, attachments.has(shot.attachment) ? shot.attachment : "missing");
+    duplicate = await t.visual.shot("home").catch((error) => error);
+    await assert.rejects(t.visual.shot("bad name"), TypeError);
+    await assert.rejects(t.visual.shot("masked", { mask: [{ x: 0, y: 0, width: 0, height: 1 }] }), TypeError);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
+  assert.ok(duplicate instanceof TypeError);
+  assert.match(duplicate.message, /t\.visual\.shot\("home"\) at .*waiting\.test\.mjs:\d+:\d+ repeats the shot taken at .*waiting\.test\.mjs:\d+/);
+  const sidecar = (name) => {
+    const path = [...attachments.keys()].find((key) => key.endsWith(`/visual/${name}.json`));
+    return JSON.parse(Buffer.from(attachments.get(path).base64, "base64").toString("utf8"));
+  };
+  const home = sidecar("home");
+  assert.deepEqual(home.environment, { pinned: true, theme: "dark", still: true });
+  // The fake host's curve is not the identity: sampled, never stored whole.
+  assert.deepEqual(home.textScale.find(([size]) => size === 17), [17, 20]);
+  assert.equal(home.textScale.length, 8);
+  assert.equal(home.language, "en-US");
+  assert.deepEqual(home.settled, { quietMs: 50 });
+  assert.deepEqual(home.masks, [
+    { x: 20, y: 40, width: 60, height: 10, from: '[data-testid="clock"]' },
+    { x: 0, y: 0, width: 800, height: 48, from: "rect" },
+  ]);
+  const before = sidecar("before");
+  assert.deepEqual(before.environment, { pinned: false, theme: null, still: false });
+  assert.equal(before.settled, false);
+});
+
+test("t.visual.shot stores no text scale for the identity curve", async () => {
+  const { textScaleSummary } = await import("../dist/fixture.js");
+  const identity = Array.from({ length: 257 }, (_, i) => [i, i]).concat([[512, 512], [16384, 16384]]);
+  assert.equal(textScaleSummary(identity), null);
+  assert.equal(textScaleSummary(undefined), null);
+  const larger = textScaleSummary([[0, 0], [10, 12], [20, 24], [40, 48]]);
+  assert.deepEqual(larger.find(([size]) => size === 15), [15, 18]);
+  assert.deepEqual(larger.find(([size]) => size === 34), [34, 40.8]);
+});
+
+test("t.visual.shot with a mask that finds nothing fails before capturing", async () => {
+  const world = createWorld();
+  let captures = 0;
+  world.app.page.screenshot = async () => { captures += 1; return { format: "png", base64: world.TINY_PNG, width: 800, height: 1600 }; };
+  const { attachments } = installFakeHost(world);
+  let failure;
+
+  spec("orphan", async (t) => {
+    failure = await t.visual.shot("gone", { mask: [t.app.view.testId("nowhere")], settle: false }).catch((error) => error);
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.ok(failure instanceof Error);
+  assert.equal(captures, 0);
+  assert.ok(![...attachments.keys()].some((key) => key.includes("/visual/")), [...attachments.keys()].join(", "));
+});
+
 test("getByRole matches the role on either renderer and narrows by exact accessible name", async () => {
   const world = createWorld();
   world.add({ tag: "button", text: "Pay now" });
@@ -920,41 +1008,6 @@ test("getByRole matches the role on either renderer and narrows by exact accessi
     assert.equal(gpu.clicked, 1);
     await expect(t.app.view.getByRole("heading", { name: "Bills" })).toBeVisible();
     assert.throws(() => t.app.view.getByRole("banner"), /unknown role "banner"/);
-  });
-
-  const protocol = await globalThis.__LINGXIA_TEST__.run();
-  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
-});
-
-test("view.settled waits for a page that stops presenting and names an endless animation", async () => {
-  let frames = 0;
-  const started = Date.now();
-  // Presents for 300 ms, then stays still.
-  const world = createWorld({ frames: () => (Date.now() - started < 300 ? ++frames : frames) });
-  const { attachments } = installFakeHost(world);
-
-  spec("settled", async (t) => {
-    const begin = Date.now();
-    await t.app.view.settled({ quietMs: 200 });
-    assert.ok(Date.now() - begin >= 400, `settled after ${Date.now() - begin}ms`);
-    await assert.rejects(t.app.view.settled({ quietMs: 0 }), /positive number of ms/);
-    await assert.rejects(t.app.view.settled({ quietMs: 300, timeout: 300 }), /above quietMs/);
-  });
-
-  const protocol = await globalThis.__LINGXIA_TEST__.run();
-  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
-});
-
-test("view.settled rejects at its timeout while the page keeps presenting", async () => {
-  let frames = 0;
-  const world = createWorld({ frames: () => ++frames });
-  const { attachments } = installFakeHost(world);
-
-  spec("endless", async (t) => {
-    const error = await t.app.view.settled({ quietMs: 100, timeout: 400 }).then(() => undefined, (e) => e);
-    assert.equal(error?.name, "TimeoutError");
-    assert.match(error.message, /never 100ms without one/);
-    assert.match(error.message, /view\.environment\(\{ still: true \}\)/);
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -1008,20 +1061,38 @@ test("an app whose View predates scoped queries says so instead of a raw selecto
   assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
 });
 
-test("view.environment pins a GPU page's theme and stillness or clears it", async () => {
-  const world = createWorld();
+
+test("view.settled waits for a page that stops presenting and names an endless animation", async () => {
+  let frames = 0;
+  const started = Date.now();
+  // Presents for 300 ms, then stays still.
+  const world = createWorld({ frames: () => (Date.now() - started < 300 ? ++frames : frames) });
   const { attachments } = installFakeHost(world);
 
-  spec("environment", async (t) => {
-    await t.app.view.environment({ theme: "dark", still: true });
-    await t.app.view.environment({ still: true });
-    await t.app.view.environment(null);
-    await assert.rejects(t.app.view.environment({ theme: "sepia" }), TypeError);
-    await assert.rejects(t.app.view.environment(), TypeError);
+  spec("settled", async (t) => {
+    const begin = Date.now();
+    await t.app.view.settled({ quietMs: 200 });
+    assert.ok(Date.now() - begin >= 400, `settled after ${Date.now() - begin}ms`);
+    await assert.rejects(t.app.view.settled({ quietMs: 0 }), /positive number of ms/);
+    await assert.rejects(t.app.view.settled({ quietMs: 300, timeout: 300 }), /above quietMs/);
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
-  const sent = world.environments.map(({ page, ...rest }) => rest);
-  assert.deepEqual(sent, [{ theme: "dark", still: true }, { still: true }, { clear: true }]);
+});
+
+test("view.settled rejects at its timeout while the page keeps presenting", async () => {
+  let frames = 0;
+  const world = createWorld({ frames: () => ++frames });
+  const { attachments } = installFakeHost(world);
+
+  spec("endless", async (t) => {
+    const error = await t.app.view.settled({ quietMs: 100, timeout: 400 }).then(() => undefined, (e) => e);
+    assert.equal(error?.name, "TimeoutError");
+    assert.match(error.message, /never 100ms without one/);
+    assert.match(error.message, /view\.environment\(\{ still: true \}\)/);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
 });
