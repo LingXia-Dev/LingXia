@@ -12,6 +12,13 @@ export function tagHint(tag) {
   return Object.hasOwn(boxes, tag) ? `; use ${boxes[tag]}` : '';
 }
 
+/** What a misspelt prop is written as: `testId` and friends, camel-case `data*` attributes. */
+export function propHint(prop) {
+  if (/^(data-?)?test-?id$/i.test(prop)) return '; a test id is data-testid (`id` names popover and aria targets)';
+  if (/^data[A-Z]/.test(prop)) return `; data attributes are written ${prop.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}`;
+  return '';
+}
+
 // Flex-only properties a grid refuses, with the grid way to say it.
 const gridOnly = {
   flexWrap: '; grid items wrap into rows by themselves (use grid-cols-[repeat(auto-fit,minmax(…,1fr))])',

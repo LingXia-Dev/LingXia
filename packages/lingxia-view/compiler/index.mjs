@@ -17,7 +17,7 @@ import { readFile, mkdir, writeFile, copyFile, realpath } from 'node:fs/promises
 import { resolve, dirname, join, relative, isAbsolute, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { elements, style as styleTable, commonProps, limits } from '../src/generated/contract.js';
-import { classElementProblem, appliesTo, gridProblem, gridRefuses, tagHint } from '../src/style/hints.js';
+import { classElementProblem, appliesTo, gridProblem, gridRefuses, propHint, tagHint } from '../src/style/hints.js';
 
 const runtime = fileURLToPath(new URL('../src/internal.js', import.meta.url));
 const publicEntry = fileURLToPath(new URL('../src/index.js', import.meta.url));
@@ -124,12 +124,12 @@ export function audit(source, filename, { literalColors = false } = {}) {
       else for (const prop of node.attributes.properties) {
         if (ts.isJsxSpreadAttribute(prop)) {
           for (const symbol of checker.getTypeAtLocation(prop.expression).getProperties())
-            if (!acceptsProp(tag, symbol.getName())) report(prop, `UI_PROP: ${symbol.getName()} is not a property of <${tag}> (spread)`);
+            if (!acceptsProp(tag, symbol.getName())) report(prop, `UI_PROP: ${symbol.getName()} is not a property of <${tag}> (spread)${propHint(symbol.getName())}`);
           continue;
         }
         const key = prop.name.getText(file);
         if (!acceptsProp(tag, key))
-          report(prop, `UI_PROP: ${key} is not a property of <${tag}>`);
+          report(prop, `UI_PROP: ${key} is not a property of <${tag}>${propHint(key)}`);
         const series = tag === 'plot' && key === 'colors' && prop.initializer && ts.isJsxExpression(prop.initializer) && prop.initializer.expression;
         if (!literalColors && series && ts.isArrayLiteralExpression(series)) for (const item of series.elements) {
           const problem = ts.isStringLiteralLike(item) && seriesProblem(item.text);

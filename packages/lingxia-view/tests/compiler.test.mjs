@@ -64,7 +64,9 @@ test('component member expressions are not intrinsic tags; fragments and DOM glo
   flags('export function render(){return <><text>Hello</text></>}', /UI_FRAGMENT/);
   flags('export const render = () => (<><text>Hello</text></>);', /UI_FRAGMENT/);
   clean('export function render(){return <page data-state="open" className="data-[state=open]:p-4"><text>x</text></page>}');
-  flags('export function render(){return <page dataState="open"><text>x</text></page>}', /UI_PROP/);
+  flags('export function render(){return <page dataState="open"><text>x</text></page>}', /UI_PROP: dataState is not a property of <page>; data attributes are written data-state/);
+  for (const name of ['testId', 'testID', 'dataTestId'])
+    flags(`export function render(){return <text ${name}="t">x</text>}`, /; a test id is data-testid \(`id` names popover and aria targets\)/);
   clean('function Rows(){return <><text>a</text><text>b</text></>} export function render(){return <page><Rows/><>{[1].map(n => <text key={String(n)}>x</text>)}</></page>}');
 });
 
