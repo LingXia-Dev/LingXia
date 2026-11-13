@@ -1,5 +1,6 @@
 import { cx, useId, type Child } from '@lingxia/view';
 import { glyphBox, glyphs } from '../internal/glyphs';
+import { LayerContext } from '../internal/layer';
 import { dialogRecipe as r } from './Dialog.recipe';
 
 export type DialogSize = 'sm' | 'md' | 'lg';
@@ -85,7 +86,7 @@ export function Dialog({
         </view>
       )}
       {description !== undefined && <text id={descriptionId} className={r.description.base}>{description}</text>}
-      {children !== undefined && <scroll className={r.body.base}>{children}</scroll>}
+      {children !== undefined && <LayerContext.Provider value="raised"><scroll className={r.body.base}>{children}</scroll></LayerContext.Provider>}
       {actions !== undefined && <view className={r.footer.base}>{actions}</view>}
     </dialog>
   );

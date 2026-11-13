@@ -1,5 +1,6 @@
 import { createContext, cx, useContext, useLocal, type Child } from '@lingxia/view';
 import { glyphBox, glyphs } from '../internal/glyphs';
+import { LayerContext } from '../internal/layer';
 import { detailsRecipe as r } from './Details.recipe';
 
 interface GroupState {
@@ -72,9 +73,10 @@ export interface DetailsGroupProps {
 /** Details rows in one bordered list: an accordion. */
 export function DetailsGroup({ children, isExclusive = false, defaultValue, className, 'data-testid': testId }: DetailsGroupProps) {
   const open = useLocal<string | null>(defaultValue ?? null);
+  const layer = useContext(LayerContext);
   return (
     <Group.Provider value={{ open: open.value, isExclusive, set: next => open.set(next) }}>
-      <view data-testid={testId} className={cx(r.group.base, className)}>{children}</view>
+      <view data-testid={testId} className={cx(r.group.base, r.group.layer[layer], className)}>{children}</view>
     </Group.Provider>
   );
 }

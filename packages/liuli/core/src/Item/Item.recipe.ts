@@ -1,3 +1,4 @@
+import type { Layer } from '../internal/layer';
 import type { ItemTone } from './Item';
 
 export const itemParts = {
@@ -15,7 +16,9 @@ export const itemParts = {
 /** List row classes by part. A pressable row lands on a `button`, a plain one on a `view`. */
 export const itemRecipe = {
   list: {
-    base: 'overflow-hidden rounded-container border border-text/10 bg-surface divide-y divide-text/8',
+    base: 'overflow-hidden rounded-container border border-text/12 divide-y divide-text/8',
+    /** One rung up from what it sits on; inside an overlay it takes the overlay's surface. */
+    layer: { page: 'bg-surface', raised: 'bg-surface-raised' } satisfies Record<Layer, string>,
   },
   listitem: {
     base: 'self-stretch',

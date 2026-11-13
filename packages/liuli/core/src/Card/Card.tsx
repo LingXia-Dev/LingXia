@@ -6,7 +6,7 @@ export type CardPadding = 'none' | 'sm' | 'md' | 'lg';
 
 export interface CardProps {
   children: Child;
-  /** `outlined` sits on the page, `raised` floats above it, `sunken` groups content inside another surface. @default 'outlined' */
+  /** `outlined` sits on the page, `raised` rests one step above it, `sunken` groups content inside another surface. @default 'outlined' */
   variant?: CardVariant;
   /** The inset and the gap between children. @default 'md' */
   padding?: CardPadding;

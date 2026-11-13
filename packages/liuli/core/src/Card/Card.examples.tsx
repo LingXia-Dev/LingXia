@@ -11,7 +11,7 @@ export function Variants() {
       </Card>
       <Card variant="raised">
         <text className="text-callout font-semibold text-text">Raised</text>
-        <text className="text-footnote text-muted">Floats above the page.</text>
+        <text className="text-footnote text-muted">Rests one step above the page.</text>
       </Card>
       <Card variant="sunken">
         <text className="text-callout font-semibold text-text">Sunken</text>

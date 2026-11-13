@@ -1136,7 +1136,7 @@
           "name": "variant",
           "type": "CardVariant",
           "required": false,
-          "description": "`outlined` sits on the page, `raised` floats above it, `sunken` groups content inside another surface.",
+          "description": "`outlined` sits on the page, `raised` rests one step above it, `sunken` groups content inside another surface.",
           "default": "'outlined'"
         },
         {
@@ -1171,7 +1171,7 @@
             "name": "variant",
             "type": "CardVariant",
             "required": false,
-            "description": "`outlined` sits on the page, `raised` floats above it, `sunken` groups content inside another surface.",
+            "description": "`outlined` sits on the page, `raised` rests one step above it, `sunken` groups content inside another surface.",
             "default": "'outlined'"
           },
           {
@@ -1327,7 +1327,7 @@
         {
           "name": "Variants",
           "title": "Outlined, raised and sunken",
-          "source": "import { Card } from '@liulidesign/core/Card';\n\nexport function Variants() {\n  return (\n    <view className=\"gap-3\">\n      <Card data-testid=\"outlined\">\n        <text className=\"text-callout font-semibold text-text\">Outlined</text>\n        <text className=\"text-footnote text-muted\">Sits on the page.</text>\n      </Card>\n      <Card variant=\"raised\">\n        <text className=\"text-callout font-semibold text-text\">Raised</text>\n        <text className=\"text-footnote text-muted\">Floats above the page.</text>\n      </Card>\n      <Card variant=\"sunken\">\n        <text className=\"text-callout font-semibold text-text\">Sunken</text>\n        <text className=\"text-footnote text-muted\">Groups content inside another surface.</text>\n      </Card>\n    </view>\n  );\n}"
+          "source": "import { Card } from '@liulidesign/core/Card';\n\nexport function Variants() {\n  return (\n    <view className=\"gap-3\">\n      <Card data-testid=\"outlined\">\n        <text className=\"text-callout font-semibold text-text\">Outlined</text>\n        <text className=\"text-footnote text-muted\">Sits on the page.</text>\n      </Card>\n      <Card variant=\"raised\">\n        <text className=\"text-callout font-semibold text-text\">Raised</text>\n        <text className=\"text-footnote text-muted\">Rests one step above the page.</text>\n      </Card>\n      <Card variant=\"sunken\">\n        <text className=\"text-callout font-semibold text-text\">Sunken</text>\n        <text className=\"text-footnote text-muted\">Groups content inside another surface.</text>\n      </Card>\n    </view>\n  );\n}"
         },
         {
           "name": "WithActions",

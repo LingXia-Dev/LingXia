@@ -21,7 +21,7 @@ function Enter() {
   const round = useLocal('round', 0);
   return (
     <view className="gap-4">
-      <view key={String(round.value)} className="gap-0.5 rounded-container bg-surface-raised p-4 shadow-raised transition duration-200 ease-out starting:opacity-0 motion-safe:starting:scale-96">
+      <view key={String(round.value)} className="gap-0.5 rounded-container border border-text/12 bg-surface-raised p-4 shadow-raised transition duration-200 ease-out starting:opacity-0 motion-safe:starting:scale-96">
         <text className="text-body font-medium text-text">Backup finished</text>
         <text className="text-footnote text-muted">3,214 notes are on this device and in the cloud.</text>
       </view>

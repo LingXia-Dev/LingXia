@@ -1,3 +1,5 @@
+import type { Layer } from '../internal/layer';
+
 export const detailsParts = {
   group: 'view',
   root: 'view',
@@ -10,7 +12,9 @@ export const detailsParts = {
 /** A disclosure row: the summary is the press target, the chevron turns as it opens. */
 export const detailsRecipe = {
   group: {
-    base: 'overflow-hidden rounded-container border border-text/10 bg-surface divide-y divide-text/8',
+    base: 'overflow-hidden rounded-container border border-text/12 divide-y divide-text/8',
+    /** One rung up from what it sits on; inside an overlay it takes the overlay's surface. */
+    layer: { page: 'bg-surface', raised: 'bg-surface-raised' } satisfies Record<Layer, string>,
   },
   root: {
     base: '',

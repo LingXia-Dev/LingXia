@@ -1,5 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Button } from '../Button/Button';
+import { LayerContext } from '../internal/layer';
 import { Item, ItemList } from '../Item/Item';
 import { bottomSheetRecipe } from './BottomSheet.recipe';
 import { BottomSheet } from './BottomSheet';
@@ -94,10 +95,12 @@ export function Parts() {
         <view className={bottomSheetRecipe.header.base}>
           <text className={bottomSheetRecipe.title.base}>Move to</text>
         </view>
-        <ItemList label="Folders">
-          <Item label="Inbox" />
-          <Item label="Travel" />
-        </ItemList>
+        <LayerContext.Provider value="raised">
+          <ItemList label="Folders">
+            <Item label="Inbox" />
+            <Item label="Travel" />
+          </ItemList>
+        </LayerContext.Provider>
       </view>
     </view>
   );

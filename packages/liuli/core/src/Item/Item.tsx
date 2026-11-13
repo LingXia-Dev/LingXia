@@ -1,6 +1,7 @@
-import { childrenToArray, cx, useId, type Child } from '@lingxia/view';
+import { childrenToArray, cx, useContext, useId, type Child } from '@lingxia/view';
 import { describedBy } from '../internal/describedBy';
 import { glyphBox, glyphs } from '../internal/glyphs';
+import { LayerContext } from '../internal/layer';
 import { itemRecipe as r } from './Item.recipe';
 
 /** A row is pressable (`onClick`) or holds its own controls in `endContent`, never both. */
@@ -78,9 +79,10 @@ export interface ItemListProps {
 
 /** Rows in one bordered list, read as a list: each row reports its position. */
 export function ItemList({ children, label, className, 'data-testid': testId }: ItemListProps) {
+  const layer = useContext(LayerContext);
   // A button keeps its own role, so each row sits in a listitem that carries the position.
   return (
-    <view role="list" aria-label={label} data-testid={testId} className={cx(r.list.base, className)}>
+    <view role="list" aria-label={label} data-testid={testId} className={cx(r.list.base, r.list.layer[layer], className)}>
       {childrenToArray(children).map((row, index) => <view key={String(index)} role="listitem" className={r.listitem.base}>{row}</view>)}
     </view>
   );

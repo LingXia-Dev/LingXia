@@ -26,7 +26,7 @@ export function Variants() {
       </Card>
       <Card variant="raised">
         <text className="text-callout font-semibold text-text">Raised</text>
-        <text className="text-footnote text-muted">Floats above the page.</text>
+        <text className="text-footnote text-muted">Rests one step above the page.</text>
       </Card>
       <Card variant="sunken">
         <text className="text-callout font-semibold text-text">Sunken</text>
@@ -96,7 +96,7 @@ export function Choice() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `children` (required) | `Child` |  |  |
-| `variant` | `CardVariant` | `'outlined'` | `outlined` sits on the page, `raised` floats above it, `sunken` groups content inside another surface. |
+| `variant` | `CardVariant` | `'outlined'` | `outlined` sits on the page, `raised` rests one step above it, `sunken` groups content inside another surface. |
 | `padding` | `CardPadding` | `'md'` | The inset and the gap between children. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
@@ -106,7 +106,7 @@ export function Choice() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `children` (required) | `Child` |  |  |
-| `variant` | `CardVariant` | `'outlined'` | `outlined` sits on the page, `raised` floats above it, `sunken` groups content inside another surface. |
+| `variant` | `CardVariant` | `'outlined'` | `outlined` sits on the page, `raised` rests one step above it, `sunken` groups content inside another surface. |
 | `padding` | `CardPadding` | `'md'` | The inset and the gap between children. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |

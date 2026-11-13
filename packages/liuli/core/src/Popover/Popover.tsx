@@ -1,6 +1,7 @@
 import { cx, useId, type Child } from '@lingxia/view';
 import type { ButtonSize, ButtonVariant } from '../Button/Button';
 import { buttonRecipe as b } from '../Button/Button.recipe';
+import { LayerContext } from '../internal/layer';
 import { popoverRecipe as r } from './Popover.recipe';
 
 export type PopoverPlacement = 'bottom' | 'top';
@@ -78,19 +79,21 @@ export function Popover({
         {icon !== undefined && <view aria-hidden className={b.icon.base}>{icon}</view>}
         {!isLabelHidden && <text className={cx(b.label.base, b.label.weight[variant], b.label.size[size])}>{label}</text>}
       </button>
-      <view
-        id={id}
-        popover
-        aria-label={title ?? label}
-        open={isOpen}
-        onToggle={onOpenChange}
-        data-testid={testId && `${testId}-panel`}
-        style={{ positionArea: areas[placement][alignment] }}
-        className={cx(r.panel.base, r.panel.offset[placement], panelClassName)}
-      >
-        {title !== undefined && <text role="heading" headingLevel={2} className={r.title.base}>{title}</text>}
-        {children}
-      </view>
+      <LayerContext.Provider value="raised">
+        <view
+          id={id}
+          popover
+          aria-label={title ?? label}
+          open={isOpen}
+          onToggle={onOpenChange}
+          data-testid={testId && `${testId}-panel`}
+          style={{ positionArea: areas[placement][alignment] }}
+          className={cx(r.panel.base, r.panel.offset[placement], panelClassName)}
+        >
+          {title !== undefined && <text role="heading" headingLevel={2} className={r.title.base}>{title}</text>}
+          {children}
+        </view>
+      </LayerContext.Provider>
     </>
   );
 }
