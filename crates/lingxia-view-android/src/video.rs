@@ -25,7 +25,7 @@ pub(super) fn register(env: &mut Env) {
         return;
     }
     let Ok(class) = env.find_class(jni_str!("com/lingxia/view/GpuVideo")) else {
-        let _ = env.exception_clear();
+        env.exception_clear();
         return;
     };
     if let Ok(class) = env.new_global_ref(&class)
@@ -67,6 +67,9 @@ fn open(source: &str) -> Result<Box<dyn Player>, String> {
         frames: Frames::default(),
     }))
 }
+
+/// A prop's op name and its value in the props.
+type Op = (&'static str, fn(&Settings) -> f64);
 
 struct Video {
     java: Global<JObject<'static>>,
@@ -183,7 +186,7 @@ impl Player for Video {
     fn apply(&mut self, settings: &Settings, previous: Option<&Settings>) {
         let changed =
             |field: fn(&Settings) -> f64| previous.is_none_or(|p| field(p) != field(settings));
-        let ops: [(&str, fn(&Settings) -> f64); 5] = [
+        let ops: [Op; 5] = [
             ("loop", |s| s.looped as u8 as f64),
             ("rate", |s| s.rate as f64),
             ("volume", |s| s.volume as f64),
@@ -833,18 +836,26 @@ unsafe fn shader(kind: u32, source: &CStr) -> Result<u32, String> {
 }
 
 /// The video GL context, current on the render thread only while a frame is drawn.
+type CreateImage =
+    unsafe extern "C" fn(*mut c_void, *mut c_void, u32, *mut c_void, *const i32) -> *mut c_void;
+type DestroyImage = unsafe extern "C" fn(*mut c_void, *mut c_void) -> u32;
+type ClientBuffer = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
+type TargetTexture = unsafe extern "C" fn(u32, *mut c_void);
+type CreateSync = unsafe extern "C" fn(*mut c_void, u32, *const i32) -> *mut c_void;
+type ClientWaitSync = unsafe extern "C" fn(*mut c_void, *mut c_void, i32, u64) -> i32;
+type DestroySync = unsafe extern "C" fn(*mut c_void, *mut c_void) -> u32;
+
 struct Egl {
     display: *mut c_void,
     context: *mut c_void,
     surface: *mut c_void,
-    create_image:
-        unsafe extern "C" fn(*mut c_void, *mut c_void, u32, *mut c_void, *const i32) -> *mut c_void,
-    destroy_image: unsafe extern "C" fn(*mut c_void, *mut c_void) -> u32,
-    client_buffer: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
-    target_texture: unsafe extern "C" fn(u32, *mut c_void),
-    create_sync: unsafe extern "C" fn(*mut c_void, u32, *const i32) -> *mut c_void,
-    client_wait_sync: unsafe extern "C" fn(*mut c_void, *mut c_void, i32, u64) -> i32,
-    destroy_sync: unsafe extern "C" fn(*mut c_void, *mut c_void) -> u32,
+    create_image: CreateImage,
+    destroy_image: DestroyImage,
+    client_buffer: ClientBuffer,
+    target_texture: TargetTexture,
+    create_sync: CreateSync,
+    client_wait_sync: ClientWaitSync,
+    destroy_sync: DestroySync,
 }
 
 unsafe impl Send for Egl {}
@@ -921,25 +932,25 @@ impl Egl {
                 ));
             }
             macro_rules! proc {
-                ($name:literal) => {{
+                ($name:literal, $kind:ty) => {{
                     let address = eglGetProcAddress($name.as_ptr());
                     if address.is_null() {
                         return Err(format!("GpuVideo: no {:?}", $name));
                     }
-                    std::mem::transmute::<*mut c_void, _>(address)
+                    std::mem::transmute::<*mut c_void, $kind>(address)
                 }};
             }
             Ok(Self {
                 display,
                 context,
                 surface,
-                create_image: proc!(c"eglCreateImageKHR"),
-                destroy_image: proc!(c"eglDestroyImageKHR"),
-                client_buffer: proc!(c"eglGetNativeClientBufferANDROID"),
-                target_texture: proc!(c"glEGLImageTargetTexture2DOES"),
-                create_sync: proc!(c"eglCreateSyncKHR"),
-                client_wait_sync: proc!(c"eglClientWaitSyncKHR"),
-                destroy_sync: proc!(c"eglDestroySyncKHR"),
+                create_image: proc!(c"eglCreateImageKHR", CreateImage),
+                destroy_image: proc!(c"eglDestroyImageKHR", DestroyImage),
+                client_buffer: proc!(c"eglGetNativeClientBufferANDROID", ClientBuffer),
+                target_texture: proc!(c"glEGLImageTargetTexture2DOES", TargetTexture),
+                create_sync: proc!(c"eglCreateSyncKHR", CreateSync),
+                client_wait_sync: proc!(c"eglClientWaitSyncKHR", ClientWaitSync),
+                destroy_sync: proc!(c"eglDestroySyncKHR", DestroySync),
             })
         }
     }
