@@ -3130,6 +3130,216 @@
       }
     },
     {
+      "name": "Popover",
+      "import": "@liulidesign/core/Popover",
+      "exports": [
+        "Popover"
+      ],
+      "category": "overlays",
+      "status": "preview",
+      "summary": "A button that opens a panel of content above or below it, closed by a tap outside",
+      "description": "Popover shows a small panel beside the button that opened it: view options, a share link, a short form. It is not modal; a tap outside, Escape or back closes it and focus goes back to the button. For a list of actions use DropdownMenu; for a note about something use Tooltip; for a decision use Dialog.",
+      "keywords": [
+        "popover",
+        "popup",
+        "panel",
+        "flyout",
+        "options",
+        "share",
+        "overlay",
+        "anchored"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The trigger's text and accessible name; the panel's name too, unless `title` is set."
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": "A heading at the top of the panel, and its accessible name."
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": true,
+          "description": "The panel's content: a few lines, a short form, a handful of controls."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws only `icon` on a square trigger; `label` stays the name.",
+          "default": "false"
+        },
+        {
+          "name": "icon",
+          "type": "Child",
+          "required": false,
+          "description": "An icon on the trigger, before the label."
+        },
+        {
+          "name": "variant",
+          "type": "ButtonVariant",
+          "required": false,
+          "description": "The trigger's look, from Button.",
+          "default": "'secondary'"
+        },
+        {
+          "name": "size",
+          "type": "ButtonSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "placement",
+          "type": "PopoverPlacement",
+          "required": false,
+          "description": "Which side of the trigger the panel opens on.",
+          "default": "'bottom'"
+        },
+        {
+          "name": "alignment",
+          "type": "PopoverAlignment",
+          "required": false,
+          "description": "Which edge of the trigger the panel lines up with.",
+          "default": "'start'"
+        },
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "Controls whether it is open; leave it out to let the trigger own it."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "((isOpen: boolean) => void)",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Classes for the trigger."
+        },
+        {
+          "name": "panelClassName",
+          "type": "string",
+          "required": false,
+          "description": "Classes for the panel."
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the trigger; the panel gets `<testid>-panel`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "panel": "view",
+        "title": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "expanded",
+            "from": "whether the panel is open"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Enter, Space",
+            "effect": "On the trigger, opens or closes the panel."
+          },
+          {
+            "keys": "Escape",
+            "effect": "Closes the panel; focus returns to the trigger."
+          }
+        ],
+        "target": {
+          "sm": 32,
+          "md": 40,
+          "lg": 48
+        },
+        "contrast": [
+          {
+            "what": "title",
+            "pair": [
+              "text",
+              "surface-raised"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "panel edge",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "The trigger reports expanded while the panel is open.",
+          "A tap outside closes the panel and reaches nothing else, as with any light-dismiss popover.",
+          "It opens below the trigger or above it only; near the bottom of the screen open it above, as it stays under the tab bar."
+        ]
+      },
+      "examples": [
+        {
+          "name": "ViewOptions",
+          "title": "View options under the trigger",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Switch } from '@liulidesign/core/Switch';\nimport { Popover } from '@liulidesign/core/Popover';\n\n/** View options for a list: switches that apply at once, in a panel under the trigger. */\nexport function ViewOptions() {\n  const previews = useLocal('previews', true);\n  const dates = useLocal('dates', false);\n  return (\n    <view className=\"gap-3\">\n      <Popover label=\"View options\" title=\"Show in the list\" data-testid=\"options\">\n        <Switch bind={previews} label=\"Previews\" size=\"sm\" data-testid=\"previews\" />\n        <Switch bind={dates} label=\"Dates\" size=\"sm\" data-testid=\"dates\" />\n      </Popover>\n      <text className=\"text-footnote text-muted\" data-testid=\"summary\">\n        {[previews.value && 'Previews', dates.value && 'Dates'].filter(Boolean).join(' and ') || 'Titles only'}\n      </text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Share",
+          "title": "A share link above the trigger",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Popover } from '@liulidesign/core/Popover';\n\n/** Sharing a note: the link and one action, opening above a trigger that sits low on the page. */\nexport function Share() {\n  const copied = useLocal('copied', false);\n  return (\n    <view className=\"items-end\">\n      <Popover label=\"Share\" title=\"Anyone with the link can view\" placement=\"top\" alignment=\"end\" variant=\"primary\" data-testid=\"share\">\n        <text className=\"text-footnote text-muted select-text\">notes.example.com/s/q3-plan</text>\n        <Button label={copied.value ? 'Copied' : 'Copy link'} size=\"sm\" width=\"content\" onClick={() => copied.set(true)} data-testid=\"copy\" />\n      </Popover>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "related": [
+        "DropdownMenu",
+        "Tooltip",
+        "Dialog"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A panel beside it",
+        "order": 5,
+        "page": {
+          "lead": "Use a popover for a few controls or lines that belong to the button that opens them.",
+          "hero": "ViewOptions",
+          "parts": {
+            "name": "Parts",
+            "title": "The trigger, then the panel with its title"
+          },
+          "variants": [
+            {
+              "name": "Share",
+              "title": "Above, lined up with the trigger's end"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "ProgressBar",
       "import": "@liulidesign/core/ProgressBar",
       "exports": [

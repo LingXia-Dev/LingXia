@@ -13,6 +13,7 @@ import { Specimen as DropdownMenuSpecimen } from '../../../core/src/DropdownMenu
 import { Specimen as EmptyStateSpecimen } from '../../../core/src/EmptyState/EmptyState.examples';
 import { Specimen as FieldSpecimen } from '../../../core/src/Field/Field.examples';
 import { Specimen as ItemSpecimen } from '../../../core/src/Item/Item.examples';
+import { Specimen as PopoverSpecimen } from '../../../core/src/Popover/Popover.examples';
 import { Specimen as ProgressBarSpecimen } from '../../../core/src/ProgressBar/ProgressBar.examples';
 import { Specimen as RadioGroupSpecimen } from '../../../core/src/RadioGroup/RadioGroup.examples';
 import { Specimen as SegmentedControlSpecimen } from '../../../core/src/SegmentedControl/SegmentedControl.examples';
@@ -266,6 +267,15 @@ export function render({ actions }: View<Actions>) {
           testId={"open-bottom-sheet"}
         >
           <BottomSheetSpecimen />
+        </Tile>
+        <Tile
+          name={"Popover"}
+          tagline={"A panel beside it"}
+          isWide
+          onOpen={() => actions.open({ page: "popover" })}
+          testId={"open-popover"}
+        >
+          <PopoverSpecimen />
         </Tile>
       </Category>
       <Category title={"Content"}>

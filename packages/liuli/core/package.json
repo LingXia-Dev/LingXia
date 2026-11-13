@@ -62,6 +62,8 @@
     "./SegmentedControl/recipe": "./src/SegmentedControl/SegmentedControl.recipe.ts",
     "./BottomSheet": "./src/BottomSheet/BottomSheet.tsx",
     "./BottomSheet/recipe": "./src/BottomSheet/BottomSheet.recipe.ts",
+    "./Popover": "./src/Popover/Popover.tsx",
+    "./Popover/recipe": "./src/Popover/Popover.recipe.ts",
     "./package.json": "./package.json"
   },
   "lingxia": {
