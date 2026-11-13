@@ -2516,6 +2516,16 @@ impl LxApp {
     /// drive the switch imperatively — it routes the switch through here so the
     /// graph stays the single source of truth.
     pub fn set_active_main(&self) {
+        self.set_active_main_in_graph();
+        // The shown main is the current lxapp, or eval and surface-close
+        // routing keep targeting the app opened last.
+        mark_lxapp_active(&self.appid);
+    }
+
+    /// `set_active_main` without moving the lxapp stack, for an open that
+    /// has not reached `on_lxapp_opened` yet: that callback reads the stack
+    /// top to send the outgoing app `onHide`, then moves the stack itself.
+    pub(crate) fn set_active_main_in_graph(&self) {
         let title = self.listing_name();
         window_controller(PRIMARY_WINDOW, &self.runtime).set_active_main(
             &self.appid,
@@ -2529,7 +2539,7 @@ impl LxApp {
     /// physically covering an already-active lxapp graph node.
     pub fn activate_main(&self) {
         self.runtime.request_lxapp_main_activation(&self.appid);
-        self.set_active_main();
+        self.set_active_main_in_graph();
     }
 
     /// Whether `id` names a surface the host declared: a `lingxia.yaml` panel
@@ -2864,8 +2874,39 @@ impl LxApp {
 
     pub fn set_active_main_surface(&self, surface_id: &str) -> bool {
         let surface_id = surface_id.trim();
-        !surface_id.is_empty()
-            && window_controller(PRIMARY_WINDOW, &self.runtime).set_active_main_surface(surface_id)
+        if surface_id.is_empty() {
+            return false;
+        }
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        if !controller.set_active_main_surface(surface_id) {
+            return false;
+        }
+        if let Some(
+            lingxia_surface::SurfaceContent::Lxapp { app_id, .. }
+            | lingxia_surface::SurfaceContent::Page { app_id, .. },
+        ) = controller.main_surface_content(surface_id)
+        {
+            mark_lxapp_active(&app_id);
+        }
+        true
+    }
+
+    /// The lxapp the desktop window's active main shows: `None` where no host
+    /// drives the graph (mobile) or no main is active, `Some(None)` for a
+    /// browser or native main.
+    pub(crate) fn desktop_active_main_appid(&self) -> Option<Option<String>> {
+        if !cfg!(any(target_os = "windows", target_os = "macos")) {
+            return None;
+        }
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        let active = controller.switcher_snapshot().active_surface_id?;
+        Some(match controller.main_surface_content(&active) {
+            Some(
+                lingxia_surface::SurfaceContent::Lxapp { app_id, .. }
+                | lingxia_surface::SurfaceContent::Page { app_id, .. },
+            ) => Some(app_id),
+            _ => None,
+        })
     }
 
     pub fn surface_switcher_snapshot(&self) -> lingxia_surface::SurfaceSwitcherSnapshot {

@@ -5810,6 +5810,14 @@ fn active_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
 }
 
 fn set_primary_host_window(hwnd: HWND) {
+    // A restart may present the successor before the retiring host is
+    // destroyed; hand its frame over now, WM_DESTROY is only the fallback.
+    if let Some(previous) = stored_primary_host_window()
+        && previous != hwnd
+        && !is_window_visible(previous)
+    {
+        hand_over_primary_window_frame(previous);
+    }
     restore_primary_window_frame(hwnd);
     let slot = PRIMARY_HOST_WINDOW.get_or_init(|| Mutex::new(None));
     if let Ok(mut slot) = slot.lock() {
@@ -10681,6 +10689,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_DESTROY => {
+                hand_over_primary_window_frame(hwnd);
                 #[cfg(feature = "runtime")]
                 crate::dev_service_mark::destroy(hwnd);
                 #[cfg(feature = "shell-chrome")]
@@ -11488,18 +11497,45 @@ fn apply_pending_restore_maximize(hwnd: HWND) {
 }
 
 fn persist_primary_window_frame(hwnd: HWND) {
-    if !is_top_level_window(hwnd)
-        || !is_window_visible(hwnd)
-        || stored_primary_host_window().is_some_and(|primary| primary != hwnd)
+    if !is_window_visible(hwnd) {
+        return;
+    }
+    persist_window_frame_if_primary(hwnd);
+}
+
+/// An lxapp restart destroys the primary host and presents its successor in a
+/// new one. Save the outgoing frame (already hidden by then) and re-arm the
+/// restore, or the successor opens at the centered default size.
+fn hand_over_primary_window_frame(hwnd: HWND) {
+    if DEFAULT_HOST_HEADLESS.load(Ordering::Acquire)
+        || stored_primary_host_window() != Some(hwnd)
+        || TRAY_POPOVER_HWND.load(Ordering::Relaxed) == hwnd_handle(hwnd)
     {
         return;
+    }
+    if persist_window_frame_if_primary(hwnd) {
+        RESTORED_WINDOW_FRAME.store(false, Ordering::Release);
+    }
+    let _ = PENDING_RESTORE_MAXIMIZE.compare_exchange(
+        hwnd_handle(hwnd),
+        0,
+        Ordering::AcqRel,
+        Ordering::Acquire,
+    );
+}
+
+fn persist_window_frame_if_primary(hwnd: HWND) -> bool {
+    if !is_top_level_window(hwnd)
+        || stored_primary_host_window().is_some_and(|primary| primary != hwnd)
+    {
+        return false;
     }
     // The simulator's frame-spec size is not a user-chosen shell size; saving
     // it would feed the min-width clamp a phone-sized rect on the next
     // restore.
     #[cfg(feature = "device-frame")]
     if crate::device_frame::window_has_device_frame(hwnd_handle(hwnd)) {
-        return;
+        return false;
     }
 
     let mut placement = WindowsAndMessaging::WINDOWPLACEMENT {
@@ -11507,7 +11543,7 @@ fn persist_primary_window_frame(hwnd: HWND) {
         ..Default::default()
     };
     if unsafe { WindowsAndMessaging::GetWindowPlacement(hwnd, &mut placement) }.is_err() {
-        return;
+        return false;
     }
     let mut rect = placement.rcNormalPosition;
     // Tool windows already report screen coordinates.
@@ -11525,14 +11561,21 @@ fn persist_primary_window_frame(hwnd: HWND) {
         f64::from(rect.top),
         f64::from(rect.right - rect.left),
         f64::from(rect.bottom - rect.top),
-        placement_is_maximized(&placement),
+        // A restored-maximized window maximizes on first show; one retired
+        // before that is still the user's maximized window.
+        placement_is_maximized(&placement)
+            || PENDING_RESTORE_MAXIMIZE.load(Ordering::Acquire) == hwnd_handle(hwnd),
     ) else {
-        return;
+        return false;
     };
     match lingxia_shell::set_window_frame(frame) {
+        Ok(()) => true,
         // A host-api-only build never opens the shell store.
-        Ok(()) | Err(lingxia_shell::ShellError::NotInitialized) => {}
-        Err(error) => log::warn!("could not persist the app window frame: {error}"),
+        Err(lingxia_shell::ShellError::NotInitialized) => false,
+        Err(error) => {
+            log::warn!("could not persist the app window frame: {error}");
+            false
+        }
     }
 }
 

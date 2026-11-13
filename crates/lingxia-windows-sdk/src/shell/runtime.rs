@@ -681,6 +681,14 @@ pub(crate) fn cancel_sidebar_drag(origin_width: i32) {
     }
 }
 
+/// Whole-sidebar state (rail, scroll) is read from the shell owner, not the
+/// guest whose `group_id` the chrome command carries.
+fn sidebar_owner_group(group: &str) -> String {
+    shell_owner_appid()
+        .filter(|owner| lxapp::try_get(owner).is_some())
+        .unwrap_or_else(|| group.to_string())
+}
+
 fn update_sidebar_ui_state(group: &str, update: impl FnOnce(&mut SidebarUiState)) {
     let state = SIDEBAR_UI_STATE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut state) = state.lock() {
@@ -1351,10 +1359,10 @@ fn sync_related_shell_layouts(appid: &str) {
 /// The app, the shell owner, the visible main, and the stack-top app.
 ///
 /// Chrome lives on the *visible* webtag. `get_current_lxapp` is the navigation
-/// stack top — sidebar focus does not push it — so a later `navigateToApp`
-/// leaves the on-screen guest out of the set. Toggling that guest then
-/// rebuilds home's hidden webtag and the last-opened guest, never the one
-/// the user is looking at.
+/// stack top, which can lag the on-screen main (a later `navigateToApp`, a
+/// presented browser tab), so the visible main is added separately; without
+/// it, toggling that guest rebuilds home's hidden webtag and the last-opened
+/// guest, never the one the user is looking at.
 fn related_shell_appids(requested: &[String]) -> Vec<String> {
     let stack_top = lxapp::get_current_lxapp().0;
     merge_related_shell_appids(
@@ -5240,7 +5248,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(offset) = payload_i32(&event, "offset") else {
                 return;
             };
-            update_sidebar_ui_state(&group, |state| {
+            update_sidebar_ui_state(&sidebar_owner_group(&group), |state| {
                 state.main_scroll_offset = offset.max(0);
             });
             sync_shell_layout(appid);
@@ -5253,7 +5261,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(row) = payload_usize(&event, "row") else {
                 return;
             };
-            update_sidebar_ui_state(&group, |state| {
+            update_sidebar_ui_state(&sidebar_owner_group(&group), |state| {
                 state.footer_action_scroll_row = row;
             });
             sync_shell_layout(appid);

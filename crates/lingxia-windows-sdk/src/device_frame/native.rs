@@ -1330,7 +1330,15 @@ unsafe extern "system" fn device_frame_host_proc(
         unsafe {
             let _ = WindowsAndMessaging::KillTimer(Some(hwnd), CLOCK_TIMER_ID);
         }
+        // The host's WM_DESTROY must still see the frame, or it saves the
+        // device-sized window as the user's shell frame.
+        let result = original
+            .map(|original| unsafe { call_original(original, hwnd, msg, wparam, lparam) })
+            .unwrap_or_else(|| unsafe {
+                WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam)
+            });
         forget_device_frame(hwnd);
+        return result;
     } else if msg == WindowsAndMessaging::WM_NCDESTROY {
         forget_device_frame(hwnd);
         let result = original

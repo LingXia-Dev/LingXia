@@ -455,6 +455,14 @@ fn claim_pending_destroy(
     }
 }
 
+/// Whether opening an already-open lxapp must present it again. The stack top
+/// alone is not enough on desktop: the visible main can be another lxapp or a
+/// browser tab while `appid` stays on top, and skipping the present there
+/// makes `navigateToApp` resolve with nothing on screen.
+fn reentry_presents(appid: &str, stack_top: &str, active_main: Option<Option<&str>>) -> bool {
+    stack_top != appid || active_main.is_some_and(|main| main != Some(appid))
+}
+
 fn first_evictable_appid(
     stack: &[String],
     mut is_evictable: impl FnMut(&str) -> bool,
@@ -3916,7 +3924,13 @@ impl LxApp {
         }
 
         let (current_appid, _, _) = get_current_lxapp();
-        if current_appid != self.appid {
+        if reentry_presents(
+            &self.appid,
+            &current_appid,
+            self.desktop_active_main_appid()
+                .as_ref()
+                .map(Option::as_deref),
+        ) {
             let page = self.get_or_create_page(&current_path);
             let title = self.listing_name();
             let stored = self
@@ -3925,14 +3939,35 @@ impl LxApp {
                 .unwrap_or_else(|err| err.into_inner())
                 .startup_options
                 .clone();
-            // Match first-open: put this lxapp on the switcher before the
-            // webview covers the previous main, or the row lands a frame late.
-            #[cfg(target_os = "windows")]
-            if !matches!(
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            let is_panel = matches!(
                 stored.open_mode,
                 lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
-            ) {
-                self.set_active_main();
+            );
+            // Windows' show_lxapp never reaches on_lxapp_opened, which sends
+            // the outgoing app onHide and this one onShow with the new query.
+            #[cfg(target_os = "windows")]
+            {
+                let query =
+                    (!stored.query.is_empty()).then(|| PageQueryInput::Raw(stored.query.clone()));
+                self.create_page_instance(
+                    PageOwner::Scene(SceneId("system".to_string())),
+                    PageTarget::Path(current_path.clone()),
+                    query,
+                    if is_panel {
+                        PresentationKind::Panel
+                    } else {
+                        PresentationKind::Window
+                    },
+                    None,
+                )?;
+            }
+            // Activate the main in the graph before the host shows it. Windows
+            // needs the row before the webview covers the previous main; macOS
+            // never activates a main that is already a switcher row itself.
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            if !is_panel {
+                self.set_active_main_in_graph();
             }
             self.runtime.show_lxapp(ShowLxApp {
                 appid: self.appid.clone(),
@@ -4100,8 +4135,19 @@ impl LxApp {
                 None,
             )?;
             if !is_panel {
-                self.set_active_main();
+                self.set_active_main_in_graph();
             }
+        }
+
+        // macOS: a main that is already a switcher row (the shell-opened home)
+        // is only brought forward by the graph; the host leaves rows alone.
+        #[cfg(target_os = "macos")]
+        if !matches!(
+            startup_options.open_mode,
+            lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
+        ) && self.main_surface_content(&self.appid).is_some()
+        {
+            self.set_active_main_in_graph();
         }
 
         self.runtime.show_lxapp(ShowLxApp {
@@ -5181,6 +5227,22 @@ mod delayed_destroy_tests {
             Some("app-b".to_string())
         );
         assert_eq!(first_evictable_appid(&stack, |_| false), None);
+    }
+
+    #[test]
+    fn reopening_an_open_lxapp_presents_it_unless_it_is_the_visible_main() {
+        // Home opened chat, then navigated back to home: chat can stay on top
+        // of the stack while home is the visible main. Opening chat again
+        // must present it, not resolve with nothing on screen.
+        assert!(reentry_presents("chat", "chat", Some(Some("home"))));
+        // A browser tab is the visible main.
+        assert!(reentry_presents("chat", "chat", Some(None)));
+        assert!(reentry_presents("chat", "home", Some(Some("home"))));
+        // Already the visible main: keep the page, only App onShow.
+        assert!(!reentry_presents("chat", "chat", Some(Some("chat"))));
+        // No desktop graph (mobile): the stack decides.
+        assert!(!reentry_presents("chat", "chat", None));
+        assert!(reentry_presents("chat", "home", None));
     }
 
     #[test]
