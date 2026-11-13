@@ -9,7 +9,7 @@ export const buttonParts = { root: 'button', icon: 'view', spinner: 'vector', la
  */
 export const buttonRecipe = {
   root: {
-    base: 'flex-row items-center justify-center rounded-control transition-colors duration-150 ease-out',
+    base: 'flex-row items-center justify-center rounded-control transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-focus',
     variant: {
       primary: 'bg-accent text-on-accent border border-transparent shadow-[0_1px_2px_rgb(0_0_0/0.10)] hover:bg-accent/92 active:bg-accent/88',
       secondary: 'bg-surface text-text border border-text/12 shadow-[0_1px_2px_rgb(0_0_0/0.05)] hover:bg-text/5 active:bg-text/8',
