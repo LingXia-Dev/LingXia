@@ -8,7 +8,7 @@ import AppKit
 class SidebarBrowserItemView: NSView {
 
     struct Layout {
-        static let height: CGFloat = 36
+        static let height: CGFloat = 40
         static let iconSize: CGFloat = 16
         // Matches SidebarGroupView.Layout.headerHPadding so an lxapp group's
         // icon and a browser tab's icon line up in the same column (both sit
@@ -72,7 +72,7 @@ class SidebarBrowserItemView: NSView {
 
         // Title
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.font = NSFont.systemFont(ofSize: 12)
+        titleLabel.font = NSFont.systemFont(ofSize: 14)
         titleLabel.textColor = LxAppHostTheme.foreground
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1

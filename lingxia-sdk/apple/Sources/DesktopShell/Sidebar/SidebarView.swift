@@ -415,7 +415,7 @@ private final class SidebarRailTooltip {
     private func makeFloat() -> SidebarRailFloatWindow {
         let content = NSView()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = .systemFont(ofSize: 12)
+        label.font = .systemFont(ofSize: 14)
         label.lineBreakMode = .byTruncatingTail
         label.maximumNumberOfLines = 1
         content.addSubview(label)
@@ -504,7 +504,7 @@ private final class SidebarRailPagePanel {
         // that group pulled out of the rail rather than a different control.
         let titleLabel = NSTextField(labelWithString: label.uppercased())
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.font = .systemFont(ofSize: 11, weight: .semibold)
+        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         titleLabel.textColor = LxAppHostTheme.foreground
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
@@ -2687,7 +2687,7 @@ class SidebarView: NSView {
 
         let label = NSTextField(labelWithString: L10n.string("lx_browser_label").uppercased())
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        label.font = NSFont.systemFont(ofSize: 14, weight: .semibold)
         label.textColor = LxAppHostTheme.foreground
         browserRootHeader.addSubview(label)
 
@@ -3302,7 +3302,7 @@ private enum SidebarActionChromePalette {
 @MainActor
 final class SidebarActionRowView: NSView {
     private static let iconSize: CGFloat = 18
-    private static let cellHeight: CGFloat = 30
+    private static let cellHeight: CGFloat = 34
 
     var onClick: (() -> Void)?
     /// The sidebar draws the name above the cell; the system tooltip opens
@@ -3384,7 +3384,7 @@ final class SidebarActionRowView: NSView {
         }
 
         titleLabel.font = NSFont.systemFont(
-            ofSize: 13,
+            ofSize: 15,
             weight: self.active ? .medium : .regular
         )
         titleLabel.textColor = disabled
