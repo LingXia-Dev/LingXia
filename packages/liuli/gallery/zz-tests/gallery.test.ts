@@ -170,7 +170,7 @@ spec('select (fine pointer): the list opens under the box; a click chooses, Esca
   await country.click();
   await expect(list).toBeVisible();
   await t.attach('select-open.png', await view.screenshot());
-  await list.getByRole('option', { name: 'France' }).click();
+  await view.getByRole('option', { name: 'France' }).click();
   await expect(list).toHaveCount(0);
   await expect(country).toHaveText('France');
   await country.click();
