@@ -3939,9 +3939,10 @@ impl LxApp {
                 .unwrap_or_else(|err| err.into_inner())
                 .startup_options
                 .clone();
-            // Match first-open: put this lxapp on the switcher before the
-            // webview covers the previous main, or the row lands a frame late.
-            #[cfg(target_os = "windows")]
+            // Activate the main in the graph before the host shows it. Windows
+            // needs the row before the webview covers the previous main; macOS
+            // never activates a main that is already a switcher row itself.
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             if !matches!(
                 stored.open_mode,
                 lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
@@ -4116,6 +4117,17 @@ impl LxApp {
             if !is_panel {
                 self.set_active_main();
             }
+        }
+
+        // macOS: a main that is already a switcher row (the shell-opened home)
+        // is only brought forward by the graph; the host leaves rows alone.
+        #[cfg(target_os = "macos")]
+        if !matches!(
+            startup_options.open_mode,
+            lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
+        ) && self.main_surface_content(&self.appid).is_some()
+        {
+            self.set_active_main();
         }
 
         self.runtime.show_lxapp(ShowLxApp {
