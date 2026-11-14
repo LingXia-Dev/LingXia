@@ -5,7 +5,7 @@ export type PatternName = keyof typeof patterns;
 
 /** Roles `@lingxia/test`'s `getByRole` resolves today. */
 export type LocatorRole = 'button' | 'textbox' | 'checkbox' | 'switch' | 'dialog' | 'menu' | 'menuitem' | 'combobox' | 'heading' | 'status' | 'alert'
-  | 'slider' | 'tablist' | 'tab' | 'tabpanel' | 'radiogroup' | 'radio';
+  | 'slider' | 'tablist' | 'tab' | 'tabpanel' | 'radiogroup' | 'radio' | 'tree' | 'treeitem';
 
 export type Step =
   | { readonly do: 'find'; readonly role: LocatorRole; readonly name: 'label' | 'menu label' }
@@ -163,6 +163,19 @@ export const patterns = {
         { do: 'tab-to', role: 'tab' }, { expect: 'focused', role: 'tab' },
         { do: 'press-key', key: 'right' }, { expect: 'handler-ran', times: 1 },
         { do: 'press-key', key: 'home' }, { expect: 'handler-ran', times: 2 },
+      ],
+    },
+  },
+  tree: {
+    role: 'tree',
+    checks: {
+      'the tree is found by its label': [{ do: 'find', role: 'tree', name: 'label' }],
+    },
+    keyboardChecks: {
+      'one Tab stop; Down moves to the next item': [
+        { do: 'tab-to', role: 'treeitem' }, { expect: 'focused', role: 'treeitem' },
+        { do: 'press-key', key: 'down' }, { expect: 'focused', role: 'treeitem' },
+        { do: 'press-key', key: 'home' }, { expect: 'focused', role: 'treeitem', which: 'first' },
       ],
     },
   },

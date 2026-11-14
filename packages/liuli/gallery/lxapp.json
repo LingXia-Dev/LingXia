@@ -38,6 +38,7 @@
     { "name": "select", "path": "pages/select/index" },
     { "name": "segmented-control", "path": "pages/segmented-control/index" },
     { "name": "tabs", "path": "pages/tabs/index" },
+    { "name": "nav-list", "path": "pages/nav-list/index" },
     { "name": "badge", "path": "pages/badge/index" },
     { "name": "progress-bar", "path": "pages/progress-bar/index" },
     { "name": "banner", "path": "pages/banner/index" },

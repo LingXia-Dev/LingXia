@@ -3487,6 +3487,203 @@
       }
     },
     {
+      "name": "NavList",
+      "import": "@liulidesign/core/NavList",
+      "exports": [
+        "NavList"
+      ],
+      "category": "navigation",
+      "status": "preview",
+      "since": "2026-11-14",
+      "summary": "A sidebar's list of places, in sections that open and close, with the current one marked",
+      "description": "NavList is the column of places beside a workspace: mailboxes, projects, the pages of a document. Rows sit in sections; a section with a title opens and closes from its heading and remembers it. The current row sits on an accent wash and is read as selected.",
+      "keywords": [
+        "nav list",
+        "navigation list",
+        "sidebar",
+        "side bar",
+        "source list",
+        "outline",
+        "menu",
+        "table of contents",
+        "tree"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Names the list for assistive tech: \"Mailboxes\", \"Components\"."
+        },
+        {
+          "name": "sections",
+          "type": "readonly NavListSection[]",
+          "required": true,
+          "description": "The rows, in sections."
+        },
+        {
+          "name": "value",
+          "type": "string | null",
+          "required": true,
+          "description": "The current row's value, or `null` when none is current."
+        },
+        {
+          "name": "onChange",
+          "type": "(value: string) => void",
+          "required": true,
+          "description": "Runs with the value of a row chosen by a tap, a click or Enter."
+        },
+        {
+          "name": "defaultClosed",
+          "type": "readonly string[]",
+          "required": false,
+          "description": "Sections closed at first, by id; after that each remembers its own state.",
+          "default": "[]"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the list; each row gets `<testid>-<value>`, each section heading `<testid>-section-<id>`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "group": "button",
+        "groupLabel": "text",
+        "groupChevron": "vector",
+        "item": "button",
+        "label": "text",
+        "end": "view"
+      },
+      "accessibility": {
+        "pattern": "tree",
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "selected",
+            "from": "value"
+          },
+          {
+            "state": "expanded",
+            "from": "sections, closed by a press on the heading or by defaultClosed"
+          },
+          {
+            "state": "disabled",
+            "from": "items[].isDisabled"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Into the list, on the current row; again, out of it."
+          },
+          {
+            "keys": "Up, Down",
+            "effect": "The previous or next row or heading."
+          },
+          {
+            "keys": "Home, End",
+            "effect": "The first or last row."
+          },
+          {
+            "keys": "Enter, Space",
+            "effect": "Opens the row, or opens or closes a section."
+          }
+        ],
+        "contrast": [
+          {
+            "what": "row text",
+            "pair": [
+              "text",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "section titles and counts",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "current row text",
+            "pair": [
+              "text",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "current row count",
+            "pair": [
+              "text-muted",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The current row is read as selected, the others as not selected; a page that is current is not yet announced as \"current page\".",
+          "Rows are 36 px tall; on touch screens the View grows each press target to the platform minimum.",
+          "A row with `endText` is named \"Inbox, 12\", so the count is read once."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Sidebar",
+          "title": "A sidebar",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\n\nconst workspace = [\n  { id: 'mail', items: [\n    { value: 'inbox', label: 'Inbox', endText: '12' },\n    { value: 'drafts', label: 'Drafts', endText: '3' },\n    { value: 'sent', label: 'Sent' },\n  ] },\n  { id: 'projects', title: 'Projects', items: [\n    { value: 'launch', label: 'Spring launch' },\n    { value: 'research', label: 'User research' },\n    { value: 'archive', label: 'Archive', isDisabled: true },\n  ] },\n] as const;\n\n/** A sidebar: places first, then a section that closes; the current row is selected. */\nexport function Sidebar() {\n  const current = useLocal<string>('current', 'inbox');\n  return (\n    <view className=\"max-w-[264px] gap-4\">\n      <NavList label=\"Workspace\" sections={workspace} value={current.value} onChange={next => current.set(next)} data-testid=\"workspace\" />\n      <text className=\"text-footnote text-muted\" data-testid=\"workspace-current\">{`Showing ${current.value}`}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Closed",
+          "title": "A section that starts closed",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\n\nconst library = [\n  { id: 'inputs', title: 'Inputs', items: [{ value: 'text-input', label: 'TextInput' }, { value: 'date-input', label: 'DateInput' }] },\n  { id: 'feedback', title: 'Feedback', items: [{ value: 'badge', label: 'Badge' }, { value: 'toast', label: 'Toast' }] },\n] as const;\n\n/** Sections that start closed; each remembers being opened. */\nexport function Closed() {\n  const current = useLocal<string>('current', 'text-input');\n  return (\n    <view className=\"max-w-[264px]\">\n      <NavList label=\"Components\" sections={library} value={current.value} onChange={next => current.set(next)} defaultClosed={['feedback']} data-testid=\"library\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "The current row read as \"current page\"",
+          "needs": "`aria-current` in the View",
+          "today": "Read as selected"
+        },
+        {
+          "missing": "Typing a name to jump to its row",
+          "needs": "Type-ahead in a View `tree`, as `menu` has",
+          "today": "Arrows, Home and End"
+        }
+      ],
+      "related": [
+        "Tabs",
+        "Item"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A sidebar of places",
+        "order": 2,
+        "page": {
+          "lead": "Use a nav list for the column of places beside a workspace.",
+          "hero": "Sidebar",
+          "variants": [
+            {
+              "name": "Closed",
+              "title": "A section that starts closed"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Popover",
       "import": "@liulidesign/core/Popover",
       "exports": [

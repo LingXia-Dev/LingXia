@@ -304,6 +304,25 @@ export const entries: GalleryEntry[] = [
     "status": "preview"
   },
   {
+    "name": "NavList",
+    "page": "nav-list",
+    "category": "navigation",
+    "summary": "A sidebar's list of places, in sections that open and close, with the current one marked",
+    "keywords": [
+      "nav list",
+      "navigation list",
+      "sidebar",
+      "side bar",
+      "source list",
+      "outline",
+      "menu",
+      "table of contents",
+      "tree"
+    ],
+    "since": "2026-11-14",
+    "status": "preview"
+  },
+  {
     "name": "Badge",
     "page": "badge",
     "category": "feedback",
@@ -673,7 +692,7 @@ export const galleryCategories: GalleryCategory[] = [
     "title": "Navigation",
     "description": "Ways to move between views on the same page.",
     "page": "category-navigation",
-    "count": 1
+    "count": 2
   },
   {
     "id": "feedback",
@@ -713,7 +732,7 @@ export const galleryCategories: GalleryCategory[] = [
 ];
 
 /** The 6 latest components, newest first. */
-export const newest: string[] = ["BottomSheet","DateInput","EmptyState","Popover","SegmentedControl","Skeleton"];
+export const newest: string[] = ["NavList","BottomSheet","DateInput","EmptyState","Popover","SegmentedControl"];
 
 export const version = "0.1.0";
 export const packageStatus = "Preview";

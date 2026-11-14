@@ -12,7 +12,7 @@ const categories: Record<string, string[]> = {
   'category-actions': ['button', 'toggle-button'],
   'category-inputs': ['text-input', 'text-area', 'date-input', 'time-input', 'slider', 'field'],
   'category-selection': ['checkbox-input', 'radio-group', 'switch', 'select', 'segmented-control'],
-  'category-navigation': ['tabs'],
+  'category-navigation': ['tabs', 'nav-list'],
   'category-feedback': ['badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast'],
   'category-overlays': ['dialog', 'dropdown-menu', 'tooltip', 'bottom-sheet', 'popover'],
   'category-content': ['card', 'item', 'details', 'avatar'],
