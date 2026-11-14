@@ -1466,6 +1466,14 @@ impl Renderer {
                         geometry: None,
                         scroll_offset: [0.0; 2],
                         value: record.string(field::INPUT_VALUE).unwrap_or("").into(),
+                        display: record
+                            .string(field::DISPLAY_VALUE)
+                            .filter(|_| {
+                                record
+                                    .string(field::INPUT_VALUE)
+                                    .is_some_and(|v| !v.is_empty())
+                            })
+                            .map(str::to_owned),
                         placeholder: record.string(field::PLACEHOLDER).unwrap_or("").into(),
                         secure: record.number(field::SECURE) == Some(1.0),
                         keyboard: record

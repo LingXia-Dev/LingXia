@@ -282,7 +282,30 @@ impl Renderer {
     /// The CSS `ch` unit: the advance of "0" in the node's (scaled) font, with its numeric
     /// features, so `tabular-nums` fields size to the digits they show.
     pub(crate) fn zero_advance(&mut self, style: &TextStyle) -> f32 {
-        let mut builder = self.text.ranged_builder(&mut self.fonts, "0", 1.0, true);
+        self.text_advance(style, "0")
+    }
+
+    /// The widest of `template`'s lines in the node's font, each digit counted as the font's
+    /// widest digit: the room a date or time field needs for any value it can show.
+    pub(crate) fn template_advance(&mut self, style: &TextStyle, template: &str) -> f32 {
+        let mut widest = (0.0, '0');
+        for digit in '0'..='9' {
+            let advance = self.text_advance(style, digit.encode_utf8(&mut [0; 4]));
+            if advance > widest.0 {
+                widest = (advance, digit);
+            }
+        }
+        let digit = widest.1.to_string();
+        template
+            .lines()
+            .map(|line| {
+                self.text_advance(style, &line.replace(|c: char| c.is_ascii_digit(), &digit))
+            })
+            .fold(0.0, f32::max)
+    }
+
+    fn text_advance(&mut self, style: &TextStyle, text: &str) -> f32 {
+        let mut builder = self.text.ranged_builder(&mut self.fonts, text, 1.0, true);
         if !style.features.is_empty() {
             builder.push_default(StyleProperty::FontFeatures(style.features.as_str().into()));
         }
@@ -291,7 +314,7 @@ impl Renderer {
         builder.push_default(StyleProperty::FontWeight(FontWeight::new(style.weight)));
         builder.push_default(StyleProperty::Locale(self.locale));
         builder.push_default(Self::font_stack(&self.font_faces, &style.family));
-        let mut layout = builder.build("0");
+        let mut layout = builder.build(text);
         layout.break_all_lines(None);
         layout.full_width()
     }

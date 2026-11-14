@@ -382,10 +382,12 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         ),
         field::CHECKED => ensure(flag(value), "UI_CHECK: invalid flag or handle"),
         field::ON_CHECKED_CHANGE => ensure(handle(value), "UI_CHECK: invalid flag or handle"),
-        field::INPUT_VALUE | field::PLACEHOLDER => ensure(
-            bounded_str(value, crate::text::input::MAX_TEXT_BYTES),
-            "UI_INPUT: invalid text",
-        ),
+        field::INPUT_VALUE | field::PLACEHOLDER | field::DISPLAY_VALUE | field::SIZE_TEXT => {
+            ensure(
+                bounded_str(value, crate::text::input::MAX_TEXT_BYTES),
+                "UI_INPUT: invalid text",
+            )
+        }
         field::SECURE | field::AUTO_FOCUS | field::SPELL_CHECK => {
             ensure(flag(value), "UI_INPUT: invalid flag")
         }

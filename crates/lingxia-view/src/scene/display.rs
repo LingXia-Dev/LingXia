@@ -241,7 +241,9 @@ impl DisplayList {
             // A focused editor scrolled out of view keeps focus, but draws no caret and reports
             // no caret rect until it is back.
             let off_screen = node.visible_bounds[2] <= 0.0 || node.visible_bounds[3] <= 0.0;
-            if !state.focused || state.text != input.value || off_screen {
+            // A field showing a display form has no caret in its ISO value to map.
+            if !state.focused || state.text != input.value || input.display.is_some() || off_screen
+            {
                 input.scroll_offset = [0.0; 2];
                 continue;
             }

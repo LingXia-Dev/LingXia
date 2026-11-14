@@ -18,6 +18,7 @@ import { recall, enter, leave, remember } from './memo.js';
 import { isProvider, provide } from './context.js';
 import { playerName, videoStatus, fullscreenHandler } from './video.js';
 import { shownInDialog } from './fullscreen.js';
+import { fieldText } from './calendar.js';
 
 const videoFlags = [['videoMuted', 'muted'], ['videoLoop', 'loop']];
 const videoEvents = [['loadedmetadata', 'onLoadedMetadata'], ['play', 'onPlay'], ['playing', 'onPlaying'], ['pause', 'onPause'],
@@ -511,6 +512,17 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       wire('inputValue', props.value ?? '');
       if (props.placeholder !== undefined) wire('placeholder', props.placeholder);
       if (keyboard !== undefined) wire('keyboard', keyboard);
+      if (keyboard === 'date' || keyboard === 'time') {
+        // Shown in the user's clock and sized to its widest value; the bound value stays ISO.
+        const env = envOf(render.view);
+        const shown = fieldText(keyboard, props.value ?? '', {
+          seconds: typeof props.step === 'number' && props.step < 60,
+          language: env?.contentLanguage ?? env?.displayLanguage,
+          hourCycle: env?.hourCycle,
+        });
+        wire('displayValue', shown.displayValue);
+        wire('sizeText', shown.sizeText);
+      }
       if (secure) wire('secure', 1);
       if (props.autoFocus !== undefined) wire('autoFocus', +props.autoFocus);
       // A textarea whose Return key names an action submits instead of breaking the line.

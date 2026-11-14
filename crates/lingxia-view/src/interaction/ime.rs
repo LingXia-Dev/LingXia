@@ -140,6 +140,7 @@ mod tests {
 
     fn input(keyboard: &str, attributes: EditorAttributes) -> InputSnapshot {
         InputSnapshot {
+            display: None,
             value: String::new(),
             placeholder: String::new(),
             secure: false,

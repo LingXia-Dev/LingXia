@@ -34,6 +34,7 @@ fn element(tag: &'static str, way: Way) -> NodeSnapshot {
     }
     if tag == "input" {
         node.input = Some(InputSnapshot {
+            display: None,
             attributes: Default::default(),
             value: String::new(),
             placeholder: String::new(),

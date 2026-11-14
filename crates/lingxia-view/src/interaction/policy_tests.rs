@@ -478,6 +478,7 @@ fn projection_exposes_roles_ranges_masked_text_and_only_enabled_actions() {
     let mut editor = node("editor", "textarea", [0.0, 50.0, 100.0, 40.0]);
     editor.accessibility_label = Some("Account password".into());
     editor.input = Some(InputSnapshot {
+        display: None,
         attributes: Default::default(),
         value: String::new(),
         placeholder: "Secret".into(),

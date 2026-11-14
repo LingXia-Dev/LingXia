@@ -203,6 +203,9 @@ pub fn meaningful(node: &NodeSnapshot) -> bool {
 }
 
 fn masked(input: &crate::scene::node::InputSnapshot) -> String {
+    if let Some(display) = &input.display {
+        return display.clone();
+    }
     let value = input
         .edit
         .as_ref()
@@ -643,6 +646,7 @@ impl Projection<'_> {
                 multiline: node.tag == "textarea",
                 selection: input
                     .edit_token
+                    .filter(|_| input.display.is_none())
                     .filter(|token| *token > 0)
                     .and(input.edit.as_ref())
                     .map(|edit| edit.selection),

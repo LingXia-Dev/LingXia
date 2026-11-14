@@ -5,7 +5,7 @@
 import { h } from './nodes.js';
 import { listTag } from './elements.js';
 import { monthGrid, weekday, weekdayOrder, moveDate, within, clampDate, compare, addMonths, parseDate, parseTime, iso, timeIso,
-  hourValues, minuteValues, wordsFor } from './calendar.js';
+  hourValues, minuteValues, wordsFor, clockText } from './calendar.js';
 
 let picker = null, results = [], nextKey = 1;
 
@@ -229,11 +229,7 @@ function selectBody(touch) {
 export const pickerAnchor = env => picker && (env?.pointer ?? 'coarse') !== 'coarse' ? picker.identity : null;
 
 const sheetStyle = ({ borderRadius, ...rest }) => rest;
-const clock = ({ hour, minute }, words, env) => {
-  const mm = String(minute).padStart(2, '0');
-  if (env?.hourCycle !== 'h12') return `${String(hour).padStart(2, '0')}:${mm}`;
-  return `${hour % 12 || 12}:${mm} ${hour < 12 ? words.am : words.pm}`;
-};
+const clock = ({ hour, minute }, words, env) => clockText({ hour, minute }, words, env?.hourCycle);
 
 /** The open picker above the page, or null. */
 export function pickerNode(env) {

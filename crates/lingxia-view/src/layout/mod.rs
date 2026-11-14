@@ -218,6 +218,21 @@ impl Renderer {
             if let Some(n) = ch(field::MAX_WIDTH_CH) {
                 style.max_size.width = length(n * self.zero_advance(&styles[index]));
             }
+            // A date or time field is never narrower than the widest value it can show.
+            // A percent minimum is left to the author.
+            let authored = match style.min_size.width.expand() {
+                taffy::style::ExpandedLengthPercentageAuto::Auto => Some(0.0),
+                taffy::style::ExpandedLengthPercentageAuto::Length(px) => Some(px),
+                _ => None,
+            };
+            if let (Some(template), Some(authored)) = (record.string(field::SIZE_TEXT), authored) {
+                let content = self.template_advance(&styles[index], template);
+                let padding = style.padding.resolve_or_zero(None, |_, _| 0.0);
+                let border = style.border.resolve_or_zero(None, |_, _| 0.0);
+                let need =
+                    (content + padding.left + padding.right + border.left + border.right).ceil();
+                style.min_size.width = length(authored.max(need));
+            }
             let measure = match &layouts[index] {
                 Some(text) => text.shape_id().map(|shape| {
                     use std::hash::{Hash, Hasher};

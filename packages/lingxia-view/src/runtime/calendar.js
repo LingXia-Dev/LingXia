@@ -45,6 +45,28 @@ const names = {
     am: 'ص', pm: 'م', cancel: 'إلغاء', done: 'تم', previous: 'الشهر السابق', next: 'الشهر التالي', hour: 'الساعة', minute: 'الدقيقة', period: 'ص/م' },
 };
 
+/** A time as the user's clock shows it: `21:30` (h23) or `9:30 PM` (h12), seconds when given. */
+export function clockText({ hour, minute, second }, words, hourCycle) {
+  const rest = `:${pad(minute)}${second === undefined ? '' : `:${pad(second)}`}`;
+  if (hourCycle !== 'h12') return `${pad(hour)}${rest}`;
+  return `${hour % 12 || 12}${rest} ${hour < 12 ? words.am : words.pm}`;
+}
+
+/**
+ * What a date or time field shows for its ISO value, and the widest text it can show in this
+ * format, one candidate per line; digits in `sizeText` stand for any digit. Dates stay ISO for now.
+ */
+export function fieldText(kind, value, { seconds, language, hourCycle }) {
+  if (kind === 'date') return { displayValue: value, sizeText: '0000-00-00' };
+  const words = wordsFor(language);
+  const time = parseTime(value);
+  const shown = /:\d{2}:\d{2}$/.test(value) ? { ...time, second: Number(value.slice(-2)) } : time;
+  const widest = second => [words.am, words.pm].map(period =>
+    clockText({ hour: 12, minute: 0, second }, { am: period, pm: period }, hourCycle).replace(/\d/g, '0'));
+  const sizeText = [...new Set(widest(seconds || shown?.second !== undefined ? 0 : undefined))].join('\n');
+  return { displayValue: shown ? clockText(shown, words, hourCycle) : value, sizeText };
+}
+
 /** Picker words for a BCP 47 display language; English when it has no table. */
 export function wordsFor(language) {
   return names[String(language ?? '').split(/[-_]/)[0].toLowerCase()] ?? names.en;

@@ -318,6 +318,9 @@ impl NodeSnapshot {
 #[derive(Clone, Debug, Serialize)]
 pub struct InputSnapshot {
     pub value: String,
+    /// What a date or time field paints and reads aloud in place of its ISO value.
+    #[serde(skip)]
+    pub display: Option<String>,
     pub placeholder: String,
     pub secure: bool,
     pub keyboard: String,

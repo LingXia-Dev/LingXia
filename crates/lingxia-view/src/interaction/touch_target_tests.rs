@@ -25,6 +25,7 @@ fn button(identity: &str, bounds: [f32; 4]) -> NodeSnapshot {
 fn field(identity: &str, bounds: [f32; 4]) -> NodeSnapshot {
     let mut field = node(identity, "input", bounds);
     field.input = Some(InputSnapshot {
+        display: None,
         attributes: Default::default(),
         value: String::new(),
         placeholder: String::new(),

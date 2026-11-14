@@ -158,3 +158,25 @@ test('on touch a date field with a value opens with that day chosen', () => {
   dispatch(nodes.find(n => n.testId === 'lx-picker-done').props.onClick);
   assert.equal(JSON.parse(takePickerResults())[0].value, '2026-10-29');
 });
+
+test('a time field shows its ISO value in the user\'s clock and re-lowers when the clock or language changes', () => {
+  reset();
+  const view = () => h('view', {}, h('input', { 'data-testid': 'at', type: 'time', value: '13:05' }),
+    h('input', { 'data-testid': 'on', type: 'date', value: '2026-11-14' }));
+  const field = (nodes, id) => nodes.find(n => n.testId === id).props;
+  let nodes = render(view, { hourCycle: 'h12', displayLanguage: 'en-US' });
+  assert.equal(field(nodes, 'at').inputValue, '13:05', 'the bound value stays ISO');
+  assert.equal(field(nodes, 'at').displayValue, '1:05 PM');
+  assert.equal(field(nodes, 'at').sizeText, '00:00 AM\n00:00 PM');
+  assert.equal(field(nodes, 'on').displayValue, '2026-11-14', 'a date stays ISO for now');
+  assert.equal(field(nodes, 'on').sizeText, '0000-00-00');
+  nodes = render(view, { hourCycle: 'h23', displayLanguage: 'en-US' });
+  assert.equal(field(nodes, 'at').displayValue, '13:05');
+  assert.equal(field(nodes, 'at').sizeText, '00:00');
+  nodes = render(view, { hourCycle: 'h12', displayLanguage: 'zh-Hans-CN' });
+  assert.equal(field(nodes, 'at').displayValue, '1:05 下午');
+  assert.equal(field(nodes, 'at').sizeText, '00:00 上午\n00:00 下午');
+  nodes = render(() => h('input', { 'data-testid': 'at', type: 'time', value: '09:30:15', step: 1 }), { hourCycle: 'h12', displayLanguage: 'en-US' });
+  assert.equal(field(nodes, 'at').displayValue, '9:30:15 AM');
+  assert.equal(field(nodes, 'at').sizeText, '00:00:00 AM\n00:00:00 PM');
+});

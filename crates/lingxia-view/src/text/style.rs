@@ -173,6 +173,9 @@ pub(crate) fn display_texts(records: &[Record], styles: &[TextStyle]) -> Vec<Str
             let value = record.string(field::INPUT_VALUE).unwrap_or("");
             let text = if value.is_empty() {
                 record.string(field::PLACEHOLDER).unwrap_or("").to_owned()
+            } else if let Some(shown) = record.string(field::DISPLAY_VALUE) {
+                // A date or time field shows its ISO value in the user's format.
+                shown.to_owned()
             } else if record.number(field::SECURE) == Some(1.0) {
                 "\u{2022}".repeat(value.chars().count())
             } else {
