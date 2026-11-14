@@ -99,6 +99,46 @@ pub fn attach(
     Ok(id)
 }
 
+/// Presenters a page's attaches bound on the render thread and the main thread has not taken
+/// yet. Whichever of the page's drop and the hand-over comes second detaches, so a page closed
+/// mid-attach leaves no presenter behind.
+#[derive(Clone, Default)]
+pub struct Landing(Arc<Mutex<(Vec<u64>, bool)>>);
+
+impl Landing {
+    fn slot(&self) -> MutexGuard<'_, (Vec<u64>, bool)> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Render thread, after binding `id`: false when the page is already gone and `id` was
+    /// detached here.
+    pub fn bound(&self, id: u64) -> bool {
+        let mut slot = self.slot();
+        if slot.1 {
+            drop(slot);
+            suspend(id);
+            detach(id);
+            return false;
+        }
+        slot.0.push(id);
+        true
+    }
+
+    /// Main thread: whether `id` is still this page's to keep; false once the page dropped.
+    pub fn take(&self, id: u64) -> bool {
+        let mut slot = self.slot();
+        let index = slot.0.iter().position(|bound| *bound == id);
+        index.map(|index| slot.0.remove(index)).is_some()
+    }
+
+    /// The page is gone: the presenters bound but not taken, for the caller to detach.
+    pub fn release(&self) -> Vec<u64> {
+        let mut slot = self.slot();
+        slot.1 = true;
+        std::mem::take(&mut slot.0)
+    }
+}
+
 /// The adapter record and metrics label of presenter `id`.
 pub fn describe(id: u64) -> Option<(String, &'static str)> {
     let presenter = presenter(id).ok()??;
