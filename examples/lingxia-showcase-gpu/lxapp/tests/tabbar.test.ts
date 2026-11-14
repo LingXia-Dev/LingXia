@@ -166,3 +166,35 @@ spec('a relaunch onto a page outside the tab bar hides the bar and keeps no room
   await bars(t);
   if (before?.length) await t.waitFor(() => tabItems(t), { until: items => items?.length === before.length });
 });
+
+// Every tab page: at scroll end its last control rests above the bar; content passes under only while scrolling.
+spec('every tab page ends its content above the tab bar', { covers: ['view:scroll'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  const { inset } = await bars(t);
+  const controls = 'button, input, select, textarea, checkbox, switch, slider, [role="button"], [role="link"]';
+  for (const [name, root] of [
+    ['home', 'home-page'], ['api', 'api-page'], ['view-lab', 'view-lab'], ['motion-lab', 'motion-lab'],
+    ['perf-lab', 'perf-lab'], ['todo', 'todo-page'], ['surface', 'surface-page'],
+  ]) {
+    await t.app.nav.switchTab({ page: name });
+    const page = view.testId(root);
+    await expect(page).toBeVisible();
+    const pageBox = await page.boundingBox();
+    const top = bottom(pageBox) - inset;
+    const last = view.css(controls).last();
+    // Start in the page gutter so a nested scroll (perf-lab's list) does not take the fling.
+    const start: [number, number] = [pageBox.x + 6, pageBox.y + pageBox.height * 0.6];
+    let previous = Number.NaN;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await view.fling('up', 4000, { at: start });
+      // A fling returns before its glide ends: read the box once it stops moving.
+      let moving = Number.NaN;
+      const at = bottom(await t.waitFor(() => last.boundingBox(), {
+        until: box => { const settled = box.y === moving; moving = box.y; return settled; }, interval: 150,
+      }));
+      if (at === previous) break;
+      previous = at;
+    }
+    expect(previous, `${name}: last control clear of the bar`).toBeLessThanOrEqual(top + 1);
+  }
+});
