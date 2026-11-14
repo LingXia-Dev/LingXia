@@ -560,7 +560,7 @@ pub(crate) fn paint_switch(
     slots.0[3] = Some(commands.len());
     commands.push(Paint::Rect {
         corners: None,
-        color: fill(&thumb, [255; 4])?,
+        color: fill(&thumb, palette.role(lingxia_theme::Role::Knob))?,
         bounds: knob,
         radius: round,
     });

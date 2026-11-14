@@ -226,6 +226,33 @@ fn a_pack_without_surface_overlay_floats_overlays_on_its_own_surface_raised() {
 }
 
 #[test]
+fn a_pack_without_a_knob_keeps_the_white_thumb() {
+    let pale: Pack = serde_json::from_str(
+        r##"{"name":"pale","version":1,"accent":{"seed":"#365cdd","derive":true},"appearance":{"light":{"on-accent":"#101010"}}}"##,
+    )
+    .unwrap();
+    let mut packs = vec![complete(pale)];
+    let mut contrast_set = default_pack();
+    let mut dark = contrast_set.appearance.dark.clone();
+    dark.remove(Role::Knob.name());
+    contrast_set.appearance.high_contrast_dark = Some(dark);
+    packs.push(contrast_set);
+    for pack in &packs {
+        for appearance in [Appearance::Light, Appearance::Dark] {
+            for high_contrast in [false, true] {
+                let prefs = Prefs {
+                    appearance,
+                    high_contrast,
+                    ..Prefs::default()
+                };
+                let theme = resolve(pack, &prefs).unwrap();
+                assert_eq!(theme.color(Role::Knob), hex("#ffffff"), "{}", pack.name);
+            }
+        }
+    }
+}
+
+#[test]
 fn the_selection_highlight_stands_off_the_page_and_keeps_text_readable() {
     for appearance in [Appearance::Light, Appearance::Dark] {
         for high_contrast in [false, true] {

@@ -72,9 +72,11 @@ pub enum Role {
     OnMedia = 32,
     /// Anything floating over the page: menus, popovers, toasts, dialogs and sheets; a pack without it uses its surface-raised.
     SurfaceOverlay = 33,
+    /// The thumb of a switch or slider, drawn on an accent track; white in both appearances by default.
+    Knob = 34,
 }
 
-pub const ROLE_COUNT: usize = 34;
+pub const ROLE_COUNT: usize = 35;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -112,6 +114,7 @@ impl Role {
         Role::Media,
         Role::OnMedia,
         Role::SurfaceOverlay,
+        Role::Knob,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -150,6 +153,7 @@ impl Role {
             Role::Media => "media",
             Role::OnMedia => "on-media",
             Role::SurfaceOverlay => "surface-overlay",
+            Role::Knob => "knob",
         }
     }
 

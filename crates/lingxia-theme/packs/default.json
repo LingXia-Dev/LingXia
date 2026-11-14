@@ -30,7 +30,8 @@
       "shadow": "#000000",
       "media": "#0b0e14b8",
       "on-media": "#ffffff",
-      "surface-overlay": "#ffffff"
+      "surface-overlay": "#ffffff",
+      "knob": "#ffffff"
     },
     "dark": {
       "canvas": "#0f131a",
@@ -60,7 +61,8 @@
       "shadow": "#000000",
       "media": "#0b0e14b8",
       "on-media": "#ffffff",
-      "surface-overlay": "#2d3546"
+      "surface-overlay": "#2d3546",
+      "knob": "#ffffff"
     }
   },
   "accent": {"seed": "#365cdd", "derive": true},

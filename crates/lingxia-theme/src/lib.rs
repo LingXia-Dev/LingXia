@@ -241,10 +241,11 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
         {
             continue;
         }
-        // A role added after packs shipped: overlays float on `surface-raised`.
+        // Roles added after packs shipped: overlays float on `surface-raised`, knobs stay white.
         let missing = !base.contains_key(role.name());
         palette[role as usize] = match role {
             Role::SurfaceOverlay if missing => base.get(Role::SurfaceRaised.name()).copied(),
+            Role::Knob if missing => Some(Rgba([255, 255, 255, 255])),
             _ => base.get(role.name()).copied(),
         }
         .ok_or_else(|| format!("THEME: {} has no {}", pack.name, role.name()))?;

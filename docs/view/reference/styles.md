@@ -252,3 +252,4 @@ dark, derived accent roles included, for proving contrast in code.
 | `media` |  | Translucent dock over video and images; the same in both appearances. |
 | `on-media` | 4.5:1 on `media` | Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`). |
 | `surface-overlay` |  | Anything floating over the page: menus, popovers, toasts, dialogs and sheets; a pack without it uses its surface-raised. |
+| `knob` |  | The thumb of a switch or slider, drawn on an accent track; white in both appearances by default. |

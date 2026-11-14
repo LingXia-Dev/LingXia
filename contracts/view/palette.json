@@ -33,7 +33,8 @@
     "shadow": "#000000ff",
     "media": "#0b0e14b8",
     "on-media": "#ffffffff",
-    "surface-overlay": "#ffffffff"
+    "surface-overlay": "#ffffffff",
+    "knob": "#ffffffff"
   },
   "dark": {
     "canvas": "#0f131aff",
@@ -69,6 +70,7 @@
     "shadow": "#000000ff",
     "media": "#0b0e14b8",
     "on-media": "#ffffffff",
-    "surface-overlay": "#2d3546ff"
+    "surface-overlay": "#2d3546ff",
+    "knob": "#ffffffff"
   }
 }

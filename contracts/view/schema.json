@@ -355,7 +355,8 @@
     {"name": "shadow", "doc": "Elevation shadow ink; `shadow-*` layers take it at their alpha."},
     {"name": "media", "doc": "Translucent dock over video and images; the same in both appearances."},
     {"name": "on-media", "on": {"media": 4.5}, "doc": "Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`)."},
-    {"name": "surface-overlay", "doc": "Anything floating over the page: menus, popovers, toasts, dialogs and sheets; a pack without it uses its surface-raised."}
+    {"name": "surface-overlay", "doc": "Anything floating over the page: menus, popovers, toasts, dialogs and sheets; a pack without it uses its surface-raised."},
+    {"name": "knob", "doc": "The thumb of a switch or slider, drawn on an accent track; white in both appearances by default."}
   ],
   "frame": {
     "doc": "Every message the core hands a platform adapter: the presented frame snapshot, semantic nodes, automation exchanges, input-protocol replies and the text menu. Type grammar: string, bool, u8, u32, u64, i64, usize, f32, f64, any; T? may be absent or null; T[] is a list; T[n] a fixed list; other names refer to types below.",
