@@ -2806,6 +2806,7 @@ dependencies = [
  "lingxia-update",
  "lingxia-view-android",
  "lingxia-view-apple",
+ "lingxia-view-harmony",
  "lingxia-webview",
  "lingxia-windows-contract",
  "log",
@@ -3314,20 +3315,23 @@ dependencies = [
 name = "lingxia-view"
 version = "0.28.0"
 dependencies = [
+ "ash",
  "glifo",
  "image",
  "libc",
  "lingxia-theme",
  "log",
  "memmap2",
+ "objc2",
+ "objc2-metal",
  "parley",
  "pollster",
  "rong",
  "rong_core",
  "rong_quickjs_sys",
- "roxmltree",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "skrifa",
  "taffy",
  "vello_common",
@@ -3342,7 +3346,9 @@ version = "0.28.0"
 dependencies = [
  "jni",
  "lingxia-view",
+ "log",
  "raw-window-handle",
+ "roxmltree",
  "serde_json",
 ]
 
@@ -3358,6 +3364,19 @@ dependencies = [
  "serde_json",
  "skrifa",
  "vello_cpu",
+]
+
+[[package]]
+name = "lingxia-view-harmony"
+version = "0.28.0"
+dependencies = [
+ "libc",
+ "lingxia-view",
+ "log",
+ "napi-sys-ohos",
+ "raw-window-handle",
+ "serde_json",
+ "wgpu",
 ]
 
 [[package]]
