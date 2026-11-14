@@ -150,6 +150,9 @@ declare module 'liblingxia.so' {
 
   export function onHostAppearanceChanged(dark: boolean): void;
 
+  /** The system runs low on memory; hidden GPU pages give up their surfaces. */
+  export function onMemoryPressure(): void;
+
   /** `graceToken` names a suspend delay to end via `endBackgroundGrace`; 0 for none. */
   export function onHostForegroundChanged(foreground: boolean, graceToken: number): void;
 

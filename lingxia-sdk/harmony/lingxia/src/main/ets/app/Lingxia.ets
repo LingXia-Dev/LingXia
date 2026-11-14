@@ -4,6 +4,7 @@ import { i18n } from '@kit.LocalizationKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import {
+  AbilityConstant,
   Want,
   Configuration,
   ConfigurationConstant,
@@ -28,6 +29,7 @@ import {
   getDisplayLanguage as getRuntimeDisplayLanguage,
   shouldEnableWebViewDebugging,
   onHostAppearanceChanged,
+  onMemoryPressure,
   onHostForegroundChanged,
   onHostLocaleChanged,
   onApplinkReceived,
@@ -248,7 +250,11 @@ export class Lingxia {
         const dark = config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
         onHostAppearanceChanged(dark);
       },
-      onMemoryLevel: (_level: number): void => {}
+      onMemoryLevel: (level: number): void => {
+        if (level >= AbilityConstant.MemoryLevel.MEMORY_LEVEL_LOW) {
+          onMemoryPressure();
+        }
+      }
     };
     Lingxia.environmentCallback = callback;
     appContext.on('environment', callback);

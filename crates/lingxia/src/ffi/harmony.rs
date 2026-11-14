@@ -156,6 +156,12 @@ pub fn lingxia_init(
     }
 }
 
+/// The system runs low on memory: hidden GPU pages give up their surfaces.
+#[napi]
+pub fn on_memory_pressure() {
+    lxapp::release_retained_surfaces();
+}
+
 #[napi]
 pub fn on_host_appearance_changed(dark: bool) {
     lingxia_platform::harmony::set_harmony_host_appearance_dark(dark);
