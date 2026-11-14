@@ -80,6 +80,7 @@ pub fn attach(
     existing: u64,
 ) -> Result<u64, String> {
     let _binding = gpu_binding();
+    let _layers = super::gpu::LayerTransaction::begin();
     if existing != 0
         && let Some(presenter) = presenter(existing)?
     {
@@ -107,6 +108,7 @@ pub fn describe(id: u64) -> Option<(String, &'static str)> {
 
 pub fn suspend(id: u64) {
     let _binding = gpu_binding();
+    let _layers = super::gpu::LayerTransaction::begin();
     video_surfaces().remove(&id);
     if let Ok(Some(presenter)) = presenter(id)
         && let Ok(mut presenter) = lock(&presenter)
@@ -117,6 +119,7 @@ pub fn suspend(id: u64) {
 
 pub fn detach(id: u64) {
     let _binding = gpu_binding();
+    let _layers = super::gpu::LayerTransaction::begin();
     video_surfaces().remove(&id);
     // The presenter's surface is destroyed with it, inside the binding.
     let removed = registry()
@@ -162,6 +165,7 @@ pub fn prepare(
     revision: u64,
 ) -> Result<Option<serde_json::Value>, String> {
     let _work = gpu_work();
+    let _layers = super::gpu::LayerTransaction::begin();
     let Some(presenter) = presenter(id)? else {
         return Ok(None);
     };
@@ -212,6 +216,7 @@ pub fn prepare(
 /// The presenter's timings when the frame reached the screen, `None` when it did not.
 pub fn present(id: u64, revision: u64) -> Result<Option<[u64; 4]>, String> {
     let _work = gpu_work();
+    let _layers = super::gpu::LayerTransaction::begin();
     let Some(presenter) = presenter(id)? else {
         log::debug!(target: "lingxia_view", "gpu present refused: no presenter, page removed");
         return Ok(None);
@@ -279,6 +284,7 @@ pub fn tick(id: u64) -> bool {
 /// worker involved; nothing when no player has a new frame or a newer frame awaits its present.
 pub(crate) fn rebind(id: u64) -> Result<(), String> {
     let _work = gpu_work();
+    let _layers = super::gpu::LayerTransaction::begin();
     let lookup = video_surfaces().get(&id).copied();
     let Some(presenter) = lookup.map_or(Ok(None), |lookup| lookup(id))? else {
         return Ok(());
