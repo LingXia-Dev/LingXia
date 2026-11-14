@@ -152,7 +152,8 @@ export function BarChart({
       emptyLabel={emptyLabel}
       className={className}
       data-testid={testId}
-      readout={(onSelect !== undefined || picked !== undefined) && (
+      // Bars that carry their values need no readout, and keep no line for one.
+      readout={scale !== 'each' && (onSelect !== undefined || picked !== undefined) && (
         <ChartReadout
           label={picked && textOf(picked, x)}
           values={picked && shown.filter(series => Number.isFinite(numberOf(picked, series.field))).map(series => ({

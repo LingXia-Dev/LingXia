@@ -28,15 +28,14 @@ test('Orders: each weekday is a button named by its day and value; pressing choo
   assert.deepEqual(shares(columns(bar('Thu'))[0]), [24, 163, 0, 0], 'the tallest bar, 187, fills the plot; this one leaves 24 above');
   const fill = day => bars(columns(bar(day))[0])[0].props.background;
   assert.equal(fill('Mon'), 'chart-1/85');
-  const readout = screen.queryAll(node => node.props.role === 'status')[0];
-  assert.equal(textOf(readout), '');
-  assert.equal(readout.props.minHeight, 18, 'the line keeps its height, so choosing does not move the plot');
+  const readouts = () => screen.queryAll(node => node.props.role === 'status');
+  assert.equal(readouts().length, 0, 'every bar carries its value, so there is no readout line and no height kept for one');
 
   screen.press(bar('Thu'));
   assert.equal(bar('Thu').props.statePressed, 1);
   assert.equal(fill('Thu'), 'chart-1/85');
   assert.equal(fill('Mon'), 'chart-1/30');
-  assert.equal(textOf(screen.queryAll(node => node.props.role === 'status')[0]), 'Thu163');
+  assert.equal(readouts().length, 0);
   screen.press(bar('Thu'));
   assert.equal(bar('Thu').props.statePressed, 0);
   assert.equal(fill('Mon'), 'chart-1/85');
@@ -146,6 +145,22 @@ test('the top of the scale is the next round number, and a signed chart writes b
   assert.deepEqual(await ends([1, 2, 3, 4, 5, 6, 7, -23, 9000]), ['$10000', '$-25']);
 });
 
+test('the readout stays where values are not on the marks: grouped bars, many bars, and a line chart with a chosen row', async () => {
+  const many = '[' + Array.from({ length: 9 }, (_, index) => `{ k: "${index}", v: ${index + 1}, w: ${9 - index} }`).join(', ') + ']';
+  const readout = screen => screen.queryAll(node => node.props.role === 'status');
+  const empty = await renderPage(page('onSelect={() => {}}', many));
+  assert.equal(readout(empty).length, 1);
+  assert.equal(readout(empty)[0].props.minHeight, 18, 'the line keeps its height, so choosing does not move the plot');
+  assert.equal(textOf(readout(empty)[0]), '');
+  assert.equal(textOf(readout(await renderPage(page('selectedKey="4" formatValue={money}', many)))[0]), '4$5');
+  const grouped = await renderPage(page('selectedKey="1"', many).replace('y="v"', 'y={[{ field: "v", label: "V" }, { field: "w", label: "W" }]}'));
+  assert.equal(textOf(readout(grouped)[0]), '1V2W8');
+  const always = await renderPage(page('selectedKey="4" valueLabels="always"', many));
+  assert.equal(readout(always).length, 0, 'figures forced onto nine bars: no readout');
+  const line = await renderExample('LineChart/LineChart', 'Selected');
+  assert.equal(textOf(readout(line)[0]), 'AprFree492Team171Pro88');
+});
+
 test('past 36 categories the bars are a list, not buttons; rows without a number leave an empty slot', async () => {
   const screen = await renderPage(`
     import { BarChart } from '@liulidesign/charts/BarChart';
@@ -160,7 +175,7 @@ test('past 36 categories the bars are a list, not buttons; rows without a number
 
 test('states: a chosen bar set from outside; loading, empty and error replace the plot', async () => {
   const selected = await renderExample('BarChart/BarChart', 'StateSelected');
-  assert.equal(textOf(selected.queryAll(node => node.props.role === 'status')[0]), 'Fri187');
+  assert.equal(selected.queryAll(node => node.props.role === 'status').length, 0);
   assert.equal(selected.queryAll(node => node.props.background === 'chart-1/85').length, 2, 'only the chosen bar, above and below zero, keeps its colour');
   assert.equal((await renderExample('BarChart/BarChart', 'StateLoading')).getByTestId('loading').props.stateBusy, 1);
   (await renderExample('BarChart/BarChart', 'StateEmpty')).getByText('No orders this week');

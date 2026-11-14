@@ -42,6 +42,7 @@ export const doc: ComponentDoc = {
       'Put it next to the figure it explains, and write the finding in `label`: "Revenue, last 7 days: up from 12k to 24k".',
       'Use a line for a trend, an area for an amount measured from zero, bars for separate counts or values on both sides of zero.',
       'Give sparklines that are compared with each other the same `domainMin` and `domainMax`.',
+      'In a row, give it a width: `className="w-20"` or `grow`. It has no width of its own, so beside other content it would shrink to nothing.',
       'Pass `NaN` for a missing reading, so it shows as a gap.',
     ],
     dont: [

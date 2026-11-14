@@ -164,7 +164,7 @@ export function InRows() {
 | `tone` | `SparklineTone` | `'series'` | `series` is the first chart colour; `positive` and `negative` say the trend is good or bad. |
 | `domainMin` | `number` |  | The lowest value drawn. A line fits its data; an area or bars start from zero. |
 | `domainMax` | `number` |  | The highest value drawn. |
-| `size` | `SparklineSize` | `'md'` | The height: 24, 32 or 48. The width fills the container; set it with `className`. |
+| `size` | `SparklineSize` | `'md'` | The height: 24, 32 or 48. In a column the width fills the container; in a row give it one with `className` (`w-20`, `grow`). |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
@@ -200,6 +200,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Put it next to the figure it explains, and write the finding in `label`: "Revenue, last 7 days: up from 12k to 24k".
 - Do: Use a line for a trend, an area for an amount measured from zero, bars for separate counts or values on both sides of zero.
 - Do: Give sparklines that are compared with each other the same `domainMin` and `domainMax`.
+- Do: In a row, give it a width: `className="w-20"` or `grow`. It has no width of its own, so beside other content it would shrink to nothing.
 - Do: Pass `NaN` for a missing reading, so it shows as a gap.
 - Don't: Use it where a value must be read off: it has no scale. Show the figure, or a chart with axes.
 - Don't: Draw more than one series; put two sparklines side by side.

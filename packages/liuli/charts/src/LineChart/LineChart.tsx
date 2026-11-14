@@ -88,7 +88,8 @@ export function LineChart({
   const range = isScaled && facts.length ? roundRange(fitted) : fitted;
   const latest = shown.length === 1 && hasEndLabel ? facts[0]?.last : undefined;
   const ends = (xLabels ?? (size === 'xs' ? 'none' : 'ends')) === 'ends' && data.length > 1;
-  const scale = isScaled && facts.length > 0 && [formatValue(range[1]), formatValue(range[0])];
+  // A scale label that says what the end figure says, on the same line, is left to the end figure.
+  const scale = isScaled && facts.length > 0 && [formatValue(range[1]), formatValue(range[0])].map(text => (text === latest?.text ? '' : text));
   const chosen = data.findIndex((row, index) => keyOf(row, keyField ?? x, index) === selectedKey);
   const picked = chosen >= 0 ? data[chosen] : undefined;
 
@@ -183,7 +184,7 @@ export function LineChart({
         {latest && (
           <view aria-hidden className={cx(r.end.base, r.inset.base, !isArea && r.inset.open)}>
             <view className={r.space.base} style={{ flexGrow: range[1] - latest.value }} />
-            <view className={r.endAnchor.base}><text className={r.endLabel.base}>{latest.text}</text></view>
+            <view className={r.endAnchor.base}><text className={cx(r.endLabel.base, r.endLabel.level)}>{latest.text}</text></view>
             <view className={r.space.base} style={{ flexGrow: latest.value - range[0] }} />
           </view>
         )}

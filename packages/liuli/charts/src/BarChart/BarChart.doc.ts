@@ -46,9 +46,9 @@ export const doc: ComponentDoc = {
     notes: [
       'Each category is read as its name and values: "Thu: 163", or "Q3: Online $55k, In store $33k". With `onSelect` each is a button that reports pressed; without it the plot is a list.',
       'With `summarize`, a sentence with the range, the lowest and highest values and the trend is read before the bars.',
-      'Choosing a category announces it through the readout above the plot.',
+      'Choosing a category is reported as pressed on its button. Where the bars carry no figures (grouped bars, more than eight bars) a readout line above the plot shows the chosen category and announces it; where every bar carries its value there is no readout line.',
       'Figures over the bars and the scale label are hidden from assistive tech: each category already reads its values.',
-      'The chosen category keeps its colour and the others step back to 30%, which is not a contrast claim: the readout says which is chosen.',
+      'The chosen category keeps its colour and the others step back to 30%, which is not a contrast claim: the pressed state and the readout say which is chosen.',
       'A category\'s press target is its full-height slot, as wide as the plot divided by the number of categories: 41 px for seven bars at 360 pt, under 10 px for thirty. Past 36 categories the bars are not buttons.',
       'The zero line is a quiet rule with no contrast minimum: the bars\' own feet show where zero is.',
       'Series in a group differ by colour and by position, and the legend lists them in the order drawn.',
@@ -77,7 +77,7 @@ export const doc: ComponentDoc = {
   ],
   gaps: [
     { missing: 'Ticks between zero and the top of the scale, and labels for every category that fit.', needs: 'a laid-out box\'s size, readable in render (`useBox`)', today: 'Each value over its bar up to eight bars, the top of the scale beyond; all category labels up to seven bars, the first and last beyond.' },
-    { missing: 'Scrubbing across bars, and a tooltip by the bar.', needs: 'pointer coordinates on an element (`onPointer`)', today: 'A press on a bar, and the readout above the plot.' },
+    { missing: 'Scrubbing across bars, and a tooltip by the bar.', needs: 'pointer coordinates on an element (`onPointer`)', today: 'A press on a bar; the value is over the bar, or in the readout above the plot.' },
     { missing: 'Stacked bars and horizontal bars.', needs: 'nothing from the View', today: 'Grouped vertical bars.' },
     { missing: 'Series told apart without colour.', needs: 'pattern fills', today: 'Position within the group, the legend\'s order, and each bar\'s spoken name.' },
   ],

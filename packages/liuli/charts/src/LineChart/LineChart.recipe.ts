@@ -54,10 +54,12 @@ export const lineChartRecipe = {
     base: 'basis-0',
   },
   endAnchor: {
-    base: 'h-0 justify-center',
+    base: 'h-0',
   },
   endLabel: {
     base: 'text-footnote font-medium text-text tabular-nums whitespace-nowrap',
+    // A box taller than its line is not centred on it by layout; half its own height up is.
+    level: '-translate-y-1/2',
   },
   ghost: {
     base: 'h-0 overflow-hidden',

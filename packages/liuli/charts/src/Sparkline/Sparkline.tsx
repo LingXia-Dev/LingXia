@@ -23,7 +23,7 @@ export interface SparklineProps {
   domainMin?: number;
   /** The highest value drawn. */
   domainMax?: number;
-  /** The height: 24, 32 or 48. The width fills the container; set it with `className`. @default 'md' */
+  /** The height: 24, 32 or 48. In a column the width fills the container; in a row give it one with `className` (`w-20`, `grow`). @default 'md' */
   size?: SparklineSize;
   className?: string;
   'data-testid'?: string;
