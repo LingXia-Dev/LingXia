@@ -56,6 +56,26 @@ export function Trip() {
 }
 ```
 
+### A day and a time in one row
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { TimeInput } from '@liulidesign/core/TimeInput';
+import { DateInput } from '@liulidesign/core/DateInput';
+
+/** A day and a time sharing a narrow row: each field keeps room for its whole value. */
+export function Meeting() {
+  const day = useLocal('day', '2026-12-18');
+  const at = useLocal('at', '14:30');
+  return (
+    <view className="flex-row gap-3">
+      <DateInput bind={day} label="Day" className="grow basis-0" data-testid="meeting-day" />
+      <TimeInput bind={at} label="Starts" className="grow basis-0" data-testid="meeting-time" />
+    </view>
+  );
+}
+```
+
 ### Sizes
 
 ```tsx

@@ -59,6 +59,7 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'DueDate', title: 'A due date' },
     { name: 'Trip', title: 'A return tied to its departure' },
+    { name: 'Meeting', title: 'A day and a time in one row' },
     { name: 'Sizes', title: 'Sizes' },
   ],
   gaps: [],
@@ -78,7 +79,10 @@ export const doc: ComponentDoc = {
         { name: 'StateInvalid', title: 'Invalid' },
         { name: 'StateDisabled', title: 'Disabled' },
       ],
-      inContext: [{ name: 'Trip', title: 'A trip: leave, then return' }],
+      inContext: [
+        { name: 'Trip', title: 'A trip: leave, then return' },
+        { name: 'Meeting', title: 'A day and a time side by side in a narrow row; each keeps room for its whole value' },
+      ],
     },
   },
 };

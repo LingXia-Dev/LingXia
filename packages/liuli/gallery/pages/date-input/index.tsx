@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { DueDate, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Trip } from '../../../core/src/DateInput/DateInput.examples';
+import { DueDate, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Trip, Meeting } from '../../../core/src/DateInput/DateInput.examples';
 import { GalleryPage, Lead, PageSection, Stage, StageGrid } from '../../shared/Layout';
 
 export function render() {
@@ -32,6 +32,9 @@ export function render() {
       <PageSection title={"In context"}>
         <Stage caption={"A trip: leave, then return"}>
           <Trip />
+        </Stage>
+        <Stage caption={"A day and a time side by side in a narrow row; each keeps room for its whole value"}>
+          <Meeting />
         </Stage>
       </PageSection>
     </GalleryPage>

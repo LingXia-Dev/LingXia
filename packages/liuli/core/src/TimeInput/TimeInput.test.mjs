@@ -21,10 +21,10 @@ test('QuietHours: step and bounds reach the picker', async () => {
   assert.equal(input.props.inputMax, '23:45');
 });
 
-test('the editor keeps room for HH:MM, widens for seconds, and cuts a long placeholder with an ellipsis', async () => {
+test('the editor leaves its width to the View, with or without seconds, and cuts a long placeholder with an ellipsis', async () => {
   const screen = await renderExample('TimeInput/TimeInput', 'Reminder');
-  assert.equal(screen.getByTestId('remind').props.minWidthCh, 5);
+  assert.equal(screen.getByTestId('remind').props.minWidthCh, undefined);
   assert.equal(screen.getByTestId('remind').props.textOverflow, 'ellipsis');
   screen.type(screen.getByTestId('remind'), '07:30:15');
-  assert.equal(screen.getByTestId('remind').props.minWidthCh, 8);
+  assert.equal(screen.getByTestId('remind').props.minWidthCh, undefined);
 });

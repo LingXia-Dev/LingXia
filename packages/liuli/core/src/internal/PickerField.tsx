@@ -20,7 +20,7 @@ export type PickerBinding =
 
 interface PickerRecipe {
   box: { base: string; size: Record<FieldSize, string>; status: Record<FieldStatusType, string>; disabled: string };
-  input: { base: string; size: Record<FieldSize, string>; width: string; widthSeconds?: string };
+  input: { base: string; size: Record<FieldSize, string> };
   icon: { base: string };
 }
 
@@ -44,8 +44,7 @@ export function PickerField(props: PickerFieldProps) {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, isDisabled = false, disabledMessage, size = 'md',
     type, glyph, recipe: r, placeholder, min, max, step, onSubmit, className, controlClassName, 'data-testid': testId,
   } = props;
-  const seconds = /^\d{2}:\d{2}:\d{2}/.test((props.bind ? props.bind.value : props.value) ?? '');
-  const inputClass = cx(r.input.base, r.input.size[size], seconds && r.input.widthSeconds ? r.input.widthSeconds : r.input.width);
+  const inputClass = cx(r.input.base, r.input.size[size]);
   return (
     <Field
       label={label}

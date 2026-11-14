@@ -21,9 +21,16 @@ test('Trip: the return takes the departure as its earliest day and is marked bef
   screen.getByText('Return after you leave.');
 });
 
-test('the editor keeps room for a whole date and cuts a long placeholder with an ellipsis', async () => {
+test('the editor leaves its width to the View and cuts a long placeholder with an ellipsis', async () => {
   const input = (await renderExample('DateInput/DateInput', 'DueDate')).getByTestId('due');
-  assert.equal(input.props.minWidthCh, 10);
+  assert.equal(input.props.minWidthCh, undefined);
   assert.equal(input.props.fontVariantNumeric, 'tabular-nums');
   assert.equal(input.props.textOverflow, 'ellipsis');
+});
+
+test('Meeting: a day and a time share a row, each growing from zero beside the other', async () => {
+  const screen = await renderExample('DateInput/DateInput', 'Meeting');
+  assert.equal(screen.getByTestId('meeting-day').props.keyboard, 'date');
+  assert.equal(screen.getByTestId('meeting-time').props.keyboard, 'time');
+  assert.equal(screen.getByTestId('meeting-day').props.minWidthCh, undefined);
 });

@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { TimeInput } from '../TimeInput/TimeInput';
 import { DateInput } from './DateInput';
 
 /** A due date, bound to a View-local cell. */
@@ -27,6 +28,18 @@ export function Trip() {
         status={isBefore ? { type: 'error', message: 'Return after you leave.' } : undefined}
         data-testid="back"
       />
+    </view>
+  );
+}
+
+/** A day and a time sharing a narrow row: each field keeps room for its whole value. */
+export function Meeting() {
+  const day = useLocal('day', '2026-12-18');
+  const at = useLocal('at', '14:30');
+  return (
+    <view className="flex-row gap-3">
+      <DateInput bind={day} label="Day" className="grow basis-0" data-testid="meeting-day" />
+      <TimeInput bind={at} label="Starts" className="grow basis-0" data-testid="meeting-time" />
     </view>
   );
 }
