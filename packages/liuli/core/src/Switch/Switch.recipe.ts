@@ -28,7 +28,7 @@ export const switchRecipe = {
     /** Alone, keyboard focus rings the thumb; as a row it is a fill across the row's padding. */
     variant: {
       standalone: 'p-0 focus-visible:thumb:ring-2 focus-visible:thumb:ring-focus focus-visible:thumb:ring-offset-2',
-      row: '-mx-4 px-4 -my-2.5 py-2.5 transition-colors duration-150 ease-out focus-visible:bg-text/7',
+      row: '-mx-4 px-4 -my-2.5 py-2.5 transition-colors duration-150 ease-out hover:bg-text/4 focus-visible:bg-text/7',
     } satisfies Record<SwitchVariant, string>,
   },
   /** Centred against the track; the primitive lays it out beside the track. */

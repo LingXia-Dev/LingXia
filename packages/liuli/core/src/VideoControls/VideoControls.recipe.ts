@@ -141,7 +141,7 @@ export const videoControlsRecipe = {
     error: 'flex-row items-center gap-2 px-3',
     errorText: 'grow basis-0 text-xs text-danger',
     // Slider's own md control, so a player on a page matches the Slider beside it.
-    slider: 'mx-0.5 grow basis-0 h-control-md p-0 text-accent track:h-1 track:rounded-full track:bg-line range:h-1 range:rounded-full range:bg-accent/80 secondary:h-1 secondary:rounded-full secondary:bg-line-strong/50 thumb:size-5 thumb:rounded-full thumb:bg-knob thumb:border-2 thumb:border-accent thumb:shadow-contact active:thumb:scale-110 focus-visible:thumb:ring-2 focus-visible:thumb:ring-focus focus-visible:thumb:ring-offset-2 disabled:range:bg-accent/40 disabled:thumb:border-accent/40 disabled:thumb:shadow-none',
+    slider: 'mx-0.5 grow basis-0 h-control-md p-0 text-accent track:h-1 track:rounded-full track:bg-line range:h-1 range:rounded-full range:bg-accent/80 secondary:h-1 secondary:rounded-full secondary:bg-line-strong/50 thumb:size-5 thumb:rounded-full thumb:bg-knob thumb:border-2 thumb:border-accent thumb:shadow-contact hover:thumb:scale-105 active:thumb:scale-110 focus-visible:thumb:ring-2 focus-visible:thumb:ring-focus focus-visible:thumb:ring-offset-2 disabled:range:bg-accent/40 disabled:thumb:border-accent/40 disabled:thumb:shadow-none',
   },
   fullscreen: {
     // The video fills the panel and backs itself in black.

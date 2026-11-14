@@ -37,7 +37,7 @@ export const tabsRecipe = {
   },
   tab: {
     base: 'grow shrink basis-0 min-w-0 flex-row items-center-safe justify-center transition-colors duration-150 ease-out disabled:opacity-40',
-    underline: 'h-control-md px-2 rounded-control focus-visible:bg-text/7',
+    underline: 'h-control-md px-2 rounded-control hover:bg-text/4 focus-visible:bg-text/7',
   },
   /** A label too long for its share of the row is cut short rather than spilling into the next tab. */
   label: {
