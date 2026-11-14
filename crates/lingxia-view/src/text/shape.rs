@@ -279,9 +279,13 @@ impl Renderer {
         Some(shaped)
     }
 
-    /// The CSS `ch` unit: the advance of "0" in the node's (scaled) font.
+    /// The CSS `ch` unit: the advance of "0" in the node's (scaled) font, with its numeric
+    /// features, so `tabular-nums` fields size to the digits they show.
     pub(crate) fn zero_advance(&mut self, style: &TextStyle) -> f32 {
         let mut builder = self.text.ranged_builder(&mut self.fonts, "0", 1.0, true);
+        if !style.features.is_empty() {
+            builder.push_default(StyleProperty::FontFeatures(style.features.as_str().into()));
+        }
         builder.push_default(StyleProperty::FontSize(self.text_scale.map(style.size)));
         builder.push_default(optical_size(self.text_scale.map(style.size)));
         builder.push_default(StyleProperty::FontWeight(FontWeight::new(style.weight)));

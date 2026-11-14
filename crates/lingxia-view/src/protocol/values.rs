@@ -233,7 +233,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
                 .is_some_and(|v| v.is_finite() && v > 0.0 && v <= 10000.0),
             "UI_STYLE: invalid aspect ratio",
         ),
-        field::MAX_WIDTH_CH => ensure(
+        field::WIDTH_CH | field::MIN_WIDTH_CH | field::MAX_WIDTH_CH => ensure(
             value
                 .as_f64()
                 .is_some_and(|v| v.is_finite() && (0.0..=4096.0).contains(&v)),

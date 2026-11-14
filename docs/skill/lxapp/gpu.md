@@ -28,6 +28,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - Layout is flex or CSS Grid (`grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] col-span-2`).
   Row items shrink to min-content as in CSS (`min-w-0` to truncate, `shrink-0` to pin). `<button>` is
   unstyled as after Tailwind's preflight: give it its fill, padding and radius.
+  `w-`/`min-w-`/`max-w-[10ch]` measure the element's own `0`; with `tabular-nums` that is ten digits.
 - Style with complete Tailwind classes. `style` (CSS-named: `backgroundColor`, `marginTop`,
   `gridTemplateColumns`) is only for values computed at render time; a `style` object of fixed values
   warns `UI_STYLE_STATIC`. Unitless `lineHeight` is a multiplier. Each element accepts only styles it renders.

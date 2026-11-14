@@ -306,7 +306,9 @@
     {"id": 235, "key": "hint", "wire": "hint", "kind": "flag", "ignorable": true, "tags": ["column"]},
     {"id": 236, "key": "onSliderPress", "wire": "onPressChange", "kind": "handle", "ignorable": true, "tags": ["slider"]},
     {"id": 237, "key": "closeAfter", "wire": "closeAfter", "kind": "close-after", "ignorable": true, "tags": ["column"]},
-    {"id": 238, "key": "touchTarget", "wire": "touchTarget", "kind": "touch-target", "ignorable": true}
+    {"id": 238, "key": "touchTarget", "wire": "touchTarget", "kind": "touch-target", "ignorable": true},
+    {"id": 239, "key": "minWidthCh", "wire": "minWidthCh", "kind": "dimension-ch"},
+    {"id": 240, "key": "widthCh", "wire": "widthCh", "kind": "dimension-ch"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},

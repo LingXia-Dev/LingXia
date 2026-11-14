@@ -75,12 +75,14 @@ test('numeric variants compose across classes and white-space keeps CSS keywords
 });
 
 test('aspect ratios, ch widths, current-color backgrounds, overscroll and select-none lower or fail by name', async () => {
-  await use(['aspect-square', 'aspect-video', 'aspect-[4/3]', 'aspect-auto', 'max-w-[60ch]', 'w-[10ch]', 'bg-current', 'overscroll-contain',
+  await use(['aspect-square', 'aspect-video', 'aspect-[4/3]', 'aspect-auto', 'max-w-[60ch]', 'w-[10ch]', 'min-w-[5ch]', 'h-[10ch]', 'bg-current', 'overscroll-contain',
     'overscroll-y-none', 'select-none', 'select-text', 'select-all']);
   assert.deepEqual([classStyle('aspect-square').aspectRatio, classStyle('aspect-video').aspectRatio, classStyle('aspect-[4/3]').aspectRatio], [1, 16 / 9, 4 / 3]);
   assert.equal(node('view', { className: 'aspect-video', style: { aspectRatio: 'auto' } }).aspectRatio, undefined);
   assert.equal(node('text', { className: 'max-w-[60ch]' }).maxWidthCh, 60);
-  assert.throws(() => describe(() => h('view', { className: 'w-[10ch]' }), {}), /UI_STYLE_VALUE: width/);
+  assert.equal(node('input', { className: 'w-[10ch]' }).widthCh, 10);
+  assert.equal(node('input', { className: 'min-w-[5ch]' }).minWidthCh, 5);
+  assert.throws(() => describe(() => h('view', { className: 'h-[10ch]' }), {}), /UI_STYLE_VALUE: height/);
   assert.equal(node('view', { className: 'bg-current' }).background, 'currentColor');
   assert.equal(node('scroll', { className: 'overscroll-contain' }).overscroll, 'contain');
   assert.equal(node('scroll', { className: 'overscroll-y-none' }).overscroll, 'none');

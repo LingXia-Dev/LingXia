@@ -80,8 +80,9 @@ function length(name, value, { signed = false, max = 16384 } = {}) {
 function dimension(name, value, env, out, key) {
   const ch = typeof value === 'string' && value.match(/^(\d+(?:\.\d+)?)ch$/);
   if (ch) {
-    if (key !== 'maxWidth') invalid(name);
-    out.maxWidthCh = length(name, Number(ch[1]), { max: 4096 });
+    // Widths only: a `ch` is the advance of the element's own `0`, which only the host can shape.
+    if (!['width', 'minWidth', 'maxWidth'].includes(key)) invalid(name);
+    out[`${key}Ch`] = length(name, Number(ch[1]), { max: 4096 });
     return;
   }
   const viewport = typeof value === 'string' && value.match(/^(\d+(?:\.\d+)?)(vw|vh)$/);

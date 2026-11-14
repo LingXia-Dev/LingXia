@@ -49,6 +49,9 @@ pub struct Renderer {
 }
 
 #[cfg(test)]
+#[path = "tests/ch_width.rs"]
+mod ch_width_tests;
+#[cfg(test)]
 #[path = "tests/control_height.rs"]
 mod control_height_tests;
 #[cfg(test)]
@@ -199,8 +202,15 @@ impl Renderer {
             if run {
                 style.display = Display::None;
             }
-            if let Some(ch) = record.number(field::MAX_WIDTH_CH) {
-                style.max_size.width = length(ch * self.zero_advance(&styles[index]));
+            let ch = |id| record.number(id);
+            if let Some(n) = ch(field::WIDTH_CH) {
+                style.size.width = length(n * self.zero_advance(&styles[index]));
+            }
+            if let Some(n) = ch(field::MIN_WIDTH_CH) {
+                style.min_size.width = length(n * self.zero_advance(&styles[index]));
+            }
+            if let Some(n) = ch(field::MAX_WIDTH_CH) {
+                style.max_size.width = length(n * self.zero_advance(&styles[index]));
             }
             let measure = match &layouts[index] {
                 Some(text) => text.shape_id().map(|shape| {
