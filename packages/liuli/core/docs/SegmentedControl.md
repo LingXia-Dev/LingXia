@@ -123,7 +123,7 @@ export function Sizes() {
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | chosen label | `text` on `surface-raised` | 4.5:1 | 16.26:1 | 11.83:1 |
-| other labels | `text-muted` on `surface-sunken` | 4.5:1 | 5.20:1 | 6.93:1 |
+| other labels | `text-muted` on `surface-sunken` | 4.5:1 | 5.20:1 | 7.45:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

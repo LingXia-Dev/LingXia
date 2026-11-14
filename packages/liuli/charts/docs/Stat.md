@@ -178,9 +178,9 @@ export function Dashboard() {
 | negative change | `danger` on `surface` | 4.5:1 | 5.21:1 | 5.42:1 |
 | positive change, straight on the page | `success` on `canvas` | 4.5:1 | 4.96:1 | 8.40:1 |
 | negative change, straight on the page | `danger` on `canvas` | 4.5:1 | 4.87:1 | 5.98:1 |
-| positive change in a sunken card | `success` on `surface-sunken` | 4.5:1 | 4.69:1 | 7.93:1 |
-| negative change in a sunken card | `danger` on `surface-sunken` | 4.5:1 | 4.60:1 | 5.65:1 |
-| label and note in a sunken card | `text-muted` on `surface-sunken` | 4.5:1 | 5.20:1 | 6.93:1 |
+| positive change in a sunken card | `success` on `surface-sunken` | 4.5:1 | 4.69:1 | 8.53:1 |
+| negative change in a sunken card | `danger` on `surface-sunken` | 4.5:1 | 4.60:1 | 6.08:1 |
+| label and note in a sunken card | `text-muted` on `surface-sunken` | 4.5:1 | 5.20:1 | 7.45:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 
