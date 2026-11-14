@@ -87,7 +87,7 @@ export function Content() {
             </view>
           </Stage>
           <Stage caption="A box: an offset ring">
-            <view className="h-control-md items-center justify-center rounded-control border border-line-strong ring-2 ring-focus ring-offset-2">
+            <view className="min-h-control-md items-center justify-center rounded-control border border-line-strong ring-2 ring-focus ring-offset-2">
               <text className="text-body text-text">Save</text>
             </view>
           </Stage>

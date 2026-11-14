@@ -18,14 +18,14 @@ export function Content() {
       <PageSection title="The two levels">
         <view className="flex-row gap-4 py-2">
           <view className="grow basis-0 gap-2">
-            <view className="h-28 items-center justify-center rounded-container border border-text/12 bg-surface-overlay shadow-raised">
+            <view className="h-28 items-center-safe justify-center-safe rounded-container border border-text/12 bg-surface-overlay shadow-raised">
               <text className="text-footnote font-medium text-muted">Raised</text>
             </view>
             <text className="text-footnote text-muted">A menu over the page</text>
           </view>
           <view className="grow basis-0 gap-2">
-            <view className="h-28 justify-center rounded-container bg-scrim px-3">
-              <view className="h-20 items-center justify-center rounded-dialog border border-text/12 bg-surface-overlay shadow-modal">
+            <view className="h-28 justify-center-safe rounded-container bg-scrim px-3">
+              <view className="h-20 items-center-safe justify-center-safe rounded-dialog border border-text/12 bg-surface-overlay shadow-modal">
                 <text className="text-footnote font-medium text-muted">Modal</text>
               </view>
             </view>
@@ -36,13 +36,13 @@ export function Content() {
       <PageSection title="When to use each">
         <view className="gap-6 py-2">
           {levels.map(level => (
-            <view key={level.name} className={`h-24 justify-end gap-0.5 p-4 ${level.className}`}>
+            <view key={level.name} className={`min-h-24 justify-end gap-0.5 p-4 ${level.className}`}>
               <text className="text-body font-medium text-text">{level.name}</text>
               <text className="text-footnote text-muted">{level.use}</text>
             </view>
           ))}
           <view className="rounded-container bg-scrim p-4">
-            <view className="h-24 justify-end gap-0.5 p-4 rounded-dialog border border-text/12 bg-surface-overlay shadow-modal">
+            <view className="min-h-24 justify-end gap-0.5 p-4 rounded-dialog border border-text/12 bg-surface-overlay shadow-modal">
               <text className="text-body font-medium text-text">Modal</text>
               <text className="text-footnote text-muted">Dialogs, over a scrim that dims the page</text>
             </view>

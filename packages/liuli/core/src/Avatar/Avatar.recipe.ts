@@ -11,7 +11,7 @@ export const avatarParts = {
 /** A circle: the photo when it loads, else initials on the accent's soft step. */
 export const avatarRecipe = {
   root: {
-    base: 'relative shrink-0 items-center justify-center rounded-full bg-accent-soft',
+    base: 'relative shrink-0 items-center-safe justify-center-safe rounded-full bg-accent-soft',
     size: { xs: 'size-6', sm: 'size-8', md: 'size-10', lg: 'size-14' } satisfies Record<AvatarSize, string>,
     /** In a group, a 2 px edge in the colour of the surface behind cuts each one out of the next. */
     inGroup: {

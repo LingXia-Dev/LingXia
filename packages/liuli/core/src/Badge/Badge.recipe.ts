@@ -8,7 +8,7 @@ export const badgeParts = { root: 'view', icon: 'view', label: 'text' } as const
  */
 export const badgeRecipe = {
   root: {
-    base: 'flex-row items-center self-start rounded-full',
+    base: 'flex-row items-center-safe self-start rounded-full',
     size: { sm: 'h-5 px-2 gap-1', md: 'h-6 px-2.5 gap-1.5' } satisfies Record<BadgeSize, string>,
     soft: {
       neutral: 'bg-surface-sunken text-text',

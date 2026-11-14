@@ -52,7 +52,7 @@ export function Parts() {
 export function Specimen() {
   return (
     <view className="items-start gap-1">
-      <view className="h-6 justify-center rounded-md border border-text/12 bg-surface px-2"><text className="text-caption font-medium text-text">Options</text></view>
+      <view className="min-h-6 justify-center rounded-md border border-text/12 bg-surface px-2"><text className="text-caption font-medium text-text">Options</text></view>
       <view className="w-28 p-2 gap-1 rounded-control border border-text/12 bg-surface-overlay shadow-[0_1px_2px_rgb(0_0_0/0.06),0_4px_12px_rgb(0_0_0/0.10)]">
         <text className="text-caption font-semibold text-text">Show</text>
         <view className="h-1.5 w-3/4 rounded-full bg-text/10" />

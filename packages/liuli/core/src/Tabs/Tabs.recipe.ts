@@ -36,7 +36,7 @@ export const tabsRecipe = {
     underline: '-bottom-[5px] h-0.5 rounded-full bg-accent',
   },
   tab: {
-    base: 'grow shrink basis-0 min-w-0 flex-row items-center justify-center transition-colors duration-150 ease-out disabled:opacity-40',
+    base: 'grow shrink basis-0 min-w-0 flex-row items-center-safe justify-center transition-colors duration-150 ease-out disabled:opacity-40',
     underline: 'h-control-md px-2 rounded-control focus-visible:bg-text/7',
   },
   /** A label too long for its share of the row is cut short rather than spilling into the next tab. */

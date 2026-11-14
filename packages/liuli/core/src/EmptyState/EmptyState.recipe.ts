@@ -5,7 +5,7 @@ export const emptyStateParts = { root: 'view', media: 'view', text: 'view', titl
 /** Centred and quiet: no fill or border of its own, so it sits in whatever holds it. */
 export const emptyStateRecipe = {
   root: {
-    base: 'self-stretch items-center text-center',
+    base: 'self-stretch items-center-safe text-center',
     size: { sm: 'gap-3 px-4 py-6', md: 'gap-4 px-6 py-12' } satisfies Record<EmptyStateSize, string>,
   },
   media: {

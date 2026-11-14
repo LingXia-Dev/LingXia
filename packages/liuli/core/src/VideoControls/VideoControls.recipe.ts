@@ -40,7 +40,7 @@ export const videoControlsRecipe = {
     over: 'z-[2]',
   },
   centre: {
-    base: 'absolute inset-0 items-center justify-center',
+    base: 'absolute inset-0 items-center justify-center-safe',
     under: 'z-[1]',
     over: 'z-[2]',
   },
@@ -126,7 +126,7 @@ export const videoControlsRecipe = {
     group: 'flex-row gap-1.5',
   },
   chip: {
-    base: 'h-11 min-w-0 grow basis-0 items-center justify-center rounded-xl px-1 focus-visible:ring-2 focus-visible:ring-focus',
+    base: 'h-11 min-w-0 grow basis-0 items-center-safe justify-center rounded-xl px-1 focus-visible:ring-2 focus-visible:ring-focus',
     overlay: { off: 'bg-on-media/25', on: 'bg-on-media', textOff: 'font-normal text-on-media', textOn: 'font-semibold text-media' },
     page: { off: 'bg-surface-sunken', on: 'bg-accent', textOff: 'font-normal text-text', textOn: 'font-semibold text-on-accent' },
     text: 'tabular-nums',
