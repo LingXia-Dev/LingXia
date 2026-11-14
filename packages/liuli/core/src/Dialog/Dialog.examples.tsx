@@ -58,16 +58,16 @@ export function Form() {
 }
 
 /**
- * The home tile: a still drawing of the panel, since a real dialog covers the page. Drawn at tile
- * scale, with shadow-modal's two layers scaled down and the panel lifted so the shadow fits the stage.
+ * The tile: the panel at rest with real buttons, since a real dialog covers the page. shadow-modal's
+ * two layers are scaled down so the shadow stays inside the stage.
  */
 export function Specimen() {
   return (
-    <view className="mb-4 w-30 p-2.5 gap-1.5 rounded-control border border-text/12 bg-surface-overlay shadow-[0_2px_4px_rgb(0_0_0/0.10),0_8px_18px_rgb(0_0_0/0.22)]">
-      <text className="text-caption font-semibold text-text">Delete this note?</text>
-      <view className="flex-row justify-end gap-1">
-        <view className="h-6 justify-center rounded-md bg-text/6 px-2"><text className="text-caption font-medium text-text">Keep</text></view>
-        <view className="h-6 justify-center rounded-md bg-danger px-2"><text className="text-caption font-medium text-on-danger">Delete</text></view>
+    <view className="p-2.5 gap-2 rounded-container border border-text/12 bg-surface-overlay shadow-[0_2px_4px_rgb(0_0_0/0.10),0_6px_14px_rgb(0_0_0/0.18)]">
+      <text className="text-footnote font-semibold text-text">Delete note?</text>
+      <view className="flex-row justify-end gap-1.5">
+        <Button label="Keep" size="sm" />
+        <Button label="Delete" variant="destructive" size="sm" />
       </view>
     </view>
   );

@@ -102,7 +102,7 @@ export interface TileProps {
 export function Tile({ name, tagline, status, isWide = false, onOpen, testId, children }: TileProps) {
   return (
     <view className={isWide ? 'relative overflow-hidden rounded-container border border-text/12 bg-surface min-[360px]:col-span-2 md:col-span-1' : 'relative overflow-hidden rounded-container border border-text/12 bg-surface'}>
-      <view aria-hidden className="h-24 items-center justify-center overflow-hidden p-3 bg-surface-sunken border-b border-text/8">
+      <view aria-hidden className="h-28 items-center justify-center overflow-hidden p-3 bg-surface-sunken border-b border-text/8">
         {children}
       </view>
       <view className="px-3 pt-2.5 pb-3 gap-0.5">

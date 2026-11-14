@@ -1,6 +1,13 @@
+import { Button } from '@liulidesign/core/Button';
+import { ItemList } from '@liulidesign/core/Item';
 import { ProgressBar } from '@liulidesign/core/ProgressBar';
+import { Switch } from '@liulidesign/core/Switch';
+import { TextInput } from '@liulidesign/core/TextInput';
 
-// Home tile drawings for the Foundations and Patterns pages, one per page, named after it.
+// Tile specimens for the Foundations and Patterns pages, one per page, named after it. Patterns
+// show their own components at small scale; foundations draw the tokens themselves.
+
+const none = () => {};
 
 export function ColourSpecimen() {
   return (
@@ -61,32 +68,25 @@ export function MotionSpecimen() {
 
 export function SignInSpecimen() {
   return (
-    <view className="w-28 gap-1.5">
-      <view className="h-5 rounded-md border border-line-strong bg-surface" />
-      <view className="h-5 rounded-md border border-line-strong bg-surface" />
-      <view className="h-5 rounded-md bg-accent" />
+    <view className="w-full gap-2">
+      <TextInput value="ana@example.com" onChange={none} label="Email" isLabelHidden size="sm" />
+      <Button label="Sign in" variant="primary" size="sm" width="fill" />
     </view>
   );
 }
 
 export function SettingsSpecimen() {
   return (
-    <view className="w-28 rounded-control border border-text/12 bg-surface divide-y divide-text/8">
-      <view className="h-5 flex-row items-center px-2"><view className="w-12 h-1.5 rounded-full bg-text/25" /></view>
-      <view className="h-5 flex-row items-center justify-between px-2">
-        <view className="w-9 h-1.5 rounded-full bg-text/25" />
-        <view className="w-5 h-2.5 rounded-full bg-success-soft" />
-      </view>
-      <view className="h-5 flex-row items-center px-2"><view className="w-14 h-1.5 rounded-full bg-danger/50" /></view>
-    </view>
+    <ItemList className="w-full">
+      <Switch value onChange={none} label="Wi-Fi" variant="row" />
+    </ItemList>
   );
 }
 
 export function UploadsSpecimen() {
   return (
-    <view className="w-28 gap-2 rounded-control border border-text/12 bg-surface p-2.5">
-      <view className="w-16 h-1.5 rounded-full bg-text/25" />
-      <ProgressBar label="Upload" isLabelHidden size="sm" value={64} />
+    <view className="w-full gap-2 rounded-container border border-text/12 bg-surface p-3">
+      <ProgressBar label="photos.zip" valueLabel="64%" size="sm" value={64} />
     </view>
   );
 }
