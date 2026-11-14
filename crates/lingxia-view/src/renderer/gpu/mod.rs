@@ -821,6 +821,7 @@ impl Presenter {
         if self.depth.is_none() {
             self.depth = Some(depth_view(surface, &context.devices[surface.dev_id].device));
         }
+        surface.ensure_targets(&context.devices[surface.dev_id].device);
         let device = &context.devices[surface.dev_id];
         let slot = slot_for(self.prepared, revision);
         self.prepared[slot] = None;
@@ -841,7 +842,7 @@ impl Presenter {
             height,
             device: device.device.clone(),
             queue: device.queue.clone(),
-            target: surface.target_views[slot].clone(),
+            target: surface.target(slot).ok_or("UI_SURFACE: no target")?.clone(),
             depth: self.depth.clone(),
             renderer: self.renderer.clone(),
             scenes: std::mem::take(&mut self.scenes),
@@ -932,6 +933,9 @@ impl Presenter {
     pub fn trim(&mut self) {
         self.base = None;
         self.depth = None;
+        if let Some(surface) = &mut self.surface {
+            surface.drop_targets();
+        }
         self.composed = [None, None];
         self.prepared = [None; 2];
         self.drawn = [None; 2];
@@ -976,11 +980,8 @@ impl Presenter {
         self.retained =
             (self.surface.is_some() && video::draws_video(&display)).then_some((revision, display));
         // The quad pipelines compile while the first video frames decode.
-        if self.retained.is_some()
-            && let Some(surface) = &self.surface
-        {
-            let format = surface.target_views[0].texture().format();
-            self.warm_video_pipelines(format);
+        if self.retained.is_some() && self.surface.is_some() {
+            self.warm_video_pipelines(device::TARGET_FORMAT);
         }
         self.retained.is_some()
     }
@@ -1051,7 +1052,9 @@ impl Presenter {
         let Some(surface) = &self.surface else {
             return Ok(None);
         };
-        let target = surface.target_views[slot].clone();
+        let Some(target) = surface.target(slot).cloned() else {
+            return Ok(None);
+        };
         let (device, queue) = self.device_queue()?;
         let format = target.texture().format();
         let Some(pipelines) = self.video_pipelines.get().filter(|p| p.format() == format) else {
@@ -1162,9 +1165,10 @@ impl Presenter {
         surface.blitter.copy(
             &device.device,
             &mut encoder,
-            self.composed[slot]
-                .as_ref()
-                .map_or(&surface.target_views[slot], |output| output.view()),
+            match &self.composed[slot] {
+                Some(output) => output.view(),
+                None => surface.target(slot).ok_or("UI_SURFACE: no target")?,
+            },
             &view,
         );
         timing::end(&mut encoder, span);
@@ -1196,11 +1200,13 @@ impl Presenter {
         else {
             return Ok(None);
         };
-        let texture = self.composed[slot]
-            .as_ref()
-            .map_or(surface.target_views[slot].texture(), |output| {
-                output.texture()
-            });
+        let texture = match &self.composed[slot] {
+            Some(output) => output.texture(),
+            None => match surface.target(slot) {
+                Some(target) => target.texture(),
+                None => return Ok(None),
+            },
+        };
         let context = self.context.lock()?;
         let device = &context.devices[surface.dev_id];
         let pixels = read_texture(&device.device, &device.queue, texture)?;

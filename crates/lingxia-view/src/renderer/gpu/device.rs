@@ -45,8 +45,25 @@ pub(crate) struct RenderSurface<'s> {
     pub surface: wgpu::Surface<'s>,
     pub config: wgpu::SurfaceConfiguration,
     pub dev_id: usize,
-    pub target_views: [wgpu::TextureView; 2],
+    /// `None` while trimmed; drawing creates them again.
+    targets: Option<[wgpu::TextureView; 2]>,
     pub blitter: TextureBlitter,
+}
+
+impl RenderSurface<'_> {
+    pub fn target(&self, slot: usize) -> Option<&wgpu::TextureView> {
+        self.targets.as_ref().map(|targets| &targets[slot])
+    }
+
+    pub fn ensure_targets(&mut self, device: &wgpu::Device) {
+        if self.targets.is_none() {
+            self.targets = Some(new_targets(device, self.config.width, self.config.height));
+        }
+    }
+
+    pub fn drop_targets(&mut self) {
+        self.targets = None;
+    }
 }
 
 impl Devices {
@@ -93,7 +110,7 @@ impl Devices {
         };
         configure(&surface, &handle.device, &config)?;
         Ok(RenderSurface {
-            target_views: [0; 2].map(|_| target_view(&handle.device, width, height)),
+            targets: Some(new_targets(&handle.device, width, height)),
             blitter: TextureBlitter::new(&handle.device, format),
             surface,
             config,
@@ -110,7 +127,7 @@ impl Devices {
         let device = &self.devices[surface.dev_id].device;
         surface.config.width = width;
         surface.config.height = height;
-        surface.target_views = [0; 2].map(|_| target_view(device, width, height));
+        surface.targets = Some(new_targets(device, width, height));
         configure(&surface.surface, device, &surface.config)
     }
 
@@ -235,6 +252,12 @@ fn configure(
 /// Prefix of the error for a window that refused its surface; binding again later may succeed.
 pub const SURFACE_REFUSED: &str = "UI_SURFACE: the window refused a surface";
 
+fn new_targets(device: &wgpu::Device, width: u32, height: u32) -> [wgpu::TextureView; 2] {
+    [0; 2].map(|_| target_view(device, width, height))
+}
+
+pub(crate) const TARGET_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
 /// The offscreen target: drawn by render passes, sampled by the blit and composition.
 pub(crate) fn target_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
     device
@@ -248,7 +271,7 @@ pub(crate) fn target_view(device: &wgpu::Device, width: u32, height: u32) -> wgp
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: TARGET_FORMAT,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::TEXTURE_BINDING
                 | wgpu::TextureUsages::COPY_SRC
