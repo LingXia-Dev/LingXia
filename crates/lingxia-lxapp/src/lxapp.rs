@@ -5865,12 +5865,14 @@ mod manifest_reload_tests {
         assert!(live(&app, &detail), "disposed inside its grace");
         app.dispose_popped_gpu_pages(left + GRACE);
         assert!(!live(&app, &detail));
-        drop(detail);
+        // `detail` stays held, as a platform view holds its page.
         assert_eq!(
             endpoint.0.load(Ordering::SeqCst),
             1,
             "its view was not disposed"
         );
+        drop(detail);
+        assert_eq!(endpoint.0.load(Ordering::SeqCst), 1, "disposed twice");
     }
 
     #[test]
@@ -5928,9 +5930,9 @@ mod manifest_reload_tests {
         let left = Instant::now();
         assert!(app.note_popped_gpu_page(&detail, left));
         app.remove_pages(&[detail.instance_id_string()]);
-        drop(detail);
         assert_eq!(endpoint.0.load(Ordering::SeqCst), 1);
         app.dispose_popped_gpu_pages(left + GRACE);
+        drop(detail);
         assert_eq!(endpoint.0.load(Ordering::SeqCst), 1, "disposed twice");
         assert!(
             app.state

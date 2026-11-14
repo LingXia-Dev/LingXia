@@ -856,6 +856,7 @@ impl LxApp {
             "PageInstance removed while waiting for view response",
         );
 
+        let mut removed = Vec::new();
         if let Ok(state) = self.state.lock() {
             // Drop the ids from the stack in the same critical section. A
             // caller that reads the stack head while it still names a removed
@@ -869,6 +870,7 @@ impl LxApp {
             let mut pages_by_id = state.pages_by_id.lock().unwrap();
             for id in instance_ids {
                 if let Some(page) = pages_by_id.remove(id) {
+                    removed.push(page.clone());
                     let _ = self
                         .executor
                         .terminate_page_svc(self.clone_arc(), page.path(), Some(id.clone()))
@@ -895,6 +897,10 @@ impl LxApp {
                     }
                 }
             }
+        }
+        // A platform view holds its page, so dropping the map entry alone never frees it.
+        for page in removed {
+            page.detach_webview();
         }
     }
 
