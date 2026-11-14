@@ -17,7 +17,7 @@ export const navListRecipe = {
     base: 'gap-0.5',
   },
   group: {
-    base: 'flex-row items-center gap-2 min-h-8 px-3 mt-3 first:mt-0 rounded-control text-start transition-colors duration-150 ease-out hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7',
+    base: 'flex-row items-center gap-2 min-h-8 px-3 mt-3 first:mt-0 rounded-control text-start transition-colors duration-150 ease-out hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
   },
   groupLabel: {
     base: 'grow shrink basis-0 text-footnote font-semibold text-muted',
@@ -28,7 +28,8 @@ export const navListRecipe = {
     closed: '-rotate-90 rtl:rotate-90',
   },
   item: {
-    base: 'flex-row items-center gap-2 min-h-9 px-3 rounded-control text-start transition-colors duration-150 ease-out disabled:opacity-40',
+    /** Keyboard focus draws the focus ring inside the row, so the sidebar's edge never clips it. */
+    base: 'flex-row items-center gap-2 min-h-9 px-3 rounded-control text-start transition-colors duration-150 ease-out focus-visible:inset-ring-2 focus-visible:inset-ring-focus disabled:opacity-40',
     idle: 'hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7',
     /** Item's selected wash, deepening on hover, press and focus. */
     selected: 'bg-accent-soft hover:bg-accent/16 active:bg-accent/20 focus-visible:bg-accent/20',
