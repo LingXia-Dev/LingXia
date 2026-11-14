@@ -250,21 +250,18 @@ async fn switch_tab(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> 
 }
 
 /// Clear the page stack and launch a configured page as the new root.
+///
+/// Resolves once the navigation is dispatched, like `redirectTo` and `switchTab`;
+/// the new page loads after.
 async fn re_launch(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let target_url =
         resolve_page_target(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))?;
 
     ensure_page_exists_js(&lxapp, &target_url)?;
-
-    let page_svc = lxapp
-        .get_or_create_page_in_ctx(&ctx, &target_url)
-        .await
-        .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
-    let _ = page_svc.clear_opener();
-
-    navigate_with_url(lxapp.clone(), target_url, NavigationType::Launch, false)
-        .await
+    lxapp
+        .relaunch(&target_url)
+        .map(|_| ())
         .map_err(|e| js_error_from_lxapp_error(&e))
 }
 

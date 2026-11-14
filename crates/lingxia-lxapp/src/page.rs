@@ -2422,37 +2422,50 @@ impl PageInstance {
     ) -> Result<PageInstance, LxAppError> {
         let lxapp = self.owning_lxapp();
         lxapp.validate_navigation_entry(target_url, nav_type)?;
-        let target_page = if nav_type == NavigationType::Replace
+        let target_page = if nav_type == NavigationType::Launch {
+            // A reLaunch retires every instance before resolving its target;
+            // minting one here would only build a page to destroy.
+            None
+        } else if nav_type == NavigationType::Replace
             && lxapp.resolve_entry_path(target_url) == self.path()
         {
             // Redirecting a page to itself keeps the instance and document;
             // the entry re-runs onLoad against the updated query.
-            lxapp.get_or_create_page(target_url)
+            Some(lxapp.get_or_create_page(target_url))
         } else {
-            lxapp.create_page_for_entry(target_url)
+            Some(lxapp.create_page_for_entry(target_url))
         };
-        self.navigate_to_internal(target_page, nav_type, &lxapp)
+        self.navigate_to_internal(target_page, target_url, nav_type, &lxapp)
     }
 
     /// Internal navigation logic shared by regular and plugin navigation
     fn navigate_to_internal(
         &self,
-        target_page: PageInstance,
+        target_page: Option<PageInstance>,
+        requested_url: &str,
         nav_type: NavigationType,
         lxapp: &Arc<LxApp>,
     ) -> Result<PageInstance, LxAppError> {
-        let path = target_page.path();
+        let (path, query) = match &target_page {
+            Some(page) => (page.path(), page.automation_state().query),
+            None => {
+                let resolved = lxapp.resolve_entry_route(requested_url);
+                let path = resolved.internal_path().to_string();
+                let query = parse_query_string(&resolved.query.unwrap_or_default())
+                    .unwrap_or_else(|_| serde_json::Value::Object(Default::default()));
+                (path, query)
+            }
+        };
         let target_url =
-            crate::append_page_query(path.clone(), &target_page.automation_state().query)
-                .map_err(LxAppError::InvalidParameter)?;
+            crate::append_page_query(path.clone(), &query).map_err(LxAppError::InvalidParameter)?;
         let mut target_page = target_page;
         // Public entry points run this before resolving PageSvc/query state;
         // keep the same preflight here as a backstop for direct native calls.
         lxapp.validate_navigation_entry(&target_url, nav_type)?;
-        // A reLaunch replaces the resolved instance below; waking its
-        // WebView first would only build a document to destroy.
-        if target_page.is_discarded() && nav_type != NavigationType::Launch {
-            target_page.ensure_live_webview();
+        if let Some(page) = &target_page
+            && page.is_discarded()
+        {
+            page.ensure_live_webview();
         }
         let is_tabbar_page = lxapp
             .get_tabbar()
@@ -2489,7 +2502,7 @@ impl PageInstance {
                         .map(|page| page.instance_id_string())
                         .collect();
                     lxapp.remove_pages(&retiring_ids);
-                    target_page = lxapp.get_or_create_page(&target_url);
+                    target_page = Some(lxapp.get_or_create_page(&target_url));
                 }
                 if nav_type == NavigationType::SwitchTab {
                     // switchTab only hides the tab pages it leaves, but any
@@ -2512,11 +2525,11 @@ impl PageInstance {
                 // Backstop for the preflight: only a path-pinned singleton
                 // (tab page) can resolve to an instance already on the stack,
                 // and two slots must never share one instance.
-                if lxapp
-                    .get_page_stack()
-                    .iter()
-                    .any(|id| id == &target_page.instance_id_string())
-                {
+                if lxapp.get_page_stack().iter().any(|id| {
+                    target_page
+                        .as_ref()
+                        .is_some_and(|page| id == &page.instance_id_string())
+                }) {
                     return Err(LxAppError::InvalidParameter(format!(
                         "navigateTo target '{path}' is already on the page stack; \
                          use lx.switchTab or lx.navigateBack to return to it."
@@ -2529,6 +2542,9 @@ impl PageInstance {
                 ));
             }
         }
+        let target_page = target_page.ok_or_else(|| {
+            LxAppError::InvalidParameter(format!("no page resolved for '{target_url}'"))
+        })?;
 
         // 3. Handle UI state based on navigation type (TabBar, NavBar)
         if is_tab_switch

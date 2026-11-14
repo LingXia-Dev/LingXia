@@ -3367,7 +3367,11 @@ declare global {
      * a tab leave the stack and receive `onUnload`.
      */
     switchTab(options: SwitchTabOptions): Promise<void>;
-    /** Clear the page stack and launch a configured page as the new root. */
+    /**
+     * Clear the page stack and launch a configured page as the new root.
+     * Resolves once the navigation is dispatched, like `redirectTo` and `switchTab`;
+     * the new page loads after.
+     */
     reLaunch(options: ReLaunchOptions): Promise<void>;
     readonly shell: ShellApi;
     readonly tabBar: TabBarApi;

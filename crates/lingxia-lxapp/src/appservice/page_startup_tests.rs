@@ -13,6 +13,7 @@ use std::sync::atomic::AtomicUsize;
 use std::thread::JoinHandle;
 
 const PATH: &str = "pages/home/index.html";
+const OTHER: &str = "pages/other/index.html";
 const PROBE: &str = "__startup_test_observation__";
 
 struct Fixture {
@@ -73,7 +74,8 @@ impl Fixture {
                 page::init(&ctx).unwrap();
                 rong_modules::init(&ctx, RONG_MODULES).unwrap();
                 ctx.eval::<()>(Source::from_bytes(format!(
-                    "__registerPage({PATH:?}, {{ data: {{ startupMarker: 'logic-state-ready' }} }});"
+                    "__registerPage({PATH:?}, {{ data: {{ startupMarker: 'logic-state-ready' }} }}); \
+                     __registerPage({OTHER:?}, {{ data: {{}} }});"
                 ))).unwrap();
                 let mut current = Some(ctx.clone());
                 ready_tx.send(()).unwrap();
@@ -365,4 +367,59 @@ fn page_startup_headless_failed_reload_retains_service_and_pin() {
     page.ensure_live_webview();
     assert_eq!(f.snapshots(), original);
     assert_eq!(f.creates.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn page_startup_relaunch_builds_exactly_one_page() {
+    #[cfg(target_vendor = "apple")]
+    let _host = crate::apple_host_stubs::headless_lifecycle();
+    let f = Fixture::new();
+    // Waits for an HTML load past `loads`, then drains the Logic queue behind it.
+    let settle = |loads: usize| {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while f.host.html_loads.load(Ordering::SeqCst) <= loads
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        f.snapshots();
+        f.host.html_loads.load(Ordering::SeqCst)
+    };
+    let mut page = f.app.create_page_for_entry(PATH);
+    let mut loads = settle(0);
+    for round in 1..=6 {
+        let creates = f.creates.load(Ordering::SeqCst);
+        // Alternate the shared entry every caller uses with the page's own, and the
+        // current route with another one: a pre-created target only shows on the latter.
+        let target = match round {
+            1 | 2 => PATH,
+            _ if round % 2 == 1 => OTHER,
+            _ => PATH,
+        };
+        let next = if round % 2 == 1 {
+            f.app.relaunch(target)
+        } else {
+            page.navigate_to_url(target, crate::page::NavigationType::Launch)
+        }
+        .unwrap();
+        let after = settle(loads);
+        assert_ne!(next.instance_id_string(), page.instance_id_string());
+        assert_eq!(after, loads + 1, "HTML loads, round {round}");
+        assert_eq!(
+            f.creates.load(Ordering::SeqCst),
+            creates + 1,
+            "CreatePage, round {round}"
+        );
+        let pages = f
+            .app
+            .state
+            .lock()
+            .unwrap()
+            .pages_by_id
+            .lock()
+            .unwrap()
+            .len();
+        assert_eq!(pages, 1, "live instances, round {round}");
+        (page, loads) = (next, after);
+    }
 }

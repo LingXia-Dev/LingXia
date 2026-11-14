@@ -89,12 +89,15 @@ async fn navigate_with_url(
 ) -> Result<(), LxAppError> {
     lxapp.ensure_page_exists(&target_url)?;
 
-    let current_path = current_page_path(&lxapp)?;
-    let Some(page) = lxapp.get_page(&current_path) else {
-        return Err(LxAppError::Runtime("Current page not found".to_string()));
+    let target_page = if nav_type == NavigationType::Launch {
+        lxapp.relaunch(&target_url)?
+    } else {
+        let current_path = current_page_path(&lxapp)?;
+        let Some(page) = lxapp.get_page(&current_path) else {
+            return Err(LxAppError::Runtime("Current page not found".to_string()));
+        };
+        page.navigate_to_url(&target_url, nav_type)?
     };
-
-    let target_page = page.navigate_to_url(&target_url, nav_type)?;
 
     if wait_ready {
         await_or_cancel(cancel, async {

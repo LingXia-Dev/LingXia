@@ -999,6 +999,16 @@ impl LxApp {
         self.current_page().ok().map(|page| page.path())
     }
 
+    /// reLaunch from any entry point. It resolves the target only after every
+    /// instance is retired, so callers must not create the target page first.
+    pub fn relaunch(&self, target_url: &str) -> Result<PageInstance, LxAppError> {
+        let current = self
+            .current_page()
+            // An app whose initial page has not reached the stack yet.
+            .unwrap_or_else(|_| self.get_or_create_page(target_url));
+        current.navigate_to_url(target_url, crate::page::NavigationType::Launch)
+    }
+
     /// Route paths on the navigation stack, oldest → newest.
     pub fn get_page_stack_paths(&self) -> Vec<String> {
         self.get_page_stack_pages()
