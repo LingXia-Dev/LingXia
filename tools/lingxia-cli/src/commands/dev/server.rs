@@ -775,18 +775,18 @@ impl DevServerState {
         if needs.is_empty() {
             return false;
         }
-        if self.installed_host.load(Ordering::Acquire) {
-            if let Some(refusal) = installed_refusal(build.and_then(|build| build.view), &needs) {
-                eprintln!("  ✗ {refusal}");
-                *self
-                    .installed_refusal
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(refusal);
-                // Nothing to reload into an app that cannot render it.
-                self.lock_stale().clear();
-                self.stop_flag.store(true, Ordering::Release);
-                return true;
-            }
+        if self.installed_host.load(Ordering::Acquire)
+            && let Some(refusal) = installed_refusal(build.and_then(|build| build.view), &needs)
+        {
+            eprintln!("  ✗ {refusal}");
+            *self
+                .installed_refusal
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(refusal);
+            // Nothing to reload into an app that cannot render it.
+            self.lock_stale().clear();
+            self.stop_flag.store(true, Ordering::Release);
+            return true;
         }
         match build.and_then(|build| build.view) {
             Some(have) => {
