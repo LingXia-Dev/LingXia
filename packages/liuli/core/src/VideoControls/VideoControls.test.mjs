@@ -77,3 +77,51 @@ test('Overlay scrubber: without the press signal the landed seek alone ends the 
   report(screen, { currentTime: 4 });
   assert.equal(shown(screen), '0:04 / 0:10');
 });
+
+// Plays from the bar: the host answers each command at once, as a device player does.
+const tapPlay = screen => {
+  screen.host.__lingxiaVideoCommand ??= (_, op) => { (screen.ops ??= []).push(op); return ''; };
+  screen.press(play(screen, 'overlay-controls'));
+};
+const ring = screen => { try { return screen.getByTestId('overlay-controls-loading') ? 1 : 0; } catch { return 0; } };
+
+test('Overlay ring: a tap on play shows the ring and Pause at once, and the first playing status takes it down', async () => {
+  const screen = await renderExample('VideoControls/VideoControls', 'Overlay');
+  report(screen, {});
+  tapPlay(screen);
+  assert.equal(ring(screen), 1, 'the ring from the tap, before any status');
+  assert.equal(play(screen, 'overlay-controls').props.accessibilityLabel, 'Pause');
+  report(screen, { paused: false });
+  assert.equal(ring(screen), 0);
+  assert.equal(play(screen, 'overlay-controls').props.accessibilityLabel, 'Pause');
+});
+
+test('Overlay ring: a host pause, an error or a second tap leaves no ring behind; a paused seek keeps it', async () => {
+  const screen = await renderExample('VideoControls/VideoControls', 'Overlay');
+  report(screen, {});
+  // The player starts, then the host pauses it (another app took the sound).
+  tapPlay(screen);
+  report(screen, { paused: false, currentTime: 1.2 });
+  report(screen, { paused: true, currentTime: 1.2 });
+  assert.equal(ring(screen), 0, 'paused by the host after playing');
+  assert.equal(play(screen, 'overlay-controls').props.accessibilityLabel, 'Play');
+  // A resume seek lands before the first frame: the clock jumps while paused, and the play still waits.
+  tapPlay(screen);
+  report(screen, { paused: true, currentTime: 1.5, seeking: true });
+  report(screen, { paused: true, currentTime: 1.5 });
+  assert.equal(ring(screen), 1, 'a paused seek is not the answer');
+  // The open fails while the play waits.
+  report(screen, { paused: true, currentTime: 1.5, error: { code: 'VIDEO_NETWORK', message: 'VIDEO_NETWORK: no picture 15 s after play', recoverable: true } });
+  assert.equal(ring(screen), 0, 'an error replaces the ring');
+  assert.ok(screen.getByTestId('overlay-controls-error'));
+  // A second tap while the play is unanswered takes it back.
+  report(screen, { paused: true, currentTime: 1.5 });
+  tapPlay(screen);
+  assert.equal(ring(screen), 1);
+  report(screen, { paused: true, currentTime: 12, readyState: 'metadata' });
+  assert.equal(ring(screen), 1, 'a startAt jump before the first frame keeps the ring');
+  tapPlay(screen);
+  assert.equal(ring(screen), 0);
+  assert.equal(play(screen, 'overlay-controls').props.accessibilityLabel, 'Play');
+  assert.deepEqual(screen.ops.slice(-2), ['play', 'pause']);
+});

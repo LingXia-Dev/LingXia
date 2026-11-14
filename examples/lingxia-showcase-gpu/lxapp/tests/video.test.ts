@@ -197,3 +197,39 @@ spec('an HLS quality pinned before the first frame plays that rendition', { star
   const start = await seconds();
   await expect.poll(seconds, { timeout: 10_000 }).toBeGreaterThan(start + 1);
 });
+
+// HarmonyOS's player opens this stream slowly (about 12 s on a nova 13): from the tap until a frame
+// or the 15 s error, the box shows the ring, never a blank picture.
+spec('an HLS start shows the ring from the tap until a frame or the error with Retry', { start: { page: 'view-lab' }, tags: ['network'], timeout: 90_000 }, async (t) => {
+  await skipWhenCovered(t, 'view-lab');
+  const view = t.app.view;
+  await view.testId('lab-tab-media').click();
+  const c = (part: string) => view.testId(`lab-stream-controls-${part}`);
+  // The stream sits below the clip: scroll until its large play is on screen (aria-hidden, so the
+  // tap is by point, and no locator scrolls to it).
+  const area = await view.viewport();
+  let box = await c('start').boundingBox();
+  for (let i = 0; i < 6 && box.y + box.height > area.height - 48; i++) {
+    const mid: [number, number] = [area.width / 2, area.height * 0.7];
+    await view.swipe({ from: mid, to: [mid[0], mid[1] - 300], durationMs: 300 });
+    box = await c('start').boundingBox();
+  }
+  const at: [number, number] = [box.x + box.width / 2, box.y + box.height / 2];
+  await view.swipe({ from: at, to: at, durationMs: 60, hold: 0 });
+  // The frame that takes the large play away answers the tap: the ring, unless a frame or the error came first.
+  await expect.poll(() => c('start').count(), { timeout: 5_000 }).toBe(0);
+  const answer = async () => ((await c('error').count()) ? 'error' : (await c('loading').count()) ? 'ring'
+    : (await c('play').getAttribute('aria-label')) === 'Pause' ? 'playing' : 'blank');
+  expect(await answer(), 'the tap shows the ring at once').not.toBe('blank');
+  const deadline = Date.now() + 20_000;
+  let outcome = '';
+  while (!outcome && Date.now() < deadline) {
+    const now = await answer();
+    if (now === 'error' || now === 'playing') outcome = now;
+    else expect(now, `the ring while nothing shows (start ${await c('start').count()}, play "${await c('play').getAttribute('aria-label')}", `
+      + `busy ${await c('play').getAttribute('aria-busy')}, time "${await c('time').textContent()}", ${Date.now() - deadline + 20_000} ms after the tap)`).toBe('ring');
+    await new Promise<void>(resolve => setTimeout(resolve, 250));
+  }
+  expect(outcome, 'a frame or the error within the start deadline').not.toBe('');
+  if (outcome === 'error') await expect(c('retry')).toBeVisible();
+});

@@ -17,7 +17,7 @@ export const doc: ComponentDoc = {
     { part: 'surface', required: true, description: 'The picture under the bar: a tap shows or hides the bar on touch, plays or pauses with a mouse.' },
     { part: 'bar', required: true, description: 'Media glass at the bottom edge: the scrubber line, then play and the time, then settings, mute and full screen. Under the picture, one row: play, the slider, the time, settings, mute and full screen.' },
     { part: 'scrubber', required: false, description: 'A slider whose touch box grows up into the picture; it thickens and shows its thumb while pressed. Absent for live streams.' },
-    { part: 'centre', required: false, description: 'A large play before the first play, a ring while loading, or the error with Retry.' },
+    { part: 'centre', required: false, description: 'A large play before the first play, a ring from a play tap until the player answers and while loading, or the error with Retry.' },
     { part: 'menu', required: false, description: 'Speed and quality, a row of chips each, in the bar\'s place while open.' },
     { part: 'fullscreen', required: false, description: 'A dialog showing the player again, full window, with the same controls and a way out.' },
   ],

@@ -56,6 +56,9 @@ const SHOWN_S = 3;
 // Drags whose seek has begun, and drags the player has reached: a held position shows until then.
 const seen = new WeakSet<object>();
 const reached = new WeakSet<object>();
+// Plays the player has answered: it played, ended or failed. A paused clock that moves is a seek
+// (a resume lands before the first frame), not an answer; a second tap takes the play back.
+const answered = new WeakSet<object>();
 
 const edgeStyle = (area?: { top: number; right: number; bottom: number; left: number }) =>
   ({ top: area?.top ?? 0, right: area?.right ?? 0, bottom: area?.bottom ?? 0, left: area?.left ?? 0 });
@@ -112,8 +115,8 @@ function Controls({ player, labels: say, variant, isFull = false, className, tes
   const held = useLocal<{ value: number } | null>('held', null);
   // A finger on the scrubber, from the slider itself; a host without the signal leaves it false.
   const down = useLocal('down', false);
-  // A play asked for before the player has opened: it waits on that open.
-  const asked = useLocal('asked', false);
+  // The last play asked, and the error showing then; the ring shows until the player answers.
+  const asked = useLocal<{ error: string | null } | null>('asked', null);
   const shown = useLocal('shown', { since: player.currentTime, hidden: false });
   const menu = useLocal('menu', false);
   const env = useView().env;
@@ -126,7 +129,12 @@ function Controls({ player, labels: say, variant, isFull = false, className, tes
   if (hold !== null && (Math.abs(now - hold.value) <= 0.5 || (seen.has(hold) && !seeking))) reached.add(hold);
   const holding = down.value || (hold !== null && !reached.has(hold));
   const at = known ? Math.min(holding && hold ? hold.value : now, duration) : 0;
-  const loading = !error && (((!paused || asked.value) && readyState !== 'ready') || (!paused && buffering));
+  const ask = asked.value;
+  if (ask && (!paused || ended || (error && error.message !== ask.error))) answered.add(ask);
+  const waiting = !!ask && !answered.has(ask);
+  // Asked to play: the controls read as playing from the tap.
+  const still = paused && !waiting;
+  const loading = !error && (waiting || (!paused && readyState !== 'ready') || (!paused && buffering));
   const overlay = variant === 'overlay';
   // Any use of the overlay brings it back for another stretch.
   const wake = <A extends unknown[]>(fn: (...args: A) => unknown) => (...args: A) => {
@@ -140,10 +148,12 @@ function Controls({ player, labels: say, variant, isFull = false, className, tes
     player.seek(value).catch(() => held.set(null));
   };
   const toggle = wake(() => {
-    asked.set(paused || ended);
-    return ended ? player.seek(0).then(() => player.play()) : paused ? player.play() : player.pause();
+    // A second tap while the play is unanswered takes it back.
+    const play = (paused || ended) && !waiting;
+    asked.set(play ? { error: error?.message ?? null } : null);
+    return ended ? player.seek(0).then(() => player.play()) : play ? player.play() : player.pause();
   });
-  const retry = wake(() => { asked.set(true); return player.retry().then(() => player.play()); });
+  const retry = wake(() => { asked.set({ error: error?.message ?? null }); return player.retry().then(() => player.play()); });
   const size = isFull ? 'full' : 'inline';
   const tone = overlay ? 'overlay' : 'bar';
   const iconButton = (part: string, label: string, icon: Icon, onClick: () => unknown, extra: Record<string, unknown> = {}) => (
@@ -151,7 +161,7 @@ function Controls({ player, labels: say, variant, isFull = false, className, tes
       <vector aria-hidden paths={icons[icon]} viewBox={box} className={r.glyph[size]} />
     </button>
   );
-  const play = iconButton('play', ended ? say.replay : paused ? say.play : say.pause, ended ? 'replay' : paused ? 'play' : 'pause', toggle, { 'aria-busy': loading || buffering });
+  const play = iconButton('play', ended ? say.replay : still ? say.play : say.pause, ended ? 'replay' : still ? 'play' : 'pause', toggle, { 'aria-busy': loading || buffering });
   const mute = iconButton('mute', muted ? say.unmute : say.mute, muted ? 'muted' : 'sound', wake(() => player.setMuted(!muted)), { 'aria-pressed': muted });
   const screen = iconButton('fullscreen', fullscreen ? say.exitFullscreen : say.fullscreen, fullscreen ? 'exit' : 'enter',
     wake(() => (fullscreen ? player.exitFullscreen() : player.requestFullscreen())), { 'aria-pressed': fullscreen });
@@ -257,7 +267,7 @@ function Controls({ player, labels: say, variant, isFull = false, className, tes
       <button
         data-testid={id('surface')}
         aria-hidden
-        aria-label={paused ? say.play : say.pause}
+        aria-label={still ? say.play : say.pause}
         onClick={precise || fresh ? toggle : () => shown.set({ since: player.currentTime, hidden: up && playing })}
         className={cx(r.surface.base, up || fresh ? r.surface.under : r.surface.over)}
       />
