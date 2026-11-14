@@ -4,7 +4,7 @@
 import type { PatternName } from './a11y/patterns';
 
 /** The gallery's sections, in the order the home page shows them. */
-export const categories = ['actions', 'navigation', 'inputs', 'feedback', 'overlays', 'content'] as const;
+export const categories = ['actions', 'inputs', 'selection', 'navigation', 'feedback', 'overlays', 'content', 'media'] as const;
 export type Category = (typeof categories)[number];
 
 export interface ComponentDoc {
@@ -13,6 +13,8 @@ export interface ComponentDoc {
   readonly category: Category;
   /** `preview` may still change; `stable` once its accessibility contract passes on all four platforms. */
   readonly status: 'stable' | 'preview';
+  /** The day it joined the package, `YYYY-MM-DD`; the gallery's "New" list reads it. */
+  readonly since: string;
   /** One line for the catalog and the skill index; no trailing period. */
   readonly summary: string;
   /** What it is for, in two or three sentences. */

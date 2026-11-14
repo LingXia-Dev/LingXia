@@ -2,8 +2,9 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'SegmentedControl',
-  category: 'inputs',
+  category: 'selection',
   status: 'preview',
+  since: '2026-11-13',
   summary: 'One value from a few, as a row of segments with a thumb on the chosen one',
   description:
     'SegmentedControl sets one value from two to five short choices that fit a row: a unit, a theme, a sort order. It is a ' +
@@ -74,7 +75,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'One of a few',
-    order: 8,
+    order: 5,
     page: {
       lead: 'Use a segmented control to set one value from a few short choices, applied at once.',
       hero: 'Units',

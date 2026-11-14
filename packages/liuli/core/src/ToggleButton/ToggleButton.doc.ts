@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'ToggleButton',
   category: 'actions',
   status: 'preview',
+  since: '2026-11-13',
   summary: 'A button that turns one option on or off and stays down while on',
   description:
     'ToggleButton turns an option on or off where it applies, such as a filter over a list or a view option beside what ' +

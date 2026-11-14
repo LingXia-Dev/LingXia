@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'ProgressBar',
   category: 'feedback',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'How much of a task is done, or a spinner while the amount is unknown',
   description:
     'ProgressBar shows a task that runs for a while: an upload, an export, storage used. Without `value` it sweeps to say ' +

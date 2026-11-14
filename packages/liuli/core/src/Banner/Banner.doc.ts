@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Banner',
   category: 'feedback',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'A message in the page about the page or the account, that stays until resolved',
   description:
     'Banner tells people about something that affects what they are looking at: sync stopped, a card expiring, a notebook ' +

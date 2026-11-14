@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Badge',
   category: 'feedback',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'A short status or category label in a tinted pill',
   description:
     'Badge marks the state or kind of the thing next to it: Draft, Paid, Overdue, New. It is text, not a control, and is ' +

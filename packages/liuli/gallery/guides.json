@@ -1,14 +1,14 @@
 {
   "foundations": [
-    { "page": "colour", "title": "Colour", "tagline": "Theme colour roles" },
-    { "page": "typography", "title": "Typography", "tagline": "Sizes and weights" },
-    { "page": "shape-and-spacing", "title": "Shape & spacing", "tagline": "Corners and heights" },
-    { "page": "elevation", "title": "Elevation", "tagline": "Raised and modal" },
-    { "page": "motion", "title": "Motion", "tagline": "Enter, move, react" }
+    { "page": "colour", "title": "Colour", "tagline": "Theme colour roles", "summary": "The theme's colour roles and what each is for" },
+    { "page": "typography", "title": "Typography", "tagline": "Sizes and weights", "summary": "Six type sizes, their line heights and weights" },
+    { "page": "shape-and-spacing", "title": "Shape & spacing", "tagline": "Corners and heights", "summary": "Corner radii, control heights, spacing steps and focus shapes" },
+    { "page": "elevation", "title": "Elevation", "tagline": "Raised and modal", "summary": "Flat, resting, raised and modal surfaces" },
+    { "page": "motion", "title": "Motion", "tagline": "Enter, move, react", "summary": "How things enter, move and respond, and reduced motion" }
   ],
   "patterns": [
-    { "page": "sign-in", "title": "Sign in", "tagline": "A form that checks" },
-    { "page": "settings", "title": "Settings", "tagline": "Rows and a confirm" },
-    { "page": "uploads", "title": "Uploads", "tagline": "Long-running work" }
+    { "page": "sign-in", "title": "Sign in", "tagline": "A form that checks", "summary": "A sign-in form that validates and reports errors" },
+    { "page": "settings", "title": "Settings", "tagline": "Rows and a confirm", "summary": "A settings screen of rows, switches and a confirmation" },
+    { "page": "uploads", "title": "Uploads", "tagline": "Long-running work", "summary": "Long-running work with progress, failure and retry" }
   ]
 }

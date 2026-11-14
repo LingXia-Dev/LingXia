@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Tabs',
   category: 'navigation',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'A row of tabs over one panel, as an underline or a segmented control',
   description:
     'Tabs switch one area between a few peers: sections of a page, or modes of one view. ' +

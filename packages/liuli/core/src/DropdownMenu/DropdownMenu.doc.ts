@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'DropdownMenu',
   category: 'overlays',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'Button that opens a short menu of actions',
   description:
     'DropdownMenu groups a few related actions behind one button: sort options, a "more" menu on a row, account actions. ' +

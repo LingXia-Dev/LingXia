@@ -2,8 +2,9 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'RadioGroup',
-  category: 'inputs',
+  category: 'selection',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'One choice from a short list, every option in view',
   description:
     'RadioGroup picks one option from two to six, all visible at once, as a plain list or as cards. ' +
@@ -66,7 +67,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'One of a few',
-    order: 4,
+    order: 2,
     page: {
       lead: 'Use radios to pick one option from a short list when seeing every option helps the choice.',
       hero: 'Delivery',

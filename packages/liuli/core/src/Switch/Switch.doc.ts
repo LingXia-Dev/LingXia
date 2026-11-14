@@ -2,8 +2,9 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'Switch',
-  category: 'inputs',
+  category: 'selection',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'A setting that turns on or off the moment it flips',
   description:
     'Switch turns one setting on or off and applies it at once, with no Save. ' +
@@ -69,7 +70,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'On or off, at once',
-    order: 5,
+    order: 3,
     page: {
       lead: 'Use a switch for a setting that takes effect the moment it flips. On a form that is sent later, use a checkbox.',
       hero: 'Basic',

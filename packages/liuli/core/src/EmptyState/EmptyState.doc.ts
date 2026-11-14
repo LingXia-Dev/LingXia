@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'EmptyState',
   category: 'feedback',
   status: 'preview',
+  since: '2026-11-13',
   summary: 'What a page or list shows when it has nothing in it yet, and the way forward',
   description:
     'EmptyState fills the space a list, page or panel would use when there is nothing to show: before the first item, after ' +

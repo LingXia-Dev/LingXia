@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Card',
   category: 'content',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'A surface that groups related content, or one pressable choice',
   description:
     'Card groups a heading, text and actions that belong together. ClickableCard, from the same import, makes the whole ' +

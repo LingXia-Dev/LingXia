@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Tooltip',
   category: 'overlays',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'An info button that opens a short note about what is beside it',
   description:
     'Tooltip explains something the screen cannot say in place: why a limit applies, what a term means. ' +

@@ -10,6 +10,7 @@
       ],
       "category": "content",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "A person or team as a circle: their picture, or their initials",
       "description": "Avatar shows who: a picture when there is one, initials when there is none or it fails to load. AvatarGroup overlaps several in a row and folds the rest into a count.",
       "keywords": [
@@ -178,6 +179,7 @@
       ],
       "category": "feedback",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "A short status or category label in a tinted pill",
       "description": "Badge marks the state or kind of the thing next to it: Draft, Paid, Overdue, New. It is text, not a control, and is read as it is shown. Five tones come soft; the four status tones also come solid for the one label that must stand out.",
       "keywords": [
@@ -395,6 +397,7 @@
       ],
       "category": "feedback",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "A message in the page about the page or the account, that stays until resolved",
       "description": "Banner tells people about something that affects what they are looking at: sync stopped, a card expiring, a notebook locked. It sits in the page's flow, above what it is about, with at most one action and an optional dismiss button. It is not a toast: it does not time out, and the app removes it when the condition ends or it is dismissed.",
       "keywords": [
@@ -602,6 +605,7 @@
       ],
       "category": "overlays",
       "status": "preview",
+      "since": "2026-11-13",
       "summary": "A modal panel on the bottom edge that drags between detents and off to close",
       "description": "BottomSheet holds a short task or a choice that belongs to the page under it: where to move a note, the comments on it. It is a dialog on the bottom edge, in reach of a thumb. A `fit` sheet is as tall as its content; an `expandable` one opens halfway and drags up to nearly the full height. Dragging it off screen closes it.",
       "keywords": [
@@ -803,6 +807,7 @@
       ],
       "category": "actions",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "Runs an action when pressed, with variants, sizes and a loading state",
       "description": "Button starts an action: save, send, delete, open a dialog. Its `label` is both its text and its accessible name, and it can wait on an async action with `clickAction`. To open a menu use DropdownMenu.",
       "keywords": [
@@ -1112,6 +1117,7 @@
       ],
       "category": "content",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "A surface that groups related content, or one pressable choice",
       "description": "Card groups a heading, text and actions that belong together. ClickableCard, from the same import, makes the whole card one button, for opening an item or choosing one of a few options; it is named by a short `label` and must not contain other controls. ClickableCardGroup makes cards with a `value` one radio group.",
       "keywords": [
@@ -1394,8 +1400,9 @@
       "exports": [
         "CheckboxInput"
       ],
-      "category": "inputs",
+      "category": "selection",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "One on/off choice with a label, help text and status",
       "description": "CheckboxInput is a single yes/no choice: opt-ins, terms, settings that take effect on save. The box, label and help text form one control, so a tap anywhere on them toggles it.",
       "keywords": [
@@ -1607,7 +1614,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "One on/off choice",
-        "order": 3,
+        "order": 1,
         "page": {
           "lead": "Use a checkbox for one on/off choice that takes effect when the form is sent.",
           "hero": "Basic",
@@ -1652,6 +1659,7 @@
       ],
       "category": "inputs",
       "status": "preview",
+      "since": "2026-11-13",
       "summary": "A labelled date field that opens a month picker",
       "description": "DateInput takes one day: a due date, a birthday, the day a trip starts. A tap opens the View's month picker, which marks today, greys days outside `min` and `max`, and starts weeks on the user's first weekday. It has Field's label, help text and status. The value is `YYYY-MM-DD`, or `''` while empty.",
       "keywords": [
@@ -1901,7 +1909,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "One day",
-        "order": 9,
+        "order": 3,
         "page": {
           "lead": "Use a date field to take one day, picked from a month.",
           "hero": "DueDate",
@@ -1948,6 +1956,7 @@
       ],
       "category": "content",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "A summary row that shows and hides the content under it",
       "description": "Details hides secondary content behind a row the person opens when they need it: an answer, advanced settings, the fine print. DetailsGroup stacks rows in one bordered list, and can keep a single row open as an accordion.",
       "keywords": [
@@ -2126,6 +2135,7 @@
       ],
       "category": "overlays",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "Modal panel over the page for a decision or a short task",
       "description": "Dialog interrupts the page to ask for a decision or a short piece of input, and keeps focus and assistive tech inside until it closes. It is controlled: `isOpen` shows it, `onOpenChange(false)` reports every close request.",
       "keywords": [
@@ -2330,6 +2340,7 @@
       ],
       "category": "overlays",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "Button that opens a short menu of actions",
       "description": "DropdownMenu groups a few related actions behind one button: sort options, a \"more\" menu on a row, account actions. Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu. DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one choice; both keep the menu open.",
       "keywords": [
@@ -2780,6 +2791,7 @@
       ],
       "category": "feedback",
       "status": "preview",
+      "since": "2026-11-13",
       "summary": "What a page or list shows when it has nothing in it yet, and the way forward",
       "description": "EmptyState fills the space a list, page or panel would use when there is nothing to show: before the first item, after a search finds nothing, or when content is out of reach. It is a title, an optional description and actions, and an optional picture the app supplies. It draws no fill, border or illustration of its own.",
       "keywords": [
@@ -2972,6 +2984,7 @@
       ],
       "category": "inputs",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "Label, help text and validation status around one form control",
       "description": "Field lays out the parts every form control shares: a label, the control, help text and a status message. Liuli form controls use it inside; wrap a raw primitive in it only when Liuli has no component for that control yet.",
       "keywords": [
@@ -3146,7 +3159,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "Label, help, status",
-        "order": 11,
+        "order": 6,
         "page": {
           "lead": "Use a field to give a control Liuli's label, help text and status when Liuli has no component for it yet.",
           "hero": "WrappedSelect",
@@ -3180,6 +3193,7 @@
       ],
       "category": "content",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "One row of a list: a label, a second line, and content at either end",
       "description": "Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that opens or selects something; without it the row is plain content and its `endContent` may hold its own control. Rows carry no border or fill; ItemList, from the same import, groups and divides them and reads them as a list.",
       "keywords": [
@@ -3432,6 +3446,7 @@
       ],
       "category": "overlays",
       "status": "preview",
+      "since": "2026-11-13",
       "summary": "A button that opens a panel of content above or below it, closed by a tap outside",
       "description": "Popover shows a small panel beside the button that opened it: view options, a share link, a short form. It is not modal; a tap outside, Escape or back closes it and focus goes back to the button. For a list of actions use DropdownMenu; for a note about something use Tooltip; for a decision use Dialog.",
       "keywords": [
@@ -3643,6 +3658,7 @@
       ],
       "category": "feedback",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "How much of a task is done, or a spinner while the amount is unknown",
       "description": "ProgressBar shows a task that runs for a while: an upload, an export, storage used. Without `value` it sweeps to say the task is running. Spinner, from the same import, is the small form for a wait inside a control or a list. Both are drawn from plain views and vectors, so they look the same on every OS.",
       "keywords": [
@@ -3876,8 +3892,9 @@
       "exports": [
         "RadioGroup"
       ],
-      "category": "inputs",
+      "category": "selection",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "One choice from a short list, every option in view",
       "description": "RadioGroup picks one option from two to six, all visible at once, as a plain list or as cards. It is a Field: the label names the group, and help text and status describe it.",
       "keywords": [
@@ -4112,7 +4129,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "One of a few",
-        "order": 4,
+        "order": 2,
         "page": {
           "lead": "Use radios to pick one option from a short list when seeing every option helps the choice.",
           "hero": "Delivery",
@@ -4165,8 +4182,9 @@
       "exports": [
         "SegmentedControl"
       ],
-      "category": "inputs",
+      "category": "selection",
       "status": "preview",
+      "since": "2026-11-13",
       "summary": "One value from a few, as a row of segments with a thumb on the chosen one",
       "description": "SegmentedControl sets one value from two to five short choices that fit a row: a unit, a theme, a sort order. It is a radio group drawn as equal segments, with a raised thumb that slides to the chosen one. It sets a value; to switch what a panel shows, use Tabs.",
       "keywords": [
@@ -4327,7 +4345,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "One of a few",
-        "order": 8,
+        "order": 5,
         "page": {
           "lead": "Use a segmented control to set one value from a few short choices, applied at once.",
           "hero": "Units",
@@ -4366,8 +4384,9 @@
       "exports": [
         "Select"
       ],
-      "category": "inputs",
+      "category": "selection",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "One choice from a list that opens on demand",
       "description": "Select picks one option from a list too long to show in place: a country, a role, a sort order. It is a Field around the select primitive, which opens the View's own list: under the box with a mouse or trackpad, as a sheet with Cancel and Done on touch.",
       "keywords": [
@@ -4581,7 +4600,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "One of many",
-        "order": 2,
+        "order": 4,
         "page": {
           "lead": "Use a select when there are too many options to show at once, or the choice matters less than the space.",
           "hero": "Country",
@@ -4627,6 +4646,7 @@
       ],
       "category": "feedback",
       "status": "preview",
+      "since": "2026-11-13",
       "summary": "Quiet shapes that stand in for content while it loads",
       "description": "Skeleton draws faint lines, blocks and circles in the shape of content that is on its way, so the page keeps its layout and does not jump when the content lands. SkeletonGroup, from the same import, wraps the shapes for one piece of content and tells assistive tech what is loading. A soft glint crosses each shape; it stops under reduced motion.",
       "keywords": [
@@ -4765,6 +4785,7 @@
       ],
       "category": "inputs",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "A value picked along a track, with its label and the value in words",
       "description": "Slider picks one number from a range: a volume, a size, a position in a recording. A label row names it and can show the value in words the app writes, which is also what a screen reader says. A second, quieter range can show how much of a recording has loaded.",
       "keywords": [
@@ -5010,7 +5031,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "A value on a track",
-        "order": 6,
+        "order": 5,
         "page": {
           "lead": "Use a slider when the value is easier to feel than to type: a volume, a size, a place in a recording.",
           "hero": "Volume",
@@ -5055,8 +5076,9 @@
       "exports": [
         "Switch"
       ],
-      "category": "inputs",
+      "category": "selection",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "A setting that turns on or off the moment it flips",
       "description": "Switch turns one setting on or off and applies it at once, with no Save. The label, its help text and the track are one press target; the help text is read as the description.",
       "keywords": [
@@ -5261,7 +5283,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "On or off, at once",
-        "order": 5,
+        "order": 3,
         "page": {
           "lead": "Use a switch for a setting that takes effect the moment it flips. On a form that is sent later, use a checkbox.",
           "hero": "Basic",
@@ -5306,6 +5328,7 @@
       ],
       "category": "navigation",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "A row of tabs over one panel, as an underline or a segmented control",
       "description": "Tabs switch one area between a few peers: sections of a page, or modes of one view. The tabs share the row equally, and a single indicator slides to the chosen one.",
       "keywords": [
@@ -5535,6 +5558,7 @@
       ],
       "category": "inputs",
       "status": "preview",
+      "since": "2026-11-13",
       "summary": "Multi-line text field that grows with its text, with label, help text and status",
       "description": "TextArea is a labelled editor for notes, comments, replies and descriptions. It shows `rows` lines, grows with the text up to `maxRows`, then scrolls. Bind it to a `useLocal` cell, or pass `value` and `onChange` when the app owns the text.",
       "keywords": [
@@ -5826,7 +5850,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "Several lines",
-        "order": 7,
+        "order": 2,
         "page": {
           "lead": "Use a text area when the answer may run to several lines: a note, a comment, a reply.",
           "hero": "Bound",
@@ -5877,6 +5901,7 @@
       ],
       "category": "inputs",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "Single-line text field with label, help text, status and an optional clear button",
       "description": "TextInput is a labelled one-line editor for names, emails, codes, amounts and searches. Bind it to a `useLocal` cell for View-local drafts, or pass `value` and `onChange` when the app owns the text.",
       "keywords": [
@@ -6242,6 +6267,7 @@
       ],
       "category": "inputs",
       "status": "preview",
+      "since": "2026-11-13",
       "summary": "A labelled time field that opens an hour and minute picker",
       "description": "TimeInput takes a time of day: a reminder, an alarm, the start of quiet hours. A tap opens the View's time picker, in the user's 12- or 24-hour clock; `step` sets the minutes offered. It has Field's label, help text and status. The value is `HH:MM` (or `HH:MM:SS`), or `''` while empty.",
       "keywords": [
@@ -6499,7 +6525,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "A time of day",
-        "order": 10,
+        "order": 4,
         "page": {
           "lead": "Use a time field to take a time of day, in the user's own clock.",
           "hero": "Reminder",
@@ -6547,6 +6573,7 @@
       ],
       "category": "feedback",
       "status": "preview",
+      "since": "2026-11-13",
       "summary": "A short message about something that just happened, over the bottom of the screen",
       "description": "A toast confirms an action that worked away from where it was pressed, or offers to undo it: a note archived, a link copied. A page holds one `ToastRegion`; `useToast()` shows a toast from anywhere inside it. One shows at a time and the rest wait in order; a toast with the same `id` replaces the one queued, so a running count updates in place. One without an action closes by itself after `duration`; one with an action stays until it is closed.",
       "keywords": [
@@ -6726,6 +6753,7 @@
       ],
       "category": "actions",
       "status": "preview",
+      "since": "2026-11-13",
       "summary": "A button that turns one option on or off and stays down while on",
       "description": "ToggleButton turns an option on or off where it applies, such as a filter over a list or a view option beside what it changes. It keeps its label in both states and reports pressed; while on it takes the soft accent fill. For a setting in a form use Switch; to choose one of a few values use SegmentedControl.",
       "keywords": [
@@ -6940,6 +6968,7 @@
       ],
       "category": "overlays",
       "status": "preview",
+      "since": "2026-11-12",
       "summary": "An info button that opens a short note about what is beside it",
       "description": "Tooltip explains something the screen cannot say in place: why a limit applies, what a term means. Today it opens on a press (a tap, Enter or Space), not on hover or focus, so it works the same with touch, mouse and keyboard.",
       "keywords": [
@@ -7150,8 +7179,9 @@
       "exports": [
         "VideoControls"
       ],
-      "category": "content",
+      "category": "media",
       "status": "preview",
+      "since": "2026-11-13",
       "summary": "Play, seek, mute, speed, quality and full screen for a useVideo player",
       "description": "VideoControls drives a `useVideo` player: over the picture as a quiet bar that hides on touch while it plays, or as a row under it. Full screen is a dialog over the page that shows the same player again with these controls. Prefer `VideoPlayer`, which pairs the picture and the controls.",
       "keywords": [
@@ -7438,7 +7468,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "Drive a video",
-        "order": 6,
+        "order": 2,
         "page": {
           "lead": "Use VideoControls beside your own <video> when VideoPlayer does not fit the layout.",
           "stage": "bare",
@@ -7458,8 +7488,9 @@
       "exports": [
         "VideoPlayer"
       ],
-      "category": "content",
+      "category": "media",
       "status": "preview",
+      "since": "2026-11-13",
       "summary": "A video with its controls, over the picture or under it, and full screen",
       "description": "VideoPlayer shows a `useVideo` player with VideoControls: play, seek, mute, speed and quality, and full screen as a dialog over the page. The page keeps the player, so Logic and the page drive the same video.",
       "keywords": [
@@ -7595,7 +7626,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "Watch a video",
-        "order": 5,
+        "order": 1,
         "page": {
           "lead": "Use VideoPlayer to show a video with standard controls.",
           "stage": "bare",

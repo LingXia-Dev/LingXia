@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'TimeInput',
   category: 'inputs',
   status: 'preview',
+  since: '2026-11-13',
   summary: 'A labelled time field that opens an hour and minute picker',
   description:
     'TimeInput takes a time of day: a reminder, an alarm, the start of quiet hours. A tap opens the View\'s time picker, ' +
@@ -65,7 +66,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'A time of day',
-    order: 10,
+    order: 4,
     page: {
       lead: 'Use a time field to take a time of day, in the user\'s own clock.',
       hero: 'Reminder',

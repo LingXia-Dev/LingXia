@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Avatar',
   category: 'content',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'A person or team as a circle: their picture, or their initials',
   description:
     'Avatar shows who: a picture when there is one, initials when there is none or it fails to load. ' +

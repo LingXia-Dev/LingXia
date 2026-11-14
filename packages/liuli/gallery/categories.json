@@ -1,0 +1,12 @@
+[
+  { "id": "foundations", "title": "Foundations", "description": "The colour roles, type, shape, elevation and motion every component draws from." },
+  { "id": "actions", "title": "Actions", "description": "Buttons that start something, or turn a setting on and off." },
+  { "id": "inputs", "title": "Inputs", "description": "Fields a person types into or sets: text, dates, times and amounts." },
+  { "id": "selection", "title": "Selection", "description": "Controls for choosing among options: one, several, or on and off." },
+  { "id": "navigation", "title": "Navigation", "description": "Ways to move between views on the same page." },
+  { "id": "feedback", "title": "Feedback", "description": "Status, progress and confirmation, from a badge to a toast." },
+  { "id": "overlays", "title": "Overlays", "description": "Surfaces that float over the page: dialogs, sheets, menus and popovers." },
+  { "id": "content", "title": "Content", "description": "Containers and rows that hold what the app shows." },
+  { "id": "media", "title": "Media", "description": "Video and its controls." },
+  { "id": "patterns", "title": "Patterns", "description": "Whole screens built from the components: forms, settings and long-running work." }
+]

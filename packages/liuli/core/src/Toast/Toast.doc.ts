@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Toast',
   category: 'feedback',
   status: 'preview',
+  since: '2026-11-13',
   summary: 'A short message about something that just happened, over the bottom of the screen',
   description:
     'A toast confirms an action that worked away from where it was pressed, or offers to undo it: a note archived, a link ' +

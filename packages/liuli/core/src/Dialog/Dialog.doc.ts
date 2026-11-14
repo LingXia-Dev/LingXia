@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Dialog',
   category: 'overlays',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'Modal panel over the page for a decision or a short task',
   description:
     'Dialog interrupts the page to ask for a decision or a short piece of input, and keeps focus and assistive tech inside until it closes. ' +

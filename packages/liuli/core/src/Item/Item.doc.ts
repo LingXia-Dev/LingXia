@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Item',
   category: 'content',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'One row of a list: a label, a second line, and content at either end',
   description:
     'Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that ' +

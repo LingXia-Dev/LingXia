@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'BottomSheet',
   category: 'overlays',
   status: 'preview',
+  since: '2026-11-13',
   summary: 'A modal panel on the bottom edge that drags between detents and off to close',
   description:
     'BottomSheet holds a short task or a choice that belongs to the page under it: where to move a note, the comments on ' +

@@ -5,24 +5,50 @@ import { expect, spec } from '@lingxia/test';
 
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
-// Every tile on the home page, in its order; core's gallery.test.mjs keeps this equal to the manifest.
-const pages = [
-  'colour', 'typography', 'shape-and-spacing', 'elevation', 'motion',
-  'button', 'toggle-button', 'tabs', 'text-input', 'select', 'checkbox-input', 'radio-group', 'switch', 'slider', 'text-area', 'segmented-control', 'date-input', 'time-input', 'field',
-  'badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast', 'dialog', 'dropdown-menu', 'tooltip', 'bottom-sheet', 'popover', 'card', 'item', 'details', 'avatar', 'video-player', 'video-controls',
-  'sign-in', 'settings', 'uploads',
-];
+// Home's category cards and each category page's tiles, in order; core's gallery.test.mjs keeps these
+// equal to the gallery.
+const categories: Record<string, string[]> = {
+  'category-foundations': ['colour', 'typography', 'shape-and-spacing', 'elevation', 'motion'],
+  'category-actions': ['button', 'toggle-button'],
+  'category-inputs': ['text-input', 'text-area', 'date-input', 'time-input', 'slider', 'field'],
+  'category-selection': ['checkbox-input', 'radio-group', 'switch', 'select', 'segmented-control'],
+  'category-navigation': ['tabs'],
+  'category-feedback': ['badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast'],
+  'category-overlays': ['dialog', 'dropdown-menu', 'tooltip', 'bottom-sheet', 'popover'],
+  'category-content': ['card', 'item', 'details', 'avatar'],
+  'category-media': ['video-player', 'video-controls'],
+  'category-patterns': ['sign-in', 'settings', 'uploads'],
+};
 
-spec('gallery: the home page opens every page and comes back', { start: { page: 'home' }, timeout: 240_000 }, async (t) => {
+spec('gallery: home opens every category, and each category every page', { start: { page: 'home' }, timeout: 360_000 }, async (t) => {
   const view = t.app.view;
-  for (const page of pages) {
-    const tile = view.testId(`open-${page}`);
-    await tile.click();
-    await expect(tile).toHaveCount(0);
-    await t.attach(`${page}.png`, await view.screenshot());
+  for (const [category, pages] of Object.entries(categories)) {
+    const card = view.testId(`open-${category}`);
+    await card.click();
+    await expect(card).toHaveCount(0);
+    for (const page of pages) {
+      const tile = view.testId(`open-${page}`);
+      await tile.click();
+      await expect(tile).toHaveCount(0);
+      await t.attach(`${page}.png`, await view.screenshot());
+      await t.app.nav.back();
+      await expect(view.testId(`open-${page}`)).toBeAttached();
+    }
     await t.app.nav.back();
-    await expect(view.testId(`open-${page}`)).toBeAttached();
+    await expect(view.testId(`open-${category}`)).toBeAttached();
   }
+});
+
+spec('gallery: home search narrows to matching components and opens one', { start: { page: 'home' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  await view.testId('home-search').fill('date');
+  await expect(view.testId('result-date-input')).toBeAttached();
+  await expect(view.testId('open-category-inputs')).toHaveCount(0);
+  await view.testId('home-search').fill('zzzz');
+  await expect(view.testId('home-no-results')).toBeAttached();
+  await view.testId('home-search').fill('toast');
+  await view.testId('result-toast').click();
+  await expect(view.testId('result-toast')).toHaveCount(0);
 });
 
 spec('button: an async action shows busy, then settles', { start: { page: 'button' }, timeout: 60_000 }, async (t) => {

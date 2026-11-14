@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Popover',
   category: 'overlays',
   status: 'preview',
+  since: '2026-11-13',
   summary: 'A button that opens a panel of content above or below it, closed by a tap outside',
   description:
     'Popover shows a small panel beside the button that opened it: view options, a share link, a short form. It is not ' +

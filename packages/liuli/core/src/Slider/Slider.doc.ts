@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Slider',
   category: 'inputs',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'A value picked along a track, with its label and the value in words',
   description:
     'Slider picks one number from a range: a volume, a size, a position in a recording. ' +
@@ -71,7 +72,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'A value on a track',
-    order: 6,
+    order: 5,
     page: {
       lead: 'Use a slider when the value is easier to feel than to type: a volume, a size, a place in a recording.',
       hero: 'Volume',

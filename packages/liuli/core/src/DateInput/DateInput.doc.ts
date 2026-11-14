@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'DateInput',
   category: 'inputs',
   status: 'preview',
+  since: '2026-11-13',
   summary: 'A labelled date field that opens a month picker',
   description:
     'DateInput takes one day: a due date, a birthday, the day a trip starts. A tap opens the View\'s month picker, which ' +
@@ -65,7 +66,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'One day',
-    order: 9,
+    order: 3,
     page: {
       lead: 'Use a date field to take one day, picked from a month.',
       hero: 'DueDate',

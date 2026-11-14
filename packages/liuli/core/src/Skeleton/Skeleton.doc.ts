@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Skeleton',
   category: 'feedback',
   status: 'preview',
+  since: '2026-11-13',
   summary: 'Quiet shapes that stand in for content while it loads',
   description:
     'Skeleton draws faint lines, blocks and circles in the shape of content that is on its way, so the page keeps its layout ' +

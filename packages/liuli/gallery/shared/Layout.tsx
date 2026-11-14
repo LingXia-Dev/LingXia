@@ -58,15 +58,13 @@ export function Lead({ text, bare = false, children }: { text: string; bare?: bo
 /** The home page's opening block. */
 export function Masthead({ version, status }: { version: string; status: string }) {
   return (
-    <view className="gap-1.5">
+    <view className="gap-1">
       <view className="flex-row items-baseline gap-2">
         <text className="text-display font-semibold tracking-tight text-text">Liuli</text>
         <text className="text-title text-muted">琉璃</text>
+        <text className="ms-auto text-footnote text-faint">{`${version} · ${status}`}</text>
       </view>
-      <text className="text-body text-muted">
-        LingXia's design system for GPU pages: components drawn from theme roles, the same on every platform.
-      </text>
-      <text className="text-footnote text-faint">{`Version ${version} · ${status}`}</text>
+      <text className="text-body text-muted">LingXia's design system for GPU pages.</text>
     </view>
   );
 }

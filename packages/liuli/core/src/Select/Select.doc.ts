@@ -2,8 +2,9 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'Select',
-  category: 'inputs',
+  category: 'selection',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'One choice from a list that opens on demand',
   description:
     'Select picks one option from a list too long to show in place: a country, a role, a sort order. ' +
@@ -59,7 +60,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'One of many',
-    order: 2,
+    order: 4,
     page: {
       lead: 'Use a select when there are too many options to show at once, or the choice matters less than the space.',
       hero: 'Country',

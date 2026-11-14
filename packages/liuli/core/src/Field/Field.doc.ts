@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Field',
   category: 'inputs',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'Label, help text and validation status around one form control',
   description:
     'Field lays out the parts every form control shares: a label, the control, help text and a status message. ' +
@@ -59,7 +60,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'Label, help, status',
-    order: 11,
+    order: 6,
     page: {
       lead: 'Use a field to give a control Liuli\'s label, help text and status when Liuli has no component for it yet.',
       hero: 'WrappedSelect',

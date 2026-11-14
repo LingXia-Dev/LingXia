@@ -2,8 +2,9 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'CheckboxInput',
-  category: 'inputs',
+  category: 'selection',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'One on/off choice with a label, help text and status',
   description:
     'CheckboxInput is a single yes/no choice: opt-ins, terms, settings that take effect on save. ' +
@@ -67,7 +68,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'One on/off choice',
-    order: 3,
+    order: 1,
     page: {
       lead: 'Use a checkbox for one on/off choice that takes effect when the form is sent.',
       hero: 'Basic',

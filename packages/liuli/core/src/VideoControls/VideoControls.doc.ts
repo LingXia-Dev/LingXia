@@ -2,8 +2,9 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'VideoControls',
-  category: 'content',
+  category: 'media',
   status: 'preview',
+  since: '2026-11-13',
   summary: 'Play, seek, mute, speed, quality and full screen for a useVideo player',
   description:
     'VideoControls drives a `useVideo` player: over the picture as a quiet bar that hides on touch while it plays, or as a row under it. ' +
@@ -78,7 +79,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'Drive a video',
-    order: 6,
+    order: 2,
     page: {
       lead: 'Use VideoControls beside your own <video> when VideoPlayer does not fit the layout.',
       stage: 'bare',

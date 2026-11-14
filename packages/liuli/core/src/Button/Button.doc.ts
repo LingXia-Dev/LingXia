@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Button',
   category: 'actions',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'Runs an action when pressed, with variants, sizes and a loading state',
   description:
     'Button starts an action: save, send, delete, open a dialog. Its `label` is both its text and its accessible name, ' +

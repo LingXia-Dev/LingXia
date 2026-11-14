@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'TextInput',
   category: 'inputs',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'Single-line text field with label, help text, status and an optional clear button',
   description:
     'TextInput is a labelled one-line editor for names, emails, codes, amounts and searches. ' +

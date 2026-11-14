@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'Details',
   category: 'content',
   status: 'preview',
+  since: '2026-11-12',
   summary: 'A summary row that shows and hides the content under it',
   description:
     'Details hides secondary content behind a row the person opens when they need it: an answer, advanced settings, the fine print. ' +

@@ -4,6 +4,7 @@ export const doc: ComponentDoc = {
   name: 'TextArea',
   category: 'inputs',
   status: 'preview',
+  since: '2026-11-13',
   summary: 'Multi-line text field that grows with its text, with label, help text and status',
   description:
     'TextArea is a labelled editor for notes, comments, replies and descriptions. It shows `rows` lines, grows with the text ' +
@@ -71,7 +72,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'Several lines',
-    order: 7,
+    order: 2,
     page: {
       lead: 'Use a text area when the answer may run to several lines: a note, a comment, a reply.',
       hero: 'Bound',

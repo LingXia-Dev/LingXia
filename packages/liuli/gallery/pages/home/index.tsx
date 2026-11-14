@@ -1,378 +1,96 @@
-// Generated from the doc file by scripts/generate.mjs; do not edit.
-import type { View } from '@lingxia/view';
-import { Specimen as AvatarSpecimen } from '../../../core/src/Avatar/Avatar.examples';
-import { Specimen as BadgeSpecimen } from '../../../core/src/Badge/Badge.examples';
-import { Specimen as BannerSpecimen } from '../../../core/src/Banner/Banner.examples';
-import { Specimen as BottomSheetSpecimen } from '../../../core/src/BottomSheet/BottomSheet.examples';
-import { Specimen as ButtonSpecimen } from '../../../core/src/Button/Button.examples';
-import { Specimen as CardSpecimen } from '../../../core/src/Card/Card.examples';
-import { Specimen as CheckboxInputSpecimen } from '../../../core/src/CheckboxInput/CheckboxInput.examples';
-import { Specimen as DateInputSpecimen } from '../../../core/src/DateInput/DateInput.examples';
-import { Specimen as DetailsSpecimen } from '../../../core/src/Details/Details.examples';
-import { Specimen as DialogSpecimen } from '../../../core/src/Dialog/Dialog.examples';
-import { Specimen as DropdownMenuSpecimen } from '../../../core/src/DropdownMenu/DropdownMenu.examples';
-import { Specimen as EmptyStateSpecimen } from '../../../core/src/EmptyState/EmptyState.examples';
-import { Specimen as FieldSpecimen } from '../../../core/src/Field/Field.examples';
-import { Specimen as ItemSpecimen } from '../../../core/src/Item/Item.examples';
-import { Specimen as PopoverSpecimen } from '../../../core/src/Popover/Popover.examples';
-import { Specimen as ProgressBarSpecimen } from '../../../core/src/ProgressBar/ProgressBar.examples';
-import { Specimen as RadioGroupSpecimen } from '../../../core/src/RadioGroup/RadioGroup.examples';
-import { Specimen as SegmentedControlSpecimen } from '../../../core/src/SegmentedControl/SegmentedControl.examples';
-import { Specimen as SelectSpecimen } from '../../../core/src/Select/Select.examples';
-import { Specimen as SkeletonSpecimen } from '../../../core/src/Skeleton/Skeleton.examples';
-import { Specimen as SliderSpecimen } from '../../../core/src/Slider/Slider.examples';
-import { Specimen as SwitchSpecimen } from '../../../core/src/Switch/Switch.examples';
-import { Specimen as TabsSpecimen } from '../../../core/src/Tabs/Tabs.examples';
-import { Specimen as TextAreaSpecimen } from '../../../core/src/TextArea/TextArea.examples';
-import { Specimen as TextInputSpecimen } from '../../../core/src/TextInput/TextInput.examples';
-import { Specimen as TimeInputSpecimen } from '../../../core/src/TimeInput/TimeInput.examples';
-import { Specimen as ToastSpecimen } from '../../../core/src/Toast/Toast.examples';
-import { Specimen as ToggleButtonSpecimen } from '../../../core/src/ToggleButton/ToggleButton.examples';
-import { Specimen as TooltipSpecimen } from '../../../core/src/Tooltip/Tooltip.examples';
-import { Specimen as VideoControlsSpecimen } from '../../../core/src/VideoControls/VideoControls.examples';
-import { Specimen as VideoPlayerSpecimen } from '../../../core/src/VideoPlayer/VideoPlayer.examples';
-import { Category, GalleryPage, Masthead, Tile } from '../../shared/Layout';
-import { ColourSpecimen, TypographySpecimen, ShapeAndSpacingSpecimen, ElevationSpecimen, MotionSpecimen, SignInSpecimen, SettingsSpecimen, UploadsSpecimen } from '../../shared/Specimens';
+import { useLocal, type Child, type View } from '@lingxia/view';
+import { EmptyState } from '@liulidesign/core/EmptyState';
+import { Item, ItemList } from '@liulidesign/core/Item';
+import { TextInput } from '@liulidesign/core/TextInput';
+import { entries, galleryCategories, newest, packageStatus, version, type GalleryEntry } from '../../shared/catalog.generated';
+import { Category, GalleryPage, Masthead, PageSection, Tile } from '../../shared/Layout';
+import * as previews from '../../shared/Previews';
+
+// An index, not a wall of tiles: search, one card per category, then what is new. Everything it
+// lists comes from shared/catalog.generated.ts, so a new component needs no edit here.
 
 type Actions = { open(target: { page: string }): Promise<void> };
 
+const titles = new Map(galleryCategories.map(category => [category.id, category.title]));
+const pascal = (id: string) => id.replace(/(^|-)([a-z])/g, (_, __, letter: string) => letter.toUpperCase());
+const preview = (id: string): Child => {
+  const Preview = (previews as Record<string, (() => Child) | undefined>)[`${pascal(id)}Preview`];
+  return Preview ? Preview() : null;
+};
+const countLine = (id: string, count: number) =>
+  id === 'foundations' ? `${count} guides` : id === 'patterns' ? `${count} patterns` : `${count} ${count === 1 ? 'component' : 'components'}`;
+
+/** Whole words of the query, each found in the name, the summary or a keyword. */
+function matches(query: string): GalleryEntry[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  return entries.filter(entry => {
+    const haystack = [entry.name, entry.summary, ...entry.keywords, titles.get(entry.category) ?? ''].join(' ').toLowerCase();
+    return words.every(word => haystack.includes(word));
+  });
+}
+
 export function render({ actions }: View<Actions>) {
+  const query = useLocal('query', '');
+  const found = query.value.trim() ? matches(query.value) : null;
+  const open = (page: string) => () => actions.open({ page });
   return (
     <GalleryPage>
-      <Masthead version={"0.1.0"} status={"Preview"} />
-      <Category title={"Foundations"}>
-        <Tile
-          name={"Colour"}
-          tagline={"Theme colour roles"}
-          onOpen={() => actions.open({ page: "colour" })}
-          testId={"open-colour"}
-        >
-          <ColourSpecimen />
-        </Tile>
-        <Tile
-          name={"Typography"}
-          tagline={"Sizes and weights"}
-          onOpen={() => actions.open({ page: "typography" })}
-          testId={"open-typography"}
-        >
-          <TypographySpecimen />
-        </Tile>
-        <Tile
-          name={"Shape & spacing"}
-          tagline={"Corners and heights"}
-          onOpen={() => actions.open({ page: "shape-and-spacing" })}
-          testId={"open-shape-and-spacing"}
-        >
-          <ShapeAndSpacingSpecimen />
-        </Tile>
-        <Tile
-          name={"Elevation"}
-          tagline={"Raised and modal"}
-          onOpen={() => actions.open({ page: "elevation" })}
-          testId={"open-elevation"}
-        >
-          <ElevationSpecimen />
-        </Tile>
-        <Tile
-          name={"Motion"}
-          tagline={"Enter, move, react"}
-          isWide
-          onOpen={() => actions.open({ page: "motion" })}
-          testId={"open-motion"}
-        >
-          <MotionSpecimen />
-        </Tile>
-      </Category>
-      <Category title={"Actions"}>
-        <Tile
-          name={"Button"}
-          tagline={"Starts an action"}
-          onOpen={() => actions.open({ page: "button" })}
-          testId={"open-button"}
-        >
-          <ButtonSpecimen />
-        </Tile>
-        <Tile
-          name={"ToggleButton"}
-          tagline={"Stays down while on"}
-          onOpen={() => actions.open({ page: "toggle-button" })}
-          testId={"open-toggle-button"}
-        >
-          <ToggleButtonSpecimen />
-        </Tile>
-      </Category>
-      <Category title={"Navigation"}>
-        <Tile
-          name={"Tabs"}
-          tagline={"A few peer views"}
-          isWide
-          onOpen={() => actions.open({ page: "tabs" })}
-          testId={"open-tabs"}
-        >
-          <TabsSpecimen />
-        </Tile>
-      </Category>
-      <Category title={"Inputs"}>
-        <Tile
-          name={"TextInput"}
-          tagline={"One line of text"}
-          onOpen={() => actions.open({ page: "text-input" })}
-          testId={"open-text-input"}
-        >
-          <TextInputSpecimen />
-        </Tile>
-        <Tile
-          name={"Select"}
-          tagline={"One of many"}
-          onOpen={() => actions.open({ page: "select" })}
-          testId={"open-select"}
-        >
-          <SelectSpecimen />
-        </Tile>
-        <Tile
-          name={"CheckboxInput"}
-          tagline={"One on/off choice"}
-          onOpen={() => actions.open({ page: "checkbox-input" })}
-          testId={"open-checkbox-input"}
-        >
-          <CheckboxInputSpecimen />
-        </Tile>
-        <Tile
-          name={"RadioGroup"}
-          tagline={"One of a few"}
-          onOpen={() => actions.open({ page: "radio-group" })}
-          testId={"open-radio-group"}
-        >
-          <RadioGroupSpecimen />
-        </Tile>
-        <Tile
-          name={"Switch"}
-          tagline={"On or off, at once"}
-          onOpen={() => actions.open({ page: "switch" })}
-          testId={"open-switch"}
-        >
-          <SwitchSpecimen />
-        </Tile>
-        <Tile
-          name={"Slider"}
-          tagline={"A value on a track"}
-          onOpen={() => actions.open({ page: "slider" })}
-          testId={"open-slider"}
-        >
-          <SliderSpecimen />
-        </Tile>
-        <Tile
-          name={"TextArea"}
-          tagline={"Several lines"}
-          onOpen={() => actions.open({ page: "text-area" })}
-          testId={"open-text-area"}
-        >
-          <TextAreaSpecimen />
-        </Tile>
-        <Tile
-          name={"SegmentedControl"}
-          tagline={"One of a few"}
-          onOpen={() => actions.open({ page: "segmented-control" })}
-          testId={"open-segmented-control"}
-        >
-          <SegmentedControlSpecimen />
-        </Tile>
-        <Tile
-          name={"DateInput"}
-          tagline={"One day"}
-          onOpen={() => actions.open({ page: "date-input" })}
-          testId={"open-date-input"}
-        >
-          <DateInputSpecimen />
-        </Tile>
-        <Tile
-          name={"TimeInput"}
-          tagline={"A time of day"}
-          onOpen={() => actions.open({ page: "time-input" })}
-          testId={"open-time-input"}
-        >
-          <TimeInputSpecimen />
-        </Tile>
-        <Tile
-          name={"Field"}
-          tagline={"Label, help, status"}
-          isWide
-          onOpen={() => actions.open({ page: "field" })}
-          testId={"open-field"}
-        >
-          <FieldSpecimen />
-        </Tile>
-      </Category>
-      <Category title={"Feedback"}>
-        <Tile
-          name={"Badge"}
-          tagline={"A status label"}
-          onOpen={() => actions.open({ page: "badge" })}
-          testId={"open-badge"}
-        >
-          <BadgeSpecimen />
-        </Tile>
-        <Tile
-          name={"ProgressBar"}
-          tagline={"Progress, or a wait"}
-          onOpen={() => actions.open({ page: "progress-bar" })}
-          testId={"open-progress-bar"}
-        >
-          <ProgressBarSpecimen />
-        </Tile>
-        <Tile
-          name={"Banner"}
-          tagline={"Stays until fixed"}
-          onOpen={() => actions.open({ page: "banner" })}
-          testId={"open-banner"}
-        >
-          <BannerSpecimen />
-        </Tile>
-        <Tile
-          name={"EmptyState"}
-          tagline={"Nothing here yet"}
-          onOpen={() => actions.open({ page: "empty-state" })}
-          testId={"open-empty-state"}
-        >
-          <EmptyStateSpecimen />
-        </Tile>
-        <Tile
-          name={"Skeleton"}
-          tagline={"Content on its way"}
-          onOpen={() => actions.open({ page: "skeleton" })}
-          testId={"open-skeleton"}
-        >
-          <SkeletonSpecimen />
-        </Tile>
-        <Tile
-          name={"Toast"}
-          tagline={"Just happened"}
-          onOpen={() => actions.open({ page: "toast" })}
-          testId={"open-toast"}
-        >
-          <ToastSpecimen />
-        </Tile>
-      </Category>
-      <Category title={"Overlays"}>
-        <Tile
-          name={"Dialog"}
-          tagline={"A decision, on top"}
-          onOpen={() => actions.open({ page: "dialog" })}
-          testId={"open-dialog"}
-        >
-          <DialogSpecimen />
-        </Tile>
-        <Tile
-          name={"DropdownMenu"}
-          tagline={"A menu of actions"}
-          onOpen={() => actions.open({ page: "dropdown-menu" })}
-          testId={"open-dropdown-menu"}
-        >
-          <DropdownMenuSpecimen />
-        </Tile>
-        <Tile
-          name={"Tooltip"}
-          tagline={"A note on demand"}
-          onOpen={() => actions.open({ page: "tooltip" })}
-          testId={"open-tooltip"}
-        >
-          <TooltipSpecimen />
-        </Tile>
-        <Tile
-          name={"BottomSheet"}
-          tagline={"In reach of a thumb"}
-          onOpen={() => actions.open({ page: "bottom-sheet" })}
-          testId={"open-bottom-sheet"}
-        >
-          <BottomSheetSpecimen />
-        </Tile>
-        <Tile
-          name={"Popover"}
-          tagline={"A panel beside it"}
-          isWide
-          onOpen={() => actions.open({ page: "popover" })}
-          testId={"open-popover"}
-        >
-          <PopoverSpecimen />
-        </Tile>
-      </Category>
-      <Category title={"Content"}>
-        <Tile
-          name={"Card"}
-          tagline={"Related content"}
-          onOpen={() => actions.open({ page: "card" })}
-          testId={"open-card"}
-        >
-          <CardSpecimen />
-        </Tile>
-        <Tile
-          name={"Item"}
-          tagline={"One row of a list"}
-          onOpen={() => actions.open({ page: "item" })}
-          testId={"open-item"}
-        >
-          <ItemSpecimen />
-        </Tile>
-        <Tile
-          name={"Details"}
-          tagline={"More, behind a row"}
-          onOpen={() => actions.open({ page: "details" })}
-          testId={"open-details"}
-        >
-          <DetailsSpecimen />
-        </Tile>
-        <Tile
-          name={"Avatar"}
-          tagline={"Who, at a glance"}
-          onOpen={() => actions.open({ page: "avatar" })}
-          testId={"open-avatar"}
-        >
-          <AvatarSpecimen />
-        </Tile>
-        <Tile
-          name={"VideoPlayer"}
-          tagline={"Watch a video"}
-          onOpen={() => actions.open({ page: "video-player" })}
-          testId={"open-video-player"}
-        >
-          <VideoPlayerSpecimen />
-        </Tile>
-        <Tile
-          name={"VideoControls"}
-          tagline={"Drive a video"}
-          onOpen={() => actions.open({ page: "video-controls" })}
-          testId={"open-video-controls"}
-        >
-          <VideoControlsSpecimen />
-        </Tile>
-      </Category>
-      <Category title={"Patterns"}>
-        <Tile
-          name={"Sign in"}
-          tagline={"A form that checks"}
-          onOpen={() => actions.open({ page: "sign-in" })}
-          testId={"open-sign-in"}
-        >
-          <SignInSpecimen />
-        </Tile>
-        <Tile
-          name={"Settings"}
-          tagline={"Rows and a confirm"}
-          onOpen={() => actions.open({ page: "settings" })}
-          testId={"open-settings"}
-        >
-          <SettingsSpecimen />
-        </Tile>
-        <Tile
-          name={"Uploads"}
-          tagline={"Long-running work"}
-          isWide
-          onOpen={() => actions.open({ page: "uploads" })}
-          testId={"open-uploads"}
-        >
-          <UploadsSpecimen />
-        </Tile>
-      </Category>
+      <view className="gap-4">
+        <Masthead version={version} status={packageStatus} />
+        <TextInput
+          value={query.value}
+          onChange={next => query.set(next)}
+          label="Search components"
+          isLabelHidden
+          placeholder="Search components"
+          type="search"
+          hasClear
+          clearLabel="Clear search"
+          data-testid="home-search"
+        />
+      </view>
+      {found === null ? (
+        <>
+          <Category title="Browse">
+            {galleryCategories.map((category, index) => (
+              <Tile
+                key={category.id}
+                name={category.title}
+                tagline={countLine(category.id, category.count)}
+                isWide={galleryCategories.length % 2 === 1 && index === galleryCategories.length - 1}
+                onOpen={open(category.page)}
+                testId={`open-${category.page}`}
+              >
+                {preview(category.id)}
+              </Tile>
+            ))}
+          </Category>
+          <PageSection title="New">
+            <ItemList label="New components">
+              {newest.map(name => entries.find(entry => entry.name === name)!).map(entry => (
+                <Item key={entry.name} label={entry.name} description={entry.summary} hasChevron onClick={open(entry.page)} data-testid={`new-${entry.page}`} />
+              ))}
+            </ItemList>
+          </PageSection>
+        </>
+      ) : found.length ? (
+        <PageSection title={found.length === 1 ? '1 result' : `${found.length} results`}>
+          <ItemList label="Results">
+            {found.map(entry => (
+              <Item
+                key={entry.page}
+                label={entry.name}
+                description={entry.summary}
+                endContent={<text className="text-footnote text-muted">{titles.get(entry.category) ?? ''}</text>}
+                onClick={open(entry.page)}
+                data-testid={`result-${entry.page}`}
+              />
+            ))}
+          </ItemList>
+        </PageSection>
+      ) : (
+        <EmptyState title="Nothing matches" description={`No component, guide or pattern matches “${query.value.trim()}”.`} data-testid="home-no-results" />
+      )}
     </GalleryPage>
   );
 }
