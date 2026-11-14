@@ -282,8 +282,12 @@ struct JSFrameOptions {
 #[derive(FromJSObject, Default)]
 struct JSEnvironmentOptions {
     page: Option<String>,
+    // Every host parses the pin; only a host built for automation runs applies it.
+    #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
     theme: Option<String>,
+    #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
     still: Option<bool>,
+    #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
     clear: Option<bool>,
     read: Option<bool>,
 }

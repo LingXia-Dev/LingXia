@@ -128,11 +128,14 @@ pub(super) fn backend(
     Ok(instance_backend(app, page)?.map(|(_, page)| page))
 }
 
+/// A GPU page's automation backend and the page instance id it is registered under.
+pub(super) type InstanceBackend = (String, Arc<dyn GpuPageAutomation>);
+
 /// [`backend`] with the page instance id it is registered under.
 pub(super) fn instance_backend(
     app: &Arc<LxApp>,
     page: Option<&str>,
-) -> Result<Option<(String, Arc<dyn GpuPageAutomation>)>, String> {
+) -> Result<Option<InstanceBackend>, String> {
     let Ok((instance, _)) = resolve_page(app, page) else {
         return Ok(None);
     };
