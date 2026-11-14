@@ -111,7 +111,18 @@ pub fn install(opener: Opener) {
     let _ = INSTALLED.set(opener);
 }
 
+/// The opener tests' players, for their own URLs only, beside whichever opener another test
+/// installed.
+#[cfg(test)]
+static TEST_OPENER: std::sync::OnceLock<Opener> = std::sync::OnceLock::new();
+
 fn open(source: &str) -> Result<Box<dyn Player>, String> {
+    #[cfg(test)]
+    if source.starts_with("https://example.invalid/")
+        && let Some(opener) = TEST_OPENER.get()
+    {
+        return opener(source);
+    }
     if let Some(opener) = INSTALLED.get() {
         return opener(source);
     }
@@ -169,7 +180,7 @@ pub(crate) fn configure(key: &str, source: Result<Source, VideoError>) {
             entry.switch = None;
             entry.quality = None;
             let _closed = std::mem::replace(&mut entry.state, State::Opening);
-            request(key, &mut entry.state);
+            request(key, &mut entry.state, Reason::Reopen);
         }
     }
 }
@@ -185,17 +196,159 @@ fn source_of(key: &str) -> Option<Source> {
     sources().get(key)?.as_ref().ok().cloned()
 }
 
-fn request(key: &str, state: &mut State) {
+/// Why a player open was asked, as the open log line names it.
+#[derive(Clone, Copy, Debug)]
+enum Reason {
+    /// A key drawn or configured for the first time.
+    First,
+    /// A key whose player closed idle, drawn again.
+    Returned,
+    /// The scene named another URL.
+    Reopen,
+    Retry,
+    /// A file quality chosen before the player was ready.
+    Quality,
+    /// Asked again while the previous open was in flight.
+    Again,
+}
+
+/// Players opening at once, across pages: a platform media service flooded with creates hangs
+/// them, and a hung create can take the app down with it.
+const OPENS_AT_ONCE: usize = if cfg!(any(target_os = "android", target_env = "ohos")) {
+    2
+} else {
+    4
+};
+
+/// Repeated opens of one key without a frame between wait this long, doubling up to
+/// [`BACKOFF_MAX`].
+const BACKOFF: Duration = Duration::from_millis(250);
+const BACKOFF_MAX: Duration = Duration::from_secs(4);
+/// An open asked this long after the key's last one starts the backoff over.
+const BACKOFF_RESET: Duration = Duration::from_secs(30);
+
+#[derive(Default)]
+struct Flights {
+    /// Keys whose open is queued or running; true once asked again meanwhile.
+    open: HashMap<String, bool>,
+    /// Per key: opens asked since its last frame, and when the last was asked.
+    tries: HashMap<String, (u32, Instant)>,
+}
+
+static FLIGHTS: LazyLock<Mutex<Flights>> = LazyLock::new(Default::default);
+
+fn flights() -> MutexGuard<'static, Flights> {
+    FLIGHTS.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Opens started, asks folded into one in flight, and opens held back by the backoff.
+static OPENS: [AtomicU64; 3] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
+
+/// How long the next open of a key asked `tries` times since its last frame waits.
+fn backoff(tries: u32) -> Duration {
+    match tries {
+        0 => Duration::ZERO,
+        n => BACKOFF.saturating_mul(1 << (n - 1).min(8)).min(BACKOFF_MAX),
+    }
+}
+
+/// Asks the opener for `key`'s player: one open per key at a time, a repeat folding into the
+/// one in flight, and a key reopening without ever showing a frame backing off.
+fn request(key: &str, state: &mut State, reason: Reason) {
+    let delay = {
+        let mut flights = flights();
+        if let Some(again) = flights.open.get_mut(key) {
+            *again = true;
+            OPENS[1].fetch_add(1, Ordering::Relaxed);
+            return;
+        }
+        flights.open.insert(key.to_owned(), false);
+        if flights.tries.len() > 256 {
+            flights
+                .tries
+                .retain(|_, (_, at)| at.elapsed() < BACKOFF_RESET);
+        }
+        let now = Instant::now();
+        let tries = flights.tries.entry(key.to_owned()).or_insert((0, now));
+        if now.duration_since(tries.1) > BACKOFF_RESET {
+            tries.0 = 0;
+        }
+        let delay = backoff(tries.0);
+        *tries = (tries.0 + 1, now);
+        delay
+    };
+    let count = OPENS[0].fetch_add(1, Ordering::Relaxed) + 1;
+    if !delay.is_zero() {
+        OPENS[2].fetch_add(1, Ordering::Relaxed);
+    }
+    log_open(key, reason, delay, count);
+    let due = Instant::now() + delay;
     let sent = OPENER
         .lock()
         .unwrap_or_else(|p| p.into_inner())
-        .send(Job::Open(key.to_owned()));
+        .send((due, Job::Open(key.to_owned())));
     if sent.is_err() {
+        flights().open.remove(key);
         *state = State::Failed(VideoError::new(
             "VIDEO_DECODERS",
             "the opener is not running",
         ));
     }
+}
+
+/// An open of `key` finished: one asked meanwhile runs now, unless what landed already
+/// plays the current source.
+fn landed(key: &str) {
+    let again = flights().open.remove(key).unwrap_or(false);
+    if !again {
+        return;
+    }
+    let current = source_of(key).map(|source| {
+        let quality = players().get(key).and_then(|entry| entry.quality.clone());
+        source.url(quality.as_deref()).to_owned()
+    });
+    let mut players = players();
+    let Some(entry) = players.get_mut(key) else {
+        return;
+    };
+    let satisfied =
+        matches!(entry.state, State::Ready(_)) && current.as_deref() == Some(&entry.url);
+    if !satisfied {
+        if matches!(entry.state, State::Ready(_)) {
+            let closed = std::mem::replace(&mut entry.state, State::Opening);
+            std::thread::spawn(move || drop(closed));
+        }
+        request(key, &mut entry.state, Reason::Again);
+    }
+}
+
+/// A frame of `key` showed: its next open starts without waiting.
+fn reset_backoff(key: &str) {
+    flights().tries.remove(key);
+}
+
+/// The open log, at info so release logs name what asked: at most 10 lines a second.
+fn log_open(key: &str, reason: Reason, delay: Duration, count: u64) {
+    static WINDOW: Mutex<Option<(Instant, u32, u32)>> = Mutex::new(None);
+    let mut window = WINDOW.lock().unwrap_or_else(|p| p.into_inner());
+    let now = Instant::now();
+    let (start, logged, dropped) = window.get_or_insert((now, 0, 0));
+    if now.duration_since(*start) >= Duration::from_secs(1) {
+        if *dropped > 0 {
+            log::info!(target: "lingxia_view", "video open: {dropped} more not logged");
+        }
+        (*start, *logged, *dropped) = (now, 0, 0);
+    }
+    if *logged >= 10 {
+        *dropped += 1;
+        return;
+    }
+    *logged += 1;
+    log::info!(
+        target: "lingxia_view",
+        "video open key={key} reason={reason:?} delayMs={} #{count}",
+        delay.as_millis()
+    );
 }
 
 fn settings_of(key: &str) -> Option<Settings> {
@@ -321,7 +474,7 @@ pub(crate) fn command(key: &str, op: VideoOp) -> Result<(), VideoError> {
             entry.frame_errors = 0;
             entry.waiting = None;
             let _closed = std::mem::replace(&mut entry.state, State::Opening);
-            request(key, &mut entry.state);
+            request(key, &mut entry.state, Reason::Retry);
             Ok(())
         }
         (State::Ready(player), op) => player.command(&op),
@@ -392,7 +545,7 @@ fn set_quality(key: &str, entry: &mut Entry, label: Option<String>) -> Result<()
             entry.url = url;
             entry.applied = None;
             let _closed = std::mem::replace(&mut entry.state, State::Opening);
-            request(key, &mut entry.state);
+            request(key, &mut entry.state, Reason::Quality);
         }
         entry.quality = label;
         return Ok(());
@@ -417,7 +570,7 @@ fn start_switch(
     let sent = OPENER
         .lock()
         .unwrap_or_else(|p| p.into_inner())
-        .send(Job::Switch(key.to_owned(), url));
+        .send((Instant::now(), Job::Switch(key.to_owned(), url)));
     if sent.is_err() {
         entry.switch = None;
         return Err(VideoError::new(
@@ -519,28 +672,58 @@ fn players() -> MutexGuard<'static, HashMap<String, Entry>> {
 static REBINDS: Mutex<[u64; 14]> = Mutex::new([0; 14]);
 
 /// Opens players and closes idle ones, so neither stalls a render.
-static OPENER: LazyLock<Mutex<mpsc::Sender<Job>>> = LazyLock::new(|| {
-    let (sender, receiver) = mpsc::channel::<Job>();
+static OPENER: LazyLock<Mutex<mpsc::Sender<(Instant, Job)>>> = LazyLock::new(|| {
+    let (sender, receiver) = mpsc::channel::<(Instant, Job)>();
+    // A few open threads: a stream's manifest fetch does not hold up a file behind it, and the
+    // platform's media service never sees more than a few creates at once.
+    let (pool, jobs) = mpsc::channel::<Job>();
+    let jobs = std::sync::Arc::new(Mutex::new(jobs));
+    for _ in 0..OPENS_AT_ONCE {
+        let jobs = jobs.clone();
+        let spawned = std::thread::Builder::new()
+            .name("lingxia-video-open".into())
+            .spawn(move || {
+                loop {
+                    let job = jobs.lock().unwrap_or_else(|p| p.into_inner()).recv();
+                    match job {
+                        Ok(Job::Open(key)) => {
+                            open_player(&key);
+                            landed(&key);
+                        }
+                        Ok(Job::Switch(key, url)) => open_switch(&key, &url),
+                        Err(_) => return,
+                    }
+                }
+            });
+        if let Err(error) = spawned {
+            log::error!(target: "lingxia_view", "video open thread did not start: {error}");
+        }
+    }
     let spawned = std::thread::Builder::new()
         .name("lingxia-video".into())
         .spawn(move || {
+            // Opens held back by the backoff, by when each is due.
+            let mut waiting: Vec<(Instant, Job)> = Vec::new();
             loop {
-                // Each open runs on its own thread: a stream's manifest fetch must not hold up a
-                // file behind it.
-                let job = match receiver.recv_timeout(Duration::from_millis(500)) {
-                    Ok(job) => Some(job),
-                    Err(mpsc::RecvTimeoutError::Timeout) => None,
+                let now = Instant::now();
+                let wait = waiting
+                    .iter()
+                    .map(|(due, _)| due.saturating_duration_since(now))
+                    .min()
+                    .unwrap_or(Duration::from_millis(500))
+                    .min(Duration::from_millis(500));
+                match receiver.recv_timeout(wait) {
+                    Ok(job) => waiting.push(job),
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
                     Err(mpsc::RecvTimeoutError::Disconnected) => return,
-                };
-                if let Some(job) = job {
-                    let spawned = std::thread::Builder::new()
-                        .name("lingxia-video-open".into())
-                        .spawn(move || match job {
-                            Job::Open(key) => open_player(&key),
-                            Job::Switch(key, url) => open_switch(&key, &url),
-                        });
-                    if let Err(error) = spawned {
-                        log::warn!(target: "lingxia_view", "video open did not start: {error}");
+                }
+                let now = Instant::now();
+                let (due, later): (Vec<_>, Vec<_>) =
+                    waiting.drain(..).partition(|(due, _)| *due <= now);
+                waiting = later;
+                for (_, job) in due {
+                    if pool.send(job).is_err() {
+                        log::error!(target: "lingxia_view", "video open threads are gone");
                     }
                 }
                 // A shown page's player out of view closes after IDLE; a hidden page's, paused,
@@ -1089,7 +1272,12 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
     if !players.contains_key(key) {
         let now = Instant::now();
         let mut state = State::Opening;
-        request(key, &mut state);
+        let reason = if still_frame(key).is_some() {
+            Reason::Returned
+        } else {
+            Reason::First
+        };
+        request(key, &mut state, reason);
         players.insert(
             key.to_owned(),
             Entry {
@@ -1183,6 +1371,7 @@ pub(crate) fn import_frames(device: &wgpu::Device, display: &crate::DisplayList)
                 }
                 if entry.frame.is_none() {
                     stills().retain(|(k, _)| k != *key);
+                    reset_backoff(key);
                 }
                 entry.frame = Some(Frame {
                     view: texture.create_view(&Default::default()),
@@ -1336,6 +1525,12 @@ pub fn stats() -> serde_json::Value {
         },
         "gpuUs": super::timing::stats(),
         "qualitySwitches": SWITCHES.lock().unwrap_or_else(|p| p.into_inner()).clone(),
+        "opens": {
+            "started": OPENS[0].load(Ordering::Relaxed),
+            "folded": OPENS[1].load(Ordering::Relaxed),
+            "backedOff": OPENS[2].load(Ordering::Relaxed),
+            "inFlight": flights().open.len(),
+        },
     })
 }
 
@@ -2311,5 +2506,199 @@ mod switch_tests {
         // waits 7.65 s, a whole loop.
         assert!((until(0.3, 7.95, Some(8.0), false) - 7.65).abs() < 1e-9);
         assert!((until(0.3, 7.95, Some(8.0), true) + 0.35).abs() < 1e-9);
+    }
+}
+
+#[cfg(test)]
+mod opener_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, AtomicUsize};
+
+    static COUNTED: AtomicUsize = AtomicUsize::new(0);
+    /// Opens per URL; URLs with `slow` wait for [`GATE`] to open.
+    static BY_URL: LazyLock<Mutex<HashMap<String, usize>>> = LazyLock::new(Default::default);
+    static GATE: AtomicBool = AtomicBool::new(false);
+    static RUNNING: AtomicUsize = AtomicUsize::new(0);
+    static PEAK: AtomicUsize = AtomicUsize::new(0);
+    /// The tests that hold the gate run one at a time.
+    static SERIAL: Mutex<()> = Mutex::new(());
+
+    /// Players closed, per URL.
+    static CLOSED: LazyLock<Mutex<HashMap<String, usize>>> = LazyLock::new(Default::default);
+
+    struct Idle(String);
+
+    impl Drop for Idle {
+        fn drop(&mut self) {
+            *CLOSED.lock().unwrap().entry(self.0.clone()).or_default() += 1;
+        }
+    }
+
+    impl Player for Idle {
+        fn has_new(&self) -> bool {
+            false
+        }
+
+        fn next_frame(
+            &mut self,
+            _: &wgpu::Device,
+        ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
+            Ok(None)
+        }
+    }
+
+    fn counted(url: &str) -> Result<Box<dyn Player>, String> {
+        let running = RUNNING.fetch_add(1, Ordering::SeqCst) + 1;
+        PEAK.fetch_max(running, Ordering::SeqCst);
+        *BY_URL.lock().unwrap().entry(url.to_owned()).or_default() += 1;
+        if url.contains("slow") {
+            let until = Instant::now() + Duration::from_secs(10);
+            while !GATE.load(Ordering::SeqCst) && Instant::now() < until {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+        COUNTED.fetch_add(1, Ordering::SeqCst);
+        RUNNING.fetch_sub(1, Ordering::SeqCst);
+        Ok(Box::new(Idle(url.to_owned())))
+    }
+
+    fn opened(url: &str) -> usize {
+        BY_URL.lock().unwrap().get(url).copied().unwrap_or(0)
+    }
+
+    fn file(url: &str) -> Result<Source, VideoError> {
+        files(&[("", url)])
+    }
+
+    fn files(variants: &[(&str, &str)]) -> Result<Source, VideoError> {
+        Ok(Source {
+            variants: variants
+                .iter()
+                .map(|(label, url)| (label.to_string(), url.to_string()))
+                .collect(),
+            settings: Settings {
+                paused: true,
+                muted: false,
+                looped: false,
+                rate: 1.0,
+                volume: 1.0,
+            },
+        })
+    }
+
+    /// Opens so far, once the opener has run what was asked (past one backoff step).
+    fn opens() -> usize {
+        std::thread::sleep(Duration::from_millis(600));
+        COUNTED.load(Ordering::SeqCst)
+    }
+
+    /// Waits until nothing opens.
+    fn settle() {
+        let until = Instant::now() + Duration::from_secs(10);
+        while (!flights().open.is_empty() || RUNNING.load(Ordering::SeqCst) > 0)
+            && Instant::now() < until
+        {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// One redraw of a kept frame: `has_new` and `import_frames` each touch its players.
+    fn redraw(key: &str) {
+        for _ in 0..2 {
+            touch(&mut players(), key);
+        }
+    }
+
+    #[test]
+    fn asks_for_one_key_while_it_opens_fold_into_at_most_one_more_open() {
+        let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _ = TEST_OPENER.set(counted);
+        GATE.store(false, Ordering::SeqCst);
+        let key = crate::scene::video::key(7_700_002, "name:flight");
+        let url = "https://example.invalid/slow-flight.mp4";
+        configure(&key, file(url));
+        std::thread::sleep(Duration::from_millis(100));
+        for _ in 0..50 {
+            command(&key, VideoOp::Retry).unwrap();
+            redraw(&key);
+        }
+        assert_eq!(opened(url), 1, "one open runs while it is in flight");
+        GATE.store(true, Ordering::SeqCst);
+        settle();
+        opens();
+        settle();
+        assert!(opened(url) <= 2, "{} opens", opened(url));
+        assert!(matches!(players()[&key].state, State::Ready(_)));
+    }
+
+    #[test]
+    fn no_more_players_open_at_once_than_the_cap() {
+        let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _ = TEST_OPENER.set(counted);
+        GATE.store(false, Ordering::SeqCst);
+        PEAK.store(0, Ordering::SeqCst);
+        let keys: Vec<String> = (0..12)
+            .map(|n| crate::scene::video::key(7_700_100 + n, "name:many"))
+            .collect();
+        for (n, key) in keys.iter().enumerate() {
+            configure(
+                key,
+                file(&format!("https://example.invalid/slow-many-{n}.mp4")),
+            );
+        }
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(RUNNING.load(Ordering::SeqCst), OPENS_AT_ONCE);
+        GATE.store(true, Ordering::SeqCst);
+        settle();
+        assert!(PEAK.load(Ordering::SeqCst) <= OPENS_AT_ONCE);
+        for (n, key) in keys.iter().enumerate() {
+            assert_eq!(
+                opened(&format!("https://example.invalid/slow-many-{n}.mp4")),
+                1
+            );
+            assert!(
+                matches!(players()[key].state, State::Ready(_)),
+                "{key} opened"
+            );
+        }
+    }
+
+    #[test]
+    fn a_quality_chosen_while_the_first_open_runs_is_the_one_that_plays() {
+        let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _ = TEST_OPENER.set(counted);
+        GATE.store(false, Ordering::SeqCst);
+        let key = crate::scene::video::key(7_700_003, "name:choice");
+        let (high, low) = (
+            "https://example.invalid/slow-choice-720.mp4",
+            "https://example.invalid/choice-360.mp4",
+        );
+        configure(&key, files(&[("720p", high), ("360p", low)]));
+        std::thread::sleep(Duration::from_millis(100));
+        command(&key, VideoOp::SetQuality(Some("360p".into()))).unwrap();
+        GATE.store(true, Ordering::SeqCst);
+        settle();
+        opens();
+        settle();
+        assert_eq!(
+            opened(low),
+            1,
+            "the chosen quality opens after the one in flight"
+        );
+        let players = players();
+        assert!(matches!(players[&key].state, State::Ready(_)));
+        assert_eq!(players[&key].url, low);
+    }
+
+    #[test]
+    fn reopens_without_a_frame_back_off_and_a_frame_resets_them() {
+        assert_eq!(backoff(0), Duration::ZERO);
+        assert_eq!(backoff(1), BACKOFF);
+        assert_eq!(backoff(2), BACKOFF * 2);
+        assert_eq!(backoff(9), BACKOFF_MAX);
+        let key = "7700004/name:backoff";
+        flights().tries.insert(key.into(), (5, Instant::now()));
+        reset_backoff(key);
+        assert!(!flights().tries.contains_key(key));
     }
 }
