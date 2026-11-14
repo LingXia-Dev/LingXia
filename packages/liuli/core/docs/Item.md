@@ -35,6 +35,38 @@ export function Navigation() {
 }
 ```
 
+### Rows that choose one
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Item, ItemList } from '@liulidesign/core/Item';
+
+const mailboxes = [
+  { id: 'inbox', label: 'Inbox', count: '12' },
+  { id: 'drafts', label: 'Drafts', count: '3' },
+  { id: 'sent', label: 'Sent', count: '' },
+] as const;
+
+/** Rows that choose one of several, as a sidebar does: the chosen row is selected, the others are not. */
+export function Selection() {
+  const open = useLocal<string>('open', 'inbox');
+  return (
+    <ItemList label="Mailboxes" data-testid="mailboxes">
+      {mailboxes.map(box => (
+        <Item
+          key={box.id}
+          label={box.label}
+          endContent={box.count ? <text className="text-footnote text-muted">{box.count}</text> : undefined}
+          isSelected={open.value === box.id}
+          onClick={() => open.set(box.id)}
+          data-testid={`mailbox-${box.id}`}
+        />
+      ))}
+    </ItemList>
+  );
+}
+```
+
 ### Read-only rows with values
 
 ```tsx
@@ -143,6 +175,7 @@ export function Destructive() {
 | `hasChevron` | `boolean` | `false` | A chevron at the end, for a row that opens another page. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
+| `isSelected` | `boolean` |  | The current choice among rows that select, such as a sidebar's open page: an accent wash and a heavier label, read as selected. Pass `false` on the other rows so they read as not selected. |
 | `label` (required) | `string` |  | The row's main text, and its accessible name when it is pressable. |
 | `tone` | `ItemTone` | `'default'` | `danger` draws the label in the danger role, for a row that deletes or ends something. |
 | `description` | `string` |  | A second line under the label; read as the row's description when it is pressable. |
@@ -178,18 +211,22 @@ export function Destructive() {
 - Pattern: button.
 - Name: label.
 - Description: description, or disabledMessage while disabled.
-- States: disabled (from isDisabled).
+- States: disabled (from isDisabled); selected (from isSelected).
 - Press target: lg 48 px.
 - The button pattern applies to a row with `onClick`. A plain row is not a control; its texts are read in order.
 - On a pressable row the start and end content are drawn only, so the row is read as its label and second line.
 - In an ItemList each row is read with its position ("2 of 3"), whether it is a button or plain content.
 - Every row is at least 48 px tall, above the 44 pt touch minimum.
+- A row with `isSelected` is read as selected, and one with `isSelected={false}` as not selected; a row without the prop has no selected state.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | second line and end values | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 | chevron | `text-faint` on `surface` | 3:1 | 3.09:1 | 4.42:1 |
+| label, selected | `text` on `accent-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
+| second line and end values, selected | `text-muted` on `accent-soft` | 4.5:1 | 5.10:1 | 5.39:1 |
+| chevron, selected | `text-muted` on `accent-soft` | 3:1 | 5.10:1 | 5.39:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 
@@ -198,6 +235,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Use `onClick` with `hasChevron` for a row that opens another page.
 - Do: Keep the label short and put detail in `description`.
 - Do: Group rows in an ItemList, so the rows are divided and read with their position.
+- Do: Mark the current choice with `isSelected` and pass `isSelected={false}` on the other rows of the same list.
 - Don't: Put a button or other control in `endContent` of a row with `onClick`; the View refuses a button inside a button.
 - Don't: Use a row for a single action; that is a Button.
 - Don't: Rely on the end value alone on a pressable row; it is not read, so repeat it in `description` when it matters.

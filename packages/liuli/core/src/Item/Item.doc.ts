@@ -28,19 +28,23 @@ export const doc: ComponentDoc = {
     pattern: 'button',
     name: 'label',
     description: ['description, or disabledMessage while disabled'],
-    states: [{ state: 'disabled', from: 'isDisabled' }],
+    states: [{ state: 'disabled', from: 'isDisabled' }, { state: 'selected', from: 'isSelected' }],
     keyboard: [],
     target: { lg: 48 },
     contrast: [
       { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1' },
       { what: 'second line and end values', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
       { what: 'chevron', pair: ['text-faint', 'surface'], minimum: '3:1' },
+      { what: 'label, selected', pair: ['text', 'accent-soft'], minimum: '4.5:1' },
+      { what: 'second line and end values, selected', pair: ['text-muted', 'accent-soft'], minimum: '4.5:1' },
+      { what: 'chevron, selected', pair: ['text-muted', 'accent-soft'], minimum: '3:1' },
     ],
     notes: [
       'The button pattern applies to a row with `onClick`. A plain row is not a control; its texts are read in order.',
       'On a pressable row the start and end content are drawn only, so the row is read as its label and second line.',
       'In an ItemList each row is read with its position ("2 of 3"), whether it is a button or plain content.',
       'Every row is at least 48 px tall, above the 44 pt touch minimum.',
+      'A row with `isSelected` is read as selected, and one with `isSelected={false}` as not selected; a row without the prop has no selected state.',
     ],
   },
   guidance: {
@@ -48,6 +52,7 @@ export const doc: ComponentDoc = {
       'Use `onClick` with `hasChevron` for a row that opens another page.',
       'Keep the label short and put detail in `description`.',
       'Group rows in an ItemList, so the rows are divided and read with their position.',
+      'Mark the current choice with `isSelected` and pass `isSelected={false}` on the other rows of the same list.',
     ],
     dont: [
       'Put a button or other control in `endContent` of a row with `onClick`; the View refuses a button inside a button.',
@@ -57,6 +62,7 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'Navigation', title: 'Rows that open a page' },
+    { name: 'Selection', title: 'Rows that choose one' },
     { name: 'Values', title: 'Read-only rows with values' },
     { name: 'WithControl', title: 'A control at the end' },
     { name: 'Disabled', title: 'Disabled, with the reason' },
@@ -73,12 +79,14 @@ export const doc: ComponentDoc = {
       lead: 'Use an item for one row of a list: a setting, a message, a file.',
       hero: 'Navigation',
       variants: [
+        { name: 'Selection', title: 'Choosing one, the chosen row selected' },
         { name: 'Values', title: 'Read-only, with a value at the end' },
         { name: 'WithControl', title: 'Holding its own control' },
         { name: 'Destructive', title: 'Danger tone, for a row that deletes' },
       ],
       states: [
         { name: 'StatePressable', title: 'Pressable' },
+        { name: 'StateSelected', title: 'Selected' },
         { name: 'StateDisabled', title: 'Disabled' },
       ],
       inContext: [{ name: 'Disabled', title: 'Disabled, with the reason' }],

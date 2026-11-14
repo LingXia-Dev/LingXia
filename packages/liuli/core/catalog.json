@@ -3234,6 +3234,12 @@
           "description": "Shown in place of `description` while disabled."
         },
         {
+          "name": "isSelected",
+          "type": "boolean",
+          "required": false,
+          "description": "The current choice among rows that select, such as a sidebar's open page: an accent wash and a heavier label, read as selected. Pass `false` on the other rows so they read as not selected."
+        },
+        {
           "name": "label",
           "type": "string",
           "required": true,
@@ -3326,6 +3332,10 @@
           {
             "state": "disabled",
             "from": "isDisabled"
+          },
+          {
+            "state": "selected",
+            "from": "isSelected"
           }
         ],
         "keyboard": [],
@@ -3356,13 +3366,38 @@
               "surface"
             ],
             "minimum": "3:1"
+          },
+          {
+            "what": "label, selected",
+            "pair": [
+              "text",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "second line and end values, selected",
+            "pair": [
+              "text-muted",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "chevron, selected",
+            "pair": [
+              "text-muted",
+              "accent-soft"
+            ],
+            "minimum": "3:1"
           }
         ],
         "notes": [
           "The button pattern applies to a row with `onClick`. A plain row is not a control; its texts are read in order.",
           "On a pressable row the start and end content are drawn only, so the row is read as its label and second line.",
           "In an ItemList each row is read with its position (\"2 of 3\"), whether it is a button or plain content.",
-          "Every row is at least 48 px tall, above the 44 pt touch minimum."
+          "Every row is at least 48 px tall, above the 44 pt touch minimum.",
+          "A row with `isSelected` is read as selected, and one with `isSelected={false}` as not selected; a row without the prop has no selected state."
         ]
       },
       "examples": [
@@ -3370,6 +3405,11 @@
           "name": "Navigation",
           "title": "Rows that open a page",
           "source": "import { Item, ItemList } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** Rows that open a page, in a list: each is one button named by its title, read with its position. */\nexport function Navigation() {\n  return (\n    <ItemList label=\"Notes\" data-testid=\"notes\">\n      {notes.map(note => (\n        <Item key={note.id} label={note.title} description={note.updated} hasChevron onClick={() => {}} data-testid={`note-${note.id}`} />\n      ))}\n    </ItemList>\n  );\n}"
+        },
+        {
+          "name": "Selection",
+          "title": "Rows that choose one",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst mailboxes = [\n  { id: 'inbox', label: 'Inbox', count: '12' },\n  { id: 'drafts', label: 'Drafts', count: '3' },\n  { id: 'sent', label: 'Sent', count: '' },\n] as const;\n\n/** Rows that choose one of several, as a sidebar does: the chosen row is selected, the others are not. */\nexport function Selection() {\n  const open = useLocal<string>('open', 'inbox');\n  return (\n    <ItemList label=\"Mailboxes\" data-testid=\"mailboxes\">\n      {mailboxes.map(box => (\n        <Item\n          key={box.id}\n          label={box.label}\n          endContent={box.count ? <text className=\"text-footnote text-muted\">{box.count}</text> : undefined}\n          isSelected={open.value === box.id}\n          onClick={() => open.set(box.id)}\n          data-testid={`mailbox-${box.id}`}\n        />\n      ))}\n    </ItemList>\n  );\n}"
         },
         {
           "name": "Values",
@@ -3407,6 +3447,10 @@
           "hero": "Navigation",
           "variants": [
             {
+              "name": "Selection",
+              "title": "Choosing one, the chosen row selected"
+            },
+            {
               "name": "Values",
               "title": "Read-only, with a value at the end"
             },
@@ -3423,6 +3467,10 @@
             {
               "name": "StatePressable",
               "title": "Pressable"
+            },
+            {
+              "name": "StateSelected",
+              "title": "Selected"
             },
             {
               "name": "StateDisabled",

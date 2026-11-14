@@ -25,7 +25,10 @@ export const itemRecipe = {
   },
   root: {
     base: 'flex-row items-center gap-3 px-4 py-2.5 min-h-control-lg self-stretch text-start',
-    pressable: 'transition-colors duration-150 ease-out hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7 disabled:opacity-40',
+    pressable: 'transition-colors duration-150 ease-out disabled:opacity-40',
+    idle: 'hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7',
+    /** The current choice: ToggleButton's on wash, deepening on hover, press and focus. */
+    selected: 'bg-accent-soft hover:bg-accent/16 active:bg-accent/20 focus-visible:bg-accent/20',
   },
   start: {
     base: 'shrink-0 items-center justify-center text-muted',
@@ -39,6 +42,7 @@ export const itemRecipe = {
       default: 'text-text',
       danger: 'text-danger',
     } satisfies Record<ItemTone, string>,
+    selected: 'font-medium',
   },
   description: {
     base: 'text-footnote text-muted',
@@ -48,5 +52,7 @@ export const itemRecipe = {
   },
   chevron: {
     base: 'size-5 shrink-0 text-faint rtl:-scale-x-100',
+    /** Faint is below 3:1 on the selected wash. */
+    selected: 'text-muted',
   },
 } as const;

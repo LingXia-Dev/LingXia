@@ -21,6 +21,31 @@ export function Navigation() {
   );
 }
 
+const mailboxes = [
+  { id: 'inbox', label: 'Inbox', count: '12' },
+  { id: 'drafts', label: 'Drafts', count: '3' },
+  { id: 'sent', label: 'Sent', count: '' },
+] as const;
+
+/** Rows that choose one of several, as a sidebar does: the chosen row is selected, the others are not. */
+export function Selection() {
+  const open = useLocal<string>('open', 'inbox');
+  return (
+    <ItemList label="Mailboxes" data-testid="mailboxes">
+      {mailboxes.map(box => (
+        <Item
+          key={box.id}
+          label={box.label}
+          endContent={box.count ? <text className="text-footnote text-muted">{box.count}</text> : undefined}
+          isSelected={open.value === box.id}
+          onClick={() => open.set(box.id)}
+          data-testid={`mailbox-${box.id}`}
+        />
+      ))}
+    </ItemList>
+  );
+}
+
 /** A value at the end of a read-only row, and an icon at the start. */
 export function Values() {
   return (
@@ -91,6 +116,14 @@ export function StatePressable() {
   return (
     <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
       <Item label="Wi-Fi" description="Home" hasChevron onClick={() => {}} />
+    </view>
+  );
+}
+
+export function StateSelected() {
+  return (
+    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
+      <Item label="Wi-Fi" description="Home" hasChevron isSelected onClick={() => {}} />
     </view>
   );
 }

@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Navigation, Values, WithControl, Destructive, StatePressable, StateDisabled, Disabled } from '../../../core/src/Item/Item.examples';
+import { Navigation, Selection, Values, WithControl, Destructive, StatePressable, StateSelected, StateDisabled, Disabled } from '../../../core/src/Item/Item.examples';
 import { GalleryPage, Lead, PageSection, Stage, StageGrid } from '../../shared/Layout';
 
 export function render() {
@@ -9,6 +9,9 @@ export function render() {
         <Navigation />
       </Lead>
       <PageSection title={"Variants"}>
+        <Stage caption={"Choosing one, the chosen row selected"} bare>
+          <Selection />
+        </Stage>
         <Stage caption={"Read-only, with a value at the end"} bare>
           <Values />
         </Stage>
@@ -23,6 +26,9 @@ export function render() {
         <StageGrid>
           <Stage caption={"Pressable"} bare>
             <StatePressable />
+          </Stage>
+          <Stage caption={"Selected"} bare>
+            <StateSelected />
           </Stage>
           <Stage caption={"Disabled"} bare>
             <StateDisabled />

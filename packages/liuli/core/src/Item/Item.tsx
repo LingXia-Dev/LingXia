@@ -15,8 +15,13 @@ export type ItemAction =
       isDisabled?: boolean;
       /** Shown in place of `description` while disabled. */
       disabledMessage?: string;
+      /**
+       * The current choice among rows that select, such as a sidebar's open page: an accent wash and a
+       * heavier label, read as selected. Pass `false` on the other rows so they read as not selected.
+       */
+      isSelected?: boolean;
     }
-  | { onClick?: never; hasChevron?: never; isDisabled?: never; disabledMessage?: never };
+  | { onClick?: never; hasChevron?: never; isDisabled?: never; disabledMessage?: never; isSelected?: never };
 
 export type ItemTone = 'default' | 'danger';
 
@@ -42,15 +47,16 @@ export function Item(props: ItemProps) {
   const isDisabled = props.isDisabled ?? false;
   const help = isDisabled && props.disabledMessage !== undefined ? props.disabledMessage : description;
   const pressable = props.onClick !== undefined;
+  const isSelected = props.isSelected ?? false;
   const content = (
     <>
       {startContent !== undefined && <view aria-hidden={pressable || undefined} className={r.start.base}>{startContent}</view>}
       <view className={r.text.base}>
-        <text className={cx(r.label.base, r.label.tone[tone])}>{label}</text>
+        <text className={cx(r.label.base, r.label.tone[tone], isSelected && r.label.selected)}>{label}</text>
         {help !== undefined && <text id={pressable ? descriptionId : undefined} className={r.description.base}>{help}</text>}
       </view>
       {endContent !== undefined && <view aria-hidden={pressable || undefined} className={r.end.base}>{endContent}</view>}
-      {props.hasChevron && <vector aria-hidden paths={glyphs.chevronEnd} viewBox={glyphBox} className={r.chevron.base} />}
+      {props.hasChevron && <vector aria-hidden paths={glyphs.chevronEnd} viewBox={glyphBox} className={cx(r.chevron.base, isSelected && r.chevron.selected)} />}
     </>
   );
   if (!pressable) return <view data-testid={testId} className={cx(r.root.base, className)}>{content}</view>;
@@ -58,10 +64,11 @@ export function Item(props: ItemProps) {
     <button
       aria-label={label}
       aria-describedby={describedBy(help !== undefined && descriptionId)}
+      aria-selected={props.isSelected}
       disabled={isDisabled}
       onClick={props.onClick}
       data-testid={testId}
-      className={cx(r.root.base, r.root.pressable, className)}
+      className={cx(r.root.base, r.root.pressable, isSelected ? r.root.selected : r.root.idle, className)}
     >
       {content}
     </button>

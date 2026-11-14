@@ -79,3 +79,17 @@ test('Destructive: the danger tone colours the label only', async () => {
   assert.equal(screen.getByText('Delete account').props.color, 'danger');
   assert.equal(screen.getByText('Removes your notes from every device').props.color, 'text-muted');
 });
+
+test('Selection: the chosen row reads as selected, the others as not, and a press moves the choice', async () => {
+  const screen = await renderExample('Item/Item', 'Selection');
+  const selected = () => ['inbox', 'drafts', 'sent'].map(id => screen.getByTestId(`mailbox-${id}`).props.stateSelected);
+  assert.deepEqual(selected(), [1, 0, 0]);
+  screen.press(screen.getByTestId('mailbox-sent'));
+  screen.rerender({});
+  assert.deepEqual(selected(), [0, 0, 1]);
+});
+
+test('a row without isSelected has no selected state', async () => {
+  const screen = await renderExample('Item/Item', 'Navigation');
+  assert.equal(screen.getByTestId('note-n1').props.stateSelected, undefined);
+});
