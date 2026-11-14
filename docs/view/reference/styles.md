@@ -8,9 +8,9 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 
 | Key | Type | CSS | Paint | Accepted by |
 | --- | --- | --- | --- | --- |
-| `width` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| "auto" \| "fit-content" \| "max-content" \| "min-content" `` | `width` |  | all but `<span>` `<link>` |
+| `width` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` \| "auto" \| "fit-content" \| "max-content" \| "min-content" `` | `width` |  | all but `<span>` `<link>` |
 | `height` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| "auto" \| "fit-content" \| "max-content" \| "min-content" `` | `height` |  | all but `<span>` `<link>` |
-| `minWidth` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` `` | `min-width` |  | all but `<span>` `<link>` |
+| `minWidth` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` `` | `min-width` |  | all but `<span>` `<link>` |
 | `minHeight` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` `` | `min-height` |  | all but `<span>` `<link>` |
 | `maxWidth` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` `` | `max-width` |  | all but `<span>` `<link>` |
 | `aspectRatio` | `number \| "auto"` | `aspect-ratio` |  | all but `<span>` `<link>` |
@@ -114,7 +114,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `wordBreak` | `"normal" \| "break-all" \| "keep-all"` | `word-break` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
 | `overflowWrap` | `"normal" \| "break-word" \| "anywhere"` | `overflow-wrap` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
 | `lineClamp` | `number` | `-webkit-line-clamp` |  | `<text>` `<select>` |
-| `textOverflow` | `"clip" \| "ellipsis"` | `text-overflow` |  | `<text>` `<select>` |
+| `textOverflow` | `"clip" \| "ellipsis"` | `text-overflow` |  | `<text>` `<input>` `<select>` |
 | `overflowX` | `"auto"` | `overflow-x` |  | `<scroll>` |
 | `overflowY` | `"auto"` | `overflow-y` |  | `<scroll>` |
 | `overscrollBehavior` | `"auto" \| "contain" \| "none"` | `overscroll-behavior`, `overscroll-behavior-x`, `overscroll-behavior-y` |  | `<scroll>` `<List>` |
@@ -159,7 +159,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 
 ### `<input>`
 
-`width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `aspectRatio`, `maxHeight`, `margin`, `marginTop`, `marginRight`, `marginBottom`, `marginLeft`, `marginInlineStart`, `marginInlineEnd`, `position`, `inset`, `top`, `right`, `bottom`, `left`, `insetInlineStart`, `insetInlineEnd`, `zIndex`, `positionArea`, `flexGrow`, `flexShrink`, `flexBasis`, `alignSelf`, `gridColumn`, `gridColumnStart`, `gridColumnEnd`, `gridRow`, `gridRowStart`, `gridRowEnd`, `justifySelf`, `order`, `opacity`, `overflow`, `backgroundColor`, `backgroundImage`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomRightRadius`, `borderBottomLeftRadius`, `borderStartStartRadius`, `borderStartEndRadius`, `borderEndStartRadius`, `borderEndEndRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderInlineStartWidth`, `borderInlineEndWidth`, `borderStyle`, `borderColor`, `boxShadow`, `ring`, `backdropFilter`, `translate`, `rotate`, `scale`, `transformOrigin`, `filter`, `display`, `touchTarget`, `scrollSnapAlign`, `padding`, `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`, `paddingInlineStart`, `paddingInlineEnd`, `color`, `fontSize`, `fontWeight`, `fontFamily`, `fontStyle`, `lineHeight`, `letterSpacing`, `fontVariantNumeric`, `userSelect`, `textAlign`, `textDecorationLine`, `textTransform`, `whiteSpace`, `wordBreak`, `overflowWrap`, `placeholderColor`
+`width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `aspectRatio`, `maxHeight`, `margin`, `marginTop`, `marginRight`, `marginBottom`, `marginLeft`, `marginInlineStart`, `marginInlineEnd`, `position`, `inset`, `top`, `right`, `bottom`, `left`, `insetInlineStart`, `insetInlineEnd`, `zIndex`, `positionArea`, `flexGrow`, `flexShrink`, `flexBasis`, `alignSelf`, `gridColumn`, `gridColumnStart`, `gridColumnEnd`, `gridRow`, `gridRowStart`, `gridRowEnd`, `justifySelf`, `order`, `opacity`, `overflow`, `backgroundColor`, `backgroundImage`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomRightRadius`, `borderBottomLeftRadius`, `borderStartStartRadius`, `borderStartEndRadius`, `borderEndStartRadius`, `borderEndEndRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderInlineStartWidth`, `borderInlineEndWidth`, `borderStyle`, `borderColor`, `boxShadow`, `ring`, `backdropFilter`, `translate`, `rotate`, `scale`, `transformOrigin`, `filter`, `display`, `touchTarget`, `scrollSnapAlign`, `padding`, `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`, `paddingInlineStart`, `paddingInlineEnd`, `color`, `fontSize`, `fontWeight`, `fontFamily`, `fontStyle`, `lineHeight`, `letterSpacing`, `fontVariantNumeric`, `userSelect`, `textAlign`, `textDecorationLine`, `textTransform`, `whiteSpace`, `wordBreak`, `overflowWrap`, `placeholderColor`, `textOverflow`
 
 ### `<textarea>`
 

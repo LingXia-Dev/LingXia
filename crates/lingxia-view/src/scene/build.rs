@@ -66,6 +66,7 @@ impl Renderer {
             crate::interaction::chrome::FeedbackStyle::press_layer(&palette, self.dark);
         let pressed_identity = self.pressed.clone();
         let focused_identity = self.focused.clone();
+        let editing_identity = self.editing.clone();
         let button_owners = &groups.owners;
         let button_hashes = &groups.content;
         let mut commands = Vec::new();
@@ -644,6 +645,7 @@ impl Renderer {
                 });
             }
             let mut text_offset_y = 0.0;
+            let mut full_input = None;
             let mut highlights = Vec::new();
             let text_start = commands.len();
             if let Some(text) = &mut layouts[index] {
@@ -660,9 +662,14 @@ impl Renderer {
                 } else {
                     content_width
                 };
-                // A select's label is one line, cut with an ellipsis.
+                // A select's label is one line, cut with an ellipsis. An input cuts its
+                // placeholder, and its value only while unfocused: an editor scrolls instead.
                 let select = record.tag == tag::SELECT;
+                let editing = record.tag == tag::INPUT
+                    && !record.string(field::INPUT_VALUE).unwrap_or("").is_empty()
+                    && editing_identity.as_deref() == identities.get(index).map(String::as_str);
                 if (select || record.string(field::TEXT_OVERFLOW) == Some("ellipsis"))
+                    && !editing
                     && let Some(short) = self.ellipsize(
                         record,
                         &styles[index],
@@ -680,10 +687,26 @@ impl Renderer {
                         },
                     )
                 {
-                    *text = short;
+                    // Taps and caret placement still map against the whole value.
+                    if record.tag == tag::INPUT {
+                        let mut full = std::mem::replace(text, short);
+                        self.text_cache.break_lines(
+                            &mut full,
+                            Some(alignment_width),
+                            Some(styles[index].align),
+                        );
+                        full_input = Some(full);
+                    } else {
+                        *text = short;
+                    }
                 }
+                let width = if full_input.is_some() {
+                    content_width
+                } else {
+                    alignment_width
+                };
                 self.text_cache
-                    .break_lines(text, Some(alignment_width), Some(styles[index].align));
+                    .break_lines(text, Some(width), Some(styles[index].align));
                 let placeholder = matches!(
                     record.tag,
                     tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT
@@ -1170,7 +1193,11 @@ impl Renderer {
             input_layouts.push(
                 if matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
                     Some(InputLayout {
-                        layout: layouts[index].take().unwrap().into_layout(),
+                        layout: full_input
+                            .take()
+                            .or_else(|| layouts[index].take())
+                            .unwrap()
+                            .into_layout(),
                         padding: [layout.padding.left, layout.padding.top],
                         text_offset_y,
                         content_size: [

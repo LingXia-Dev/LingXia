@@ -244,6 +244,7 @@ test('margins, positioning, layering and line clamps are native utilities', asyn
   assert.deepEqual(classStyle('absolute inset-0 inset-x-4 z-10'), { position: 'absolute', top: 0, right: 16, bottom: 0, left: 16, zIndex: 10 });
   assert.equal(classStyle('top-1/2').top, '50%');
   assert.deepEqual(classStyle('truncate'), { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+  assert.equal(node('input', { className: 'truncate' }).textOverflow, 'ellipsis');
   assert.deepEqual(classStyle('line-clamp-3'), { overflow: 'hidden', lineClamp: 3 });
   assert.equal(node('text', { className: 'line-clamp-3' }).textLines, 3);
   assert.equal(node('view', { className: 'grid grid-cols-3' }).gridTemplateColumns, 'repeat(3, minmax(0, 1fr))');

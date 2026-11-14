@@ -102,6 +102,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - While an image loads its background colour shows; `placeholder="tiny.jpg"` paints a small stand-in scaled smooth.
 - `object-top`, `object-left-bottom` or `object-[25%_75%]` (`objectPosition`) align a covered or contained image; pixel offsets fail.
 - `<textarea rows={2} maxRows={6}/>` grows with its lines in that range, then scrolls.
+- `truncate` on an `<input>` ends its placeholder, and its value while unfocused, in an ellipsis; a focused editor scrolls.
 - `<select options={[{value,label,disabled?}]} bind={cell} placeholder aria-label/>` opens the View's own
   picker (popover with a mouse, sheet on touch); arrows change the choice; automation uses `locator.selectOption(valueOrLabel)`.
 - `locator.dblclick()` selects the word at an element's center in selectable text and editors (a long press on touch).
