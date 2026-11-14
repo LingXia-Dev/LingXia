@@ -1015,7 +1015,7 @@ mod tests {
             masks: Value,
             pinned: bool,
         ) {
-            let dir = format!("attachments/spec%2Fone/attempt-0/visual");
+            let dir = "attachments/spec%2Fone/attempt-0/visual".to_string();
             let png = format!("{dir}/{name}.png");
             write(&self.output, Path::new(&png), &encode(shot).unwrap()).unwrap();
             let noise = twin.map(|twin| {
