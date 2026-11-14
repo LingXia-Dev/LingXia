@@ -1728,6 +1728,42 @@ jobs:
         working-directory: crates/lingxia-browser-shell/webui
         run: node --test tests/theme.test.mjs
 
+  # Liuli is source-distributed TSX on @lingxia/view; its tests render each example
+  # through View's compiler, and its contrast tables come from the resolved palette.
+  liuli:
+    needs: changes
+    if: ${{ needs.changes.outputs.npm == 'true' }}
+    name: Liuli
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: packages/package-lock.json
+
+      - name: Install workspace
+        working-directory: packages
+        run: npm ci
+
+      - name: Test components
+        working-directory: packages
+        run: npm test --workspace @liulidesign/core
+
+      # Recipes, parts and docs, then the generated docs, catalog and gallery pages.
+      - name: Check recipes and generated files
+        working-directory: packages
+        run: npm run check --workspace @liulidesign/core
+
+      - name: Typecheck core and gallery
+        working-directory: packages
+        run: |
+          npm run typecheck --workspace @liulidesign/core
+          npm run typecheck --workspace @liulidesign/gallery
+
   # Native islands run in the showcase host (NATIVE-ISLAND-001), not Chrome.
 
   # The release scripts have their own tests but no change signal of their own:
@@ -1916,6 +1952,7 @@ jobs:
       - sdk-apple
       - sdk-android
       - npm-packages
+      - liuli
       - view-corpus
       - view-corpus-visual
       - view-fuzz
