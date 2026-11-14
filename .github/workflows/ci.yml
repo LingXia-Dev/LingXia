@@ -928,6 +928,11 @@ jobs:
       - name: Test macOS activity viewer against WindowServer
         run: cargo run -p lingxia-device-io --features supervision --example pip_viewer
 
+      # The view-lab tests compile the GPU showcase, whose pages import Liuli through its node_modules.
+      - name: Install the GPU showcase
+        working-directory: examples/lingxia-showcase-gpu/lxapp
+        run: npm ci
+
       # The only other run of these tests is the advisory rust-test job. `hot-swap` is a
       # superset: dev sessions ship it, and its tests rot when no gate builds them.
       - name: Test lingxia-view (with hot-swap)
@@ -1421,6 +1426,10 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: ./.github/actions/build-web-runtime
+
+      - name: Install the GPU showcase
+        working-directory: examples/lingxia-showcase-gpu/lxapp
+        run: npm ci
 
       - name: Test all workspace crates
         run: cargo test --workspace

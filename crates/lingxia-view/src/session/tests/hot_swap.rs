@@ -91,6 +91,11 @@ fn view_lab_module() -> String {
 pub(crate) fn view_lab_module_edited(edit: Option<(&str, &str)>) -> String {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
     let lab = std::path::Path::new(root).join("examples/lingxia-showcase-gpu/lxapp");
+    assert!(
+        lab.join("node_modules/@liulidesign/core").exists(),
+        "the view lab imports Liuli from its node_modules: run npm install in {}",
+        lab.display()
+    );
     // Tests build in parallel; each build gets its own directory.
     static BUILDS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let tag = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -102,6 +107,12 @@ pub(crate) fn view_lab_module_edited(edit: Option<(&str, &str)>) -> String {
             copy_tree(&lab.join(dir), &copy.join(dir));
         }
         std::fs::copy(lab.join("lxapp.json"), copy.join("lxapp.json")).unwrap();
+        // Packages resolve from the project's own node_modules, as `lingxia dev` finds them.
+        let modules = lab.join("node_modules");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&modules, copy.join("node_modules")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(&modules, copy.join("node_modules")).unwrap();
         let page = copy.join("pages/view-lab/index.tsx");
         let text = std::fs::read_to_string(&page).unwrap();
         assert!(text.contains(from), "the edit applies");
