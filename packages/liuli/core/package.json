@@ -70,6 +70,8 @@
     "./TimeInput/recipe": "./src/TimeInput/TimeInput.recipe.ts",
     "./NavList": "./src/NavList/NavList.tsx",
     "./NavList/recipe": "./src/NavList/NavList.recipe.ts",
+    "./SplitView": "./src/SplitView/SplitView.tsx",
+    "./SplitView/recipe": "./src/SplitView/SplitView.recipe.ts",
     "./doc": "./src/doc.ts",
     "./contrast": "./scripts/contrast.mjs",
     "./testing": "./src/testing/harness.mjs",

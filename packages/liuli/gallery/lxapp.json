@@ -55,6 +55,7 @@
     { "name": "item", "path": "pages/item/index" },
     { "name": "details", "path": "pages/details/index" },
     { "name": "avatar", "path": "pages/avatar/index" },
+    { "name": "split-view", "path": "pages/split-view/index" },
     { "name": "stat", "path": "pages/stat/index" },
     { "name": "sparkline", "path": "pages/sparkline/index" },
     { "name": "bar-chart", "path": "pages/bar-chart/index" },

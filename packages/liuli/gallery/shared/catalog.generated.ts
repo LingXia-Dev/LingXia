@@ -594,6 +594,23 @@ export const entries: GalleryEntry[] = [
     "status": "preview"
   },
   {
+    "name": "SplitView",
+    "page": "split-view",
+    "category": "content",
+    "summary": "A sidebar beside its content for a wide window, each scrolling on its own",
+    "keywords": [
+      "split view",
+      "sidebar layout",
+      "master detail",
+      "two pane",
+      "workspace",
+      "navigation split",
+      "app shell"
+    ],
+    "since": "2026-11-14",
+    "status": "preview"
+  },
+  {
     "name": "Stat",
     "page": "stat",
     "category": "charts",
@@ -828,7 +845,7 @@ export const galleryCategories: GalleryCategory[] = [
     "title": "Content",
     "description": "Containers and rows that hold what the app shows.",
     "page": "category-content",
-    "count": 4
+    "count": 5
   },
   {
     "id": "charts",

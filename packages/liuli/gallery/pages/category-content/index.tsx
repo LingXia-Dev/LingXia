@@ -4,6 +4,7 @@ import { Specimen as CardSpecimen } from '../../../core/src/Card/Card.examples';
 import { Specimen as ItemSpecimen } from '../../../core/src/Item/Item.examples';
 import { Specimen as DetailsSpecimen } from '../../../core/src/Details/Details.examples';
 import { Specimen as AvatarSpecimen } from '../../../core/src/Avatar/Avatar.examples';
+import { Specimen as SplitViewSpecimen } from '../../../core/src/SplitView/SplitView.examples';
 import { Category, GalleryPage, Tile } from '../../shared/Layout';
 
 type Actions = { open(target: { page: string }): Promise<void> };
@@ -12,7 +13,7 @@ export function render({ actions }: View<Actions>) {
   return (
     <GalleryPage>
       <text className="text-body text-muted">{"Containers and rows that hold what the app shows."}</text>
-      <Category title={"4 components"}>
+      <Category title={"5 components"}>
         <Tile
           name={"Card"}
           tagline={"Related content"}
@@ -44,6 +45,15 @@ export function render({ actions }: View<Actions>) {
           testId={"open-avatar"}
         >
           <AvatarSpecimen />
+        </Tile>
+        <Tile
+          name={"SplitView"}
+          tagline={"Sidebar and content"}
+          isWide
+          onOpen={() => actions.open({ page: "split-view" })}
+          testId={"open-split-view"}
+        >
+          <SplitViewSpecimen />
         </Tile>
       </Category>
     </GalleryPage>
