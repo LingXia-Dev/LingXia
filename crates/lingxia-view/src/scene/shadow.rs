@@ -491,9 +491,11 @@ mod tests {
         }
         let records = crate::protocol::decode(&wire).unwrap();
         for dark in [false, true] {
-            let mut renderer = crate::Renderer::default();
-            renderer.dark = dark;
-            renderer.palette = crate::theme::Palette::builtin(dark);
+            let mut renderer = crate::Renderer {
+                dark,
+                palette: crate::theme::Palette::builtin(dark),
+                ..Default::default()
+            };
             let surface = renderer.palette.role(lingxia_theme::Role::Surface);
             let frame = renderer.layout(&records, 360, 240, 3.0).unwrap();
             let frame = frame.rasterize().unwrap();
