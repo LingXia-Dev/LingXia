@@ -16,6 +16,7 @@ use crate::traits::file::{
     ChooseDirectoryRequest, ChooseFileRequest, FileDialogResult, FileService, OpenFileRequest,
     RevealInFileManagerRequest,
 };
+use crate::traits::gesture::AppGesture;
 use crate::traits::keyboard::AppKeyboard;
 use crate::traits::location::{Location, LocationRequestConfig};
 use crate::traits::media_interaction::{
@@ -25,7 +26,6 @@ use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest,
     ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
 };
-use crate::traits::gesture::AppGesture;
 use crate::traits::mouse::AppMouse;
 use crate::traits::network::Network;
 use crate::traits::pull_to_refresh::PullToRefresh;
