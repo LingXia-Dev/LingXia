@@ -255,7 +255,11 @@ mod tests {
         assert_eq!(narrow("EN_us", &languages), Some("en"));
         assert_eq!(narrow("zh-CN", &languages), Some("zh-Hans"));
         assert_eq!(narrow("zh-TW", &languages), Some("zh-Hant"));
-        assert_eq!(narrow("ja-JP", &languages), Some("en"), "the first is the fallback");
+        assert_eq!(
+            narrow("ja-JP", &languages),
+            Some("en"),
+            "the first is the fallback"
+        );
         assert_eq!(narrow("ja-JP", &[]), None);
     }
 

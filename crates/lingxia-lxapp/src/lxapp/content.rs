@@ -401,7 +401,10 @@ fn build_connect_src_policy() -> String {
     }
 }
 
-fn build_bridge_config_script(bridge_nonce: Option<&str>, content_language: Option<&str>) -> String {
+fn build_bridge_config_script(
+    bridge_nonce: Option<&str>,
+    content_language: Option<&str>,
+) -> String {
     let bridge_os = lingxia_platform::os_label();
     let display_language = escape_js_string(&super::display_language());
     let content_kv = content_language.map_or_else(String::new, |language| {
@@ -661,9 +664,14 @@ mod tests {
         )
         .is_err());
 
-        let ordinary =
-            inject_bridge_config_with_bootstrap(b"<html><head></head></html>", None, None, None, None)
-                .unwrap();
+        let ordinary = inject_bridge_config_with_bootstrap(
+            b"<html><head></head></html>",
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         assert!(
             !String::from_utf8(ordinary)
                 .unwrap()
