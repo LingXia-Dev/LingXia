@@ -124,6 +124,19 @@ impl Context {
         Ok(self.lock()?.devices.len())
     }
 
+    /// Frees what was dropped: wgpu releases resources only at a maintain, and an idle page
+    /// never submits one.
+    pub fn reclaim(&self) {
+        // Polled outside the context lock: on GLES the poll takes the GL context's own.
+        let devices: Vec<wgpu::Device> = match self.lock() {
+            Ok(context) => context.devices.iter().map(|h| h.device.clone()).collect(),
+            Err(_) => return,
+        };
+        for device in devices {
+            let _ = device.poll(wgpu::PollType::Poll);
+        }
+    }
+
     pub fn renderer_count(&self) -> Result<usize, String> {
         Ok(self
             .1

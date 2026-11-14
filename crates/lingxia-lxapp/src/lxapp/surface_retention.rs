@@ -4,8 +4,10 @@
 //! presented frame: no re-attach, no View rebuild. Each surface costs its
 //! swapchain, about 32 MB for a 1080×2504 phone triple-buffered. The shown
 //! app's tab pages all keep theirs (a tab bar is cycled, which defeats any
-//! recency cap smaller than it); other hidden pages keep the most recently
-//! shown few. Memory pressure releases every one. Platforms only execute.
+//! recency cap smaller than it); other hidden pages on the stack keep the most
+//! recently shown few. A page off the stack keeps none, and the page just under
+//! the top always keeps its own: a back gesture reveals it. Memory pressure
+//! releases every other one. Platforms only execute.
 
 use super::runtime_registry::get_lxapps_manager;
 use super::{HOST_SURFACE_OWNER_APP_ID, LxAppSessionStatus};
@@ -23,19 +25,40 @@ pub(crate) struct SurfaceSnapshot {
     pub visible: bool,
     /// A tab page of the shown app.
     pub tab: bool,
+    /// On its app's page stack; a page that left it is not coming back as itself.
+    pub on_stack: bool,
+    /// Just under the top of the shown app's stack: a back gesture shows it.
+    pub revealing: bool,
 }
 
 /// For each hidden page that was shown, whether it keeps its surface. `limit`
-/// bounds pages outside the shown app's tab bar; 0 (memory pressure) releases all.
+/// bounds stacked pages outside the shown app's tab bar; 0 (memory pressure)
+/// releases all but the revealing page.
 pub(crate) fn decide(pages: &[SurfaceSnapshot], limit: usize) -> Vec<(String, bool)> {
+    let shown = |page: &&SurfaceSnapshot| !page.visible && page.last_shown.is_some();
     let mut decided: Vec<(String, bool)> = pages
         .iter()
-        .filter(|page| !page.visible && page.tab && page.last_shown.is_some())
-        .map(|page| (page.instance_id.clone(), limit > 0))
+        .filter(shown)
+        .filter(|page| page.revealing)
+        .map(|page| (page.instance_id.clone(), true))
         .collect();
+    decided.extend(
+        pages
+            .iter()
+            .filter(shown)
+            .filter(|page| !page.revealing && page.tab)
+            .map(|page| (page.instance_id.clone(), limit > 0)),
+    );
+    decided.extend(
+        pages
+            .iter()
+            .filter(shown)
+            .filter(|page| !page.revealing && !page.tab && !page.on_stack)
+            .map(|page| (page.instance_id.clone(), false)),
+    );
     let mut hidden: Vec<(&SurfaceSnapshot, Instant)> = pages
         .iter()
-        .filter(|page| !page.visible && !page.tab)
+        .filter(|page| !page.visible && !page.tab && page.on_stack && !page.revealing)
         .filter_map(|page| Some((page, page.last_shown?)))
         .collect();
     hidden.sort_by_key(|page| std::cmp::Reverse(page.1));
@@ -73,6 +96,13 @@ fn enforce_with_limit(limit: usize) {
             continue;
         }
         let shown = entry.value().is_shown();
+        let stack = entry.value().get_page_stack();
+        let revealing = stack
+            .len()
+            .checked_sub(2)
+            .and_then(|under| stack.get(under))
+            .filter(|_| shown)
+            .cloned();
         for page in entry.value().live_page_instances() {
             if let Some(PageView::Gpu(view)) = page.page_view() {
                 let snapshot = SurfaceSnapshot {
@@ -80,6 +110,8 @@ fn enforce_with_limit(limit: usize) {
                     last_shown: page.last_shown(),
                     visible: shown && page.is_visible(),
                     tab: shown && page.is_tabbar_page(),
+                    on_stack: stack.contains(&page.instance_id_string()),
+                    revealing: revealing.as_deref() == Some(page.instance_id_string().as_str()),
                 };
                 pages.push((snapshot, view, page));
             }
@@ -108,6 +140,8 @@ mod tests {
             last_shown: Some(Instant::now() - Duration::from_secs(age)),
             visible,
             tab: false,
+            on_stack: true,
+            revealing: false,
         }
     }
 
@@ -171,5 +205,44 @@ mod tests {
     fn memory_pressure_releases_every_hidden_surface() {
         let pages = [page("current", 0, true), page("a", 5, false)];
         assert_eq!(decide(&pages, 0), [("a".to_string(), false)]);
+    }
+
+    #[test]
+    fn a_page_off_the_stack_takes_no_slot_and_keeps_no_surface() {
+        let popped = SurfaceSnapshot {
+            on_stack: false,
+            ..page("popped", 1, false)
+        };
+        let pages = [
+            page("current", 0, true),
+            popped,
+            page("a", 5, false),
+            page("b", 10, false),
+        ];
+        let decided = decide(&pages, 2);
+        assert!(decided.contains(&("popped".to_string(), false)));
+        assert!(decided.contains(&("a".to_string(), true)));
+        assert!(
+            decided.contains(&("b".to_string(), true)),
+            "a popped page took a stacked page's slot"
+        );
+    }
+
+    #[test]
+    fn the_page_a_back_gesture_reveals_keeps_its_surface_even_under_pressure() {
+        let under = SurfaceSnapshot {
+            revealing: true,
+            ..page("under", 50, false)
+        };
+        let pages = [
+            page("current", 0, true),
+            page("a", 5, false),
+            page("b", 10, false),
+            under,
+        ];
+        assert!(decide(&pages, 2).contains(&("under".to_string(), true)));
+        let pressed = decide(&pages, 0);
+        assert!(pressed.contains(&("under".to_string(), true)));
+        assert!(pressed.contains(&("a".to_string(), false)));
     }
 }

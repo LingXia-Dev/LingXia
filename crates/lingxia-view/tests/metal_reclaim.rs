@@ -117,4 +117,25 @@ fn page_surfaces_hand_back_their_metal_memory() {
         kept < 2.0,
         "a page released after 500 frames kept {kept:.1} MiB of Metal memory"
     );
+
+    // Released while nothing else draws: the app sits idle on the page below, so no later
+    // submit would free the dropped page's targets.
+    let (width, height) = (2048u16, 2048u16);
+    let display = page.layout(width, height, 1.0).unwrap();
+    let before = allocated_mib(device);
+    let layer = new_layer();
+    let id = surfaces::attach(source(layer), width.into(), height.into(), 0).unwrap();
+    for _ in 0..3 {
+        surfaces::prepare(id, &display, revision).unwrap();
+        let _ = surfaces::present(id, revision);
+        revision += 1;
+    }
+    surfaces::suspend(id);
+    surfaces::detach(id);
+    send0(layer, c"release");
+    let kept = allocated_mib(device) - before;
+    assert!(
+        kept < 2.0,
+        "a large page released with nothing drawing after it kept {kept:.1} MiB of Metal memory"
+    );
 }

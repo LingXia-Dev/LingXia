@@ -150,10 +150,16 @@ pub fn suspend(id: u64) {
     let _binding = gpu_binding();
     let _layers = super::gpu::LayerTransaction::begin();
     video_surfaces().remove(&id);
+    let mut context = None;
     if let Ok(Some(presenter)) = presenter(id)
         && let Ok(mut presenter) = lock(&presenter)
     {
         presenter.suspend();
+        context = Some(presenter.context());
+    }
+    // A surface given up to save memory: GLES frees the dropped textures only on a poll.
+    if let Some(context) = context {
+        context.reclaim();
     }
 }
 
@@ -165,7 +171,13 @@ pub fn detach(id: u64) {
     let removed = registry()
         .ok()
         .and_then(|mut surfaces| surfaces.remove(&id));
+    let context = removed
+        .as_ref()
+        .and_then(|presenter| presenter.lock().ok().map(|presenter| presenter.context()));
     drop(removed);
+    if let Some(context) = context {
+        context.reclaim();
+    }
 }
 
 /// The device was lost: every bound presenter moves to a new one under the same id; a
