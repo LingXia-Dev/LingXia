@@ -1,11 +1,12 @@
-// Liuli's boundary rules that can be checked from source alone. Run: `node scripts/check.mjs`.
+// Liuli's boundary rules that can be checked from source alone. Run: `node scripts/check.mjs`, or
+// for another Liuli package `node ../core/scripts/check.mjs .` from its folder.
 // Prints one line per problem as `file:line: rule: message` and exits non-zero when any is found.
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
-const core = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const core = resolve(process.argv[2] ?? resolve(dirname(fileURLToPath(import.meta.url)), '..'));
 const src = join(core, 'src');
 const problems = [];
 

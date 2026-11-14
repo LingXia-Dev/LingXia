@@ -68,6 +68,9 @@
     "./DateInput/recipe": "./src/DateInput/DateInput.recipe.ts",
     "./TimeInput": "./src/TimeInput/TimeInput.tsx",
     "./TimeInput/recipe": "./src/TimeInput/TimeInput.recipe.ts",
+    "./doc": "./src/doc.ts",
+    "./contrast": "./scripts/contrast.mjs",
+    "./testing": "./src/testing/harness.mjs",
     "./package.json": "./package.json"
   },
   "lingxia": {

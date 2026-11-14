@@ -1,13 +1,20 @@
 // Writes everything derived from the doc files: the reference pages (docs/<Name>.md), catalog.json
 // for agents, and the gallery's component pages. `--check` writes nothing and fails on drift.
+// A package folder as the argument generates that Liuli package instead; only core's run writes
+// the gallery's index (catalog module, category pages, manifest), with every sibling package that
+// has a catalog.json.
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transform } from 'esbuild';
 import ts from 'typescript';
 import { appearances, format, needed, palette, ratio } from './contrast.mjs';
 
-const core = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const packageArg = process.argv.slice(2).find(arg => !arg.startsWith('--'));
+const core = resolve(packageArg ?? resolve(dirname(fileURLToPath(import.meta.url)), '..'));
+const folder = basename(core);
+const packageName = JSON.parse(readFileSync(join(core, 'package.json'), 'utf8')).name;
+const isCore = folder === 'core';
 const src = join(core, 'src');
 const gallery = resolve(core, '../gallery');
 const check = process.argv.includes('--check');
@@ -79,8 +86,8 @@ function exampleSources(name) {
   const file = program.getSourceFile(path);
   const text = file.text;
   const imports = file.statements.filter(ts.isImportDeclaration).map(node => node.getText(file)
-    .replace(/from '\.\/(\w+)'/, (_, module) => `from '@liulidesign/core/${module}'`)
-    .replace(/from '\.\.\/(\w+)\/\w+'/, (_, module) => `from '@liulidesign/core/${module}'`));
+    .replace(/from '\.\/(\w+)'/, (_, module) => `from '${packageName}/${module}'`)
+    .replace(/from '\.\.\/(\w+)\/\w+'/, (_, module) => `from '${packageName}/${module}'`));
   const sources = new Map();
   const shared = file.statements.filter(node => ts.isVariableStatement(node) || ts.isTypeAliasDeclaration(node)).map(node => node.getText(file));
   for (const statement of file.statements) {
@@ -167,7 +174,7 @@ function galleryPage(doc) {
   const page = doc.gallery.page;
   const lines = [
     `// ${generated}`,
-    `import { ${galleryNames(doc).join(', ')} } from '../../../core/src/${doc.name}/${doc.name}.examples';`,
+    `import { ${galleryNames(doc).join(', ')} } from '../../../${folder}/src/${doc.name}/${doc.name}.examples';`,
     `import { GalleryPage, ${page ? 'Lead, ' : ''}PageSection, Stage${page?.states ? ', StageGrid' : ''} } from '../../shared/Layout';`,
     '',
     'export function render() {',
@@ -297,7 +304,7 @@ for (const name of names) {
   const sources = exampleSources(name);
   const entry = {
     name: doc.name,
-    import: `@liulidesign/core/${name}`,
+    import: `${packageName}/${name}`,
     exports,
     category: doc.category,
     status: doc.status,
@@ -328,50 +335,58 @@ for (const name of names) {
   outputs.set(join(page, 'index.tsx'), galleryPage(doc));
   outputs.set(join(page, 'index.json'), `{ "navigationBar": { "title": ${JSON.stringify(name)} } }\n`);
 }
+outputs.set(join(core, 'catalog.json'), `${JSON.stringify({ generated, components: catalog }, null, 2)}\n`);
+// The gallery's index holds every package's components, so core's run reads its siblings' catalogs.
+const folderOf = new Map(catalog.map(entry => [entry, folder]));
+const siblings = !isCore ? [] : readdirSync(resolve(core, '..')).filter(name => name !== folder && existsSync(resolve(core, '..', name, 'catalog.json'))).sort()
+  .flatMap(name => JSON.parse(readFileSync(resolve(core, '..', name, 'catalog.json'), 'utf8')).components.map(entry => (folderOf.set(entry, name), entry)));
+for (const entry of siblings) if (!(entry.category in categoryTitles)) problems.push(`${folderOf.get(entry)}/catalog.json: ${entry.name}: category ${entry.category} is not in gallery/categories.json`);
+const shown = [...catalog, ...siblings];
 for (const category of Object.keys(categoryTitles)) {
-  const orders = inCategory(catalog, category).map(entry => entry.gallery.order);
+  const orders = inCategory(shown, category).map(entry => entry.gallery.order);
   if (new Set(orders).size !== orders.length) problems.push(`gallery.order repeats within ${category}: ${orders.join(', ')}`);
 }
-outputs.set(join(core, 'catalog.json'), `${JSON.stringify({ generated, components: catalog }, null, 2)}\n`);
-// A gallery without guide pages has neither file.
-const guidesPath = join(gallery, 'guides.json');
-const guides = existsSync(guidesPath) ? JSON.parse(readFileSync(guidesPath, 'utf8')) : { foundations: [], patterns: [] };
-const specimensPath = join(gallery, 'shared', 'Specimens.tsx');
-const specimens = existsSync(specimensPath) ? readFileSync(specimensPath, 'utf8') : '';
-for (const guide of [...guides.foundations, ...guides.patterns]) {
-  const where = `gallery/guides.json: ${guide.page}`;
-  if (!guide.tagline || guide.tagline.length > taglineLimit || guide.tagline.endsWith('.')) problems.push(`${where}: tagline must be 1 to ${taglineLimit} characters without a trailing period`);
-  for (const file of ['index.tsx', 'index.ts', 'index.json'])
-    if (!existsSync(join(gallery, 'pages', guide.page, file))) problems.push(`${where}: pages/${guide.page}/${file} is missing`);
-  if (!new RegExp(`export function ${guideSpecimen(guide)}\\b`).test(specimens)) problems.push(`${where}: shared/Specimens.tsx does not export ${guideSpecimen(guide)}`);
+if (isCore) {
+  // A gallery without guide pages has neither file.
+  const guidesPath = join(gallery, 'guides.json');
+  const guides = existsSync(guidesPath) ? JSON.parse(readFileSync(guidesPath, 'utf8')) : { foundations: [], patterns: [] };
+  const specimensPath = join(gallery, 'shared', 'Specimens.tsx');
+  const specimens = existsSync(specimensPath) ? readFileSync(specimensPath, 'utf8') : '';
+  for (const guide of [...guides.foundations, ...guides.patterns]) {
+    const where = `gallery/guides.json: ${guide.page}`;
+    if (!guide.tagline || guide.tagline.length > taglineLimit || guide.tagline.endsWith('.')) problems.push(`${where}: tagline must be 1 to ${taglineLimit} characters without a trailing period`);
+    for (const file of ['index.tsx', 'index.ts', 'index.json'])
+      if (!existsSync(join(gallery, 'pages', guide.page, file))) problems.push(`${where}: pages/${guide.page}/${file} is missing`);
+    if (!new RegExp(`export function ${guideSpecimen(guide)}\\b`).test(specimens)) problems.push(`${where}: shared/Specimens.tsx does not export ${guideSpecimen(guide)}`);
+  }
+  outputs.set(join(gallery, 'shared', 'catalog.generated.ts'), indexModule(shown, guides));
+  const previews = existsSync(join(gallery, 'shared', 'Previews.tsx')) ? readFileSync(join(gallery, 'shared', 'Previews.tsx'), 'utf8') : '';
+  for (const category of categories) {
+    const isGuide = guideCategories.has(category.id);
+    const members = isGuide ? guides[category.id] : inCategory(shown, category.id);
+    if (!members.length) continue;
+    if (!new RegExp(`export function ${pascal(category.id)}Preview\\b`).test(previews)) problems.push(`gallery/shared/Previews.tsx does not export ${pascal(category.id)}Preview for the home card`);
+    const tiles = isGuide
+      ? members.map(guide => ({ name: guide.title, tagline: guide.tagline, page: guide.page, specimen: guideSpecimen(guide) }))
+      : members.map(entry => ({ name: entry.name, tagline: entry.gallery.tagline, status: entry.status === packageStatus ? undefined : statusTitles[entry.status], page: kebab(entry.name), specimen: `${entry.name}Specimen` }));
+    const imports = isGuide
+      ? [`import { ${members.map(guideSpecimen).join(', ')} } from '../../shared/Specimens';`]
+      : members.map(entry => `import { ${entry.gallery.specimen} as ${entry.name}Specimen } from '../../../${folderOf.get(entry)}/src/${entry.name}/${entry.name}.examples';`);
+    const dir = join(gallery, 'pages', categoryPage(category.id));
+    outputs.set(join(dir, 'index.tsx'), categoryPageSource(category, tiles, imports));
+    outputs.set(join(dir, 'index.json'), `{ "navigationBar": { "title": ${JSON.stringify(category.title)} } }\n`);
+    outputs.set(join(dir, 'index.ts'), "Page({\n  async open({ page }: { page: string }) {\n    await lx.navigateTo({ page });\n  },\n});\n");
+  }
+  for (const id of Object.keys(categoryTitles)) if (!categories.some(category => category.id === id)) problems.push(`gallery/categories.json lacks ${id}`);
+  const manifestPath = join(gallery, 'lxapp.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  // Home order, so the manifest reads like the gallery.
+  const pageEntry = page => ({ name: page, path: `pages/${page}/index` });
+  const shownCategories = categories.filter(category => (guideCategories.has(category.id) ? guides[category.id] : inCategory(shown, category.id)).length);
+  manifest.pages = [pageEntry('home'), ...shownCategories.map(category => pageEntry(categoryPage(category.id))), ...guides.foundations.map(guide => pageEntry(guide.page)), ...Object.keys(categoryTitles).flatMap(category => inCategory(shown, category).map(entry => pageEntry(kebab(entry.name)))), ...guides.patterns.map(guide => pageEntry(guide.page))];
+  // One page per line, as the hand-written manifest had it.
+  outputs.set(manifestPath, `${JSON.stringify(manifest, null, 2).replace(/\{\n\s+"name": ("[^"]+"),\n\s+"path": ("[^"]+")\n\s+\}/g, '{ "name": $1, "path": $2 }')}\n`);
 }
-outputs.set(join(gallery, 'shared', 'catalog.generated.ts'), indexModule(catalog, guides));
-const previews = existsSync(join(gallery, 'shared', 'Previews.tsx')) ? readFileSync(join(gallery, 'shared', 'Previews.tsx'), 'utf8') : '';
-for (const category of categories) {
-  const isGuide = guideCategories.has(category.id);
-  const members = isGuide ? guides[category.id] : inCategory(catalog, category.id);
-  if (!members.length) continue;
-  if (!new RegExp(`export function ${pascal(category.id)}Preview\\b`).test(previews)) problems.push(`gallery/shared/Previews.tsx does not export ${pascal(category.id)}Preview for the home card`);
-  const tiles = isGuide
-    ? members.map(guide => ({ name: guide.title, tagline: guide.tagline, page: guide.page, specimen: guideSpecimen(guide) }))
-    : members.map(entry => ({ name: entry.name, tagline: entry.gallery.tagline, status: entry.status === packageStatus ? undefined : statusTitles[entry.status], page: kebab(entry.name), specimen: `${entry.name}Specimen` }));
-  const imports = isGuide
-    ? [`import { ${members.map(guideSpecimen).join(', ')} } from '../../shared/Specimens';`]
-    : members.map(entry => `import { ${entry.gallery.specimen} as ${entry.name}Specimen } from '../../../core/src/${entry.name}/${entry.name}.examples';`);
-  const dir = join(gallery, 'pages', categoryPage(category.id));
-  outputs.set(join(dir, 'index.tsx'), categoryPageSource(category, tiles, imports));
-  outputs.set(join(dir, 'index.json'), `{ "navigationBar": { "title": ${JSON.stringify(category.title)} } }\n`);
-  outputs.set(join(dir, 'index.ts'), "Page({\n  async open({ page }: { page: string }) {\n    await lx.navigateTo({ page });\n  },\n});\n");
-}
-for (const id of Object.keys(categoryTitles)) if (!categories.some(category => category.id === id)) problems.push(`gallery/categories.json lacks ${id}`);
-const manifestPath = join(gallery, 'lxapp.json');
-const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-// Home order, so the manifest reads like the gallery.
-const pageEntry = page => ({ name: page, path: `pages/${page}/index` });
-const shownCategories = categories.filter(category => (guideCategories.has(category.id) ? guides[category.id] : inCategory(catalog, category.id)).length);
-manifest.pages = [pageEntry('home'), ...shownCategories.map(category => pageEntry(categoryPage(category.id))), ...guides.foundations.map(guide => pageEntry(guide.page)), ...Object.keys(categoryTitles).flatMap(category => inCategory(catalog, category).map(entry => pageEntry(kebab(entry.name)))), ...guides.patterns.map(guide => pageEntry(guide.page))];
-// One page per line, as the hand-written manifest had it.
-outputs.set(manifestPath, `${JSON.stringify(manifest, null, 2).replace(/\{\n\s+"name": ("[^"]+"),\n\s+"path": ("[^"]+")\n\s+\}/g, '{ "name": $1, "path": $2 }')}\n`);
 
 if (problems.length) {
   for (const problem of problems) console.log(problem);

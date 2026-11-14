@@ -7,6 +7,7 @@
   { "id": "feedback", "title": "Feedback", "description": "Status, progress and confirmation, from a badge to a toast." },
   { "id": "overlays", "title": "Overlays", "description": "Surfaces that float over the page: dialogs, sheets, menus and popovers." },
   { "id": "content", "title": "Content", "description": "Containers and rows that hold what the app shows." },
+  { "id": "charts", "title": "Charts", "description": "Figures and small charts that show numbers at a glance." },
   { "id": "media", "title": "Media", "description": "Video and its controls." },
   { "id": "patterns", "title": "Patterns", "description": "Whole screens built from the components: forms, settings and long-running work." }
 ]

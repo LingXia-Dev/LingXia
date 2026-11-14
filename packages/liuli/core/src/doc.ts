@@ -4,7 +4,7 @@
 import type { PatternName } from './a11y/patterns';
 
 /** The gallery's sections, in the order the home page shows them. */
-export const categories = ['actions', 'inputs', 'selection', 'navigation', 'feedback', 'overlays', 'content', 'media'] as const;
+export const categories = ['actions', 'inputs', 'selection', 'navigation', 'feedback', 'overlays', 'content', 'charts', 'media'] as const;
 export type Category = (typeof categories)[number];
 
 export interface ComponentDoc {
