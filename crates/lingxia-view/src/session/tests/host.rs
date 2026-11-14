@@ -5692,6 +5692,8 @@ fn a_tap_elsewhere_closes_a_hint_whatever_opened_it_and_still_reaches_what_it_hi
 mod autoclose;
 #[path = "panel_press.rs"]
 mod panel_press;
+#[path = "picker_fill.rs"]
+mod picker_fill;
 #[path = "touch_target.rs"]
 mod touch_target;
 

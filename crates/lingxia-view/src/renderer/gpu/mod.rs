@@ -477,36 +477,6 @@ pub struct Presenter {
     video_pipelines_started: bool,
 }
 
-/// Commits this thread's layer changes on drop, actions off: on a thread with no run loop an
-/// implicit transaction never commits and keeps every layer and drawable it touched.
-#[must_use]
-pub struct LayerTransaction(());
-
-impl LayerTransaction {
-    pub fn begin() -> Self {
-        #[cfg(target_vendor = "apple")]
-        unsafe {
-            let class = objc2::class!(CATransaction);
-            let _: () = objc2::msg_send![class, begin];
-            let _: () = objc2::msg_send![class, setDisableActions: true];
-        }
-        Self(())
-    }
-}
-
-impl Drop for LayerTransaction {
-    fn drop(&mut self) {
-        // The flush also commits an implicit transaction this thread opened outside one of ours,
-        // which an explicit commit nested inside it would not.
-        #[cfg(target_vendor = "apple")]
-        unsafe {
-            let class = objc2::class!(CATransaction);
-            let _: () = objc2::msg_send![class, commit];
-            let _: () = objc2::msg_send![class, flush];
-        }
-    }
-}
-
 /// What a presenter binds its wgpu surface to.
 #[derive(Clone)]
 pub enum SurfaceSource {

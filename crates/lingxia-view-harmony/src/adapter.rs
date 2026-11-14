@@ -62,7 +62,6 @@ pub struct HarmonyAdapter {
     raster: OnceLock<Arc<Mailbox<(DisplayList, CommitTicket)>>>,
     /// The attached GPU presenter, or 0.
     pub(crate) gpu: AtomicU64,
-    landing: surfaces::Landing,
     target: Mutex<Target>,
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
     highlights: Mutex<[Option<usize>; 2]>,
@@ -132,7 +131,6 @@ impl HarmonyAdapter {
             windows: Default::default(),
             raster: OnceLock::new(),
             gpu: AtomicU64::new(0),
-            landing: Default::default(),
             // Frames wait for the first attach; a failed one falls back to the CPU.
             target: Mutex::new(Target::Waiting),
             images: Mutex::new(HashMap::new()),
@@ -203,14 +201,10 @@ impl HarmonyAdapter {
         self.started.elapsed().as_millis() as u64
     }
 
-    /// The page is gone: no queued attach binds its window again; returns its presenters,
-    /// including any bound but not yet handed over.
-    pub(crate) fn release_gpu(&self) -> Vec<u64> {
+    /// The page is gone: no queued attach binds its window again; returns its presenter.
+    pub(crate) fn release_gpu(&self) -> u64 {
         self.windows.fetch_add(1, Ordering::AcqRel);
-        let mut surfaces = self.landing.release();
-        surfaces.push(self.gpu.swap(0, Ordering::AcqRel));
-        surfaces.retain(|surface| *surface != 0);
-        surfaces
+        self.gpu.swap(0, Ordering::AcqRel)
     }
 
     /// The window goes away; its size is kept, a recreated surface usually has the same.
@@ -321,7 +315,6 @@ fn attach_after(
     *lock(&adapter.target) = Target::Waiting;
     let windows = adapter.windows.clone();
     let seen = windows.load(Ordering::Acquire);
-    let landing = adapter.landing.clone();
     let host = host.downgrade();
     crate::render::run(move || {
         // The window went while this waited; binding it would swap into a dead window.
@@ -347,30 +340,12 @@ fn attach_after(
             }
             return;
         }
-        if let Ok(id) = attached
-            && !landing.bound(id)
-        {
-            return;
-        }
         dispatch::post_main(Box::new(move || {
-            // The page dropped meanwhile and detached it.
-            if let Ok(id) = attached
-                && !landing.take(id)
-            {
-                return;
-            }
             let Some(host) = host.upgrade() else { return };
             let adapter = host.adapter();
             *lock(&adapter.target) = match &attached {
                 Ok(id) => {
-                    // A resize's attach can overtake the first one: the newer presenter wins.
-                    let old = adapter.gpu.swap(*id, Ordering::AcqRel);
-                    if old != 0 && old != *id {
-                        crate::render::run(move || {
-                            surfaces::suspend(old);
-                            surfaces::detach(old);
-                        });
-                    }
+                    adapter.gpu.store(*id, Ordering::Release);
                     let (record, backend) = surfaces::describe(*id).unwrap_or_default();
                     if refused > 0 {
                         log::warn!(target: "lingxia_view", "UI_SURFACE: the window took a surface after {refused} refusals over {} ms", refusal_ms(refused));

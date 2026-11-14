@@ -156,7 +156,6 @@ impl ViewSession {
     /// Choices of the View's picker go through the editor as a platform picker's would: focus,
     /// the chosen value replacing its text with input and submit callbacks, then blur.
     pub fn apply_picker_results(&mut self) -> Result<bool, String> {
-        use crate::text::input::Edit;
         let mut changed = false;
         for crate::session::bridge::PickerChoice {
             identity,
@@ -184,25 +183,33 @@ impl ViewSession {
                 }
                 continue;
             }
-            let Some(focused) = self.focus_now(&identity)? else {
-                continue;
-            };
-            let all = focused.state.text.encode_utf16().count() as u32;
-            let edits = [
-                Edit::Selection {
-                    anchor: 0,
-                    focus: all,
-                },
-                Edit::Replace {
-                    text: value,
-                    cursor: 1,
-                    composing: false,
-                },
-            ];
-            self.edit_input(focused.token, &identity, &edits, true)?;
-            self.blur_input(focused.token, &identity)?;
+            self.choose_editor_value(&identity, value)?;
         }
         Ok(changed)
+    }
+
+    /// Give date or time editor `identity` `value` as its picker's choice would: focus, the value
+    /// replacing its text with input and submit callbacks, then blur. False when it is gone.
+    pub fn choose_editor_value(&mut self, identity: &str, value: String) -> Result<bool, String> {
+        use crate::text::input::Edit;
+        let Some(focused) = self.focus_now(identity)? else {
+            return Ok(false);
+        };
+        let all = focused.state.text.encode_utf16().count() as u32;
+        let edits = [
+            Edit::Selection {
+                anchor: 0,
+                focus: all,
+            },
+            Edit::Replace {
+                text: value,
+                cursor: 1,
+                composing: false,
+            },
+        ];
+        self.edit_input(focused.token, identity, &edits, true)?;
+        self.blur_input(focused.token, identity)?;
+        Ok(true)
     }
 
     /// Submit an editor as its input method action would, focusing it first.

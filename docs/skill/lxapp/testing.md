@@ -571,6 +571,7 @@ lxdev test args --preset ci                 # show the effective arguments
 - **A locked screen stops the run** on macOS: pages are hidden, so the rest
   are reported as not run. Unlock it and run again.
 - **`fill` updates framework state**; assert the state, not only the DOM.
+- **`fill` on a GPU date or time input sets it as its picker would**: ISO text only, and a value past `min`/`max` fails naming the bound (`E_EDIT_FAILED: 'back' takes a date from 2026-12-18`).
 - **GPU `<List>` rows off screen** answer `testId()` locators as attached; actions scroll them in, and
   text assertions wait until the row draws.
 - **Nav waits for `onReady`** and rejects if the app replaces the page first;

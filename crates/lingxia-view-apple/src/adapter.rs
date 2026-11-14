@@ -24,8 +24,6 @@ pub struct AppleAdapter {
     #[cfg(feature = "gpu")]
     pub(crate) gpu: std::sync::atomic::AtomicU64,
     #[cfg(feature = "gpu")]
-    pub(crate) landing: lingxia_view::renderer::surfaces::Landing,
-    #[cfg(feature = "gpu")]
     pub(crate) target: Mutex<lingxia_view::renderer::surfaces::Target>,
     /// The display link runs for video frames, see [`FrameScheduler::tick`].
     #[cfg(feature = "gpu")]
@@ -51,8 +49,6 @@ impl AppleAdapter {
             raster: OnceLock::new(),
             #[cfg(feature = "gpu")]
             gpu: std::sync::atomic::AtomicU64::new(0),
-            #[cfg(feature = "gpu")]
-            landing: Default::default(),
             #[cfg(feature = "gpu")]
             // CPU frames until the view attaches a Metal presenter.
             target: Mutex::new(lingxia_view::renderer::surfaces::Target::Unavailable),

@@ -5,8 +5,6 @@ use lingxia_view::session::host::{Failure, ViewHost, ViewWorker};
 use std::sync::Arc;
 
 mod adapter;
-#[cfg(all(test, feature = "gpu"))]
-mod attach_tests;
 mod dispatch;
 mod fonts;
 mod outlines;
@@ -203,7 +201,6 @@ impl Page {
         let existing = adapter.gpu.load(Ordering::Acquire);
         *adapter.target.lock().unwrap_or_else(|p| p.into_inner()) = Target::Waiting;
         let host = self.host.downgrade();
-        let landing = adapter.landing.clone();
         let started = std::time::Instant::now();
         render::run(move || {
             let source = SurfaceSource::Layer(Arc::new(layer));
@@ -217,33 +214,15 @@ impl Page {
                     .or_else(|| panic.downcast_ref::<String>().cloned())
                     .unwrap_or_else(|| "presenter setup panicked".into()))
             });
-            if let Ok(id) = attached
-                && !landing.bound(id)
-            {
-                return;
-            }
             let ms = started.elapsed().as_millis();
             dispatch::post_after(
                 std::time::Duration::ZERO,
                 Box::new(move || {
-                    // The page dropped meanwhile and detached it.
-                    if let Ok(id) = attached
-                        && !landing.take(id)
-                    {
-                        return;
-                    }
                     let Some(host) = host.upgrade() else { return };
                     let adapter = host.adapter();
                     let target = match attached {
                         Ok(id) => {
-                            // Two attaches in flight from one page: the newer presenter wins.
-                            let old = adapter.gpu.swap(id, Ordering::AcqRel);
-                            if old != 0 && old != id {
-                                render::run(move || {
-                                    surfaces::suspend(old);
-                                    surfaces::detach(old);
-                                });
-                            }
+                            adapter.gpu.store(id, Ordering::Release);
                             let (record, backend) = surfaces::describe(id).unwrap_or_default();
                             adapter::log(&format!(
                                 "backend={backend} surface={id} attachMs={ms} adapter={record}"
@@ -374,17 +353,16 @@ impl Drop for Page {
         self.host.dispose();
         #[cfg(feature = "gpu")]
         {
-            let adapter = self.host.adapter();
-            let mut surfaces = adapter.landing.release();
-            surfaces.push(adapter.gpu.swap(0, std::sync::atomic::Ordering::AcqRel));
-            surfaces.retain(|surface| *surface != 0);
-            if !surfaces.is_empty() {
+            let surface = self
+                .host
+                .adapter()
+                .gpu
+                .swap(0, std::sync::atomic::Ordering::AcqRel);
+            if surface != 0 {
                 // Ahead of frames still queued for it: once this returns the layer may go away.
                 render::run_now(move || {
-                    for surface in surfaces {
-                        lingxia_view::renderer::surfaces::suspend(surface);
-                        lingxia_view::renderer::surfaces::detach(surface);
-                    }
+                    lingxia_view::renderer::surfaces::suspend(surface);
+                    lingxia_view::renderer::surfaces::detach(surface);
                 });
             }
         }

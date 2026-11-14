@@ -187,7 +187,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 let Some(snapshot) = main.snapshot.clone() else {
                     return;
                 };
-                let Some(edit) = main.edits.waiting.pop_front() else {
+                let Some(mut edit) = main.edits.waiting.pop_front() else {
                     return;
                 };
                 // Nodes move between frames; an editor that left drops its edit.
@@ -202,6 +202,62 @@ impl<A: PlatformAdapter> Inner<A> {
                     continue;
                 };
                 main.edits.serial += 1;
+                let attributes = snapshot.frame.nodes[index]
+                    .input
+                    .as_ref()
+                    .map(|input| &input.attributes);
+                let picker = attributes.and_then(|a| a.picker.clone());
+                if let Some(kind) = picker {
+                    // A date or time editor takes no input method: the core applies the value
+                    // as its picker's choice would, the same on every platform.
+                    match edit.text.clone() {
+                        // It has no caret to place.
+                        None => settle(&mut main, edit.call, Ok(serde_json::Value::Null)),
+                        Some(text)
+                            if !text.is_empty()
+                                && !crate::interaction::input_rules::iso(&text, &kind) =>
+                        {
+                            let reason = format!(
+                                "E_EDIT_FAILED: {} takes an ISO {kind} ({}), not {text:?}",
+                                edit.identity,
+                                if kind == "date" {
+                                    "YYYY-MM-DD"
+                                } else {
+                                    "HH:MM"
+                                }
+                            );
+                            settle(&mut main, edit.call, Err(reason));
+                        }
+                        Some(text)
+                            if let Some(bound) = crate::interaction::input_rules::outside(
+                                &text,
+                                attributes.and_then(|a| a.min.as_ref()),
+                                attributes.and_then(|a| a.max.as_ref()),
+                            ) =>
+                        {
+                            // A picker offers nothing past its bounds, so fill does not either.
+                            let node = &snapshot.frame.nodes[index];
+                            let name = if node.test_id.is_empty() {
+                                edit.identity.clone()
+                            } else {
+                                format!("'{}'", node.test_id)
+                            };
+                            let reason = format!("E_EDIT_FAILED: {name} takes a {kind} {bound}");
+                            settle(&mut main, edit.call, Err(reason));
+                        }
+                        Some(text) => {
+                            let serial = main.edits.serial;
+                            let identity = edit.identity.clone();
+                            edit.sends += 1;
+                            main.edits.sent = Some((edit, 0));
+                            drop(main);
+                            self.choose_picker_value(serial, identity, text);
+                            self.edit_timer(serial, PATIENCE_TIME);
+                            return;
+                        }
+                    }
+                    continue;
+                }
                 (edit, index, main.edits.serial)
             };
             let outcome = self
@@ -243,6 +299,54 @@ impl<A: PlatformAdapter> Inner<A> {
                 }
             }
         }
+    }
+
+    /// Apply `text` to picker editor `identity` in the session; the sent edit settles when a
+    /// frame shows it, or here when the editor is gone.
+    fn choose_picker_value(self: &Arc<Self>, serial: u64, identity: String, text: String) {
+        let page = self.lifecycle.page();
+        self.work(
+            super::Guard::Page(page),
+            move |inner, session| {
+                session.close_view_picker_on(&identity)?;
+                let changed = session.choose_editor_value(&identity, text)?;
+                let update = if changed {
+                    inner.drained(session)?
+                } else {
+                    None
+                };
+                Ok((changed, update))
+            },
+            move |inner, result| {
+                let failure = match result {
+                    Some(Ok((true, update))) => {
+                        if let Some((connection, update)) = update {
+                            inner.publish(connection, update);
+                        }
+                        if !inner.main().disposed && inner.lifecycle.is_current_page(page) {
+                            inner.main().dirty = true;
+                            inner.schedule();
+                        }
+                        None
+                    }
+                    Some(Ok((false, _))) => Some("left before the edit".to_owned()),
+                    Some(Err(error)) => Some(error),
+                    None => Some("left with its page".to_owned()),
+                };
+                let Some(failure) = failure else { return };
+                {
+                    let mut main = inner.main();
+                    if main.edits.serial != serial {
+                        return;
+                    }
+                    if let Some((edit, _)) = main.edits.sent.take() {
+                        let reason = format!("E_EDIT_FAILED: {} {failure}", edit.identity);
+                        settle(&mut main, edit.call, Err(reason));
+                    }
+                }
+                inner.send_next_edit();
+            },
+        );
     }
 
     /// Frames stop when nothing changes; time moves a pending edit along.

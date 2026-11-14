@@ -387,15 +387,13 @@ impl Drop for Page {
         // A late frame of a leaving page can reconnect its editor; the keyboard must not outlive it.
         ime::reset(self.token);
         host.dispose();
-        let surfaces = host.adapter().release_gpu();
-        if !surfaces.is_empty() {
+        let surface = host.adapter().release_gpu();
+        if surface != 0 {
             // On the thread that owns GL, ahead of frames still queued for it: once this returns
             // the platform may destroy the window, and a later swap would target a dead one.
             crate::render::run_now(move || {
-                for surface in surfaces {
-                    lingxia_view::renderer::surfaces::suspend(surface);
-                    lingxia_view::renderer::surfaces::detach(surface);
-                }
+                lingxia_view::renderer::surfaces::suspend(surface);
+                lingxia_view::renderer::surfaces::detach(surface);
             });
         }
         // Dropping the node destroys its window, so it goes after the swapchain.

@@ -47,6 +47,22 @@ pub(crate) fn iso(text: &str, kind: &str) -> bool {
     }
 }
 
+/// The bound an ISO `text` lies outside, as "from {min}" or "up to {max}": a picker cannot
+/// choose it, and a commit would clamp it there.
+pub(crate) fn outside(
+    text: &str,
+    min: Option<&serde_json::Value>,
+    max: Option<&serde_json::Value>,
+) -> Option<String> {
+    // ISO dates and times order like their strings.
+    if let Some(min) = min.and_then(|v| v.as_str()).filter(|min| text < *min) {
+        return Some(format!("from {min}"));
+    }
+    max.and_then(|v| v.as_str())
+        .filter(|max| text > *max)
+        .map(|max| format!("up to {max}"))
+}
+
 fn units(text: &str) -> usize {
     text.encode_utf16().count()
 }
@@ -200,6 +216,17 @@ mod tests {
                 && !r.accepts("02/29/2024")
         );
         assert_eq!(r.commit("2025-03-01"), Some("2024-12-31".into()));
+        let (min, max) = (json!("2024-01-01"), json!("2024-12-31"));
+        assert_eq!(
+            outside("2023-12-31", Some(&min), Some(&max)).as_deref(),
+            Some("from 2024-01-01")
+        );
+        assert_eq!(
+            outside("2025-01-01", Some(&min), Some(&max)).as_deref(),
+            Some("up to 2024-12-31")
+        );
+        assert_eq!(outside("2024-01-01", Some(&min), Some(&max)), None);
+        assert_eq!(outside("2024-12-31", None, Some(&json!(null))), None);
         assert!(iso("23:59:59", "time") && !iso("24:00", "time") && !iso("2024-13-01", "date"));
     }
 
