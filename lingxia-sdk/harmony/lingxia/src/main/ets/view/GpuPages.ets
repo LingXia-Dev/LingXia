@@ -69,8 +69,10 @@ export class GpuPageModel {
   chromeSnapshot: number = 0;
   recovery: GpuRecovery | null = null;
   holdSurface: boolean = false;
-  /** Revealed at least once: its surface has shown a frame and keeps it while the page lives. */
+  /** Its surface has shown a frame and still holds it. */
   revealed: boolean = false;
+  /** Mounts the XComponent; the core lets a hidden page give its surface up to save memory. */
+  surfaceKept: boolean = true;
   /** Runs once the core reveals the page; a later reveal replaces it. */
   revealWaiter: (() => void) | null = null;
   /** Where the page shows in its window, device pixels; null while it is hidden. A window
@@ -135,6 +137,7 @@ export class GpuPages {
    */
   static reveal(page: GpuPageModel, then: () => void): void {
     page.revealWaiter = then;
+    page.surfaceKept = true;
     gpuPageReveal(page.token, page.revealed);
   }
 
@@ -206,8 +209,16 @@ export class GpuPages {
         waiter?.();
         break;
       }
-      case 'bootstrapOverdue':
       case 'retainSurface':
+        if (payload === 'true') {
+          page.surfaceKept = true;
+        } else if (page.onScreen === null && page.revealWaiter === null) {
+          // A decision that raced the page back onto the screen is stale.
+          page.surfaceKept = false;
+          page.revealed = false;
+        }
+        break;
+      case 'bootstrapOverdue':
         break;
       default:
         LxLog.w(TAG, `unknown GPU page event ${kind}`);

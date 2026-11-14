@@ -331,7 +331,10 @@ export struct GpuPage {
 
   build() {
     Stack() {
-      ContentSlot(this.page.content)
+      // Unmounting the slot destroys the XComponent's surface; remounting creates a new one.
+      if (this.page.surfaceKept) {
+        ContentSlot(this.page.content)
+      }
       if (!this.page.revealed || this.page.holdSurface) {
         Column()
           .width('100%')
