@@ -47,6 +47,8 @@ test('Orders: seven bars of one series each carry their value over the bar, in t
   const [space, figure, up] = column.children;
   assert.equal(space.props.grow, 0);
   assert.equal(figure.props.height, 20);
+  assert.equal(figure.props.alignSafe, 1, 'a figure taller than its line grows down over the bar');
+  assert.equal(column.props.alignSafe, undefined, 'a figure wider than its bar spills to both sides');
   assert.equal(figure.props.accessibilityHidden, 1, 'the button already reads the value');
   assert.equal(textOf(figure), '187');
   assert.deepEqual([figure.children[0].props.fontVariantNumeric, figure.children[0].props.fontSize, figure.children[0].props.color, figure.children[0].props.whiteSpace], ['tabular-nums', 13, 'text-muted', 'nowrap']);

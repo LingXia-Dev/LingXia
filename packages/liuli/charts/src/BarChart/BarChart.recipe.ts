@@ -40,7 +40,8 @@ export const barChartRecipe = {
     base: 'basis-0',
   },
   valueSlot: {
-    base: 'h-5 shrink-0 items-center justify-center',
+    // At large text a figure taller than its line grows down over the bar, not up out of the plot.
+    base: 'h-5 shrink-0 items-center justify-center-safe',
   },
   value: {
     base: 'text-footnote text-muted tabular-nums whitespace-nowrap',

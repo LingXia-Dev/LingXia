@@ -65,6 +65,7 @@ test('states: loading is busy with a hidden skeleton; empty shows its words; an 
   assert.match(JSON.stringify(loading), /skeleton-glint/);
   const empty = await renderExample('Chart/Chart', 'StateEmpty');
   assert.equal(empty.getByText('No budget set').props.color, 'text-muted');
+  assert.equal(empty.getByText('No budget set').parent.props.alignSafe, 1, 'a message taller than the plot starts at its top');
   const error = await renderExample('Chart/Chart', 'StateError');
   assert.equal(error.getByText('The budget could not be loaded').props.role, 'alert');
   for (const screen of [empty, error]) assert.equal(screen.queryAll(node => node.props.role === 'list').length, 0);

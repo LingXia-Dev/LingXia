@@ -55,7 +55,8 @@ export const chartRecipe = {
   plot: {
     base: 'self-stretch',
     size: { xs: 'h-16', sm: 'h-28', md: 'h-44', lg: 'h-60' } satisfies Record<ChartSize, string>,
-    state: 'items-center justify-center',
+    // A message taller than a small plot starts at its top; centred, it would be cut at both ends.
+    state: 'items-center justify-center-safe',
   },
   message: {
     base: 'px-4 text-center text-footnote text-muted',
