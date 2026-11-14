@@ -1065,7 +1065,7 @@ fn list(info: &SessionInfo, options: &TestOptions, selection: &Selection) -> Res
     // meanwhile must not reload the app under the modules' top-level code.
     let watch_pause = WatchPause::acquire(&info.ws_url)?;
     let bundle = bundle_test_files(
-        &options.bundle_entries(&selection)?,
+        &options.bundle_entries(selection)?,
         &selection.identity,
         Purpose::List,
     )?;
@@ -1219,7 +1219,7 @@ pub fn list_offline(options: &TestOptions, selection: &Selection, asked: bool) -
         .transpose()?;
     // Specs register from every module the entries import, not only the entries.
     let bundle = bundle_test_files(
-        &options.bundle_entries(&selection)?,
+        &options.bundle_entries(selection)?,
         &selection.identity,
         Purpose::List,
     )?;
