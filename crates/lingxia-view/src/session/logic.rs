@@ -9,8 +9,9 @@ pub struct BridgeError {
     pub code: Value,
     #[serde(default)]
     pub message: Option<String>,
+    /// Boxed so the error stays small beside the values a `Result` returns.
     #[serde(default)]
-    pub data: Option<Value>,
+    pub data: Option<Box<Value>>,
 }
 
 /// What the View sends Logic: page actions, streams, channels, and answers to its requests.
@@ -407,7 +408,7 @@ impl ToView {
         let error = || BridgeError {
             code: frame["error"]["code"].clone(),
             message: frame["error"]["message"].as_str().map(str::to_owned),
-            data: frame["error"].get("data").cloned(),
+            data: frame["error"].get("data").cloned().map(Box::new),
         };
         let text = |key: &str| frame[key].as_str().map(str::to_owned);
         match frame["kind"].as_str().unwrap_or_default() {

@@ -162,7 +162,9 @@ impl ViewSession {
         let fail = |error: crate::scene::video::VideoError| crate::session::logic::BridgeError {
             code: serde_json::Value::from(error.code),
             message: Some(error.message),
-            data: Some(serde_json::json!({ "recoverable": error.recoverable })),
+            data: Some(Box::new(
+                serde_json::json!({ "recoverable": error.recoverable }),
+            )),
         };
         let records = self.input_records.as_deref().unwrap_or_default();
         let named = format!("name:{player}");
