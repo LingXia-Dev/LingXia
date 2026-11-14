@@ -44,7 +44,7 @@ export function Button({
             }
           : undefined
       }
-      className={`${sizes[size]} ${variants[variant]} font-medium text-center items-center justify-center disabled:opacity-40 ${className}`}
+      className={`${sizes[size]} ${variants[variant]} font-medium text-center items-center-safe justify-center-safe disabled:opacity-40 ${className}`}
     >
       {children}
     </button>

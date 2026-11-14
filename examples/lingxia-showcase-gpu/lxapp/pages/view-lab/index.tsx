@@ -795,7 +795,7 @@ function SwipeRows() {
 function SwipeRow({ item, onOpen, onArchive, onDelete }: { item: string; onOpen: () => void; onArchive: () => void; onDelete: () => void }) {
   const open = useLocal('open', 0);
   const id = item.toLowerCase();
-  const strip = 'h-full items-center justify-center text-sm font-medium';
+  const strip = 'h-full items-center-safe justify-center text-sm font-medium';
   return (
     <view className="grid *:col-start-1 *:row-start-1 h-12">
       <view className="flex-row absolute top-0 bottom-0 right-0 w-[144px]">

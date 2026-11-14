@@ -59,6 +59,9 @@ mod ch_width_tests;
 #[path = "tests/control_height.rs"]
 mod control_height_tests;
 #[cfg(test)]
+#[path = "tests/overflow_center.rs"]
+mod overflow_center_tests;
+#[cfg(test)]
 #[path = "tests/replaced_stretch.rs"]
 mod replaced_stretch_tests;
 #[cfg(test)]

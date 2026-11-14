@@ -35,14 +35,14 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `flexGrow` | `number` | `flex-grow` |  | all but `<span>` `<link>` |
 | `flexShrink` | `number` | `flex-shrink` |  | all but `<span>` `<link>` |
 | `flexBasis` | `` number \| `${number}%` \| "auto" `` | `flex-basis` |  | all but `<span>` `<link>` |
-| `alignSelf` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "stretch" \| "baseline"` | `align-self` |  | all but `<span>` `<link>` |
+| `alignSelf` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "stretch" \| "baseline" \| "safe center" \| "safe flex-end" \| "safe end"` | `align-self` |  | all but `<span>` `<link>` |
 | `gridColumn` | `number \| string` | `grid-column` |  | all but `<span>` `<link>` |
 | `gridColumnStart` | `number \| string` | `grid-column-start` |  | all but `<span>` `<link>` |
 | `gridColumnEnd` | `number \| string` | `grid-column-end` |  | all but `<span>` `<link>` |
 | `gridRow` | `number \| string` | `grid-row` |  | all but `<span>` `<link>` |
 | `gridRowStart` | `number \| string` | `grid-row-start` |  | all but `<span>` `<link>` |
 | `gridRowEnd` | `number \| string` | `grid-row-end` |  | all but `<span>` `<link>` |
-| `justifySelf` | `"start" \| "center" \| "end" \| "stretch" \| "baseline"` | `justify-self` |  | all but `<span>` `<link>` |
+| `justifySelf` | `"start" \| "center" \| "end" \| "stretch" \| "baseline" \| "safe center" \| "safe end"` | `justify-self` |  | all but `<span>` `<link>` |
 | `order` | `number` | `order` |  | all but `<span>` `<link>` |
 | `opacity` | `number` | `opacity` | yes | all but `<span>` `<link>` |
 | `overflow` | `"visible" \| "hidden"` | `overflow` |  | all but `<span>` `<link>` |
@@ -84,9 +84,9 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `display` | `"flex" \| "grid" \| "none" \| "block" \| "inline-flex" \| "inline-block"` | `display` |  | all but `<span>` `<link>` |
 | `touchTarget` | `"auto" \| "none"` |  |  | all but `<span>` `<link>` |
 | `flexDirection` | `"row" \| "column" \| "row-reverse" \| "column-reverse"` | `flex-direction` |  | `<view>` `<page>` `<button>` `<dialog>` |
-| `alignItems` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "stretch" \| "baseline"` | `align-items` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` |
-| `justifyContent` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "space-between" \| "space-around" \| "space-evenly"` | `justify-content` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` |
-| `alignContent` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "space-between" \| "space-around" \| "space-evenly" \| "stretch"` | `align-content` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` |
+| `alignItems` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "stretch" \| "baseline" \| "safe center" \| "safe flex-end" \| "safe end"` | `align-items` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` |
+| `justifyContent` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "space-between" \| "space-around" \| "space-evenly" \| "safe center" \| "safe flex-end" \| "safe end"` | `justify-content` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` |
+| `alignContent` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "space-between" \| "space-around" \| "space-evenly" \| "stretch" \| "safe center" \| "safe flex-end" \| "safe end"` | `align-content` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` |
 | `flexWrap` | `"nowrap" \| "wrap" \| "wrap-reverse"` | `flex-wrap` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` |
 | `gap` | `number` |  |  | `<view>` `<page>` `<button>` `<scroll>` `<List>` `<checkbox>` `<radio>` `<dialog>` |
 | `rowGap` | `number` | `row-gap` |  | `<view>` `<page>` `<button>` `<scroll>` `<List>` `<checkbox>` `<radio>` `<dialog>` |
@@ -96,7 +96,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `gridAutoColumns` | `string` | `grid-auto-columns` |  | `<view>` `<page>` `<button>` `<dialog>` |
 | `gridAutoRows` | `string` | `grid-auto-rows` |  | `<view>` `<page>` `<button>` `<dialog>` |
 | `gridAutoFlow` | `"row" \| "column" \| "row dense" \| "column dense"` | `grid-auto-flow` |  | `<view>` `<page>` `<button>` `<dialog>` |
-| `justifyItems` | `"start" \| "center" \| "end" \| "stretch" \| "baseline"` | `justify-items` |  | `<view>` `<page>` `<button>` `<dialog>` |
+| `justifyItems` | `"start" \| "center" \| "end" \| "stretch" \| "baseline" \| "safe center" \| "safe end"` | `justify-items` |  | `<view>` `<page>` `<button>` `<dialog>` |
 | `color` | `string` | `color` | yes | all but `<image>` `<plot>` `<video>` |
 | `fontSize` | `number` | `font-size` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` |
 | `fontWeight` | `number` | `font-weight` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` |

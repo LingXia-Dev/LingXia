@@ -312,14 +312,14 @@ export interface Style {
   flexGrow?: number;
   flexShrink?: number;
   flexBasis?: number | `${number}%` | "auto";
-  alignSelf?: "flex-start" | "start" | "center" | "flex-end" | "end" | "stretch" | "baseline";
+  alignSelf?: "flex-start" | "start" | "center" | "flex-end" | "end" | "stretch" | "baseline" | "safe center" | "safe flex-end" | "safe end";
   gridColumn?: number | string;
   gridColumnStart?: number | string;
   gridColumnEnd?: number | string;
   gridRow?: number | string;
   gridRowStart?: number | string;
   gridRowEnd?: number | string;
-  justifySelf?: "start" | "center" | "end" | "stretch" | "baseline";
+  justifySelf?: "start" | "center" | "end" | "stretch" | "baseline" | "safe center" | "safe end";
   order?: number;
   opacity?: number;
   overflow?: "visible" | "hidden";
@@ -361,9 +361,9 @@ export interface Style {
   display?: "flex" | "grid" | "none" | "block" | "inline-flex" | "inline-block";
   touchTarget?: "auto" | "none";
   flexDirection?: "row" | "column" | "row-reverse" | "column-reverse";
-  alignItems?: "flex-start" | "start" | "center" | "flex-end" | "end" | "stretch" | "baseline";
-  justifyContent?: "flex-start" | "start" | "center" | "flex-end" | "end" | "space-between" | "space-around" | "space-evenly";
-  alignContent?: "flex-start" | "start" | "center" | "flex-end" | "end" | "space-between" | "space-around" | "space-evenly" | "stretch";
+  alignItems?: "flex-start" | "start" | "center" | "flex-end" | "end" | "stretch" | "baseline" | "safe center" | "safe flex-end" | "safe end";
+  justifyContent?: "flex-start" | "start" | "center" | "flex-end" | "end" | "space-between" | "space-around" | "space-evenly" | "safe center" | "safe flex-end" | "safe end";
+  alignContent?: "flex-start" | "start" | "center" | "flex-end" | "end" | "space-between" | "space-around" | "space-evenly" | "stretch" | "safe center" | "safe flex-end" | "safe end";
   flexWrap?: "nowrap" | "wrap" | "wrap-reverse";
   gap?: number;
   rowGap?: number;
@@ -373,7 +373,7 @@ export interface Style {
   gridAutoColumns?: string;
   gridAutoRows?: string;
   gridAutoFlow?: "row" | "column" | "row dense" | "column dense";
-  justifyItems?: "start" | "center" | "end" | "stretch" | "baseline";
+  justifyItems?: "start" | "center" | "end" | "stretch" | "baseline" | "safe center" | "safe end";
   color?: string;
   fontSize?: number;
   fontWeight?: number;

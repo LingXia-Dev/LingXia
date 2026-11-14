@@ -16,14 +16,33 @@ pub(crate) fn dimension<T: taffy::style_helpers::FromLength + taffy::style_helpe
         .or_else(|| record.number(field).map(length))
 }
 
-pub(crate) fn cross_alignment(value: &str) -> AlignItems {
-    match value {
-        "center" => AlignItems::SAFE_CENTER,
-        "end" => AlignItems::SAFE_FLEX_END,
-        "stretch" => AlignItems::STRETCH,
-        "baseline" => AlignItems::BASELINE,
+/// `safe` when the alignment container scrolls, since content overflowing a scroll's start could
+/// never be scrolled to, or when the page asked for it (`items-center-safe`). Elsewhere an
+/// overflowing item spills past both edges, as CSS does by default.
+pub(crate) fn cross_alignment(value: &str, safe: bool) -> AlignItems {
+    match (value, safe) {
+        ("center", true) => AlignItems::SAFE_CENTER,
+        ("center", false) => AlignItems::CENTER,
+        ("end", true) => AlignItems::SAFE_FLEX_END,
+        ("end", false) => AlignItems::FLEX_END,
+        ("stretch", _) => AlignItems::STRETCH,
+        ("baseline", _) => AlignItems::BASELINE,
         _ => AlignItems::FLEX_START,
     }
+}
+
+fn scrolls(record: &Record) -> bool {
+    matches!(record.tag, tag::SCROLL | tag::LIST)
+}
+
+/// `alignSafe` bits: the alignment properties a page made `safe` (`justify-center-safe`).
+pub(crate) mod safe {
+    pub const JUSTIFY: u64 = 1;
+    pub const ALIGN: u64 = 2;
+    pub const ALIGN_SELF: u64 = 4;
+    pub const ALIGN_CONTENT: u64 = 8;
+    pub const JUSTIFY_ITEMS: u64 = 16;
+    pub const JUSTIFY_SELF: u64 = 32;
 }
 
 pub(crate) fn check_reserve(record: &Record) -> f32 {
@@ -391,6 +410,10 @@ pub(crate) fn node_style(
     let block = matches!(display, Some("block" | "inline-block"));
     let in_row = record.parent.is_some_and(|p| lays_out_in_row(&records[p]));
     let inline = matches!(display, Some("inline-flex" | "inline-block"));
+    let scroll = scrolls(record);
+    let in_scroll = record.parent.is_some_and(|p| scrolls(&records[p]));
+    let asked = record.number(field::ALIGN_SAFE).unwrap_or(0.0) as u64;
+    let safe_for = |bit: u64, scrolling: bool| scrolling || asked & bit != 0;
     // A replaced element keeps its own size unless it asks to stretch across its line
     // (`self-stretch`), as an `<img>` does in CSS; a stretching parent alone leaves icons whole.
     let stretched = matches!(record.tag, tag::VECTOR | tag::IMAGE)
@@ -491,19 +514,25 @@ pub(crate) fn node_style(
             Some("column-dense") => GridAutoFlow::ColumnDense,
             _ => GridAutoFlow::Row,
         },
-        justify_items: record.string(field::JUSTIFY_ITEMS).map(cross_alignment),
-        justify_self: record.string(field::JUSTIFY_SELF).map(cross_alignment),
-        align_content: record
-            .string(field::ALIGN_CONTENT)
-            .map(|value| match value {
-                "center" => AlignContent::SAFE_CENTER,
-                "end" => AlignContent::SAFE_END,
-                "between" => AlignContent::SPACE_BETWEEN,
-                "around" => AlignContent::SPACE_AROUND,
-                "evenly" => AlignContent::SPACE_EVENLY,
-                "stretch" => AlignContent::STRETCH,
+        justify_items: record
+            .string(field::JUSTIFY_ITEMS)
+            .map(|value| cross_alignment(value, safe_for(safe::JUSTIFY_ITEMS, scroll))),
+        justify_self: record
+            .string(field::JUSTIFY_SELF)
+            .map(|value| cross_alignment(value, safe_for(safe::JUSTIFY_SELF, in_scroll))),
+        align_content: record.string(field::ALIGN_CONTENT).map(|value| {
+            match (value, safe_for(safe::ALIGN_CONTENT, scroll)) {
+                ("center", true) => AlignContent::SAFE_CENTER,
+                ("center", false) => AlignContent::CENTER,
+                ("end", true) => AlignContent::SAFE_END,
+                ("end", false) => AlignContent::END,
+                ("between", _) => AlignContent::SPACE_BETWEEN,
+                ("around", _) => AlignContent::SPACE_AROUND,
+                ("evenly", _) => AlignContent::SPACE_EVENLY,
+                ("stretch", _) => AlignContent::STRETCH,
                 _ => AlignContent::START,
-            }),
+            }
+        }),
         flex_direction: match record.string(field::FLEX_DIRECTION) {
             Some("row") => FlexDirection::Row,
             Some("row-reverse") => FlexDirection::RowReverse,
@@ -546,19 +575,23 @@ pub(crate) fn node_style(
         ),
         align_items: record
             .string(field::ALIGN)
-            .map(cross_alignment)
+            .map(|value| cross_alignment(value, safe_for(safe::ALIGN, scroll)))
             .or(block.then_some(AlignItems::STRETCH)),
         align_self: record
             .string(field::ALIGN_SELF)
-            .map(cross_alignment)
+            .map(|value| cross_alignment(value, safe_for(safe::ALIGN_SELF, in_scroll)))
             .or(inline.then_some(AlignItems::FLEX_START)),
-        justify_content: record.string(field::JUSTIFY).map(|value| match value {
-            "center" => JustifyContent::SAFE_CENTER,
-            "end" => JustifyContent::SAFE_FLEX_END,
-            "between" => JustifyContent::SPACE_BETWEEN,
-            "around" => JustifyContent::SPACE_AROUND,
-            "evenly" => JustifyContent::SPACE_EVENLY,
-            _ => JustifyContent::FLEX_START,
+        justify_content: record.string(field::JUSTIFY).map(|value| {
+            match (value, safe_for(safe::JUSTIFY, scroll)) {
+                ("center", true) => JustifyContent::SAFE_CENTER,
+                ("center", false) => JustifyContent::CENTER,
+                ("end", true) => JustifyContent::SAFE_FLEX_END,
+                ("end", false) => JustifyContent::FLEX_END,
+                ("between", _) => JustifyContent::SPACE_BETWEEN,
+                ("around", _) => JustifyContent::SPACE_AROUND,
+                ("evenly", _) => JustifyContent::SPACE_EVENLY,
+                _ => JustifyContent::FLEX_START,
+            }
         }),
         overflow: if record.string(field::OVERFLOW) == Some("hidden") {
             Point {

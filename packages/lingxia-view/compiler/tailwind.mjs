@@ -614,6 +614,7 @@ function longhand(prop, value) {
     default:
       // `justify-self-start|end` emit the flex spellings, which mean start/end on a grid item.
       if (prop === 'justify-self' && (value === 'flex-start' || value === 'flex-end')) return value.slice(5);
+      if (prop === 'justify-self' && value === 'safe flex-end') return 'safe end';
       if (!keywords[key]?.includes(value)) unsupported(`${prop}: ${value}`);
       return value;
   }
@@ -808,7 +809,8 @@ function declarations(nodes, vars, root) {
       if (value !== 'solid') unsupported(`${prop}: ${value} (per-edge border styles)`);
     }
     else if (['place-items', 'place-content', 'place-self'].includes(prop)) {
-      const [block, inline = block] = postcss.list.space(value);
+      // `place-items: safe center` is one safe value for both axes.
+      const [block, inline = block] = value.startsWith('safe ') ? [value] : postcss.list.space(value);
       const [first, second] = { 'place-items': ['align-items', 'justify-items'], 'place-content': ['align-content', 'justify-content'], 'place-self': ['align-self', 'justify-self'] }[prop];
       style[cssStyle[first]] = longhand(first, block);
       style[cssStyle[second]] = longhand(second, inline);

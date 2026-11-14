@@ -4,6 +4,7 @@ import { compileUtilities } from '../compiler/tailwind.mjs';
 import { configureClasses, resolveClasses } from '../src/style/classes.js';
 import { describe, h, listTag, prepare, discard } from '../src/internal.js';
 import { rendered, decode, byText } from './support/wire.mjs';
+import { field } from '../src/generated/wire.js';
 
 // Tailwind rules lower to CSS-named style; rendering then lowers that to the native box.
 const classStyle = (name, env) => resolveClasses(name, env)?.base ?? {};
@@ -110,6 +111,41 @@ test('CSS grid utilities lower to tracks, placements, alignment and order; named
     ['grid', 'column-dense', 'minmax(0, 1fr)', 'center', 'center', 'between']);
   for (const name of ['grid-cols-[[a]_1fr]', 'grid-cols-[subgrid]']) assert.throws(() => classStyle(name), /named lines, subgrid and calc/);
   assert.throws(() => classStyle('[grid-template-areas:"a_b"]'), /UI_CLASS/);
+});
+
+test('-safe alignment utilities keep the plain value and mark each property safe; an older host gets the plain value', async () => {
+  const names = ['justify-center-safe', 'justify-end-safe', 'items-center-safe', 'items-end-safe', 'self-center-safe', 'self-end-safe',
+    'content-center-safe', 'content-end-safe', 'justify-items-center-safe', 'justify-items-end-safe', 'justify-self-center-safe',
+    'justify-self-end-safe', 'place-items-center-safe', 'place-content-center-safe', 'place-self-center-safe', 'justify-center', 'grid'];
+  await use(names);
+  assert.equal(classStyle('justify-center-safe').justifyContent, 'safe center');
+  const safe = className => { const props = node('view', { className }); return [props.justify ?? props.align ?? props.alignSelf ?? props.alignContent ?? props.justifyItems ?? props.justifySelf, props.alignSafe]; };
+  assert.deepEqual(safe('justify-center-safe'), ['center', 1]);
+  assert.deepEqual(safe('justify-end-safe'), ['end', 1]);
+  assert.deepEqual(safe('items-center-safe'), ['center', 2]);
+  assert.deepEqual(safe('items-end-safe'), ['end', 2]);
+  assert.deepEqual(safe('self-center-safe'), ['center', 4]);
+  assert.deepEqual(safe('self-end-safe'), ['end', 4]);
+  assert.deepEqual(safe('content-center-safe'), ['center', 8]);
+  assert.deepEqual(safe('content-end-safe'), ['end', 8]);
+  assert.deepEqual(safe('grid justify-items-center-safe'), ['center', 16]);
+  assert.deepEqual(safe('grid justify-items-end-safe'), ['end', 16]);
+  assert.deepEqual(safe('justify-self-center-safe'), ['center', 32]);
+  assert.deepEqual(safe('justify-self-end-safe'), ['end', 32]);
+  const place = node('view', { className: 'grid place-items-center-safe place-content-center-safe' });
+  assert.deepEqual([place.align, place.justifyItems, place.alignContent, place.justify, place.alignSafe], ['center', 'center', 'center', 'center', 2 | 16 | 8 | 1]);
+  const self = node('view', { className: 'place-self-center-safe' });
+  assert.deepEqual([self.alignSelf, self.justifySelf, self.alignSafe], ['center', 'center', 4 | 32]);
+  // The later class wins whole, safety included.
+  assert.equal(node('view', { className: 'justify-center-safe justify-center' }).alignSafe, undefined);
+  assert.deepEqual([node('view', { style: { alignItems: 'safe flex-end' } }).align, node('view', { style: { alignItems: 'safe flex-end' } }).alignSafe], ['end', 2]);
+  assert.throws(() => describe(() => h('view', { style: { justifyContent: 'safe space-between' } }), {}), /UI_STYLE_VALUE: justifyContent/);
+  const current = globalThis.__lingxiaViewHost;
+  globalThis.__lingxiaViewHost = { uiAbi: 1, maxField: field.alignSafe - 1, features: [] };
+  try {
+    const old = node('view', { className: 'justify-center-safe' });
+    assert.deepEqual([old.justify, old.alignSafe], ['center', undefined]);
+  } finally { globalThis.__lingxiaViewHost = current; }
 });
 
 test('*: places every child of a grid, so children overlap in one cell', async () => {

@@ -1,4 +1,4 @@
-import { tags, field } from '../generated/wire.js';
+import { tags, field, ignorableFields } from '../generated/wire.js';
 import { limits } from '../generated/contract.js';
 import { utf8Bytes } from './data.js';
 import { now, spent } from './profile.js';
@@ -11,6 +11,9 @@ import { finishTopLayerRow } from './toplayer.js';
 
 const structured = new Set(['backgroundGradient', 'boxShadow', 'ring', 'animation']);
 const encodeValue = (key, value) => structured.has(key) && value !== 'none' ? JSON.stringify(value) : value;
+// An older host refuses a style field it lacks; an ignorable one is left out, so it lays out as before.
+const ignorable = new Set(ignorableFields);
+const unknownToHost = key => ignorable.has(key) && field[key] > (globalThis.__lingxiaViewHost?.maxField ?? Infinity);
 
 export function copyTree(node) {
   // Encoding mutates list windows/maps only; ordinary resolved nodes can be shared.
@@ -112,11 +115,12 @@ export function encodeTree(tree, windows) {
         animationBytes += utf8Bytes(JSON.stringify(value), 32768);
         if (animationBytes > limits.animationBytes) throw Error('UI_ANIMATION: page payload budget exceeded');
       }
+      if (unknownToHost(key)) continue;
       output.push(field[key], encodeValue(key, value));
     }
     for (const key in states) {
       const style = states[key], pairs = [];
-      for (const name in style) pairs.push(field[name], encodeValue(name, style[name]));
+      for (const name in style) if (!unknownToHost(name)) pairs.push(field[name], encodeValue(name, style[name]));
       if (pairs.length) output.push(field[key], JSON.stringify(pairs));
     }
     for (let i = 0; i < wire.length; i++) {

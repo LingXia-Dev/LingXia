@@ -65,8 +65,11 @@ empty `<view className="grow" />` is a spacer.
   24 × 24 until you size them; `self-stretch` makes an image or vector fill the cross axis instead.
 - `scale-*` paints only: the box keeps its layout size and scales around its center, so size a miniature
   with `w-*`/`h-*`.
-- `justify-center` and `content-center` are *safe*: content that does not fit aligns to the start instead of
-  overflowing both edges.
+- An item larger than its box, centered or end-aligned (`justify-center`, `items-end`, `self-center`, …),
+  overflows past its start edge as in CSS. Inside a `<scroll>` or `<List>` alignment is *safe* instead: content
+  that does not fit starts at the top, so it can be scrolled to. Elsewhere, add `-safe` (`justify-center-safe`,
+  `items-center-safe`, `self-end-safe`, `content-center-safe`, `place-items-center-safe`, …) where content of
+  unknown length must keep its start visible.
 
 ## Display
 

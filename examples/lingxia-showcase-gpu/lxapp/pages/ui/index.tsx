@@ -443,7 +443,7 @@ function Navigation({ data, actions }: Pane) {
         </view>
       </scroll>
       {popup.value && (
-        <view data-testid="lifecycle-popup" className="absolute inset-0 z-10 items-center justify-center px-8">
+        <view data-testid="lifecycle-popup" className="absolute inset-0 z-10 items-center-safe justify-center-safe px-8">
           <button
             data-testid="lifecycle-popup-backdrop"
             aria-label="Close popup"

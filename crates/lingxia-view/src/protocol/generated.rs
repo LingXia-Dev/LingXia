@@ -277,6 +277,7 @@ pub mod field {
     pub const WIDTH_CH: usize = 240;
     pub const DISPLAY_VALUE: usize = 241;
     pub const SIZE_TEXT: usize = 242;
+    pub const ALIGN_SAFE: usize = 243;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video"];
@@ -526,6 +527,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("widthCh", "dimension-ch"),
     ("displayValue", "input-text"),
     ("sizeText", "input-text"),
+    ("alignSafe", "align-safe"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -973,4 +975,5 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
+    FieldAdmission { tags: None, parent: None },
 ];

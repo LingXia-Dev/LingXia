@@ -103,6 +103,16 @@ function dimension(name, value, env, out, key) {
 
 const alignment = { 'flex-start': 'start', 'flex-end': 'end' };
 const justification = { 'flex-start': 'start', 'flex-end': 'end', 'space-between': 'between', 'space-around': 'around', 'space-evenly': 'evenly' };
+// `alignSafe` bits per wire field: `safe center` keeps an overflowing item at the start, as in CSS.
+const safeBits = { justify: 1, align: 2, alignSelf: 4, alignContent: 8, justifyItems: 16, justifySelf: 32 };
+function aligned(name, key, value, names, safe) {
+  if (typeof value === 'string' && value.startsWith('safe ')) {
+    value = value.slice(5);
+    if (!['center', 'end', 'flex-end'].includes(value)) invalid(name);
+    safe.bits |= safeBits[key];
+  }
+  return option(name, key, names[value] ?? value);
+}
 
 function option(name, key, value) {
   if (!fieldOptions[key]?.includes(value)) invalid(name);
@@ -254,7 +264,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
   const fontSize = style.fontSize === undefined ? inherited.fontSize : length('fontSize', style.fontSize);
   if (style.fontSize !== undefined && style.fontSize <= 0) invalid('fontSize');
   let lineHeight = inherited.lineHeight;
-  const transform = {}, lines = {};
+  const transform = {}, lines = {}, safe = { bits: 0 };
   const names = Object.keys(style).sort((a, b) => Number(shorthand(b)) - Number(shorthand(a)));
   for (const name of names) {
     const value = style[name], entry = table[name], key = entry.wire;
@@ -287,7 +297,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'order':
         if (!Number.isInteger(value) || Math.abs(value) > 10000) invalid(name);
         out[key] = value; break;
-      case 'align-content': out[key] = option(name, key, justification[value] ?? value); break;
+      case 'align-content': out[key] = aligned(name, key, value, justification, safe); break;
       case 'line-clamp':
         if (!Number.isInteger(value) || value < 1 || value > 1024) invalid(name);
         out[key] = value; break;
@@ -333,8 +343,8 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'option':
         if (name === 'userSelect' && ['input', 'textarea'].includes(tag)) throw Error('UI_STYLE: editors select their text already; userSelect is for static text');
         out[key] = option(name, key, value); break;
-      case 'alignment': out[key] = option(name, key, alignment[value] ?? value); break;
-      case 'justification': out[key] = option(name, key, justification[value] ?? value); break;
+      case 'alignment': out[key] = aligned(name, key, value, alignment, safe); break;
+      case 'justification': out[key] = aligned(name, key, value, justification, safe); break;
       case 'family': out[key] = family(name, value); break;
       case 'line-height':
         if (typeof value === 'string' && /^\d+(?:\.\d+)?px$/.test(value)) lineHeight = length(name, Number(value.slice(0, -2)));
@@ -361,6 +371,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
     }
   }
   if (Object.keys(transform).length) out.transform = JSON.stringify(transform);
+  if (safe.bits) out.alignSafe = safe.bits;
   // Longhands win over the shorthand whatever their order, as in CSS.
   for (const axis of ['Column', 'Row']) {
     const line = lines[axis];

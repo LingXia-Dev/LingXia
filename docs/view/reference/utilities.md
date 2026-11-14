@@ -55,7 +55,7 @@ Unlike Tailwind, `ring-offset-<n>` leaves a transparent gap between box and ring
 | `row-end` | `-row-end-1`, `-row-end-2`, `-row-end-3`, `-row-end-4`, `-row-end-5`, … (27) |  |
 | `row-span` | `row-span-1`, `row-span-2`, `row-span-3`, `row-span-4`, `row-span-5`, … (13) |  |
 | `row-start` | `-row-start-1`, `-row-start-2`, `-row-start-3`, `-row-start-4`, `-row-start-5`, … (27) |  |
-| `self` | `self-baseline`, `self-center`, `self-end`, `self-start`, `self-stretch` | align-self (4) |
+| `self` | `self-baseline`, `self-center`, `self-center-safe`, `self-end`, `self-end-safe`, … (7) | align-self (2) |
 | `shrink` | `shrink`, `shrink-0` |  |
 
 ## Flex and grid containers
@@ -64,15 +64,15 @@ Unlike Tailwind, `ring-offset-<n>` leaves a transparent gap between box and ring
 | --- | --- | --- |
 | `auto-cols` | `auto-cols-auto`, `auto-cols-fr`, `auto-cols-max`, `auto-cols-min` |  |
 | `auto-rows` | `auto-rows-auto`, `auto-rows-fr`, `auto-rows-max`, `auto-rows-min` |  |
-| `content` | `content-around`, `content-between`, `content-center`, `content-end`, `content-evenly`, … (7) | align-content (4); content (1) |
+| `content` | `content-around`, `content-between`, `content-center`, `content-center-safe`, `content-end`, … (9) | align-content (2); content (1) |
 | `gap` | `gap-0`, `gap-0.5`, `gap-1`, `gap-1.5`, `gap-2`, … (35) |  |
 | `gap-x` | `gap-x-0`, `gap-x-0.5`, `gap-x-1`, `gap-x-1.5`, `gap-x-2`, … (35) |  |
 | `gap-y` | `gap-y-0`, `gap-y-0.5`, `gap-y-1`, `gap-y-1.5`, `gap-y-2`, … (35) |  |
 | `grid-cols` | `grid-cols-1`, `grid-cols-2`, `grid-cols-3`, `grid-cols-4`, `grid-cols-5`, … (13) | grid-template-columns (1) |
 | `grid-rows` | `grid-rows-1`, `grid-rows-2`, `grid-rows-3`, `grid-rows-4`, `grid-rows-5`, … (13) | grid-template-rows (1) |
-| `items` | `items-baseline`, `items-center`, `items-end`, `items-start`, `items-stretch` | align-items (3) |
-| `justify` | `justify-around`, `justify-between`, `justify-center`, `justify-end`, `justify-evenly`, … (14) | justify-content (5); justify-items (3); justify-self (3) |
-| `place` | `place-content-around`, `place-content-between`, `place-content-center`, `place-content-end`, `place-content-evenly`, … (15) | align-content (3); align-self (3); align-items (2) |
+| `items` | `items-baseline`, `items-center`, `items-center-safe`, `items-end`, `items-end-safe`, … (7) | align-items (1) |
+| `justify` | `justify-around`, `justify-between`, `justify-center`, `justify-center-safe`, `justify-end`, … (20) | justify-content (3); justify-items (1); justify-self (1) |
+| `place` | `place-content-around`, `place-content-between`, `place-content-center`, `place-content-center-safe`, `place-content-end`, … (21) | align-content (1); align-self (1); justify-content (1) |
 
 ## Sizing
 

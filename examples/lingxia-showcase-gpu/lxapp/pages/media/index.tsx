@@ -382,7 +382,7 @@ function Gallery({ data, actions }: Pane) {
           : 'h-24 p-3 rounded-2xl border-2 border-accent/40 bg-accent-soft active:opacity-80 disabled:opacity-40'
       }
     >
-      <view className="items-center justify-center gap-2">
+      <view className="items-center-safe justify-center gap-2">
         <text className="text-4xl text-accent">+</text>
         <text className="text-xs font-medium text-accent">{data.isRunning ? 'Opening...' : String(data.addLabel)}</text>
       </view>
