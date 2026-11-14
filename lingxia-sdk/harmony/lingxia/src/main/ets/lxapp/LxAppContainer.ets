@@ -23,7 +23,7 @@ import { LingXiaWebView } from './LingXiaWebView';
 import { GpuPage } from '../view/GpuPage';
 import { GpuChrome, GpuPageModel, GpuPages } from '../view/GpuPages';
 import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } from './NavigationBar';
-import { NavigationButton, CapsuleButton } from './LxAppDrawables';
+import { NavigationButton, CapsuleButton, CAPSULE_ID, CAPSULE_ROW_ID } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
 import liblingxia, { gpuPageChromeSnapshot, gpuPageDeclineChromeSnapshot, gpuPageCloseRequest, gpuPageScrollsRightAt, tabBarVisibleOn, gpuPageTransitionStart, gpuPageTransitionFrame, gpuPageTransitionEnd, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, reportPullRefreshIndicator, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
@@ -992,6 +992,7 @@ export struct LxAppContainer {
             CapsuleButton({
               statusBarHeight: this.getChromeStatusInset(),
               standalone: true,
+              underTopLayer: this.gpuRaised && this.capsuleCopied,
               capsuleBackgroundColor: this.pageConfig?.capsuleBackgroundColor ?? 0xFFFFFFFF,
               capsuleForegroundColor: this.pageConfig?.capsuleForegroundColor ?? 0xFF000000,
               capsuleDividerColor: this.pageConfig?.capsuleDividerColor ?? 0xFFD1D1D6,
@@ -2052,6 +2053,8 @@ export struct LxAppContainer {
 
   /** The page lies over the bars: only once a frame on screen draws them under its top layer. */
   @State private gpuRaised: boolean = false
+  /** The top bar's copy under the top layer carries the capsule. */
+  @State private capsuleCopied: boolean = false
   /** The page whose top layer the bars lie under, and each bar's snapshot generation by edge. */
   private barPage: GpuPageModel | null = null;
   private barSnapshots: Map<number, number> = new Map();
@@ -2124,6 +2127,7 @@ export struct LxAppContainer {
 
   private dropBarSnapshots(): void {
     this.clearRaiseFallback();
+    this.capsuleCopied = false;
     const page = this.barPage;
     this.barPage = null;
     if (page !== null && this.barSnapshots.size > 0) {
@@ -2155,6 +2159,7 @@ export struct LxAppContainer {
       return false;
     }
     let handed = false;
+    this.capsuleCopied = false;
     for (const edge of [BAR_TOP, BAR_BOTTOM]) {
       const generation = this.captureBar(page, edge, surface.x, surface.y);
       if (generation > 0) {
@@ -2193,11 +2198,67 @@ export struct LxAppContainer {
       if (bgra || !premultiplied) {
         toPremultipliedRgba(new Uint8Array(rows), bgra, premultiplied);
       }
+      if (edge === BAR_TOP) {
+        this.capsuleCopied = this.copyCapsuleInto(new Uint8Array(rows), width, height, rect);
+      }
       return gpuPageChromeSnapshot(page.token, edge, rows, width, height,
         rect.windowOffset.x - originX, rect.windowOffset.y - originY, rect.size.width, rect.size.height);
     } catch (error) {
       hilog.warn(DOMAIN, TAG, `bar ${edge} snapshot failed: ${error}`);
       return 0;
+    }
+  }
+
+  /** Draws the standalone capsule over the top bar's premultiplied RGBA copy; false when there
+   *  is none. Its snapshot keeps full alpha while the live capsule is hidden under the top layer. */
+  private copyCapsuleInto(bar: Uint8Array, width: number, height: number,
+    rect: componentUtils.ComponentInfo): boolean {
+    if (!this.shouldShowCapsuleButton() || this.isTabBarVertical()) {
+      return false;
+    }
+    try {
+      const row = componentUtils.getRectangleById(CAPSULE_ROW_ID);
+      const stack = componentUtils.getRectangleById(CAPSULE_ID);
+      // The window offset leaves out the capsule's translate, which is in vp.
+      const ui = this.getUIContext();
+      const left = Math.round(row.windowOffset.x + ui.vp2px(stack.translate.x) - rect.windowOffset.x);
+      const top = Math.round(row.windowOffset.y + ui.vp2px(stack.translate.y) - rect.windowOffset.y);
+      const pixels: image.PixelMap = componentSnapshot.getSync(CAPSULE_ROW_ID);
+      const info = pixels.getImageInfoSync();
+      const w = info.size.width;
+      const h = info.size.height;
+      if (pixels.getBytesNumberPerRow() !== w * 4) {
+        pixels.release();
+        return false;
+      }
+      const buffer = new ArrayBuffer(w * h * 4);
+      pixels.readPixelsToBufferSync(buffer);
+      const premultiplied = info.alphaType === image.AlphaType.PREMUL;
+      const bgra = info.pixelFormat === image.PixelMapFormat.BGRA_8888;
+      pixels.release();
+      const capsule = new Uint8Array(buffer);
+      if (bgra || !premultiplied) {
+        toPremultipliedRgba(capsule, bgra, premultiplied);
+      }
+      // Source over, clipped to the bar.
+      for (let y = Math.max(0, -top); y < h && top + y < height; y++) {
+        for (let x = Math.max(0, -left); x < w && left + x < width; x++) {
+          const s = (y * w + x) * 4;
+          const alpha = capsule[s + 3];
+          if (alpha === 0) {
+            continue;
+          }
+          const d = ((top + y) * width + left + x) * 4;
+          const keep = 255 - alpha;
+          for (let k = 0; k < 4; k++) {
+            bar[d + k] = capsule[s + k] + Math.round(bar[d + k] * keep / 255);
+          }
+        }
+      }
+      return true;
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, `capsule copy failed: ${error}`);
+      return false;
     }
   }
 

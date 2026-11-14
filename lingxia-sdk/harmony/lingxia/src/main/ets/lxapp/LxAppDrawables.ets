@@ -26,6 +26,9 @@ const CAPSULE_BUTTON_BORDER_RADIUS = 16;
 const CAPSULE_BUTTON_BORDER_WIDTH = 0.5;
 const CAPSULE_BUTTON_Z_INDEX = 9999;
 const CAPSULE_TRAILING_MARGIN = 12;
+/** The standalone capsule and its button row, for the container's bar copy. */
+export const CAPSULE_ID = 'lx-capsule';
+export const CAPSULE_ROW_ID = 'lx-capsule-row';
 // Keep in sync with NavigationBar.NAVIGATION_BAR_CONTENT_HEIGHT.
 const NAV_BAR_CONTENT_HEIGHT = 44;
 
@@ -182,6 +185,9 @@ export struct CapsuleButton {
   @Prop capsuleInteractionColor: number = 0xFFE5E5EA
   @State morePressed: boolean = false
   @State closePressed: boolean = false
+  /** A modal top layer is open: the page draws this capsule, dimmed, in its bar copy; this one
+   *  stays in place, invisible, to take taps. */
+  @Prop underTopLayer: boolean = false
 
   build() {
     if (this.standalone) {
@@ -194,8 +200,13 @@ export struct CapsuleButton {
   @Builder
   buildStandaloneCapsule(): void {
     Stack() {
-      this.buildCapsuleRow()
+      Row() {
+        this.buildCapsuleRow()
+      }
+      .id(CAPSULE_ROW_ID)
     }
+    .id(CAPSULE_ID)
+    .opacity(this.underTopLayer ? 0 : 1)
     .position({ x: '100%', y: calculateCapsuleTop(this.statusBarHeight) })
     .translate({ x: -(CAPSULE_BUTTON_TOTAL_WIDTH + CAPSULE_TRAILING_MARGIN), y: 0 })
     .width(CAPSULE_BUTTON_TOTAL_WIDTH)
