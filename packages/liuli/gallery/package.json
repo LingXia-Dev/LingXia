@@ -5,7 +5,7 @@
   "description": "Liuli's gallery lxapp: one page per component, rendering its examples. Hosts Liuli's device specs.",
   "type": "module",
   "scripts": {
-    "build": "lingxia build",
+    "build:lxapp": "lingxia build",
     "pretypecheck": "npm run build --workspace @lingxia/test",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p zz-tests/tsconfig.json"
   },
