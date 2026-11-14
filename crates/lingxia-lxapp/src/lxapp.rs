@@ -1127,6 +1127,8 @@ pub(crate) struct LxAppState {
     /// Pending in-place resets for pages that left the stack, keyed by page
     /// instance id. Cancelled when the page is navigated to again.
     page_reset_timers: Mutex<HashMap<String, oneshot::Sender<()>>>,
+    /// GPU pages that left the stack, by instance id, with when they left.
+    popped_gpu_pages: Mutex<HashMap<String, Instant>>,
 
     /// PageInstance navigation stack: instance ids, oldest → newest. The
     /// instance id is the page's identity; its path is route metadata read
@@ -1172,6 +1174,7 @@ impl LxAppState {
             page_instance_runtime: Mutex::new(HashMap::new()),
             page_instance_dispose_timers: Mutex::new(HashMap::new()),
             page_reset_timers: Mutex::new(HashMap::new()),
+            popped_gpu_pages: Mutex::new(HashMap::new()),
             page_stack: Mutex::new(VecDeque::with_capacity(PAGE_STACK_MAX)),
             last_active_time: Instant::now(),
             tabbar: None,
@@ -1997,6 +2000,15 @@ impl LxApp {
     /// hooks, native components, media) and queue Logic work for pages nobody
     /// is returning to.
     pub(crate) fn schedule_page_reset(&self, page: &PageInstance) {
+        if self.note_popped_gpu_page(page, Instant::now()) {
+            let appid = self.appid.clone();
+            std::mem::drop(crate::executor::spawn(async move {
+                time::sleep(Self::POPPED_GPU_PAGE_GRACE).await;
+                if let Some(app) = crate::lxapp::try_get(&appid) {
+                    app.dispose_popped_gpu_pages(Instant::now());
+                }
+            }));
+        }
         let instance_id = page.instance_id_string();
         self.cancel_page_reset(&instance_id);
         {
@@ -2049,6 +2061,50 @@ impl LxApp {
                 app.teardown_page(&page);
             }
         }));
+    }
+
+    /// A GPU page off the stack keeps a full-screen surface set; past this its re-entry is built
+    /// cold instead.
+    const POPPED_GPU_PAGE_GRACE: Duration = Duration::from_secs(3);
+
+    /// Starts the grace for a GPU page that left the stack; false for pages that stay warm
+    /// (WebView pages, path-pinned tab pages and services).
+    fn note_popped_gpu_page(&self, page: &PageInstance, now: Instant) -> bool {
+        let id = page.instance_id_string();
+        if page.renderer() != crate::PageRenderer::Gpu
+            || self
+                .pinned_page(&page.path())
+                .is_some_and(|pinned| pinned.instance_id_string() == id)
+        {
+            return false;
+        }
+        let state = self.state.lock().unwrap();
+        state.popped_gpu_pages.lock().unwrap().insert(id, now);
+        true
+    }
+
+    /// Disposes the GPU pages off the stack for the whole grace; a page back on the stack
+    /// leaves the set, and one already removed is not removed again.
+    fn dispose_popped_gpu_pages(&self, now: Instant) {
+        let expired: Vec<String> = {
+            let state = self.state.lock().unwrap();
+            let stack = state.page_stack.lock().unwrap();
+            let pages = state.pages_by_id.lock().unwrap();
+            let mut popped = state.popped_gpu_pages.lock().unwrap();
+            popped.retain(|id, _| pages.contains_key(id) && !stack.contains(id));
+            let expired: Vec<String> = popped
+                .iter()
+                .filter(|(_, left)| {
+                    now.saturating_duration_since(**left) >= Self::POPPED_GPU_PAGE_GRACE
+                })
+                .map(|(id, _)| id.clone())
+                .collect();
+            popped.retain(|id, _| !expired.contains(id));
+            expired
+        };
+        if !expired.is_empty() {
+            self.remove_pages(&expired);
+        }
     }
 
     /// Cancels a pending reset, reporting whether one was outstanding.
@@ -5747,6 +5803,144 @@ mod manifest_reload_tests {
         let fresh = app.get_or_create_page("pages/api/index");
         assert_ne!(fresh.instance_id(), api.instance_id());
         assert!(app.pinned_page("pages/service/index").is_some());
+    }
+
+    /// A GPU app with a home and an api tab and a pushed `detail` page, home on the stack.
+    fn popped_fixture(renderer: &str) -> (tempfile::TempDir, Arc<LxApp>, PageInstance) {
+        let temp = tempfile::tempdir().unwrap();
+        let appid = format!("app.lingxia.popped.{}", Uuid::new_v4());
+        write_manifest(
+            temp.path(),
+            &appid,
+            &r#"{
+              "appId": "APPID", "version": "1.0.0", "logic": false, "renderer": "RENDERER",
+              "pages": [
+                {"name": "home", "path": "pages/home/index.js"},
+                {"name": "api", "path": "pages/api/index.js"},
+                {"name": "detail", "path": "pages/detail/index.js"}
+              ],
+              "tabBar": {"items": [{"page": "home", "text": "Home"}, {"page": "api", "text": "API"}]}
+            }"#
+            .replace("RENDERER", renderer),
+        );
+        let app = dev_app(temp.path(), &appid);
+        let page = |path: &str| PageInstance::new_headless(app.appid.clone(), path.into(), &app);
+        let (home, api, detail) = (
+            page("pages/home/index.js"),
+            page("pages/api/index.js"),
+            page("pages/detail/index.js"),
+        );
+        {
+            let state = app.state.lock().unwrap();
+            let mut pages = state.pages_by_id.lock().unwrap();
+            for page in [&home, &api, &detail] {
+                pages.insert(page.instance_id_string(), page.clone());
+            }
+            state
+                .page_stack
+                .lock()
+                .unwrap()
+                .push_back(home.instance_id_string());
+        }
+        app.pin_page_path(&home);
+        app.pin_page_path(&api);
+        (temp, app, detail)
+    }
+
+    fn live(app: &LxApp, page: &PageInstance) -> bool {
+        app.get_page_by_instance_id_str(&page.instance_id_string())
+            .is_some()
+    }
+
+    const GRACE: Duration = LxApp::POPPED_GPU_PAGE_GRACE;
+
+    #[test]
+    fn a_popped_gpu_page_is_disposed_once_its_grace_ends() {
+        let (_temp, app, detail) = popped_fixture("gpu");
+        let endpoint = Arc::new(FactoryEndpoint::default());
+        detail.attach_gpu_view(endpoint.clone()).unwrap();
+        let left = Instant::now();
+        assert!(app.note_popped_gpu_page(&detail, left));
+        app.dispose_popped_gpu_pages(left + GRACE - Duration::from_millis(1));
+        assert!(live(&app, &detail), "disposed inside its grace");
+        app.dispose_popped_gpu_pages(left + GRACE);
+        assert!(!live(&app, &detail));
+        drop(detail);
+        assert_eq!(
+            endpoint.0.load(Ordering::SeqCst),
+            1,
+            "its view was not disposed"
+        );
+    }
+
+    #[test]
+    fn a_gpu_page_entered_again_within_its_grace_stays_warm() {
+        let (_temp, app, detail) = popped_fixture("gpu");
+        let left = Instant::now();
+        assert!(app.note_popped_gpu_page(&detail, left));
+        let id = detail.instance_id_string();
+        app.state
+            .lock()
+            .unwrap()
+            .page_stack
+            .lock()
+            .unwrap()
+            .push_back(id.clone());
+        app.dispose_popped_gpu_pages(left + GRACE * 4);
+        assert!(live(&app, &detail), "a page on the stack was disposed");
+
+        // Popped again: its grace starts over.
+        app.state
+            .lock()
+            .unwrap()
+            .page_stack
+            .lock()
+            .unwrap()
+            .retain(|entry| entry != &id);
+        let again = left + GRACE * 5;
+        assert!(app.note_popped_gpu_page(&detail, again));
+        app.dispose_popped_gpu_pages(again + GRACE / 2);
+        assert!(live(&app, &detail));
+        app.dispose_popped_gpu_pages(again + GRACE);
+        assert!(!live(&app, &detail));
+    }
+
+    #[test]
+    fn tab_pages_and_webview_pages_are_never_disposed_for_leaving() {
+        let (_temp, app, _detail) = popped_fixture("gpu");
+        let api = app.pinned_page("pages/api/index.js").unwrap();
+        let left = Instant::now();
+        assert!(!app.note_popped_gpu_page(&api, left));
+        app.dispose_popped_gpu_pages(left + GRACE * 10);
+        assert!(live(&app, &api));
+
+        let (_temp, app, detail) = popped_fixture("webview");
+        assert!(!app.note_popped_gpu_page(&detail, left));
+        app.dispose_popped_gpu_pages(left + GRACE * 10);
+        assert!(live(&app, &detail), "a WebView page lost its warm path");
+    }
+
+    #[test]
+    fn a_relaunch_inside_the_grace_disposes_the_page_once() {
+        let (_temp, app, detail) = popped_fixture("gpu");
+        let endpoint = Arc::new(FactoryEndpoint::default());
+        detail.attach_gpu_view(endpoint.clone()).unwrap();
+        let left = Instant::now();
+        assert!(app.note_popped_gpu_page(&detail, left));
+        app.remove_pages(&[detail.instance_id_string()]);
+        drop(detail);
+        assert_eq!(endpoint.0.load(Ordering::SeqCst), 1);
+        app.dispose_popped_gpu_pages(left + GRACE);
+        assert_eq!(endpoint.0.load(Ordering::SeqCst), 1, "disposed twice");
+        assert!(
+            app.state
+                .lock()
+                .unwrap()
+                .popped_gpu_pages
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
