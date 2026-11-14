@@ -28,7 +28,9 @@ export const doc: ComponentDoc = {
     target: { sm: 32, md: 32 },
     contrast: [
       { what: 'track, on, against the surface', pair: ['surface', 'accent/80'], over: 'surface', minimum: '3:1' },
-      { what: 'thumb against the track, on', pair: ['on-media', 'accent/80'], over: 'surface', minimum: '3:1' },
+      { what: 'thumb against the track, on', pair: ['knob', 'accent/80'], over: 'surface', minimum: '3:1' },
+      { what: 'thumb against the track, on, straight on the page', pair: ['knob', 'accent/80'], over: 'canvas', minimum: '3:1' },
+      { what: 'thumb against the track, on, inside a popover or sheet', pair: ['knob', 'accent/80'], over: 'surface-overlay', minimum: '3:1' },
       { what: 'keyboard focus ring', pair: ['focus', 'surface'], minimum: '3:1' },
       { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1' },
     ],
@@ -37,6 +39,7 @@ export const doc: ComponentDoc = {
       'The standalone switch is 32 px tall at both sizes; the row variant gives it a 48 px row.',
       'The off track is decorative and has no contrast minimum: off is carried by the thumb at the start and the missing accent.',
       'Disabled and on, the track keeps its accent at reduced strength, so the state still reads.',
+      'The thumb is the `knob` role, white in both appearances. On the solid dark accent it would fall to 2.72:1, so the on track is the accent at 80 %.',
       'Keyboard focus rings a standalone switch; on a row it is a fill across the row and its help text, as on an Item.',
     ],
   },

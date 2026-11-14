@@ -96,12 +96,15 @@ export function Sizes() {
 - The standalone switch is 32 px tall at both sizes; the row variant gives it a 48 px row.
 - The off track is decorative and has no contrast minimum: off is carried by the thumb at the start and the missing accent.
 - Disabled and on, the track keeps its accent at reduced strength, so the state still reads.
+- The thumb is the `knob` role, white in both appearances. On the solid dark accent it would fall to 2.72:1, so the on track is the accent at 80 %.
 - Keyboard focus rings a standalone switch; on a row it is a fill across the row and its help text, as on an Item.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | track, on, against the surface | `surface` on `accent/80` over `surface` | 3:1 | 3.81:1 | 4.45:1 |
-| thumb against the track, on | `on-media` on `accent/80` over `surface` | 3:1 | 3.81:1 | 3.78:1 |
+| thumb against the track, on | `knob` on `accent/80` over `surface` | 3:1 | 3.81:1 | 3.78:1 |
+| thumb against the track, on, straight on the page | `knob` on `accent/80` over `canvas` | 3:1 | 3.88:1 | 3.89:1 |
+| thumb against the track, on, inside a popover or sheet | `knob` on `accent/80` over `surface-overlay` | 3:1 | 3.81:1 | 3.55:1 |
 | keyboard focus ring | `focus` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 

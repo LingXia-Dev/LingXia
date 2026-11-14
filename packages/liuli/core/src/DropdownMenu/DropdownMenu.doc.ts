@@ -39,8 +39,8 @@ export const doc: ComponentDoc = {
     ],
     target: { sm: 32, md: 40, lg: 48 },
     contrast: [
-      { what: 'item text', pair: ['text', 'surface-raised'], minimum: '4.5:1' },
-      { what: 'destructive icon', pair: ['danger', 'surface-raised'], minimum: '3:1' },
+      { what: 'item text', pair: ['text', 'surface-overlay'], minimum: '4.5:1' },
+      { what: 'destructive icon', pair: ['danger', 'surface-overlay'], minimum: '3:1' },
     ],
     notes: [
       'An item is named by its label and then its description, both inside the item.',
@@ -85,7 +85,7 @@ export const doc: ComponentDoc = {
     },
     {
       missing: 'A destructive item in danger-coloured text.',
-      needs: 'a text-grade danger role (4.5:1 on surface-raised)',
+      needs: 'a text-grade danger role (4.5:1 on surface-overlay)',
       today: 'The icon carries the danger colour; the text stays in the text role.',
     },
   ],

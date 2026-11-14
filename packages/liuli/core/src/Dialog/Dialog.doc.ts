@@ -26,8 +26,8 @@ export const doc: ComponentDoc = {
     states: [{ state: 'modal', from: 'isOpen; announced as an alert dialog with isAlert' }],
     keyboard: [{ keys: 'Escape', effect: 'onOpenChange(false), unless dismissOn is none' }],
     contrast: [
-      { what: 'title', pair: ['text', 'surface-raised'], minimum: '4.5:1' },
-      { what: 'description', pair: ['text-muted', 'surface-raised'], minimum: '4.5:1' },
+      { what: 'title', pair: ['text', 'surface-overlay'], minimum: '4.5:1' },
+      { what: 'description', pair: ['text-muted', 'surface-overlay'], minimum: '4.5:1' },
     ],
     notes: [
       'Opened from a hardware keyboard, focus moves to the first control and returns to the opener on close; opened by touch, focus stays put.',

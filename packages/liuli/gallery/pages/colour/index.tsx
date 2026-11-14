@@ -19,7 +19,8 @@ const groups: { title: string; swatches: Swatch[] }[] = [
     swatches: [
       { role: 'canvas', use: 'The page behind everything', sample: 'bg-canvas', ink: 'text-text' },
       { role: 'surface', use: 'Cards, stages and inputs', sample: 'bg-surface', ink: 'text-text' },
-      { role: 'surface-raised', use: 'Menus and dialogs', sample: 'bg-surface-raised', ink: 'text-text' },
+      { role: 'surface-raised', use: 'Raised cards and segment thumbs', sample: 'bg-surface-raised', ink: 'text-text' },
+      { role: 'surface-overlay', use: 'Menus, popovers, dialogs and sheets', sample: 'bg-surface-overlay', ink: 'text-text' },
       { role: 'surface-sunken', use: 'Wells inside a surface', sample: 'bg-surface-sunken', ink: 'text-text' },
       { role: 'scrim', use: 'Dims the page behind a modal dialog', sample: 'bg-scrim', isVeil: true },
     ],
@@ -46,6 +47,7 @@ const groups: { title: string; swatches: Swatch[] }[] = [
     swatches: [
       { role: 'accent', use: 'The primary action, with on-accent', sample: 'bg-accent', ink: 'text-on-accent' },
       { role: 'accent-soft', use: 'Quiet highlights, with on-accent-soft', sample: 'bg-accent-soft', ink: 'text-on-accent-soft' },
+      { role: 'knob', use: 'Switch and slider thumbs, white in both appearances', sample: 'bg-accent/80', ink: 'text-knob' },
     ],
   },
   {

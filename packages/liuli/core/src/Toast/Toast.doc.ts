@@ -33,9 +33,9 @@ export const doc: ComponentDoc = {
     ],
     target: { md: 36 },
     contrast: [
-      { what: 'message', pair: ['text', 'surface-raised'], minimum: '4.5:1' },
-      { what: 'dismiss icon', pair: ['text-muted', 'surface-raised'], minimum: '3:1' },
-      { what: 'action', pair: ['accent', 'surface-raised'], minimum: '4.5:1' },
+      { what: 'message', pair: ['text', 'surface-overlay'], minimum: '4.5:1' },
+      { what: 'dismiss icon', pair: ['text-muted', 'surface-overlay'], minimum: '3:1' },
+      { what: 'action', pair: ['accent', 'surface-overlay'], minimum: '4.5:1' },
     ],
     notes: [
       'Each new message is announced politely; a danger toast is announced assertively.',

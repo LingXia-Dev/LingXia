@@ -14,7 +14,7 @@ export const detailsRecipe = {
   group: {
     base: 'overflow-hidden rounded-container border border-text/12 divide-y divide-text/8',
     /** One rung up from what it sits on; inside an overlay it takes the overlay's surface. */
-    layer: { page: 'bg-surface', raised: 'bg-surface-raised' } satisfies Record<Layer, string>,
+    layer: { page: 'bg-surface', overlay: 'bg-surface-overlay' } satisfies Record<Layer, string>,
   },
   root: {
     base: '',

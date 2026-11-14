@@ -31,14 +31,15 @@ export const doc: ComponentDoc = {
     contrast: [
       { what: 'filled range against the surface', pair: ['surface', 'accent/80'], over: 'surface', minimum: '3:1' },
       { what: 'thumb rim against the track', pair: ['accent', 'line'], minimum: '3:1' },
-      { what: 'thumb against the range', pair: ['on-media', 'accent/80'], over: 'surface', minimum: '3:1' },
+      { what: 'thumb against the range', pair: ['knob', 'accent/80'], over: 'surface', minimum: '3:1' },
+      { what: 'thumb against the range, straight on the page', pair: ['knob', 'accent/80'], over: 'canvas', minimum: '3:1' },
       { what: 'keyboard focus ring', pair: ['focus', 'surface'], minimum: '3:1' },
     ],
     notes: [
       '`valueLabel` is the spoken value: "Large" in place of 4, "1:24 of 3:10" in place of 84.',
       'The press area is the whole control, 40 px tall (32 at `sm`), whatever the thumb\'s drawn size.',
       'The empty track and the secondary range are decorative and have no contrast minimum: the value is carried by the range and the thumb.',
-      'The thumb is a white disc with an accent rim, so it reads on the range, the track and a dark page alike.',
+      'The thumb is a `knob` disc, white in both appearances, with an accent rim, so it reads on the range, the track and a dark page alike. On the solid dark accent it would fall to 2.72:1, so the range is the accent at 80 %.',
       'Disabled, the range keeps its accent at reduced strength, so the value still shows as the filled part.',
     ],
   },

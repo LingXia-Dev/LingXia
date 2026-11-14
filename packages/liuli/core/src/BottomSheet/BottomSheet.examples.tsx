@@ -90,12 +90,12 @@ export function Required() {
 export function Parts() {
   return (
     <view className="justify-end rounded-container bg-scrim px-4 pt-12 overflow-hidden">
-      <view className="w-full px-5 pt-2 pb-5 gap-4 rounded-t-dialog border border-b-0 border-text/12 bg-surface-raised shadow-modal">
+      <view className="w-full px-5 pt-2 pb-5 gap-4 rounded-t-dialog border border-b-0 border-text/12 bg-surface-overlay shadow-modal">
         <view className={bottomSheetRecipe.grabber.base} />
         <view className={bottomSheetRecipe.header.base}>
           <text className={bottomSheetRecipe.title.base}>Move to</text>
         </view>
-        <LayerContext.Provider value="raised">
+        <LayerContext.Provider value="overlay">
           <ItemList label="Folders">
             <Item label="Inbox" />
             <Item label="Travel" />
@@ -110,7 +110,7 @@ export function Parts() {
 export function Specimen() {
   return (
     <view className="w-30 h-20 justify-end overflow-hidden rounded-control bg-text/6">
-      <view className="px-2.5 pt-1.5 pb-2.5 gap-1.5 rounded-t-control border border-b-0 border-text/12 bg-surface-raised shadow-[0_-2px_8px_rgb(0_0_0/0.10)]">
+      <view className="px-2.5 pt-1.5 pb-2.5 gap-1.5 rounded-t-control border border-b-0 border-text/12 bg-surface-overlay shadow-[0_-2px_8px_rgb(0_0_0/0.10)]">
         <view className="self-center w-5 h-0.5 rounded-full bg-text/20" />
         <text className="text-caption font-semibold text-text">Move to</text>
         <view className="h-1.5 w-3/4 rounded-full bg-text/10" />

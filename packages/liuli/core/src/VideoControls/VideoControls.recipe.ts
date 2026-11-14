@@ -73,7 +73,7 @@ export const videoControlsRecipe = {
     full: 'absolute start-4 end-4 bottom-3 rounded-[20px] border border-on-media/20 bg-media px-0.5 pt-4 pb-1',
   },
   scrubber: {
-    base: 'absolute start-3 end-3 px-0 pb-0 track:rounded-full track:bg-on-media/25 secondary:rounded-full secondary:bg-on-media/45 range:rounded-full range:bg-on-media thumb:size-3 thumb:rounded-full thumb:bg-transparent track:h-[3px] secondary:h-[3px] range:h-[3px] active:track:h-[5px] active:secondary:h-[5px] active:range:h-[5px] active:thumb:bg-on-media focus-visible:thumb:bg-on-media focus-visible:thumb:ring-2 focus-visible:thumb:ring-focus',
+    base: 'absolute start-3 end-3 px-0 pb-0 track:rounded-full track:bg-on-media/25 secondary:rounded-full secondary:bg-on-media/45 range:rounded-full range:bg-on-media thumb:size-3 thumb:rounded-full thumb:bg-transparent track:h-[3px] secondary:h-[3px] range:h-[3px] active:track:h-[5px] active:secondary:h-[5px] active:range:h-[5px] active:thumb:bg-knob focus-visible:thumb:bg-on-media focus-visible:thumb:ring-2 focus-visible:thumb:ring-focus',
     inline: '-top-[30px] h-11 pt-10',
     full: '-top-8 h-12 pt-11',
   },
@@ -141,7 +141,7 @@ export const videoControlsRecipe = {
     error: 'flex-row items-center gap-2 px-3',
     errorText: 'grow basis-0 text-xs text-danger',
     // Slider's own md control, so a player on a page matches the Slider beside it.
-    slider: 'mx-0.5 grow basis-0 h-control-md p-0 text-accent track:h-1 track:rounded-full track:bg-line range:h-1 range:rounded-full range:bg-accent/80 secondary:h-1 secondary:rounded-full secondary:bg-line-strong/50 thumb:size-5 thumb:rounded-full thumb:bg-on-media thumb:border-2 thumb:border-accent thumb:shadow-contact active:thumb:scale-110 focus-visible:thumb:ring-2 focus-visible:thumb:ring-focus focus-visible:thumb:ring-offset-2 disabled:range:bg-accent/40 disabled:thumb:border-accent/40 disabled:thumb:shadow-none',
+    slider: 'mx-0.5 grow basis-0 h-control-md p-0 text-accent track:h-1 track:rounded-full track:bg-line range:h-1 range:rounded-full range:bg-accent/80 secondary:h-1 secondary:rounded-full secondary:bg-line-strong/50 thumb:size-5 thumb:rounded-full thumb:bg-knob thumb:border-2 thumb:border-accent thumb:shadow-contact active:thumb:scale-110 focus-visible:thumb:ring-2 focus-visible:thumb:ring-focus focus-visible:thumb:ring-offset-2 disabled:range:bg-accent/40 disabled:thumb:border-accent/40 disabled:thumb:shadow-none',
   },
   fullscreen: {
     // The video fills the panel and backs itself in black.

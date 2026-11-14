@@ -21,7 +21,7 @@ export const toastRecipe = {
     pointer: { coarse: 'items-center', fine: 'items-end' },
   },
   toast: {
-    base: 'flex-row items-center gap-3 min-h-12 ps-4 pe-1.5 py-1.5 rounded-container border border-text/12 bg-surface-raised shadow-raised transition-transform duration-300 ease-out',
+    base: 'flex-row items-center gap-3 min-h-12 ps-4 pe-1.5 py-1.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition-transform duration-300 ease-out',
     pointer: { coarse: 'w-full max-w-[480px]', fine: 'w-[360px] max-w-full' },
     /** Without a dismiss button the end padding matches the start. */
     plain: 'pe-4',

@@ -40,8 +40,8 @@ export function ShapeAndSpacingSpecimen() {
 export function ElevationSpecimen() {
   return (
     <view className="mb-5 flex-row items-end gap-3">
-      <view className="w-12 h-9 rounded-control border border-text/12 bg-surface-raised shadow-[0_1px_2px_rgb(0_0_0/0.06),0_3px_8px_rgb(0_0_0/0.08)]" />
-      <view className="w-14 h-11 rounded-container border border-text/12 bg-surface-raised shadow-[0_2px_4px_rgb(0_0_0/0.10),0_10px_22px_rgb(0_0_0/0.22)]" />
+      <view className="w-12 h-9 rounded-control border border-text/12 bg-surface-overlay shadow-[0_1px_2px_rgb(0_0_0/0.06),0_3px_8px_rgb(0_0_0/0.08)]" />
+      <view className="w-14 h-11 rounded-container border border-text/12 bg-surface-overlay shadow-[0_2px_4px_rgb(0_0_0/0.10),0_10px_22px_rgb(0_0_0/0.22)]" />
     </view>
   );
 }

@@ -30,8 +30,8 @@ export const doc: ComponentDoc = {
       { keys: 'Up, Down', effect: 'With the sheet focused, the next detent up or down.' },
     ],
     contrast: [
-      { what: 'title', pair: ['text', 'surface-raised'], minimum: '4.5:1' },
-      { what: 'description', pair: ['text-muted', 'surface-raised'], minimum: '4.5:1' },
+      { what: 'title', pair: ['text', 'surface-overlay'], minimum: '4.5:1' },
+      { what: 'description', pair: ['text-muted', 'surface-overlay'], minimum: '4.5:1' },
     ],
     notes: [
       'Screen readers announce the sheet as adjustable: increment and decrement step it between detents.',

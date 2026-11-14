@@ -79,7 +79,7 @@ export function Popover({
         {icon !== undefined && <view aria-hidden className={b.icon.base}>{icon}</view>}
         {!isLabelHidden && <text className={cx(b.label.base, b.label.weight[variant], b.label.size[size])}>{label}</text>}
       </button>
-      <LayerContext.Provider value="raised">
+      <LayerContext.Provider value="overlay">
         <view
           id={id}
           popover

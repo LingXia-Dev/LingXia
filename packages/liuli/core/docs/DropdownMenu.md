@@ -249,8 +249,8 @@ export function Checkable() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| item text | `text` on `surface-raised` | 4.5:1 | 16.26:1 | 11.83:1 |
-| destructive icon | `danger` on `surface-raised` | 3:1 | 5.21:1 | 4.62:1 |
+| item text | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.10:1 |
+| destructive icon | `danger` on `surface-overlay` | 3:1 | 5.21:1 | 3.95:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 
@@ -269,6 +269,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Submenus and side placement. | inline-start and inline-end position areas | One level; top or bottom only. |
 | Opening by long press or secondary click. | a long-press and secondary-click invoker | Tap on the trigger only. |
 | Anchoring when opened from code with isOpen. | a popover anchor that does not depend on which control opened it | Opened from code it is placed by its classes; the trigger is the normal way in. |
-| A destructive item in danger-coloured text. | a text-grade danger role (4.5:1 on surface-raised) | The icon carries the danger colour; the text stays in the text role. |
+| A destructive item in danger-coloured text. | a text-grade danger role (4.5:1 on surface-overlay) | The icon carries the danger colour; the text stays in the text role. |
 
 Related: Button.

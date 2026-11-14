@@ -49,6 +49,12 @@ test('the editor has no inset of its own and matches the Button label size', asy
   assert.equal(editor.props.fontSize, 15);
 });
 
+test('a placeholder or an unfocused value too long for the box ends in an ellipsis', async () => {
+  const editor = (await renderExample('TextInput/TextInput', 'Bound')).getByTestId('email');
+  assert.equal(editor.props.textOverflow, 'ellipsis');
+  assert.equal(editor.props.whiteSpace, 'nowrap');
+});
+
 test('Search: one muted 16 px magnifier and a plain editor, never the platform search field', async () => {
   const screen = await renderExample('TextInput/TextInput', 'Search');
   const editor = screen.getByTestId('search');

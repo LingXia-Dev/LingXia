@@ -119,9 +119,9 @@ export function Faces() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| message | `text` on `surface-raised` | 4.5:1 | 16.26:1 | 11.83:1 |
-| dismiss icon | `text-muted` on `surface-raised` | 3:1 | 5.89:1 | 5.67:1 |
-| action | `accent` on `surface-raised` | 4.5:1 | 5.62:1 | 5.28:1 |
+| message | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.10:1 |
+| dismiss icon | `text-muted` on `surface-overlay` | 3:1 | 5.89:1 | 4.84:1 |
+| action | `accent` on `surface-overlay` | 4.5:1 | 5.62:1 | 4.51:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

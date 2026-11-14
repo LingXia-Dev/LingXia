@@ -124,8 +124,8 @@ export function Form() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| title | `text` on `surface-raised` | 4.5:1 | 16.26:1 | 11.83:1 |
-| description | `text-muted` on `surface-raised` | 4.5:1 | 5.89:1 | 5.67:1 |
+| title | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.10:1 |
+| description | `text-muted` on `surface-overlay` | 4.5:1 | 5.89:1 | 4.84:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

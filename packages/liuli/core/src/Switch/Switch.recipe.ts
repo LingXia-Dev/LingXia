@@ -20,7 +20,7 @@ export const switchRecipe = {
     variant: { standalone: '', row: 'self-stretch px-4 py-2.5 min-h-control-lg justify-center' } satisfies Record<SwitchVariant, string>,
   },
   control: {
-    base: 'min-h-8 track:rounded-full track:bg-line-strong/45 checked:track:bg-accent/80 thumb:rounded-full thumb:bg-on-media thumb:border thumb:border-text/12 thumb:shadow-contact disabled:checked:track:bg-accent/40 disabled:thumb:shadow-none',
+    base: 'min-h-8 track:rounded-full track:bg-line-strong/45 checked:track:bg-accent/80 thumb:rounded-full thumb:bg-knob thumb:border thumb:border-text/12 thumb:shadow-contact disabled:checked:track:bg-accent/40 disabled:thumb:shadow-none',
     size: {
       sm: 'track:w-9 track:h-5 thumb:size-4',
       md: 'track:w-11 track:h-[26px] thumb:size-[22px]',

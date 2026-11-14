@@ -27,7 +27,7 @@ export const doc: ComponentDoc = {
     ],
     target: { sm: 32, md: 40, lg: 48 },
     contrast: [
-      { what: 'title', pair: ['text', 'surface-raised'], minimum: '4.5:1' },
+      { what: 'title', pair: ['text', 'surface-overlay'], minimum: '4.5:1' },
       { what: 'panel edge', pair: ['line-strong', 'surface'], minimum: '3:1' },
     ],
     notes: [

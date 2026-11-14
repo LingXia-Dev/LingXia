@@ -14,8 +14,11 @@ export const dateInputRecipe = {
     disabled: 'bg-text/5 border-text/8',
   },
   input: {
-    base: 'grow basis-0 min-w-0 self-stretch px-0 bg-transparent text-text tabular-nums placeholder:text-muted disabled:text-faint',
+    /** A long placeholder ends in an ellipsis, the same as TextInput's. */
+    base: 'grow basis-0 truncate self-stretch px-0 bg-transparent text-text tabular-nums placeholder:text-muted disabled:text-faint',
     size: { sm: 'text-footnote', md: 'text-body', lg: 'text-base' } satisfies Record<FieldSize, string>,
+    /** The editor never narrows below `YYYY-MM-DD` in its own tabular digits. */
+    width: 'min-w-[10ch]',
   },
   icon: {
     base: 'size-4 shrink-0 text-muted',

@@ -21,8 +21,11 @@ export const textInputRecipe = {
     base: 'size-4',
   },
   input: {
-    /** The box owns the inset, so the editor's own padding is zeroed. */
-    base: 'grow basis-0 min-w-0 self-stretch px-0 bg-transparent text-text placeholder:text-muted disabled:text-faint',
+    /**
+     * The box owns the inset, so the editor's own padding is zeroed. A placeholder too long for the
+     * box ends in an ellipsis; so does a value, until the editor takes focus.
+     */
+    base: 'grow basis-0 min-w-0 truncate self-stretch px-0 bg-transparent text-text placeholder:text-muted disabled:text-faint',
     /** Matches the Button label at each size. */
     size: { sm: 'text-footnote', md: 'text-body', lg: 'text-base' } satisfies Record<FieldSize, string>,
   },

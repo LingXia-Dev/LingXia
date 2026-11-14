@@ -20,3 +20,10 @@ test('Trip: the return takes the departure as its earliest day and is marked bef
   assert.equal(screen.getByTestId('back').props.stateInvalid, 1);
   screen.getByText('Return after you leave.');
 });
+
+test('the editor keeps room for a whole date and cuts a long placeholder with an ellipsis', async () => {
+  const input = (await renderExample('DateInput/DateInput', 'DueDate')).getByTestId('due');
+  assert.equal(input.props.minWidthCh, 10);
+  assert.equal(input.props.fontVariantNumeric, 'tabular-nums');
+  assert.equal(input.props.textOverflow, 'ellipsis');
+});

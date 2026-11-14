@@ -40,3 +40,18 @@ test('pairs on roles the engine derives wait for the resolved palette', t => {
   if (theme.source === '@lingxia/view/theme') assert.deepEqual(waiting, []);
   t.diagnostic(`${waiting.length} pair-appearances wait for the resolved palette (${theme.source})`);
 });
+
+/** Pairs that clear their minimum by under 0.1: a palette nudge can tip them, so each is named. */
+const tight = new Set(['Item: chevron (light)', 'Toast: action (dark)']);
+
+test('the tight pairs are named and still clear their minimum', () => {
+  const near = [];
+  for (const pair of pairs)
+    for (const appearance of appearances) {
+      const result = ratio(theme.roles[appearance], pair);
+      if (result.missing) continue;
+      if (tight.has(key(pair, appearance))) assert.ok(result.value >= needed(pair), `${key(pair, appearance)}: ${format(result.value)}, needs ${pair.minimum}`);
+      if (result.value >= needed(pair) && result.value - needed(pair) < 0.1) near.push(key(pair, appearance));
+    }
+  assert.deepEqual(near.sort(), [...tight].sort());
+});
