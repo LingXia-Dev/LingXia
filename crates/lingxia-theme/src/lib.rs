@@ -39,14 +39,19 @@ pub fn app_pack(key: &str) -> Option<Pack> {
 }
 
 /// `pack` with every role and scale step it leaves out taken from the default pack, so an
-/// lxapp pack may change only its accent.
+/// lxapp pack may change only its accent. A pack that sets `surface-raised` but predates
+/// `surface-overlay` keeps no overlay of its own, so [`resolve`] floats overlays on its raised.
 pub fn complete(mut pack: Pack) -> Pack {
     let base = default_pack();
     for (colors, defaults) in [
         (&mut pack.appearance.light, &base.appearance.light),
         (&mut pack.appearance.dark, &base.appearance.dark),
     ] {
+        let own_raised = colors.contains_key(Role::SurfaceRaised.name());
         for (role, color) in defaults {
+            if own_raised && role == Role::SurfaceOverlay.name() {
+                continue;
+            }
             colors.entry(role.clone()).or_insert(*color);
         }
     }
@@ -236,9 +241,13 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
         {
             continue;
         }
-        palette[role as usize] = *base
-            .get(role.name())
-            .ok_or_else(|| format!("THEME: {} has no {}", pack.name, role.name()))?;
+        // A role added after packs shipped: overlays float on `surface-raised`.
+        let missing = !base.contains_key(role.name());
+        palette[role as usize] = match role {
+            Role::SurfaceOverlay if missing => base.get(Role::SurfaceRaised.name()).copied(),
+            _ => base.get(role.name()).copied(),
+        }
+        .ok_or_else(|| format!("THEME: {} has no {}", pack.name, role.name()))?;
     }
     if let Some(accent) = derived {
         derive_accent(
@@ -248,10 +257,13 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
         );
     }
     let derive = !base.contains_key(Role::Selection.name());
+    let borrowed_overlay = !base.contains_key(Role::SurfaceOverlay.name());
     if prefs.high_contrast && !explicit_high_contrast {
         for _ in 0..2 {
             for &(foreground, background, ratio) in CONTRAST {
-                if involves_selection(foreground, background) {
+                if involves_selection(foreground, background)
+                    || (borrowed_overlay && involves_overlay(foreground, background))
+                {
                     continue;
                 }
                 let (fg, bg) = (foreground as usize, background as usize);
@@ -351,6 +363,11 @@ fn derive_accent(palette: &mut [Rgba; ROLE_COUNT], seed: Rgba, appearance: Appea
     palette[Role::AccentSoft as usize] = soft;
     palette[Role::OnAccentSoft as usize] = ensure_contrast(on_soft, soft, 4.5);
     palette[Role::Focus as usize] = accent;
+}
+
+/// A pack without `surface-overlay` is held to the pairs it shipped with, not the overlay's.
+fn involves_overlay(foreground: Role, background: Role) -> bool {
+    foreground == Role::SurfaceOverlay || background == Role::SurfaceOverlay
 }
 
 /// Selection pairs keep their base ratios under high contrast: text must stay readable on the
@@ -454,7 +471,11 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
                 continue;
             }
         };
+        let borrowed_overlay = !colors.contains_key(Role::SurfaceOverlay.name());
         for &(foreground, background, ratio) in CONTRAST {
+            if borrowed_overlay && involves_overlay(foreground, background) {
+                continue;
+            }
             let needed = if high_contrast && !involves_selection(foreground, background) {
                 boosted(ratio)
             } else {

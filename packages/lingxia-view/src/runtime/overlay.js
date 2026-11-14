@@ -128,7 +128,7 @@ function modalNode() {
     flexGrow: 1, flexBasis: 0, minWidth: 0, paddingTop: 12, paddingBottom: 12, backgroundColor: 'transparent', color, fontSize: 16, fontWeight: confirm ? 600 : 400 } }, label);
   return h('dialog', { 'data-testid': 'lx-modal', role: 'alertdialog', key: `modal-${modal.key}`, open: true, onClose: () => settleModal(false),
     'aria-label': modal.title || modal.content || 'Dialog',
-    style: { width: 320, maxWidth: '86%', borderRadius: 14, backgroundColor: 'surface-raised', overflow: 'hidden', transition: fade } },
+    style: { width: 320, maxWidth: '86%', borderRadius: 14, backgroundColor: 'surface-overlay', overflow: 'hidden', transition: fade } },
     h('view', { style: { padding: 20, gap: 8, alignItems: 'center' } },
       modal.title && h('text', { role: 'heading', style: { fontSize: 17, fontWeight: 600, textAlign: 'center', color: 'text' } }, modal.title),
       modal.content && h('text', { style: { fontSize: 15, textAlign: 'center', color: 'text-muted' } }, modal.content)),
@@ -146,10 +146,10 @@ function sheetNode(env) {
   const place = phone ? { marginTop: 'auto', marginBottom: 8, marginLeft: 8, marginRight: 8 } : { width: 320 };
   return h('dialog', { 'data-testid': 'lx-action-sheet', key: `sheet-${sheet.key}`, open: true, closedby: 'any', onClose: () => settleSheet(-1),
     'aria-label': 'Actions', style: { ...place, gap: 8, transition: fade } },
-    h('view', { style: { borderRadius: 14, backgroundColor: 'surface-raised', overflow: 'hidden' } },
+    h('view', { style: { borderRadius: 14, backgroundColor: 'surface-overlay', overflow: 'hidden' } },
       ...sheet.items.map((label, index) => h('view', { key: `item-${index}`, style: index ? { borderTopWidth: 1, borderColor: 'line' } : {} },
         item(`lx-action-sheet-item-${index}`, label, index, 'accent')))),
-    h('view', { style: { borderRadius: 14, backgroundColor: 'surface-raised', overflow: 'hidden' } },
+    h('view', { style: { borderRadius: 14, backgroundColor: 'surface-overlay', overflow: 'hidden' } },
       item('lx-action-sheet-cancel', sheet.cancelText, -1, 'text')));
 }
 

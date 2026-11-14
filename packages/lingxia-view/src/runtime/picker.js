@@ -263,7 +263,7 @@ export function pickerNode(env) {
     cancel({ ...button, color: 'text' }), done({ ...button, backgroundColor: 'accent', color: 'on-accent', fontWeight: 600 }));
   const name = picker.kind === 'date' ? monthTitle : picker.kind === 'time' ? words.hour : picker.label || 'Options';
   const panel = { 'data-testid': 'lx-picker', key: `picker-${picker.key}`, 'aria-label': name,
-    style: { padding: 12, gap: 12, borderRadius: 14, backgroundColor: 'surface-raised', borderWidth: touch ? 0 : 1, borderColor: 'line',
+    style: { padding: 12, gap: 12, borderRadius: 14, backgroundColor: 'surface-overlay', borderWidth: touch ? 0 : 1, borderColor: 'line',
       boxShadow: [{ offsetX: 0, offsetY: 8, blur: 24, spread: 0, color: 'shadow/20' }] } };
   // Touch: a bottom sheet. A mouse: a popover that native moves against its editor.
   return touch

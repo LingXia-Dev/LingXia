@@ -324,12 +324,12 @@
   "roles": [
     {"name": "canvas", "doc": "Window and page floor."},
     {"name": "surface", "doc": "Cards, cells and sheets."},
-    {"name": "surface-raised", "doc": "Menus, popovers and elevated sheets."},
+    {"name": "surface-raised", "doc": "Raised cards and panels that stay in the page."},
     {"name": "surface-sunken", "doc": "Inset fields and grouped backgrounds."},
     {"name": "line", "on": {"surface": 1.2, "canvas": 1.1}, "doc": "Decorative separators and card borders; interactive boundaries use line-strong."},
-    {"name": "text", "on": {"canvas": 4.5, "surface": 4.5, "surface-raised": 4.5, "surface-sunken": 4.5, "selection": 4.5}, "doc": "Body text."},
-    {"name": "text-muted", "on": {"canvas": 4.5, "surface": 4.5}, "doc": "Secondary text."},
-    {"name": "text-faint", "on": {"surface": 3}, "doc": "Hints and disabled text."},
+    {"name": "text", "on": {"canvas": 4.5, "surface": 4.5, "surface-raised": 4.5, "surface-sunken": 4.5, "selection": 4.5, "surface-overlay": 4.5}, "doc": "Body text."},
+    {"name": "text-muted", "on": {"canvas": 4.5, "surface": 4.5, "surface-overlay": 4.5}, "doc": "Secondary text."},
+    {"name": "text-faint", "on": {"surface": 3, "surface-overlay": 3}, "doc": "Hints and disabled text."},
     {"name": "accent", "on": {"surface": 3, "canvas": 3}, "doc": "Primary actions, selection and links."},
     {"name": "on-accent", "on": {"accent": 4.5}, "doc": "Text and icons on accent."},
     {"name": "accent-soft", "doc": "Tinted containers and selected rows."},
@@ -354,7 +354,8 @@
     {"name": "selection", "on": {"surface": 3, "canvas": 3}, "doc": "Selected-text background; derived from the accent when a pack omits it."},
     {"name": "shadow", "doc": "Elevation shadow ink; `shadow-*` layers take it at their alpha."},
     {"name": "media", "doc": "Translucent dock over video and images; the same in both appearances."},
-    {"name": "on-media", "on": {"media": 4.5}, "doc": "Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`)."}
+    {"name": "on-media", "on": {"media": 4.5}, "doc": "Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`)."},
+    {"name": "surface-overlay", "doc": "Anything floating over the page: menus, popovers, toasts, dialogs and sheets; a pack without it uses its surface-raised."}
   ],
   "frame": {
     "doc": "Every message the core hands a platform adapter: the presented frame snapshot, semantic nodes, automation exchanges, input-protocol replies and the text menu. Type grammar: string, bool, u8, u32, u64, i64, usize, f32, f64, any; T? may be absent or null; T[] is a list; T[n] a fixed list; other names refer to types below.",

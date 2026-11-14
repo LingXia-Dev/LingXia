@@ -220,12 +220,12 @@ dark, derived accent roles included, for proving contrast in code.
 | --- | --- | --- |
 | `canvas` |  | Window and page floor. |
 | `surface` |  | Cards, cells and sheets. |
-| `surface-raised` |  | Menus, popovers and elevated sheets. |
+| `surface-raised` |  | Raised cards and panels that stay in the page. |
 | `surface-sunken` |  | Inset fields and grouped backgrounds. |
 | `line` | 1.2:1 on `surface`, 1.1:1 on `canvas` | Decorative separators and card borders; interactive boundaries use line-strong. |
-| `text` | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-raised`, 4.5:1 on `surface-sunken`, 4.5:1 on `selection` | Body text. |
-| `text-muted` | 4.5:1 on `canvas`, 4.5:1 on `surface` | Secondary text. |
-| `text-faint` | 3:1 on `surface` | Hints and disabled text. |
+| `text` | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-raised`, 4.5:1 on `surface-sunken`, 4.5:1 on `selection`, 4.5:1 on `surface-overlay` | Body text. |
+| `text-muted` | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-overlay` | Secondary text. |
+| `text-faint` | 3:1 on `surface`, 3:1 on `surface-overlay` | Hints and disabled text. |
 | `accent` | 3:1 on `surface`, 3:1 on `canvas` | Primary actions, selection and links. |
 | `on-accent` | 4.5:1 on `accent` | Text and icons on accent. |
 | `accent-soft` |  | Tinted containers and selected rows. |
@@ -251,3 +251,4 @@ dark, derived accent roles included, for proving contrast in code.
 | `shadow` |  | Elevation shadow ink; `shadow-*` layers take it at their alpha. |
 | `media` |  | Translucent dock over video and images; the same in both appearances. |
 | `on-media` | 4.5:1 on `media` | Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`). |
+| `surface-overlay` |  | Anything floating over the page: menus, popovers, toasts, dialogs and sheets; a pack without it uses its surface-raised. |

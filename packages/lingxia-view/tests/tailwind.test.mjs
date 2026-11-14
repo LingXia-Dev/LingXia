@@ -74,6 +74,11 @@ test('numeric variants compose across classes and white-space keeps CSS keywords
   assert.throws(() => describe(() => h('text', { style: { fontVariantNumeric: 'small-caps' } }, '1'), {}), /UI_STYLE_VALUE/);
 });
 
+test('overlays have their own surface role', async () => {
+  await use(['bg-surface-overlay']);
+  assert.equal(node('view', { className: 'bg-surface-overlay' }).background, 'surface-overlay');
+});
+
 test('aspect ratios, ch widths, current-color backgrounds, overscroll and select-none lower or fail by name', async () => {
   await use(['aspect-square', 'aspect-video', 'aspect-[4/3]', 'aspect-auto', 'max-w-[60ch]', 'w-[10ch]', 'min-w-[5ch]', 'h-[10ch]', 'bg-current', 'overscroll-contain',
     'overscroll-y-none', 'select-none', 'select-text', 'select-all']);

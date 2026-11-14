@@ -145,8 +145,8 @@ Unlike Tailwind, `ring-offset-<n>` leaves a transparent gap between box and ring
 | `slashed` | `slashed-zero` |  |
 | `stacked` | `stacked-fractions` |  |
 | `tabular` | `tabular-nums` |  |
-| `text` | `text-2xl`, `text-3xl`, `text-4xl`, `text-5xl`, `text-6xl`, … (54) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); text-wrap (4); unsupported color (2) |
-| `text-shadow` | `text-shadow` | text shadows (325); text-shadow (6) |
+| `text` | `text-2xl`, `text-3xl`, `text-4xl`, `text-5xl`, `text-6xl`, … (55) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); text-wrap (4); unsupported color (2) |
+| `text-shadow` | `text-shadow` | text shadows (326); text-shadow (6) |
 | `tracking` | `tracking-normal`, `tracking-tight`, `tracking-tighter`, `tracking-wide`, `tracking-wider`, `tracking-widest` | unsupported length (6) |
 | `truncate` | `truncate` |  |
 | `underline` | `underline` |  |
@@ -158,13 +158,13 @@ Unlike Tailwind, `ring-offset-<n>` leaves a transparent gap between box and ring
 
 | Family | Supported | Refused |
 | --- | --- | --- |
-| `bg` | `bg-accent`, `bg-accent-soft`, `bg-canvas`, `bg-chart-1`, `bg-chart-2`, … (38) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); background-blend-mode (16); background-position (9) |
+| `bg` | `bg-accent`, `bg-accent-soft`, `bg-canvas`, `bg-chart-1`, `bg-chart-2`, … (39) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); background-blend-mode (16); background-position (9) |
 | `bg-conic` | `bg-conic`, `bg-conic-0`, `bg-conic-30`, `bg-conic-60`, `bg-conic-90`, … (13) | unsupported gradient shape (12) |
 | `bg-linear` | `bg-linear-0`, `bg-linear-30`, `bg-linear-60`, `bg-linear-90`, `bg-linear-120`, … (20) | unsupported gradient shape (12) |
 | `bg-radial` | `bg-radial` |  |
-| `from` | `from-0%`, `from-5%`, `from-10%`, `from-15%`, `from-20%`, … (55) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
-| `to` | `to-0%`, `to-5%`, `to-10%`, `to-15%`, `to-20%`, … (55) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
-| `via` | `via-0%`, `via-5%`, `via-10%`, `via-15%`, `via-20%`, … (56) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
+| `from` | `from-0%`, `from-5%`, `from-10%`, `from-15%`, `from-20%`, … (56) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
+| `to` | `to-0%`, `to-5%`, `to-10%`, `to-15%`, `to-20%`, … (56) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
+| `via` | `via-0%`, `via-5%`, `via-10%`, `via-15%`, `via-20%`, … (57) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
 
 ## Radius
 
@@ -190,18 +190,18 @@ Unlike Tailwind, `ring-offset-<n>` leaves a transparent gap between box and ring
 
 | Family | Supported | Refused |
 | --- | --- | --- |
-| `border` | `border`, `border-0`, `border-2`, `border-4`, `border-8`, … (43) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); border-style (3); border-collapse (2) |
-| `border-b` | `border-b`, `border-b-0`, `border-b-2`, `border-b-4`, `border-b-8` | border-bottom-color (324) |
-| `border-be` | `border-be`, `border-be-0`, `border-be-2`, `border-be-4`, `border-be-8` | border-block-end-color (324) |
-| `border-bs` | `border-bs`, `border-bs-0`, `border-bs-2`, `border-bs-4`, `border-bs-8` | border-block-start-color (324) |
-| `border-e` | `border-e`, `border-e-0`, `border-e-2`, `border-e-4`, `border-e-8` | border-inline-end-color (324) |
-| `border-l` | `border-l`, `border-l-0`, `border-l-2`, `border-l-4`, `border-l-8` | border-left-color (324) |
-| `border-r` | `border-r`, `border-r-0`, `border-r-2`, `border-r-4`, `border-r-8` | border-right-color (324) |
-| `border-s` | `border-s`, `border-s-0`, `border-s-2`, `border-s-4`, `border-s-8` | border-inline-start-color (324) |
-| `border-t` | `border-t`, `border-t-0`, `border-t-2`, `border-t-4`, `border-t-8` | border-top-color (324) |
-| `border-x` | `border-x`, `border-x-0`, `border-x-2`, `border-x-4`, `border-x-8` | border-inline-color (324) |
-| `border-y` | `border-y`, `border-y-0`, `border-y-2`, `border-y-4`, `border-y-8` | border-block-color (324) |
-| `divide` | `divide-accent`, `divide-accent-soft`, `divide-canvas`, `divide-chart-1`, `divide-chart-2`, … (38) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); border-style (2); unsupported color (1) |
+| `border` | `border`, `border-0`, `border-2`, `border-4`, `border-8`, … (44) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); border-style (3); border-collapse (2) |
+| `border-b` | `border-b`, `border-b-0`, `border-b-2`, `border-b-4`, `border-b-8` | border-bottom-color (325) |
+| `border-be` | `border-be`, `border-be-0`, `border-be-2`, `border-be-4`, `border-be-8` | border-block-end-color (325) |
+| `border-bs` | `border-bs`, `border-bs-0`, `border-bs-2`, `border-bs-4`, `border-bs-8` | border-block-start-color (325) |
+| `border-e` | `border-e`, `border-e-0`, `border-e-2`, `border-e-4`, `border-e-8` | border-inline-end-color (325) |
+| `border-l` | `border-l`, `border-l-0`, `border-l-2`, `border-l-4`, `border-l-8` | border-left-color (325) |
+| `border-r` | `border-r`, `border-r-0`, `border-r-2`, `border-r-4`, `border-r-8` | border-right-color (325) |
+| `border-s` | `border-s`, `border-s-0`, `border-s-2`, `border-s-4`, `border-s-8` | border-inline-start-color (325) |
+| `border-t` | `border-t`, `border-t-0`, `border-t-2`, `border-t-4`, `border-t-8` | border-top-color (325) |
+| `border-x` | `border-x`, `border-x-0`, `border-x-2`, `border-x-4`, `border-x-8` | border-inline-color (325) |
+| `border-y` | `border-y`, `border-y-0`, `border-y-2`, `border-y-4`, `border-y-8` | border-block-color (325) |
+| `divide` | `divide-accent`, `divide-accent-soft`, `divide-canvas`, `divide-chart-1`, `divide-chart-2`, … (39) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); border-style (2); unsupported color (1) |
 | `divide-x` | `divide-x`, `divide-x-0`, `divide-x-2`, `divide-x-4`, `divide-x-8` | reversed space/divide order (1) |
 | `divide-y` | `divide-y`, `divide-y-0`, `divide-y-2`, `divide-y-4`, `divide-y-8` | reversed space/divide order (1) |
 | `sr` | `sr-only` |  |
@@ -212,24 +212,24 @@ Unlike Tailwind, `ring-offset-<n>` leaves a transparent gap between box and ring
 | --- | --- | --- |
 | `backdrop-blur` | `backdrop-blur-2xl`, `backdrop-blur-3xl`, `backdrop-blur-lg`, `backdrop-blur-md`, `backdrop-blur-none`, … (8) |  |
 | `backdrop-saturate` | `backdrop-saturate-0`, `backdrop-saturate-50`, `backdrop-saturate-100`, `backdrop-saturate-150`, `backdrop-saturate-200` |  |
-| `inset-ring` | `inset-ring`, `inset-ring-0`, `inset-ring-1`, `inset-ring-2`, `inset-ring-4`, … (40) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
+| `inset-ring` | `inset-ring`, `inset-ring-0`, `inset-ring-1`, `inset-ring-2`, `inset-ring-4`, … (41) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
 | `mask` | `mask-none` | mask-position (9); mask-clip (7); mask-origin (6) |
-| `mask-b-from` | `mask-b-from-0`, `mask-b-from-0%`, `mask-b-from-0.5`, `mask-b-from-1`, `mask-b-from-1.5`, … (377) | unsupported color (2) |
-| `mask-b-to` | `mask-b-to-0`, `mask-b-to-0%`, `mask-b-to-0.5`, `mask-b-to-1`, `mask-b-to-1.5`, … (377) | unsupported color (2) |
-| `mask-l-from` | `mask-l-from-0`, `mask-l-from-0%`, `mask-l-from-0.5`, `mask-l-from-1`, `mask-l-from-1.5`, … (377) | unsupported color (2) |
-| `mask-l-to` | `mask-l-to-0`, `mask-l-to-0%`, `mask-l-to-0.5`, `mask-l-to-1`, `mask-l-to-1.5`, … (377) | unsupported color (2) |
-| `mask-r-from` | `mask-r-from-0`, `mask-r-from-0%`, `mask-r-from-0.5`, `mask-r-from-1`, `mask-r-from-1.5`, … (377) | unsupported color (2) |
-| `mask-r-to` | `mask-r-to-0`, `mask-r-to-0%`, `mask-r-to-0.5`, `mask-r-to-1`, `mask-r-to-1.5`, … (377) | unsupported color (2) |
-| `mask-t-from` | `mask-t-from-0`, `mask-t-from-0%`, `mask-t-from-0.5`, `mask-t-from-1`, `mask-t-from-1.5`, … (377) | unsupported color (2) |
-| `mask-t-to` | `mask-t-to-0`, `mask-t-to-0%`, `mask-t-to-0.5`, `mask-t-to-1`, `mask-t-to-1.5`, … (377) | unsupported color (2) |
-| `mask-x-from` | `mask-x-from-0`, `mask-x-from-0%`, `mask-x-from-0.5`, `mask-x-from-1`, `mask-x-from-1.5`, … (377) | unsupported color (2) |
-| `mask-x-to` | `mask-x-to-0`, `mask-x-to-0%`, `mask-x-to-0.5`, `mask-x-to-1`, `mask-x-to-1.5`, … (377) | unsupported color (2) |
-| `mask-y-from` | `mask-y-from-0`, `mask-y-from-0%`, `mask-y-from-0.5`, `mask-y-from-1`, `mask-y-from-1.5`, … (377) | unsupported color (2) |
-| `mask-y-to` | `mask-y-to-0`, `mask-y-to-0%`, `mask-y-to-0.5`, `mask-y-to-1`, `mask-y-to-1.5`, … (377) | unsupported color (2) |
+| `mask-b-from` | `mask-b-from-0`, `mask-b-from-0%`, `mask-b-from-0.5`, `mask-b-from-1`, `mask-b-from-1.5`, … (378) | unsupported color (2) |
+| `mask-b-to` | `mask-b-to-0`, `mask-b-to-0%`, `mask-b-to-0.5`, `mask-b-to-1`, `mask-b-to-1.5`, … (378) | unsupported color (2) |
+| `mask-l-from` | `mask-l-from-0`, `mask-l-from-0%`, `mask-l-from-0.5`, `mask-l-from-1`, `mask-l-from-1.5`, … (378) | unsupported color (2) |
+| `mask-l-to` | `mask-l-to-0`, `mask-l-to-0%`, `mask-l-to-0.5`, `mask-l-to-1`, `mask-l-to-1.5`, … (378) | unsupported color (2) |
+| `mask-r-from` | `mask-r-from-0`, `mask-r-from-0%`, `mask-r-from-0.5`, `mask-r-from-1`, `mask-r-from-1.5`, … (378) | unsupported color (2) |
+| `mask-r-to` | `mask-r-to-0`, `mask-r-to-0%`, `mask-r-to-0.5`, `mask-r-to-1`, `mask-r-to-1.5`, … (378) | unsupported color (2) |
+| `mask-t-from` | `mask-t-from-0`, `mask-t-from-0%`, `mask-t-from-0.5`, `mask-t-from-1`, `mask-t-from-1.5`, … (378) | unsupported color (2) |
+| `mask-t-to` | `mask-t-to-0`, `mask-t-to-0%`, `mask-t-to-0.5`, `mask-t-to-1`, `mask-t-to-1.5`, … (378) | unsupported color (2) |
+| `mask-x-from` | `mask-x-from-0`, `mask-x-from-0%`, `mask-x-from-0.5`, `mask-x-from-1`, `mask-x-from-1.5`, … (378) | unsupported color (2) |
+| `mask-x-to` | `mask-x-to-0`, `mask-x-to-0%`, `mask-x-to-0.5`, `mask-x-to-1`, `mask-x-to-1.5`, … (378) | unsupported color (2) |
+| `mask-y-from` | `mask-y-from-0`, `mask-y-from-0%`, `mask-y-from-0.5`, `mask-y-from-1`, `mask-y-from-1.5`, … (378) | unsupported color (2) |
+| `mask-y-to` | `mask-y-to-0`, `mask-y-to-0%`, `mask-y-to-0.5`, `mask-y-to-1`, `mask-y-to-1.5`, … (378) | unsupported color (2) |
 | `opacity` | `opacity-0`, `opacity-5`, `opacity-10`, `opacity-15`, `opacity-20`, … (21) |  |
-| `ring` | `ring`, `ring-0`, `ring-1`, `ring-2`, `ring-4`, … (40) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2); ring-inset (1) |
-| `ring-offset` | `ring-offset-0`, `ring-offset-1`, `ring-offset-2`, `ring-offset-4`, `ring-offset-8`, … (39) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
-| `shadow` | `shadow`, `shadow-2xl`, `shadow-2xs`, `shadow-accent`, `shadow-accent-soft`, … (43) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (3); inset shadows are not supported yet (1) |
+| `ring` | `ring`, `ring-0`, `ring-1`, `ring-2`, `ring-4`, … (41) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2); ring-inset (1) |
+| `ring-offset` | `ring-offset-0`, `ring-offset-1`, `ring-offset-2`, `ring-offset-4`, `ring-offset-8`, … (40) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
+| `shadow` | `shadow`, `shadow-2xl`, `shadow-2xs`, `shadow-accent`, `shadow-accent-soft`, … (44) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (3); inset shadows are not supported yet (1) |
 
 ## Transforms
 
@@ -264,7 +264,7 @@ Unlike Tailwind, `ring-offset-<n>` leaves a transparent gap between box and ring
 
 | Family | Supported | Refused |
 | --- | --- | --- |
-| `placeholder` | `placeholder-accent`, `placeholder-accent-soft`, `placeholder-canvas`, `placeholder-chart-1`, `placeholder-chart-2`, … (34) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
+| `placeholder` | `placeholder-accent`, `placeholder-accent-soft`, `placeholder-canvas`, `placeholder-chart-1`, `placeholder-chart-2`, … (35) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
 
 ## Images and vectors
 
@@ -291,7 +291,7 @@ These compile but set nothing the renderer draws:
 | Family | Utilities | Reason |
 | --- | --- | --- |
 | `@container` | 2 | container-type (2) |
-| `accent` | 325 | accent-color (325) |
+| `accent` | 326 | accent-color (326) |
 | `align` | 8 | vertical-align (8) |
 | `antialiased` | 1 | -webkit-font-smoothing (1) |
 | `appearance` | 2 | appearance (2) |
@@ -309,7 +309,7 @@ These compile but set nothing the renderer draws:
 | `box` | 4 | -webkit-box-decoration-break (2); box-sizing (2) |
 | `brightness` | 11 | brightness-0 (1); brightness-100 (1); brightness-105 (1) |
 | `caption` | 2 | caption-side (2) |
-| `caret` | 324 | caret-color (324) |
+| `caret` | 325 | caret-color (325) |
 | `clear` | 6 | clear (6) |
 | `collapse` | 1 | visibility (1) |
 | `columns` | 26 | columns (26) |
@@ -318,10 +318,10 @@ These compile but set nothing the renderer draws:
 | `contents` | 1 | display (1) |
 | `contrast` | 7 | contrast-0 (1); contrast-100 (1); contrast-125 (1) |
 | `cursor` | 36 | cursor (36) |
-| `decoration` | 334 | text-decoration-color (324); text-decoration-style (5); text-decoration-thickness (5) |
-| `drop-shadow` | 331 | drop-shadow colors (331) |
+| `decoration` | 335 | text-decoration-color (325); text-decoration-style (5); text-decoration-thickness (5) |
+| `drop-shadow` | 332 | drop-shadow colors (332) |
 | `field` | 2 | field-sizing (2) |
-| `fill` | 325 | fill (325) |
+| `fill` | 326 | fill (326) |
 | `float` | 5 | float (5) |
 | `flow` | 1 | display (1) |
 | `font-stretch` | 19 | font-stretch (19) |
@@ -332,7 +332,7 @@ These compile but set nothing the renderer draws:
 | `indent` | 70 | text-indent (70) |
 | `inset-be` | 125 | inset-block-end (125) |
 | `inset-bs` | 125 | inset-block-start (125) |
-| `inset-shadow` | 329 | unsupported shadow property (329) |
+| `inset-shadow` | 330 | unsupported shadow property (330) |
 | `invert` | 6 | invert (1); invert-0 (1); invert-100 (1) |
 | `invisible` | 1 | visibility (1) |
 | `isolate` | 1 | isolation (1) |
@@ -340,21 +340,21 @@ These compile but set nothing the renderer draws:
 | `list` | 6 | list-style-type (3); list-style-position (2); display (1) |
 | `list-image` | 1 | list-style-image (1) |
 | `mask-conic` | 18 | radial and conic masks (18) |
-| `mask-conic-from` | 379 | radial and conic masks (379) |
-| `mask-conic-to` | 379 | radial and conic masks (379) |
+| `mask-conic-from` | 380 | radial and conic masks (380) |
+| `mask-conic-to` | 380 | radial and conic masks (380) |
 | `mask-linear` | 18 | mask-linear (18) |
-| `mask-linear-from` | 379 | mask property --tw-mask-linear-stops (379) |
-| `mask-linear-to` | 379 | mask property --tw-mask-linear-stops (379) |
+| `mask-linear-from` | 380 | mask property --tw-mask-linear-stops (380) |
+| `mask-linear-to` | 380 | mask property --tw-mask-linear-stops (380) |
 | `mask-radial` | 4 | radial and conic masks (4) |
 | `mask-radial-at` | 9 | radial and conic masks (9) |
-| `mask-radial-from` | 379 | radial and conic masks (379) |
-| `mask-radial-to` | 379 | radial and conic masks (379) |
+| `mask-radial-from` | 380 | radial and conic masks (380) |
+| `mask-radial-to` | 380 | radial and conic masks (380) |
 | `max-block` | 71 | max-block-size (71) |
 | `max-inline` | 83 | max-inline-size (83) |
 | `min-block` | 71 | min-block-size (71) |
 | `min-inline` | 83 | min-inline-size (83) |
 | `mix` | 18 | mix-blend-mode (18) |
-| `outline` | 336 | outline (336) |
+| `outline` | 337 | outline (337) |
 | `outline-offset` | 10 | outline (10) |
 | `overline` | 1 | text-decoration-line (1) |
 | `perspective` | 6 | perspective (6) |
@@ -391,14 +391,14 @@ These compile but set nothing the renderer draws:
 | `scroll-px` | 35 | scroll-padding-inline (35) |
 | `scroll-py` | 35 | scroll-padding-block (35) |
 | `scrollbar` | 6 | scrollbar-gutter (3); scrollbar-width (3) |
-| `scrollbar-thumb` | 324 | scrollbar-color (324) |
-| `scrollbar-track` | 324 | scrollbar-color (324) |
+| `scrollbar-thumb` | 325 | scrollbar-color (325) |
+| `scrollbar-track` | 325 | scrollbar-color (325) |
 | `sepia` | 4 | sepia (1); sepia-0 (1); sepia-100 (1) |
 | `skew` | 12 | transform (12) |
 | `skew-x` | 12 | transform (12) |
 | `skew-y` | 12 | transform (12) |
 | `static` | 1 | position (1) |
-| `stroke` | 329 | stroke (325); stroke-width (4) |
+| `stroke` | 330 | stroke (326); stroke-width (4) |
 | `subpixel` | 1 | -webkit-font-smoothing (1) |
 | `tab` | 3 | tab-size (3) |
 | `table` | 11 | display (9); table-layout (2) |

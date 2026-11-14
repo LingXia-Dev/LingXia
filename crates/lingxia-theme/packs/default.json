@@ -29,7 +29,8 @@
       "line-strong": "#7d8697",
       "shadow": "#000000",
       "media": "#0b0e14b8",
-      "on-media": "#ffffff"
+      "on-media": "#ffffff",
+      "surface-overlay": "#ffffff"
     },
     "dark": {
       "canvas": "#0f131a",
@@ -58,7 +59,8 @@
       "line-strong": "#6b768c",
       "shadow": "#000000",
       "media": "#0b0e14b8",
-      "on-media": "#ffffff"
+      "on-media": "#ffffff",
+      "surface-overlay": "#2d3546"
     }
   },
   "accent": {"seed": "#365cdd", "derive": true},

@@ -8,7 +8,7 @@ pub enum Role {
     Canvas = 0,
     /// Cards, cells and sheets.
     Surface = 1,
-    /// Menus, popovers and elevated sheets.
+    /// Raised cards and panels that stay in the page.
     SurfaceRaised = 2,
     /// Inset fields and grouped backgrounds.
     SurfaceSunken = 3,
@@ -70,9 +70,11 @@ pub enum Role {
     Media = 31,
     /// Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`).
     OnMedia = 32,
+    /// Anything floating over the page: menus, popovers, toasts, dialogs and sheets; a pack without it uses its surface-raised.
+    SurfaceOverlay = 33,
 }
 
-pub const ROLE_COUNT: usize = 33;
+pub const ROLE_COUNT: usize = 34;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -109,6 +111,7 @@ impl Role {
         Role::Shadow,
         Role::Media,
         Role::OnMedia,
+        Role::SurfaceOverlay,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -146,6 +149,7 @@ impl Role {
             Role::Shadow => "shadow",
             Role::Media => "media",
             Role::OnMedia => "on-media",
+            Role::SurfaceOverlay => "surface-overlay",
         }
     }
 
@@ -163,9 +167,12 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::Text, Role::SurfaceRaised, 4.5),
     (Role::Text, Role::SurfaceSunken, 4.5),
     (Role::Text, Role::Selection, 4.5),
+    (Role::Text, Role::SurfaceOverlay, 4.5),
     (Role::TextMuted, Role::Canvas, 4.5),
     (Role::TextMuted, Role::Surface, 4.5),
+    (Role::TextMuted, Role::SurfaceOverlay, 4.5),
     (Role::TextFaint, Role::Surface, 3.0),
+    (Role::TextFaint, Role::SurfaceOverlay, 3.0),
     (Role::Accent, Role::Surface, 3.0),
     (Role::Accent, Role::Canvas, 3.0),
     (Role::OnAccent, Role::Accent, 4.5),

@@ -164,6 +164,68 @@ fn a_partial_pack_completes_from_the_default_and_derives_its_accent() {
 }
 
 #[test]
+fn a_pack_without_surface_overlay_floats_overlays_on_its_own_surface_raised() {
+    let old: Pack = serde_json::from_str(
+        r##"{"name":"old","version":1,"accent":{"seed":"#365cdd","derive":true},"appearance":{
+            "light":{"surface-raised":"#fafafa"},
+            "dark":{"surface-raised":"#202020"}}}"##,
+    )
+    .unwrap();
+    let old = complete(old);
+    assert_eq!(check(&old), Vec::new());
+    for (appearance, raised) in [
+        (Appearance::Light, "#fafafa"),
+        (Appearance::Dark, "#202020"),
+    ] {
+        let prefs = Prefs {
+            appearance,
+            ..Prefs::default()
+        };
+        let theme = resolve(&old, &prefs).unwrap();
+        assert_eq!(theme.color(Role::SurfaceOverlay), hex(raised));
+    }
+
+    // An explicit high-contrast set is not completed; it still resolves without the role.
+    let mut contrast_set = default_pack();
+    let mut dark = contrast_set.appearance.dark.clone();
+    dark.remove(Role::SurfaceOverlay.name());
+    contrast_set.appearance.high_contrast_dark = Some(dark);
+    let prefs = Prefs {
+        appearance: Appearance::Dark,
+        high_contrast: true,
+        ..Prefs::default()
+    };
+    let theme = resolve(&contrast_set, &prefs).unwrap();
+    assert_eq!(
+        theme.color(Role::SurfaceOverlay),
+        theme.color(Role::SurfaceRaised)
+    );
+
+    // The showcase pack sets only an accent, so its overlays take the default pack's.
+    let showcase: Pack = serde_json::from_str(include_str!(
+        "../../../examples/lingxia-showcase-gpu/lxapp/theme/pack.json"
+    ))
+    .unwrap();
+    assert!(showcase.appearance.light.is_empty() && showcase.appearance.dark.is_empty());
+    let showcase = complete(showcase);
+    for (appearance, overlay) in [
+        (Appearance::Light, "#ffffff"),
+        (Appearance::Dark, "#2d3546"),
+    ] {
+        let prefs = Prefs {
+            appearance,
+            ..Prefs::default()
+        };
+        assert_eq!(
+            resolve(&showcase, &prefs)
+                .unwrap()
+                .color(Role::SurfaceOverlay),
+            hex(overlay)
+        );
+    }
+}
+
+#[test]
 fn the_selection_highlight_stands_off_the_page_and_keeps_text_readable() {
     for appearance in [Appearance::Light, Appearance::Dark] {
         for high_contrast in [false, true] {

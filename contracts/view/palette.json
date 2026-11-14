@@ -32,7 +32,8 @@
     "selection": "#88909eff",
     "shadow": "#000000ff",
     "media": "#0b0e14b8",
-    "on-media": "#ffffffff"
+    "on-media": "#ffffffff",
+    "surface-overlay": "#ffffffff"
   },
   "dark": {
     "canvas": "#0f131aff",
@@ -67,6 +68,7 @@
     "selection": "#566791ff",
     "shadow": "#000000ff",
     "media": "#0b0e14b8",
-    "on-media": "#ffffffff"
+    "on-media": "#ffffffff",
+    "surface-overlay": "#2d3546ff"
   }
 }

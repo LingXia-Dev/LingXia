@@ -12,11 +12,11 @@ export function render() {
   return (
     <page className="p-4 gap-3">
       <button popoverTarget="more" aria-label="More" className="self-end rounded-full p-2 bg-surface">⋯</button>
-      <view id="more" popover role="menu" aria-label="Actions" className="rounded-xl bg-surface-raised p-1 shadow-lg">
+      <view id="more" popover role="menu" aria-label="Actions" className="rounded-xl bg-surface-overlay p-1 shadow-lg">
         <button role="menuitem" onClick={() => open.set(true)} className="px-3 py-2 rounded-lg active:bg-surface-sunken">Delete…</button>
       </view>
       <dialog open={open.value} onClose={() => open.set(false)} closedby="any" aria-label="Delete note?"
-        className="mt-auto mb-0 w-full rounded-t-2xl bg-surface-raised p-4 gap-3 backdrop:bg-scrim transition-transform duration-300 starting:translate-y-full exit:translate-y-full">
+        className="mt-auto mb-0 w-full rounded-t-2xl bg-surface-overlay p-4 gap-3 backdrop:bg-scrim transition-transform duration-300 starting:translate-y-full exit:translate-y-full">
         <text className="text-lg font-semibold">Delete note?</text>
         <button onClick={() => open.set(false)} className="rounded-xl bg-danger p-3 text-on-danger">Delete</button>
       </dialog>

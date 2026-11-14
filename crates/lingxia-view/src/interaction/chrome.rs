@@ -36,7 +36,7 @@ impl FeedbackStyle {
             focus_ring: argb(palette.role(Role::Focus)),
             focus_ring_width: 2.0,
             selection_handle: argb(palette.role(Role::Accent)),
-            notice_background: argb(palette.role(Role::SurfaceRaised)),
+            notice_background: argb(palette.role(Role::SurfaceOverlay)),
             notice_text: argb(palette.role(Role::Text)),
         }
     }

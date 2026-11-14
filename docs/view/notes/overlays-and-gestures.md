@@ -9,10 +9,10 @@ Two primitives, spelled as HTML spells them. A sheet and a menu are not primitiv
 
 ```tsx
 <dialog open={open.value} onClose={() => open.set(false)} aria-label="Delete note?"
-  className="m-auto rounded-2xl bg-surface-raised p-4 backdrop:bg-scrim transition duration-200 starting:opacity-0 exit:opacity-0">…</dialog>
+  className="m-auto rounded-2xl bg-surface-overlay p-4 backdrop:bg-scrim transition duration-200 starting:opacity-0 exit:opacity-0">…</dialog>
 
 <button popoverTarget="more" aria-label="More">⋯</button>
-<view id="more" popover role="menu" className="position-area-bottom-span-end mt-1 rounded-xl bg-surface-raised">
+<view id="more" popover role="menu" className="position-area-bottom-span-end mt-1 rounded-xl bg-surface-overlay">
   <button role="menuitem" onClick={rename}>Rename</button>
 </view>
 ```
@@ -57,7 +57,7 @@ Three cases, and scroll already is one of them.
 // Sheet: placed by margin, as a web dialog is. No <sheet>.
 <dialog open={open.value} onClose={close} closedby="any" aria-label="Filters"
   drag="y" dragSnapPoints={['0%', '50%', '100%']} bind={detent}
-  className="mt-auto w-full h-[90dvh] rounded-t-2xl bg-surface-raised backdrop:bg-scrim
+  className="mt-auto w-full h-[90dvh] rounded-t-2xl bg-surface-overlay backdrop:bg-scrim
              transition-transform duration-300 ease-spring starting:translate-y-full exit:translate-y-full">…</dialog>
 
 // Swipe row: actions sit behind; a full swipe is one more point.
