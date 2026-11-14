@@ -62,6 +62,8 @@ An open waits at most 2 s for its app's sync; a slower one finishes in the
 background for later opens. Every sync has an overall deadline, not only a
 per-request timeout.
 
+A dev restart (`lxdev lxapp restart`, a rebuild) is in place: Logic and the manifest restart and every page reloads its module in a fresh page context, while the app session, its page instances and the View worker's isolate are reused.
+
 ## Targets and versions
 
 `dev` picks native targets from what it launches: the device's reported
