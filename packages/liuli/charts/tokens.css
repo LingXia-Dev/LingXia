@@ -1,0 +1,16 @@
+/* Liuli's type scale, as @liulidesign/core declares it, so a page that uses charts alone still
+   has it. The compiler refuses a build where the two packages disagree on a value. */
+@theme {
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-footnote: 0.8125rem;
+  --text-footnote--line-height: 1.125rem;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.375rem;
+  --text-callout: 1.0625rem;
+  --text-callout--line-height: 1.5rem;
+  --text-title: 1.25rem;
+  --text-title--line-height: 1.75rem;
+  --text-display: 1.75rem;
+  --text-display--line-height: 2.125rem;
+}

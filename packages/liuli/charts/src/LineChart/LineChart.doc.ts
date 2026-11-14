@@ -1,0 +1,105 @@
+import type { ComponentDoc } from '@liulidesign/core/doc';
+
+export const doc: ComponentDoc = {
+  name: 'LineChart',
+  category: 'charts',
+  status: 'preview',
+  since: '2026-11-14',
+  summary: 'A number over time, as a line that fits its data or an area from zero, for up to five series',
+  description:
+    'LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. ' +
+    'A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. ' +
+    'Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour.',
+  keywords: ['line chart', 'area chart', 'trend', 'time series', 'series', 'history', 'chart', 'graph'],
+  propsType: 'LineChartProps',
+  recipe: { map: 'lineChartRecipe', parts: 'lineChartParts' },
+  anatomy: [
+    { part: 'scale', required: false, description: 'The top and bottom of the value range, as round numbers, at the start edge; hidden from assistive tech, which reads the values themselves.' },
+    { part: 'plot', required: true, description: 'The box the lines fill.' },
+    { part: 'rule', required: true, description: 'Two hairlines: the top of the scale, and the foot the plot stands on.' },
+    { part: 'end', required: false, description: 'The latest value, written at the end of the line, level with it.' },
+    { part: 'drawing', required: false, description: 'The lines, the fill, the end dots and the mark on the chosen row, as one drawing; hidden from assistive tech.' },
+    { part: 'reading', required: false, description: 'Every row as "category: values", for assistive tech only; present up to 60 rows.' },
+    { part: 'labels', required: false, description: 'The first and last category under the plot.' },
+  ],
+  accessibility: {
+    pattern: null,
+    name: 'label',
+    description: [],
+    states: [{ state: 'busy', from: 'isLoading' }],
+    keyboard: [],
+    contrast: [
+      { what: 'first mark colour', pair: ['chart-1', 'surface'], minimum: '3:1' },
+      { what: 'second mark colour', pair: ['chart-2', 'surface'], minimum: '3:1' },
+      { what: 'third mark colour', pair: ['chart-3', 'surface'], minimum: '3:1' },
+      { what: 'fourth mark colour', pair: ['chart-4', 'surface'], minimum: '3:1' },
+      { what: 'fifth mark colour', pair: ['chart-5', 'surface'], minimum: '3:1' },
+      { what: 'second mark colour, straight on the page', pair: ['chart-2', 'canvas'], minimum: '3:1' },
+      { what: 'third mark colour, straight on the page', pair: ['chart-3', 'canvas'], minimum: '3:1' },
+      { what: 'title and figures', pair: ['text', 'surface'], minimum: '4.5:1' },
+      { what: 'description, labels and legend', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
+    ],
+    notes: [
+      'With `summarize`, a sentence per series with its range, lowest and highest values and trend is read first.',
+      'Then every row is read as a list item: "3 Nov: 71.2 kg", or "Apr: Free 492, Team 171, Pro 88". Past 60 rows only the summary is read.',
+      'The second to fifth lines are dashed, each differently, and the legend draws the same dash, so series survive without colour.',
+      'The scale and the end figure are hidden from assistive tech: the same numbers are in the summary and the list.',
+      'The fill under an area, the hairlines and the rule on the chosen row are decoration with no contrast minimum.',
+      'The chart takes no focus: it cannot yet be pressed or scrubbed. `selectedKey` set by the app is announced through the readout.',
+    ],
+  },
+  guidance: {
+    do: [
+      'Use a line for a level (a weight, a price, a rate) and `hasArea` for an amount that adds up (visits, sales).',
+      'Pass `null` or leave the field out for a missing reading.',
+      'Give charts that are compared the same `domainMin` and `domainMax`.',
+      'Pass `summarize`; past 60 rows it is all a screen reader gets.',
+    ],
+    dont: [
+      'Draw more than three or four lines on a phone; five is the limit.',
+      'Use a line for categories without an order; use BarChart.',
+      'Smooth noisy data such as daily counts: a monotone curve flattens at every turn, which reads as wobble. Smooth what changes gradually.',
+      'Fill missing readings with zero.',
+    ],
+  },
+  examples: [
+    { name: 'Weight', title: 'A line that fits its data' },
+    { name: 'Area', title: 'An area, from zero' },
+    { name: 'Smooth', title: 'A smoothed line' },
+    { name: 'Series', title: 'Three series, with a legend that hides them' },
+    { name: 'Selected', title: 'A row chosen from outside' },
+    { name: 'Gaps', title: 'Missing readings' },
+  ],
+  gaps: [
+    { missing: 'Choosing a point by pressing or scrubbing, with a crosshair and tooltip.', needs: 'pointer coordinates on an element (`onPointer`)', today: '`selectedKey` set by the app marks a row and fills the readout; there is no `onSelect`.' },
+    { missing: 'Ticks between the ends of the scale, and time labels that fit.', needs: 'a laid-out box\'s size, readable in render (`useBox`)', today: 'The top and bottom of the scale, the latest value, and the first and last category.' },
+    { missing: 'A window to zoom and pan a long series.', needs: 'pointer coordinates on an element (`onPointer`)', today: 'Pass the rows of the period to show.' },
+    { missing: 'Lines that draw in and move between data.', needs: 'animation of vector geometry', today: 'New data is drawn at once.' },
+    { missing: 'Marker shapes per series.', needs: 'a laid-out box\'s size, readable in render (`useBox`)', today: 'Dashes; a shape drawn in a stretched drawing would be distorted.' },
+  ],
+  related: ['Chart', 'BarChart', 'Sparkline'],
+  gallery: {
+    specimen: 'Specimen',
+    tagline: 'A number over time',
+    order: 4,
+    page: {
+      lead: 'Use a line chart to show how a number moves over time.',
+      hero: 'Weight',
+      variants: [
+        { name: 'Area', title: 'An area: an amount, measured from zero' },
+        { name: 'Smooth', title: 'Smoothed: through every reading, never beyond one' },
+        { name: 'Series', title: 'Three series, told apart by dash and colour' },
+        { name: 'Gaps', title: 'Missing readings stay gaps' },
+      ],
+      sizes: [{ name: 'Sizes', title: 'Small without labels, and large' }],
+      states: [
+        { name: 'StateSingle', title: 'One value' },
+        { name: 'StateLoading', title: 'Loading' },
+        { name: 'StateEmpty', title: 'Empty' },
+        { name: 'StateError', title: 'Error' },
+      ],
+      statesLayout: 'stack',
+      inContext: [{ name: 'Selected', title: 'A control beside the chart chooses the month it reads out' }],
+    },
+  },
+};

@@ -1,0 +1,2213 @@
+{
+  "generated": "Generated from the doc file by scripts/generate.mjs; do not edit.",
+  "components": [
+    {
+      "name": "BarChart",
+      "import": "@liulidesign/charts/BarChart",
+      "exports": [
+        "BarChart"
+      ],
+      "category": "charts",
+      "status": "preview",
+      "since": "2026-11-14",
+      "summary": "Amounts by category, as bars on a zero line, with selection and grouped series",
+      "description": "BarChart compares amounts across a few categories: orders by weekday, sales by quarter. It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table. Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line.",
+      "keywords": [
+        "bar chart",
+        "column chart",
+        "bars",
+        "histogram",
+        "categories",
+        "compare",
+        "grouped bars",
+        "chart",
+        "graph"
+      ],
+      "props": [
+        {
+          "name": "data",
+          "type": "readonly Readonly<Record<string, ChartDatum>>[]",
+          "required": true,
+          "description": "The rows, one per category, in the order drawn."
+        },
+        {
+          "name": "x",
+          "type": "string",
+          "required": true,
+          "description": "The field that names each category: \"month\"."
+        },
+        {
+          "name": "y",
+          "type": "string | readonly ChartSeries[]",
+          "required": true,
+          "description": "The field that holds the number, or several series to draw side by side in each category."
+        },
+        {
+          "name": "keyField",
+          "type": "string",
+          "required": false,
+          "description": "The field that identifies a row across updates and in `selectedKey`. By default `x`."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The chart's accessible name: \"Orders by weekday\"."
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "formatValue",
+          "type": "((value: number) => string)",
+          "required": false,
+          "description": "Turns a number into the text shown and read: units, separators, the locale. By default the bare number."
+        },
+        {
+          "name": "summarize",
+          "type": "ChartSummarize",
+          "required": false,
+          "description": "Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`."
+        },
+        {
+          "name": "xLabels",
+          "type": "BarChartLabels",
+          "required": false,
+          "description": "Category labels under the bars: every one, or the first and last. By default every one up to seven bars."
+        },
+        {
+          "name": "valueLabels",
+          "type": "BarChartValueLabels",
+          "required": false,
+          "description": "How the chart shows its scale. `auto` writes each value over its bar up to eight bars of one series, and otherwise the top of the scale, a round number, above the plot; `always` writes every value; `none` shows neither.",
+          "default": "'auto'"
+        },
+        {
+          "name": "legend",
+          "type": "ChartLegendPosition",
+          "required": false,
+          "description": "Shown when there is more than one series.",
+          "default": "'bottom'"
+        },
+        {
+          "name": "legendLabel",
+          "type": "string",
+          "required": false,
+          "description": "The legend's accessible name; by default the chart's `label`."
+        },
+        {
+          "name": "selectedKey",
+          "type": "string | null",
+          "required": false,
+          "description": "The chosen row's key; its bars keep their colour and the rest step back."
+        },
+        {
+          "name": "onSelect",
+          "type": "((key: string | null) => void)",
+          "required": false,
+          "description": "Makes each category a button; runs with its key, or `null` when the chosen one is pressed again. Up to 36 categories."
+        },
+        {
+          "name": "hiddenSeries",
+          "type": "readonly string[]",
+          "required": false,
+          "description": "Series fields not drawn at present.",
+          "default": "[]"
+        },
+        {
+          "name": "onHiddenSeriesChange",
+          "type": "((fields: readonly string[]) => void)",
+          "required": false,
+          "description": "Makes each legend entry a button that shows or hides its series."
+        },
+        {
+          "name": "domainMin",
+          "type": "number",
+          "required": false,
+          "description": "Widens the value range downward; zero is always in range."
+        },
+        {
+          "name": "domainMax",
+          "type": "number",
+          "required": false,
+          "description": "Widens the value range upward, so charts that are compared share a scale."
+        },
+        {
+          "name": "size",
+          "type": "ChartSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "isLoading",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "error",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "emptyLabel",
+          "type": "string",
+          "required": false,
+          "description": "What to say when no row has a number."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the chart; a bar's button is `<id>-<key>`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "scale": "text",
+        "plot": "view",
+        "slot": "button",
+        "column": "view",
+        "space": "view",
+        "valueSlot": "view",
+        "value": "text",
+        "bar": "view",
+        "baseline": "view",
+        "labels": "view",
+        "label": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "pressed",
+            "from": "selectedKey"
+          },
+          {
+            "state": "busy",
+            "from": "isLoading"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Moves through the categories when they can be pressed"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Chooses the category, or lets it go"
+          }
+        ],
+        "contrast": [
+          {
+            "what": "first series, as a bar",
+            "pair": [
+              "chart-1/85",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "second series, as a bar",
+            "pair": [
+              "chart-2/85",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "third series, as a bar",
+            "pair": [
+              "chart-3/85",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "fourth series, as a bar",
+            "pair": [
+              "chart-4/85",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "fifth series, as a bar",
+            "pair": [
+              "chart-5/85",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "second series, straight on the page",
+            "pair": [
+              "chart-2/85",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "third series, straight on the page",
+            "pair": [
+              "chart-3/85",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "title and figures",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "description, labels and legend",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "Each category is read as its name and values: \"Thu: 163\", or \"Q3: Online $55k, In store $33k\". With `onSelect` each is a button that reports pressed; without it the plot is a list.",
+          "With `summarize`, a sentence with the range, the lowest and highest values and the trend is read before the bars.",
+          "Choosing a category announces it through the readout above the plot.",
+          "Figures over the bars and the scale label are hidden from assistive tech: each category already reads its values.",
+          "The chosen category keeps its colour and the others step back to 30%, which is not a contrast claim: the readout says which is chosen.",
+          "A category's press target is its full-height slot, as wide as the plot divided by the number of categories: 41 px for seven bars at 360 pt, under 10 px for thirty. Past 36 categories the bars are not buttons.",
+          "The zero line is a quiet rule with no contrast minimum: the bars' own feet show where zero is.",
+          "Series in a group differ by colour and by position, and the legend lists them in the order drawn."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Orders",
+          "title": "One series, with selection",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst week = [\n  { day: 'Mon', orders: 132 }, { day: 'Tue', orders: 148 }, { day: 'Wed', orders: 121 }, { day: 'Thu', orders: 163 },\n  { day: 'Fri', orders: 187 }, { day: 'Sat', orders: 96 }, { day: 'Sun', orders: 74 },\n];\n\n/** Tap a bar to read its value above the plot; tap it again to let go. */\nexport function Orders() {\n  const day = useLocal<string | null>('day', null);\n  return (\n    <BarChart\n      data={week}\n      x=\"day\"\n      y=\"orders\"\n      label=\"Orders by weekday\"\n      title=\"Orders\"\n      description=\"This week\"\n      summarize={summarize}\n      selectedKey={day.value}\n      onSelect={day.set}\n      data-testid=\"orders\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Grouped",
+          "title": "Two series, with a legend that hides them",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst channels = [\n  { quarter: 'Q1', online: 42, store: 31 }, { quarter: 'Q2', online: 48, store: 29 },\n  { quarter: 'Q3', online: 55, store: 33 }, { quarter: 'Q4', online: 67, store: 38 },\n];\nconst thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;\n\n/** Two series side by side; the legend shows and hides each. */\nexport function Grouped() {\n  const hidden = useLocal<readonly string[]>('hidden', []);\n  return (\n    <BarChart\n      data={channels}\n      x=\"quarter\"\n      y={[{ field: 'online', label: 'Online' }, { field: 'store', label: 'In store' }]}\n      label=\"Sales by quarter and channel\"\n      title=\"Sales by channel\"\n      formatValue={thousands}\n      summarize={summarize}\n      hiddenSeries={hidden.value}\n      onHiddenSeriesChange={hidden.set}\n      data-testid=\"channels\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Signed",
+          "title": "Values above and below zero",
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;\nconst cash = [\n  { month: 'Jan', net: 12 }, { month: 'Feb', net: -5 }, { month: 'Mar', net: 8 }, { month: 'Apr', net: -11 },\n  { month: 'May', net: 3 }, { month: 'Jun', net: 15 },\n];\n\n/** Values on both sides of zero stand on one line. */\nexport function Signed() {\n  return <BarChart data={cash} x=\"month\" y=\"net\" label=\"Net cash flow by month\" title=\"Net cash flow\" formatValue={thousands} summarize={summarize} data-testid=\"cash\" />;\n}"
+        },
+        {
+          "name": "Month",
+          "title": "Thirty bars",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst days = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Jun`, steps: 4200 + ((index * 37) % 11) * 610 + (index % 7 === 5 ? 3800 : 0) }));\n\n/** Thirty bars at phone width: the bars narrow, and only the first and last are labelled. */\nexport function Month() {\n  const day = useLocal<string | null>('day', '14 Jun');\n  return <BarChart data={days} x=\"day\" y=\"steps\" label=\"Steps by day in June\" title=\"Steps\" description=\"June\" selectedKey={day.value} onSelect={day.set} data-testid=\"steps\" />;\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Ticks between zero and the top of the scale, and labels for every category that fit.",
+          "needs": "a laid-out box's size, readable in render (`useBox`)",
+          "today": "Each value over its bar up to eight bars, the top of the scale beyond; all category labels up to seven bars, the first and last beyond."
+        },
+        {
+          "missing": "Scrubbing across bars, and a tooltip by the bar.",
+          "needs": "pointer coordinates on an element (`onPointer`)",
+          "today": "A press on a bar, and the readout above the plot."
+        },
+        {
+          "missing": "Stacked bars and horizontal bars.",
+          "needs": "nothing from the View",
+          "today": "Grouped vertical bars."
+        },
+        {
+          "missing": "Series told apart without colour.",
+          "needs": "pattern fills",
+          "today": "Position within the group, the legend's order, and each bar's spoken name."
+        }
+      ],
+      "related": [
+        "Chart",
+        "LineChart",
+        "PieChart",
+        "Sparkline"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Compare amounts",
+        "order": 3,
+        "page": {
+          "lead": "Use a bar chart to compare amounts across a few categories.",
+          "hero": "Orders",
+          "variants": [
+            {
+              "name": "Grouped",
+              "title": "Two series side by side; the legend shows and hides each"
+            },
+            {
+              "name": "Signed",
+              "title": "Above and below zero, on one line"
+            },
+            {
+              "name": "Month",
+              "title": "Thirty bars: narrower, the first and last labelled"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small without labels, and large"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateSelected",
+              "title": "One chosen"
+            },
+            {
+              "name": "StateLoading",
+              "title": "Loading"
+            },
+            {
+              "name": "StateEmpty",
+              "title": "Empty"
+            },
+            {
+              "name": "StateError",
+              "title": "Error"
+            }
+          ],
+          "statesLayout": "stack"
+        }
+      }
+    },
+    {
+      "name": "Chart",
+      "import": "@liulidesign/charts/Chart",
+      "exports": [
+        "Chart",
+        "ChartLegend",
+        "ChartReadout"
+      ],
+      "category": "charts",
+      "status": "preview",
+      "since": "2026-11-14",
+      "summary": "The frame every chart sits in: heading, plot, legend, readout and the loading, empty and error states",
+      "description": "Chart is what BarChart, LineChart and PieChart share, and the frame for a plot of your own. It gives the plot a fixed height, names the chart for assistive tech, reads a summary sentence, and swaps the plot for a skeleton, a message or an error. ChartLegend and ChartReadout, from the same import, are the legend and the line that shows the chosen datum.",
+      "keywords": [
+        "chart",
+        "frame",
+        "legend",
+        "readout",
+        "plot",
+        "graph",
+        "data visualisation",
+        "empty",
+        "loading"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The chart's accessible name: what it shows (\"Revenue by month\"). Drawn only as `title`."
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": "The heading above the plot."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "One line under the title: the period, the unit."
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "required": false,
+          "description": "The chart's finding in sentences, read after the name and not drawn."
+        },
+        {
+          "name": "readout",
+          "type": "Child",
+          "required": false,
+          "description": "The selected datum, shown above the plot; a `ChartReadout`."
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": false,
+          "description": "The plot: marks drawn to fill the box."
+        },
+        {
+          "name": "axis",
+          "type": "Child",
+          "required": false,
+          "description": "What sits under the plot and belongs to it: the category labels."
+        },
+        {
+          "name": "legend",
+          "type": "Child",
+          "required": false,
+          "description": "A `ChartLegend`."
+        },
+        {
+          "name": "legendPosition",
+          "type": "ChartLegendPosition",
+          "required": false,
+          "description": "",
+          "default": "'bottom'"
+        },
+        {
+          "name": "size",
+          "type": "ChartSize",
+          "required": false,
+          "description": "The plot's height: 64, 112, 176 or 240. `xs` is for a tile or a row, with nothing but the marks.",
+          "default": "'md'"
+        },
+        {
+          "name": "isLoading",
+          "type": "boolean",
+          "required": false,
+          "description": "Stands a skeleton in for the plot; the chart is reported busy.",
+          "default": "false"
+        },
+        {
+          "name": "error",
+          "type": "string",
+          "required": false,
+          "description": "Why the data could not be shown; drawn in place of the plot and announced."
+        },
+        {
+          "name": "isEmpty",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows `emptyLabel` in place of the plot.",
+          "default": "false"
+        },
+        {
+          "name": "emptyLabel",
+          "type": "string",
+          "required": false,
+          "description": "What to say when there is nothing to draw: \"No sales yet\"."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the chart."
+        }
+      ],
+      "otherProps": {
+        "ChartLegend": [
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "The list's accessible name: \"Series\", \"Parts\"."
+          },
+          {
+            "name": "items",
+            "type": "readonly ChartLegendItem[]",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "variant",
+            "type": "ChartLegendVariant",
+            "required": false,
+            "description": "`inline` wraps entries on a line; `list` gives each entry a row with its figures.",
+            "default": "'inline'"
+          },
+          {
+            "name": "mark",
+            "type": "\"square\" | \"line\"",
+            "required": false,
+            "description": "`line` draws each swatch as a stroke with the entry's dash.",
+            "default": "'square'"
+          },
+          {
+            "name": "selectedKey",
+            "type": "string | null",
+            "required": false,
+            "description": "The entry shown as chosen. Lists only."
+          },
+          {
+            "name": "onItemPress",
+            "type": "((key: string) => void)",
+            "required": false,
+            "description": "Makes each entry a button and runs with its key."
+          },
+          {
+            "name": "pressedState",
+            "type": "\"selected\" | \"shown\"",
+            "required": false,
+            "description": "What a pressed entry means to assistive tech: `selected` picks one, `shown` toggles a series.",
+            "default": "'selected'"
+          },
+          {
+            "name": "className",
+            "type": "string",
+            "required": false,
+            "description": ""
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
+        ],
+        "ChartReadout": [
+          {
+            "name": "label",
+            "type": "string",
+            "required": false,
+            "description": "The datum's category: \"Wednesday\". Leave it out to keep the line's height with nothing in it."
+          },
+          {
+            "name": "values",
+            "type": "readonly ChartReadoutValue[]",
+            "required": false,
+            "description": "",
+            "default": "[]"
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
+        ]
+      },
+      "parts": {
+        "root": "view",
+        "header": "view",
+        "title": "text",
+        "description": "text",
+        "summary": "text",
+        "readout": "view",
+        "readoutLabel": "text",
+        "readoutValue": "text",
+        "plot": "view",
+        "message": "text",
+        "skeleton": "view",
+        "axis": "view",
+        "legend": "view",
+        "legendItem": "button",
+        "legendSwatch": "view",
+        "legendLine": "vector",
+        "legendLabel": "text",
+        "legendValue": "text",
+        "legendDetail": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "busy",
+            "from": "isLoading"
+          },
+          {
+            "state": "pressed",
+            "from": "ChartLegend selectedKey, or an entry that is shown"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab, Enter or Space",
+            "effect": "Reach a legend entry that is a button, and press it"
+          }
+        ],
+        "target": {
+          "md": 36
+        },
+        "contrast": [
+          {
+            "what": "first mark colour",
+            "pair": [
+              "chart-1",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "second mark colour",
+            "pair": [
+              "chart-2",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "third mark colour",
+            "pair": [
+              "chart-3",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "fourth mark colour",
+            "pair": [
+              "chart-4",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "fifth mark colour",
+            "pair": [
+              "chart-5",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "second mark colour, straight on the page",
+            "pair": [
+              "chart-2",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "third mark colour, straight on the page",
+            "pair": [
+              "chart-3",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "title and figures",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "description, labels and legend",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "a legend row under the pointer",
+            "pair": [
+              "text",
+              "text/4"
+            ],
+            "over": "surface",
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "A group named by `label`, read in order: the title when it differs from the name, the description, the summary, the readout, the marks, the legend.",
+          "The readout is a status region: choosing a datum announces its category and figures.",
+          "The legend is a list. An entry that hides a series reports pressed while the series is shown; an entry that selects reports pressed while chosen.",
+          "An error is an alert and is announced when it appears. While loading the group is busy and the skeleton is hidden.",
+          "Legend swatches repeat the mark: a square for bars and slices, a stroke with the line's dash for lines, so a series is never named by colour alone.",
+          "An inline legend entry is 18 px tall; on touch, prefer the list variant (36 px rows) when entries can be pressed."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Budget",
+          "title": "A plot of your own in the frame",
+          "source": "import { cx } from '@lingxia/view';\nimport { Chart, ChartLegend } from '@liulidesign/charts/Chart';\n\nconst budget = [\n  { key: 'spent', label: 'Spent', amount: 6200, color: 1 as const },\n  { key: 'committed', label: 'Committed', amount: 2300, color: 2 as const },\n  { key: 'left', label: 'Left', amount: 1500, color: 3 as const },\n];\nconst fills = { 1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3' } as const;\nconst dollars = (value: number) => `$${String(value).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',')}`;\n\n/** The frame around a plot of your own: here one bar split into parts, built from plain views. */\nexport function Budget() {\n  return (\n    <Chart\n      label=\"Budget for the quarter\"\n      title=\"Budget\"\n      description=\"Third quarter, $10,000\"\n      summary=\"62% spent, 23% committed, 15% left.\"\n      size=\"xs\"\n      legend={<ChartLegend label=\"Parts\" variant=\"list\" items={budget.map(part => ({ key: part.key, label: part.label, color: part.color, value: dollars(part.amount) }))} />}\n      data-testid=\"budget\"\n    >\n      <view aria-hidden className=\"grow flex-row items-center gap-0.5\">\n        {budget.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', fills[part.color])} style={{ flexGrow: part.amount }} />)}\n      </view>\n    </Chart>\n  );\n}"
+        },
+        {
+          "name": "Legends",
+          "title": "Legends for bars and for lines",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ChartLegend } from '@liulidesign/charts/Chart';\n\nconst plans = [\n  { key: 'free', label: 'Free', color: 1 as const, dash: [] },\n  { key: 'team', label: 'Team', color: 2 as const, dash: [6, 4] },\n  { key: 'pro', label: 'Pro', color: 3 as const, dash: [2, 3] },\n];\n\n/** Squares name bars and slices; strokes name lines and carry each line's dash. */\nexport function Legends() {\n  const hidden = useLocal<readonly string[]>('hidden', ['pro']);\n  const toggle = (key: string) => hidden.set(hidden.value.includes(key) ? hidden.value.filter(each => each !== key) : [...hidden.value, key]);\n  return (\n    <view className=\"gap-5\">\n      <ChartLegend label=\"Plans\" items={plans} data-testid=\"squares\" />\n      <ChartLegend label=\"Plans, as lines\" mark=\"line\" items={plans.map(plan => ({ ...plan, isOff: hidden.value.includes(plan.key) }))} pressedState=\"shown\" onItemPress={toggle} data-testid=\"lines\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Readout",
+          "title": "The readout line",
+          "source": "import { ChartReadout } from '@liulidesign/charts/Chart';\n\nexport function Readout() {\n  return (\n    <view className=\"gap-3\">\n      <ChartReadout label=\"Wednesday\" values={[{ text: '121' }]} data-testid=\"one\" />\n      <ChartReadout label=\"Q3\" values={[{ label: 'Online', text: '$55k', color: 1 }, { label: 'In store', text: '$33k', color: 2 }]} data-testid=\"two\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Axes with tick labels that fit, and a value scale.",
+          "needs": "a laid-out box's size, readable in render (`useBox`)",
+          "today": "The first and last category under the plot, and each value through selection and the screen-reader list."
+        },
+        {
+          "missing": "A tooltip that follows a finger or a pointer.",
+          "needs": "pointer coordinates on an element (`onPointer`)",
+          "today": "The readout line above the plot."
+        },
+        {
+          "missing": "Marks that move between two sets of data.",
+          "needs": "animation of vector geometry",
+          "today": "Bars change height through layout transitions; lines and slices change at once."
+        }
+      ],
+      "related": [
+        "BarChart",
+        "LineChart",
+        "PieChart",
+        "Sparkline"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A chart's frame",
+        "order": 6,
+        "page": {
+          "lead": "Use the chart frame around a plot of your own, so it reads and behaves like Liuli's charts.",
+          "hero": "Budget",
+          "variants": [
+            {
+              "name": "Legends",
+              "title": "Squares for bars and slices, strokes for lines; the second can hide a series"
+            },
+            {
+              "name": "Readout",
+              "title": "The readout: the chosen datum in words and figures"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateLoading",
+              "title": "Loading"
+            },
+            {
+              "name": "StateEmpty",
+              "title": "Empty"
+            },
+            {
+              "name": "StateError",
+              "title": "Error"
+            }
+          ],
+          "statesLayout": "stack"
+        }
+      }
+    },
+    {
+      "name": "LineChart",
+      "import": "@liulidesign/charts/LineChart",
+      "exports": [
+        "LineChart"
+      ],
+      "category": "charts",
+      "status": "preview",
+      "since": "2026-11-14",
+      "summary": "A number over time, as a line that fits its data or an area from zero, for up to five series",
+      "description": "LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour.",
+      "keywords": [
+        "line chart",
+        "area chart",
+        "trend",
+        "time series",
+        "series",
+        "history",
+        "chart",
+        "graph"
+      ],
+      "props": [
+        {
+          "name": "data",
+          "type": "readonly Readonly<Record<string, ChartDatum>>[]",
+          "required": true,
+          "description": "The rows, one per point in time, oldest first."
+        },
+        {
+          "name": "x",
+          "type": "string",
+          "required": true,
+          "description": "The field that names each point: \"month\"."
+        },
+        {
+          "name": "y",
+          "type": "string | readonly ChartSeries[]",
+          "required": true,
+          "description": "The field that holds the number, or up to five series drawn as separate lines. A row without a number is a gap."
+        },
+        {
+          "name": "keyField",
+          "type": "string",
+          "required": false,
+          "description": "The field that identifies a row across updates and in `selectedKey`. By default `x`."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The chart's accessible name: \"Weight by week\"."
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "formatValue",
+          "type": "((value: number) => string)",
+          "required": false,
+          "description": "Turns a number into the text shown and read. By default the bare number."
+        },
+        {
+          "name": "summarize",
+          "type": "ChartSummarize",
+          "required": false,
+          "description": "Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`."
+        },
+        {
+          "name": "isSmooth",
+          "type": "boolean",
+          "required": false,
+          "description": "Rounds the line between points without passing above or below them.",
+          "default": "false"
+        },
+        {
+          "name": "hasArea",
+          "type": "boolean",
+          "required": false,
+          "description": "Fills under the line and measures it from zero. One series only.",
+          "default": "false"
+        },
+        {
+          "name": "hasEndDot",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks each line's latest value with a dot.",
+          "default": "true"
+        },
+        {
+          "name": "hasScale",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows the scale: the top and bottom of the value range, as round numbers, at the start edge with a hairline at the top. By default on, except at the `xs` size."
+        },
+        {
+          "name": "hasEndLabel",
+          "type": "boolean",
+          "required": false,
+          "description": "Writes the latest value at the end of the line. One series only.",
+          "default": "false"
+        },
+        {
+          "name": "xLabels",
+          "type": "\"ends\" | \"none\"",
+          "required": false,
+          "description": "The first and last category under the plot, or none. By default `ends`, except at the `xs` size."
+        },
+        {
+          "name": "legend",
+          "type": "ChartLegendPosition",
+          "required": false,
+          "description": "Shown when there is more than one series.",
+          "default": "'bottom'"
+        },
+        {
+          "name": "legendLabel",
+          "type": "string",
+          "required": false,
+          "description": "The legend's accessible name; by default the chart's `label`."
+        },
+        {
+          "name": "selectedKey",
+          "type": "string | null",
+          "required": false,
+          "description": "The row to mark with a rule and a dot on each line, and to read out above the plot."
+        },
+        {
+          "name": "hiddenSeries",
+          "type": "readonly string[]",
+          "required": false,
+          "description": "Series fields not drawn at present.",
+          "default": "[]"
+        },
+        {
+          "name": "onHiddenSeriesChange",
+          "type": "((fields: readonly string[]) => void)",
+          "required": false,
+          "description": "Makes each legend entry a button that shows or hides its series."
+        },
+        {
+          "name": "domainMin",
+          "type": "number",
+          "required": false,
+          "description": "Widens the value range downward. A line fits its data; an area starts from zero."
+        },
+        {
+          "name": "domainMax",
+          "type": "number",
+          "required": false,
+          "description": "Widens the value range upward, so charts that are compared share a scale."
+        },
+        {
+          "name": "size",
+          "type": "ChartSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "isLoading",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "error",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "emptyLabel",
+          "type": "string",
+          "required": false,
+          "description": "What to say when no row has a number."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the chart."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "frame": "view",
+        "scale": "view",
+        "scaleLabel": "text",
+        "plot": "view",
+        "rule": "view",
+        "drawing": "vector",
+        "reading": "view",
+        "end": "view",
+        "endLabel": "text",
+        "labels": "view",
+        "label": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "busy",
+            "from": "isLoading"
+          }
+        ],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "first mark colour",
+            "pair": [
+              "chart-1",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "second mark colour",
+            "pair": [
+              "chart-2",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "third mark colour",
+            "pair": [
+              "chart-3",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "fourth mark colour",
+            "pair": [
+              "chart-4",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "fifth mark colour",
+            "pair": [
+              "chart-5",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "second mark colour, straight on the page",
+            "pair": [
+              "chart-2",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "third mark colour, straight on the page",
+            "pair": [
+              "chart-3",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "title and figures",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "description, labels and legend",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "With `summarize`, a sentence per series with its range, lowest and highest values and trend is read first.",
+          "Then every row is read as a list item: \"3 Nov: 71.2 kg\", or \"Apr: Free 492, Team 171, Pro 88\". Past 60 rows only the summary is read.",
+          "The second to fifth lines are dashed, each differently, and the legend draws the same dash, so series survive without colour.",
+          "The scale and the end figure are hidden from assistive tech: the same numbers are in the summary and the list.",
+          "The fill under an area, the hairlines and the rule on the chosen row are decoration with no contrast minimum.",
+          "The chart takes no focus: it cannot yet be pressed or scrubbed. `selectedKey` set by the app is announced through the readout."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Weight",
+          "title": "A line that fits its data",
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst weight = [\n  { week: '6 Oct', kg: 72.4 }, { week: '13 Oct', kg: 72.1 }, { week: '20 Oct', kg: 72.3 }, { week: '27 Oct', kg: 71.6 },\n  { week: '3 Nov', kg: 71.2 }, { week: '10 Nov', kg: 71.4 }, { week: '17 Nov', kg: 70.8 }, { week: '24 Nov', kg: 70.5 },\n];\nconst kilos = (value: number) => `${value.toFixed(1)} kg`;\n\n/** A line fits its data: two kilos of change fill the plot. */\nexport function Weight() {\n  return (\n    <LineChart\n      data={weight}\n      x=\"week\"\n      y=\"kg\"\n      label=\"Weight by week\"\n      title=\"Weight\"\n      description=\"Last 8 weeks\"\n      formatValue={kilos}\n      summarize={summarize}\n      hasEndLabel\n      data-testid=\"weight\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Area",
+          "title": "An area, from zero",
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst visits = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Sep`, visits: Math.round(1800 + index * 46 + ((index * 53) % 17) * 38 - (index % 7 > 4 ? 520 : 0)) }));\nconst day = [\n  { hour: '00:00', c: 11.2 }, { hour: '02:00', c: 10.4 }, { hour: '04:00', c: 9.8 }, { hour: '06:00', c: 10.1 }, { hour: '08:00', c: 12.6 },\n  { hour: '10:00', c: 15.9 }, { hour: '12:00', c: 18.7 }, { hour: '14:00', c: 20.3 }, { hour: '16:00', c: 19.6 }, { hour: '18:00', c: 17.0 },\n  { hour: '20:00', c: 14.4 }, { hour: '22:00', c: 12.5 },\n];\n\n/** An area is an amount, so it is measured from zero. */\nexport function Area() {\n  return <LineChart data={visits} x=\"day\" y=\"visits\" label=\"Visits by day in September\" title=\"Visits\" description=\"September\" hasArea summarize={summarize} data-testid=\"visits\" />;\n}"
+        },
+        {
+          "name": "Smooth",
+          "title": "A smoothed line",
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst day = [\n  { hour: '00:00', c: 11.2 }, { hour: '02:00', c: 10.4 }, { hour: '04:00', c: 9.8 }, { hour: '06:00', c: 10.1 }, { hour: '08:00', c: 12.6 },\n  { hour: '10:00', c: 15.9 }, { hour: '12:00', c: 18.7 }, { hour: '14:00', c: 20.3 }, { hour: '16:00', c: 19.6 }, { hour: '18:00', c: 17.0 },\n  { hour: '20:00', c: 14.4 }, { hour: '22:00', c: 12.5 },\n];\nconst degrees = (value: number) => `${value.toFixed(1)}°`;\n\n/** Smoothing suits a quantity that changes gradually; the curve passes through every reading and never beyond one. */\nexport function Smooth() {\n  return <LineChart data={day} x=\"hour\" y=\"c\" label=\"Temperature through the day\" title=\"Temperature\" description=\"Today\" isSmooth formatValue={degrees} summarize={summarize} data-testid=\"day\" />;\n}"
+        },
+        {
+          "name": "Series",
+          "title": "Three series, with a legend that hides them",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** Three lines told apart by dash as well as colour; the legend shows and hides each. */\nexport function Series() {\n  const hidden = useLocal<readonly string[]>('hidden', []);\n  return (\n    <LineChart\n      data={plans}\n      x=\"month\"\n      y={series}\n      label=\"Accounts by plan and month\"\n      title=\"Accounts by plan\"\n      summarize={summarize}\n      hiddenSeries={hidden.value}\n      onHiddenSeriesChange={hidden.set}\n      data-testid=\"plans\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Selected",
+          "title": "A row chosen from outside",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { SegmentedControl } from '@liulidesign/core/SegmentedControl';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** The chart cannot be scrubbed yet, so a control beside it chooses the month it reads out. */\nexport function Selected() {\n  const month = useLocal('month', 'Apr');\n  return (\n    <view className=\"gap-4\">\n      <LineChart data={plans} x=\"month\" y={series} label=\"Accounts by plan and month\" selectedKey={month.value} legend=\"none\" size=\"sm\" data-testid=\"picked\" />\n      <SegmentedControl label=\"Month\" value={month.value} onChange={month.set} options={plans.map(row => ({ value: row.month, label: row.month }))} size=\"sm\" data-testid=\"month\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Gaps",
+          "title": "Missing readings",
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst degrees = (value: number) => `${value.toFixed(1)}°`;\nconst readings = [\n  { hour: '06:00', c: 14.2 }, { hour: '07:00', c: 15.1 }, { hour: '08:00', c: null }, { hour: '09:00', c: null }, { hour: '10:00', c: 19.4 },\n  { hour: '11:00', c: 20.8 }, { hour: '12:00', c: 22.1 }, { hour: '13:00', c: null }, { hour: '14:00', c: 23.0 }, { hour: '15:00', c: 22.4 },\n];\n\n/** Hours without a reading are gaps, never zeros. */\nexport function Gaps() {\n  return <LineChart data={readings} x=\"hour\" y=\"c\" label=\"Temperature by hour\" title=\"Temperature\" formatValue={degrees} summarize={summarize} data-testid=\"temperature\" />;\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Choosing a point by pressing or scrubbing, with a crosshair and tooltip.",
+          "needs": "pointer coordinates on an element (`onPointer`)",
+          "today": "`selectedKey` set by the app marks a row and fills the readout; there is no `onSelect`."
+        },
+        {
+          "missing": "Ticks between the ends of the scale, and time labels that fit.",
+          "needs": "a laid-out box's size, readable in render (`useBox`)",
+          "today": "The top and bottom of the scale, the latest value, and the first and last category."
+        },
+        {
+          "missing": "A window to zoom and pan a long series.",
+          "needs": "pointer coordinates on an element (`onPointer`)",
+          "today": "Pass the rows of the period to show."
+        },
+        {
+          "missing": "Lines that draw in and move between data.",
+          "needs": "animation of vector geometry",
+          "today": "New data is drawn at once."
+        },
+        {
+          "missing": "Marker shapes per series.",
+          "needs": "a laid-out box's size, readable in render (`useBox`)",
+          "today": "Dashes; a shape drawn in a stretched drawing would be distorted."
+        }
+      ],
+      "related": [
+        "Chart",
+        "BarChart",
+        "Sparkline"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A number over time",
+        "order": 4,
+        "page": {
+          "lead": "Use a line chart to show how a number moves over time.",
+          "hero": "Weight",
+          "variants": [
+            {
+              "name": "Area",
+              "title": "An area: an amount, measured from zero"
+            },
+            {
+              "name": "Smooth",
+              "title": "Smoothed: through every reading, never beyond one"
+            },
+            {
+              "name": "Series",
+              "title": "Three series, told apart by dash and colour"
+            },
+            {
+              "name": "Gaps",
+              "title": "Missing readings stay gaps"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small without labels, and large"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateSingle",
+              "title": "One value"
+            },
+            {
+              "name": "StateLoading",
+              "title": "Loading"
+            },
+            {
+              "name": "StateEmpty",
+              "title": "Empty"
+            },
+            {
+              "name": "StateError",
+              "title": "Error"
+            }
+          ],
+          "statesLayout": "stack",
+          "inContext": [
+            {
+              "name": "Selected",
+              "title": "A control beside the chart chooses the month it reads out"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "PieChart",
+      "import": "@liulidesign/charts/PieChart",
+      "exports": [
+        "PieChart"
+      ],
+      "category": "charts",
+      "status": "preview",
+      "since": "2026-11-14",
+      "summary": "Parts of one whole, as a ring or a solid pie, listed with their amounts in a legend that selects",
+      "description": "PieChart shows how one total divides into a few parts: spending by category, storage by kind. By default it is a ring with the total in its hole. The parts are named in a legend under it, with their amounts and shares, and a legend row chooses its part: the slice grows, the others step back, and the hole shows the chosen part.",
+      "keywords": [
+        "pie chart",
+        "donut",
+        "doughnut",
+        "ring",
+        "share",
+        "proportion",
+        "parts of a whole",
+        "chart",
+        "graph"
+      ],
+      "props": [
+        {
+          "name": "data",
+          "type": "readonly Readonly<Record<string, ChartDatum>>[]",
+          "required": true,
+          "description": "The rows, one per part, in the order drawn clockwise from the top. Parts without a positive number are left out."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "The field that names each part: \"category\"."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": true,
+          "description": "The field that holds each part's amount."
+        },
+        {
+          "name": "keyField",
+          "type": "string",
+          "required": false,
+          "description": "The field that identifies a row across updates and in `selectedKey`. By default `name`."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The chart's accessible name: \"Spending by category\"."
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "formatValue",
+          "type": "((value: number) => string)",
+          "required": false,
+          "description": "Turns an amount into the text shown and read. By default the bare number."
+        },
+        {
+          "name": "formatShare",
+          "type": "((share: number) => string)",
+          "required": false,
+          "description": "Turns a part of the whole, 0 to 1, into text for the legend: \"32%\". Without it the legend shows amounts only."
+        },
+        {
+          "name": "summarize",
+          "type": "ChartSummarize",
+          "required": false,
+          "description": "Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`."
+        },
+        {
+          "name": "variant",
+          "type": "PieChartVariant",
+          "required": false,
+          "description": "`donut` has a hole for the total; `pie` is solid.",
+          "default": "'donut'"
+        },
+        {
+          "name": "totalLabel",
+          "type": "string",
+          "required": false,
+          "description": "Names the total shown in a donut's hole: \"Total\". Without it the hole is empty until a part is chosen."
+        },
+        {
+          "name": "otherLabel",
+          "type": "string",
+          "required": false,
+          "description": "Names one part that gathers every part after the first `maxParts`: \"Other\". Without it every part is drawn, up to 24."
+        },
+        {
+          "name": "maxParts",
+          "type": "number",
+          "required": false,
+          "description": "How many parts keep their own slice when `otherLabel` is set.",
+          "default": "5"
+        },
+        {
+          "name": "legend",
+          "type": "ChartLegendPosition",
+          "required": false,
+          "description": "The legend lists each part with its amount and share.",
+          "default": "'bottom'"
+        },
+        {
+          "name": "legendLabel",
+          "type": "string",
+          "required": false,
+          "description": "The legend's accessible name; by default the chart's `label`."
+        },
+        {
+          "name": "selectedKey",
+          "type": "string | null",
+          "required": false,
+          "description": "The chosen part's key; its slice grows a little and keeps its colour, the rest step back."
+        },
+        {
+          "name": "onSelect",
+          "type": "((key: string | null) => void)",
+          "required": false,
+          "description": "Makes each legend row a button; runs with its part's key, or `null` when the chosen one is pressed again."
+        },
+        {
+          "name": "size",
+          "type": "ChartSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "isLoading",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "error",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "emptyLabel",
+          "type": "string",
+          "required": false,
+          "description": "What to say when no part has an amount."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the chart; a legend row's button is `<id>-legend-<key>`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "plot": "view",
+        "drawing": "vector",
+        "centre": "view",
+        "centreLabel": "text",
+        "centreValue": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "pressed",
+            "from": "selectedKey"
+          },
+          {
+            "state": "busy",
+            "from": "isLoading"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Moves through the legend rows when they can be pressed"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Chooses the part, or lets it go"
+          }
+        ],
+        "target": {
+          "md": 36
+        },
+        "contrast": [
+          {
+            "what": "first mark colour",
+            "pair": [
+              "chart-1",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "second mark colour",
+            "pair": [
+              "chart-2",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "third mark colour",
+            "pair": [
+              "chart-3",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "fourth mark colour",
+            "pair": [
+              "chart-4",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "fifth mark colour",
+            "pair": [
+              "chart-5",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "second mark colour, straight on the page",
+            "pair": [
+              "chart-2",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "third mark colour, straight on the page",
+            "pair": [
+              "chart-3",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "title and figures",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "description, labels and legend",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "a merged remainder slice",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "a merged remainder slice, straight on the page",
+            "pair": [
+              "line-strong",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "The legend is the reading: a list where each part is its name, amount and share. With `onSelect` each row is a button that reports pressed.",
+          "With `summarize`, a sentence with the number of parts, the total, and the largest and smallest part is read first.",
+          "The hole is a status region: choosing a part announces its name and amount.",
+          "Slices are told apart by colour and by their order, which the legend repeats from the top clockwise; the gap between slices keeps neighbours apart without relying on hue.",
+          "A legend row is 36 px tall and as wide as the chart."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Spending",
+          "title": "A ring with the total, selected through its legend",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst spending = [\n  { category: 'Rent', amount: 1450 }, { category: 'Food', amount: 620 }, { category: 'Transport', amount: 210 },\n  { category: 'Leisure', amount: 180 }, { category: 'Savings', amount: 400 },\n];\nconst dollars = (value: number) => `$${grouped(value)}`;\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\n\n/** A row in the legend chooses its part; the hole then shows that part in place of the total. */\nexport function Spending() {\n  const part = useLocal<string | null>('part', null);\n  return (\n    <PieChart\n      data={spending}\n      name=\"category\"\n      value=\"amount\"\n      label=\"Spending by category\"\n      title=\"Spending\"\n      description=\"October\"\n      formatValue={dollars}\n      formatShare={percent}\n      totalLabel=\"Total\"\n      summarize={summarize}\n      selectedKey={part.value}\n      onSelect={part.set}\n      data-testid=\"spending\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Solid",
+          "title": "A solid pie",
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\nconst storage = [{ kind: 'Photos', gb: 38 }, { kind: 'Apps', gb: 21 }, { kind: 'Messages', gb: 9 }, { kind: 'Free', gb: 60 }];\nconst gigabytes = (value: number) => `${value} GB`;\n\nexport function Solid() {\n  return <PieChart data={storage} name=\"kind\" value=\"gb\" label=\"Storage by kind\" title=\"Storage\" variant=\"pie\" formatValue={gigabytes} formatShare={percent} summarize={summarize} data-testid=\"storage\" />;\n}"
+        },
+        {
+          "name": "Merged",
+          "title": "Many parts, the small ones gathered",
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst grouped = (value: number) => String(value).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\nconst languages = [\n  { language: 'English', readers: 4210 }, { language: 'Spanish', readers: 1870 }, { language: 'Chinese', readers: 1540 }, { language: 'Hindi', readers: 960 },\n  { language: 'French', readers: 610 }, { language: 'German', readers: 480 }, { language: 'Japanese', readers: 350 }, { language: 'Korean', readers: 190 },\n];\n\n/** Eight parts are too many to tell apart: the four largest keep a slice, the rest share one. */\nexport function Merged() {\n  return (\n    <PieChart\n      data={languages}\n      name=\"language\"\n      value=\"readers\"\n      label=\"Readers by language\"\n      title=\"Readers by language\"\n      formatValue={grouped}\n      formatShare={percent}\n      otherLabel=\"Other\"\n      maxParts={4}\n      totalLabel=\"Readers\"\n      summarize={summarize}\n      data-testid=\"languages\"\n    />\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Choosing a slice by pressing it.",
+          "needs": "pointer coordinates on an element (`onPointer`)",
+          "today": "The legend rows are the buttons."
+        },
+        {
+          "missing": "Slices that grow and turn when the data changes.",
+          "needs": "animation of vector geometry",
+          "today": "New data is drawn at once."
+        },
+        {
+          "missing": "Labels on or beside slices.",
+          "needs": "a laid-out box's size, readable in render (`useBox`)",
+          "today": "The legend names every part."
+        }
+      ],
+      "related": [
+        "Chart",
+        "BarChart"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Parts of a whole",
+        "order": 5,
+        "page": {
+          "lead": "Use a pie chart to show how one total divides into a few parts.",
+          "hero": "Spending",
+          "variants": [
+            {
+              "name": "Solid",
+              "title": "A solid pie, when no total is needed"
+            },
+            {
+              "name": "Merged",
+              "title": "Eight parts: four keep a slice, the rest share a neutral one"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small and large, the legend left out"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateSelected",
+              "title": "One chosen"
+            },
+            {
+              "name": "StateWhole",
+              "title": "One part"
+            },
+            {
+              "name": "StateLoading",
+              "title": "Loading"
+            },
+            {
+              "name": "StateEmpty",
+              "title": "Empty"
+            },
+            {
+              "name": "StateError",
+              "title": "Error"
+            }
+          ],
+          "statesLayout": "stack"
+        }
+      }
+    },
+    {
+      "name": "Sparkline",
+      "import": "@liulidesign/charts/Sparkline",
+      "exports": [
+        "Sparkline"
+      ],
+      "category": "charts",
+      "status": "preview",
+      "since": "2026-11-14",
+      "summary": "A small chart without axes: the shape of a series as a line, an area or bars",
+      "description": "Sparkline shows how a number has moved, beside the number itself: in a Stat, a table cell or a list row. It has no axes, labels or interaction, so it answers \"which way, and how steadily\", never \"how much\". It is one drawing computed from `values`, and its `label` says in words what a sighted reader takes from the shape.",
+      "keywords": [
+        "sparkline",
+        "trend",
+        "mini chart",
+        "inline chart",
+        "line",
+        "area",
+        "bar",
+        "series",
+        "history"
+      ],
+      "props": [
+        {
+          "name": "values",
+          "type": "readonly number[]",
+          "required": true,
+          "description": "The numbers, oldest first. A value that is not finite (`NaN`) is a gap. Past 240 values it keeps the 240 that hold the shape, peaks and dips included."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "What the chart shows, in words; it is all a screen reader gets: \"Revenue, last 7 days: up from 12k to 24k\"."
+        },
+        {
+          "name": "variant",
+          "type": "SparklineVariant",
+          "required": false,
+          "description": "`area` fills under the line; `bar` draws one bar per value.",
+          "default": "'line'"
+        },
+        {
+          "name": "isSmooth",
+          "type": "boolean",
+          "required": false,
+          "description": "Rounds the line between points without passing above or below them. Lines and areas only.",
+          "default": "false"
+        },
+        {
+          "name": "hasEndDot",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks the latest value with a dot. Lines and areas only.",
+          "default": "false"
+        },
+        {
+          "name": "tone",
+          "type": "SparklineTone",
+          "required": false,
+          "description": "`series` is the first chart colour; `positive` and `negative` say the trend is good or bad.",
+          "default": "'series'"
+        },
+        {
+          "name": "domainMin",
+          "type": "number",
+          "required": false,
+          "description": "The lowest value drawn. A line fits its data; an area or bars start from zero."
+        },
+        {
+          "name": "domainMax",
+          "type": "number",
+          "required": false,
+          "description": "The highest value drawn."
+        },
+        {
+          "name": "size",
+          "type": "SparklineSize",
+          "required": false,
+          "description": "The height: 24, 32 or 48. The width fills the container; set it with `className`.",
+          "default": "'md'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "plot": "vector"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "series line and bars",
+            "pair": [
+              "chart-1",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "series line and bars, straight on the page",
+            "pair": [
+              "chart-1",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "neutral line",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "positive line",
+            "pair": [
+              "success",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "negative line",
+            "pair": [
+              "danger",
+              "surface"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "One image named by `label`; the drawing itself is hidden. A screen reader gets nothing but the label, so it carries the finding: the direction, and the first and last values.",
+          "It takes no focus and has no actions.",
+          "The fill under an area is decoration and has no contrast minimum: the line above it carries the values.",
+          "Positive and negative tones differ by colour alone, so the label, or the figure beside it, must say which it is."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Trend",
+          "title": "A trend, the latest value marked",
+          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\n\nconst week = [12, 14, 13, 17, 16, 21, 24];\n\nexport function Trend() {\n  return <Sparkline values={week} label=\"Revenue, last 7 days: up from 12k to 24k\" hasEndDot data-testid=\"trend\" />;\n}"
+        },
+        {
+          "name": "Variants",
+          "title": "Line, area and bars",
+          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\n\nconst month = [38, 41, 36, 44, 47, 43, 52, 55, 49, 58, 61, 57, 66, 70, 64, 73, 78, 71, 69, 80, 84, 79, 88, 91, 86, 95, 99, 93, 104, 108];\nconst net = [6, 9, -4, 3, -7, -2, 8, 11, -3, 5];\n\nexport function Variants() {\n  return (\n    <view className=\"gap-5\">\n      <Captioned caption=\"Line: the shape of a trend\">\n        <Sparkline values={month} label=\"Sign-ups, last 30 days: up from 38 to 108\" data-testid=\"line\" />\n      </Captioned>\n      <Captioned caption=\"Area: an amount, measured from zero\">\n        <Sparkline values={month} variant=\"area\" label=\"Sign-ups, last 30 days: up from 38 to 108\" data-testid=\"area\" />\n      </Captioned>\n      <Captioned caption=\"Bar: separate counts, above and below zero\">\n        <Sparkline values={net} variant=\"bar\" label=\"Net change by day: six days up, four down\" data-testid=\"bar\" />\n      </Captioned>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Smooth",
+          "title": "A rounded line that stays within its data",
+          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\n\nconst week = [12, 14, 13, 17, 16, 21, 24];\n\nexport function Smooth() {\n  return <Sparkline values={week} isSmooth variant=\"area\" label=\"Sessions, last 7 days: up from 12k to 24k\" data-testid=\"smooth\" />;\n}"
+        },
+        {
+          "name": "Tones",
+          "title": "Tones",
+          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\n\nconst week = [12, 14, 13, 17, 16, 21, 24];\nconst falling = [31, 29, 30, 26, 27, 22, 19];\n\n/** The tone says whether the trend is good news; the label says it in words. */\nexport function Tones() {\n  return (\n    <view className=\"grid grid-cols-2 gap-x-4 gap-y-5\">\n      <Captioned caption=\"Series\">\n        <Sparkline values={week} label=\"Visits: up from 12k to 24k\" />\n      </Captioned>\n      <Captioned caption=\"Neutral\">\n        <Sparkline values={week} tone=\"neutral\" label=\"Visits: up from 12k to 24k\" />\n      </Captioned>\n      <Captioned caption=\"Positive\">\n        <Sparkline values={week} tone=\"positive\" label=\"Sales: up from 12k to 24k\" data-testid=\"positive\" />\n      </Captioned>\n      <Captioned caption=\"Negative\">\n        <Sparkline values={falling} tone=\"negative\" label=\"Sales: down from 31k to 19k\" data-testid=\"negative\" />\n      </Captioned>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\n\nconst month = [38, 41, 36, 44, 47, 43, 52, 55, 49, 58, 61, 57, 66, 70, 64, 73, 78, 71, 69, 80, 84, 79, 88, 91, 86, 95, 99, 93, 104, 108];\n\nexport function Sizes() {\n  return (\n    <view className=\"gap-5\">\n      <Captioned caption=\"Small, 24\">\n        <Sparkline values={month} size=\"sm\" label=\"Sign-ups: up from 38 to 108\" data-testid=\"small\" />\n      </Captioned>\n      <Captioned caption=\"Medium, 32\">\n        <Sparkline values={month} label=\"Sign-ups: up from 38 to 108\" />\n      </Captioned>\n      <Captioned caption=\"Large, 48\">\n        <Sparkline values={month} size=\"lg\" label=\"Sign-ups: up from 38 to 108\" data-testid=\"large\" />\n      </Captioned>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Gaps",
+          "title": "Missing readings",
+          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\n\n/** Days without a reading are gaps, never zeros. */\nexport function Gaps() {\n  return <Sparkline values={[18, 21, NaN, NaN, 24, 22, NaN, 27, NaN, 25, 29, 31]} label=\"Temperature by hour, with four hours missing\" data-testid=\"gaps\" />;\n}"
+        },
+        {
+          "name": "InRows",
+          "title": "In list rows",
+          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\n\nconst cities = [\n  { name: 'Lisbon', now: '24°', values: [19, 20, 22, 24, 25, 24, 24], label: 'Lisbon, last 7 days: 19 to 24 degrees' },\n  { name: 'Oslo', now: '9°', values: [12, 11, 11, 10, 8, 9, 9], label: 'Oslo, last 7 days: 12 to 9 degrees' },\n  { name: 'Nairobi', now: '27°', values: [26, 27, 26, 28, 27, 27, 27], label: 'Nairobi, last 7 days: steady near 27 degrees' },\n];\n\n/** In a row, the sparkline sits between the name and the figure it explains. */\nexport function InRows() {\n  return (\n    <view role=\"list\" aria-label=\"Cities\" className=\"divide-y divide-text/8\">\n      {cities.map(city => (\n        <view key={city.name} role=\"listitem\" className=\"flex-row items-center gap-4 py-2.5\">\n          <text className=\"grow basis-0 text-body text-text\">{city.name}</text>\n          <Sparkline values={city.values} tone=\"neutral\" size=\"sm\" label={city.label} className=\"w-20 self-center\" />\n          <text className=\"w-[4ch] text-end text-body font-medium text-text tabular-nums\">{city.now}</text>\n        </view>\n      ))}\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "The value under a finger, and a moving marker.",
+          "needs": "pointer coordinates on an element",
+          "today": "The figure it explains sits beside it."
+        },
+        {
+          "missing": "Drawing in when it appears, and moving between two sets of values.",
+          "needs": "animation of vector geometry",
+          "today": "New values are drawn at once."
+        }
+      ],
+      "related": [
+        "Stat"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A trend at a glance",
+        "order": 2,
+        "page": {
+          "lead": "Use a sparkline beside a figure to show which way it has been going.",
+          "hero": "Trend",
+          "variants": [
+            {
+              "name": "Variants",
+              "title": "Line, area and bars"
+            },
+            {
+              "name": "Smooth",
+              "title": "Smooth: rounded, never past its data"
+            },
+            {
+              "name": "Tones",
+              "title": "Tones; positive and negative are claims about the data"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small for rows, medium by default, large on its own"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateMarked",
+              "title": "Latest value marked"
+            },
+            {
+              "name": "StateFlat",
+              "title": "No change"
+            },
+            {
+              "name": "StateSingle",
+              "title": "One value"
+            },
+            {
+              "name": "StateEmpty",
+              "title": "No values"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Gaps",
+              "title": "Missing readings stay gaps"
+            },
+            {
+              "name": "InRows",
+              "title": "In list rows, between the name and the figure"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Stat",
+      "import": "@liulidesign/charts/Stat",
+      "exports": [
+        "Stat"
+      ],
+      "category": "charts",
+      "status": "preview",
+      "since": "2026-11-14",
+      "summary": "One figure with its label, how it changed, and an optional small chart",
+      "description": "Stat shows a number a person checks often: revenue, open orders, a response time. Under the figure it can say how the number changed, with an arrow for the direction and a tone for whether that is good news, and it can hold a Sparkline of its history. The app formats every string; Stat lays them out and reads them as one group.",
+      "keywords": [
+        "stat",
+        "statistic",
+        "metric",
+        "kpi",
+        "figure",
+        "number",
+        "delta",
+        "change",
+        "trend",
+        "dashboard",
+        "tile"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "What the figure measures: \"Revenue\". Also names the group for assistive tech."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": true,
+          "description": "The figure as the app formats it: \"$48,250\", \"3.2 s\". Liuli formats no numbers."
+        },
+        {
+          "name": "delta",
+          "type": "string",
+          "required": false,
+          "description": "The change since the last period, as the app formats it: \"12.4%\". Drawn after an arrow."
+        },
+        {
+          "name": "deltaDirection",
+          "type": "StatDirection",
+          "required": false,
+          "description": "Which way the figure moved; picks the arrow.",
+          "default": "'flat'"
+        },
+        {
+          "name": "deltaTone",
+          "type": "StatTone",
+          "required": false,
+          "description": "Whether the change is good news. By default up is positive, down negative and flat neutral; set it when up is bad (errors, cost)."
+        },
+        {
+          "name": "deltaLabel",
+          "type": "string",
+          "required": false,
+          "description": "The change in words, read in place of the arrow and `delta`: \"Up 12.4% from last month\"."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "A short note after the change: \"vs last month\"."
+        },
+        {
+          "name": "chart",
+          "type": "Child",
+          "required": false,
+          "description": "A small chart under the figure, usually a Sparkline."
+        },
+        {
+          "name": "size",
+          "type": "StatSize",
+          "required": false,
+          "description": "The figure's size: title or display type.",
+          "default": "'md'"
+        },
+        {
+          "name": "isLoading",
+          "type": "boolean",
+          "required": false,
+          "description": "Stands a skeleton in for the figure and leaves out the change and the chart; the group is reported busy.",
+          "default": "false"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the group."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "label": "text",
+        "value": "text",
+        "change": "view",
+        "delta": "view",
+        "deltaGlyph": "vector",
+        "deltaText": "text",
+        "deltaSpoken": "text",
+        "description": "text",
+        "chart": "view",
+        "skeleton": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "busy",
+            "from": "isLoading"
+          }
+        ],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "figure",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "label and note",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "positive change",
+            "pair": [
+              "success",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "negative change",
+            "pair": [
+              "danger",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "positive change, straight on the page",
+            "pair": [
+              "success",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "negative change, straight on the page",
+            "pair": [
+              "danger",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "positive change in a sunken card",
+            "pair": [
+              "success",
+              "surface-sunken"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "negative change in a sunken card",
+            "pair": [
+              "danger",
+              "surface-sunken"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "label and note in a sunken card",
+            "pair": [
+              "text-muted",
+              "surface-sunken"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "A group named by `label`, read in order: the figure, the change, the note, then the chart by its own label.",
+          "The arrow is hidden. With `deltaLabel` the drawn change is hidden too and the words are read: \"Up 12.4% from last month\". Without it only `delta` is read, which loses the direction.",
+          "Direction is drawn as an arrow and tone as colour, so the change never depends on colour alone.",
+          "While loading the group is reported busy and keeps its name; the skeleton is hidden.",
+          "It takes no focus. To make it open a page, put it in a ClickableCard."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Revenue",
+          "title": "A figure, its change and its history",
+          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\nimport { Stat } from '@liulidesign/charts/Stat';\n\nconst revenue = [31, 34, 33, 38, 36, 41, 40, 44, 47, 45, 48];\n\n/** The figure, how it changed in the app's words, and its last eleven weeks. */\nexport function Revenue() {\n  return (\n    <Stat\n      label=\"Revenue\"\n      value=\"$48,250\"\n      delta=\"12.4%\"\n      deltaDirection=\"up\"\n      deltaLabel=\"Up 12.4% from last month\"\n      description=\"vs last month\"\n      chart={<Sparkline values={revenue} variant=\"area\" isSmooth hasEndDot tone=\"positive\" label=\"Revenue by week: up from 31k to 48k\" />}\n      data-testid=\"revenue\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Plain",
+          "title": "A figure alone",
+          "source": "import { Stat } from '@liulidesign/charts/Stat';\n\nexport function Plain() {\n  return <Stat label=\"Open orders\" value=\"128\" data-testid=\"orders\" />;\n}"
+        },
+        {
+          "name": "Tones",
+          "title": "Tone set apart from direction",
+          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\nimport { Stat } from '@liulidesign/charts/Stat';\n\nconst latency = [4.1, 3.9, 4.0, 3.6, 3.7, 3.4, 3.3, 3.2];\nconst errors = [12, 11, 14, 13, 17, 19, 18, 23];\n\n/** Down is good news for a wait, and up is bad news for errors: the tone is set apart from the direction. */\nexport function Tones() {\n  return (\n    <view className=\"grid grid-cols-2 gap-x-4 gap-y-5\">\n      <Stat\n        label=\"Response time\"\n        value=\"3.2 s\"\n        delta=\"0.9 s\"\n        deltaDirection=\"down\"\n        deltaTone=\"positive\"\n        deltaLabel=\"Down 0.9 seconds, an improvement\"\n        chart={<Sparkline values={latency} tone=\"positive\" label=\"Response time by day: down from 4.1 to 3.2 seconds\" />}\n        data-testid=\"latency\"\n      />\n      <Stat\n        label=\"Errors\"\n        value=\"23\"\n        delta=\"5\"\n        deltaDirection=\"up\"\n        deltaTone=\"negative\"\n        deltaLabel=\"Up 5 from yesterday, worse\"\n        chart={<Sparkline values={errors} tone=\"negative\" label=\"Errors by day: up from 12 to 23\" />}\n        data-testid=\"errors\"\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Small and medium",
+          "source": "import { Stat } from '@liulidesign/charts/Stat';\n\nexport function Sizes() {\n  return (\n    <view className=\"grid grid-cols-2 items-end gap-x-4\">\n      <Stat label=\"Small\" value=\"1,204\" size=\"sm\" delta=\"3.1%\" deltaDirection=\"up\" data-testid=\"small\" />\n      <Stat label=\"Medium\" value=\"1,204\" delta=\"3.1%\" deltaDirection=\"up\" data-testid=\"medium\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Dashboard",
+          "title": "Four figures, two to a row",
+          "source": "import { Card } from '@liulidesign/core/Card';\nimport { Stat } from '@liulidesign/charts/Stat';\n\n/** Four figures on a phone: two columns of cards, each figure with how it changed. */\nexport function Dashboard() {\n  return (\n    <view className=\"grid grid-cols-2 gap-3\">\n      <Card variant=\"sunken\">\n        <Stat label=\"Revenue\" value=\"$48,250\" size=\"sm\" delta=\"12.4%\" deltaDirection=\"up\" deltaLabel=\"Up 12.4%\" />\n      </Card>\n      <Card variant=\"sunken\">\n        <Stat label=\"Orders\" value=\"1,204\" size=\"sm\" delta=\"3.1%\" deltaDirection=\"up\" deltaLabel=\"Up 3.1%\" />\n      </Card>\n      <Card variant=\"sunken\">\n        <Stat label=\"Refunds\" value=\"37\" size=\"sm\" delta=\"8\" deltaDirection=\"up\" deltaTone=\"negative\" deltaLabel=\"Up 8, worse\" />\n      </Card>\n      <Card variant=\"sunken\">\n        <Stat label=\"Avg. order\" value=\"$40.07\" size=\"sm\" delta=\"0.0%\" deltaLabel=\"No change\" />\n      </Card>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "A figure that counts to its new value.",
+          "needs": "a text content transition",
+          "today": "The new figure replaces the old one at once."
+        },
+        {
+          "missing": "A figure larger than display type.",
+          "needs": "a larger step in Liuli's type scale",
+          "today": "`md` is display type, 28 px."
+        }
+      ],
+      "related": [
+        "Sparkline"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A number to watch",
+        "order": 1,
+        "page": {
+          "lead": "Use a stat for a number people come back to check, with how it changed since last time.",
+          "hero": "Revenue",
+          "variants": [
+            {
+              "name": "Plain",
+              "title": "A figure alone"
+            },
+            {
+              "name": "Tones",
+              "title": "Down can be good news and up bad: the tone is set apart from the direction"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small for cards two to a row, medium by default"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateUp",
+              "title": "Up"
+            },
+            {
+              "name": "StateDown",
+              "title": "Down"
+            },
+            {
+              "name": "StateFlat",
+              "title": "No change"
+            },
+            {
+              "name": "StateLoading",
+              "title": "Loading"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Dashboard",
+              "title": "Four figures on a phone, two to a row"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@lingxia/view": "*",
+    "@liulidesign/charts": "*",
     "@liulidesign/core": "*"
   }
 }

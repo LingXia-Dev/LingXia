@@ -8,6 +8,8 @@ import { Tabs } from '@liulidesign/core/Tabs';
 import { TextInput } from '@liulidesign/core/TextInput';
 import { ToggleButton } from '@liulidesign/core/ToggleButton';
 import { Avatar } from '@liulidesign/core/Avatar';
+import { Sparkline } from '@liulidesign/charts/Sparkline';
+import { Stat } from '@liulidesign/charts/Stat';
 import { Item, ItemList } from '@liulidesign/core/Item';
 import { Specimen as DialogSpecimen } from '../../core/src/Dialog/Dialog.examples';
 import { SignInSpecimen, TypographySpecimen, ColourSpecimen } from './Specimens';
@@ -81,6 +83,17 @@ export function ContentPreview() {
     <ItemList className="w-full">
       <Item label="Ana Lima" description="Editor" startContent={<Avatar name="Ana Lima" size="sm" />} />
     </ItemList>
+  );
+}
+
+const revenue = [31, 34, 33, 38, 41, 40, 48];
+
+export function ChartsPreview() {
+  return (
+    <view className="flex-row items-center gap-3">
+      <Stat label="Revenue" value="$48k" size="sm" delta="12%" deltaDirection="up" />
+      <Sparkline values={revenue} variant="area" isSmooth hasEndDot tone="positive" size="lg" label="Revenue this week" className="w-16 self-center" />
+    </view>
   );
 }
 

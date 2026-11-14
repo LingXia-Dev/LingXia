@@ -1,0 +1,107 @@
+import type { ComponentDoc } from '@liulidesign/core/doc';
+
+export const doc: ComponentDoc = {
+  name: 'BarChart',
+  category: 'charts',
+  status: 'preview',
+  since: '2026-11-14',
+  summary: 'Amounts by category, as bars on a zero line, with selection and grouped series',
+  description:
+    'BarChart compares amounts across a few categories: orders by weekday, sales by quarter. ' +
+    'It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table. ' +
+    'Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line.',
+  keywords: ['bar chart', 'column chart', 'bars', 'histogram', 'categories', 'compare', 'grouped bars', 'chart', 'graph'],
+  propsType: 'BarChartProps',
+  recipe: { map: 'barChartRecipe', parts: 'barChartParts' },
+  anatomy: [
+    { part: 'scale', required: false, description: 'The top of the scale, a round number, above a hairline; shown when the bars carry no figures.' },
+    { part: 'value', required: false, description: 'A bar\'s value, written over it (under it, below zero).' },
+    { part: 'plot', required: true, description: 'The row of categories; a list for assistive tech when the bars cannot be pressed.' },
+    { part: 'slot', required: true, description: 'One category at full height: its bars, its name and values for assistive tech, and its press target.' },
+    { part: 'column', required: true, description: 'One series within a category.' },
+    { part: 'bar', required: true, description: 'The amount, from the zero line; rounded on its free end.' },
+    { part: 'baseline', required: true, description: 'The zero line, the chart\'s only rule.' },
+    { part: 'labels', required: false, description: 'Category names under the bars: all of them, or the first and last.' },
+  ],
+  accessibility: {
+    pattern: null,
+    name: 'label',
+    description: [],
+    states: [{ state: 'pressed', from: 'selectedKey' }, { state: 'busy', from: 'isLoading' }],
+    keyboard: [
+      { keys: 'Tab', effect: 'Moves through the categories when they can be pressed' },
+      { keys: 'Enter or Space', effect: 'Chooses the category, or lets it go' },
+    ],
+    contrast: [
+      { what: 'first series, as a bar', pair: ['chart-1/85', 'surface'], minimum: '3:1' },
+      { what: 'second series, as a bar', pair: ['chart-2/85', 'surface'], minimum: '3:1' },
+      { what: 'third series, as a bar', pair: ['chart-3/85', 'surface'], minimum: '3:1' },
+      { what: 'fourth series, as a bar', pair: ['chart-4/85', 'surface'], minimum: '3:1' },
+      { what: 'fifth series, as a bar', pair: ['chart-5/85', 'surface'], minimum: '3:1' },
+      { what: 'second series, straight on the page', pair: ['chart-2/85', 'canvas'], minimum: '3:1' },
+      { what: 'third series, straight on the page', pair: ['chart-3/85', 'canvas'], minimum: '3:1' },
+      { what: 'title and figures', pair: ['text', 'surface'], minimum: '4.5:1' },
+      { what: 'description, labels and legend', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
+    ],
+    notes: [
+      'Each category is read as its name and values: "Thu: 163", or "Q3: Online $55k, In store $33k". With `onSelect` each is a button that reports pressed; without it the plot is a list.',
+      'With `summarize`, a sentence with the range, the lowest and highest values and the trend is read before the bars.',
+      'Choosing a category announces it through the readout above the plot.',
+      'Figures over the bars and the scale label are hidden from assistive tech: each category already reads its values.',
+      'The chosen category keeps its colour and the others step back to 30%, which is not a contrast claim: the readout says which is chosen.',
+      'A category\'s press target is its full-height slot, as wide as the plot divided by the number of categories: 41 px for seven bars at 360 pt, under 10 px for thirty. Past 36 categories the bars are not buttons.',
+      'The zero line is a quiet rule with no contrast minimum: the bars\' own feet show where zero is.',
+      'Series in a group differ by colour and by position, and the legend lists them in the order drawn.',
+    ],
+  },
+  guidance: {
+    do: [
+      'Pass rows as they are and name the fields: `x="day" y="orders"`.',
+      'Format values with `formatValue`, in the person\'s locale and units, and keep them short: a figure over a bar has the bar\'s width.',
+      'Pass `summarize` so a screen reader gets the finding first.',
+      'Keep to about twelve categories on a phone when each should be pressed.',
+      'Give charts that are compared the same `domainMax`.',
+    ],
+    dont: [
+      'Use bars for a trend over many points in time; use LineChart.',
+      'Draw more than three series side by side on a phone.',
+      'Colour single-series bars differently from each other; colour says which series.',
+      'Start a bar anywhere but zero; the chart does not let you.',
+    ],
+  },
+  examples: [
+    { name: 'Orders', title: 'One series, with selection' },
+    { name: 'Grouped', title: 'Two series, with a legend that hides them' },
+    { name: 'Signed', title: 'Values above and below zero' },
+    { name: 'Month', title: 'Thirty bars' },
+  ],
+  gaps: [
+    { missing: 'Ticks between zero and the top of the scale, and labels for every category that fit.', needs: 'a laid-out box\'s size, readable in render (`useBox`)', today: 'Each value over its bar up to eight bars, the top of the scale beyond; all category labels up to seven bars, the first and last beyond.' },
+    { missing: 'Scrubbing across bars, and a tooltip by the bar.', needs: 'pointer coordinates on an element (`onPointer`)', today: 'A press on a bar, and the readout above the plot.' },
+    { missing: 'Stacked bars and horizontal bars.', needs: 'nothing from the View', today: 'Grouped vertical bars.' },
+    { missing: 'Series told apart without colour.', needs: 'pattern fills', today: 'Position within the group, the legend\'s order, and each bar\'s spoken name.' },
+  ],
+  related: ['Chart', 'LineChart', 'PieChart', 'Sparkline'],
+  gallery: {
+    specimen: 'Specimen',
+    tagline: 'Compare amounts',
+    order: 3,
+    page: {
+      lead: 'Use a bar chart to compare amounts across a few categories.',
+      hero: 'Orders',
+      variants: [
+        { name: 'Grouped', title: 'Two series side by side; the legend shows and hides each' },
+        { name: 'Signed', title: 'Above and below zero, on one line' },
+        { name: 'Month', title: 'Thirty bars: narrower, the first and last labelled' },
+      ],
+      sizes: [{ name: 'Sizes', title: 'Small without labels, and large' }],
+      states: [
+        { name: 'StateSelected', title: 'One chosen' },
+        { name: 'StateLoading', title: 'Loading' },
+        { name: 'StateEmpty', title: 'Empty' },
+        { name: 'StateError', title: 'Error' },
+      ],
+      statesLayout: 'stack',
+    },
+  },
+};

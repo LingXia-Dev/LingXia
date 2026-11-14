@@ -1,0 +1,38 @@
+{
+  "name": "@liulidesign/charts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Liuli (\u7409\u7483) charts: figures and small charts for LingXia GPU pages, as TSX source components.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./Stat": "./src/Stat/Stat.tsx",
+    "./Stat/recipe": "./src/Stat/Stat.recipe.ts",
+    "./Sparkline": "./src/Sparkline/Sparkline.tsx",
+    "./Sparkline/recipe": "./src/Sparkline/Sparkline.recipe.ts",
+    "./Chart": "./src/Chart/Chart.tsx",
+    "./Chart/recipe": "./src/Chart/Chart.recipe.ts",
+    "./BarChart": "./src/BarChart/BarChart.tsx",
+    "./BarChart/recipe": "./src/BarChart/BarChart.recipe.ts",
+    "./LineChart": "./src/LineChart/LineChart.tsx",
+    "./LineChart/recipe": "./src/LineChart/LineChart.recipe.ts",
+    "./PieChart": "./src/PieChart/PieChart.tsx",
+    "./PieChart/recipe": "./src/PieChart/PieChart.recipe.ts",
+    "./summary/en": "./src/summary/en.ts",
+    "./summary/zh": "./src/summary/zh.ts",
+    "./package.json": "./package.json"
+  },
+  "lingxia": {
+    "tokens": "./tokens.css"
+  },
+  "scripts": {
+    "test": "node --test \"src/**/*.test.mjs\"",
+    "check": "node ../core/scripts/check.mjs . && node ../core/scripts/generate.mjs . --check",
+    "generate": "node ../core/scripts/generate.mjs .",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@lingxia/view": ">=0.28.0",
+    "@liulidesign/core": ">=0.1.0"
+  }
+}

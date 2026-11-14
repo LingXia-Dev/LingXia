@@ -16,6 +16,7 @@ const categories: Record<string, string[]> = {
   'category-feedback': ['badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast'],
   'category-overlays': ['dialog', 'dropdown-menu', 'tooltip', 'bottom-sheet', 'popover'],
   'category-content': ['card', 'item', 'details', 'avatar'],
+  'category-charts': ['stat', 'sparkline', 'bar-chart', 'line-chart', 'pie-chart', 'chart'],
   'category-media': ['video-player', 'video-controls'],
   'category-patterns': ['sign-in', 'settings', 'uploads'],
 };

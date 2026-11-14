@@ -594,6 +594,121 @@ export const entries: GalleryEntry[] = [
     "status": "preview"
   },
   {
+    "name": "Stat",
+    "page": "stat",
+    "category": "charts",
+    "summary": "One figure with its label, how it changed, and an optional small chart",
+    "keywords": [
+      "stat",
+      "statistic",
+      "metric",
+      "kpi",
+      "figure",
+      "number",
+      "delta",
+      "change",
+      "trend",
+      "dashboard",
+      "tile"
+    ],
+    "since": "2026-11-14",
+    "status": "preview"
+  },
+  {
+    "name": "Sparkline",
+    "page": "sparkline",
+    "category": "charts",
+    "summary": "A small chart without axes: the shape of a series as a line, an area or bars",
+    "keywords": [
+      "sparkline",
+      "trend",
+      "mini chart",
+      "inline chart",
+      "line",
+      "area",
+      "bar",
+      "series",
+      "history"
+    ],
+    "since": "2026-11-14",
+    "status": "preview"
+  },
+  {
+    "name": "BarChart",
+    "page": "bar-chart",
+    "category": "charts",
+    "summary": "Amounts by category, as bars on a zero line, with selection and grouped series",
+    "keywords": [
+      "bar chart",
+      "column chart",
+      "bars",
+      "histogram",
+      "categories",
+      "compare",
+      "grouped bars",
+      "chart",
+      "graph"
+    ],
+    "since": "2026-11-14",
+    "status": "preview"
+  },
+  {
+    "name": "LineChart",
+    "page": "line-chart",
+    "category": "charts",
+    "summary": "A number over time, as a line that fits its data or an area from zero, for up to five series",
+    "keywords": [
+      "line chart",
+      "area chart",
+      "trend",
+      "time series",
+      "series",
+      "history",
+      "chart",
+      "graph"
+    ],
+    "since": "2026-11-14",
+    "status": "preview"
+  },
+  {
+    "name": "PieChart",
+    "page": "pie-chart",
+    "category": "charts",
+    "summary": "Parts of one whole, as a ring or a solid pie, listed with their amounts in a legend that selects",
+    "keywords": [
+      "pie chart",
+      "donut",
+      "doughnut",
+      "ring",
+      "share",
+      "proportion",
+      "parts of a whole",
+      "chart",
+      "graph"
+    ],
+    "since": "2026-11-14",
+    "status": "preview"
+  },
+  {
+    "name": "Chart",
+    "page": "chart",
+    "category": "charts",
+    "summary": "The frame every chart sits in: heading, plot, legend, readout and the loading, empty and error states",
+    "keywords": [
+      "chart",
+      "frame",
+      "legend",
+      "readout",
+      "plot",
+      "graph",
+      "data visualisation",
+      "empty",
+      "loading"
+    ],
+    "since": "2026-11-14",
+    "status": "preview"
+  },
+  {
     "name": "VideoPlayer",
     "page": "video-player",
     "category": "media",
@@ -716,6 +831,13 @@ export const galleryCategories: GalleryCategory[] = [
     "count": 4
   },
   {
+    "id": "charts",
+    "title": "Charts",
+    "description": "Figures and small charts that show numbers at a glance.",
+    "page": "category-charts",
+    "count": 6
+  },
+  {
     "id": "media",
     "title": "Media",
     "description": "Video and its controls.",
@@ -732,7 +854,7 @@ export const galleryCategories: GalleryCategory[] = [
 ];
 
 /** The 6 latest components, newest first. */
-export const newest: string[] = ["NavList","BottomSheet","DateInput","EmptyState","Popover","SegmentedControl"];
+export const newest: string[] = ["BarChart","Chart","LineChart","NavList","PieChart","Sparkline"];
 
 export const version = "0.1.0";
 export const packageStatus = "Preview";
