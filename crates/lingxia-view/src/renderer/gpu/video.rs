@@ -733,11 +733,9 @@ static OPENER: LazyLock<Mutex<mpsc::Sender<(Instant, Job)>>> = LazyLock::new(|| 
                     let keys: Vec<String> = players
                         .iter()
                         .filter(|(key, entry)| {
-                            if is_hidden(key) {
-                                hidden_long(key)
-                            } else {
-                                entry.drawn.elapsed() > IDLE
-                            }
+                            // A frame still drawn keeps its player, hidden or not: closing it
+                            // would only reopen it at the next draw.
+                            entry.drawn.elapsed() > IDLE && (!is_hidden(key) || hidden_long(key))
                         })
                         .map(|(key, _)| key.clone())
                         .collect();
@@ -880,13 +878,49 @@ pub(crate) fn set_hidden(scope: u64, hidden: bool) {
     }
 }
 
-/// The page closed: its players go idle and close like any undrawn one, and its stills go.
+/// Scopes of closed pages, newest last. Scopes are never reused, so a late draw of a closed
+/// page's key must not open a player nobody will close.
+const GONE_MAX: usize = 256;
+static GONE: Mutex<std::collections::VecDeque<u64>> = Mutex::new(std::collections::VecDeque::new());
+
+fn is_gone(key: &str) -> bool {
+    scope_of(key).is_some_and(|scope| {
+        GONE.lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .contains(&scope)
+    })
+}
+
+/// The page closed: its players close now, and its sources and stills go.
 pub(crate) fn forget(scope: u64) {
+    {
+        let mut gone = GONE.lock().unwrap_or_else(|p| p.into_inner());
+        if gone.len() >= GONE_MAX {
+            gone.pop_front();
+        }
+        gone.push_back(scope);
+    }
     HIDDEN
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .remove(&scope);
-    stills().retain(|(key, _)| scope_of(key) != Some(scope));
+    let ours = |key: &String| scope_of(key) == Some(scope);
+    stills().retain(|(key, _)| !ours(key));
+    sources().retain(|key, _| !ours(key));
+    CONFIGURED
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .retain(|key, _| !ours(key));
+    flights().tries.retain(|key, _| !ours(key));
+    let closed: Vec<Entry> = {
+        let mut players = players();
+        let keys: Vec<String> = players.keys().filter(|key| ours(key)).cloned().collect();
+        keys.iter().filter_map(|key| players.remove(key)).collect()
+    };
+    if !closed.is_empty() {
+        // A platform release can block; the page's teardown must not wait on it.
+        std::thread::spawn(move || drop(closed));
+    }
 }
 
 fn open_player(key: &str) {
@@ -1270,6 +1304,10 @@ pub(crate) fn has_new(display: &crate::DisplayList) -> bool {
 
 fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a mut Entry> {
     if !players.contains_key(key) {
+        // Its decoder closed for a long hide, or its page closed: no new player for it.
+        if hidden_long(key) || is_gone(key) {
+            return None;
+        }
         let now = Instant::now();
         let mut state = State::Opening;
         let reason = if still_frame(key).is_some() {
@@ -2610,6 +2648,40 @@ mod opener_tests {
     }
 
     #[test]
+    fn a_page_hidden_past_its_keep_reopens_nothing_while_its_frame_is_redrawn() {
+        let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _ = TEST_OPENER.set(counted);
+        let scope = 7_700_001;
+        let key = crate::scene::video::key(scope, "name:held");
+        let url = "https://example.invalid/held.mp4";
+        configure(&key, file(url));
+        settle();
+        assert_eq!(opened(url), 1, "the page's player opens once");
+        // Hidden past HIDDEN_IDLE and not drawn since: the opener closes its player.
+        HIDDEN
+            .lock()
+            .unwrap()
+            .insert(scope, Instant::now() - HIDDEN_IDLE - Duration::from_secs(1));
+        players().get_mut(&key).unwrap().drawn = Instant::now() - IDLE - Duration::from_secs(1);
+        std::thread::sleep(Duration::from_millis(1200));
+        assert!(!players().contains_key(&key), "the hidden player closed");
+        // Its kept frame is still redrawn at every refresh, as a stuck window leaves it.
+        for _ in 0..60 {
+            redraw(&key);
+            std::thread::sleep(Duration::from_millis(8));
+        }
+        opens();
+        let hidden = opened(url) - 1;
+        set_hidden(scope, false);
+        redraw(&key);
+        opens();
+        settle();
+        let shown = opened(url) - 1 - hidden;
+        assert_eq!(hidden, 0, "a hidden page's redraws reopen nothing");
+        assert_eq!(shown, 1, "showing the page opens its player once");
+    }
+
+    #[test]
     fn asks_for_one_key_while_it_opens_fold_into_at_most_one_more_open() {
         let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
         let _ = TEST_OPENER.set(counted);
@@ -2688,6 +2760,41 @@ mod opener_tests {
         let players = players();
         assert!(matches!(players[&key].state, State::Ready(_)));
         assert_eq!(players[&key].url, low);
+    }
+
+    #[test]
+    fn a_closed_pages_players_close_at_once_and_a_late_draw_reopens_none() {
+        let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _ = TEST_OPENER.set(counted);
+        let scope = 7_700_005;
+        let key = crate::scene::video::key(scope, "name:closing");
+        let url = "https://example.invalid/closing.mp4";
+        configure(&key, file(url));
+        settle();
+        assert!(matches!(players()[&key].state, State::Ready(_)));
+        // The page closes while its frame is still drawn every refresh.
+        forget(scope);
+        assert!(!players().contains_key(&key), "forget removes the player");
+        let until = Instant::now() + Duration::from_millis(500);
+        while CLOSED.lock().unwrap().get(url).is_none() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(
+            CLOSED.lock().unwrap().get(url),
+            Some(&1),
+            "closed within one opener tick"
+        );
+        for _ in 0..10 {
+            redraw(&key);
+        }
+        opens();
+        settle();
+        assert_eq!(
+            opened(url),
+            1,
+            "a late draw of a closed page's key opens nothing"
+        );
+        assert!(!players().contains_key(&key));
     }
 
     #[test]
