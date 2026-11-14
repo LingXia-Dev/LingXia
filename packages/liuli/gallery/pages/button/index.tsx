@@ -1,53 +1,11 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Hero, VariantsEveryday, VariantDestructive, VariantLink, Sizes, StateDefault, StateBusy, StateDisabled, StateSecondaryDisabled, DisabledWithReason, AsyncAction } from '../../../core/src/Button/Button.examples';
-import { GalleryPage, Lead, PageSection, Stage, StageGrid } from '../../shared/Layout';
+import { Content } from '../../content/button';
+import { GalleryPage } from '../../shared/Layout';
 
 export function render() {
   return (
     <GalleryPage>
-      <Lead text={"Use a button to start an action: save, send, delete or open a dialog. Keep one primary button per view."}>
-        <Hero />
-      </Lead>
-      <PageSection title={"Variants"}>
-        <Stage caption={"Primary for the main action, secondary and ghost for the rest"}>
-          <VariantsEveryday />
-        </Stage>
-        <Stage caption={"Destructive, for loss"}>
-          <VariantDestructive />
-        </Stage>
-        <Stage caption={"Link, a quiet way out beside a form"}>
-          <VariantLink />
-        </Stage>
-      </PageSection>
-      <PageSection title={"Sizes"}>
-        <Stage caption={"Small, medium and large; prefer large on touch layouts"}>
-          <Sizes />
-        </Stage>
-      </PageSection>
-      <PageSection title={"States"}>
-        <StageGrid>
-          <Stage caption={"Default"}>
-            <StateDefault />
-          </Stage>
-          <Stage caption={"Busy"}>
-            <StateBusy />
-          </Stage>
-          <Stage caption={"Disabled"}>
-            <StateDisabled />
-          </Stage>
-          <Stage caption={"Disabled, secondary"}>
-            <StateSecondaryDisabled />
-          </Stage>
-        </StageGrid>
-      </PageSection>
-      <PageSection title={"In context"}>
-        <Stage caption={"A form footer that waits for consent"}>
-          <DisabledWithReason />
-        </Stage>
-        <Stage caption={"Waiting on a Logic action"}>
-          <AsyncAction />
-        </Stage>
-      </PageSection>
+      <Content />
     </GalleryPage>
   );
 }

@@ -1,18 +1,11 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Sidebar, Closed } from '../../../core/src/NavList/NavList.examples';
-import { GalleryPage, Lead, PageSection, Stage } from '../../shared/Layout';
+import { Content } from '../../content/nav-list';
+import { GalleryPage } from '../../shared/Layout';
 
 export function render() {
   return (
     <GalleryPage>
-      <Lead text={"Use a nav list for the column of places beside a workspace."}>
-        <Sidebar />
-      </Lead>
-      <PageSection title={"Variants"}>
-        <Stage caption={"A section that starts closed"}>
-          <Closed />
-        </Stage>
-      </PageSection>
+      <Content />
     </GalleryPage>
   );
 }

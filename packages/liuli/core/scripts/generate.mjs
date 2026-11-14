@@ -1,5 +1,5 @@
 // Writes everything derived from the doc files: the reference pages (docs/<Name>.md), catalog.json
-// for agents, and the gallery's component pages. `--check` writes nothing and fails on drift.
+// for agents, and the gallery's component content and pages. `--check` writes nothing and fails on drift.
 // A package folder as the argument generates that Liuli package instead; only core's run writes
 // the gallery's index (catalog module, category pages, manifest), with every sibling package that
 // has a catalog.json.
@@ -170,16 +170,17 @@ function galleryNames(doc) {
   return [...new Set([page.hero, ...(page.parts ? [page.parts.name] : []), ...['variants', 'sizes', 'states', 'inContext'].flatMap(key => (page[key] ?? []).map(ref => ref.name))])];
 }
 
-function galleryPage(doc) {
+/** A component's gallery content: its examples in page order, without the page around them. */
+function galleryContent(doc) {
   const page = doc.gallery.page;
   const lines = [
     `// ${generated}`,
-    `import { ${galleryNames(doc).join(', ')} } from '../../../${folder}/src/${doc.name}/${doc.name}.examples';`,
-    `import { GalleryPage, ${page ? 'Lead, ' : ''}PageSection, Stage${page?.states ? ', StageGrid' : ''} } from '../../shared/Layout';`,
+    `import { ${galleryNames(doc).join(', ')} } from '../../${folder}/src/${doc.name}/${doc.name}.examples';`,
+    `import { ${page ? 'Lead, ' : ''}PageSection, Stage${page?.states ? ', StageGrid' : ''} } from '../shared/Layout';`,
     '',
-    'export function render() {',
+    'export function Content() {',
     '  return (',
-    '    <GalleryPage>',
+    '    <>',
   ];
   const bare = page?.stage === 'bare' ? ' bare' : '';
   const stage = (ref, indent) => [`${indent}<Stage caption=${jsx(ref.title)}${bare}>`, `${indent}  <${ref.name} />`, `${indent}</Stage>`];
@@ -200,8 +201,57 @@ function galleryPage(doc) {
       lines.push('      </PageSection>');
     }
   }
-  lines.push('    </GalleryPage>', '  );', '}', '');
+  lines.push('    </>', '  );', '}', '');
   return lines.join('\n');
+}
+
+/**
+ * A phone page: its content in the gallery's scrolling page. The desktop workspace shows the same
+ * content beside the sidebar, so a page's body lives in content/, never here.
+ */
+/** A pushed page's Logic: the gallery's shared page Logic, named so it can hand off to the workspace. */
+const pageLogic = page => [
+  `// ${generated}`,
+  "import { publish, returnToWorkspaceWhenWide, signIn } from '../../shared/pages';",
+  '',
+  'Page({',
+  '  _unwatch: undefined as (() => void) | undefined,',
+  '  onLoad() {',
+  `    this._unwatch = returnToWorkspaceWhenWide(${JSON.stringify(page)});`,
+  '  },',
+  '  onUnload() {',
+  '    this._unwatch?.();',
+  '  },',
+  '  async open({ page }: { page: string }) {',
+  '    await lx.navigateTo({ page });',
+  '  },',
+  '  async publish() {',
+  '    await publish();',
+  '  },',
+  '  async signIn() {',
+  '    await signIn();',
+  '  },',
+  '});',
+  '',
+].join('\n');
+
+function pageWrapper(page, { opens = false } = {}) {
+  return [
+    `// ${generated}`,
+    ...(opens ? ["import type { View } from '@lingxia/view';"] : []),
+    `import { Content } from '../../content/${page}';`,
+    "import { GalleryPage } from '../../shared/Layout';",
+    '',
+    ...(opens ? ['type Actions = { open(target: { page: string }): Promise<void> };', ''] : []),
+    `export function render(${opens ? '{ actions }: View<Actions>' : ''}) {`,
+    '  return (',
+    '    <GalleryPage>',
+    opens ? '      <Content onOpen={page => actions.open({ page })} />' : '      <Content />',
+    '    </GalleryPage>',
+    '  );',
+    '}',
+    '',
+  ].join('\n');
 }
 
 // The package's own status, shown once on the home page; a tile shows only a status that differs.
@@ -235,7 +285,7 @@ function tileLines({ name, tagline, status, isWide, page, specimen }) {
     `          tagline=${jsx(tagline)}`,
     ...(status ? [`          status=${jsx(status)}`] : []),
     ...(isWide ? ['          isWide'] : []),
-    `          onOpen={() => actions.open({ page: ${JSON.stringify(page)} })}`,
+    `          onOpen={() => onOpen(${JSON.stringify(page)})}`,
     `          testId=${jsx(`open-${page}`)}`,
     '        >',
     `          <${specimen} />`,
@@ -243,24 +293,21 @@ function tileLines({ name, tagline, status, isWide, page, specimen }) {
   ];
 }
 
-/** One category's page: its line, then a tile per member. */
-function categoryPageSource(category, tiles, imports) {
+/** One category's content: its line, then a tile per member. */
+function categoryContent(category, tiles, imports) {
   return [
     `// ${generated}`,
-    "import type { View } from '@lingxia/view';",
     ...imports,
-    "import { Category, GalleryPage, Tile } from '../../shared/Layout';",
+    "import { Category, Tile } from '../shared/Layout';",
     '',
-    'type Actions = { open(target: { page: string }): Promise<void> };',
-    '',
-    'export function render({ actions }: View<Actions>) {',
+    'export function Content({ onOpen }: { onOpen: (page: string) => void }) {',
     '  return (',
-    '    <GalleryPage>',
+    '    <>',
     `      <text className="text-body text-muted">${'{'}${JSON.stringify(category.description)}${'}'}</text>`,
     `      <Category title=${jsx(`${tiles.length} ${category.id === 'foundations' ? 'guides' : category.id === 'patterns' ? 'patterns' : tiles.length === 1 ? 'component' : 'components'}`)}>`,
     ...tiles.flatMap((tile, index) => tileLines({ ...tile, isWide: tiles.length % 2 === 1 && index === tiles.length - 1 })),
     '      </Category>',
-    '    </GalleryPage>',
+    '    </>',
     '  );',
     '}',
     '',
@@ -289,6 +336,32 @@ function indexModule(entries, guides) {
     '',
     `export const version = ${JSON.stringify(JSON.parse(readFileSync(join(core, 'package.json'), 'utf8')).version)};`,
     `export const packageStatus = ${JSON.stringify(statusTitles[packageStatus])};`,
+    '',
+  ].join('\n');
+}
+
+/**
+ * Every page's content by page name, for the desktop workspace, which shows them in one page. It
+ * imports every example, so only the workspace page imports it.
+ */
+function contentsModule(entries, guides) {
+  const pages = [
+    ...categories.filter(category => (guideCategories.has(category.id) ? guides[category.id] : inCategory(entries, category.id)).length).map(category => categoryPage(category.id)),
+    ...guides.foundations.map(guide => guide.page),
+    ...Object.keys(categoryTitles).flatMap(category => inCategory(entries, category).map(entry => kebab(entry.name))),
+    ...guides.patterns.map(guide => guide.page),
+  ];
+  return [
+    `// ${generated}`,
+    "import type { Component } from '@lingxia/view';",
+    ...pages.map(page => `import { Content as ${pascal(page)} } from '../content/${page}';`),
+    '',
+    '/** Category contents open a page through `onOpen`; the others ignore it. */',
+    'export type GalleryContent = Component<{ onOpen: (page: string) => void }>;',
+    '',
+    'export const contents: Record<string, GalleryContent> = {',
+    ...pages.map(page => `  ${JSON.stringify(page)}: ${pascal(page)},`),
+    '};',
     '',
   ].join('\n');
 }
@@ -332,7 +405,9 @@ for (const name of names) {
   catalog.push(entry);
   outputs.set(join(core, 'docs', `${name}.md`), reference(doc, entry));
   const page = join(gallery, 'pages', kebab(name));
-  outputs.set(join(page, 'index.tsx'), galleryPage(doc));
+  outputs.set(join(gallery, 'content', `${kebab(name)}.tsx`), galleryContent(doc));
+  outputs.set(join(page, 'index.tsx'), pageWrapper(kebab(name)));
+  outputs.set(join(page, 'index.ts'), pageLogic(kebab(name)));
   outputs.set(join(page, 'index.json'), `{ "navigationBar": { "title": ${JSON.stringify(name)} } }\n`);
 }
 outputs.set(join(core, 'catalog.json'), `${JSON.stringify({ generated, components: catalog }, null, 2)}\n`);
@@ -355,11 +430,15 @@ if (isCore) {
   for (const guide of [...guides.foundations, ...guides.patterns]) {
     const where = `gallery/guides.json: ${guide.page}`;
     if (!guide.tagline || guide.tagline.length > taglineLimit || guide.tagline.endsWith('.')) problems.push(`${where}: tagline must be 1 to ${taglineLimit} characters without a trailing period`);
-    for (const file of ['index.tsx', 'index.ts', 'index.json'])
-      if (!existsSync(join(gallery, 'pages', guide.page, file))) problems.push(`${where}: pages/${guide.page}/${file} is missing`);
+    if (!existsSync(join(gallery, 'pages', guide.page, 'index.json'))) problems.push(`${where}: pages/${guide.page}/index.json is missing`);
+    const content = join(gallery, 'content', `${guide.page}.tsx`);
+    if (!existsSync(content) || !/export function Content\b/.test(readFileSync(content, 'utf8'))) problems.push(`${where}: content/${guide.page}.tsx does not export Content`);
+    outputs.set(join(gallery, 'pages', guide.page, 'index.tsx'), pageWrapper(guide.page));
+    outputs.set(join(gallery, 'pages', guide.page, 'index.ts'), pageLogic(guide.page));
     if (!new RegExp(`export function ${guideSpecimen(guide)}\\b`).test(specimens)) problems.push(`${where}: shared/Specimens.tsx does not export ${guideSpecimen(guide)}`);
   }
   outputs.set(join(gallery, 'shared', 'catalog.generated.ts'), indexModule(shown, guides));
+  outputs.set(join(gallery, 'shared', 'contents.generated.ts'), contentsModule(shown, guides));
   const previews = existsSync(join(gallery, 'shared', 'Previews.tsx')) ? readFileSync(join(gallery, 'shared', 'Previews.tsx'), 'utf8') : '';
   for (const category of categories) {
     const isGuide = guideCategories.has(category.id);
@@ -370,12 +449,13 @@ if (isCore) {
       ? members.map(guide => ({ name: guide.title, tagline: guide.tagline, page: guide.page, specimen: guideSpecimen(guide) }))
       : members.map(entry => ({ name: entry.name, tagline: entry.gallery.tagline, status: entry.status === packageStatus ? undefined : statusTitles[entry.status], page: kebab(entry.name), specimen: `${entry.name}Specimen` }));
     const imports = isGuide
-      ? [`import { ${members.map(guideSpecimen).join(', ')} } from '../../shared/Specimens';`]
-      : members.map(entry => `import { ${entry.gallery.specimen} as ${entry.name}Specimen } from '../../../${folderOf.get(entry)}/src/${entry.name}/${entry.name}.examples';`);
+      ? [`import { ${members.map(guideSpecimen).join(', ')} } from '../shared/Specimens';`]
+      : members.map(entry => `import { ${entry.gallery.specimen} as ${entry.name}Specimen } from '../../${folderOf.get(entry)}/src/${entry.name}/${entry.name}.examples';`);
     const dir = join(gallery, 'pages', categoryPage(category.id));
-    outputs.set(join(dir, 'index.tsx'), categoryPageSource(category, tiles, imports));
+    outputs.set(join(gallery, 'content', `${categoryPage(category.id)}.tsx`), categoryContent(category, tiles, imports));
+    outputs.set(join(dir, 'index.tsx'), pageWrapper(categoryPage(category.id), { opens: true }));
     outputs.set(join(dir, 'index.json'), `{ "navigationBar": { "title": ${JSON.stringify(category.title)} } }\n`);
-    outputs.set(join(dir, 'index.ts'), "Page({\n  async open({ page }: { page: string }) {\n    await lx.navigateTo({ page });\n  },\n});\n");
+    outputs.set(join(dir, 'index.ts'), pageLogic(categoryPage(category.id)));
   }
   for (const id of Object.keys(categoryTitles)) if (!categories.some(category => category.id === id)) problems.push(`gallery/categories.json lacks ${id}`);
   const manifestPath = join(gallery, 'lxapp.json');
@@ -398,13 +478,6 @@ for (const [path, contents] of outputs) {
   if (current === contents) continue;
   stale.push(relative(resolve(core, '..'), path));
   if (!check) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, contents); }
-}
-// A page's Logic is hand-written; a component without one gets an empty Page.
-for (const entry of catalog) {
-  const logic = join(gallery, 'pages', kebab(entry.name), 'index.ts');
-  if (existsSync(logic)) continue;
-  stale.push(relative(resolve(core, '..'), logic));
-  if (!check) writeFileSync(logic, 'Page({});\n');
 }
 if (check && stale.length) {
   console.log(`out of date; run node scripts/generate.mjs:\n${stale.map(path => `  ${path}`).join('\n')}`);

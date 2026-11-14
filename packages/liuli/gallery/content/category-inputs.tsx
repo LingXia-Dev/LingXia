@@ -1,0 +1,66 @@
+// Generated from the doc file by scripts/generate.mjs; do not edit.
+import { Specimen as TextInputSpecimen } from '../../core/src/TextInput/TextInput.examples';
+import { Specimen as TextAreaSpecimen } from '../../core/src/TextArea/TextArea.examples';
+import { Specimen as DateInputSpecimen } from '../../core/src/DateInput/DateInput.examples';
+import { Specimen as TimeInputSpecimen } from '../../core/src/TimeInput/TimeInput.examples';
+import { Specimen as SliderSpecimen } from '../../core/src/Slider/Slider.examples';
+import { Specimen as FieldSpecimen } from '../../core/src/Field/Field.examples';
+import { Category, Tile } from '../shared/Layout';
+
+export function Content({ onOpen }: { onOpen: (page: string) => void }) {
+  return (
+    <>
+      <text className="text-body text-muted">{"Fields a person types into or sets: text, dates, times and amounts."}</text>
+      <Category title={"6 components"}>
+        <Tile
+          name={"TextInput"}
+          tagline={"One line of text"}
+          onOpen={() => onOpen("text-input")}
+          testId={"open-text-input"}
+        >
+          <TextInputSpecimen />
+        </Tile>
+        <Tile
+          name={"TextArea"}
+          tagline={"Several lines"}
+          onOpen={() => onOpen("text-area")}
+          testId={"open-text-area"}
+        >
+          <TextAreaSpecimen />
+        </Tile>
+        <Tile
+          name={"DateInput"}
+          tagline={"One day"}
+          onOpen={() => onOpen("date-input")}
+          testId={"open-date-input"}
+        >
+          <DateInputSpecimen />
+        </Tile>
+        <Tile
+          name={"TimeInput"}
+          tagline={"A time of day"}
+          onOpen={() => onOpen("time-input")}
+          testId={"open-time-input"}
+        >
+          <TimeInputSpecimen />
+        </Tile>
+        <Tile
+          name={"Slider"}
+          tagline={"A value on a track"}
+          onOpen={() => onOpen("slider")}
+          testId={"open-slider"}
+        >
+          <SliderSpecimen />
+        </Tile>
+        <Tile
+          name={"Field"}
+          tagline={"Label, help, status"}
+          onOpen={() => onOpen("field")}
+          testId={"open-field"}
+        >
+          <FieldSpecimen />
+        </Tile>
+      </Category>
+    </>
+  );
+}

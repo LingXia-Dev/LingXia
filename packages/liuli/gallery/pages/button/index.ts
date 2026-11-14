@@ -1,6 +1,21 @@
+// Generated from the doc file by scripts/generate.mjs; do not edit.
+import { publish, returnToWorkspaceWhenWide, signIn } from '../../shared/pages';
+
 Page({
-  // Stands in for a real Logic action, so the AsyncAction example shows its loading state.
+  _unwatch: undefined as (() => void) | undefined,
+  onLoad() {
+    this._unwatch = returnToWorkspaceWhenWide("button");
+  },
+  onUnload() {
+    this._unwatch?.();
+  },
+  async open({ page }: { page: string }) {
+    await lx.navigateTo({ page });
+  },
   async publish() {
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    await publish();
+  },
+  async signIn() {
+    await signIn();
   },
 });

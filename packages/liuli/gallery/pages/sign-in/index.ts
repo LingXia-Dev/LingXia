@@ -1,6 +1,21 @@
+// Generated from the doc file by scripts/generate.mjs; do not edit.
+import { publish, returnToWorkspaceWhenWide, signIn } from '../../shared/pages';
+
 Page({
-  // Stands in for a real sign-in request, so the form shows its busy state.
+  _unwatch: undefined as (() => void) | undefined,
+  onLoad() {
+    this._unwatch = returnToWorkspaceWhenWide("sign-in");
+  },
+  onUnload() {
+    this._unwatch?.();
+  },
+  async open({ page }: { page: string }) {
+    await lx.navigateTo({ page });
+  },
+  async publish() {
+    await publish();
+  },
   async signIn() {
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    await signIn();
   },
 });

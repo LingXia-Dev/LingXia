@@ -10,5 +10,5 @@
     "lib": ["ES2020"],
     "paths": { "@lingxia/view": ["../../lingxia-view/src/index.d.ts"] }
   },
-  "include": ["pages/**/*.tsx", "shared/**/*.tsx", "../../lingxia-view/src/index.d.ts"]
+  "include": ["pages/**/*.tsx", "content/**/*.tsx", "shared/**/*.tsx", "../../lingxia-view/src/index.d.ts"]
 }

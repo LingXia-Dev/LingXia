@@ -1,45 +1,11 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Orders, Grouped, Signed, Month, Sizes, StateSelected, StateLoading, StateEmpty, StateError } from '../../../charts/src/BarChart/BarChart.examples';
-import { GalleryPage, Lead, PageSection, Stage, StageGrid } from '../../shared/Layout';
+import { Content } from '../../content/bar-chart';
+import { GalleryPage } from '../../shared/Layout';
 
 export function render() {
   return (
     <GalleryPage>
-      <Lead text={"Use a bar chart to compare amounts across a few categories."}>
-        <Orders />
-      </Lead>
-      <PageSection title={"Variants"}>
-        <Stage caption={"Two series side by side; the legend shows and hides each"}>
-          <Grouped />
-        </Stage>
-        <Stage caption={"Above and below zero, on one line"}>
-          <Signed />
-        </Stage>
-        <Stage caption={"Thirty bars: narrower, the first and last labelled"}>
-          <Month />
-        </Stage>
-      </PageSection>
-      <PageSection title={"Sizes"}>
-        <Stage caption={"Small without labels, and large"}>
-          <Sizes />
-        </Stage>
-      </PageSection>
-      <PageSection title={"States"}>
-        <StageGrid stack>
-          <Stage caption={"One chosen"}>
-            <StateSelected />
-          </Stage>
-          <Stage caption={"Loading"}>
-            <StateLoading />
-          </Stage>
-          <Stage caption={"Empty"}>
-            <StateEmpty />
-          </Stage>
-          <Stage caption={"Error"}>
-            <StateError />
-          </Stage>
-        </StageGrid>
-      </PageSection>
+      <Content />
     </GalleryPage>
   );
 }
