@@ -203,7 +203,8 @@ static NEXT_TERMINATION_TOKEN: AtomicU64 = AtomicU64::new(1);
 pub enum PageSvcSource {
     /// Call from view layer after the top-level bridge has parsed and routed it.
     Bridge {
-        message: crate::bridge::AppServiceCommand,
+        /// Boxed: a command is several times larger than the other service messages.
+        message: Box<crate::bridge::AppServiceCommand>,
     },
     /// Call from native layer with explicit function name and args
     Native {
@@ -1096,7 +1097,7 @@ pub(crate) async fn lxapp_service_handler(
                         .unwrap_or(None);
 
                         if let Some(page_svc) = page_svc {
-                            if let Err(e) = handle_bridge_source(&page_svc, message).await {
+                            if let Err(e) = handle_bridge_source(&page_svc, *message).await {
                                 let page = page_svc.get_page();
                                 if page.document_is_departing() || page.webview().is_none() {
                                     debug!(
@@ -1770,7 +1771,9 @@ mod worker_assignment_tests {
                     lxapp: app.clone(),
                     path: "pages/home/index".to_string(),
                     page_instance_id: Some(instance.clone()),
-                    source: super::PageSvcSource::Bridge { message },
+                    source: super::PageSvcSource::Bridge {
+                        message: Box::new(message),
+                    },
                 };
                 let eval = |script: &str| {
                     let (tx, rx) = tokio::sync::oneshot::channel();

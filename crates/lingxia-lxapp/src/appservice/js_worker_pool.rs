@@ -520,7 +520,9 @@ impl crate::bridge::AppServiceBackend for LxAppWorkers {
             lxapp,
             path,
             page_instance_id,
-            source: PageSvcSource::Bridge { message },
+            source: PageSvcSource::Bridge {
+                message: Box::new(message),
+            },
         })?;
         Ok(())
     }
