@@ -125,6 +125,18 @@ final class GpuPageView: NSView {
         visibilityChanged()
     }
 
+    /// Off screen and not kept: drop the layer's last frame and drawables; the next attach
+    /// sizes the layer again, and the page background shows until its first frame.
+    func releaseSurface() {
+        guard window == nil, let layer = layer as? CAMetalLayer else { return }
+        if attached {
+            attached = false
+            gpuPageSuspend(token)
+        }
+        layer.contents = nil
+        layer.drawableSize = CGSize(width: 1, height: 1)
+    }
+
     /// Core holds frames while nothing of the window can be seen; a minimized or hidden window
     /// also releases its presenter.
     @objc private func visibilityChanged() {
@@ -630,6 +642,10 @@ public enum GpuPages {
     static func requestVsync(token: Int64) -> Bool {
         guard Thread.isMainThread else { return false }
         return MainActor.assumeIsolated { views[token]?.requestVsync() ?? false }
+    }
+
+    static func releaseSurface(token: Int64) {
+        MainActor.assumeIsolated { views[token]?.releaseSurface() }
     }
 
     static func dispose(token: Int64) {

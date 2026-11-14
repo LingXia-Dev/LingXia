@@ -89,6 +89,15 @@ final class GpuPageView: UIView {
         gpuPageSuspend(token)
     }
 
+    /// Off screen and not kept: drop the layer's last frame and drawables; the next attach
+    /// sizes the layer again, and the page background shows until its first frame.
+    func releaseSurface() {
+        guard window == nil, let layer = layer as? CAMetalLayer else { return }
+        suspend()
+        layer.contents = nil
+        layer.drawableSize = CGSize(width: 1, height: 1)
+    }
+
     /// An inactive app (Control Center, an incoming call) ends the gesture in flight.
     @objc private func windowFocusChanged(_ note: Notification) {
         let active = note.name == UIApplication.didBecomeActiveNotification
@@ -882,6 +891,10 @@ public enum GpuPages {
     static func requestVsync(token: Int64) -> Bool {
         guard Thread.isMainThread else { return false }
         return MainActor.assumeIsolated { views[token]?.requestVsync() ?? false }
+    }
+
+    static func releaseSurface(token: Int64) {
+        MainActor.assumeIsolated { views[token]?.releaseSurface() }
     }
 
     static func dispose(token: Int64) {

@@ -264,6 +264,9 @@ mod bridge {
 
         #[swift_bridge(swift_name = "GpuPages.dispose")]
         fn gpu_pages_dispose(token: i64);
+        // A hidden page not kept lets go of its layer's last frame and drawables.
+        #[swift_bridge(swift_name = "GpuPages.releaseSurface")]
+        fn gpu_pages_release_surface(token: i64);
 
         #[swift_bridge(swift_name = "GpuPages.armLongPress")]
         fn gpu_pages_arm_long_press(token: i64);
@@ -1111,7 +1114,14 @@ mod live {
             on_page(self.token, |page| page.host().park());
             Ok(())
         }
-        fn retain_surface(&self, _: bool) -> Result<(), LxAppError> {
+        // A hidden Apple page is already suspended; only giving up its layer is left to do.
+        fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
+            if !retained {
+                let token = self.token;
+                lingxia_view_apple::post_main(Box::new(move || {
+                    super::bridge::gpu_pages_release_surface(token)
+                }));
+            }
             Ok(())
         }
         fn automation(&self, request: serde_json::Value, reply: AutomationReply) {
