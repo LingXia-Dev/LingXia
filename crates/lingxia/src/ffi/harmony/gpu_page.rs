@@ -315,6 +315,10 @@ impl NativePage for HarmonyPage {
         );
         Ok(())
     }
+    fn trim_surface(&self) -> std::result::Result<(), LxAppError> {
+        on_page(self.token, |page| page.trim_surface());
+        Ok(())
+    }
     fn automation(&self, request: serde_json::Value, reply: AutomationReply) {
         let token = self.token;
         lingxia_view_harmony::post_main(Box::new(move || {

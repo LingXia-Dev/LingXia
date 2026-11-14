@@ -818,6 +818,9 @@ impl Presenter {
             self.prepared = [None; 2];
             self.drawn = [None; 2];
         }
+        if self.depth.is_none() {
+            self.depth = Some(depth_view(surface, &context.devices[surface.dev_id].device));
+        }
         let device = &context.devices[surface.dev_id];
         let slot = slot_for(self.prepared, revision);
         self.prepared[slot] = None;
@@ -922,6 +925,19 @@ impl Presenter {
     /// Multipass composition reports its combined time in the encoding slot.
     pub fn preparation_timings_us(&self) -> [u64; 4] {
         self.preparation_us
+    }
+
+    /// Hidden but kept: drop the render targets a redraw rebuilds. The surface keeps showing
+    /// the last frame, and scene and image caches stay for the next one.
+    pub fn trim(&mut self) {
+        self.base = None;
+        self.depth = None;
+        self.composed = [None, None];
+        self.prepared = [None; 2];
+        self.drawn = [None; 2];
+        if let Some(compositor) = &mut self.compositor {
+            compositor.clear();
+        }
     }
 
     /// Drop the kept bottom segment; the next animated frame renders it again.

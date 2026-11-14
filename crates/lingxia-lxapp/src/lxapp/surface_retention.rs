@@ -119,9 +119,15 @@ fn enforce_with_limit(limit: usize) {
     }
     let snapshots: Vec<SurfaceSnapshot> = pages.iter().map(|(s, ..)| s.clone()).collect();
     for (id, retained) in decide(&snapshots, limit) {
-        if let Some((_, view, page)) = pages.iter().find(|(s, ..)| s.instance_id == id)
-            && let Err(error) = view.retain_surface(retained)
-        {
+        let Some((snapshot, view, page)) = pages.iter().find(|(s, ..)| s.instance_id == id) else {
+            continue;
+        };
+        let mut result = view.retain_surface(retained);
+        // A hidden tab keeps its last frame for an instant switch, not the targets to draw a new one.
+        if retained && snapshot.tab && result.is_ok() {
+            result = view.trim_surface();
+        }
+        if let Err(error) = result {
             warn!("GPU surface retention failed: {error}")
                 .with_appid(page.appid())
                 .with_path(page.path());

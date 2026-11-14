@@ -71,6 +71,9 @@ pub(crate) trait NativePage: Send + Sync + 'static {
     }
     fn park(&self) -> Result<(), LxAppError>;
     fn retain_surface(&self, retained: bool) -> Result<(), LxAppError>;
+    fn trim_surface(&self) -> Result<(), LxAppError> {
+        Ok(())
+    }
     /// `{op: query|act|screenshot, css, index, all, maxText, action: {kind, text, force}}`,
     /// answered after the presented frame.
     #[cfg_attr(not(feature = "automation"), allow(dead_code))]
@@ -302,6 +305,13 @@ impl GpuPageView for Endpoint {
             return Ok(());
         }
         self.native.retain_surface(retained)
+    }
+
+    fn trim_surface(&self) -> Result<(), LxAppError> {
+        if self.lease.disposed() {
+            return Ok(());
+        }
+        self.native.trim_surface()
     }
 
     fn dispose(&self) {

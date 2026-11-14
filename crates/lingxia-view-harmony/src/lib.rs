@@ -361,6 +361,19 @@ impl Page {
         pages::with(self.token, |host| host.text_handle_drag(active));
     }
 
+    /// Hidden but kept: the presenter drops its render targets; the surface keeps its frame.
+    pub fn trim_surface(&self) {
+        let id = pages::with(self.token, |host| {
+            host.adapter()
+                .gpu
+                .load(std::sync::atomic::Ordering::Acquire)
+        })
+        .unwrap_or(0);
+        if id != 0 {
+            crate::render::run(move || lingxia_view::renderer::surfaces::trim(id));
+        }
+    }
+
     /// The newest GPU frame as a PNG, for automation screenshots.
     pub fn screenshot_png(&self) -> Result<Option<Vec<u8>>, String> {
         let id = pages::with(self.token, |host| {

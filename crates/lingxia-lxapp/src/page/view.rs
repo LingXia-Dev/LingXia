@@ -309,6 +309,10 @@ pub trait GpuPageView: Send + Sync {
     fn park(&self) -> Result<(), LxAppError>;
     /// Whether a hidden page keeps its presented surface; see `surface_retention`.
     fn retain_surface(&self, retained: bool) -> Result<(), LxAppError>;
+    /// A hidden page that keeps its surface drops the render targets a redraw rebuilds.
+    fn trim_surface(&self) -> Result<(), LxAppError> {
+        Ok(())
+    }
     /// Release the context and native surface; must be idempotent.
     fn dispose(&self);
 }
