@@ -345,6 +345,27 @@ impl GpuPageViewFactory for Binding {
             Ok(register(lease, native) as Arc<dyn GpuPageView>)
         })
     }
+
+    fn app_closed(&self, appid: &str, session: u64) {
+        close_worker(&worker_key(appid, session));
+    }
+}
+
+/// Stops the session's View worker once its pages are gone instead of keeping it for a next page.
+fn close_worker(key: &str) {
+    #[cfg(target_os = "android")]
+    lingxia_view_android::lingxia_view::session::host::ViewWorker::close(key);
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    lingxia_view_apple::lingxia_view::session::host::ViewWorker::close(key);
+    #[cfg(target_env = "ohos")]
+    lingxia_view_harmony::lingxia_view::session::host::ViewWorker::close(key);
+    #[cfg(not(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        target_env = "ohos"
+    )))]
+    let _ = key;
 }
 
 /// The lxapp's bundled pack; the host checks and resolves it, and a bad one keeps the

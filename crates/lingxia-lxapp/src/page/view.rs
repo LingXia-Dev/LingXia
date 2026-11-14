@@ -13,6 +13,9 @@ pub type GpuViewCreation =
 /// A created View has already been given its module, so the first connect needs no reload.
 pub trait GpuPageViewFactory: Send + Sync {
     fn create(&self, page: super::PageInstance) -> GpuViewCreation;
+
+    /// The app session ended; anything kept for its next page can go now.
+    fn app_closed(&self, _appid: &str, _session: u64) {}
 }
 
 static GPU_FACTORY: OnceLock<Arc<dyn GpuPageViewFactory>> = OnceLock::new();
@@ -27,6 +30,12 @@ pub fn register_gpu_page_view_factory(
 
 pub(crate) fn gpu_factory() -> Option<Arc<dyn GpuPageViewFactory>> {
     GPU_FACTORY.get().cloned()
+}
+
+pub(crate) fn gpu_app_closed(appid: &str, session: u64) {
+    if let Some(factory) = GPU_FACTORY.get() {
+        factory.app_closed(appid, session);
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

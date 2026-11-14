@@ -2353,6 +2353,7 @@ impl LxApp {
             }
         }
         let _ = self.clear_page_stack();
+        crate::page::gpu_app_closed(&self.appid, self.session.id);
         // Terminate AppService (receiver handles its own state)
         let termination = self.executor.terminate_app_svc(self.clone_arc());
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
