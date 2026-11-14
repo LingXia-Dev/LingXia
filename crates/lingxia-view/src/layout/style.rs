@@ -391,6 +391,17 @@ pub(crate) fn node_style(
     let block = matches!(display, Some("block" | "inline-block"));
     let in_row = record.parent.is_some_and(|p| lays_out_in_row(&records[p]));
     let inline = matches!(display, Some("inline-flex" | "inline-block"));
+    // A replaced element keeps its own size unless it asks to stretch across its line
+    // (`self-stretch`), as an `<img>` does in CSS; a stretching parent alone leaves icons whole.
+    let stretched = matches!(record.tag, tag::VECTOR | tag::IMAGE)
+        && record.string(field::ALIGN_SELF) == Some("stretch");
+    // Its line runs across a flex column; in a row or a grid cell, `align-self` is vertical.
+    let stretched_across = stretched
+        && !in_row
+        && record
+            .parent
+            .is_some_and(|p| records[p].string(field::DISPLAY) != Some("grid"));
+    let stretched_down = stretched && !stretched_across;
     let border = record.number(field::BORDER_WIDTH).unwrap_or(0.0);
     let [border_top, border_right, border_bottom, border_left] =
         border_edges(record, rtl).map(|id| record.number(id).unwrap_or(border));
@@ -630,7 +641,7 @@ pub(crate) fn node_style(
                 .or_else(|| keyword(record, field::WIDTH_KEYWORD))
                 .unwrap_or(if page || index == 0 {
                     length(width as f32 / scale)
-                } else if spans(field::INSET_LEFT, field::INSET_RIGHT) {
+                } else if spans(field::INSET_LEFT, field::INSET_RIGHT) || stretched_across {
                     auto()
                 } else if record.tag == tag::VECTOR {
                     length(24.0)
@@ -659,7 +670,7 @@ pub(crate) fn node_style(
                     length(120.0)
                 } else if index == 0 {
                     length(height as f32 / scale)
-                } else if spans(field::INSET_TOP, field::INSET_BOTTOM) {
+                } else if spans(field::INSET_TOP, field::INSET_BOTTOM) || stretched_down {
                     auto()
                 } else if record.tag == tag::VECTOR {
                     length(24.0)

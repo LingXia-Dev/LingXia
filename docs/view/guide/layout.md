@@ -62,7 +62,9 @@ empty `<view className="grow" />` is a spacer.
 - A `<button>` is unstyled, as HTML's after Tailwind's preflight: no fill, padding or radius; its text
   inherits the color around it. Editors and toggles carry intrinsic sizes: 12 px padding, a
   44–48 px minimum height, `<textarea>` 120 px height, `<slider>` 120 × 48, `<image>` 64 × 64 and `<vector>`
-  24 × 24 until you size them.
+  24 × 24 until you size them; `self-stretch` makes an image or vector fill the cross axis instead.
+- `scale-*` paints only: the box keeps its layout size and scales around its center, so size a miniature
+  with `w-*`/`h-*`.
 - `justify-center` and `content-center` are *safe*: content that does not fit aligns to the start instead of
   overflowing both edges.
 
