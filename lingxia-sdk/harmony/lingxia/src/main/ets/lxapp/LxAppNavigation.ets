@@ -32,6 +32,10 @@ const TAG = 'LingXia.Navigation';
 const SPLASH_SKIP_TOP: number = 44 + 12;
 const KEYCODE_BACK: number = 2;
 const BACK_PRESS_THROTTLE_MS: number = 200;
+// A system Back this soon after our edge swipe popped is the same gesture: the system
+// recognises the swipe at its end, ours mid-move.
+const SYSTEM_BACK_AFTER_EDGE_SWIPE_MS: number = 500;
+const EDGE_SWIPE_MAX_HOLD_MS: number = 3000;
 
 // Edge-swipe back gesture area (system gesture-back is disabled in LingxiaBaseAbility).
 // Exported: each lxapp container lays the same strip over its own Web.
@@ -91,6 +95,12 @@ export struct LxAppNavigation {
     LxAppNavigation.current?.handleEdgeBackSwipeTouch(event);
   }
 
+  /// System Back from the entry page's `onBackPress`: true when the app handled it.
+  static handleSystemBack(): boolean {
+    const navigation = LxAppNavigation.current;
+    return navigation !== null && navigation.handleEntryBackPress();
+  }
+
   // Current modal LxApp state (only one modal app can be shown at a time)
   @State private currentModalAppId: string = ''
   @State private currentModalWebTag: string = ''
@@ -103,6 +113,9 @@ export struct LxAppNavigation {
   private lastBackHandledAt: number = 0
 
   private edgeBackSwipeTracking: boolean = false
+  private edgeBackSwipeHeld: boolean = false
+  private edgeBackSwipePoppedAt: number = 0
+  private edgeBackSwipeEndedAt: number = 0
   private edgeBackSwipeTriggered: boolean = false
   private edgeBackSwipeFingerId: number = -1
   private edgeBackSwipeStartX: number = 0
@@ -198,18 +211,29 @@ export struct LxAppNavigation {
 	    return false;
 	  }
 
+  private handleEntryBackPress(): boolean {
+    const now = Date.now();
+    const held = this.edgeBackSwipeHeld && (now - this.edgeBackSwipePoppedAt) < EDGE_SWIPE_MAX_HOLD_MS;
+    if (held || (now - this.edgeBackSwipeEndedAt) < SYSTEM_BACK_AFTER_EDGE_SWIPE_MS) {
+      hilog.info(DOMAIN, TAG, 'BackPress: taken by the edge swipe that just popped');
+      return true;
+    }
+    return this.handleSystemBackPress();
+  }
+
   private handleSystemBackPress(): boolean {
     const now = Date.now();
     if (this.isBackHandling) {
       return true;
     }
 
-    // Overlays should be closed before forwarding BackPress into the LxApp stack.
-    if (this.closeActiveOverlayIfAny()) {
+    if ((now - this.lastBackHandledAt) < BACK_PRESS_THROTTLE_MS) {
       return true;
     }
 
-    if ((now - this.lastBackHandledAt) < BACK_PRESS_THROTTLE_MS) {
+    // Overlays should be closed before forwarding BackPress into the LxApp stack.
+    if (this.closeActiveOverlayIfAny()) {
+      this.lastBackHandledAt = now;
       return true;
     }
 
@@ -218,6 +242,7 @@ export struct LxAppNavigation {
       const current: CurrentLxApp = getCurrentLxapp();
       if (current && current.appid && current.appid.length > 0) {
         if (LxAppContainer.closeGpuTopLayer(current.appid)) {
+          hilog.info(DOMAIN, TAG, 'BackPress: closing the GPU page top layer');
           this.lastBackHandledAt = now;
           return true;
         }
@@ -277,6 +302,11 @@ export struct LxAppNavigation {
   private handleEdgeBackSwipeTouch(event: TouchEvent): void {
     if (!event) {
       return;
+    }
+
+    if ((event.type === TouchType.Up || event.type === TouchType.Cancel) && this.edgeBackSwipeHeld) {
+      this.edgeBackSwipeHeld = false;
+      this.edgeBackSwipeEndedAt = Date.now();
     }
 
     if (event.type === TouchType.Cancel) {
@@ -339,7 +369,10 @@ export struct LxAppNavigation {
       ) {
         this.edgeBackSwipeTriggered = true;
         event.stopPropagation();
-        this.handleSystemBackPress();
+        if (this.handleSystemBackPress()) {
+          this.edgeBackSwipeHeld = true;
+          this.edgeBackSwipePoppedAt = Date.now();
+        }
         this.resetEdgeBackSwipe();
       }
       return;
@@ -1008,4 +1041,9 @@ export struct LxAppNavigation {
     .width('100%')
     .height('100%')
   }
+}
+
+/** Call from the entry page's `onBackPress()`: pops an lxapp page or closes an overlay; false on the home root, so the app goes to the background. */
+export function handleSystemBack(): boolean {
+  return LxAppNavigation.handleSystemBack();
 }

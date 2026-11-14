@@ -41,6 +41,8 @@ yaml settings.
 
 `quickStart` starts the runtime and opens the launch surface.
 
+On Harmony, add `onBackPress(): boolean { return handleSystemBack(); }` to your entry page so the system Back pops lxapp pages; without it Back sends the app to the background.
+
 ## Minimal macOS example
 
 ```yaml

@@ -1,9 +1,13 @@
-import { LxAppNavigation } from 'lingxia';
+import { LxAppNavigation, handleSystemBack } from 'lingxia';
 
 @Entry
 @Component
 struct Index {
   aboutToAppear() { }
+
+  onBackPress(): boolean {
+    return handleSystemBack();
+  }
 
   build() {
     Column() {

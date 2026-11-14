@@ -5164,6 +5164,64 @@ fn a_close_request_closes_the_topmost_dialog_or_popover_and_is_refused_without_o
 }
 
 #[test]
+fn a_close_request_closes_an_open_picker_sheet_or_popover() {
+    for (reduced, blur) in [(true, false), (false, false), (false, true)] {
+        close_request_case(reduced, blur);
+    }
+}
+
+fn close_request_case(reduced: bool, blur: bool) {
+    let worker = ViewWorker::spawn("test-close-request-pickers").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const c=useLocal('c',''),day=useLocal('day','2026-10-21');return h('view',{},h('select',{'data-testid':'country',bind:c,'aria-label':'Country',options:[{value:'de',label:'Germany'},{value:'fr',label:'France'}]}),h('input',{'data-testid':'day',type:'date',bind:day,'aria-label':'Day'}),h('button',{popoverTarget:'tip','data-testid':'trigger'},'Info'),h('view',{id:'tip',popover:'auto',role:'tooltip','data-testid':'tip'},h('text',{},'Saved')))}",
+        ),
+        false,
+    );
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .value["reducedMotion"] = serde_json::json!(reduced);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let count = |css: &str| {
+        host.automation_request(&serde_json::json!({"op":"query","css":css,"all":true}))
+            .unwrap()["count"]
+            .clone()
+    };
+    let click = |id: &str| {
+        host.automation_request(&serde_json::json!({"op":"act","css":format!("[data-testid=\"{id}\"]"),"action":{"kind":"click"}}))
+            .unwrap();
+        platform.settle(&[&host]);
+    };
+    assert!(!host.close_request(), "nothing open: the page's back goes on");
+    for (trigger, open) in [
+        ("country", "[role=\"dialog\"]"),
+        ("day", "[data-testid=\"lx-picker\"]"),
+        ("trigger", "[data-testid=\"tip\"]"),
+    ] {
+        click(trigger);
+        assert_eq!(count(open), 1, "{trigger} opened");
+        assert!(host.close_request(), "{trigger}: the open layer takes it");
+        if blur {
+            host.window_focus(false);
+            host.window_focus(true);
+        }
+        for _ in 0..60 {
+            platform.advance(std::time::Duration::from_millis(16));
+            platform.settle(&[&host]);
+        }
+        assert_eq!(count(open), 0, "{trigger}: closed by the request (reduced={reduced} blur={blur})");
+        assert!(!host.close_request(), "{trigger}: nothing left open");
+    }
+}
+
+#[test]
 fn escape_pressed_on_any_match_closes_an_open_light_dismiss_popover() {
     let worker = ViewWorker::spawn("test-escape-popover").unwrap();
     let platform = Platform::new(&[&worker]);

@@ -14,11 +14,12 @@
  *
  * // In your main page:
  * LxAppNavigation()  // Automatically opens home LxApp after initialization
+ * onBackPress(): boolean { return handleSystemBack(); }  // System Back pops lxapp pages
  * ```
  */
 
 export { Lingxia } from './src/main/ets/app/Lingxia';
 export { LxApp } from './src/main/ets/lxapp/LxApp';
-export { LxAppNavigation } from './src/main/ets/lxapp/LxAppNavigation';
+export { LxAppNavigation, handleSystemBack } from './src/main/ets/lxapp/LxAppNavigation';
 export { LingxiaBaseAbility } from './src/main/ets/app/LingxiaBaseAbility';
 export { LxLog } from './src/main/ets/app/LxLog';

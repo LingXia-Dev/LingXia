@@ -5,8 +5,6 @@ import { Lingxia } from './Lingxia';
 import { LxLog } from './LxLog';
 import {
   getCurrentLxapp,
-  onLxappEvent,
-  UiEventType,
   onAppShow,
   onAppHide,
   onUserCaptureScreen,
@@ -16,59 +14,17 @@ import {
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Ability';
-const KEYCODE_BACK: number = 2;
-const BACK_PRESS_THROTTLE_MS: number = 200;
 const DEVICE_ORIENTATION_PORTRAIT: string = 'portrait';
 const DEVICE_ORIENTATION_LANDSCAPE: string = 'landscape';
-
-interface LingxiaWindowKeyEvent {
-  readonly keyCode?: number;
-  stopPropagation?: () => void;
-  preventDefault?: () => void;
-  handled?: boolean;
-}
 
 interface LingxiaWindowSizeChangeEvent {
   readonly width?: number;
   readonly height?: number;
 }
 
-interface WindowWithOn {
-  on?: (type: string, callback: (event: LingxiaWindowKeyEvent) => void) => void;
-  off?: (type: string, callback: (event: LingxiaWindowKeyEvent) => void) => void;
-}
-
 interface WindowWithGestureBackControl {
   setGestureBackEnabled?: (enabled: boolean) => Promise<void>;
   isGestureBackEnabled?: () => boolean;
-}
-
-class WindowKeyEventTargetWrapper {
-  private readonly window: window.Window;
-  private readonly windowWithOn: WindowWithOn;
-
-  constructor(windowInstance: window.Window) {
-    this.window = windowInstance;
-    this.windowWithOn = windowInstance as WindowWithOn;
-  }
-
-  public register(type: string, callback: (event: LingxiaWindowKeyEvent) => void): boolean {
-    const listener = this.windowWithOn.on;
-    if (typeof listener === 'function') {
-      const typedListener = listener as (eventType: string, cb: (event: LingxiaWindowKeyEvent) => void) => void;
-      typedListener(type, callback);
-      return true;
-    }
-    return false;
-  }
-
-  public unregister(type: string, callback: (event: LingxiaWindowKeyEvent) => void): void {
-    const listener = this.windowWithOn.off;
-    if (typeof listener === 'function') {
-      const typedListener = listener as (eventType: string, cb: (event: LingxiaWindowKeyEvent) => void) => void;
-      typedListener(type, callback);
-    }
-  }
 }
 
 interface WindowWithSizeOn {
@@ -105,17 +61,13 @@ class WindowSizeEventTargetWrapper {
 }
 
 export class LingxiaBaseAbility extends UIAbility {
-  private isBackHandling: boolean = false;
-  private lastBackHandledAt: number = 0;
   private static hostAddonInstalled: boolean = false;
   private mainWindow: window.Window | null = null;
   private hasEnteredBackground: boolean = false;
   private gestureBackConfigInProgress: boolean = false;
-  private backInterceptorRegistered: boolean = false;
   private screenshotListenerRegistered: boolean = false;
   private sizeChangeListenerRegistered: boolean = false;
-  private keyEventListener: ((event: LingxiaWindowKeyEvent) => void) | null = null;
-  private screenshotListener: ((event: LingxiaWindowKeyEvent) => void) | null = null;
+  private screenshotListener: (() => void) | null = null;
   private sizeChangeListener: ((event: LingxiaWindowSizeChangeEvent) => void) | null = null;
   private lastReportedDeviceOrientation: string = '';
 
@@ -123,31 +75,6 @@ export class LingxiaBaseAbility extends UIAbility {
    * Override to install native host addon.
    */
   protected registerHostAddon(): void {
-  }
-
-  private handleBackPressInternal(): boolean {
-    const now = Date.now();
-    if (this.isBackHandling || (now - this.lastBackHandledAt) < BACK_PRESS_THROTTLE_MS) {
-      return true;
-    }
-
-    this.isBackHandling = true;
-    try {
-      const current: CurrentLxApp = getCurrentLxapp();
-      if (current && current.appid && current.appid.length > 0) {
-        hilog.info(DOMAIN, TAG, '%{public}s', `Forwarding back press to ${current.appid}`);
-        const handled: boolean = onLxappEvent(current.appid, UiEventType.BackPress, '');
-        if (handled) {
-          this.lastBackHandledAt = now;
-        }
-        return handled;
-      }
-    } catch (error) {
-      LxLog.e(TAG, `Error handling back press: ${error}`);
-    } finally {
-      this.isBackHandling = false;
-    }
-    return false;
   }
 
   private disableSystemGestureBack(): void {
@@ -193,53 +120,18 @@ export class LingxiaBaseAbility extends UIAbility {
     this.gestureBackConfigInProgress = false;
   }
 
-  protected registerWindowBackInterceptor(windowStage: window.WindowStage): void {
-    if (this.backInterceptorRegistered) {
-      return;
-    }
-
+  private attachMainWindow(windowStage: window.WindowStage): void {
     try {
       const mainWindow = windowStage.getMainWindowSync();
       if (!mainWindow) {
-        hilog.warn(DOMAIN, TAG, '%{public}s', 'Main window not available for back interceptor');
+        hilog.warn(DOMAIN, TAG, '%{public}s', 'Main window not available');
         return;
       }
-
-      // Store reference for screenshot listener
       this.mainWindow = mainWindow;
-
-      // Disable system edge-swipe back gesture (it backgrounds the UIAbility by default).
-      // We implement our own in-app back handling and keep the app in foreground.
+      // The system edge-swipe back would background the app; LxAppNavigation pops pages itself.
       this.disableSystemGestureBack();
-
-      const wrapper = new WindowKeyEventTargetWrapper(mainWindow);
-      const listener = (event: LingxiaWindowKeyEvent) => {
-        if (!event) {
-          return;
-        }
-
-        if (event.keyCode !== undefined && event.keyCode === KEYCODE_BACK) {
-          if (this.handleBackPressInternal()) {
-            if (typeof event.stopPropagation === 'function') {
-              event.stopPropagation();
-            }
-            if (typeof event.preventDefault === 'function') {
-              event.preventDefault();
-            }
-            event.handled = true;
-          }
-        }
-      };
-      const registered = wrapper.register('keyEvent', listener);
-
-      if (!registered) {
-        hilog.warn(DOMAIN, TAG, '%{public}s', 'Window does not expose keyEvent listener');
-        return;
-      }
-      this.keyEventListener = listener;
-      this.backInterceptorRegistered = true;
     } catch (error) {
-      LxLog.e(TAG, `Failed to register back interceptor: ${error}`);
+      LxLog.e(TAG, `Failed to attach main window: ${error}`);
     }
   }
 
@@ -370,7 +262,7 @@ export class LingxiaBaseAbility extends UIAbility {
       this.registerHostAddon();
       LingxiaBaseAbility.hostAddonInstalled = true;
     }
-    this.registerWindowBackInterceptor(windowStage);
+    this.attachMainWindow(windowStage);
     this.registerScreenshotListener();
     this.registerWindowSizeListener(windowStage);
   }
@@ -378,16 +270,9 @@ export class LingxiaBaseAbility extends UIAbility {
   private unregisterWindowListeners(): void {
     const mainWindow = this.mainWindow;
     if (mainWindow) {
-      if (this.keyEventListener) {
-        try {
-          new WindowKeyEventTargetWrapper(mainWindow).unregister('keyEvent', this.keyEventListener);
-        } catch (error) {
-          LxLog.e(TAG, `Failed to unregister key listener: ${error}`);
-        }
-      }
       if (this.screenshotListener) {
         try {
-          new WindowKeyEventTargetWrapper(mainWindow).unregister('screenshot', this.screenshotListener);
+          mainWindow.off('screenshot', this.screenshotListener);
         } catch (error) {
           LxLog.e(TAG, `Failed to unregister screenshot listener: ${error}`);
         }
@@ -401,10 +286,8 @@ export class LingxiaBaseAbility extends UIAbility {
       }
     }
 
-    this.keyEventListener = null;
     this.screenshotListener = null;
     this.sizeChangeListener = null;
-    this.backInterceptorRegistered = false;
     this.screenshotListenerRegistered = false;
     this.sizeChangeListenerRegistered = false;
     this.mainWindow = null;
@@ -482,7 +365,6 @@ export class LingxiaBaseAbility extends UIAbility {
     }
   }
 
-  // Note: UIAbility.onBackPressed return value controls whether the UIAbility is
-  // moved to background or destroyed. In-app back is handled by key events and
-  // the custom edge-swipe gesture in LxAppNavigation.
+  // System Back reaches the entry page's onBackPress (see handleSystemBack); only an unhandled
+  // one gets here, where the runtime's default moves the app to the background.
 }
