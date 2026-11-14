@@ -84,9 +84,18 @@ export function createHarmonyDeviceFixture({ hdc, screen }, token = randomBytes(
       }
       let input;
       try { input = JSON.parse(body); } catch { return done(400, { error: 'invalid JSON' }); }
-      if (operation === 'pixels' && Array.isArray(input?.points) && input.points.length >= 1 && input.points.length <= 32
-        && input.points.every((point) => Array.isArray(point) && point.length === 2 && point.every(coordinate))) {
+      const points = Array.isArray(input?.points) && input.points.length >= 1 && input.points.length <= 32
+        && input.points.every((point) => Array.isArray(point) && point.length === 2 && point.every(coordinate));
+      if (operation === 'pixels' && points) {
         return done(200, { pixels: bmpPixels(await screen(), input.points) });
+      }
+      // The screen read while a finger rests at x, y: one operation, so nothing else runs mid-press.
+      if (operation === 'heldPixels' && points && [input?.x, input?.y].every(coordinate)) {
+        const held = hdc(['shell', 'uitest', 'uiInput', 'longClick', String(input.x), String(input.y)]);
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        const pixels = bmpPixels(await screen(), input.points);
+        await held;
+        return done(200, { pixels });
       }
       // The system takes this as a user's finger, so an edge swipe is the system back gesture.
       if (operation === 'swipe' && [input?.x1, input?.y1, input?.x2, input?.y2].every(coordinate)
@@ -96,6 +105,11 @@ export function createHarmonyDeviceFixture({ hdc, screen }, token = randomBytes(
       }
       if (operation === 'click' && [input?.x, input?.y].every(coordinate)) {
         await hdc(['shell', 'uitest', 'uiInput', 'click', String(input.x), String(input.y)]);
+        return done(200, { ok: true });
+      }
+      // A finger held still past the long-press delay; answers once it lifts.
+      if (operation === 'longClick' && [input?.x, input?.y].every(coordinate)) {
+        await hdc(['shell', 'uitest', 'uiInput', 'longClick', String(input.x), String(input.y)]);
         return done(200, { ok: true });
       }
       // A hardware key press through the system's input path.

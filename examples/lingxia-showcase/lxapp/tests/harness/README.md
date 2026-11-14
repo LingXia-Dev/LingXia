@@ -60,7 +60,7 @@ mapping when finished.
 ## Harmony system input
 
 `harmony-device-fixture.mjs` does the same for one HarmonyOS device through hdc:
-validated `uitest` taps and swipes (an edge swipe is the system back gesture), the
+validated `uitest` taps, long presses and swipes (an edge swipe is the system back gesture), the
 `uitest dumpLayout` view tree, and composited-screen pixels from
 `snapshot_display`, which it reads through macOS `sips`. Start it and forward
 its port, then pass its URL:

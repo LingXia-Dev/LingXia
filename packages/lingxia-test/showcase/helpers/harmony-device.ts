@@ -35,6 +35,11 @@ export function harmonyDevice(t: Fixture) {
     key: (key: HarmonyKey) => request('key', { key }),
     /** A finger tap at screen pixels, through the system input path. */
     click: (x: number, y: number) => request('click', { x, y }),
+    /** A finger held past the long-press delay at screen pixels; resolves once it lifts. */
+    longClick: (x: number, y: number) => request('longClick', { x, y }),
+    /** Colours at `points` read while a finger rests at x, y; resolves once it lifts. */
+    heldPixels: async (x: number, y: number, points: readonly (readonly [number, number])[]) =>
+      (await request<{ pixels: [number, number, number][] }>('heldPixels', { x, y, points })).pixels,
     /** The system back gesture: a finger from the left edge to the middle of the screen. */
     async edgeBack() {
       const screen = (await nodes()).reduce((a, b) => (b.bounds[2] * b.bounds[3] > a.bounds[2] * a.bounds[3] ? b : a));

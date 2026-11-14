@@ -53,11 +53,17 @@ test('device input requires the capability URL and rejects shell-shaped argument
     ['swipe', { x1: 0, y1: 0, x2: 1, y2: 1, velocity: 50 }],
     ['pixels', { points: [[0, -1]] }],
     ['key', { key: 'Back' }],
+    ['longClick', { x: 1.5, y: 2 }],
+    ['heldPixels', { x: 1, y: 1, points: [] }],
   ]) assert.equal((await post(operation, body)).status, 400);
   assert.deepEqual(calls, []);
   assert.equal((await post('swipe', { x1: 2, y1: 1200, x2: 540, y2: 1200, velocity: 1500 })).status, 200);
-  assert.deepEqual(calls, [['shell', 'uitest', 'uiInput', 'swipe', '2', '1200', '540', '1200', '1500']]);
+  assert.equal((await post('longClick', { x: 300, y: 900 })).status, 200);
+  assert.deepEqual(calls, [['shell', 'uitest', 'uiInput', 'swipe', '2', '1200', '540', '1200', '1500'],
+    ['shell', 'uitest', 'uiInput', 'longClick', '300', '900']]);
   assert.deepEqual((await (await post('pixels', { points: [[1, 1]] })).json()).pixels, [[255, 255, 255]]);
+  assert.deepEqual((await (await post('heldPixels', { x: 1, y: 1, points: [[1, 1]] })).json()).pixels, [[255, 255, 255]]);
+  assert.deepEqual(calls.at(-1), ['shell', 'uitest', 'uiInput', 'longClick', '1', '1']);
 });
 
 test('the layout dump is read and then removed from the device', async (t) => {
