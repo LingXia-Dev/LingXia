@@ -270,7 +270,7 @@ spec('focus-visible paints after a key moves focus and clears after a finger tap
   await expect(ring).toBeFocused();
   const keyed = await fillOf(t, ring);
   expect(apart(keyed, plain) ? 'painted' : `plain ${JSON.stringify({ keyed, plain })}`).toBe('painted');
-  // A finger, not click(): automation clicks arrive as assistive input, which keeps focus visible.
+  // A finger, not click(): a click activates without touching keyboard focus, so the ring would stay.
   await (await view.touch(ring)).up();
   await expect.poll(async () => apart(await fillOf(t, ring), plain), { timeout: 3_000 }).toBe(false);
 });

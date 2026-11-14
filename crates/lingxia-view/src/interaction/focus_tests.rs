@@ -33,11 +33,18 @@ fn present(
         .effects
 }
 
-fn ring(effects: &[Effect]) -> Option<usize> {
+/// The last focus move: the node and whether its ring shows.
+fn focused(effects: &[Effect]) -> Option<(usize, bool)> {
     effects.iter().rev().find_map(|effect| match effect {
-        Effect::FocusRing { node } => Some(*node),
+        Effect::FocusRing { node, visible } => Some((*node, *visible)),
         _ => None,
     })
+}
+
+fn ring(effects: &[Effect]) -> Option<usize> {
+    focused(effects)
+        .filter(|(_, visible)| *visible)
+        .map(|(node, _)| node)
 }
 
 fn tab(interaction: &mut ViewInteraction) -> Option<usize> {
@@ -77,29 +84,64 @@ fn an_open_dialog_keeps_tab_inside_and_returns_focus_when_it_closes() {
 }
 
 #[test]
-fn a_dialog_opened_by_pointer_leaves_focus_and_its_ring_alone() {
-    use crate::interaction::view::{Pointer, PointerPhase};
+fn a_dialog_opened_by_pointer_focuses_inside_without_a_ring_and_returns_focus_on_close() {
+    let page = || vec![button("/open", 0.0)];
+    let with_dialog = || vec![button("/open", 0.0), dialog("/d"), button("/d/ok", 220.0)];
     let mut interaction = ViewInteraction::default();
-    present(&mut interaction, vec![button("/open", 0.0)], 1);
-    let page = PageTicket::new(1);
-    let down = |phase| Pointer {
-        phase,
-        x: 10.0,
-        y: 10.0,
-        slop: 8.0,
-        velocity: [0.0; 2],
-        min_fling: 50.0,
-    };
-    interaction.pointer(down(PointerPhase::Down), page);
-    interaction.pointer(down(PointerPhase::Up), page);
-    let effects = present(
-        &mut interaction,
-        vec![button("/open", 0.0), dialog("/d"), button("/d/ok", 220.0)],
-        2,
+    present(&mut interaction, page(), 1);
+    tap(&mut interaction, 10.0);
+    let effects = present(&mut interaction, with_dialog(), 2);
+    assert_eq!(focused(&effects), Some((2, false)), "focused, no ring");
+    assert!(
+        effects.iter().any(|effect| matches!(
+            effect,
+            Effect::Accessibility(
+                crate::interaction::view::AccessibilityEffect::InputFocused { .. }
+            )
+        )),
+        "assistive tech hears the focus move"
     );
-    assert_eq!(ring(&effects), None);
-    // The keyboard still lands inside the dialog first.
-    assert_eq!(tab(&mut interaction), Some(2));
+    // A pointer close hands focus back to the control that opened it, still without a ring.
+    tap(&mut interaction, 230.0);
+    assert_eq!(
+        focused(&present(&mut interaction, page(), 3)),
+        Some((0, false))
+    );
+    // Opened and closed from the keyboard, the ring shows.
+    let mut keyed = ViewInteraction::default();
+    present(&mut keyed, page(), 1);
+    assert_eq!(tab(&mut keyed), Some(0));
+    assert_eq!(ring(&present(&mut keyed, with_dialog(), 2)), Some(2));
+    keyed.key(Key::Escape, false, false, PageTicket::new(1));
+    assert_eq!(ring(&present(&mut keyed, page(), 3)), Some(0));
+}
+
+#[test]
+fn a_closed_popover_returns_focus_to_its_invoker_only_when_focus_was_inside_it() {
+    let page = || vec![button("/a", 0.0), button("/more", 50.0)];
+    let with_popover = || {
+        let mut nodes = page();
+        let mut panel = node("/layer/panel", "column", [0.0, 100.0, 200.0, 80.0]);
+        panel.panel = true;
+        nodes.extend([panel, button("/layer/panel/item", 110.0)]);
+        nodes
+    };
+    // Enter opens it: focus stays on the invoker (HTML popovers take none); Tab goes in;
+    // Escape closes it and focus returns to the invoker, visibly.
+    let mut interaction = ViewInteraction::default();
+    present(&mut interaction, page(), 1);
+    tab(&mut interaction);
+    assert_eq!(tab(&mut interaction), Some(1));
+    assert_eq!(ring(&present(&mut interaction, with_popover(), 2)), Some(1));
+    assert_eq!(tab(&mut interaction), Some(3));
+    interaction.key(Key::Escape, false, false, PageTicket::new(1));
+    assert_eq!(ring(&present(&mut interaction, page(), 3)), Some(1));
+    // Focus outside the popover when it closes stays where it is.
+    let mut outside = ViewInteraction::default();
+    present(&mut outside, page(), 1);
+    assert_eq!(tab(&mut outside), Some(0));
+    present(&mut outside, with_popover(), 2);
+    assert_eq!(ring(&present(&mut outside, page(), 3)), Some(0));
 }
 
 #[test]
@@ -424,11 +466,23 @@ fn focus_the_page_moves_itself_keeps_the_last_origin_visible_after_keys_hidden_a
     present(&mut keyed, page(), 1);
     tab(&mut keyed);
     assert_eq!(ring(&present(&mut keyed, with_dialog(), 2)), Some(2));
-    // After a pointer: no focus moves, nothing shows.
+    // After a pointer: focus moves in, but nothing shows.
     let mut tapped = ViewInteraction::default();
     present(&mut tapped, page(), 1);
     tap(&mut tapped, 10.0);
-    assert_eq!(ring(&present(&mut tapped, with_dialog(), 2)), None);
+    assert_eq!(
+        focused(&present(&mut tapped, with_dialog(), 2)),
+        Some((2, false))
+    );
+    // An activation through assistive tech or automation is a tap: no ring either.
+    let mut clicked = ViewInteraction::default();
+    present(&mut clicked, page(), 1);
+    let id = clicked.semantics().unwrap().ids.id(0).unwrap();
+    clicked.accessibility(id, AccessibilityAction::Click, PageTicket::new(1));
+    assert_eq!(
+        focused(&present(&mut clicked, with_dialog(), 2)),
+        Some((2, false))
+    );
     // After an assistive action: visible, as after a key.
     let mut assisted = ViewInteraction::default();
     present(&mut assisted, page(), 1);

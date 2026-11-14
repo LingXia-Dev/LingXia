@@ -409,7 +409,8 @@ struct Main<F> {
     styled_hover: Option<String>,
     interest: interest::Interest,
     autoclose: autoclose::Autoclose,
-    styled_focus: Option<String>,
+    /// The focused control with `focus:` styles, and whether its focus shows (`focus-visible:`).
+    styled_focus: (Option<String>, bool),
     caret: Caret,
     visible: bool,
     /// A hidden page whose target changed renders once, so returning to it needs no wait.
@@ -617,7 +618,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     styled_hover: None,
                     interest: Default::default(),
                     autoclose: Default::default(),
-                    styled_focus: None,
+                    styled_focus: (None, false),
                     caret: Caret::default(),
                     visible: false,
                     catch_up: false,
@@ -1866,7 +1867,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.caret.stop();
             main.styled_press = None;
             main.styled_hover = None;
-            main.styled_focus = None;
+            main.styled_focus = (None, false);
             main.interest.reset();
             main.autoclose.reset();
             let effects = main.interaction.reset();
@@ -1943,7 +1944,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.caret.stop();
             main.styled_press = None;
             main.styled_hover = None;
-            main.styled_focus = None;
+            main.styled_focus = (None, false);
             main.interest.reset();
             main.autoclose.reset();
             // Input stops; automation reads a parked page as blank.

@@ -48,6 +48,8 @@ pub struct Renderer {
     /// Ink boxes of laid-out glyph runs, relative to the run origin.
     pub(crate) ink_cache: HashMap<InkKey, Option<[f32; 4]>>,
     pub(crate) videos: crate::scene::video::Sources,
+    /// Whether `focused` shows: false when a pointer moved it, so no indicator ring.
+    pub(crate) focus_visible: bool,
 }
 
 #[cfg(test)]
@@ -82,6 +84,7 @@ impl Default for Renderer {
             layout_tree: None,
             ink_cache: HashMap::new(),
             videos: Default::default(),
+            focus_visible: true,
         }
     }
 }

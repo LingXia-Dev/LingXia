@@ -958,6 +958,7 @@ impl Renderer {
                 let pressed = enabled
                     && pressed_identity.as_deref() == identities.get(index).map(String::as_str);
                 let focused = enabled
+                    && self.focus_visible
                     && focused_identity.as_deref() == identities.get(index).map(String::as_str);
                 // The drawn indicator and its corner radius: press and focus follow its shape.
                 let mut indicator = if record.tag == tag::RADIO_OPTION {

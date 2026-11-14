@@ -734,7 +734,9 @@ impl Feedback for AndroidAdapter {
             match effect {
                 Effect::Press { node: index, .. } => self.int(jni_str!("press"), node(*index)),
                 Effect::ClearPress => self.void(jni_str!("clearPress")),
-                Effect::FocusRing { node: index } => self.int(jni_str!("focusRing"), node(*index)),
+                Effect::FocusRing { node: index, .. } => {
+                    self.int(jni_str!("focusRing"), node(*index))
+                }
                 Effect::ClearFocusRing => self.void(jni_str!("clearFocusRing")),
                 Effect::Claim { exclusive } => self.flag(jni_str!("claim"), *exclusive),
                 Effect::ArmLongPress => self.void(jni_str!("armLongPress")),

@@ -92,6 +92,7 @@ impl ViewInteraction {
             identity: frame.nodes[index].identity.to_string(),
             activate,
             page,
+            visible: self.origin != super::FocusOrigin::Pointer,
         });
         let mut effects = vec![Effect::StopFling];
         if self.scroll.reveal(&frame, &frame.nodes[index]) {
@@ -103,47 +104,79 @@ impl ViewInteraction {
     }
 
     /// A dialog or menu that opened takes keyboard focus on its first control; one that closed
-    /// returns it to what had it before. Only when the last input was not a pointer, so taps see no ring.
+    /// returns it to what had it before. A pointer moves that focus too, without a ring.
+    /// A top-layer popover takes no focus on open; on close it returns focus to its invoker
+    /// when focus was inside it or is gone, as HTML does.
     fn track_dialogs(&mut self, page: PageTicket) -> Vec<Effect> {
         let Some(frame) = self.frame.clone() else {
             return Vec::new();
         };
         let overlay = navigation::active_overlay(&frame);
         let open = overlay.map(|index| frame.nodes[index].identity.clone());
-        let keyboard = self.origin != super::FocusOrigin::Pointer;
+        let shown = |identity: &str| {
+            frame
+                .index_of(identity)
+                .is_some_and(|index| frame::visible(&frame.nodes[index]))
+        };
+        let before = self
+            .keyboard_origin()
+            .map(|index| frame.nodes[index].identity.to_string())
+            .or_else(|| self.invoker.clone());
         let mut effects = Vec::new();
         // Dialogs no longer shown hand focus back, innermost first.
         while let Some((dialog, _)) = self.dialogs.last() {
-            if frame
-                .index_of(dialog)
-                .is_some_and(|index| frame::visible(&frame.nodes[index]))
-            {
+            if shown(dialog) {
                 break;
             }
             let (_, restore) = self.dialogs.pop().unwrap();
-            if keyboard && let Some(index) = restore.and_then(|identity| frame.index_of(&identity))
-            {
+            if let Some(index) = restore.and_then(|identity| frame.index_of(&identity)) {
                 effects.extend(self.navigate(index, false, page));
+            }
+        }
+        while let Some((popover, _)) = self.popovers.last() {
+            if shown(popover) {
+                break;
+            }
+            let (popover, restore) = self.popovers.pop().unwrap();
+            let focus = self
+                .keyboard_focus
+                .map(|index| frame.nodes[index].identity.to_string());
+            let lost = focus.as_deref().is_none_or(|focus| {
+                focus.starts_with(&*popover) && focus.as_bytes().get(popover.len()) == Some(&b'/')
+            });
+            if lost && let Some(index) = restore.and_then(|identity| frame.index_of(&identity)) {
+                effects.extend(self.navigate(index, false, page));
+            }
+        }
+        for node in &frame.nodes {
+            let popover = node.panel
+                && !matches!(
+                    node.role.as_deref(),
+                    Some("dialog" | "menu" | "alertdialog")
+                )
+                && frame::visible(node);
+            if popover
+                && !self
+                    .popovers
+                    .iter()
+                    .any(|(open, _)| *open == *node.identity)
+            {
+                self.popovers
+                    .push((node.identity.to_string(), before.clone()));
             }
         }
         if let Some(dialog) = open
             && self.dialogs.last().is_none_or(|(top, _)| *top != dialog)
         {
-            let before = self
-                .keyboard_origin()
-                .map(|index| frame.nodes[index].identity.clone());
-            self.dialogs
-                .push((dialog.to_string(), before.map(String::from)));
-            if keyboard
-                && let Some(first) = overlay.and_then(|overlay| {
-                    navigation::first_inside(
-                        &frame,
-                        overlay,
-                        self.revealable(&frame),
-                        self.remembered(&frame),
-                    )
-                })
-            {
+            self.dialogs.push((dialog.to_string(), before));
+            if let Some(first) = overlay.and_then(|overlay| {
+                navigation::first_inside(
+                    &frame,
+                    overlay,
+                    self.revealable(&frame),
+                    self.remembered(&frame),
+                )
+            }) {
                 effects.extend(self.navigate(first, false, page));
             }
         }
@@ -197,7 +230,11 @@ impl ViewInteraction {
                 frame.nodes[index].identity.to_string(),
             );
         }
-        let mut effects = vec![Effect::FocusRing { node: index }];
+        self.focus_visible = pending.visible;
+        let mut effects = vec![Effect::FocusRing {
+            node: index,
+            visible: pending.visible,
+        }];
         if changed && let Some(id) = self.ids.id(index) {
             effects.push(Effect::Accessibility(AccessibilityEffect::InputFocused {
                 id,

@@ -93,6 +93,7 @@ struct PendingFocus {
     identity: String,
     activate: bool,
     page: PageTicket,
+    visible: bool,
 }
 
 #[derive(Default)]
@@ -107,6 +108,8 @@ pub struct ViewInteraction {
     slider_press: Option<(String, u64, CommitTicket)>,
     gesture: Gesture,
     keyboard_focus: Option<usize>,
+    /// Whether `keyboard_focus` shows its ring: false after a pointer moved focus.
+    focus_visible: bool,
     pending_focus: Option<PendingFocus>,
     accessibility_focus: Option<u32>,
     hover: Option<u32>,
@@ -114,12 +117,16 @@ pub struct ViewInteraction {
     /// The region a wheel or trackpad gesture scrolls, until the next one begins.
     wheel_target: Option<String>,
     activation: Option<Activation>,
+    /// The control last activated, which a dialog or popover it opens returns focus to.
+    invoker: Option<String>,
     dispatches: Vec<Dispatch>,
     inert: bool,
     /// Left the stack: the last frame stays readable for automation until the next one replaces it.
     parked: bool,
     /// Open dialogs and menus, innermost last, each with what had keyboard focus before it opened.
     dialogs: Vec<(String, Option<String>)>,
+    /// Open top-layer popovers, innermost last, each with what had keyboard focus before it opened.
+    popovers: Vec<(String, Option<String>)>,
     /// The item each composite (by identity) last had keyboard focus on.
     composite_focus: std::collections::HashMap<String, String>,
     /// A mouse or trackpad drives the pointer: drags select text instead of scrolling.
@@ -619,7 +626,10 @@ impl ViewInteraction {
                 })
             {
                 self.keyboard_focus = Some(index);
-                effects.push(Effect::FocusRing { node: index });
+                effects.push(Effect::FocusRing {
+                    node: index,
+                    visible: self.focus_visible,
+                });
             }
             self.moved_frames = 0;
             self.moved = false;
@@ -715,6 +725,7 @@ impl ViewInteraction {
         if let Some(point) = point {
             effects.extend(self.dismiss_plots(frame.outside_plot_selections(point)));
         }
+        self.invoker = Some(node.identity.to_string());
         self.activation = Some(Activation {
             node: node.clone(),
             commit: frame.commit,

@@ -111,7 +111,12 @@ impl ViewInteraction {
         }
         self.pending_focus = None;
         self.slider.end();
-        self.origin = super::FocusOrigin::Assistive;
+        // An activation acts like a tap: focus it moves (a dialog opening) shows no ring.
+        self.origin = if action == AccessibilityAction::Click {
+            super::FocusOrigin::Pointer
+        } else {
+            super::FocusOrigin::Assistive
+        };
         let visible = frame::visible(node);
         match action {
             AccessibilityAction::Focus | AccessibilityAction::ClearFocus => {

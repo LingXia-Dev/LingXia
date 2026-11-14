@@ -1899,6 +1899,30 @@ fn a_button_paints_its_focus_visible_classes_only_while_it_has_visible_focus() {
 }
 
 #[test]
+fn focus_a_pointer_moved_paints_focus_classes_but_not_focus_visible_ones() {
+    let module = source(
+        "configureClasses([{name:'base',when:{},style:{backgroundColor:'#ffffff'}},{name:'focused',when:{state:'focus'},style:{backgroundColor:'#00ff00'}},{name:'ring',when:{state:'focusVisible'},style:{backgroundColor:'#0000ff'}}]);function render(){return h('select',{className:'base focused ring','aria-label':'Plan',options:[{value:'a',label:'A'}],value:'a',onChange(){},style:{width:100,height:40,borderRadius:0}})}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let display = page.layout(100, 40, 1.0).unwrap();
+    let id = display.nodes[0].identity.clone();
+    let tint = |display: DisplayList| {
+        display.rasterize().unwrap().pixels.data_as_u8_slice()[4..8].to_vec()
+    };
+    assert!(page.set_control_focus_visible(Some(&id), false));
+    assert_eq!(
+        tint(page.prepare_native(100, 40, 1.0, false, None, Ok).unwrap()),
+        vec![0, 255, 0, 255],
+        "focus: applies, focus-visible: does not"
+    );
+    assert!(page.set_control_focus_visible(Some(&id), true));
+    assert_eq!(
+        tint(page.prepare_native(100, 40, 1.0, false, None, Ok).unwrap()),
+        vec![0, 0, 255, 255]
+    );
+}
+
+#[test]
 fn a_focused_select_paints_its_focus_classes_without_the_view() {
     let module = source(
         "configureClasses([{name:'base',when:{},style:{backgroundColor:'#ffffff'}},{name:'focused',when:{state:'focus'},style:{backgroundColor:'#0000ff'}}]);function render(){return h('select',{className:'base focused','aria-label':'Plan',options:[{value:'a',label:'A'}],value:'a',onChange(){},style:{width:100,height:40,borderRadius:0}})}",

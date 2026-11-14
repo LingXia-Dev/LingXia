@@ -432,7 +432,7 @@ impl Feedback for AppleAdapter {
                     ..
                 } => self.highlight(0, Some(*node), self.snapshot().as_deref()),
                 Effect::Press { .. } | Effect::ClearPress => self.highlight(0, None, None),
-                Effect::FocusRing { node } => {
+                Effect::FocusRing { node, .. } => {
                     self.highlight(1, Some(*node), self.snapshot().as_deref())
                 }
                 Effect::ClearFocusRing => self.highlight(1, None, None),

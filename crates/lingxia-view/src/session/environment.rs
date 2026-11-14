@@ -105,9 +105,17 @@ impl ViewSession {
 
     /// The styled control holding keyboard focus; its `focus:` delta repaints without the View.
     pub fn set_control_focus(&mut self, identity: Option<&str>) -> bool {
-        let changed = self.focused_control.as_deref() != identity;
+        self.set_control_focus_visible(identity, true)
+    }
+
+    /// As [`Self::set_control_focus`]; focus a pointer moved applies `focus:` but neither
+    /// `focus-visible:` nor an indicator's ring.
+    pub fn set_control_focus_visible(&mut self, identity: Option<&str>, visible: bool) -> bool {
+        let changed =
+            self.focused_control.as_deref() != identity || self.renderer.focus_visible != visible;
         if changed {
             self.focused_control = identity.map(str::to_owned);
+            self.renderer.focus_visible = visible;
             self.input_dirty = true;
         }
         changed
@@ -123,12 +131,13 @@ impl ViewSession {
                 identity,
                 crate::protocol::field::FOCUS_STYLE,
             )?;
-            // Only key, switch and assistive focus reaches here, so it is always visible.
-            crate::interaction::input_state::apply_state_style(
-                records,
-                identity,
-                crate::protocol::field::FOCUS_VISIBLE_STYLE,
-            )?;
+            if self.renderer.focus_visible {
+                crate::interaction::input_state::apply_state_style(
+                    records,
+                    identity,
+                    crate::protocol::field::FOCUS_VISIBLE_STYLE,
+                )?;
+            }
             crate::interaction::input_state::apply_focus_within(records, identity)?;
         }
         if let Some(identity) = &self.hovered {

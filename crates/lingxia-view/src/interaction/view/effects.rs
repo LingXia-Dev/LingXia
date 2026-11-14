@@ -12,9 +12,11 @@ pub enum Effect {
         styled: bool,
     },
     ClearPress,
-    /// Draw the keyboard focus ring.
+    /// Keyboard focus moved to `node`; the ring and `focus-visible:` show only when `visible`
+    /// (a pointer-opened dialog focuses its first control without one).
     FocusRing {
         node: usize,
+        visible: bool,
     },
     ClearFocusRing,
     /// Offsets changed: present again without rerunning the View.

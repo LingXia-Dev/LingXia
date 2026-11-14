@@ -53,7 +53,7 @@ impl<A: PlatformAdapter> Inner<A> {
             match effect {
                 // A styled `<select>` repaints its `focus:` delta in the session; the ring still
                 // draws. An indicator control rings itself in the scene instead.
-                Effect::FocusRing { node } => {
+                Effect::FocusRing { node, visible } => {
                     let (styled, own, trigger) = {
                         let main = self.main();
                         let trigger = main
@@ -68,12 +68,16 @@ impl<A: PlatformAdapter> Inner<A> {
                             trigger,
                         )
                     };
-                    focus = Some(styled);
+                    focus = Some((styled, visible));
                     interest = Some(trigger);
-                    platform.push(if own { Effect::ClearFocusRing } else { effect });
+                    platform.push(if own || !visible {
+                        Effect::ClearFocusRing
+                    } else {
+                        effect
+                    });
                 }
                 Effect::ClearFocusRing => {
-                    focus = Some(None);
+                    focus = Some((None, false));
                     interest = Some(None);
                     platform.push(effect);
                 }
@@ -103,8 +107,8 @@ impl<A: PlatformAdapter> Inner<A> {
         if let Some(identity) = press {
             self.set_pressed(identity);
         }
-        if let Some(identity) = focus {
-            self.set_control_focus(identity);
+        if let Some((identity, visible)) = focus {
+            self.set_control_focus(identity, visible);
         }
         if let Some(trigger) = interest {
             self.interest_focused(trigger);
@@ -162,17 +166,18 @@ impl<A: PlatformAdapter> Inner<A> {
         );
     }
 
-    fn set_control_focus(self: &Arc<Self>, identity: Option<String>) {
+    fn set_control_focus(self: &Arc<Self>, identity: Option<String>, visible: bool) {
         {
             let mut main = self.main();
-            if main.styled_focus == identity {
+            let state = (identity.clone(), visible);
+            if main.styled_focus == state {
                 return;
             }
-            main.styled_focus = identity.clone();
+            main.styled_focus = state;
         }
         self.work(
             Guard::Page(self.lifecycle.page()),
-            move |_, session| Ok(session.set_control_focus(identity.as_deref())),
+            move |_, session| Ok(session.set_control_focus_visible(identity.as_deref(), visible)),
             |inner, result| match result {
                 Some(Ok(true)) => inner.schedule(),
                 Some(Err(error)) => inner.fail(error),

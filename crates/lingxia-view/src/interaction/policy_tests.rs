@@ -815,7 +815,13 @@ fn keyboard_tab_reveals_and_focuses_then_activates_on_enter() {
     let page = PageTicket::new(1);
     presented(&mut interaction, nodes.clone(), 1);
     let (consumed, effects) = interaction.key(Key::Tab, false, false, page);
-    assert!(consumed && effects.contains(&Effect::FocusRing { node: 1 }));
+    assert!(
+        consumed
+            && effects.contains(&Effect::FocusRing {
+                node: 1,
+                visible: true
+            })
+    );
     let (_, effects) = interaction.key(Key::Tab, false, false, page);
     assert!(
         effects.contains(&Effect::Redraw),
@@ -825,7 +831,10 @@ fn keyboard_tab_reveals_and_focuses_then_activates_on_enter() {
     revealed[0].scroll.as_mut().unwrap().offset = interaction.scroll().offset("list");
     revealed[2].visible_bounds = [0.0, 60.0, 100.0, 40.0];
     let after = presented(&mut interaction, revealed, 2);
-    assert!(after.effects.contains(&Effect::FocusRing { node: 2 }));
+    assert!(after.effects.contains(&Effect::FocusRing {
+        node: 2,
+        visible: true
+    }));
     interaction.key(Key::Activate, false, false, page);
     assert_eq!(
         interaction.take_dispatch(),
