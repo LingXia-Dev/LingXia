@@ -3,13 +3,14 @@
 import { resolveDisplayLanguage } from '../display-language';
 
 export type Words = { en: string; zh: string };
-export type GroupId = 'text' | 'gestures' | 'overlays' | 'accessibility';
+export type GroupId = 'text' | 'gestures' | 'overlays' | 'accessibility' | 'motion';
 
 export const groups: readonly { id: GroupId; page: string; title: Words; line: Words }[] = [
   { id: 'text', page: 'view-text', title: { en: 'Text & input', zh: '文字与输入' }, line: { en: 'Paragraphs, fields and keys', zh: '段落、输入框与按键' } },
   { id: 'gestures', page: 'view-gestures', title: { en: 'Gestures & pointer', zh: '手势与指针' }, line: { en: 'Press, drag and swipe', zh: '按压、拖动与滑动' } },
   { id: 'overlays', page: 'view-overlays', title: { en: 'Overlays', zh: '浮层' }, line: { en: 'Popovers and menus against what opens them', zh: '贴着触发处打开的浮层与菜单' } },
   { id: 'accessibility', page: 'view-accessibility', title: { en: 'Accessibility', zh: '无障碍' }, line: { en: 'Keyboard groups a screen reader can follow', zh: '读屏软件能跟随的键盘分组' } },
+  { id: 'motion', page: 'view-motion', title: { en: 'Motion', zh: '动效' }, line: { en: 'Boxes that change size and place smoothly', zh: '平滑改变大小与位置的方块' } },
 ];
 
 export const demos = {
@@ -40,6 +41,9 @@ export const demos = {
   accessibility: {
     days: { testId: 'lab-days', title: { en: 'A grid of days', zh: '日期网格' }, try: { en: 'With a keyboard: Tab reaches the grid once; arrows move by day and by week, Home and End go to the week\'s ends, PageUp and PageDown change the month.', zh: '使用键盘：Tab 只进入网格一次；方向键按天、按周移动，Home 和 End 到本周两端，PageUp 和 PageDown 切换月份。' } },
   },
+  motion: {
+    panel: { testId: 'lab-panel', title: { en: 'A panel that opens and closes', zh: '展开与收起的面板' }, try: { en: 'Tap the heading: the panel grows to show its text and the row below moves down with it. Tap again and it closes.', zh: '点按标题：面板展开露出文字，下面的一行随之下移；再点一次收起。' } },
+  },
 } as const satisfies Record<GroupId, Record<string, { testId: string; title: Words; try: Words }>>;
 
 /** What View provides in a group and the catalogue has no demo of yet. */
@@ -59,6 +63,12 @@ export const missing: Record<GroupId, readonly Words[]> = {
     { en: 'Names and roles of each control', zh: '各控件的名称与角色' },
     { en: 'Tabs, a toolbar and a tree', zh: '标签页、工具栏与树' },
     { en: 'Announcements when something changes', zh: '内容变化时的播报' },
+  ],
+  motion: [
+    { en: 'Fading and sliding in and out', zh: '淡入淡出与滑入滑出' },
+    { en: 'Rows that move when their order changes', zh: '顺序变化时移动的行' },
+    { en: 'Springs', zh: '弹簧动效' },
+    { en: 'Less motion when the system asks for it', zh: '系统要求减弱动效时的表现' },
   ],
   gestures: [
     { en: 'Pull to refresh', zh: '下拉刷新' },
@@ -106,6 +116,7 @@ export const readouts = {
     en: `${asked === 'none' ? 'Menu not asked for' : `Menu asked by ${asked}`} · last: ${last}`,
     zh: `${asked === 'none' ? '尚未唤出菜单' : `菜单由 ${asked} 唤出`} · 上次：${none(last)}`,
   }),
+  panel: (open: boolean): Words => (open ? { en: 'Open', zh: '已展开' } : { en: 'Closed', zh: '已收起' }),
   days: (month: string, day: number): Words => ({ en: `${month} · day ${day} chosen`, zh: `${month} · 已选 ${day} 日` }),
   presses: (n: number): Words => ({ en: `Link pressed ${n} times`, zh: `链接已点 ${n} 次` }),
   suggestions: (open: boolean, active: number, last: string): Words => ({
@@ -138,6 +149,9 @@ export const labels = {
   rowMenu: { en: 'File actions', zh: '文件操作' },
   months: { en: 'March|April|May', zh: '三月|四月|五月' },
   daysName: { en: 'Days', zh: '日期' },
+  panelHeading: { en: 'Delivery details', zh: '配送详情' },
+  panelBody: { en: 'Leaves the warehouse on Tuesday and arrives within three working days. Someone must be home to sign for it.', zh: '周二从仓库发出，三个工作日内送达，需要有人在家签收。' },
+  panelAfter: { en: 'Order total', zh: '订单合计' },
   fruit: { en: 'Fruit', zh: '水果（英文）' },
   definitions: { en: 'Definitions', zh: '术语' },
   updated: { en: 'Updated', zh: '更新于' },

@@ -26,6 +26,7 @@ const zhNames: Record<string, string[]> = {
   'view-gestures': ['指针的位置', '滑动行显示操作', '尚未展示'],
   'view-overlays': ['按需唤出的菜单', '在触发处旁边打开的浮层', '尚未展示'],
   'view-accessibility': ['日期网格', '尚未展示'],
+  'view-motion': ['展开与收起的面板', '尚未展示'],
 };
 for (const group of groups) {
   spec(`${group.page} reads in Chinese when asked`, { covers: ['view:catalogue'], start: { page: group.page, query: { lang: 'zh' } } }, async (t) => {

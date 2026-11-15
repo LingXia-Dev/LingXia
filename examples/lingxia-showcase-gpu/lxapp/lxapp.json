@@ -114,6 +114,10 @@
       "path": "pages/view-accessibility/index"
     },
     {
+      "name": "view-motion",
+      "path": "pages/view-motion/index"
+    },
+    {
       "name": "motion-lab",
       "path": "pages/motion-lab/index"
     },
