@@ -98,6 +98,8 @@
     "./Breadcrumb/recipe": "./src/Breadcrumb/Breadcrumb.recipe.ts",
     "./Pagination": "./src/Pagination/Pagination.tsx",
     "./Pagination/recipe": "./src/Pagination/Pagination.recipe.ts",
+    "./Stepper": "./src/Stepper/Stepper.tsx",
+    "./Stepper/recipe": "./src/Stepper/Stepper.recipe.ts",
     "./Icon": "./src/Icon/Icon.tsx",
     "./Icon/recipe": "./src/Icon/Icon.recipe.ts",
     "./Icon/set": "./src/Icon/set.ts",

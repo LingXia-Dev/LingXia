@@ -8887,6 +8887,218 @@
       }
     },
     {
+      "name": "Stepper",
+      "import": "@liulidesign/core/Stepper",
+      "exports": [
+        "Stepper"
+      ],
+      "category": "navigation",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "Where someone is in a task with a known number of steps",
+      "description": "Stepper shows the steps of a task that must be done in order: a checkout, a sign-up, an import. Finished steps carry a tick, the step in progress is ringed, and what is ahead is quiet. With `onStepClick` a finished step is a button that goes back to it. The app holds the step and shows its content.",
+      "keywords": [
+        "stepper",
+        "steps",
+        "wizard",
+        "progress steps",
+        "multi-step",
+        "checkout",
+        "onboarding"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Names the steps for assistive tech: \"Checkout steps\"."
+        },
+        {
+          "name": "steps",
+          "type": "readonly StepperStep[]",
+          "required": true,
+          "description": "The steps, in order."
+        },
+        {
+          "name": "current",
+          "type": "number",
+          "required": true,
+          "description": "The index of the step in progress, from 0; `steps.length` when every step is done."
+        },
+        {
+          "name": "stateLabels",
+          "type": "Record<StepState, string>",
+          "required": true,
+          "description": "What a screen reader hears for a step's state: `{ done: 'Done', current: 'Current step', upcoming: 'Not started' }`."
+        },
+        {
+          "name": "onStepClick",
+          "type": "((index: number) => void)",
+          "required": false,
+          "description": "Makes a finished step a button that goes back to it; runs with its index."
+        },
+        {
+          "name": "orientation",
+          "type": "StepperOrientation",
+          "required": false,
+          "description": "`horizontal` suits up to four short labels; `vertical` any number, with descriptions.",
+          "default": "'vertical'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {
+        "StepperStep": [
+          {
+            "name": "key",
+            "type": "string",
+            "required": true,
+            "description": "Identifies the step: its test id is `<id>-<key>`."
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "required": false,
+            "description": "A second line; vertical only."
+          }
+        ]
+      },
+      "parts": {
+        "root": "view",
+        "step": "view",
+        "marker": "view",
+        "number": "text",
+        "line": "view",
+        "label": "text",
+        "description": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Through the finished steps, when they can be pressed"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Goes back to the step"
+          }
+        ],
+        "target": {},
+        "contrast": [
+          {
+            "what": "tick on a finished step",
+            "pair": [
+              "on-accent",
+              "accent"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "number and ring of the step in progress",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "ring of a step ahead",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "label",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "label of a step ahead, numbers and second lines",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The steps are a list, so a screen reader says how many there are and where each stands.",
+          "Each step is read as its name and its state in the app's words: \"Address, Current step\". The markers and lines are not read.",
+          "State is carried by the marker's shape (tick, ring, thin ring) and the label's weight, not by colour alone.",
+          "A vertical step that can be pressed is as tall as its two lines, about 44 px; a horizontal one is smaller, so offer a Back button as well."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Checkout",
+          "title": "A task in four steps",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Stepper } from '@liulidesign/core/Stepper';\n\nconst states = { done: 'Done', current: 'Current step', upcoming: 'Not started' };\nconst checkout = [\n  { key: 'cart', label: 'Cart', description: 'Three items' },\n  { key: 'address', label: 'Address', description: 'Where to deliver' },\n  { key: 'payment', label: 'Payment', description: 'Card or transfer' },\n  { key: 'review', label: 'Review', description: 'Check and place the order' },\n];\n\n/** A task in four steps: finished steps go back, the button moves on. */\nexport function Checkout() {\n  const at = useLocal('at', 1);\n  return (\n    <view className=\"gap-4\">\n      <Stepper label=\"Checkout steps\" steps={checkout} current={at.value} stateLabels={states} onStepClick={at.set} data-testid=\"checkout\" />\n      <Button label={at.value >= checkout.length - 1 ? 'Place order' : 'Continue'} variant=\"primary\" onClick={() => at.set(Math.min(checkout.length, at.value + 1))} data-testid=\"continue\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Across",
+          "title": "Across the top of a form",
+          "source": "import { Stepper } from '@liulidesign/core/Stepper';\n\nconst states = { done: 'Done', current: 'Current step', upcoming: 'Not started' };\n\n/** Across the top of a wide form: up to four short labels. */\nexport function Across() {\n  return <Stepper label=\"Sign-up steps\" orientation=\"horizontal\" steps={[{ key: 'account', label: 'Account' }, { key: 'profile', label: 'Profile' }, { key: 'done', label: 'Done' }]} current={1} stateLabels={states} data-testid=\"across\" />;\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "A step marked as failed or optional.",
+          "needs": "nothing from the View",
+          "today": "Done, in progress or ahead."
+        },
+        {
+          "missing": "Horizontal steps that fold to \"2 of 4\" where they do not fit.",
+          "needs": "nothing from the View",
+          "today": "Labels are cut short; use `vertical` on a phone."
+        }
+      ],
+      "related": [
+        "ProgressBar",
+        "Tabs",
+        "Breadcrumb"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Steps of a task",
+        "order": 5,
+        "page": {
+          "lead": "Use a stepper for a task with a known number of steps done in order.",
+          "hero": "Checkout",
+          "variants": [
+            {
+              "name": "Across",
+              "title": "Horizontal, for up to four short labels"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Switch",
       "import": "@liulidesign/core/Switch",
       "exports": [

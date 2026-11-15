@@ -492,6 +492,23 @@ export const entries: GalleryEntry[] = [
     "status": "preview"
   },
   {
+    "name": "Stepper",
+    "page": "stepper",
+    "category": "navigation",
+    "summary": "Where someone is in a task with a known number of steps",
+    "keywords": [
+      "stepper",
+      "steps",
+      "wizard",
+      "progress steps",
+      "multi-step",
+      "checkout",
+      "onboarding"
+    ],
+    "since": "2026-11-15",
+    "status": "preview"
+  },
+  {
     "name": "Badge",
     "page": "badge",
     "category": "feedback",
@@ -1046,7 +1063,7 @@ export const galleryCategories: GalleryCategory[] = [
     "title": "Navigation",
     "description": "Ways to move between views on the same page.",
     "page": "category-navigation",
-    "count": 4
+    "count": 5
   },
   {
     "id": "feedback",

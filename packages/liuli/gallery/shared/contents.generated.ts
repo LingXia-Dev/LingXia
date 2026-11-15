@@ -41,6 +41,7 @@ import { Content as Tabs } from '../content/tabs';
 import { Content as NavList } from '../content/nav-list';
 import { Content as Breadcrumb } from '../content/breadcrumb';
 import { Content as Pagination } from '../content/pagination';
+import { Content as Stepper } from '../content/stepper';
 import { Content as Badge } from '../content/badge';
 import { Content as ProgressBar } from '../content/progress-bar';
 import { Content as Banner } from '../content/banner';
@@ -117,6 +118,7 @@ export const contents: Record<string, GalleryContent> = {
   "nav-list": NavList,
   "breadcrumb": Breadcrumb,
   "pagination": Pagination,
+  "stepper": Stepper,
   "badge": Badge,
   "progress-bar": ProgressBar,
   "banner": Banner,

@@ -50,6 +50,7 @@
     { "name": "nav-list", "path": "pages/nav-list/index" },
     { "name": "breadcrumb", "path": "pages/breadcrumb/index" },
     { "name": "pagination", "path": "pages/pagination/index" },
+    { "name": "stepper", "path": "pages/stepper/index" },
     { "name": "badge", "path": "pages/badge/index" },
     { "name": "progress-bar", "path": "pages/progress-bar/index" },
     { "name": "banner", "path": "pages/banner/index" },
