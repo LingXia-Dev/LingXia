@@ -5377,6 +5377,18 @@
         ],
         "keyboard": [
           {
+            "keys": "Up and Down",
+            "effect": "In the number: one step up or down"
+          },
+          {
+            "keys": "Page Up and Page Down",
+            "effect": "In the number: ten steps"
+          },
+          {
+            "keys": "Home and End",
+            "effect": "In the number: to `min` or `max`, where the range has that end"
+          },
+          {
             "keys": "Tab",
             "effect": "Moves from the number to the minus stepper, then the plus stepper"
           },
@@ -5425,9 +5437,9 @@
           }
         ],
         "notes": [
-          "A number editor named by `label`; the unit, then the help text and status, are read as its description.",
+          "A spin button named by `label`. Its value is read with its unit, \"71.5 kg\", and reports `min` and `max`; a screen reader's increment and decrement step it. While it is empty the unit is read in its description, with the help text and status.",
           "Each stepper is a button with its own name from the app, so a screen reader hears what a press changes: \"More guests\".",
-          "A stepper at its end of the range is disabled, and the field keeps typed numbers within `min` and `max` when it loses focus.",
+          "A stepper at its end of the range is disabled, and a typed number outside `min` and `max` moves to the nearest end when the field loses focus.",
           "The hairlines beside the steppers are decoration; each stepper is told apart by its mark."
         ]
       },
@@ -5456,12 +5468,12 @@
       "gaps": [
         {
           "missing": "The number shown formatted (grouped digits, a fixed number of decimals) while the field is not being edited.",
-          "needs": "focus and blur events on an editor",
+          "needs": "nothing from the View",
           "today": "The field shows the digits as typed; a unit or currency sits beside them."
         },
         {
-          "missing": "Up and Down arrow keys stepping the number from the editor, and the spin-button role.",
-          "needs": "key events from an editor and a spinbutton role",
+          "missing": "Arrow keys, the spin-button role and settling on blur on a host built before editor keys and focus events.",
+          "needs": "a newer host",
           "today": "The steppers are two buttons after the editor in the Tab order."
         },
         {

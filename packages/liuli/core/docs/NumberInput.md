@@ -141,12 +141,15 @@ export function Sizes() {
 - Name: label.
 - Description: prefix, then suffix, then optionalLabel, then description, then status message.
 - States: invalid (from status.type === "error"); required (from isRequired); disabled (from isDisabled).
+- Up and Down: In the number: one step up or down.
+- Page Up and Page Down: In the number: ten steps.
+- Home and End: In the number: to `min` or `max`, where the range has that end.
 - Tab: Moves from the number to the minus stepper, then the plus stepper.
 - Enter or Space: On a stepper: one step down or up.
 - Press target: sm 32 px, md 40 px, lg 48 px.
-- A number editor named by `label`; the unit, then the help text and status, are read as its description.
+- A spin button named by `label`. Its value is read with its unit, "71.5 kg", and reports `min` and `max`; a screen reader's increment and decrement step it. While it is empty the unit is read in its description, with the help text and status.
 - Each stepper is a button with its own name from the app, so a screen reader hears what a press changes: "More guests".
-- A stepper at its end of the range is disabled, and the field keeps typed numbers within `min` and `max` when it loses focus.
+- A stepper at its end of the range is disabled, and a typed number outside `min` and `max` moves to the nearest end when the field loses focus.
 - The hairlines beside the steppers are decoration; each stepper is told apart by its mark.
 
 | Contrast | Pair | Minimum | Light | Dark |
@@ -172,8 +175,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| The number shown formatted (grouped digits, a fixed number of decimals) while the field is not being edited. | focus and blur events on an editor | The field shows the digits as typed; a unit or currency sits beside them. |
-| Up and Down arrow keys stepping the number from the editor, and the spin-button role. | key events from an editor and a spinbutton role | The steppers are two buttons after the editor in the Tab order. |
+| The number shown formatted (grouped digits, a fixed number of decimals) while the field is not being edited. | nothing from the View | The field shows the digits as typed; a unit or currency sits beside them. |
+| Arrow keys, the spin-button role and settling on blur on a host built before editor keys and focus events. | a newer host | The steppers are two buttons after the editor in the Tab order. |
 | A stepper that repeats while held. | a press-and-hold event | One step per press. |
 
 Related: TextInput, Slider.

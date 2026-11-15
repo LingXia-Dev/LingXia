@@ -51,6 +51,9 @@ function parse(text: string): number | null | undefined {
   return Number.isFinite(number) ? number : undefined;
 }
 
+// How many steps Page Up and Page Down take.
+const pageSteps = 10;
+
 const decimalsOf = (value: number) => (String(value).split('.')[1] ?? '').length;
 
 /** A number typed or nudged by steps, kept between a minimum and a maximum. */
@@ -68,20 +71,33 @@ export function NumberInput(props: NumberInputProps) {
   const shown = typedFor.value === current && typed.value !== '' ? typed.value : current === null ? '' : String(current);
   const id = useId();
   const [prefixId, suffixId] = [`${id}-prefix`, `${id}-suffix`];
-  const clamp = (value: number) => Math.min(max ?? value, Math.max(min ?? value, value));
+  const clamp = (value: number) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, value));
   const input = (text: string) => {
     const parsed = parse(text);
     typed.set(text);
     typedFor.set(parsed === undefined ? current : parsed);
     if (parsed !== undefined && parsed !== current) set(parsed);
   };
-  const nudge = (direction: 1 | -1) => {
+  const nudge = (steps: number) => {
     // From an empty field the first press lands on the minimum, or on zero.
     // Rounded to the decimals in play, so a tenth added three times is 0.3 and a typed 4.5 keeps its half.
-    const next = current === null ? clamp(min ?? 0) : clamp(Number((current + direction * step).toFixed(Math.max(decimalsOf(step), decimalsOf(current)))));
+    const next = current === null ? clamp(min ?? 0) : clamp(Number((current + steps * step).toFixed(Math.max(decimalsOf(step), decimalsOf(current)))));
     typed.set('');
-    set(next);
+    if (next !== current) set(next);
   };
+  const jump = (value: number) => { typed.set(''); if (value !== current) set(value); };
+  // Leaving the field settles it: a typed number outside the range moves to its nearest end, and the text becomes the value's own.
+  const settle = () => {
+    typed.set('');
+    if (current !== null && clamp(current) !== current) set(clamp(current));
+  };
+  // Up and Down step as the buttons do, Page Up and Page Down by ten steps; Home and End go to an end the range has.
+  const keys = {
+    ArrowUp: () => nudge(1), ArrowDown: () => nudge(-1), PageUp: () => nudge(pageSteps), PageDown: () => nudge(-pageSteps),
+    ...(min !== undefined ? { Home: () => jump(min) } : {}),
+    ...(max !== undefined ? { End: () => jump(max) } : {}),
+  };
+  const spoken = current === null ? undefined : [prefix, String(current), suffix].filter(part => part !== undefined).join(' ');
   return (
     <Field
       label={label}
@@ -102,12 +118,20 @@ export function NumberInput(props: NumberInputProps) {
           <input
             value={shown}
             onInput={input}
+            onBlur={settle}
+            onKeyDown={isDisabled ? undefined : keys}
+            role="spinbutton"
+            aria-valuenow={current ?? undefined}
+            aria-valuemin={min}
+            aria-valuemax={max}
+            aria-valuetext={spoken}
             type="number"
             min={min}
             max={max}
             step={step}
             aria-label={control['aria-label']}
-            aria-describedby={describedBy(prefix !== undefined && prefixId, suffix !== undefined && suffixId, control['aria-describedby'])}
+            // With a number in it the field's value is read with its unit; empty, the unit is part of the description.
+            aria-describedby={describedBy(spoken === undefined && prefix !== undefined && prefixId, spoken === undefined && suffix !== undefined && suffixId, control['aria-describedby'])}
             aria-invalid={control['aria-invalid']}
             aria-required={control['aria-required']}
             placeholder={placeholder}

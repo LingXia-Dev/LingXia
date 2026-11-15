@@ -60,7 +60,7 @@ test('Weight: steps of a tenth stay exact, and the unit is read with the descrip
   const screen = await renderExample('NumberInput/NumberInput', 'Weight');
   for (let press = 0; press < 3; press += 1) screen.press(screen.getByTestId('weight-increment'));
   assert.equal(value(screen, 'weight'), '71.8', 'no 71.80000000000001');
-  assert.deepEqual(described(screen, screen.getByTestId('weight')), ['kg']);
+  assert.equal(screen.getByTestId('weight').props.ariaValueText, '71.8 kg', 'the unit is read with the value');
   assert.equal(textOf(screen.getByTestId('weight').parent).includes('kg'), true);
 });
 
@@ -83,4 +83,40 @@ test('states: the sizes; an error marks the edge and is read; disabled turns off
   assert.deepEqual(['disabled-decrement', 'disabled-increment'].map(id => enabled(disabled.getByTestId(id))), [false, false]);
   const atMinimum = await renderExample('NumberInput/NumberInput', 'StateAtMinimum');
   assert.deepEqual(['at-minimum-decrement', 'at-minimum-increment'].map(id => enabled(atMinimum.getByTestId(id))), [false, true]);
+});
+
+test('Guests: Up and Down step from the editor, Page keys by ten, Home and End go to the ends of the range', async () => {
+  const screen = await renderExample('NumberInput/NumberInput', 'Guests');
+  const field = () => screen.getByTestId('guests');
+  const press = key => screen.key(field(), key);
+  press('ArrowUp');
+  assert.equal(value(screen, 'guests'), '3');
+  press('ArrowDown');
+  press('ArrowDown');
+  press('ArrowDown');
+  assert.equal(value(screen, 'guests'), '1', 'it stops at the minimum');
+  press('PageUp');
+  assert.equal(value(screen, 'guests'), '11');
+  press('PageUp');
+  assert.equal(value(screen, 'guests'), '12', 'and at the maximum');
+  press('Home');
+  assert.equal(value(screen, 'guests'), '1');
+  press('End');
+  assert.equal(value(screen, 'guests'), '12');
+});
+
+test('Weight: a spin button whose value is read with its unit; leaving the field settles it', async () => {
+  const screen = await renderExample('NumberInput/NumberInput', 'Weight');
+  const field = () => screen.getByTestId('weight');
+  assert.equal(field().props.role, 'spinbutton');
+  assert.deepEqual([field().props.ariaValueNow, field().props.ariaValueMin, field().props.ariaValueMax, field().props.ariaValueText], [71.5, 0, undefined, '71.5 kg']);
+  assert.deepEqual(described(screen, field()), [], 'the unit is in the value, not read twice');
+  screen.key(field(), 'ArrowUp');
+  assert.equal(field().props.ariaValueText, '71.6 kg');
+  screen.type(field(), '-4');
+  assert.equal(value(screen, 'weight'), '-4', 'while typing the number is the person\'s');
+  screen.blur(field());
+  assert.equal(value(screen, 'weight'), '0', 'below the minimum it settles on the minimum');
+  screen.type(field(), '');
+  assert.deepEqual(described(screen, field()), ['kg'], 'empty, the unit is read as the description');
 });
