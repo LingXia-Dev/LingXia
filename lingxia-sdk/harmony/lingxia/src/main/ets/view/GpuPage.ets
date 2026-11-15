@@ -53,6 +53,10 @@ export struct GpuPage {
   /** This page's own window listeners: `off` without them drops every page's on the window. */
   private onAvoidArea: ((options: window.AvoidAreaOptions) => void) | null = null;
   private onWindowVisible: ((visible: boolean) => void) | null = null;
+  private onKeyboardShown: ((info: window.KeyboardInfo) => void) | null = null;
+  private onKeyboardHidden: ((info: window.KeyboardInfo) => void) | null = null;
+  /** The top of the keyboard panel on screen, device pixels; `null` while it is hidden. */
+  private keyboardTop: number | null = null;
   /** Set once the page goes, so a window lookup still in flight subscribes nothing. */
   private gone: boolean = false;
   /** The newest system configuration (font size, appearance) and the subscription that brings it. */
@@ -101,10 +105,30 @@ export struct GpuPage {
         hilog.info(LOG_DOMAIN, LOG_TAG, `gpu window visible token=${this.page.token} visible=${visible}`);
         gpuPageWindowVisible(this.page.token, visible);
       };
+      // Both fire again when the panel changes height: a candidate row, another input method.
+      const onKeyboardShown = (info: window.KeyboardInfo): void => {
+        this.keyboardTop = info.endRect.height > 0 ? info.endRect.top : null;
+        hilog.info(LOG_DOMAIN, LOG_TAG,
+          `gpu keyboard panel token=${this.page.token} top=${info.endRect.top} height=${info.endRect.height}`);
+        this.remeasure();
+      };
+      const onKeyboardHidden = (_info: window.KeyboardInfo): void => {
+        this.keyboardTop = null;
+        this.remeasure();
+      };
       this.onAvoidArea = onAvoidArea;
       this.onWindowVisible = onWindowVisible;
+      this.onKeyboardShown = onKeyboardShown;
+      this.onKeyboardHidden = onKeyboardHidden;
       win.on('avoidAreaChange', onAvoidArea);
       win.on('windowVisibilityChange', onWindowVisible);
+      try {
+        win.on('keyboardWillShow', onKeyboardShown);
+        win.on('keyboardDidShow', onKeyboardShown);
+        win.on('keyboardWillHide', onKeyboardHidden);
+      } catch (_) {
+        // A device without these events keeps the avoid area alone.
+      }
       this.remeasure();
     });
   }
@@ -133,6 +157,17 @@ export struct GpuPage {
     if (win !== null && onWindowVisible !== null) {
       win.off('windowVisibilityChange', onWindowVisible);
     }
+    if (win !== null && this.onKeyboardShown !== null && this.onKeyboardHidden !== null) {
+      try {
+        win.off('keyboardWillShow', this.onKeyboardShown);
+        win.off('keyboardDidShow', this.onKeyboardShown);
+        win.off('keyboardWillHide', this.onKeyboardHidden);
+      } catch (_) {
+        // Never subscribed on this device.
+      }
+    }
+    this.onKeyboardShown = null;
+    this.onKeyboardHidden = null;
     this.onAvoidArea = null;
     this.onWindowVisible = null;
     this.win = null;
@@ -153,7 +188,8 @@ export struct GpuPage {
       return;
     }
     const context = Lingxia.context as common.UIAbilityContext;
-    const facts = sampleFacts(context, this.win, this.rect, this.chromeInsets, getDisplayLanguage(), this.config);
+    const facts = sampleFacts(context, this.win, this.rect, this.chromeInsets, getDisplayLanguage(), this.config,
+      this.keyboardTop);
     gpuPageMeasured(this.page.token, JSON.stringify(facts), this.rect.x, this.rect.y);
   }
 

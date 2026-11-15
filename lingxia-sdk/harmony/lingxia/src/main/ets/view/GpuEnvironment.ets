@@ -54,7 +54,7 @@ function larger(a: number[], b: number[]): number[] {
 
 /** Samples the facts for a page at `rect` in `win`, with the host bars covering `chrome`. */
 export function sampleFacts(context: common.UIAbilityContext, win: window.Window, rect: GpuRect,
-  chrome: number[], locale: string, latest: Configuration | null = null): GpuFacts {
+  chrome: number[], locale: string, latest: Configuration | null = null, panelTop: number | null = null): GpuFacts {
   const facts = new GpuFacts();
   const screen = display.getDefaultDisplaySync();
   facts.width = Math.round(rect.width);
@@ -70,7 +70,11 @@ export function sampleFacts(context: common.UIAbilityContext, win: window.Window
   const indicator = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
   facts.system_insets = larger(larger(overlap(system, rect), overlap(cutout, rect)), overlap(indicator, rect));
   facts.chrome_insets = chrome;
-  facts.keyboard = overlap(win.getWindowAvoidArea(window.AvoidAreaType.TYPE_KEYBOARD), rect)[2];
+  // The avoid area leaves out the row an input method draws above its keys; the keyboard
+  // panel's own rect does not, so the page clears whichever reaches higher.
+  const avoided = overlap(win.getWindowAvoidArea(window.AvoidAreaType.TYPE_KEYBOARD), rect)[2];
+  const panel = panelTop === null ? 0 : Math.max(0, rect.y + rect.height - panelTop);
+  facts.keyboard = Math.max(avoided, panel);
   // HarmonyOS scales text linearly up to its configured maximum.
   const scale = config.fontSizeScale ?? 1;
   facts.text_scale = scale === 1 ? null : [[0, 0], [16384, 16384 * scale]];
