@@ -167,6 +167,16 @@ export interface Video {
 }
 export declare function useVideo(name: string): Video;
 
+/**
+ * Where a pointer is over an `onPointer` element: points from the top-left of its content box
+ * (`width` x `height`), not clamped to it and not mirrored in a right-to-left layout. `hover` and
+ * `leave` come from a mouse with no button down; `cancel` when a scroll takes the gesture.
+ */
+export interface PointerEvent {
+  readonly phase: "down" | "move" | "up" | "cancel" | "hover" | "leave";
+  readonly x: number; readonly y: number; readonly width: number; readonly height: number;
+  readonly pointer: "touch" | "mouse" | "pen";
+}
 /** An element's laid-out content box, inside its padding and border, in points. */
 export interface BoxSize { readonly width: number; readonly height: number }
 /** The size of the element that takes this handle as `box`; `null` until its first layout, then one render behind a change. */

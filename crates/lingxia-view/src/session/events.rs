@@ -313,6 +313,27 @@ impl ViewSession {
         }
     }
 
+    /// `onPointer` for `identity`, through the element's current callback as a re-render
+    /// renumbers them; the frame's handle only if the element is gone.
+    pub fn pointer_event(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        handle: u64,
+        identity: &str,
+        payload: &str,
+    ) -> Result<bool, String> {
+        let current = self
+            .retained
+            .as_ref()
+            .and_then(|retained| retained.nodes.iter().find(|node| node.identity == identity))
+            .map(|node| node.on_pointer_event);
+        match current {
+            Some(Some((handle, _))) => self.text_event(self.generation, handle, payload),
+            Some(None) => Ok(false),
+            None => self.text_event(generation, handle, payload),
+        }
+    }
+
     /// Resolve and dispatch selection against committed geometry and callback identity.
     pub fn select_plot(
         &mut self,

@@ -40,6 +40,8 @@ Children: any elements and text. Renders as `column`.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onPointer` | `(event: PointerEvent) => void` |  |
+| `pointerAxis` | `"x" \| "y" \| "both"` |  |
 | `onLayout` | `(box: BoxSize) => void` |  |
 | `box` | `Box` |  |
 | `aria-label` | `string` |  |
@@ -80,6 +82,8 @@ Children: text, or noninteractive content elements (a composed control).
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onPointer` | `(event: PointerEvent) => void` |  |
+| `pointerAxis` | `"x" \| "y" \| "both"` |  |
 | `onClick` | `() => void` |  |
 | `disabled` | `boolean` |  |
 | `aria-label` | `string` |  |
@@ -275,6 +279,8 @@ Children: none.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onPointer` | `(event: PointerEvent) => void` |  |
+| `pointerAxis` | `"x" \| "y" \| "both"` |  |
 | `onLayout` | `(box: BoxSize) => void` |  |
 | `box` | `Box` |  |
 | `paths` | `ReadonlyArray<VectorPath>` | yes |

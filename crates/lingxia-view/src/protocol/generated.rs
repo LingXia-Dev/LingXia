@@ -279,6 +279,8 @@ pub mod field {
     pub const SIZE_TEXT: usize = 242;
     pub const ALIGN_SAFE: usize = 243;
     pub const ON_LAYOUT: usize = 244;
+    pub const ON_POINTER: usize = 245;
+    pub const POINTER_AXIS: usize = 246;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video"];
@@ -530,6 +532,8 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("sizeText", "input-text"),
     ("alignSafe", "align-safe"),
     ("onLayout", "handle"),
+    ("onPointer", "handle"),
+    ("pointerAxis", "pointer-axis"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -572,6 +576,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "transition-property" => Some(&["opacity", "transform", "bg", "fg", "border", "shadow", "layout"]),
         "user-select" => Some(&["none", "text", "all"]),
         "touch-target" => Some(&["auto", "none"]),
+        "pointer-axis" => Some(&["x", "y", "both"]),
         _ => None,
     }
 }
@@ -979,4 +984,6 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::TEXT, tag::VECTOR, tag::PLOT, tag::SCROLL]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON, tag::VECTOR]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON, tag::VECTOR]), parent: None },
 ];

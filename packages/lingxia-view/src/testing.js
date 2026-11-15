@@ -156,6 +156,7 @@ function screen(host, view) {
     image: (node, outcome) => fire(node, outcome === 'error' ? 'onImageError' : 'onImageLoad'),
     snap: (node, index) => fire(node, 'onSnapChange', String(index)),
     layout: (node, { width, height }) => json(node, 'onLayout', { width, height }),
+    pointer: (node, { phase, x, y, width, height, pointer = 'touch' }) => json(node, 'onPointer', { phase, x, y, width, height, pointer }),
     drag: (node, event) => json(node, 'onDragEvent', event),
     video: (node, status, events = []) => json(node, 'onVideoEvent', { status, events }),
     /** The Back or Escape a device sends: closes the topmost overlay; false when none was open. */

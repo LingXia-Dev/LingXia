@@ -136,6 +136,16 @@ pub enum Dispatch {
         identity: String,
         pressed: bool,
     },
+    /// `onPointer`: where a pointer is over an element.
+    PointerEvent {
+        commit: CommitTicket,
+        handle: u64,
+        /// The element, to find its callback in a newer View.
+        identity: String,
+        payload: String,
+        /// A `move` or `hover`: only the latest position matters.
+        latest: bool,
+    },
     /// A fine pointer crossed an element's box: its `onPointerEnter` or `onPointerLeave`.
     PointerCrossing {
         commit: CommitTicket,

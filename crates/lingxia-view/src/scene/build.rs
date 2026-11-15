@@ -1320,6 +1320,16 @@ impl Renderer {
                         .and_then(|(_, value)| value.as_u64())
                         .filter(|handle| *handle != 0)
                 }),
+                on_pointer_event: record
+                    .fields
+                    .iter()
+                    .find(|(field, _)| *field == field::ON_POINTER)
+                    .and_then(|(_, value)| value.as_u64())
+                    .filter(|handle| *handle != 0)
+                    .map(|handle| {
+                        let axis = record.string(field::POINTER_AXIS);
+                        (handle, [axis != Some("y"), axis != Some("x")])
+                    }),
                 on_layout: record
                     .fields
                     .iter()

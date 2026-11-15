@@ -17,11 +17,13 @@ test("swipe, drag and fling send real paths at page points and record their deli
     await t.app.view.swipe({ from: [10, 500], to: [10, 100], durationMs: 400 });
     await t.app.view.drag(t.app.view.testId("card"), { dx: 0, dy: 120 });
     await t.app.view.fling("up", 4000);
+    await t.app.view.scrub(t.app.view.testId("card"), { from: [5, 20], to: [45, 20], durationMs: 300 });
   });
   installFakeHost(world);
   const report = await run();
   assert.equal(report.cases[0].status, "passed", JSON.stringify(report.cases[0].error));
-  const [swipe, drag, fling] = world.gestureCalls;
+  const [swipe, drag, fling, scrub] = world.gestureCalls;
+  assert.deepEqual(scrub.shape, { kind: "line", from: [105, 220], to: [145, 220], durationMs: 300, holdMs: 100 });
   assert.deepEqual(swipe.shape, { kind: "line", from: [10, 500], to: [10, 100], durationMs: 400, holdMs: 100 });
   assert.equal(swipe.window, undefined);
   assert.deepEqual(drag.shape.from, [125, 220]);
@@ -29,7 +31,7 @@ test("swipe, drag and fling send real paths at page points and record their deli
   assert.equal(drag.input, "touch");
   assert.deepEqual(fling.shape, { kind: "fling", from: [200, 600], direction: "up", velocity: 4000 });
   assert.deepEqual(report.cases[0].gestures.map((g) => [g.api, g.delivered]),
-    [["swipe", "window"], ["drag", "window"], ["fling", "window"]]);
+    [["swipe", "window"], ["drag", "window"], ["fling", "window"], ["scrub", "window"]]);
 });
 
 test("a gesture at a GPU match outside the viewport scrolls it on screen first", async () => {

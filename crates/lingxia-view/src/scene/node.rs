@@ -143,6 +143,10 @@ pub struct NodeSnapshot {
     /// `onPointerEnter` and `onPointerLeave` handles: a fine pointer crossing the box.
     #[serde(skip)]
     pub on_pointer: [Option<u64>; 2],
+    /// `onPointer`'s handle, and whether the element keeps horizontal and vertical movement
+    /// from scrolls.
+    #[serde(skip)]
+    pub on_pointer_event: Option<(u64, [bool; 2])>,
     /// `onLayout`'s handle: the element reports its content box.
     #[serde(skip)]
     pub on_layout: Option<u64>,

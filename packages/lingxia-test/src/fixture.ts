@@ -1530,6 +1530,7 @@ export class LiveFixture implements Fixture {
       },
       swipe: (options) => gestures.swipe(options),
       drag: (locator, options) => gestures.drag(locator, options),
+      scrub: (locator, options) => gestures.scrub(locator, options),
       fling: (direction, velocity, options) => gestures.fling(direction, velocity, options),
       pullToRefresh: (options) => gestures.pullToRefresh(options),
       touch: (at, options) => gestures.touch(at, options),

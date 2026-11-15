@@ -27,6 +27,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         interest_for: None,
         on_pointer: [None; 2],
         on_layout: None,
+        on_pointer_event: None,
         content_box: [0.0, 0.0, bounds[2], bounds[3]],
         on_press: None,
         aria_actions: Vec::new(),

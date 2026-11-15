@@ -522,6 +522,11 @@ export interface TestView {
   swipe(options: SwipeOptions): Promise<GestureTrace>;
   /** Press on the locator's center and move it by `dx`, `dy`. */
   drag(locator: Locator, options: DragOptions): Promise<GestureTrace>;
+  /**
+   * Press at `from` and move to `to`, both in points from the top-left of the locator's bounding box:
+   * what an `onPointer` element reports when it has no padding or border.
+   */
+  scrub(locator: Locator, options: ScrubOptions): Promise<GestureTrace>;
   /** Release while moving at `velocity` px/s; `direction` is the finger's. */
   fling(direction: GestureDirection, velocity?: number, options?: FlingOptions): Promise<GestureTrace>;
   /** Pull down from near the top, hold, release; samples the refresh indicator throughout. */
@@ -565,6 +570,16 @@ export interface SwipeOptions {
 export interface DragOptions {
   dx: number;
   dy: number;
+  /** Default 500 ms. */
+  durationMs?: number;
+  /** Default 100 ms. */
+  hold?: number;
+  input?: GestureInput;
+}
+
+export interface ScrubOptions {
+  from: readonly [number, number];
+  to: readonly [number, number];
   /** Default 500 ms. */
   durationMs?: number;
   /** Default 100 ms. */

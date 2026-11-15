@@ -16,6 +16,7 @@ use std::sync::Arc;
 mod accessibility;
 mod automation;
 mod crossing;
+mod scrub;
 pub use automation::AutomationAct;
 mod effects;
 mod keyboard;
@@ -143,6 +144,10 @@ pub struct ViewInteraction {
     moved: bool,
     /// Elements with a crossing callback the fine pointer is over, outermost first.
     pointer_over: Vec<crossing::Over>,
+    /// The `onPointer` element a pointer went down on.
+    scrub: Option<scrub::Scrub>,
+    /// The `onPointer` element the fine pointer is over, and where.
+    hovering: Option<(String, [f32; 2])>,
 }
 
 /// What a presentation produced besides pixels.
@@ -404,6 +409,8 @@ impl ViewInteraction {
         self.dispatches.clear();
         self.activation = None;
         self.pointer_over.clear();
+        self.scrub = None;
+        self.hovering = None;
         effects.push(Effect::ClearFocusRing);
         effects
     }
@@ -415,6 +422,9 @@ impl ViewInteraction {
         self.activation = None;
         let mut effects = self.cancel_press();
         effects.push(Effect::StopFling);
+        if self.scrub_cancel() {
+            effects.push(Effect::Dispatch);
+        }
         self.gesture = Gesture::default();
         if self.hover.take().is_some() || self.exploring.take().is_some() {
             effects.extend(self.hover_to(None));

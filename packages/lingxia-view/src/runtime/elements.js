@@ -69,6 +69,7 @@ export const handlesIssued = () => nextHandle;
 export const skipHandle = () => { nextHandle++; };
 const pointerCrossing = ['onPointerEnter', 'onPointerLeave'];
 const boxTags = new Set(['view', 'text', 'vector', 'plot', 'scroll']);
+const pointerTags = new Set(['view', 'button', 'vector']), pointerAxes = new Set(['x', 'y', 'both']);
 const callbackOf = (callback, kind = 'void', isolated = false, press = undefined) => ({ callback, kind, isolated, press });
 
 const dataProp = /^data-[a-z][a-z0-9-]*$/;
@@ -438,6 +439,17 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     if (tag !== 'view' && tag !== 'button') throw Error(`UI_PROP: ${key} belongs to a <view> or <button>`);
     if (typeof props[key] !== 'function') throw Error(`UI_PROP: ${key} takes a function`);
     on(key, props[key]);
+  }
+  // Where a pointer is over the element; it observes, so a button inside still gets its click.
+  if (props.onPointer !== undefined || props.pointerAxis !== undefined) {
+    if (!pointerTags.has(tag)) throw Error('UI_PROP: onPointer belongs to a <view>, <button> or <vector>');
+    const { onPointer, pointerAxis = 'both' } = props;
+    if (typeof onPointer !== 'function') throw Error('UI_PROP: onPointer takes a function; pointerAxis goes with it');
+    if (!pointerAxes.has(pointerAxis)) throw Error('UI_PROP: pointerAxis must be "x", "y" or "both"');
+    if (!dropped('onPointer')) {
+      on('onPointer', payload => onPointer(Object.freeze(JSON.parse(payload))), 'text');
+      if (pointerAxis !== 'both') wire('pointerAxis', pointerAxis);
+    }
   }
   // The element's content box once laid out, and after each change; an older host never reports one.
   if (props.onLayout !== undefined || props.box !== undefined) {

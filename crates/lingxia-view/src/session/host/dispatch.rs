@@ -4,10 +4,18 @@ use crate::PlotSelection;
 use crate::interaction::view::{Dispatch, Effect};
 use crate::platform::PlatformAdapter;
 use crate::session::ViewSession;
-use crate::session::lifecycle::PageTicket;
+use crate::session::lifecycle::{CommitTicket, PageTicket};
 use std::sync::Arc;
 
 type Activation = Box<dyn FnOnce(&mut ViewSession) -> Result<bool, String> + Send>;
+
+/// An `onPointer` call for the View.
+pub(super) struct PointerReport {
+    commit: CommitTicket,
+    handle: u64,
+    identity: String,
+    payload: String,
+}
 
 /// What one queued input did: the clicks it ran and whether the View changed.
 type Ran = Option<Result<(Vec<crate::session::ClickRecord>, bool), String>>;
@@ -138,7 +146,12 @@ impl<A: PlatformAdapter> Inner<A> {
 
     /// A fine pointer at a logical point, or gone: elements it crossed hear enter or leave.
     pub(super) fn pointer_crossing(self: &Arc<Self>, point: Option<[f32; 2]>) {
-        let effects = self.main().interaction.pointer_crossing(point);
+        let effects = {
+            let mut main = self.main();
+            let mut effects = main.interaction.pointer_crossing(point);
+            effects.extend(main.interaction.pointer_hover(point));
+            effects
+        };
         self.deliver(effects);
     }
 
@@ -353,6 +366,22 @@ impl<A: PlatformAdapter> Inner<A> {
                         session.slider_press(commit, handle, &identity, pressed)
                     }),
                 ),
+                Dispatch::PointerEvent {
+                    commit,
+                    handle,
+                    identity,
+                    payload,
+                    latest,
+                } => self.pointer_report(
+                    page,
+                    PointerReport {
+                        commit,
+                        handle,
+                        identity,
+                        payload,
+                    },
+                    latest,
+                ),
                 Dispatch::PointerCrossing {
                     commit,
                     handle,
@@ -454,6 +483,51 @@ impl<A: PlatformAdapter> Inner<A> {
                     }
                 }
                 inner.activated(page, announce, result, rendered)
+            }),
+        );
+    }
+
+    /// `onPointer`. One `move` or `hover` is with the View at a time: a newer position replaces
+    /// the one waiting, so a slow page hears the latest and never a backlog. Any other phase
+    /// drops the waiting one, since it carries the position itself.
+    fn pointer_report(self: &Arc<Self>, page: PageTicket, report: PointerReport, latest: bool) {
+        {
+            let mut main = self.main();
+            if !latest {
+                main.pointer_held = None;
+            } else if main.pointer_busy {
+                main.pointer_held = Some(report);
+                return;
+            } else {
+                main.pointer_busy = true;
+            }
+            main.activating += 1;
+        }
+        let PointerReport {
+            commit,
+            handle,
+            identity,
+            payload,
+        } = report;
+        self.queue_input(
+            page,
+            Box::new(move |session| session.pointer_event(commit, handle, &identity, &payload)),
+            Box::new(move |inner, result, rendered| {
+                let held = {
+                    let mut main = inner.main();
+                    main.activating -= 1;
+                    if latest {
+                        main.pointer_busy = false;
+                        main.pointer_held.take()
+                    } else {
+                        None
+                    }
+                };
+                let result = result.map(|result| result.map(|(_, changed)| changed));
+                inner.activated(page, false, result, rendered);
+                if let Some(report) = held {
+                    inner.pointer_report(page, report, true);
+                }
             }),
         );
     }

@@ -57,6 +57,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - The build reports every problem with `file:line:col`, split into unknown
   utilities, ones the renderer cannot draw, and ones the element ignores.
 - `useLocal(value)` state is keyed by call order and component identity; `useLocal(name, value)` by name (survives reorders and hot edits).
+- `onPointer={e => …}` on `view`, `button`, `vector` reports a pointer over the element: `e.phase` (`down`/`move`/`up`/`cancel`, and `hover`/`leave` for a mouse), `e.x`/`e.y` in points from its content box's top-left (not clamped), `e.width`/`e.height`. It observes: buttons inside still click. `pointerAxis="x"` leaves vertical movement to the page's scroll (then `cancel`).
 - `const box = useBox(name)` + `<view box={box}>` reads the element's laid-out content size: `box.value` is `{ width, height }` in points, `null` until the first layout and one render behind a change (`onLayout={size => …}` is the callback form; on `view`, `text`, `vector`, `plot`, `scroll`).
 - `useRequest`, `useStream(name, action, { onData? })`,
   `useChannel(name, action, { params, onData? })` take `view.actions` references.

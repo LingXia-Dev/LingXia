@@ -369,6 +369,9 @@ struct Main<F> {
     frame_measures: Vec<(u64, u64)>,
     /// The frame just prepared changed a box some `onLayout` reads.
     boxes_due: bool,
+    /// An `onPointer` move or hover is with the View; the newest one after it waits here.
+    pointer_busy: bool,
+    pointer_held: Option<dispatch::PointerReport>,
     /// Queued activations whose result has not come back; automation waits for them.
     activating: u32,
     /// Automation `action`/`data` calls by id; `Some` once answered.
@@ -594,6 +597,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     chrome_generation: 0,
                     frame_measures: Vec::new(),
                     boxes_due: false,
+                    pointer_busy: false,
+                    pointer_held: None,
                     activating: 0,
                     automation_calls: Default::default(),
                     settle_after: Default::default(),

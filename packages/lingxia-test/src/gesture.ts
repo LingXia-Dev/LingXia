@@ -12,6 +12,7 @@ import { ActionDeadline } from "./deadline.js";
 import { PageLocator, sleep } from "./locator.js";
 import type {
   DragOptions,
+  ScrubOptions,
   FlingOptions,
   GestureRecord,
   GestureTarget,
@@ -54,7 +55,8 @@ function checkPoint(value: unknown, name: string): Point {
 }
 
 /** The center of a locator's unique, on-screen match. */
-async function centerOf(locator: Locator, name: string): Promise<Point> {
+/** The centre of the part of `locator` a finger reaches, or with `corner` the top-left of its box. */
+async function centerOf(locator: Locator, name: string, corner = false): Promise<Point> {
   if (!(locator instanceof PageLocator)) throw new TypeError(`${name} must be [x, y] or a locator from this view`);
   const until = Date.now() + POINT_TIMEOUT_MS;
   let reason = "not attached";
@@ -64,7 +66,7 @@ async function centerOf(locator: Locator, name: string): Promise<Point> {
       // A GPU page names the part a finger reaches; aim at its centre once it is big enough to hit.
       const area = match.visibleRect === undefined ? match.rect : match.visibleRect;
       if (area && area.width >= Math.min(MIN_TARGET, match.rect.width) && area.height >= Math.min(MIN_TARGET, match.rect.height)) {
-        return [area.left + area.width / 2, area.top + area.height / 2];
+        return corner ? [match.rect.left, match.rect.top] : [area.left + area.width / 2, area.top + area.height / 2];
       }
     }
     reason = match.kind === "unique" ? "element is outside the viewport" : locator.missText(match);
@@ -129,6 +131,21 @@ export class Gestures {
       return trace(await this.perform("drag", {
         shape: { kind: "line", from, to, durationMs: positive(options.durationMs, 500, "durationMs"), holdMs: positive(options.hold, 100, "hold") },
         // A drag is a pressed pointer: a finger, or the mouse on a desktop.
+        input: options.input ?? (this.scope.driver().inputs().includes("touch") ? "touch" : "mouse"),
+      }));
+    });
+  }
+
+  scrub(locator: Locator, options: ScrubOptions): Promise<GestureTrace> {
+    return this.scope.act("gesture.scrub", locator instanceof PageLocator ? locator.describe() : "", async () => {
+      const from = checkPoint(options.from, "scrub from");
+      const to = checkPoint(options.to, "scrub to");
+      const [left, top] = await centerOf(locator, "scrub", true);
+      return trace(await this.perform("scrub", {
+        shape: {
+          kind: "line", from: [left + from[0], top + from[1]], to: [left + to[0], top + to[1]],
+          durationMs: positive(options.durationMs, 500, "durationMs"), holdMs: positive(options.hold, 100, "hold"),
+        },
         input: options.input ?? (this.scope.driver().inputs().includes("touch") ? "touch" : "mouse"),
       }));
     });

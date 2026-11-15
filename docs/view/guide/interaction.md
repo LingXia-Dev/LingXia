@@ -99,6 +99,28 @@ that went away cancels the press.
 
 `hover:` applies only when `env.pointer` is `fine` (a mouse or trackpad). Touch devices never hover.
 
+## Where the pointer is
+
+`onPointer={event => …}` on a `view`, `button` or `vector` reports a pointer over the element, for
+scrubbing a chart or placing a tooltip. `event.x` and `event.y` are points from the top-left of the
+element's content box (inside its padding and border), not clamped to it and not mirrored in a
+right-to-left layout; `event.width` and `event.height` are that box, so `x / width` is a fraction.
+
+| `phase` | When |
+| --- | --- |
+| `down` | a finger or mouse button goes down on the element, at once |
+| `move` | it moves; a page slower than the pointer hears the latest position, never a backlog |
+| `up` | it lifts |
+| `cancel` | a scroll or a drag element took the gesture, or the page lost it |
+| `hover`, `leave` | a mouse moves over the element with no button down, then leaves it |
+
+The handler observes: a button inside still gets its click, and the element still hears that press.
+`pointerAxis="x"` keeps horizontal movement and leaves vertical movement to the page's scroll, as
+`touch-action: pan-y` does; `"y"` is the reverse and `"both"` (the default) keeps the whole gesture.
+In a Node test, `screen.pointer(node, { phase, x, y, width, height })` delivers an event; a device
+spec drives one with `t.app.view.scrub(locator, { from, to })`, whose points are from the
+element's bounding box (the same point when the element has no padding or border).
+
 ## Gestures
 
 The host recognizes the gestures; the View receives their outcome:

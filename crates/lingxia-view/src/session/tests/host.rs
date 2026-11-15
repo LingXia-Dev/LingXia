@@ -5225,6 +5225,8 @@ fn close_request_case(reduced: bool, blur: bool) {
 mod box_reading;
 #[path = "orphan_overlays.rs"]
 mod orphan_overlays;
+#[path = "pointer_events.rs"]
+mod pointer_events;
 
 #[test]
 fn escape_pressed_on_any_match_closes_an_open_light_dismiss_popover() {
