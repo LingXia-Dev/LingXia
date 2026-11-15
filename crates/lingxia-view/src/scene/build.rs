@@ -1442,7 +1442,10 @@ impl Renderer {
                     field::STATE_CHECKED,
                 ]
                 .map(|id| record.number(id).map(|v| v == 1.0)),
-                progress: (record.string(field::ROLE) == Some("progressbar")).then(|| {
+                // A progressbar's amount, or the value an `onPointer` element steps.
+                progress: (record.string(field::ROLE) == Some("progressbar")
+                    || record.number(field::ON_POINTER).is_some())
+                .then(|| {
                     let value = |id: usize| {
                         record
                             .fields

@@ -38,6 +38,17 @@ test('onPointer and pointerAxis refuse other elements and values', () => {
   assert.throws(page(() => h('view', { onPointer() {}, pointerAxis: 'z' })), /UI_PROP: pointerAxis must be "x", "y" or "both"/);
 });
 
+test('an onPointer element may report the value its handler steps; other elements still may not', () => {
+  reset();
+  const node = byId(render(() => h('page', {}, h('view', { onPointer() {}, 'aria-label': 'Sales', 'aria-valuenow': 2, 'aria-valuemin': 0,
+    'aria-valuemax': 11, 'aria-valuetext': 'March: 42', 'data-testid': 'plot' }))), 'plot');
+  assert.equal(node.props.ariaValueNow, 2);
+  assert.equal(node.props.ariaValueMax, 11);
+  assert.equal(node.props.ariaValueText, 'March: 42');
+  assert.throws(() => prepare(() => h('page', {}, h('view', { 'aria-valuenow': 2 })), { env: {} }),
+    /UI_PROP: aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar" or an onPointer element/);
+});
+
 test('an older host gets neither field', () => {
   reset();
   const previous = globalThis.__lingxiaViewHost;

@@ -16,7 +16,7 @@ Styles each element accepts are in [styles.md](styles.md).
 | `id` | `string` | Unique on the page (`UI_ID`); what `popoverTarget` and `aria-actions` name. Build one with `useId()`. |
 | `role` | `"heading" \| "list" \| "listitem" \| "alert" \| "status" \| "grid" \| "gridcell" \| "listbox" \| "option" \| "menu" \| "menuitem" \| "progressbar" \| "alertdialog" \| "group" \| "tooltip" \| "tablist" \| "tab" \| "tabpanel" \| "radiogroup" \| "radio" \| "toolbar" \| "tree" \| "treeitem" \| "row" \| "menuitemcheckbox" \| "menuitemradio" \| "img"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6; `alertdialog` goes on a `<dialog>` that interrupts. Composites move focus among their items with the arrow keys and take one Tab stop: `tablist` › `tab`, `radiogroup` › `radio`, `toolbar` › any control, `listbox` › `option`, `menu` › `menuitem`/`menuitemcheckbox`/`menuitemradio`, `tree` › `treeitem`. Item roles go on a `<button>`. `img` on a `<view>` or `<text>` with an `aria-label` speaks that label in place of its content. |
 | `headingLevel` | `1 \| 2 \| 3 \| 4 \| 5 \| 6` |  |
-| `"aria-valuenow"` | `number` | A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. |
+| `"aria-valuenow"` | `number` | A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. On an `onPointer` element it is the value arrows and a screen reader step. |
 | `"aria-valuemin"` | `number` |  |
 | `"aria-valuemax"` | `number` |  |
 | `"aria-valuetext"` | `string` |  |

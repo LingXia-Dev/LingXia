@@ -347,6 +347,23 @@ impl ViewInteraction {
                 return (true, Vec::new());
             }
         }
+        // Arrows on its axis step an `onPointer` element that reports a value; Up is more.
+        if let Some(index) = origin
+            && let Some(node) = frame.node(index).filter(|node| frame::steppable(node))
+        {
+            let vertical = node.on_pointer_event.is_some_and(|(_, keeps)| !keeps[0]);
+            let forward = match key {
+                Key::Right if !vertical => Some(true),
+                Key::Left if !vertical => Some(false),
+                Key::Up if vertical => Some(true),
+                Key::Down if vertical => Some(false),
+                _ => None,
+            };
+            if let Some(forward) = forward {
+                let identity = node.identity.to_string();
+                return (true, self.pointer_step(&identity, forward));
+            }
+        }
         // Arrows change a select's choice without opening its picker, as on the Web.
         if matches!(key, Key::Left | Key::Right | Key::Up | Key::Down)
             && let Some(index) = origin

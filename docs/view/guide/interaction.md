@@ -117,6 +117,12 @@ right-to-left layout; `event.width` and `event.height` are that box, so `x / wid
 The handler observes: a button inside still gets its click, and the element still hears that press.
 `pointerAxis="x"` keeps horizontal movement and leaves vertical movement to the page's scroll, as
 `touch-action: pan-y` does; `"y"` is the reverse and `"both"` (the default) keeps the whole gesture.
+Give the element `aria-valuenow` (with `aria-valuemin`, `aria-valuemax` and an `aria-valuetext` that
+reads the point, such as "March: 42") and it becomes a keyboard stop a screen reader can adjust:
+Left and Right (Up and Down with `pointerAxis="y"`) and the reader's increment and decrement call
+the handler with `phase` `increment` or `decrement`, `pointer: "keyboard"` and no position. Move
+your selection there, as a pointer's `x` does.
+
 In a Node test, `screen.pointer(node, { phase, x, y, width, height })` delivers an event; a device
 spec drives one with `t.app.view.scrub(locator, { from, to })`, whose points are from the
 element's bounding box (the same point when the element has no padding or border).

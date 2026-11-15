@@ -182,3 +182,68 @@ fn a_mouse_with_no_button_down_hovers_and_leaves() {
         text(&host, "log")
     );
 }
+
+/// A pad that reports a value 0..4 and steps it from its handler; `at` reads the value.
+fn stepper(axis: &str) -> String {
+    format!(
+        "function render(){{const i=useLocal('i',2),log=useLocal('log','');const on=e=>{{if(e.phase==='increment')i.set(Math.min(4,i.value+1));if(e.phase==='decrement')i.set(Math.max(0,i.value-1));log.set(log.value+e.phase+':'+e.pointer+' ')}};return h('page',{{}},h('view',{{onPointer:on,pointerAxis:'{axis}','data-testid':'pad','aria-label':'Sales','aria-valuenow':i.value,'aria-valuemin':0,'aria-valuemax':4,'aria-valuetext':'Month '+i.value,style:{{width:80,height:60}}}}),h('text',{{'data-testid':'at'}},String(i.value)),h('text',{{'data-testid':'log'}},log.value||'-'))}}"
+    )
+}
+
+#[test]
+fn an_element_with_a_value_is_a_keyboard_stop_that_arrows_and_assistive_input_step() {
+    use crate::interaction::view::Key;
+    let worker = ViewWorker::spawn("test-pointer-step").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = page(&platform, &worker, &stepper("x"), true);
+    let key = |key: Key| {
+        let taken = host.key(key, false, false);
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 2);
+        taken
+    };
+    assert!(key(Key::Tab), "it takes keyboard focus");
+    assert!(key(Key::Right));
+    assert!(key(Key::Right));
+    assert_eq!(text(&host, "at"), "4");
+    assert!(key(Key::Left));
+    assert_eq!(text(&host, "at"), "3");
+    assert_eq!(
+        text(&host, "log"),
+        "increment:keyboard increment:keyboard decrement:keyboard "
+    );
+    // A screen reader's adjust, as automation performs it.
+    let act = |name: &str| {
+        host.automation_request(&serde_json::json!({"op":"act","css":"[data-testid=\"pad\"]","action":{"kind":"action","name":name}}))
+            .unwrap();
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 2);
+    };
+    act("decrement");
+    assert_eq!(text(&host, "at"), "2");
+    act("increment");
+    assert_eq!(text(&host, "at"), "3");
+
+    // On the y axis Up is more.
+    let host = page(&platform, &worker, &stepper("y"), true);
+    let key = |key: Key| {
+        let taken = host.key(key, false, false);
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 2);
+        taken
+    };
+    assert!(key(Key::Tab));
+    assert!(key(Key::Up));
+    assert_eq!(text(&host, "at"), "3");
+    assert!(key(Key::Down));
+    assert_eq!(text(&host, "at"), "2");
+
+    // Without a value the element observes pointers only: no stop.
+    let host = page(&platform, &worker, &pad("both", false), true);
+    host.key(Key::Tab, false, false);
+    platform.settle(&[&host]);
+    host.key(Key::Right, false, false);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 2);
+    assert_eq!(text(&host, "log"), "-", "its handler heard no step");
+}

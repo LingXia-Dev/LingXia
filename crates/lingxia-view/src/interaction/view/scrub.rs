@@ -40,6 +40,17 @@ fn observer(frame: &PresentedFrame, point: [f32; 2]) -> Option<usize> {
 impl ViewInteraction {
     /// Queues `phase` for the element `identity`, if it is still in the frame.
     fn pointer_report(&mut self, identity: &str, phase: &'static str, point: [f32; 2]) -> bool {
+        let pointer = if self.fine_pointer { "mouse" } else { "touch" };
+        self.pointer_report_from(identity, phase, point, pointer)
+    }
+
+    fn pointer_report_from(
+        &mut self,
+        identity: &str,
+        phase: &'static str,
+        point: [f32; 2],
+        pointer: &'static str,
+    ) -> bool {
         let Some(frame) = self.frame.as_ref() else {
             return false;
         };
@@ -50,13 +61,22 @@ impl ViewInteraction {
             return false;
         };
         let [left, top, width, height] = node.content_box;
+        // A step has no position.
+        let [x, y] = if pointer == "keyboard" {
+            [0.0, 0.0]
+        } else {
+            [
+                point[0] - node.bounds[0] - left,
+                point[1] - node.bounds[1] - top,
+            ]
+        };
         let payload = serde_json::json!({
             "phase": phase,
-            "x": point[0] - node.bounds[0] - left,
-            "y": point[1] - node.bounds[1] - top,
+            "x": x,
+            "y": y,
             "width": width,
             "height": height,
-            "pointer": if self.fine_pointer { "mouse" } else { "touch" },
+            "pointer": pointer,
         });
         self.dispatches.push(Dispatch::PointerEvent {
             commit: frame.commit,
@@ -147,6 +167,17 @@ impl ViewInteraction {
             self.hovering = Some((identity, point));
         }
         if reported {
+            vec![Effect::Dispatch]
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// A key or assistive input stepped a value-reporting element: its handler hears
+    /// `increment` or `decrement`.
+    pub(super) fn pointer_step(&mut self, identity: &str, forward: bool) -> Vec<Effect> {
+        let phase = if forward { "increment" } else { "decrement" };
+        if self.pointer_report_from(identity, phase, [0.0; 2], "keyboard") {
             vec![Effect::Dispatch]
         } else {
             Vec::new()

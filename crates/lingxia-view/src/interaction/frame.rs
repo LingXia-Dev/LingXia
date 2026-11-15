@@ -245,6 +245,8 @@ impl Acts {
     pub const INTEREST: Self = Self(1 << 5);
     /// A pointer crossing it is reported; it takes no focus and no hit.
     pub const CROSSING: Self = Self(1 << 6);
+    /// An `onPointer` element with a value steps it from keys and assistive input.
+    pub const STEP: Self = Self(1 << 7);
 
     const FOCUS: Self = Self(
         Self::CONTROL.0
@@ -252,7 +254,8 @@ impl Acts {
             | Self::EDIT.0
             | Self::ADJUST.0
             | Self::DRAG.0
-            | Self::INTEREST.0,
+            | Self::INTEREST.0
+            | Self::STEP.0,
     );
     const HIT: Self = Self(Self::ACTIVATE.0 | Self::EDIT.0 | Self::ADJUST.0 | Self::DRAG.0);
 
@@ -309,6 +312,7 @@ pub fn acts(node: &NodeSnapshot) -> Acts {
         Acts::INTEREST,
     );
     add(node.on_pointer.iter().any(Option::is_some), Acts::CROSSING);
+    add(steppable(node), Acts::STEP);
     acts
 }
 
@@ -322,6 +326,17 @@ pub fn draggable(node: &NodeSnapshot) -> bool {
     node.drag
         .as_ref()
         .is_some_and(|drag| !drag.ghost && drag.points.len() > 1)
+}
+
+/// An `onPointer` element that reports a value (`aria-valuenow`): arrows on its axis and assistive
+/// increment and decrement reach its handler, as a pointer's position does.
+pub fn steppable(node: &NodeSnapshot) -> bool {
+    !node.disabled
+        && node.on_pointer_event.is_some()
+        && node
+            .progress
+            .as_ref()
+            .is_some_and(|value| value.now.is_some())
 }
 
 /// Targets of pointer presses and hover.

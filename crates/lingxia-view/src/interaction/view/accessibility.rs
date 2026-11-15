@@ -200,6 +200,14 @@ impl ViewInteraction {
                     },
                 )
             }
+            AccessibilityAction::ScrollForward | AccessibilityAction::ScrollBackward
+                if frame::steppable(node) =>
+            {
+                let identity = node.identity.to_string();
+                let effects =
+                    self.pointer_step(&identity, action == AccessibilityAction::ScrollForward);
+                (!effects.is_empty(), effects)
+            }
             AccessibilityAction::SetText(text) if frame::editable(node) => {
                 if text.len() > crate::text::input::MAX_TEXT_BYTES {
                     return (false, Vec::new());

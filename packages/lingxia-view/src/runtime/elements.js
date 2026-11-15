@@ -756,7 +756,8 @@ function progressValues(role, props, wire, tag) {
     wire('ariaValueText', text);
     return;
   }
-  if (role !== 'progressbar') throw Error('UI_PROP: aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar"');
+  // An `onPointer` element reports the value its handler steps.
+  if (role !== 'progressbar' && typeof props.onPointer !== 'function') throw Error('UI_PROP: aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar" or an onPointer element');
   const number = (value, name) => {
     if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value))) throw Error(`UI_PROP: ${name} must be a finite number`);
   };

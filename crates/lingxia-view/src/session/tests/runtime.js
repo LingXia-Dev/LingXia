@@ -4018,7 +4018,7 @@
       wire("ariaValueText", text2);
       return;
     }
-    if (role !== "progressbar") throw Error('UI_PROP: aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar"');
+    if (role !== "progressbar" && typeof props.onPointer !== "function") throw Error('UI_PROP: aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar" or an onPointer element');
     const number = (value, name) => {
       if (value !== void 0 && (typeof value !== "number" || !Number.isFinite(value))) throw Error(`UI_PROP: ${name} must be a finite number`);
     };

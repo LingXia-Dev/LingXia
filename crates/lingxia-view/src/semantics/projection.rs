@@ -2,7 +2,8 @@
 //! actions, relations and geometry. Adapters map it to OS APIs and nothing else.
 use super::ids::SemanticIds;
 use crate::interaction::frame::{
-    PresentedFrame, clickable, editable, plot_can_clear, plot_enabled, slider_enabled, visible,
+    PresentedFrame, clickable, editable, plot_can_clear, plot_enabled, slider_enabled, steppable,
+    visible,
 };
 use crate::scene::node::{NodeSnapshot, ScrollAxis};
 use serde::Serialize;
@@ -555,6 +556,19 @@ impl Projection<'_> {
                 actions.push(Action::ScrollBackward);
             }
         }
+        // An `onPointer` element with a value is adjusted in place.
+        if steppable(node)
+            && let Some(value) = &node.progress
+        {
+            focusable = true;
+            let now = value.now.unwrap_or(value.min);
+            if now < value.max {
+                actions.push(Action::ScrollForward);
+            }
+            if now > value.min {
+                actions.push(Action::ScrollBackward);
+            }
+        }
         let mut children = if self.is_container(index) {
             self.contained(index)
         } else {
@@ -690,7 +704,7 @@ impl Projection<'_> {
         let progress = node
             .progress
             .as_ref()
-            .filter(|_| role == Role::ProgressBar)
+            .filter(|_| role == Role::ProgressBar || steppable(node))
             .and_then(|progress| {
                 let now = progress.now?.clamp(progress.min, progress.max);
                 let share = (now - progress.min) / (progress.max - progress.min);

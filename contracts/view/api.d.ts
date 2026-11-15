@@ -25,7 +25,7 @@ export interface Props {
   role?: "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "menuitem" | "progressbar" | "alertdialog" | "group" | "tooltip"
     | "tablist" | "tab" | "tabpanel" | "radiogroup" | "radio" | "toolbar" | "tree" | "treeitem" | "row" | "menuitemcheckbox" | "menuitemradio" | "img";
   headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
-  /** A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. */
+  /** A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. On an `onPointer` element it is the value arrows and a screen reader step. */
   "aria-valuenow"?: number; "aria-valuemin"?: number; "aria-valuemax"?: number; "aria-valuetext"?: string;
   /** Removes the node and its subtree from accessibility. */
   "aria-hidden"?: boolean;
@@ -170,12 +170,14 @@ export declare function useVideo(name: string): Video;
 /**
  * Where a pointer is over an `onPointer` element: points from the top-left of its content box
  * (`width` x `height`), not clamped to it and not mirrored in a right-to-left layout. `hover` and
- * `leave` come from a mouse with no button down; `cancel` when a scroll takes the gesture.
+ * `leave` come from a mouse with no button down; `cancel` when a scroll takes the gesture. An element
+ * that also gives `aria-valuenow` is a keyboard stop: arrows on its axis and a screen reader's
+ * adjust send `increment` or `decrement` with `pointer: "keyboard"` and no position.
  */
 export interface PointerEvent {
-  readonly phase: "down" | "move" | "up" | "cancel" | "hover" | "leave";
+  readonly phase: "down" | "move" | "up" | "cancel" | "hover" | "leave" | "increment" | "decrement";
   readonly x: number; readonly y: number; readonly width: number; readonly height: number;
-  readonly pointer: "touch" | "mouse" | "pen";
+  readonly pointer: "touch" | "mouse" | "pen" | "keyboard";
 }
 /** An element's laid-out content box, inside its padding and border, in points. */
 export interface BoxSize { readonly width: number; readonly height: number }
