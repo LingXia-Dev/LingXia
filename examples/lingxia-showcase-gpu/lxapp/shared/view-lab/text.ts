@@ -3,12 +3,13 @@
 import { resolveDisplayLanguage } from '../display-language';
 
 export type Words = { en: string; zh: string };
-export type GroupId = 'text' | 'gestures' | 'overlays';
+export type GroupId = 'text' | 'gestures' | 'overlays' | 'accessibility';
 
 export const groups: readonly { id: GroupId; page: string; title: Words; line: Words }[] = [
   { id: 'text', page: 'view-text', title: { en: 'Text & input', zh: '文字与输入' }, line: { en: 'Paragraphs, fields and keys', zh: '段落、输入框与按键' } },
   { id: 'gestures', page: 'view-gestures', title: { en: 'Gestures & pointer', zh: '手势与指针' }, line: { en: 'Press, drag and swipe', zh: '按压、拖动与滑动' } },
-  { id: 'overlays', page: 'view-overlays', title: { en: 'Overlays', zh: '浮层' }, line: { en: 'Popovers against what opens them', zh: '贴着触发处打开的浮层' } },
+  { id: 'overlays', page: 'view-overlays', title: { en: 'Overlays', zh: '浮层' }, line: { en: 'Popovers and menus against what opens them', zh: '贴着触发处打开的浮层与菜单' } },
+  { id: 'accessibility', page: 'view-accessibility', title: { en: 'Accessibility', zh: '无障碍' }, line: { en: 'Keyboard groups a screen reader can follow', zh: '读屏软件能跟随的键盘分组' } },
 ];
 
 export const demos = {
@@ -33,7 +34,11 @@ export const demos = {
     nested: { testId: 'lab-nested', title: { en: 'A control inside a row', zh: '行里的控件' }, try: { en: 'Tap the switch: only the switch changes. Tap the row: the row is pressed.', zh: '点开关只切换开关；点行则按下整行。' } },
   },
   overlays: {
+    menu: { testId: 'lab-menu', title: { en: 'A menu you ask for', zh: '按需唤出的菜单' }, try: { en: 'Hold a finger on the row, or click it with the secondary mouse button: its menu opens. A tap does nothing.', zh: '长按这一行，或用鼠标右键点击：菜单打开。轻点没有反应。' } },
     beside: { testId: 'lab-beside', title: { en: 'A popover beside what opens it', zh: '在触发处旁边打开的浮层' }, try: { en: 'Each button opens the note at its side. With no room there it opens on the other side, and under a wide button.', zh: '每个按钮都在自己旁边打开提示；那一侧放不下就换到另一侧，按钮太宽则在其下方。' } },
+  },
+  accessibility: {
+    days: { testId: 'lab-days', title: { en: 'A grid of days', zh: '日期网格' }, try: { en: 'With a keyboard: Tab reaches the grid once; arrows move by day and by week, Home and End go to the week\'s ends, PageUp and PageDown change the month.', zh: '使用键盘：Tab 只进入网格一次；方向键按天、按周移动，Home 和 End 到本周两端，PageUp 和 PageDown 切换月份。' } },
   },
 } as const satisfies Record<GroupId, Record<string, { testId: string; title: Words; try: Words }>>;
 
@@ -49,7 +54,11 @@ export const missing: Record<GroupId, readonly Words[]> = {
     { en: 'Dialog and sheet', zh: '对话框与底部面板' },
     { en: 'Hint on hover or focus', zh: '悬停或聚焦时的提示' },
     { en: 'Date and time pickers', zh: '日期与时间选择器' },
-    { en: 'A menu asked for by long press or secondary click', zh: '长按或右键唤出的菜单' },
+  ],
+  accessibility: [
+    { en: 'Names and roles of each control', zh: '各控件的名称与角色' },
+    { en: 'Tabs, a toolbar and a tree', zh: '标签页、工具栏与树' },
+    { en: 'Announcements when something changes', zh: '内容变化时的播报' },
   ],
   gestures: [
     { en: 'Pull to refresh', zh: '下拉刷新' },
@@ -93,6 +102,11 @@ export const readouts = {
     const at = { start: labels.sideStart, end: labels.sideEnd, wide: labels.sideWide };
     return which === 'none' ? { en: 'Note closed', zh: '提示已关闭' } : { en: `Note open at: ${at[which].en}`, zh: `提示打开于：${at[which].zh}` };
   },
+  menu: (asked: string, last: string): Words => ({
+    en: `${asked === 'none' ? 'Menu not asked for' : `Menu asked by ${asked}`} · last: ${last}`,
+    zh: `${asked === 'none' ? '尚未唤出菜单' : `菜单由 ${asked} 唤出`} · 上次：${none(last)}`,
+  }),
+  days: (month: string, day: number): Words => ({ en: `${month} · day ${day} chosen`, zh: `${month} · 已选 ${day} 日` }),
   presses: (n: number): Words => ({ en: `Link pressed ${n} times`, zh: `链接已点 ${n} 次` }),
   suggestions: (open: boolean, active: number, last: string): Words => ({
     en: `List ${yes(open).en} · option ${active + 1} active · last: ${last}`,
@@ -117,6 +131,13 @@ export const labels = {
   sideWide: { en: 'A wide button', zh: '一个很宽的按钮' },
   sideNote: { en: 'A note beside its button.', zh: '按钮旁边的提示。' },
   close: { en: 'Close', zh: '关闭' },
+  menuRow: { en: 'Quarterly report.pdf', zh: '季度报告.pdf' },
+  menuCopy: { en: 'Copy', zh: '复制' },
+  menuRename: { en: 'Rename', zh: '重命名' },
+  menuDelete: { en: 'Delete', zh: '删除' },
+  rowMenu: { en: 'File actions', zh: '文件操作' },
+  months: { en: 'March|April|May', zh: '三月|四月|五月' },
+  daysName: { en: 'Days', zh: '日期' },
   fruit: { en: 'Fruit', zh: '水果（英文）' },
   definitions: { en: 'Definitions', zh: '术语' },
   updated: { en: 'Updated', zh: '更新于' },

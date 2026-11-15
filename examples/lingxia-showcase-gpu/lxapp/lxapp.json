@@ -110,6 +110,10 @@
       "path": "pages/view-overlays/index"
     },
     {
+      "name": "view-accessibility",
+      "path": "pages/view-accessibility/index"
+    },
+    {
       "name": "motion-lab",
       "path": "pages/motion-lab/index"
     },

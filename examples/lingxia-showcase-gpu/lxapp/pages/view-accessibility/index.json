@@ -1,0 +1,9 @@
+{
+  "navigationBar": {
+    "title": {
+      "default": "Accessibility",
+      "zh-CN": "无障碍"
+    }
+  },
+  "pageOrientation": "auto"
+}
