@@ -53,6 +53,10 @@ export interface Screen {
   image(node: WireNode, outcome: "load" | "error"): void;
   /** A snapping `<scroll>` coming to rest on snap point `index`. */
   snap(node: WireNode, index: number): void;
+  /** An editor's `onFocus`. */
+  focus(node: WireNode): void;
+  /** An editor's `onBlur`. */
+  blur(node: WireNode): void;
   /** An `onPointer` event at a point of the node's content box; `pointer` defaults to `touch`. */
   pointer(node: WireNode, event: { phase: "down" | "move" | "up" | "cancel" | "hover" | "leave" | "increment" | "decrement"; x: number; y: number; width: number; height: number; pointer?: "touch" | "mouse" | "pen" | "keyboard" }): void;
   /** Lays the node out at this content size: its `onLayout` and `useBox` handle take it. */

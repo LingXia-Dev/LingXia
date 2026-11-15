@@ -1320,6 +1320,14 @@ impl Renderer {
                         .and_then(|(_, value)| value.as_u64())
                         .filter(|handle| *handle != 0)
                 }),
+                on_focus: [field::ON_FOCUS, field::ON_BLUR].map(|id| {
+                    record
+                        .fields
+                        .iter()
+                        .find(|(field, _)| *field == id)
+                        .and_then(|(_, value)| value.as_u64())
+                        .filter(|handle| *handle != 0)
+                }),
                 on_pointer_event: record
                     .fields
                     .iter()

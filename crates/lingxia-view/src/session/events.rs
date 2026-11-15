@@ -89,7 +89,7 @@ impl ViewSession {
         }
     }
 
-    fn dispatch_handle(&mut self, handle: u64) -> Result<bool, String> {
+    pub(super) fn dispatch_handle(&mut self, handle: u64) -> Result<bool, String> {
         self.execute(|| {
             self.context
                 .eval(Source::from_bytes(

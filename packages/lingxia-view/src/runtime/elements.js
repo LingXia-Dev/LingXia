@@ -566,6 +566,12 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         if (maxRows !== undefined) wire('maxRows', maxRows);
       }
       if (!disabled) for (const name of ['onInput', 'onSubmit']) if (props[name]) on(name, props[name], 'text');
+      // The caret entered or left the editor; an older host reports neither.
+      for (const name of ['onFocus', 'onBlur']) {
+        if (props[name] === undefined) continue;
+        if (typeof props[name] !== 'function') throw Error(`UI_INPUT: ${name} takes a function`);
+        if (!disabled && !dropped(name)) on(name, props[name]);
+      }
       break;
     case 'select': {
       check.label(props.accessibilityLabel, 'UI_SELECT');

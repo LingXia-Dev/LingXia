@@ -60,10 +60,18 @@ impl ViewSession {
 
     fn focus_now(&mut self, identity: &str) -> Result<Option<crate::InputReply>, String> {
         let mut inputs = self.inputs.clone();
+        let left = inputs.focused().map(str::to_owned);
         if !inputs.focus(identity, &mut self.renderer)? {
             return Ok(None);
         }
         inputs.hold_keyboard(false);
+        // The editor focus moved from hears `onBlur` before this one hears `onFocus`.
+        if left.as_deref() != Some(identity) {
+            if let Some(left) = left {
+                self.focus_event(&left, false)?;
+            }
+            self.focus_event(identity, true)?;
+        }
         for (handle, text) in inputs.take_committed() {
             self.text_event(self.generation, handle, &text)?;
             self.input_rebuild = true;
@@ -314,6 +322,7 @@ impl ViewSession {
         let mut inputs = self.inputs.clone();
         inputs.blur(&mut self.renderer)?;
         inputs.hold_keyboard(true);
+        self.focus_event(identity, false)?;
         for (handle, text) in inputs.take_committed() {
             self.text_event(self.generation, handle, &text)?;
             self.input_rebuild = true;
@@ -324,6 +333,21 @@ impl ViewSession {
         self.inputs = inputs;
         self.input_dirty = true;
         Ok(true)
+    }
+
+    /// Calls the editor's `onFocus` or `onBlur`; the View renders again if one ran.
+    fn focus_event(&mut self, identity: &str, focused: bool) -> Result<(), String> {
+        let handle = self
+            .retained
+            .as_ref()
+            .and_then(|retained| retained.nodes.iter().find(|node| node.identity == identity))
+            .and_then(|node| node.on_focus[usize::from(!focused)]);
+        if let Some(handle) = handle
+            && self.dispatch_handle(handle)?
+        {
+            self.input_rebuild = true;
+        }
+        Ok(())
     }
 
     pub(super) fn check_input_active(&self) -> Result<(), String> {

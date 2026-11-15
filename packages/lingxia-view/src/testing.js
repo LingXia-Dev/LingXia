@@ -155,6 +155,8 @@ function screen(host, view) {
     reach: (node, edge) => fire(node, edge === 'start' ? 'onReachStart' : 'onReachEnd'),
     image: (node, outcome) => fire(node, outcome === 'error' ? 'onImageError' : 'onImageLoad'),
     snap: (node, index) => fire(node, 'onSnapChange', String(index)),
+    focus: node => fire(node, 'onFocus'),
+    blur: node => fire(node, 'onBlur'),
     layout: (node, { width, height }) => json(node, 'onLayout', { width, height }),
     pointer: (node, { phase, x, y, width, height, pointer = 'touch' }) => json(node, 'onPointer', { phase, x, y, width, height, pointer }),
     drag: (node, event) => json(node, 'onDragEvent', event),

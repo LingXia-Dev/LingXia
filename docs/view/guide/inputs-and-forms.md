@@ -81,6 +81,7 @@ editor finishes the composition, so the last composed text is the value.
 | `spellCheck` | all | spelling suggestions on or off |
 | `autoFocus` | all | focus when it first appears |
 | `onSubmit(text)` | all | the keyboard's action key, or Enter on a single-line editor |
+| `onFocus()`, `onBlur()` | all | the caret enters or leaves the editor; pressing a button does not blur it, moving to another editor blurs it first |
 
 Every action key calls `onSubmit`: `enterKeyHint` chooses its label, and focus does not move to the
 next field on its own. On a `<textarea>`, `enterKeyHint` `send`, `go`, `done` or `search` makes Return

@@ -143,6 +143,9 @@ pub struct NodeSnapshot {
     /// `onPointerEnter` and `onPointerLeave` handles: a fine pointer crossing the box.
     #[serde(skip)]
     pub on_pointer: [Option<u64>; 2],
+    /// An editor's `onFocus` and `onBlur` handles.
+    #[serde(skip)]
+    pub on_focus: [Option<u64>; 2],
     /// `onPointer`'s handle, and whether the element keeps horizontal and vertical movement
     /// from scrolls.
     #[serde(skip)]

@@ -107,6 +107,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `object-top`, `object-left-bottom` or `object-[25%_75%]` (`objectPosition`) align a covered or contained image; pixel offsets fail.
 - `<textarea rows={2} maxRows={6}/>` grows with its lines in that range, then scrolls.
 - `truncate` on an `<input>` ends its placeholder, and its value while unfocused, in an ellipsis; a focused editor scrolls.
+- `onFocus`/`onBlur` on `<input>` and `<textarea>` fire as the caret enters or leaves; a press on a button does not blur the editor.
 - `<select options={[{value,label,disabled?}]} bind={cell} placeholder aria-label/>` opens the View's own
   picker (popover with a mouse, sheet on touch); arrows change the choice; automation uses `locator.selectOption(valueOrLabel)`.
 - `locator.dblclick()` selects the word at an element's center in selectable text and editors (a long press on touch).
