@@ -1,5 +1,6 @@
 import { cx, useBox, useView } from '@lingxia/view';
 import { IconButton } from '../IconButton/IconButton';
+import { Glyph } from '../internal/Glyph';
 import { paginationRecipe as r } from './Pagination.recipe';
 
 export interface PaginationProps {
@@ -71,7 +72,7 @@ export function Pagination({
         : (
           <view className={r.pages.base}>
             {pagesShown(current, pageCount, around).map((each, index) => (each === null
-              ? <text key={`gap-${index}`} aria-hidden className={r.gap.base}>…</text>
+              ? <view key={`gap-${index}`} aria-hidden className={r.gap.base}><Glyph name="more" className={r.gap.icon} /></view>
               : (
                 <button
                   key={String(each)}

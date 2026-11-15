@@ -3,7 +3,7 @@ export const paginationParts = {
   pages: 'view',
   page: 'button',
   pageLabel: 'text',
-  gap: 'text',
+  gap: 'view',
   position: 'text',
 } as const;
 
@@ -29,7 +29,9 @@ export const paginationRecipe = {
     current: 'font-semibold text-on-accent-soft',
   },
   gap: {
-    base: 'w-6 text-center text-body text-muted',
+    // Three dots drawn as a mark, centred on the digits' height; a typed ellipsis sits on the baseline.
+    base: 'w-6 h-control-md items-center justify-center text-muted',
+    icon: 'size-4',
   },
   position: {
     base: 'min-w-16 px-2 text-center text-body text-text tabular-nums',

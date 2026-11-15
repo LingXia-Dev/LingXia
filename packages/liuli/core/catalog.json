@@ -6698,7 +6698,7 @@
         "pages": "view",
         "page": "button",
         "pageLabel": "text",
-        "gap": "text",
+        "gap": "view",
         "position": "text"
       },
       "accessibility": {

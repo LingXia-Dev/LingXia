@@ -106,7 +106,7 @@ export function Narrow() {
 | root | `<view>` | yes | The control, a group named by `label`, between its two arrows. |
 | pages | `<view>` | no | The page numbers, with a mouse or `variant="pages"`. |
 | page | `<button>` | no | One page: a 40 px button, pressed when it is the current page. |
-| gap | `<text>` | no | An ellipsis where pages are left out; not read. |
+| gap | `<view>` | no | An ellipsis where pages are left out; not read. |
 | position | `<text>` | no | The position between the arrows, with a finger or `variant="compact"`; announced as it changes. |
 
 ## Accessibility
