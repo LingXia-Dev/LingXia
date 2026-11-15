@@ -36,6 +36,10 @@ test('Country, on touch: a sheet titled by the label; typing narrows the list; a
 
   screen.type(search, 'ni');
   assert.deepEqual(labels(screen), ['Nigeria', 'United Kingdom', 'United States'], 'any part of the label, whatever its case');
+  screen.type(screen.getByTestId('country-search'), 'in');
+  assert.deepEqual(labels(screen), ['India', 'Indonesia', 'Argentina', 'China', 'Spain', 'United Kingdom'], 'a label that starts with it comes first');
+  screen.type(screen.getByTestId('country-search'), 'k');
+  assert.deepEqual(labels(screen), ['Kenya', 'South Korea', 'United Kingdom', 'Türkiye'], 'then the start of a later word, then inside a word');
   screen.type(screen.getByTestId('country-search'), 'zz');
   assert.equal(options(screen).length, 0);
   const empty = screen.getByText('No country matches');

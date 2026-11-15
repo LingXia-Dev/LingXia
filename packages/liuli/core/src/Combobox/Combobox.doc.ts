@@ -9,7 +9,10 @@ export const doc: ComponentDoc = {
   description:
     'Combobox is a Select for lists too long to scan: countries, people, products. The field shows the chosen option; pressing it opens a search field over the list, ' +
     'in a panel under the field for a mouse and in a sheet from the bottom edge for a finger. Typing narrows the list, and Return takes the first match. ' +
-    'It takes Field\'s label, help text and status, and the app can do the matching itself, for its own rule or a server.',
+    'Matching ignores case and looks in the label only: options whose label starts with what was typed come first, then those where a later word starts with it, ' +
+    'then those that hold it inside a word, each group in the order the options were given. ' +
+    'With `onQueryChange` the app replaces that: Combobox reports each change to the search text and shows `options` as passed, so the app filters and orders them by its own rule or a server\'s. ' +
+    'It takes Field\'s label, help text and status.',
   keywords: ['combobox', 'autocomplete', 'typeahead', 'searchable select', 'picker', 'filter', 'search select', 'lookup'],
   propsType: 'ComboboxProps',
   recipe: { map: 'comboboxRecipe', parts: 'comboboxParts' },

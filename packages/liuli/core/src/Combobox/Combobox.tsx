@@ -62,6 +62,26 @@ export type ComboboxProps = FieldOwnProps & ComboboxBinding & {
 // A list a person scans is short; past this the search narrows it.
 const maxShown = 50;
 
+const inWord = /[\p{L}\p{N}]/u;
+
+/** How well a label matches: 0 from its start, 1 from the start of a later word, 2 inside a word, -1 not at all. */
+function rank(label: string, typed: string): number {
+  const text = label.toLowerCase();
+  let at = text.indexOf(typed);
+  if (at <= 0) return at;
+  let best = 2;
+  for (; at >= 0 && best === 2; at = text.indexOf(typed, at + 1)) if (!inWord.test(text[at - 1])) best = 1;
+  return best;
+}
+
+/** The options whose label holds what was typed, best match first, otherwise in the order given. */
+function ranked(options: readonly ComboboxOption[], typed: string): readonly ComboboxOption[] {
+  if (typed === '') return options;
+  const tiers: ComboboxOption[][] = [[], [], []];
+  for (const option of options) tiers[rank(option.label, typed)]?.push(option);
+  return tiers.flat();
+}
+
 interface PanelProps {
   label: string;
   options: readonly ComboboxOption[];
@@ -85,7 +105,7 @@ function ComboboxPanel({
 }: PanelProps) {
   const query = useLocal('query', '');
   const typed = query.value.trim().toLowerCase();
-  const matches = onQueryChange ? options : options.filter(option => option.label.toLowerCase().includes(typed));
+  const matches = onQueryChange ? options : ranked(options, typed);
   const shown = matches.slice(0, maxShown);
   const first = shown.find(option => !option.isDisabled);
   return (
