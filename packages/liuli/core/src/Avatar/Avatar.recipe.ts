@@ -31,8 +31,9 @@ export const avatarRecipe = {
   },
   /** A dot on the circle's bottom end edge, cut out of the avatar by an edge in the surface's colour. */
   status: {
-    base: 'absolute end-0 bottom-0 rounded-full border-2',
-    size: { xs: 'size-2', sm: 'size-2.5', md: 'size-3', lg: 'size-4' } satisfies Record<AvatarSize, string>,
+    base: 'absolute rounded-full border-2',
+    // Centred on the circle's edge, a little inside it on the larger sizes, so the edge cuts a visible notch.
+    size: { xs: 'size-2 end-0 bottom-0', sm: 'size-2.5 end-0 bottom-0', md: 'size-3 end-0.5 bottom-0.5', lg: 'size-4 end-1 bottom-1' } satisfies Record<AvatarSize, string>,
     edge: { surface: 'border-surface', raised: 'border-surface-raised', sunken: 'border-surface-sunken' } satisfies Record<AvatarGroupSurface, string>,
     tone: {
       online: 'bg-success',
