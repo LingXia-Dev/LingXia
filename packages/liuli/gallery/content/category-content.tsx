@@ -6,13 +6,14 @@ import { Specimen as AvatarSpecimen } from '../../core/src/Avatar/Avatar.example
 import { Specimen as SplitViewSpecimen } from '../../core/src/SplitView/SplitView.examples';
 import { Specimen as IconSpecimen } from '../../core/src/Icon/Icon.examples';
 import { Specimen as TableSpecimen } from '../../core/src/Table/Table.examples';
+import { Specimen as MarkdownSpecimen } from '../../core/src/Markdown/Markdown.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Containers and rows that hold what the app shows."}</text>
-      <Category title={"7 components"}>
+      <Category title={"8 components"}>
         <Tile
           name={"Card"}
           tagline={"Related content"}
@@ -64,11 +65,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"Table"}
           tagline={"Rows and columns"}
-          isWide
           onOpen={() => onOpen("table")}
           testId={"open-table"}
         >
           <TableSpecimen />
+        </Tile>
+        <Tile
+          name={"Markdown"}
+          tagline={"Written text, shown"}
+          onOpen={() => onOpen("markdown")}
+          testId={"open-markdown"}
+        >
+          <MarkdownSpecimen />
         </Tile>
       </Category>
     </>

@@ -747,6 +747,24 @@ export const entries: GalleryEntry[] = [
     "status": "preview"
   },
   {
+    "name": "Markdown",
+    "page": "markdown",
+    "category": "content",
+    "summary": "Markdown text drawn as Liuli type: a message, a note, a help page",
+    "keywords": [
+      "markdown",
+      "rich text",
+      "prose",
+      "formatted text",
+      "viewer",
+      "message",
+      "article",
+      "help text"
+    ],
+    "since": "2026-11-15",
+    "status": "preview"
+  },
+  {
     "name": "Stat",
     "page": "stat",
     "category": "charts",
@@ -981,7 +999,7 @@ export const galleryCategories: GalleryCategory[] = [
     "title": "Content",
     "description": "Containers and rows that hold what the app shows.",
     "page": "category-content",
-    "count": 7
+    "count": 8
   },
   {
     "id": "charts",
@@ -1007,7 +1025,7 @@ export const galleryCategories: GalleryCategory[] = [
 ];
 
 /** The 6 latest components, newest first. */
-export const newest: string[] = ["CheckboxList","Combobox","NumberInput","SearchField","Table","BarChart"];
+export const newest: string[] = ["CheckboxList","Combobox","Markdown","NumberInput","SearchField","Table"];
 
 export const version = "0.1.0";
 export const packageStatus = "Preview";

@@ -86,6 +86,8 @@
     "./CheckboxList/recipe": "./src/CheckboxList/CheckboxList.recipe.ts",
     "./Table": "./src/Table/Table.tsx",
     "./Table/recipe": "./src/Table/Table.recipe.ts",
+    "./Markdown": "./src/Markdown/Markdown.tsx",
+    "./Markdown/recipe": "./src/Markdown/Markdown.recipe.ts",
     "./Icon": "./src/Icon/Icon.tsx",
     "./Icon/recipe": "./src/Icon/Icon.recipe.ts",
     "./Icon/set": "./src/Icon/set.ts",

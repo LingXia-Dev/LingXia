@@ -4983,6 +4983,248 @@
       }
     },
     {
+      "name": "Markdown",
+      "import": "@liulidesign/core/Markdown",
+      "exports": [
+        "Markdown"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "Markdown text drawn as Liuli type: a message, a note, a help page",
+      "description": "Markdown shows text someone wrote in Markdown: a chat reply, a note, release notes, help. It draws headings, paragraphs, bold, italic, struck and code runs, links, bulleted, numbered and task lists, quotes, code blocks, rules and tables. It only shows text; it does not edit it. Links do nothing on their own: the app opens an address in `onLinkClick`.",
+      "keywords": [
+        "markdown",
+        "rich text",
+        "prose",
+        "formatted text",
+        "viewer",
+        "message",
+        "article",
+        "help text"
+      ],
+      "props": [
+        {
+          "name": "source",
+          "type": "string",
+          "required": true,
+          "description": "The Markdown text: headings, paragraphs, emphasis, links, lists with tasks, quotes, code, rules and tables."
+        },
+        {
+          "name": "onLinkClick",
+          "type": "((href: string) => void)",
+          "required": false,
+          "description": "Runs with a pressed link's address; the app opens it. Without it links are drawn as plain text."
+        },
+        {
+          "name": "topHeadingLevel",
+          "type": "1 | 2 | 3 | 4 | 5 | 6",
+          "required": false,
+          "description": "The heading level a `#` gets, so the text fits under the page's own headings.",
+          "default": "2"
+        },
+        {
+          "name": "taskLabels",
+          "type": "{ done: string; open: string; }",
+          "required": false,
+          "description": "What a screen reader hears for a task's mark: `{ done: 'Done', open: 'Not done' }`. Without it the marks are not read."
+        },
+        {
+          "name": "isSelectable",
+          "type": "boolean",
+          "required": false,
+          "description": "Lets people select and copy the text.",
+          "default": "true"
+        },
+        {
+          "name": "size",
+          "type": "MarkdownSize",
+          "required": false,
+          "description": "`sm` for a comment or a card.",
+          "default": "'md'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "heading": "text",
+        "paragraph": "text",
+        "run": "span",
+        "link": "link",
+        "list": "view",
+        "item": "view",
+        "marker": "text",
+        "itemBody": "view",
+        "taskSlot": "view",
+        "task": "view",
+        "quote": "view",
+        "code": "scroll",
+        "rule": "view",
+        "cell": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Moves through the links, when `onLinkClick` is set"
+          }
+        ],
+        "target": {},
+        "contrast": [
+          {
+            "what": "text",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "markers, struck text and small headings",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "links",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "inline code on its tint",
+            "pair": [
+              "text",
+              "text/8"
+            ],
+            "over": "surface",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "code block on its tint",
+            "pair": [
+              "text",
+              "text/6"
+            ],
+            "over": "surface",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "ticked task mark",
+            "pair": [
+              "on-accent",
+              "accent"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "empty task mark",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "Headings are read as headings at their level, lists as lists whose items report their position, links as links named by their text.",
+          "A task's mark is read as `taskLabels.done` or `taskLabels.open` before its text; without `taskLabels` the mark is not read, so pass them wherever tasks can appear.",
+          "A table is a Table: each cell is read with its column's heading.",
+          "Links are underlined as well as coloured, so they do not depend on colour.",
+          "Without `onLinkClick` a link is plain text and not a control: nothing looks pressable that is not."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Note",
+          "title": "A note with tasks and a link",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Markdown } from '@liulidesign/core/Markdown';\n\nconst note = `# Trip to the coast\n\nWe leave on **Friday at 7:30** and are back *Sunday evening*. The house is\n[ten minutes from the beach](https://example.com/house), and the key is in the lockbox.\n\n## To pack\n\n- [x] Tent and pegs\n- [x] Stove, with a spare canister\n- [ ] Rain jackets\n- [ ] Charger for the camera\n\n## On the way\n\n1. Fuel before the motorway\n2. Lunch in Setúbal\n3. Call ahead if we are later than six\n`;\n\n/** A note: headings, emphasis, a link, a task list and a numbered list. */\nexport function Note() {\n  const opened = useLocal('opened', '');\n  return (\n    <view className=\"gap-3\">\n      <Markdown source={note} onLinkClick={opened.set} taskLabels={{ done: 'Done', open: 'Not done' }} data-testid=\"note\" />\n      {opened.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{`Opened ${opened.value}`}</text>}\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Reference",
+          "title": "Code, a table and a quote",
+          "source": "import { Markdown } from '@liulidesign/core/Markdown';\n\nconst reference = `Set the token before the first call, then check the reply's \\`status\\`.\n\n\\`\\`\\`ts\nconst reply = await fetch('/api/notes', { headers: { authorization: token } });\nif (reply.status === 401) await signIn();\n\\`\\`\\`\n\n| Status | Meaning | Retry |\n|:--|:--|--:|\n| 200 | The notes | no |\n| 401 | Signed out | once |\n| 429 | Too many calls | after 30 s |\n\n> A reply over 512 KiB is streamed. Read it once.\n`;\n\n/** Reference text: inline code, a code block that scrolls sideways, a table and a quote. */\nexport function Reference() {\n  return <Markdown source={reference} data-testid=\"reference\" />;\n}"
+        },
+        {
+          "name": "Comment",
+          "title": "Small",
+          "source": "import { Markdown } from '@liulidesign/core/Markdown';\n\n/** Small, for a comment or a card. */\nexport function Comment() {\n  return <Markdown size=\"sm\" source={'Looks right to me. Two things:\\n\\n- the total should use ~~gross~~ **net**\\n- see `summary.ts`, line 40'} data-testid=\"comment\" />;\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Images.",
+          "needs": "nothing from the View",
+          "today": "An image is drawn as its alternative text."
+        },
+        {
+          "missing": "Code coloured by its language.",
+          "needs": "nothing from the View",
+          "today": "One colour, in the fixed-width face."
+        },
+        {
+          "missing": "Editing: bold and lists while typing.",
+          "needs": "an editor that holds styled text",
+          "today": "Viewing only; TextArea edits the plain source."
+        },
+        {
+          "missing": "Raw HTML, footnotes and definition lists.",
+          "needs": "nothing from the View",
+          "today": "Shown as the text they were written as."
+        },
+        {
+          "missing": "A paragraph of more than 256 styled runs.",
+          "needs": "a higher run limit on `<text>`",
+          "today": "Not handled; split the paragraph."
+        }
+      ],
+      "related": [
+        "Table",
+        "Item",
+        "TextArea"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Written text, shown",
+        "order": 8,
+        "page": {
+          "stage": "bare",
+          "lead": "Use Markdown to show text someone wrote: a message, a note, a help page.",
+          "hero": "Note",
+          "variants": [
+            {
+              "name": "Reference",
+              "title": "Inline code, a code block, a table and a quote"
+            },
+            {
+              "name": "Comment",
+              "title": "Small, for a comment or a card"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "NavList",
       "import": "@liulidesign/core/NavList",
       "exports": [
