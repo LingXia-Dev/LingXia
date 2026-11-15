@@ -1403,6 +1403,15 @@ impl<A: PlatformAdapter> ViewHost<A> {
         use crate::interaction::view::AutomationAct;
         let css = request["css"].as_str().unwrap_or_default();
         let index = request["index"].as_u64().map(|i| i as usize);
+        // A page that failed before it presented anything never becomes ready: a caller
+        // waiting for a frame hears why at once.
+        if matches!(
+            request["op"].as_str(),
+            Some("query" | "act" | "tree" | "action" | "data")
+        ) && let Some(error) = self.first_frame_failure()
+        {
+            return Err(error);
+        }
         match request["op"].as_str() {
             Some("query") => self.automation_query(
                 css,
@@ -1770,6 +1779,16 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// The last failure still shown, if any.
     pub fn failure(&self) -> Option<Failure> {
         self.inner.main().failure.clone()
+    }
+
+    /// What automation hears from a page that failed before presenting a frame.
+    pub fn first_frame_failure(&self) -> Option<String> {
+        let main = self.inner.main();
+        let failure = main.failure.as_ref().filter(|failure| !failure.retained)?;
+        Some(format!(
+            "E_PAGE_FAILED: the page failed before its first frame: {}",
+            failure.error
+        ))
     }
 
     /// An input-method protocol request; `reply` runs on the main thread with

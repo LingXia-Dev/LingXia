@@ -121,6 +121,21 @@ pub fn register(instance_id: &str, page: Weak<dyn GpuPageAutomation>) {
     pages.insert(instance_id.to_owned(), page);
 }
 
+/// Why the GPU page registered as `instance_id` will never be ready: its first render failed.
+/// `None` for a page that drew, is still loading, or is not a GPU page.
+pub(super) async fn first_frame_failure(instance_id: &str) -> Option<String> {
+    let page = registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(instance_id)
+        .and_then(Weak::upgrade)?;
+    // Any query on a page that failed before its first frame answers with the failure.
+    page.query("[data-testid=\"lx-none\"]", None, false, Some(0))
+        .await
+        .err()
+        .filter(|error| error.starts_with("E_PAGE_FAILED:"))
+}
+
 /// The backend of a GPU page, or `None` for a WebView page (or one the
 /// WebView path should report on).
 pub(super) fn backend(

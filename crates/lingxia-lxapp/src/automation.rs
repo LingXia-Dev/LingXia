@@ -472,6 +472,9 @@ pub async fn wait_page_runtime_ready(
         if state.ready {
             return Ok(());
         }
+        if let Some(error) = gpu::first_frame_failure(&instance_id).await {
+            return Err(error);
+        }
         // A page under another lxapp is never shown, so it never becomes ready.
         match covering_lxapp(app).filter(|_| state.lifecycle != "visible") {
             Some(front) => {
@@ -1292,6 +1295,56 @@ mod tests {
             attempts: AtomicUsize::new(0),
             frames: AtomicU64::new(0),
         }
+    }
+
+    /// A page that answers every query as `answer` says.
+    struct Answering(Result<Value, String>);
+
+    impl gpu::GpuPageAutomation for Answering {
+        fn query(
+            &self,
+            _: &str,
+            _: Option<usize>,
+            _: bool,
+            _: Option<usize>,
+        ) -> gpu::GpuFuture<Value> {
+            let answer = self.0.clone();
+            Box::pin(async move { answer })
+        }
+        fn act(&self, _: &str, _: Option<usize>, _: gpu::GpuAction) -> gpu::GpuFuture<()> {
+            Box::pin(async { Err("unused".to_owned()) })
+        }
+        fn screenshot(&self) -> gpu::GpuFuture<Vec<u8>> {
+            Box::pin(async { Err("unused".to_owned()) })
+        }
+    }
+
+    #[tokio::test]
+    async fn only_a_page_whose_first_render_failed_ends_the_ready_wait_early() {
+        let failure =
+            "E_PAGE_FAILED: the page failed before its first frame: UI_KEY: duplicate sibling";
+        for (id, answer, expected) in [
+            (
+                "ready-failed",
+                Err(failure.to_owned()),
+                Some(failure.to_owned()),
+            ),
+            (
+                "ready-loading",
+                Err("E_PAGE_NOT_READY: no presented frame".to_owned()),
+                None,
+            ),
+            (
+                "ready-drawn",
+                Ok(serde_json::json!({ "exists": false })),
+                None,
+            ),
+        ] {
+            let page: Arc<dyn gpu::GpuPageAutomation> = Arc::new(Answering(answer));
+            gpu::register(id, Arc::downgrade(&page));
+            assert_eq!(gpu::first_frame_failure(id).await, expected, "{id}");
+        }
+        assert_eq!(gpu::first_frame_failure("ready-not-a-gpu-page").await, None);
     }
 
     #[tokio::test]

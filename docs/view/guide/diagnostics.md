@@ -86,6 +86,10 @@ the host offers a Retry that renders again in the same session. Read these messa
 `UI_INPUT: click page=… node=… commit=… current=… reresolved=…` line, and a tap whose handler is gone
 warns as a dropped activation.
 
+A page whose first render fails has no frame to keep. A spec that looks for an element on it fails at
+once with that error (`E_PAGE_FAILED: the page failed before its first frame: UI_KEY: …`) instead of
+waiting for the page to become ready.
+
 Common runtime codes: `UI_KEY` (duplicate or non-string keys), `UI_LOCAL` (a duplicate `useLocal` name, or
 `set` on an unmounted cell), `UI_RENDER` (state changed or an action called during render), `UI_CLASS`
 (a class name built at runtime), `UI_LIST` (keys, anchors, row hooks), `UI_INPUT`/`UI_CHECK`/`UI_RADIO`/

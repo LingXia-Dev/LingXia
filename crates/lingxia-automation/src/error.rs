@@ -19,6 +19,8 @@ pub(crate) const E_AUTOMATION_PRIVILEGE: &str = "E_AUTOMATION_PRIVILEGE";
 pub(crate) const E_PAGE_NOT_ACTIVE: &str = "E_PAGE_NOT_ACTIVE";
 /// The page exists but has no WebView/current page to act on yet.
 pub(crate) const E_PAGE_NOT_READY: &str = "E_PAGE_NOT_READY";
+/// A GPU page failed before presenting a frame; the message carries its error.
+pub(crate) const E_PAGE_FAILED: &str = "E_PAGE_FAILED";
 /// A GPU page cannot answer the selector form; the message lists the forms it can.
 pub(crate) const E_SELECTOR_UNSUPPORTED: &str = "E_SELECTOR_UNSUPPORTED";
 /// The page cannot do this (a GPU page without the operation, a key it has no meaning for).
@@ -91,6 +93,8 @@ pub(crate) fn code_for(message: &str) -> &'static str {
         || message.to_ascii_lowercase().contains("no current page")
     {
         E_PAGE_NOT_READY
+    } else if message.starts_with("E_PAGE_FAILED:") {
+        E_PAGE_FAILED
     } else if message.starts_with("E_SELECTOR_UNSUPPORTED:") {
         E_SELECTOR_UNSUPPORTED
     } else if message.starts_with("E_UNSUPPORTED:") {
@@ -333,6 +337,10 @@ mod tests {
             ("WebView error: No current page", E_PAGE_NOT_READY),
             ("no current page", E_PAGE_NOT_READY),
             ("E_PAGE_NOT_READY: no presented frame", E_PAGE_NOT_READY),
+            (
+                "E_PAGE_FAILED: the page failed before its first frame: UI_KEY: duplicate sibling",
+                E_PAGE_FAILED,
+            ),
             (
                 "E_SELECTOR_UNSUPPORTED: `.card` on a GPU page",
                 E_SELECTOR_UNSUPPORTED,

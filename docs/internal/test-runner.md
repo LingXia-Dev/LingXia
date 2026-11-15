@@ -826,7 +826,7 @@ Development machine: lxdev receives progress, results, and artifacts
 - Automation errors (`lingxia-automation/src/error.rs`): the lower half returns
   strings that older clients parse, so messages never change; `code_for` /
   `eval_code_for` map them to stable codes (`E_AUTOMATION_PRIVILEGE`,
-  `E_PAGE_NOT_ACTIVE`, `E_PAGE_NOT_READY`, `E_ELEMENT_NOT_FOUND`,
+  `E_PAGE_NOT_ACTIVE`, `E_PAGE_NOT_READY`, `E_PAGE_FAILED`, `E_ELEMENT_NOT_FOUND`,
   `E_ELEMENT_NOT_INTERACTABLE`, `E_AUTOMATION_TIMEOUT`, `E_EVAL_SCRIPT`,
   `E_EVAL_TIMEOUT`), else `E_AUTOMATION`. Page-driver failures carry `data:
   { page, instanceId?, current? }` read when they fail. The TS list is

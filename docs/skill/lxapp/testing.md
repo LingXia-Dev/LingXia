@@ -573,6 +573,7 @@ lxdev test args --preset ci                 # show the effective arguments
   are reported as not run. Unlock it and run again.
 - **`fill` updates framework state**; assert the state, not only the DOM.
 - **`fill` on a GPU date or time input sets it as its picker would**: ISO text only, and a value past `min`/`max` fails naming the bound (`E_EDIT_FAILED: 'back' takes a date from 2026-12-18`).
+- **A GPU page whose first render threw** fails a locator or a screenshot at once with code `E_PAGE_FAILED` and the render's error, not a readiness timeout.
 - **GPU `<List>` rows off screen** answer `testId()` locators as attached; actions scroll them in, and
   text assertions wait until the row draws.
 - **Nav waits for `onReady`** and rejects if the app replaces the page first;

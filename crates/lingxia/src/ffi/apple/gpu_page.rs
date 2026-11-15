@@ -1152,7 +1152,10 @@ mod live {
                             Ok(Some(png)) => Ok(serde_json::json!({
                                 "png": base64::engine::general_purpose::STANDARD.encode(png)
                             })),
-                            Ok(None) => Err("E_PAGE_NOT_READY: no presented frame".into()),
+                            Ok(None) => Err(page
+                                .host()
+                                .first_frame_failure()
+                                .unwrap_or_else(|| "E_PAGE_NOT_READY: no presented frame".into())),
                             Err(error) => Err(error),
                         }
                     });

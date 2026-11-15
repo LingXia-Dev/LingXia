@@ -5249,6 +5249,8 @@ mod list_name;
 mod submenu;
 #[path = "close_request.rs"]
 mod close_request;
+#[path = "failed_first_frame.rs"]
+mod failed_first_frame;
 
 #[test]
 fn escape_pressed_on_any_match_closes_an_open_light_dismiss_popover() {

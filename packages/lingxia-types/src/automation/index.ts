@@ -42,6 +42,8 @@ export const AUTOMATION_ERROR_CODES = [
   'E_PAGE_NOT_ACTIVE',
   /** The page has no WebView or current page to act on yet. */
   'E_PAGE_NOT_READY',
+  /** A GPU page failed before it presented a frame; the message carries the render's error. Waiting does not help. */
+  'E_PAGE_FAILED',
   /** A page action (`page.action`) rejected without a code of its own. `data: { action, cause }`. */
   'E_PAGE_ACTION',
   /** No element matched the selector at dispatch. */
