@@ -44,6 +44,7 @@ import { Content as Breadcrumb } from '../content/breadcrumb';
 import { Content as Pagination } from '../content/pagination';
 import { Content as Stepper } from '../content/stepper';
 import { Content as Link } from '../content/link';
+import { Content as PageControl } from '../content/page-control';
 import { Content as Badge } from '../content/badge';
 import { Content as ProgressBar } from '../content/progress-bar';
 import { Content as Banner } from '../content/banner';
@@ -78,6 +79,8 @@ import { Content as PieChart } from '../content/pie-chart';
 import { Content as Chart } from '../content/chart';
 import { Content as VideoPlayer } from '../content/video-player';
 import { Content as VideoControls } from '../content/video-controls';
+import { Content as Carousel } from '../content/carousel';
+import { Content as Thumbnail } from '../content/thumbnail';
 import { Content as SignIn } from '../content/sign-in';
 import { Content as Settings } from '../content/settings';
 import { Content as Uploads } from '../content/uploads';
@@ -132,6 +135,7 @@ export const contents: Record<string, GalleryContent> = {
   "pagination": Pagination,
   "stepper": Stepper,
   "link": Link,
+  "page-control": PageControl,
   "badge": Badge,
   "progress-bar": ProgressBar,
   "banner": Banner,
@@ -166,6 +170,8 @@ export const contents: Record<string, GalleryContent> = {
   "chart": Chart,
   "video-player": VideoPlayer,
   "video-controls": VideoControls,
+  "carousel": Carousel,
+  "thumbnail": Thumbnail,
   "sign-in": SignIn,
   "settings": Settings,
   "uploads": Uploads,

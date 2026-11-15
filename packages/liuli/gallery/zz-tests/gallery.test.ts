@@ -12,12 +12,12 @@ const categories: Record<string, string[]> = {
   'category-actions': ['button', 'toggle-button', 'icon-button', 'button-group'],
   'category-inputs': ['text-input', 'text-area', 'date-input', 'time-input', 'slider', 'field', 'search-field', 'number-input', 'calendar', 'date-range-input', 'form-layout'],
   'category-selection': ['checkbox-input', 'radio-group', 'switch', 'select', 'segmented-control', 'combobox', 'checkbox-list'],
-  'category-navigation': ['tabs', 'nav-list', 'breadcrumb', 'pagination', 'stepper', 'link'],
+  'category-navigation': ['tabs', 'nav-list', 'breadcrumb', 'pagination', 'stepper', 'link', 'page-control'],
   'category-feedback': ['badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast', 'circular-progress'],
   'category-overlays': ['dialog', 'dropdown-menu', 'tooltip', 'bottom-sheet', 'popover'],
   'category-content': ['card', 'item', 'details', 'avatar', 'split-view', 'icon', 'table', 'markdown', 'metadata-list', 'section', 'divider', 'kbd', 'timer', 'timestamp'],
   'category-charts': ['stat', 'sparkline', 'bar-chart', 'line-chart', 'pie-chart', 'chart'],
-  'category-media': ['video-player', 'video-controls'],
+  'category-media': ['video-player', 'video-controls', 'carousel', 'thumbnail'],
   'category-patterns': ['sign-in', 'settings', 'uploads', 'list-detail', 'dashboard'],
 };
 

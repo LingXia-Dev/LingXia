@@ -2290,6 +2290,139 @@
       }
     },
     {
+      "name": "Carousel",
+      "import": "@liulidesign/core/Carousel",
+      "exports": [
+        "Carousel"
+      ],
+      "category": "media",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A few pages to swipe through, one at a time",
+      "description": "Carousel lays its children side by side in a scroll that stops on each one, and puts a PageControl with it: under the pages, or over their bottom edge for pictures. A swipe, a dot or the app's own button moves the page; `bind` shares it with the app.",
+      "keywords": [
+        "carousel",
+        "slider",
+        "slideshow",
+        "gallery",
+        "pager",
+        "swipe",
+        "onboarding"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Names the pages for assistive tech: \"Photos of the house\"."
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": true,
+          "description": "The pages, one child each; every page is as wide as the carousel."
+        },
+        {
+          "name": "bind",
+          "type": "Local<number>",
+          "required": false,
+          "description": "A View-local cell holding the page, from 0, to read or set it from outside."
+        },
+        {
+          "name": "pageLabel",
+          "type": "(page: number, count: number) => string",
+          "required": true,
+          "description": "Each dot's accessible name, written by the app: `(page, count) => \\`Photo ${page + 1} of ${count}\\``."
+        },
+        {
+          "name": "dots",
+          "type": "CarouselDots",
+          "required": false,
+          "description": "`over` lays the dots on the bottom edge of the pages, for pictures; `none` leaves paging to the swipe.",
+          "default": "'below'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the root; the dots get `<testid>-dots`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "scroll": "scroll",
+        "track": "view",
+        "page": "view",
+        "dots": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Through the dots, and through anything focusable on the page in view"
+          },
+          {
+            "keys": "Enter or Space on a dot",
+            "effect": "Goes to its page"
+          }
+        ],
+        "target": {},
+        "contrast": [],
+        "notes": [
+          "The pages are a list, so a screen reader says \"2 of 4\" on the page it lands on; assistive scrolling steps one page.",
+          "The dots are tabs named by `pageLabel`. They are the way to page without a swipe.",
+          "It never moves by itself."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Photos",
+          "title": "Photos, with the dots over them",
+          "source": "import { Carousel } from '@liulidesign/core/Carousel';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\nconst photos = [\n  [1, 'The bay at sunrise'],\n  [2, 'Fields behind the house'],\n  [3, 'Dusk over the ridge'],\n  [4, 'Morning fog in the valley'],\n] as const;\n\n/** Photos of one place: the dots lie over the pictures. */\nexport function Photos() {\n  return (\n    <Carousel label=\"Photos of the house\" dots=\"over\" pageLabel={(page, count) => `Photo ${page + 1} of ${count}`} data-testid=\"photos\">\n      {photos.map(([n, alt]) => (\n        <view key={alt} className=\"relative w-full aspect-4/3\">\n          <image src={photo(n)} alt={alt} className=\"absolute inset-0 size-full object-cover\" />\n        </view>\n      ))}\n    </Carousel>\n  );\n}"
+        },
+        {
+          "name": "Welcome",
+          "title": "Pages moved by a button too",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Carousel } from '@liulidesign/core/Carousel';\n\nconst steps = [\n  ['Write anywhere', 'Notes open in a tap and save as you type.'],\n  ['Find it again', 'Search reads every note, list and photo.'],\n  ['Share what you choose', 'Each note is private until you invite someone.'],\n] as const;\n\n/** Pages of content, with the page held outside so a button can move it. */\nexport function Welcome() {\n  const page = useLocal('step', 0);\n  const isLast = Math.round(page.value) === steps.length - 1;\n  return (\n    <view className=\"gap-3\">\n      <Carousel label=\"Welcome\" bind={page} pageLabel={(at, count) => `Step ${at + 1} of ${count}`} data-testid=\"welcome\">\n        {steps.map(([title, body]) => (\n          <view key={title} className=\"gap-1 bg-surface-sunken p-5 min-h-28\">\n            <text className=\"text-callout font-semibold text-text\">{title}</text>\n            <text className=\"text-footnote text-muted\">{body}</text>\n          </view>\n        ))}\n      </Carousel>\n      <Button label={isLast ? 'Get started' : 'Next'} variant=\"primary\" width=\"fill\" onClick={() => { if (!isLast) page.set(Math.round(page.value) + 1); }} data-testid=\"next\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "Every page is the full width; a carousel does not show part of the next page.",
+        "There are no previous and next arrows; on a desktop the dots page it."
+      ],
+      "related": [
+        "PageControl",
+        "Lightbox",
+        "Thumbnail"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Swipe through a few",
+        "order": 3,
+        "page": {
+          "lead": "Use a carousel for a few like things to swipe through.",
+          "hero": "Photos",
+          "variants": [
+            {
+              "name": "Welcome",
+              "title": "Content pages, with the page shared with a button"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "CheckboxInput",
       "import": "@liulidesign/core/CheckboxInput",
       "exports": [
@@ -7796,6 +7929,166 @@
       }
     },
     {
+      "name": "PageControl",
+      "import": "@liulidesign/core/PageControl",
+      "exports": [
+        "PageControl"
+      ],
+      "category": "navigation",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "Dots for which page of a few is in view",
+      "description": "PageControl draws one dot per page and stretches the current one. Pressing a dot goes to its page. Bound to the same cell as a paging scroll, the dots and the pages follow each other; Carousel does that for you.",
+      "keywords": [
+        "page control",
+        "dots",
+        "pager",
+        "indicator",
+        "carousel",
+        "pagination"
+      ],
+      "props": [
+        {
+          "name": "bind",
+          "type": "Local<number>",
+          "required": false,
+          "description": "A View-local cell holding the page, from 0: the same cell a paging `<scroll>` binds, so the two follow each other."
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "required": false,
+          "description": "The current page, from 0."
+        },
+        {
+          "name": "onChange",
+          "type": "((page: number) => void)",
+          "required": false,
+          "description": "Runs with the page of the dot that was pressed."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Names the dots for assistive tech: \"Photos\"."
+        },
+        {
+          "name": "count",
+          "type": "number",
+          "required": true,
+          "description": "How many pages there are. Past ten or so, show a count in words."
+        },
+        {
+          "name": "pageLabel",
+          "type": "(page: number) => string",
+          "required": true,
+          "description": "Each dot's accessible name, written by the app: `page => \\`Photo ${page + 1}\\``."
+        },
+        {
+          "name": "tone",
+          "type": "PageControlTone",
+          "required": false,
+          "description": "",
+          "default": "'accent'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the row; each dot gets `<testid>-<page>`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "dot": "button",
+        "mark": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [
+          "selected"
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Moves to a dot"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Goes to its page"
+          }
+        ],
+        "target": {},
+        "contrast": [
+          {
+            "what": "current dot",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "current dot over media",
+            "pair": [
+              "on-media",
+              "media"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "Each dot is a tab named by `pageLabel` and reports whether it is the selected one.",
+          "The current dot is told apart by its width, not only its colour; the other dots are faint on purpose.",
+          "A dot is 14 by 26 px to the finger; a press that misses goes to the nearest dot within reach."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Welcome",
+          "title": "Under what it pages",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { PageControl } from '@liulidesign/core/PageControl';\n\nconst steps = [\n  ['Write anywhere', 'Notes open in a tap and save as you type.'],\n  ['Find it again', 'Search reads every note, list and photo.'],\n  ['Share what you choose', 'Each note is private until you invite someone.'],\n] as const;\n\n/** Under what it pages: the dots follow the page, and pressing one goes there. */\nexport function Welcome() {\n  const page = useLocal('page', 0);\n  const [title, body] = steps[page.value];\n  return (\n    <view className=\"gap-3\">\n      <view className=\"gap-1 rounded-container bg-surface-sunken p-5\">\n        <text className=\"text-callout font-semibold text-text\">{title}</text>\n        <text className=\"text-footnote text-muted\">{body}</text>\n      </view>\n      <PageControl label=\"Welcome steps\" count={steps.length} bind={page} pageLabel={at => `Step ${at + 1} of ${steps.length}`} data-testid=\"welcome\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "OnMedia",
+          "title": "Over a picture",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { PageControl } from '@liulidesign/core/PageControl';\n\n/** Over a picture, in the colour that reads on media. */\nexport function OnMedia() {\n  const page = useLocal('photo', 1);\n  return (\n    <view className=\"h-40 justify-end rounded-container bg-media pb-1\">\n      <PageControl label=\"Photos\" count={5} bind={page} tone=\"on-media\" pageLabel={at => `Photo ${at + 1} of 5`} data-testid=\"photos\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "Many pages are not folded into a window of dots; the row grows with `count`."
+      ],
+      "related": [
+        "Carousel",
+        "Pagination",
+        "Tabs"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Which page of a few",
+        "order": 7,
+        "page": {
+          "lead": "Use a page control to show which of a few pages is in view.",
+          "hero": "Welcome",
+          "variants": [
+            {
+              "name": "OnMedia",
+              "title": "Over a picture, in the on-media tone"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Pagination",
       "import": "@liulidesign/core/Pagination",
       "exports": [
@@ -12176,6 +12469,175 @@
             {
               "name": "Disabled",
               "title": "A fixed value, with the reason"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Thumbnail",
+      "import": "@liulidesign/core/Thumbnail",
+      "exports": [
+        "Thumbnail"
+      ],
+      "category": "media",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A small picture that stands for a bigger one",
+      "description": "Thumbnail crops a picture to a small rounded tile: square, 4:3 or 16:9. On its own it is an image; with `onClick` it is a button named by `alt` that opens the picture, usually in a Lightbox. A faint tint holds its place until the picture loads.",
+      "keywords": [
+        "thumbnail",
+        "image",
+        "picture",
+        "photo",
+        "preview",
+        "tile"
+      ],
+      "props": [
+        {
+          "name": "src",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "alt",
+          "type": "string",
+          "required": true,
+          "description": "What the picture shows. With `onClick` it is the button's name."
+        },
+        {
+          "name": "size",
+          "type": "ThumbnailSize",
+          "required": false,
+          "description": "48, 72 or 96 px wide; `fill` takes the width it is given, as in a grid.",
+          "default": "'md'"
+        },
+        {
+          "name": "ratio",
+          "type": "ThumbnailRatio",
+          "required": false,
+          "description": "1:1, 4:3 or 16:9; the picture is cropped to fill it.",
+          "default": "'square'"
+        },
+        {
+          "name": "onClick",
+          "type": "(() => void)",
+          "required": false,
+          "description": "Makes it a button: opens the picture, usually in a Lightbox."
+        },
+        {
+          "name": "isSelected",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks it as the one in view among several.",
+          "default": "false"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "image": "image"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "alt",
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Moves to a thumbnail that opens"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Opens it"
+          }
+        ],
+        "target": {
+          "sm": 48
+        },
+        "contrast": [
+          {
+            "what": "selected ring",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "Without `onClick` it is an image read by `alt`; pass an empty `alt` when the name is already beside it, as in a row.",
+          "With `onClick` it is a button named by `alt`; the selected one reports itself as selected.",
+          "The selected ring is a shape, not only a colour."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Grid",
+          "title": "A grid of photos",
+          "source": "import { Thumbnail } from '@liulidesign/core/Thumbnail';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\nconst photos = [\n  [1, 'The bay at sunrise'],\n  [2, 'Fields behind the house'],\n  [3, 'Dusk over the ridge'],\n  [4, 'Morning fog in the valley'],\n  [5, 'Dunes at noon'],\n  [1, 'The bay, a minute later'],\n] as const;\n\n/** A grid of photos, each as wide as its column. */\nexport function Grid() {\n  return (\n    <view className=\"grid grid-cols-3 gap-2\">\n      {photos.map(([n, alt], index) => <Thumbnail key={alt} src={photo(n)} alt={alt} size=\"fill\" onClick={() => {}} data-testid={`grid-${index}`} />)}\n    </view>\n  );\n}"
+        },
+        {
+          "name": "InRows",
+          "title": "At the start of a row",
+          "source": "import { Item, ItemList } from '@liulidesign/core/Item';\nimport { Thumbnail } from '@liulidesign/core/Thumbnail';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\nconst photos = [\n  [1, 'The bay at sunrise'],\n  [2, 'Fields behind the house'],\n  [3, 'Dusk over the ridge'],\n  [4, 'Morning fog in the valley'],\n  [5, 'Dunes at noon'],\n  [1, 'The bay, a minute later'],\n] as const;\n\n/** At the start of a row, for the thing the row is about. */\nexport function InRows() {\n  return (\n    <ItemList label=\"Albums\">\n      <Item label=\"Coast, November\" description=\"48 photos\" startContent={<Thumbnail src={photo(1)} alt=\"\" size=\"sm\" data-testid=\"row\" />} hasChevron onClick={() => {}} />\n      <Item label=\"The valley\" description=\"112 photos\" startContent={<Thumbnail src={photo(4)} alt=\"\" size=\"sm\" />} hasChevron onClick={() => {}} />\n    </ItemList>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes and ratios",
+          "source": "import { Thumbnail } from '@liulidesign/core/Thumbnail';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row flex-wrap items-end gap-3\">\n      <Thumbnail src={photo(3)} alt=\"Dusk over the ridge\" size=\"sm\" />\n      <Thumbnail src={photo(3)} alt=\"Dusk over the ridge\" />\n      <Thumbnail src={photo(3)} alt=\"Dusk over the ridge\" size=\"lg\" />\n      <Thumbnail src={photo(3)} alt=\"Dusk over the ridge\" size=\"lg\" ratio=\"landscape\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Strip",
+          "title": "A strip with one selected",
+          "source": "import { Thumbnail } from '@liulidesign/core/Thumbnail';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\nconst photos = [\n  [1, 'The bay at sunrise'],\n  [2, 'Fields behind the house'],\n  [3, 'Dusk over the ridge'],\n  [4, 'Morning fog in the valley'],\n  [5, 'Dunes at noon'],\n  [1, 'The bay, a minute later'],\n] as const;\n\n/** A strip under a picture: the one in view is ringed. */\nexport function Strip() {\n  return (\n    <view className=\"flex-row gap-3 p-1\">\n      {photos.slice(0, 4).map(([n, alt], index) => <Thumbnail key={alt} src={photo(n)} alt={alt} size=\"sm\" isSelected={index === 1} onClick={() => {}} data-testid={`strip-${index}`} />)}\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "A picture that fails to load leaves the tint; there is no broken-image mark."
+      ],
+      "related": [
+        "Lightbox",
+        "Carousel",
+        "Avatar"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A small picture",
+        "order": 4,
+        "page": {
+          "lead": "Use a thumbnail to stand for a picture, a file or an album.",
+          "hero": "Grid",
+          "variants": [
+            {
+              "name": "Strip",
+              "title": "A strip, with the one in view ringed"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small (48), medium (72), large (96), and large at 4:3"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "InRows",
+              "title": "At the start of a row"
             }
           ]
         }

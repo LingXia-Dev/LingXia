@@ -476,6 +476,20 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "PageControl",
+    "page": "page-control",
+    "category": "navigation",
+    "summary": "Dots for which page of a few is in view",
+    "keywords": [
+      "page control",
+      "dots",
+      "pager",
+      "indicator",
+      "carousel",
+      "pagination"
+    ]
+  },
+  {
     "name": "Badge",
     "page": "badge",
     "category": "feedback",
@@ -1014,6 +1028,35 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "Carousel",
+    "page": "carousel",
+    "category": "media",
+    "summary": "A few pages to swipe through, one at a time",
+    "keywords": [
+      "carousel",
+      "slider",
+      "slideshow",
+      "gallery",
+      "pager",
+      "swipe",
+      "onboarding"
+    ]
+  },
+  {
+    "name": "Thumbnail",
+    "page": "thumbnail",
+    "category": "media",
+    "summary": "A small picture that stands for a bigger one",
+    "keywords": [
+      "thumbnail",
+      "image",
+      "picture",
+      "photo",
+      "preview",
+      "tile"
+    ]
+  },
+  {
     "name": "Sign in",
     "page": "sign-in",
     "category": "patterns",
@@ -1089,7 +1132,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "compass",
     "description": "Tabs, steps and pages",
     "page": "category-navigation",
-    "count": 6
+    "count": 7
   },
   {
     "id": "feedback",
@@ -1129,7 +1172,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "play",
     "description": "Video and its controls",
     "page": "category-media",
-    "count": 2
+    "count": 4
   },
   {
     "id": "patterns",

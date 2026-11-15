@@ -5,13 +5,14 @@ import { Specimen as BreadcrumbSpecimen } from '../../core/src/Breadcrumb/Breadc
 import { Specimen as PaginationSpecimen } from '../../core/src/Pagination/Pagination.examples';
 import { Specimen as StepperSpecimen } from '../../core/src/Stepper/Stepper.examples';
 import { Specimen as LinkSpecimen } from '../../core/src/Link/Link.examples';
+import { Specimen as PageControlSpecimen } from '../../core/src/PageControl/PageControl.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Ways to move between views, through a set, and through the steps of a task."}</text>
-      <Category title={"6 components"}>
+      <Category title={"7 components"}>
         <Tile
           name={"Tabs"}
           tagline={"A few peer views"}
@@ -59,6 +60,15 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           testId={"open-link"}
         >
           <LinkSpecimen />
+        </Tile>
+        <Tile
+          name={"PageControl"}
+          tagline={"Which page of a few"}
+          isWide
+          onOpen={() => onOpen("page-control")}
+          testId={"open-page-control"}
+        >
+          <PageControlSpecimen />
         </Tile>
       </Category>
     </>
