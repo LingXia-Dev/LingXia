@@ -544,11 +544,12 @@ impl Renderer {
                         ),
                         crate::scene::vector::Tint::Gradient(brush) => ([0; 4], Some(brush)),
                     };
+                    // Clipped at the border box: padding gives a stroke on an edge point room.
                     commands.push(Paint::Vector {
                         path: Arc::new(path),
                         color: tint,
                         gradient,
-                        bounds: vector_bounds,
+                        bounds,
                     });
                 }
             }

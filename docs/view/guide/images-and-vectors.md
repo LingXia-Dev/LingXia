@@ -93,7 +93,8 @@ leaving it out fails the build with `UI_A11Y`.
 vector's text color, so `text-*` utilities color an icon. `transform` is an SVG transform list
 (`translate`, `scale`, `rotate`, `skewX`, `skewY`, `matrix`). `vectorEffect: 'non-scaling-stroke'` keeps
 stroke widths constant when the vector is scaled. `object-contain` (default) and `object-fill` map the
-`viewBox` into the box.
+`viewBox` into the content box; drawing is clipped at the border box, so padding gives a stroke on an
+edge point room.
 
 ```tsx
 export function render() {

@@ -219,9 +219,11 @@ fn vector_paths_inherit_color_fit_clip_and_move_with_retained_scroll() {
     let pixel = |x: usize, y: usize| {
         &frame.pixels.data_as_u8_slice()[(y * 100 + x) * 4..(y * 100 + x) * 4 + 4]
     };
-    assert_eq!(pixel(5, 10), [255, 255, 255, 255]);
+    // Geometry past the viewBox paints into the padding and stops at the border box.
+    assert_eq!(pixel(5, 10), [255, 0, 0, 255]);
     assert_eq!(pixel(15, 10), [255, 0, 0, 255]);
-    assert_eq!(pixel(75, 10), [255, 255, 255, 255]);
+    assert_eq!(pixel(75, 10), [255, 0, 0, 255]);
+    assert_eq!(pixel(85, 10), [255, 255, 255, 255]);
     assert_eq!(pixel(15, 45), [255, 255, 255, 255]);
 }
 
