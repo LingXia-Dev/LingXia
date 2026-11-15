@@ -69,6 +69,7 @@ export const handlesIssued = () => nextHandle;
 export const skipHandle = () => { nextHandle++; };
 const pointerCrossing = ['onPointerEnter', 'onPointerLeave'];
 const boxTags = new Set(['view', 'text', 'vector', 'plot', 'scroll']);
+const editorKeys = new Set(['ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'Home', 'End', 'PageUp', 'PageDown']);
 const pointerTags = new Set(['view', 'button', 'vector']), pointerAxes = new Set(['x', 'y', 'both']);
 const callbackOf = (callback, kind = 'void', isolated = false, press = undefined) => ({ callback, kind, isolated, press });
 
@@ -566,6 +567,16 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         if (maxRows !== undefined) wire('maxRows', maxRows);
       }
       if (!disabled) for (const name of ['onInput', 'onSubmit']) if (props[name]) on(name, props[name], 'text');
+      // Keys the page takes from the editor: the map's keys are the capture set.
+      if (props.onKeyDown !== undefined) {
+        const map = props.onKeyDown, keys = map && typeof map === 'object' ? Object.keys(map) : null;
+        if (!keys || !keys.length || keys.some(key => !editorKeys.has(key) || typeof map[key] !== 'function'))
+          throw Error(`UI_INPUT: onKeyDown maps ${[...editorKeys].join(', ')} to functions`);
+        if (!disabled && !dropped('onKeyDown')) {
+          wire('keyMap', keys.join(' '));
+          on('onKeyDown', key => { if (Object.hasOwn(map, key)) map[key](); }, 'text');
+        }
+      }
       // The caret entered or left the editor; an older host reports neither.
       for (const name of ['onFocus', 'onBlur']) {
         if (props[name] === undefined) continue;

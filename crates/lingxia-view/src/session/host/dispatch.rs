@@ -339,6 +339,16 @@ impl<A: PlatformAdapter> Inner<A> {
                         session.choose_option(commit, &identity, index, &value)
                     }),
                 ),
+                Dispatch::EditorKey {
+                    commit,
+                    handle,
+                    identity,
+                    key,
+                } => self.activate(
+                    page,
+                    false,
+                    Box::new(move |session| session.editor_key(commit, handle, &identity, key)),
+                ),
                 Dispatch::SubmitEditor { commit, identity } => self.activate(
                     page,
                     true,

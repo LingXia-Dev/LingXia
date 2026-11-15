@@ -136,6 +136,14 @@ pub enum Dispatch {
         identity: String,
         pressed: bool,
     },
+    /// A key an editor's `onKeyDown` lists.
+    EditorKey {
+        commit: CommitTicket,
+        handle: u64,
+        /// The editor, to find its callback in a newer View.
+        identity: String,
+        key: &'static str,
+    },
     /// `onPointer`: where a pointer is over an element.
     PointerEvent {
         commit: CommitTicket,

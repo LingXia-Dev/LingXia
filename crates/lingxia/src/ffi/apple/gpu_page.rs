@@ -114,6 +114,11 @@ mod bridge {
         #[swift_bridge(swift_name = "gpuPageKey")]
         fn gpu_page_key(token: i64, key: i64, shift: bool, repeating: bool) -> bool;
 
+        // A hardware key while an editor has focus, offered before the editor and its input
+        // method; true when the page's `onKeyDown` map or an open overlay took it.
+        #[swift_bridge(swift_name = "gpuPageEditorKey")]
+        fn gpu_page_editor_key(token: i64, key: i64) -> bool;
+
         // Keyboard focus moved into the page (`entered`, `backward` when by Shift-Tab) or out.
         #[swift_bridge(swift_name = "gpuPageFocus")]
         fn gpu_page_focus(token: i64, entered: bool, backward: bool);
@@ -546,6 +551,16 @@ fn gpu_page_key(token: i64, key: i64, shift: bool, repeating: bool) -> bool {
     with_page(token, |page| {
         handled = page.host().key(key, shift, repeating)
     });
+    handled
+}
+
+fn gpu_page_editor_key(token: i64, key: i64) -> bool {
+    use lingxia_view_apple::lingxia_view::interaction::view::Key;
+    let Some(key) = Key::from_code(key) else {
+        return false;
+    };
+    let mut handled = false;
+    with_page(token, |page| handled = page.host().editor_key(key));
     handled
 }
 

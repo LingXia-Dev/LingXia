@@ -309,6 +309,15 @@ impl ViewInteraction {
             };
             let target = &frame.nodes[node];
             if target.input.is_some() {
+                // A key its `onKeyDown` lists goes to the page, as from a hardware keyboard.
+                if !shift && self.editor_key_dispatch(&frame, target, key) {
+                    return Ok(vec![Effect::Dispatch]);
+                }
+                if key == super::Key::Escape
+                    && let Some(effects) = self.close_request()
+                {
+                    return Ok(effects);
+                }
                 if key != super::Key::Activate {
                     return Err(format!(
                         "E_UNSUPPORTED: {name} in an editor; use type or fill"

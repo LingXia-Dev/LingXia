@@ -53,6 +53,8 @@ export interface Screen {
   image(node: WireNode, outcome: "load" | "error"): void;
   /** A snapping `<scroll>` coming to rest on snap point `index`. */
   snap(node: WireNode, index: number): void;
+  /** A key the editor's `onKeyDown` map lists, as the host delivers it. */
+  key(node: WireNode, key: string): void;
   /** An editor's `onFocus`. */
   focus(node: WireNode): void;
   /** An editor's `onBlur`. */

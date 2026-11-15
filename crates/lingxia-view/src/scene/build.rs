@@ -1320,6 +1320,20 @@ impl Renderer {
                         .and_then(|(_, value)| value.as_u64())
                         .filter(|handle| *handle != 0)
                 }),
+                key_map: record
+                    .fields
+                    .iter()
+                    .find(|(field, _)| *field == field::ON_KEY_DOWN)
+                    .and_then(|(_, value)| value.as_u64())
+                    .filter(|handle| *handle != 0)
+                    .zip(record.string(field::KEY_MAP))
+                    .map(|(handle, keys)| {
+                        let keys = keys
+                            .split(' ')
+                            .filter_map(crate::interaction::view::Key::from_editor_name)
+                            .collect();
+                        (handle, keys)
+                    }),
                 on_focus: [field::ON_FOCUS, field::ON_BLUR].map(|id| {
                     record
                         .fields

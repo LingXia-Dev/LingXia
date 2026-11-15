@@ -1135,6 +1135,18 @@ impl<A: PlatformAdapter> ViewHost<A> {
         handled
     }
 
+    /// A hardware key while an editor has focus; call it before the editor or its input method
+    /// handles the key. True when the page or an open overlay took it.
+    pub fn editor_key(&self, key: Key) -> bool {
+        if !self.inner.lifecycle.accepts_input() {
+            return false;
+        }
+        self.inner.input_now();
+        let (handled, effects) = self.inner.main().interaction.editor_key(key);
+        self.inner.deliver(effects);
+        handled
+    }
+
     /// A platform close request (Android back): the topmost dialog or light-dismiss popover
     /// closes and the request is consumed; false when none is open.
     pub fn close_request(&self) -> bool {

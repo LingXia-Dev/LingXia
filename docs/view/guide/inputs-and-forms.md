@@ -82,6 +82,7 @@ editor finishes the composition, so the last composed text is the value.
 | `autoFocus` | all | focus when it first appears |
 | `onSubmit(text)` | all | the keyboard's action key, or Enter on a single-line editor |
 | `readOnly` | all | takes focus and a selection, so its text can be copied; takes no edits and raises no keyboard, and a date or time field opens no picker |
+| `onKeyDown={{ ArrowDown, ArrowUp, Enter, Escape, Home, End, PageUp, PageDown }}` | all | the listed keys call the page while the caret stays in the text, and do nothing else (no caret move, newline or submit); other keys stay with the editor, and an input method that is composing keeps them all. `Escape` left out closes the topmost overlay |
 | `onFocus()`, `onBlur()` | all | the caret enters or leaves the editor; pressing a button does not blur it, moving to another editor blurs it first |
 
 Every action key calls `onSubmit`: `enterKeyHint` chooses its label, and focus does not move to the

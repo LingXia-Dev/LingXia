@@ -143,6 +143,9 @@ pub struct NodeSnapshot {
     /// `onPointerEnter` and `onPointerLeave` handles: a fine pointer crossing the box.
     #[serde(skip)]
     pub on_pointer: [Option<u64>; 2],
+    /// An editor's `onKeyDown`: its handle and the keys the page takes from the editor.
+    #[serde(skip)]
+    pub key_map: Option<(u64, Vec<crate::interaction::view::Key>)>,
     /// An editor's `onFocus` and `onBlur` handles.
     #[serde(skip)]
     pub on_focus: [Option<u64>; 2],

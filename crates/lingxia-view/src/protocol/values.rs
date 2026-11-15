@@ -440,7 +440,9 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
                 }),
             "UI_INPUT: invalid min or max",
         ),
-        field::ON_INPUT | field::ON_SUBMIT => ensure(handle(value), "UI_INPUT: invalid callback"),
+        field::ON_INPUT | field::ON_SUBMIT | field::ON_KEY_DOWN => {
+            ensure(handle(value), "UI_INPUT: invalid callback")
+        }
         field::IMAGE_SRC | field::IMAGE_PLACEHOLDER => ensure(
             value.as_str().is_some_and(|s| {
                 !s.is_empty() && s.len() <= limits::SOURCE_BYTES && !s.contains('\0')
@@ -523,6 +525,15 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         | field::ON_FOCUS
         | field::ON_BLUR
         | field::ON_SLIDER_PRESS => ensure(handle(value), "UI_PROP: invalid handle or flag"),
+        field::KEY_MAP => ensure(
+            value.as_str().is_some_and(|keys| {
+                !keys.is_empty()
+                    && keys
+                        .split(' ')
+                        .all(|key| crate::interaction::view::Key::from_editor_name(key).is_some())
+            }),
+            "UI_INPUT: invalid key map",
+        ),
         field::ELEMENT_ID
         | field::INTEREST_FOR
         | field::ARIA_ACTIONS

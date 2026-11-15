@@ -179,6 +179,12 @@ export interface PointerEvent {
   readonly x: number; readonly y: number; readonly width: number; readonly height: number;
   readonly pointer: "touch" | "mouse" | "pen" | "keyboard";
 }
+/**
+ * Keys an editor hands to the page while it keeps the caret. Only the keys listed go to the page,
+ * and a listed key does nothing else (no caret move, no newline, no submit); a held key repeats.
+ * An input method that is composing keeps every key. `Escape` left out closes the topmost overlay.
+ */
+export type EditorKeys = Partial<Record<"ArrowUp" | "ArrowDown" | "Enter" | "Escape" | "Home" | "End" | "PageUp" | "PageDown", () => void>>;
 /** An element's laid-out content box, inside its padding and border, in points. */
 export interface BoxSize { readonly width: number; readonly height: number }
 /** The size of the element that takes this handle as `box`; `null` until its first layout, then one render behind a change. */

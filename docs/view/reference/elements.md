@@ -148,6 +148,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onKeyDown` | `EditorKeys` |  |
 | `readOnly` | `boolean` |  |
 | `onFocus` | `() => void` |  |
 | `onBlur` | `() => void` |  |
@@ -175,6 +176,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onKeyDown` | `EditorKeys` |  |
 | `readOnly` | `boolean` |  |
 | `onFocus` | `() => void` |  |
 | `onBlur` | `() => void` |  |

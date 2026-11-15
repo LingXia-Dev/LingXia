@@ -25,6 +25,35 @@ pub enum Key {
 pub const CHAR_BASE: i64 = 0x1_0000;
 
 impl Key {
+    /// A key of an editor's `onKeyDown` map, by its DOM name.
+    pub fn from_editor_name(name: &str) -> Option<Key> {
+        Some(match name {
+            "ArrowUp" => Key::Up,
+            "ArrowDown" => Key::Down,
+            "Enter" => Key::Activate,
+            "Escape" => Key::Escape,
+            "Home" => Key::Home,
+            "End" => Key::End,
+            "PageUp" => Key::PageUp,
+            "PageDown" => Key::PageDown,
+            _ => return None,
+        })
+    }
+
+    fn editor_name(self) -> Option<&'static str> {
+        Some(match self {
+            Key::Up => "ArrowUp",
+            Key::Down => "ArrowDown",
+            Key::Activate => "Enter",
+            Key::Escape => "Escape",
+            Key::Home => "Home",
+            Key::End => "End",
+            Key::PageUp => "PageUp",
+            Key::PageDown => "PageDown",
+            _ => return None,
+        })
+    }
+
     /// The key a platform adapter sends as `code`, or `None` for one the View does not use.
     pub fn from_code(code: i64) -> Option<Key> {
         Some(match code {
@@ -244,6 +273,64 @@ impl ViewInteraction {
             effects.extend(self.activate(index, None, false, None));
         }
         effects
+    }
+
+    /// A hardware key while an editor owns focus, offered before the editor and its input method
+    /// see it. Taken when the editor's `onKeyDown` lists it and nothing is being composed; an
+    /// Escape the page did not list closes the topmost overlay. Otherwise the editor keeps it.
+    pub fn editor_key(&mut self, key: Key) -> (bool, Vec<Effect>) {
+        if self.inert {
+            return (false, Vec::new());
+        }
+        let Some(frame) = self.frame.clone() else {
+            return (false, Vec::new());
+        };
+        let Some(editor) = frame.nodes.iter().find(|node| {
+            node.input
+                .as_ref()
+                .is_some_and(|input| input.edit_token.is_some())
+        }) else {
+            return (false, Vec::new());
+        };
+        let composing = editor
+            .input
+            .as_ref()
+            .and_then(|input| input.edit.as_ref())
+            .is_some_and(|edit| edit.composition.is_some());
+        if composing {
+            return (false, Vec::new());
+        }
+        if self.editor_key_dispatch(&frame, editor, key) {
+            return (true, vec![Effect::Dispatch]);
+        }
+        if key == Key::Escape
+            && let Some(effects) = self.close_request()
+        {
+            return (true, effects);
+        }
+        (false, Vec::new())
+    }
+
+    /// Queues `key` for `editor`'s `onKeyDown` when its map lists it.
+    pub(super) fn editor_key_dispatch(
+        &mut self,
+        frame: &PresentedFrame,
+        editor: &crate::scene::node::NodeSnapshot,
+        key: Key,
+    ) -> bool {
+        let Some((handle, keys)) = &editor.key_map else {
+            return false;
+        };
+        let Some(name) = key.editor_name().filter(|_| keys.contains(&key)) else {
+            return false;
+        };
+        self.dispatches.push(super::Dispatch::EditorKey {
+            commit: frame.commit,
+            handle: *handle,
+            identity: editor.identity.to_string(),
+            key: name,
+        });
+        true
     }
 
     /// Hardware keys while no editor owns focus. Returns whether the key was consumed.

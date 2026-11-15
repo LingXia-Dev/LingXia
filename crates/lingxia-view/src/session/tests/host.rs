@@ -5225,6 +5225,8 @@ fn close_request_case(reduced: bool, blur: bool) {
 mod appearance;
 #[path = "box_reading.rs"]
 mod box_reading;
+#[path = "editor_keys.rs"]
+mod editor_keys;
 #[path = "orphan_overlays.rs"]
 mod orphan_overlays;
 #[path = "pointer_events.rs"]

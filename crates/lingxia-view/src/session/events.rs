@@ -313,6 +313,26 @@ impl ViewSession {
         }
     }
 
+    /// A key the editor `identity` lists in `onKeyDown`, through its current callback.
+    pub fn editor_key(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        handle: u64,
+        identity: &str,
+        key: &str,
+    ) -> Result<bool, String> {
+        let current = self
+            .retained
+            .as_ref()
+            .and_then(|retained| retained.nodes.iter().find(|node| node.identity == identity))
+            .map(|node| node.key_map.as_ref().map(|(handle, _)| *handle));
+        match current {
+            Some(Some(handle)) => self.text_event(self.generation, handle, key),
+            Some(None) => Ok(false),
+            None => self.text_event(generation, handle, key),
+        }
+    }
+
     /// `onPointer` for `identity`, through the element's current callback as a re-render
     /// renumbers them; the frame's handle only if the element is gone.
     pub fn pointer_event(

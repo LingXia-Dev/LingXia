@@ -51,6 +51,10 @@ extension GpuPageView: GpuImeHost, @preconcurrency NSTextInputClient {
 
     // MARK: Keys while an editor has focus
 
+    /// Key codes an editor's `onKeyDown` map may list, as the core numbers them: arrows up and
+    /// down, Home, End, Return and keypad Enter, Escape, Page Up and Page Down.
+    private static let pageKeys: [UInt16: Int64] = [126: 1, 125: 2, 115: 5, 119: 6, 36: 7, 76: 7, 53: 8, 116: 9, 121: 10]
+
     /// True when the focused editor took the key.
     func editorKeyDown(_ event: NSEvent) -> Bool {
         guard let editor = ime.editor else { return false }
@@ -58,6 +62,12 @@ extension GpuPageView: GpuImeHost, @preconcurrency NSTextInputClient {
         if event.keyCode == 48 {
             ime.clear(blur: true)
             return false
+        }
+        // Keys the page's `onKeyDown` map lists go to the page while nothing is being composed;
+        // an Escape it does not list closes an open overlay. The rest stay with the editor.
+        let unmodified = event.modifierFlags.isDisjoint(with: [.command, .control, .option, .shift])
+        if unmodified, !hasMarkedText(), let key = Self.pageKeys[event.keyCode], gpuPageEditorKey(token, key) {
+            return true
         }
         let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
         if flags.contains(.command), let key = event.charactersIgnoringModifiers?.lowercased() {
