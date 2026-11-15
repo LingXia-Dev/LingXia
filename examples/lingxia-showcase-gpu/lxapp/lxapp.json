@@ -94,6 +94,18 @@
       "path": "pages/view-lab/index"
     },
     {
+      "name": "view",
+      "path": "pages/view/index"
+    },
+    {
+      "name": "view-text",
+      "path": "pages/view-text/index"
+    },
+    {
+      "name": "view-gestures",
+      "path": "pages/view-gestures/index"
+    },
+    {
       "name": "motion-lab",
       "path": "pages/motion-lab/index"
     },

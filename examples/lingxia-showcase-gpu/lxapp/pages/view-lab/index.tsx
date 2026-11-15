@@ -3,6 +3,8 @@ import { VideoControls } from '@liulidesign/core/VideoControls';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 import type { LabPageData } from '../../shared/lab-types';
+import { TextLayoutDemo, RichTextDemo, DocumentDemo, SelectionDemo, TypeaheadDemo, FormSemanticsDemo, Term } from '../../shared/view-lab/text-input';
+import { ScrubDemo, DragDemo, DragChainDemo, DetentsDemo, SwipeRowsDemo, PagerDemo, NestedControlsDemo } from '../../shared/view-lab/gestures';
 import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../../shared/public-video';
 import { VIDEO_LABELS } from '../../shared/video-labels';
 
@@ -136,18 +138,7 @@ function Transforms() {
 }
 
 function TextLayout() {
-  return (
-    <Section title="Text" testId="lab-text">
-      <view className="flex-row gap-6">
-        <view className="items-end">
-          {['1,111.10', '808.08', '10.00'].map(value => <text key={value} className="text-sm tabular-nums slashed-zero">{value}</text>)}
-        </view>
-        <text data-testid="lab-text-pre-line" className="grow basis-0 text-sm whitespace-pre-line">{'First line\n   second line keeps   one space'}</text>
-      </view>
-      <text data-testid="lab-text-pre-wrap" className="p-2 rounded bg-surface-sunken text-xs font-mono whitespace-pre-wrap">{'{\n  "indent": true\n}'}</text>
-      <text data-testid="lab-text-break-all" className="text-xs break-all">https://example.com/a/very/long/path/without/any/spaces/to/break/at</text>
-    </Section>
-  );
+  return <Section title="Text" testId="lab-text"><TextLayoutDemo /></Section>;
 }
 
 function Sizing() {
@@ -200,44 +191,11 @@ function Direction() {
 }
 
 function RichText() {
-  const presses = useLocal('presses', 0);
-  return (
-    <Section title="Rich text" testId="lab-rich-text">
-      <text data-testid="lab-rich-paragraph" className="text-sm leading-relaxed">
-        Plans renew <span className="font-semibold text-text">monthly</span> unless you{' '}
-        <span className="bg-surface-sunken font-mono">cancel</span> first. Read the{' '}
-        <link data-testid="lab-rich-link" onClick={() => presses.set(presses.value + 1)} className="active:text-text">terms of service and <span className="font-semibold">privacy policy</span></link>
-        {' '}before you <span className="italic line-through text-muted">sign</span> agree.
-      </text>
-      <text data-testid="lab-rich-presses" className="text-xs text-muted tabular-nums">Link pressed {presses.value} times</text>
-    </Section>
-  );
+  return <Section title="Rich text" testId="lab-rich-text"><RichTextDemo /></Section>;
 }
 
-// A long document: numbered clauses from Logic, inline runs, a clamped preview and a definitions grid.
 function Document() {
-  const { terms } = useView().data as unknown as LabPageData;
-  return (
-    <Section title="Document" testId="lab-document">
-      <view className="gap-4 max-w-[68ch]">
-        <text className="text-xs text-muted tabular-nums">{`Updated ${terms.updated}`}</text>
-        {terms.clauses.map((clause, index) => (
-          <view key={clause.heading} className="gap-2">
-            <text role="heading" headingLevel={3} className="text-base font-semibold">{`${index + 1}. ${clause.heading}`}</text>
-            <text className="text-sm leading-relaxed select-text">
-              {clause.body} <span className="font-semibold">{clause.term}</span> is defined in{' '}
-              <span className="font-mono text-xs bg-surface-sunken">section {index + 2}</span> and its <span className="italic">annexes</span>.
-            </text>
-            <text className="text-xs text-faint line-clamp-2">{clause.body.repeat(3)}</text>
-          </view>
-        ))}
-        <text role="heading" headingLevel={3} className="text-base font-semibold">Definitions</text>
-        <view data-testid="lab-document-terms" className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-          {terms.clauses.map(clause => <Fragment key={clause.term}><Term word={clause.term} meaning={clause.heading} /></Fragment>)}
-        </view>
-      </view>
-    </Section>
-  );
+  return <Section title="Document" testId="lab-document"><DocumentDemo /></Section>;
 }
 
 // Bar, line and pie plots the renderer draws from Logic series; a bar takes the selection.
@@ -385,13 +343,7 @@ function StickyHeaders() {
 }
 
 function Selection() {
-  return (
-    <Section title="Selectable text" testId="lab-selection">
-      <text data-testid="lab-select-text" className="text-sm select-text">Long-press a word to select it, then drag the handles. Order reference: LX-2024-88412.</text>
-      <text data-testid="lab-select-all" className="font-mono text-sm px-2 py-1 rounded bg-surface-sunken select-all">8F3A-77C2-91D0</text>
-      <view className="select-text"><text data-testid="lab-select-inherited" className="text-xs text-muted">Selectable by inheritance.</text></view>
-    </Section>
-  );
+  return <Section title="Selectable text" testId="lab-selection"><SelectionDemo /></Section>;
 }
 
 function Focus() {
@@ -428,27 +380,8 @@ function Focus() {
   );
 }
 
-// A pressable row holding its own controls: each press goes to the innermost control under it.
 function NestedControls() {
-  const opened = useLocal('opened', 0);
-  const wifi = useLocal('wifi', true);
-  const removed = useLocal('removed', 0);
-  return (
-    <Section title="Nested controls" testId="lab-nested">
-      <button data-testid="lab-nested-row" onClick={() => opened.set(opened.value + 1)} className="rounded-xl bg-surface-sunken px-4 py-3">
-        <view className="flex-row items-center gap-3">
-          <text className="grow text-sm">Wi-Fi</text>
-          <switch data-testid="lab-nested-switch" bind={wifi} aria-label="Wi-Fi" />
-          <button data-testid="lab-nested-remove" onClick={() => removed.set(removed.value + 1)} className="rounded-lg px-2 py-1 text-sm text-danger">Remove</button>
-        </view>
-      </button>
-      <text data-testid="lab-nested-state" className="text-xs text-muted tabular-nums">{`opened=${opened.value} wifi=${wifi.value} removed=${removed.value}`}</text>
-    </Section>
-  );
-}
-
-function Term({ word, meaning }: { word: string; meaning: string }) {
-  return <><text className="text-sm font-semibold">{word}</text><text className="text-xs text-muted">{meaning}</text></>;
+  return <Section title="Nested controls" testId="lab-nested"><NestedControlsDemo /></Section>;
 }
 
 // Fragments add no box: the terms sit directly in the column, and a keyed group moves as one.
@@ -469,31 +402,8 @@ function Fragments() {
   );
 }
 
-// A field's hint, error, required and invalid states, a tooltip, and a dialog that interrupts.
 function FormSemantics() {
-  const zip = useLocal('form-zip', '');
-  const confirm = useLocal('form-confirm', false);
-  const hint = useId();
-  const error = useId();
-  const invalid = zip.value.length > 0 && !/^\d{5}$/.test(zip.value);
-  return (
-    <Section title="Form semantics" testId="lab-form">
-      <view role="group" aria-label="Delivery" data-testid="lab-form-group" className="gap-1">
-        <input data-testid="lab-form-zip" bind={zip} aria-label="ZIP code" aria-required aria-invalid={invalid}
-          aria-describedby={invalid ? `${hint} ${error}` : hint} placeholder="12345"
-          className={`px-3 py-2 rounded-lg border bg-surface text-sm ${invalid ? 'border-danger' : 'border-line-strong'}`} />
-        <text id={hint} className="text-xs text-muted">Five digits</text>
-        {invalid ? <text id={error} data-testid="lab-form-error" className="text-xs text-danger">Not a ZIP code</text> : null}
-        <text role="tooltip" data-testid="lab-form-tip" className="text-xs text-muted">We deliver within the city</text>
-      </view>
-      <Button testId="lab-form-delete" variant="secondary" onClick={() => confirm.set(true)}>Delete address</Button>
-      <dialog open={confirm.value} role="alertdialog" onClose={() => confirm.set(false)} aria-label="Delete this address?" data-testid="lab-form-confirm"
-        className="w-72 p-4 gap-3 rounded-2xl bg-surface-raised">
-        <text className="text-sm">It cannot be restored.</text>
-        <Button testId="lab-form-keep" onClick={() => confirm.set(false)}>Keep it</Button>
-      </dialog>
-    </Section>
-  );
+  return <Section title="Form semantics" testId="lab-form"><FormSemanticsDemo /></Section>;
 }
 
 // Tabs, a toolbar and a tree: one Tab stop each, arrows move between items, tabs activate on arrival.
@@ -701,78 +611,12 @@ function Overlays() {
   );
 }
 
-// A card the finger moves along its track: it springs to the nearest of three points, a flick
-// carries it one on; arrows and assistive tech step it, and `bind` follows where it lands.
-// A box read in render and a pointer scrubbed over it: the marker follows x, arrows and a
-// screen reader step it, and a vertical drag still scrolls the page.
 function Scrub() {
-  const count = 12;
-  const box = useBox('lab-scrub');
-  const at = useLocal('lab-scrub-at', 3);
-  const last = useLocal('lab-scrub-last', 'none');
-  const width = box.value?.width ?? 0;
-  return (
-    <Section title="Scrub" testId="lab-scrub">
-      <view box={box} data-testid="lab-scrub-plot" pointerAxis="x" aria-label="Month" aria-valuenow={at.value} aria-valuemin={0} aria-valuemax={count - 1}
-        aria-valuetext={`Month ${at.value + 1}`}
-        onPointer={event => {
-          if (event.phase === 'increment') at.set(Math.min(count - 1, at.value + 1));
-          else if (event.phase === 'decrement') at.set(Math.max(0, at.value - 1));
-          else if (event.phase !== 'leave' && event.phase !== 'cancel' && event.width > 0)
-            at.set(Math.max(0, Math.min(count - 1, Math.floor(event.x / event.width * count))));
-          last.set(`${event.phase} ${event.pointer}`);
-        }}
-        className="flex-row h-24 rounded-xl bg-surface-sunken">
-        <view style={{ width: width ? (at.value + 0.5) * width / count : 0 }} />
-        <view data-testid="lab-scrub-marker" className="w-0.5 self-stretch bg-accent" />
-      </view>
-      <text data-testid="lab-scrub-state" className="text-xs text-muted tabular-nums">
-        {`box=${box.value ? `${box.value.width}x${box.value.height}` : 'none'} at=${at.value} last=${last.value}`}
-      </text>
-    </Section>
-  );
+  return <Section title="Scrub" testId="lab-scrub"><ScrubDemo /></Section>;
 }
 
-// A typeahead: suggestions sit under the field in a manual popover while the caret stays in the
-// text. Arrows move the active option, Enter takes it, Escape closes; a tap on one takes it too.
 function Typeahead() {
-  const fruits = ['Apple', 'Apricot', 'Banana', 'Cherry', 'Grape'];
-  const query = useLocal('lab-type-query', '');
-  const open = useLocal('lab-type-open', false);
-  const active = useLocal('lab-type-active', 0);
-  const last = useLocal('lab-type-last', 'none');
-  const matches = fruits.filter(name => name.toLowerCase().startsWith(query.value.toLowerCase()));
-  const shown = open.value && matches.length > 0;
-  const take = (name: string) => { query.set(name); open.set(false); last.set(`picked ${name}`); };
-  return (
-    <Section title="Typeahead" testId="lab-type">
-      <view id="lab-type-field" data-testid="lab-type-field" className="rounded-lg border border-line-strong bg-surface">
-        <input data-testid="lab-type-input" value={query.value} aria-label="Fruit" placeholder="Fruit" className="px-3 py-2 text-sm"
-          role="combobox" aria-expanded={shown} aria-controls="lab-type-list" aria-autocomplete="list"
-          aria-activedescendant={shown ? `lab-type-option-${active.value}` : undefined}
-          onInput={text => { query.set(text); open.set(true); active.set(0); }}
-          onFocus={() => { open.set(true); last.set('focus'); }}
-          onBlur={() => { open.set(false); last.set('blur'); }}
-          onKeyDown={{
-            ArrowDown: () => active.set(Math.min(matches.length - 1, active.value + 1)),
-            ArrowUp: () => active.set(Math.max(0, active.value - 1)),
-            Enter: () => { if (matches[active.value]) take(matches[active.value]); },
-            Escape: () => { open.set(false); last.set('escape'); },
-          }} />
-      </view>
-      <view id="lab-type-list" popover="manual" anchor="lab-type-field" open={shown} onToggle={next => open.set(next)}
-        role="listbox" aria-label="Fruits" data-testid="lab-type-list" className="w-40 rounded-lg border border-line-strong bg-surface p-1">
-        {matches.map((name, index) => (
-          <button key={name} id={`lab-type-option-${index}`} role="option" aria-selected={index === active.value}
-            data-testid={`lab-type-option-${name}`} onClick={() => take(name)}
-            className={`px-3 py-2 rounded-md text-sm ${index === active.value ? 'bg-surface-sunken' : ''}`}>{name}</button>
-        ))}
-      </view>
-      <text data-testid="lab-type-state" className="text-xs text-muted tabular-nums">{`open=${shown} active=${active.value} last=${last.value}`}</text>
-      <input data-testid="lab-type-readonly" value="Read only" readOnly aria-label="Reference"
-        className="px-3 py-2 rounded-lg border border-line-strong bg-surface-sunken text-sm" />
-    </Section>
-  );
+  return <Section title="Typeahead" testId="lab-type"><TypeaheadDemo /></Section>;
 }
 
 // Counts this page's View runs: a theme change repaints a page that never read the appearance
@@ -828,70 +672,15 @@ function Reveal() {
 }
 
 function Drag() {
-  const at = useLocal('drag-at', 0);
-  const last = useLocal('drag-last', 'none');
-  return (
-    <Section title="Drag" testId="lab-drag">
-      <view className="h-20 rounded-xl bg-surface-sunken p-2">
-        <view drag="x" dragSnapPoints={[0, 112, 224]} bind={at} aria-label="Card" data-testid="lab-drag-card"
-          onDragStart={() => last.set('dragging')} onDragEnd={({ index }) => last.set(`released at ${index}`)}
-          className="w-20 h-16 rounded-lg bg-accent items-center justify-center duration-500 ease-spring-bouncy">
-          <text className="text-sm text-on-accent">Drag</text>
-        </view>
-      </view>
-      <text data-testid="lab-drag-state" className="text-xs text-muted tabular-nums">{`at=${at.value} last=${last.value}`}</text>
-      <Button testId="lab-drag-reset" size="sm" variant="secondary" onClick={() => at.set(0)}>Back to start</Button>
-    </Section>
-  );
+  return <Section title="Drag" testId="lab-drag"><DragDemo /></Section>;
 }
 
-// A panel holding a list: pulled up it opens before the list scrolls; pulled down from the list,
-// the list returns to its top before the panel closes, all in one gesture.
 function DragChain() {
-  const at = useLocal('chain-at', 1);
-  return (
-    <Section title="Drag and scroll" testId="lab-chain">
-      <view className="h-56 rounded-xl bg-surface-sunken overflow-hidden">
-        <view drag="y" dragSnapPoints={[0, 96]} bind={at} aria-label="Panel" data-testid="lab-chain-panel"
-          className="h-56 rounded-t-xl bg-surface-raised">
-          <text data-testid="lab-chain-title" className="p-3 text-sm font-semibold">Pull up, then keep going</text>
-          <scroll data-testid="lab-chain-list" className="grow basis-0">
-            {Array.from({ length: 20 }, (_, i) => (
-              <text key={`c${i}`} data-testid={`lab-chain-row-${i + 1}`} className="px-3 py-2 text-sm border-b border-line">{`Item ${i + 1}`}</text>
-            ))}
-          </scroll>
-        </view>
-      </view>
-      <text data-testid="lab-chain-state" className="text-xs text-muted tabular-nums">{`at=${at.value}`}</text>
-    </Section>
-  );
+  return <Section title="Drag and scroll" testId="lab-chain"><DragChainDemo /></Section>;
 }
 
-// A sheet with detents: dragged between half and full height, dragged off it closes, and its scrim
-// fades with how much of it is on screen. Its list scrolls once the sheet is fully open.
 function Detents() {
-  const open = useLocal('detents-open', false);
-  const detent = useLocal('detents-at', 1);
-  const closed = useLocal('detents-closed', 0);
-  const safeBottom = useView().env.safeArea?.bottom ?? 0;
-  return (
-    <Section title="Sheet detents" testId="lab-detents">
-      <view className="flex-row gap-2 items-center">
-        <Button testId="lab-detents-open" onClick={() => { detent.set(1); open.set(true); }}>Open sheet</Button>
-        <text data-testid="lab-detents-state" className="text-xs text-muted tabular-nums">{`open=${open.value} at=${detent.value} closed=${closed.value}`}</text>
-      </view>
-      <dialog open={open.value} onClose={() => { closed.set(closed.value + 1); open.set(false); }} closedby="any" aria-label="Places"
-        drag="y" dragSnapPoints={[0, '45%', '100%']} bind={detent} data-testid="lab-detents-sheet"
-        style={{ paddingBottom: 16 + safeBottom }}
-        className="mt-auto mb-0 w-full h-[85dvh] p-4 gap-3 rounded-t-3xl bg-surface-raised transition-transform duration-300 ease-spring starting:translate-y-full exit:translate-y-full">
-        <view className="self-center w-10 h-1 rounded-full bg-line-strong" />
-        <text data-testid="lab-detents-title" role="heading" headingLevel={3} className="text-base font-semibold">Places</text>
-        <scroll data-testid="lab-detents-list" className="grow basis-0">
-          {Array.from({ length: 30 }, (_, i) => <text key={`p${i}`} data-testid={`lab-detents-row-${i + 1}`} className="py-2 text-sm">{`Place ${i + 1}`}</text>)}
-        </scroll>
-      </dialog>
-    </Section>
-  );
+  return <Section title="Sheet detents" testId="lab-detents"><DetentsDemo /></Section>;
 }
 
 // Rows that swipe open to Archive and Delete behind them; a full swipe deletes. Screen readers and
@@ -899,64 +688,11 @@ function Detents() {
 // reveal (two 72 px actions = 144), so an open row shows no gap past its last action.
 
 function SwipeRows() {
-  const items = useLocal('swipe-items', ['Groceries', 'Dentist', 'Rent']);
-  const last = useLocal('swipe-last', 'none');
-  const remove = (item: string) => { items.set(items.value.filter(other => other !== item)); last.set(`deleted ${item}`); };
-  return (
-    <Section title="Swipe rows" testId="lab-swipe">
-      <view className="overflow-hidden bg-surface">
-        {items.value.map((item, index) => (
-          <Fragment key={item}>
-            {index > 0 && <view className="h-px bg-line" />}
-            <SwipeRow item={item} onOpen={() => last.set(`opened ${item}`)} onArchive={() => last.set(`archived ${item}`)} onDelete={() => remove(item)} />
-          </Fragment>
-        ))}
-      </view>
-      <text data-testid="lab-swipe-state" className="text-xs text-muted">{`rows=${items.value.length} last=${last.value}`}</text>
-    </Section>
-  );
+  return <Section title="Swipe rows" testId="lab-swipe"><SwipeRowsDemo /></Section>;
 }
 
-function SwipeRow({ item, onOpen, onArchive, onDelete }: { item: string; onOpen: () => void; onArchive: () => void; onDelete: () => void }) {
-  const open = useLocal('open', 0);
-  const id = item.toLowerCase();
-  const strip = 'h-full items-center-safe justify-center text-sm font-medium';
-  return (
-    <view className="grid *:col-start-1 *:row-start-1 h-12">
-      <view className="flex-row absolute top-0 bottom-0 right-0 w-[144px]">
-        <button id={`archive-${id}`} data-testid={`lab-swipe-archive-${id}`} onClick={() => { open.set(0); onArchive(); }}
-          className={`${strip} w-[72px] bg-accent text-on-accent`}>Archive</button>
-        <button id={`delete-${id}`} data-testid={`lab-swipe-delete-${id}`} onClick={onDelete}
-          className={`${strip} w-[72px] bg-danger text-on-danger`}>Delete</button>
-      </view>
-      <button drag="x" dragSnapPoints={[0, -144, '-100%']} bind={open} aria-actions={`archive-${id} delete-${id}`}
-        data-testid={`lab-swipe-row-${id}`} onClick={onOpen} onDragEnd={({ index }) => { if (index === 2) onDelete(); }}
-        className="absolute inset-0 px-4 justify-center items-start text-start bg-surface text-sm text-text">{item}</button>
-    </view>
-  );
-}
-
-// A pager: a horizontal scroll that stops on every page (`snap-always`), its page bound both ways.
 function Pager() {
-  const page = useLocal('pager-page', 0);
-  const pages = ['Morning', 'Noon', 'Evening'];
-  return (
-    <Section title="Pager" testId="lab-pager">
-      <scroll data-testid="lab-pager-scroll" bind={page} className="w-72 overflow-x-auto snap-x snap-always rounded-xl bg-surface-sunken">
-        <view className="flex-row">
-          {pages.map(name => (
-            <view key={name} className="snap-start shrink-0 w-72 h-28 items-center justify-center">
-              <text className="text-lg font-semibold">{name}</text>
-            </view>
-          ))}
-        </view>
-      </scroll>
-      <view className="flex-row gap-2 items-center">
-        <text data-testid="lab-pager-state" className="grow text-xs text-muted tabular-nums">{`page=${page.value}`}</text>
-        <Button testId="lab-pager-next" size="sm" variant="secondary" onClick={() => page.set((page.value + 1) % pages.length)}>Next</Button>
-      </view>
-    </Section>
-  );
+  return <Section title="Pager" testId="lab-pager"><PagerDemo /></Section>;
 }
 
 // The kit pager: dots under the pages, tap one to jump; the pages read "n of m" as a list.
