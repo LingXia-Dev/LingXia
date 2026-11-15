@@ -1,5 +1,5 @@
-import { cx, type VectorPath } from '@lingxia/view';
-import { bars, box, closed, domain, dot, monotone, polyline, runs, thin, type Point } from '../internal/geometry';
+import { cx, useBox, type VectorPath } from '@lingxia/view';
+import { bars, box, closed, domain, dot, monotone, polyline, reach, runs, thin, type Point } from '../internal/geometry';
 import { remember } from '../internal/memo';
 import { sparklineRecipe as r } from './Sparkline.recipe';
 
@@ -34,6 +34,10 @@ const toneRole = { series: 'chart-1', neutral: 'text-muted', positive: 'success'
 
 const strokeWidth = 1.5;
 const dotWidth = 5;
+// Half a dot, in points: how far a line's data sits inside its box.
+const inset = 3;
+// The box's height at each size, until it has been measured.
+const heights = { sm: 24, md: 32, lg: 48 } as const;
 // Bars fill this share of their slot, the rest is the gap between them.
 const barShare = 0.72;
 
@@ -77,10 +81,14 @@ export function Sparkline({
     // A vector needs a path; with nothing to draw, the box keeps its place and its name.
     return paths;
   });
+  // A drawing is cut at its viewBox, so a line's reaches half a dot past the data: the stroke and the end dot are whole.
+  const plot = useBox('plot');
+  const frame = variant === 'bar' ? [0, 0, box, box] as const
+    : reach(plot.value?.width ?? 96, plot.value?.height ?? heights[size], inset, variant === 'area' ? 0 : inset);
   return (
-    <view role="img" aria-label={label} data-testid={testId} className={cx(r.root.base, r.root.size[size], className)}>
+    <view box={plot} role="img" aria-label={label} data-testid={testId} className={cx(r.root.base, r.root.size[size], className)}>
       {/* A vector needs a path; with nothing to draw, the box keeps its place and its name. */}
-      {paths.length > 0 && <vector aria-hidden paths={paths} viewBox={[0, 0, box, box]} className={cx(r.plot.base, r.plot.variant[variant])} />}
+      {paths.length > 0 && <vector aria-hidden paths={paths} viewBox={frame} className={r.plot.base} />}
     </view>
   );
 }

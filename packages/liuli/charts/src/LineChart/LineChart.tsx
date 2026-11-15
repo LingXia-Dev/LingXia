@@ -1,8 +1,8 @@
-import { cx, type PointerEvent, type VectorPath } from '@lingxia/view';
+import { cx, useBox, type PointerEvent, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
-import { box, closed, domain, dot, indexAt, monotone, polyline, roundRange, runs, scaleY, thin, type Point } from '../internal/geometry';
+import { box, closed, domain, dot, indexAt, monotone, polyline, reach, roundRange, runs, scaleY, thin, type Point } from '../internal/geometry';
 import { Ticks } from '../internal/Ticks';
 import { remember } from '../internal/memo';
 import { lineChartRecipe as r } from './LineChart.recipe';
@@ -82,6 +82,8 @@ const dotWidth = 6;
 const selectedWidth = 8;
 // Half a marker: the drawing's first and last points sit this far inside the plot.
 const edge = 4;
+// The plot's height at each size, until it has been measured.
+const heights = { xs: 64, sm: 112, md: 176, lg: 240 } as const;
 // Past this many rows a screen reader gets the summary alone; a longer list is not a reading.
 const maxRead = 60;
 
@@ -141,6 +143,11 @@ export function LineChart({
       if (Number.isFinite(value)) marker.push({ d: dot([at, scaleY(value, range)]), stroke: roleOf(series.color), strokeWidth: selectedWidth, ...round });
     }
   }
+
+  // A drawing is cut at its viewBox, so the viewBox reaches half a marker past the data on each
+  // side that has one: a dot on the first, last, highest or lowest value is whole.
+  const plot = useBox('plot');
+  const frame = reach(plot.value?.width ?? 300, plot.value?.height ?? heights[size], edge, isArea ? 0 : edge);
 
   const reading = (row: ChartRow) => shown
     .filter(series => Number.isFinite(numberOf(row, series.field)))
@@ -221,11 +228,11 @@ export function LineChart({
             <text className={cx(r.scaleLabel.base, r.scaleLabel.bottom)}>{scale[1]}</text>
           </view>
         )}
-        <view className={r.plot.base}>
+        <view box={plot} className={r.plot.base}>
           {scale && <view aria-hidden className={r.rule.top} />}
           <view aria-hidden className={cx(r.rule.bottom, !isArea && r.rule.open)} />
-          {paths.length > 0 && <vector aria-hidden paths={paths} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, r.inset.base, !isArea && r.inset.open)} />}
-          {marker.length > 0 && <vector aria-hidden paths={marker} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, r.drawing.over, r.inset.base, !isArea && r.inset.open)} />}
+          {paths.length > 0 && <vector aria-hidden paths={paths} viewBox={frame} className={r.drawing.base} />}
+          {marker.length > 0 && <vector aria-hidden paths={marker} viewBox={frame} className={cx(r.drawing.base, r.drawing.over)} />}
           {/* Over the marks: it hears the pointer, and is the stop the arrow keys and a screen reader step. */}
           {scrub && (
             <view

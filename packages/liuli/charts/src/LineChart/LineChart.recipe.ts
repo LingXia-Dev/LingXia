@@ -14,9 +14,9 @@ export const lineChartParts = {
 } as const;
 
 /**
- * The drawing stretches to the plot and keeps its stroke widths. Drawing, scale and end figure
- * share one inset of half a marker, so a dot on the first or last value is whole and each label
- * sits level with what it names. The rules are two hairlines: the top of the scale and the foot.
+ * The drawing stretches to the plot and keeps its stroke widths. Its data sits half a marker
+ * inside the plot, and the scale and end figure share that inset, so each label sits level with
+ * what it names. The rules are two hairlines: the top of the scale and the foot.
  */
 export const lineChartRecipe = {
   frame: {
@@ -46,7 +46,7 @@ export const lineChartRecipe = {
     open: 'bottom-[4px]',
   },
   drawing: {
-    base: 'w-full grow object-fill px-[4px]',
+    base: 'w-full grow object-fill',
     over: 'absolute inset-0 h-full',
   },
   reading: {

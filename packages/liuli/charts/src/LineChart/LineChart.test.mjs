@@ -51,7 +51,12 @@ test('Weight: the scale is two round numbers at the start edge, level with a hai
   const rules = plot.children.filter(node => node.props.height === 1 && node.props.background);
   assert.deepEqual(rules.map(rule => [rule.props.insetTop, rule.props.insetBottom, rule.props.background]), [[4, undefined, 'text/8'], [undefined, 4, 'text/12']]);
   // Scale, drawing and end figure share the 4 pt inset, so 72.5 is the hairline and 70.5 the rule.
-  assert.deepEqual([scale, plot.children.find(node => node.tag === 'vector'), end].map(node => [node.props.paddingTop, node.props.paddingBottom]), Array(3).fill([4, 4]));
+  assert.deepEqual([scale, end].map(node => [node.props.paddingTop, node.props.paddingBottom]), Array(2).fill([4, 4]));
+  // The drawing is cut at its viewBox, which reaches 4 pt past the data on every side, so the end dot is whole.
+  const reach = () => { const [x, y, width, height] = drawing(screen).viewBox; return [x, y, width, height].map(value => Math.round(value * 100) / 100); };
+  assert.deepEqual(reach(), [-1.37, -2.38, 102.74, 104.76], 'until the plot is measured: 300 pt wide, and 176 pt high at this size');
+  screen.layout(plot, { width: 208, height: 176 });
+  assert.deepEqual(reach(), [-2, -2.38, 104, 104.76], '4 of 200 pt is 2 of 100');
   assert.deepEqual(end.children.map(part => part.props.grow ?? textOf(part)), [2, '70.5 kg', 0], 'two kilos of range above the latest value, none below');
   assert.equal(end.children[1].props.height, 0);
   assert.equal(JSON.parse(end.children[1].children[0].props.transform).translate[1], '-50%', 'the figure is centred on the value\'s height');

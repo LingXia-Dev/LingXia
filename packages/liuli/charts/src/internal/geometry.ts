@@ -210,3 +210,15 @@ export function indexAt(x: number, width: number, count: number, layout: 'points
   const index = layout === 'points' ? Math.round(((x - inset) / span) * (count - 1)) : Math.floor((x / Math.max(1, width)) * count);
   return Math.min(count - 1, Math.max(0, index));
 }
+
+/**
+ * The viewBox of a drawing whose data fills `box` and whose element is `width` by `height` points:
+ * it reaches `inset` points past the data at the sides and top, and `foot` points below. A
+ * drawing is cut at its viewBox, so this is the room a marker on an edge value needs to be whole.
+ */
+export function reach(width: number, height: number, inset: number, foot: number): [number, number, number, number] {
+  const across = (inset * box) / Math.max(1, width - inset * 2);
+  const tall = Math.max(1, height - inset - foot);
+  const [up, down] = [(inset * box) / tall, (foot * box) / tall];
+  return [-across, -up, box + across * 2, box + up + down].map(value => Math.round(value * 1000) / 1000) as [number, number, number, number];
+}

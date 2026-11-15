@@ -18,7 +18,9 @@ test('Trend: one image named by its label, the drawing hidden; a line across the
   assert.equal(spark.props.accessibilityLabel, 'Revenue, last 7 days: up from 12k to 24k');
   assert.equal(spark.children[0].props.accessibilityHidden, 1);
   const { viewBox, fit, paths } = drawing(spark);
-  assert.deepEqual(viewBox, [0, 0, 100, 100]);
+  assert.deepEqual(viewBox, [-3.333, -11.538, 106.667, 123.077], 'until measured, 96 by 32 pt: the viewBox reaches 3 pt past the data, so the end dot is whole');
+  screen.layout(spark, { width: 126, height: 46 });
+  assert.deepEqual(drawing(screen.getByTestId('trend')).viewBox, [-2.5, -7.5, 105, 115], '3 of 120 pt across, 3 of 40 pt up and down');
   assert.equal(fit, 'fill');
   const [line, dot] = paths;
   assert.deepEqual(points(line.d)[0], [0, 100], 'the lowest value sits on the floor: a line fits its data');
