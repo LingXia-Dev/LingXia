@@ -398,6 +398,22 @@ impl ViewInteraction {
         // In a composite (menu, tab list, radio group, toolbar, list box, tree) arrows move between
         // its items, Home and End go to the ends and, where ARIA's pattern has it, a character jumps
         // to the next item whose name starts with it.
+        // In a menu the arrow pointing forward opens the focused item's submenu; the arrow pointing
+        // back closes the submenu focus is in.
+        if let Some(index) = origin
+            && matches!(key, Key::Left | Key::Right)
+            && let Some((container, crate::interaction::composite::Composite::Menu)) =
+                Composites::new(&frame).container_of(index)
+        {
+            let forward = (key == Key::Right) != frame.nodes[container].rtl;
+            if forward && frame.nodes[index].states[2] == Some(false) {
+                return (true, self.activate(index, None, false, None));
+            }
+            if !forward && self.in_submenu(&frame, index) {
+                self.dispatches.push(super::Dispatch::Escape);
+                return (true, vec![Effect::Dispatch]);
+            }
+        }
         // A grid that pages (a calendar's months) hears PageUp and PageDown itself.
         if let Some(index) = origin
             && matches!(key, Key::PageUp | Key::PageDown)
@@ -543,6 +559,19 @@ impl ViewInteraction {
             }
         }
         (false, Vec::new())
+    }
+
+    /// Whether the menu holding `index` is the open one on top and opened from a menu item.
+    fn in_submenu(&self, frame: &PresentedFrame, index: usize) -> bool {
+        let focus: &str = &frame.nodes[index].identity;
+        self.dialogs.last().is_some_and(|(menu, opener)| {
+            focus.starts_with(menu.as_str())
+                && focus.as_bytes().get(menu.len()) == Some(&b'/')
+                && opener
+                    .as_deref()
+                    .and_then(|opener| frame.index_of(opener))
+                    .is_some_and(|opener| frame.nodes[opener].role.as_deref() == Some("menuitem"))
+        })
     }
 
     /// A composite key on item `index`: `None` when the key is not one, else the item to focus

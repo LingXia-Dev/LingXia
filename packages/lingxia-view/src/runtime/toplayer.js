@@ -24,10 +24,12 @@ const layerZ = 9000;
 
 let uncontrolled = new Set(), anchors = new Map(), opened = new Map(), refused = new Set();
 let invoker = null, sequence = 0;
+// A submenu and the menu whose item opened it.
+let submenus = new Map();
 
 export function resetTopLayer() {
   uncontrolled = new Set(); anchors = new Map(); opened = new Map(); refused = new Set();
-  invoker = null; sequence = 0;
+  invoker = null; sequence = 0; submenus = new Map();
 }
 
 function collected() {
@@ -135,7 +137,7 @@ function popover(tag, props, children, identity, parent) {
   const scope = parent.popovers ?? [];
   const entry = { kind, controlled, onToggle, open: false, ancestors: scope, anchorId };
   top.popovers.set(id, entry);
-  if (!shown || !admitted(identity)) { anchors.delete(id); return null; }
+  if (!shown || !admitted(identity)) { anchors.delete(id); submenus.delete(id); return null; }
   entry.open = true;
   // The invoker that opened it anchors it; one opened from code is placed by its classes,
   // unless it names the element it sits against.
@@ -146,7 +148,7 @@ function popover(tag, props, children, identity, parent) {
   const style = anchor ? { ...rest.style, position: 'absolute', top: 0, left: 0 } : { ...placement(rest, env), ...rest.style };
   const testId = props['data-testid'];
   const node = layerWith(anchor ? {} : clearOfBars(env), identity, env,
-    kind === 'auto' && h('button', { key: 'backdrop', 'aria-hidden': true, 'data-testid': testId && `${testId}-backdrop`, onClick: () => toggle(id, false),
+    kind === 'auto' && !submenus.has(id) && h('button', { key: 'backdrop', 'aria-hidden': true, 'data-testid': testId && `${testId}-backdrop`, onClick: () => toggle(id, false),
       style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'transparent' } }),
     h(tag, { ...rest, id, key: 'panel', [panelMark]: true, [popoverScope]: [...scope, id], style }, ...children));
   return {
@@ -175,17 +177,31 @@ export function toggle(id, next, from) {
   if (!entry || entry.open === next) return false;
   if (next && entry.kind !== 'manual') {
     // Opening an auto popover closes the other autos and hints; a hint closes only other hints.
-    // Those it sits in or opens from stay.
+    // Those it sits in or opens from stay, and so do the menus above the one it opens from.
+    const kept = new Set([...entry.ancestors, ...(from?.scope ?? []), ...menuChain(from?.menu)]);
     for (const [other, state] of top.popovers)
-      if (other !== id && state.open && (state.kind === 'hint' || (entry.kind === 'auto' && state.kind === 'auto'))
-        && !entry.ancestors.includes(other) && !(from?.scope ?? []).includes(other))
+      if (other !== id && state.open && (state.kind === 'hint' || (entry.kind === 'auto' && state.kind === 'auto')) && !kept.has(other))
         toggle(other, false);
   }
-  if (next) invoker = from ? { id, identity: from.identity } : null;
+  if (next) {
+    invoker = from ? { id, identity: from.identity } : null;
+    if (from?.menu !== undefined) submenus.set(id, from.menu); else submenus.delete(id);
+  } else {
+    // A menu takes its submenus with it, innermost first.
+    for (const [child, parent] of [...submenus]) if (parent === id) toggle(child, false);
+    submenus.delete(id);
+  }
   entry.open = next;
   if (!entry.controlled) { if (next) uncontrolled.add(id); else uncontrolled.delete(id); page.invalidated = true; }
   entry.onToggle?.(next);
   return true;
+}
+
+// Menu `id` and the menus it was opened from, innermost first.
+function menuChain(id) {
+  const chain = [];
+  for (let at = id; at !== undefined && !chain.includes(at); at = submenus.get(at)) chain.push(at);
+  return chain;
 }
 
 /** The host's `closeAfter` count for popover `id` ran out: it closes as a light dismiss does. */
@@ -207,6 +223,7 @@ export function closeOrphans(ids) {
     const entry = top?.popovers.get(id);
     if (!entry?.open) continue;
     entry.open = false;
+    submenus.delete(id);
     if (!entry.controlled) { uncontrolled.delete(id); page.invalidated = true; }
     entry.onToggle?.(false);
   }
@@ -221,7 +238,10 @@ export function dismissHints(keep) {
   return changed;
 }
 
-/** A button's `popoverTarget`: its click toggles the popover; `role="menuitem"` closes its menu. */
+/**
+ * A button's `popoverTarget`: its click toggles the popover. A `role="menuitem"` closes its menu
+ * and the menus that one opened from; one that opens a submenu keeps them open.
+ */
 export function invokerHandler(props, identity, scope) {
   const { popoverTarget: target, onClick, role } = props;
   if (target !== undefined) {
@@ -232,8 +252,9 @@ export function invokerHandler(props, identity, scope) {
   if (target === undefined && role !== 'menuitem') return onClick;
   return () => {
     onClick?.();
-    if (target !== undefined) toggle(target, !page.committed?.topLayer?.popovers.get(target)?.open, { identity, scope });
-    if (role === 'menuitem') toggle(scope[scope.length - 1], false);
+    const menu = role === 'menuitem' ? scope[scope.length - 1] : undefined;
+    if (target !== undefined) toggle(target, !page.committed?.topLayer?.popovers.get(target)?.open, { identity, scope, menu });
+    else for (const id of menuChain(menu)) toggle(id, false);
   };
 }
 

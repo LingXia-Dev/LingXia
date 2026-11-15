@@ -83,5 +83,9 @@ how much of it shows. Its `exit:` styles have nothing left to show by then.
 - `role="menu"` names a popover of actions; a `<button role="menuitem">` closes its popover after its
   `onClick`. Inside a menu the arrow keys, Home, End and a typed letter move between items
   ([Keyboard](interaction.md#keyboard)).
+- A menu item with `popoverTarget` opens a submenu and keeps its menu open. A choice in the submenu
+  closes every menu above it, Escape closes the innermost, and Right opens and Left closes the
+  submenu (swapped in a right-to-left page). A submenu has no backdrop of its own: a press on
+  another item of its menu reaches that item.
 - Specs find a dialog with `getByRole('dialog', { name })` and close it as a user would with
   `locator.performAction('dismiss')`.

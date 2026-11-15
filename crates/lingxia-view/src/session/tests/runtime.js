@@ -1095,6 +1095,7 @@
   var refused = /* @__PURE__ */ new Set();
   var invoker = null;
   var sequence = 0;
+  var submenus = /* @__PURE__ */ new Map();
   function resetTopLayer() {
     uncontrolled = /* @__PURE__ */ new Set();
     anchors = /* @__PURE__ */ new Map();
@@ -1102,6 +1103,7 @@
     refused = /* @__PURE__ */ new Set();
     invoker = null;
     sequence = 0;
+    submenus = /* @__PURE__ */ new Map();
   }
   function collected() {
     var _a;
@@ -1213,6 +1215,7 @@
     top.popovers.set(id, entry);
     if (!shown || !admitted(identity)) {
       anchors.delete(id);
+      submenus.delete(id);
       return null;
     }
     entry.open = true;
@@ -1226,7 +1229,7 @@
       anchor ? {} : clearOfBars(env),
       identity,
       env,
-      kind === "auto" && h("button", {
+      kind === "auto" && !submenus.has(id) && h("button", {
         key: "backdrop",
         "aria-hidden": true,
         "data-testid": testId && `${testId}-backdrop`,
@@ -1253,11 +1256,19 @@
     const entry = top?.popovers.get(id);
     if (!entry || entry.open === next) return false;
     if (next && entry.kind !== "manual") {
+      const kept2 = /* @__PURE__ */ new Set([...entry.ancestors, ...from?.scope ?? [], ...menuChain(from?.menu)]);
       for (const [other, state] of top.popovers)
-        if (other !== id && state.open && (state.kind === "hint" || entry.kind === "auto" && state.kind === "auto") && !entry.ancestors.includes(other) && !(from?.scope ?? []).includes(other))
+        if (other !== id && state.open && (state.kind === "hint" || entry.kind === "auto" && state.kind === "auto") && !kept2.has(other))
           toggle(other, false);
     }
-    if (next) invoker = from ? { id, identity: from.identity } : null;
+    if (next) {
+      invoker = from ? { id, identity: from.identity } : null;
+      if (from?.menu !== void 0) submenus.set(id, from.menu);
+      else submenus.delete(id);
+    } else {
+      for (const [child, parent] of [...submenus]) if (parent === id) toggle(child, false);
+      submenus.delete(id);
+    }
     entry.open = next;
     if (!entry.controlled) {
       if (next) uncontrolled.add(id);
@@ -1266,6 +1277,11 @@
     }
     entry.onToggle?.(next);
     return true;
+  }
+  function menuChain(id) {
+    const chain = [];
+    for (let at = id; at !== void 0 && !chain.includes(at); at = submenus.get(at)) chain.push(at);
+    return chain;
   }
   function closeAfterExpired(id) {
     const entry = page.committed?.topLayer?.popovers.get(id);
@@ -1281,6 +1297,7 @@
       const entry = top?.popovers.get(id);
       if (!entry?.open) continue;
       entry.open = false;
+      submenus.delete(id);
       if (!entry.controlled) {
         uncontrolled.delete(id);
         page.invalidated = true;
@@ -1305,8 +1322,9 @@
     if (target === void 0 && role !== "menuitem") return onClick;
     return () => {
       onClick?.();
-      if (target !== void 0) toggle(target, !page.committed?.topLayer?.popovers.get(target)?.open, { identity, scope });
-      if (role === "menuitem") toggle(scope[scope.length - 1], false);
+      const menu = role === "menuitem" ? scope[scope.length - 1] : void 0;
+      if (target !== void 0) toggle(target, !page.committed?.topLayer?.popovers.get(target)?.open, { identity, scope, menu });
+      else for (const id of menuChain(menu)) toggle(id, false);
     };
   }
   function interestTrigger(props, identity, scope) {

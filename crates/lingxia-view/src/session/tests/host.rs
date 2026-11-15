@@ -5241,6 +5241,8 @@ mod pointer_events;
 mod popover_anchor;
 #[path = "reveal_element.rs"]
 mod reveal_element;
+#[path = "submenu.rs"]
+mod submenu;
 
 #[test]
 fn escape_pressed_on_any_match_closes_an_open_light_dismiss_popover() {

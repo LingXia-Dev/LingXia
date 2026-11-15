@@ -199,6 +199,66 @@ test('backdrop: styles a dialog backdrop and nothing else', async () => {
   configureClasses([]);
 });
 
+test('a menu item that opens a submenu keeps its menu; a choice in the submenu closes both; Escape closes the innermost', () => {
+  reset();
+  const log = [];
+  // The submenu sits beside its menu in the tree, as a kit portals it.
+  const view = () => h('page', {},
+    h('button', { popoverTarget: 'menu', 'data-testid': 'more' }, 'More'),
+    h('view', { id: 'menu', popover: true, role: 'menu', 'aria-label': 'Actions', onToggle: open => log.push(`menu=${open}`), 'data-testid': 'menu' },
+      h('button', { role: 'menuitem', 'data-testid': 'rename' }, 'Rename'),
+      h('button', { role: 'menuitem', popoverTarget: 'move', 'data-testid': 'move-to' }, 'Move to'),
+      h('button', { role: 'menuitem', popoverTarget: 'share', 'data-testid': 'share-with' }, 'Share with')),
+    h('view', { id: 'move', popover: true, role: 'menu', 'aria-label': 'Move to', onToggle: open => log.push(`move=${open}`), 'data-testid': 'move' },
+      h('button', { role: 'menuitem', 'data-testid': 'inbox', onClick: () => log.push('inbox') }, 'Inbox'),
+      h('button', { role: 'menuitem', popoverTarget: 'deeper', 'data-testid': 'archive' }, 'Archive')),
+    h('view', { id: 'deeper', popover: true, role: 'menu', 'aria-label': 'Archive', 'data-testid': 'deeper' },
+      h('button', { role: 'menuitem', 'data-testid': 'year' }, '2026')),
+    h('view', { id: 'share', popover: true, role: 'menu', 'aria-label': 'Share with', 'data-testid': 'share' },
+      h('button', { role: 'menuitem', 'data-testid': 'team' }, 'Team')));
+  const press = id => { dispatch(byId(render(view), id).props.onClick); return render(view); };
+  let nodes = press('more');
+  nodes = press('move-to');
+  assert.ok(byId(nodes, 'menu'), 'the menu stays under its submenu');
+  assert.ok(byId(nodes, 'move'));
+  assert.equal(byId(nodes, 'move-to').props.stateExpanded, 1);
+  assert.equal(byId(nodes, 'move').props.anchorTo, '--lx-popover-move');
+  assert.equal(byId(nodes, 'move-to').props.anchorName, '--lx-popover-move');
+  assert.ok(byId(nodes, 'menu-backdrop'));
+  assert.equal(byId(nodes, 'move-backdrop'), undefined, 'a submenu leaves its menu\'s items pressable');
+  // Another item of the menu swaps the submenu.
+  nodes = press('share-with');
+  assert.ok(byId(nodes, 'menu') && byId(nodes, 'share'));
+  assert.equal(byId(nodes, 'move'), undefined);
+  nodes = press('move-to');
+  nodes = press('archive');
+  assert.ok(byId(nodes, 'menu') && byId(nodes, 'move') && byId(nodes, 'deeper'), 'three levels stay open');
+  assert.equal(escapeOverlay(), true);
+  nodes = render(view);
+  assert.ok(byId(nodes, 'move') && !byId(nodes, 'deeper'), 'Escape closes the innermost');
+  assert.equal(escapeOverlay(), true);
+  nodes = render(view);
+  assert.ok(byId(nodes, 'menu') && !byId(nodes, 'move'));
+  nodes = press('move-to');
+  log.length = 0;
+  nodes = press('inbox');
+  assert.deepEqual(log, ['inbox', 'move=false', 'menu=false'], 'a choice closes the chain, innermost first');
+  assert.ok(!byId(nodes, 'menu') && !byId(nodes, 'move'));
+  // A press outside reaches the menu's backdrop and takes the submenu with it.
+  press('more');
+  nodes = press('move-to');
+  log.length = 0;
+  nodes = press('menu-backdrop');
+  assert.deepEqual(log, ['move=false', 'menu=false']);
+  assert.ok(!byId(nodes, 'menu') && !byId(nodes, 'move'));
+  // Pressing the item again closes only its submenu.
+  press('more');
+  press('move-to');
+  nodes = press('move-to');
+  assert.ok(byId(nodes, 'menu') && !byId(nodes, 'move'));
+  assert.equal(byId(nodes, 'move-to').props.stateExpanded, 0);
+});
+
 test('interestFor shows a hint on the core\'s word; a hint closes other hints, an auto popover closes hints', () => {
   reset();
   const view = () => h('page', {},
