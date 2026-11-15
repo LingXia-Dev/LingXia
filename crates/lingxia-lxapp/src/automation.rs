@@ -1087,6 +1087,7 @@ pub fn build_query_script(
       pressed: aria("aria-pressed"),
       selected: tag === "option" ? el.selected : aria("aria-selected"),
       expanded: details && details.tagName.toLowerCase() === "details" ? details.open : aria("aria-expanded"),
+      busy: aria("aria-busy"),
       text: text.value,
       text_truncated: text.truncated,
       value: value ? value.value : null,
