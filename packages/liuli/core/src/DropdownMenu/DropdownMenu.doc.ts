@@ -21,6 +21,8 @@ export const doc: ComponentDoc = {
     { part: 'item', required: true, description: 'DropdownMenuItem: a menu item button with icon, label and description.' },
     { part: 'itemCheck', required: false, description: 'A check at the end of a checked checkbox or radio item; hidden from assistive tech.' },
     { part: 'divider', required: false, description: 'DropdownMenuDivider: a hairline between groups; hidden from assistive tech.' },
+    { part: 'submenuChevron', required: false, description: 'DropdownMenuSubmenu: an item with a chevron that opens a second menu at its side; choosing there closes both.' },
+    { part: 'back', required: false, description: 'On a narrow screen a submenu takes the panel instead: this first row names it and goes back to the menu.' },
   ],
   accessibility: {
     pattern: 'menuButton',
@@ -68,17 +70,18 @@ export const doc: ComponentDoc = {
     { name: 'Value', title: 'A menu that sets a value' },
     { name: 'Checkable', title: 'Options and a choice, checked' },
     { name: 'Grouped', title: 'Groups under headings' },
+    { name: 'Submenu', title: 'A submenu' },
   ],
   gaps: [
     {
-      missing: 'Submenus and side placement.',
-      needs: 'inline-start and inline-end position areas',
-      today: 'One level; top or bottom only.',
+      missing: 'A submenu inside a submenu, and the menu itself opening at the trigger\'s side.',
+      needs: 'nothing from the View',
+      today: 'One level of submenu; the menu opens under or over its trigger.',
     },
     {
-      missing: 'Opening by long press or secondary click.',
-      needs: 'a long-press and secondary-click invoker',
-      today: 'Tap on the trigger only.',
+      missing: 'On a narrow screen, the row that opens a submenu and the row that goes back as menu items, and Left or Escape going back one step.',
+      needs: 'a menu item that does not close its menu when pressed, and a key handler on a menu',
+      today: 'They are plain buttons inside the menu; Escape closes the whole menu.',
     },
     {
       missing: 'Anchoring when opened from code with isOpen.',
@@ -91,7 +94,7 @@ export const doc: ComponentDoc = {
       today: 'The icon carries the danger colour; the text stays in the text role.',
     },
   ],
-  related: ['Button'],
+  related: ['Button', 'ContextMenu'],
   gallery: {
     specimen: 'Specimen',
     tagline: 'A menu of actions',
@@ -104,6 +107,7 @@ export const doc: ComponentDoc = {
         { name: 'Value', title: 'Showing the current choice' },
         { name: 'Checkable', title: 'Checkbox and radio items' },
         { name: 'Grouped', title: 'Named groups, for a menu with more than one kind of item' },
+        { name: 'Submenu', title: 'A submenu at the side of its item, one level deep' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large triggers' }],
       states: [

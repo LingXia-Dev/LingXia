@@ -1,4 +1,4 @@
-import { createContext, cx, useContext, useId, type Child } from '@lingxia/view';
+import { createContext, cx, useContext, useId, useLocal, useView, type Child } from '@lingxia/view';
 import type { ButtonSize, ButtonVariant } from '../Button/Button';
 import { buttonRecipe as b } from '../Button/Button.recipe';
 import { Glyph } from '../internal/Glyph';
@@ -109,6 +109,16 @@ const areas = {
 
 /** The items' height; set by whatever holds them: a DropdownMenu or a ContextMenu. */
 export const MenuSize = createContext<ButtonSize | null>(null);
+/** Which submenu has taken over the panel, where there is no room to open one beside its item. */
+interface DrillState {
+  open: string | null;
+  set: (id: string | null) => void;
+  isCompact: boolean;
+}
+const Drill = createContext<DrillState | null>(null);
+/** Whether a submenu has replaced this item in the panel. */
+const isReplaced = (drill: DrillState | null) => drill !== null && drill.open !== null;
+
 /** Set by a holder that does not close by itself, such as a sheet: an item calls it after its action. */
 export const MenuClose = createContext<(() => void) | null>(null);
 const RadioGroup = createContext<DropdownMenuRadioGroupProps | null>(null);
@@ -137,6 +147,8 @@ export function DropdownMenu({
 }: DropdownMenuProps) {
   const id = useId();
   const valueId = `${id}-value`;
+  const drilled = useLocal<string | null>('drilled', null);
+  const isCompact = useView().env.sizeClass === 'compact';
   return (
     <>
       <button
@@ -158,11 +170,14 @@ export function DropdownMenu({
           role="menu"
           aria-label={label}
           open={isOpen}
-          onToggle={onOpenChange}
+          // A menu that closes forgets which submenu it was showing.
+          onToggle={next => { if (!next) drilled.set(null); onOpenChange?.(next); }}
           style={{ positionArea: areas[placement][alignment] }}
-          className={cx(r.menu.base, r.menu.offset[placement], menuClassName)}
+          className={cx(r.menu.base, r.menu.offset[placement], isCompact && r.menu.drill, menuClassName)}
         >
-          {children}
+          <Drill.Provider value={{ open: drilled.value, set: drilled.set, isCompact }}>
+            <view className={r.items.base}>{children}</view>
+          </Drill.Provider>
         </view>
       </MenuSize.Provider>
     </>
@@ -181,8 +196,10 @@ export function DropdownMenuItem({
 }: DropdownMenuItemProps) {
   const size = useContext(MenuSize);
   const close = useContext(MenuClose);
+  const drill = useContext(Drill);
   const descriptionId = `${useId()}-description`;
   if (size === null) throw Error('DropdownMenuItem: place it inside a DropdownMenu');
+  if (isReplaced(drill)) return null;
   return (
     <button
       role="menuitem"
@@ -219,6 +236,7 @@ export interface DropdownMenuGroupProps {
 
 /** Items under a heading. Put a DropdownMenuDivider between groups. */
 export function DropdownMenuGroup({ label, children }: DropdownMenuGroupProps) {
+  if (isReplaced(useContext(Drill))) return null;
   return (
     <view role="group" aria-label={label} className={r.group.base}>
       <text aria-hidden className={r.groupLabel.base}>{label}</text>
@@ -229,6 +247,7 @@ export function DropdownMenuGroup({ label, children }: DropdownMenuGroupProps) {
 
 /** DropdownMenuRadioItems of which one is checked. It draws nothing of its own; set it off with dividers. */
 export function DropdownMenuRadioGroup(props: DropdownMenuRadioGroupProps) {
+  if (isReplaced(useContext(Drill))) return null;
   return (
     <RadioGroup.Provider value={props}>
       <view role="group" aria-label={props.label} className={r.radioGroup.base}>{props.children}</view>
@@ -257,8 +276,10 @@ function CheckableItem(props: {
   owner: string;
 }) {
   const size = useContext(MenuSize);
+  const drill = useContext(Drill);
   const descriptionId = `${useId()}-description`;
   if (size === null) throw Error(`${props.owner}: place it inside a DropdownMenu`);
+  if (isReplaced(drill)) return null;
   return (
     <button
       role={props.role}
@@ -279,7 +300,81 @@ function CheckableItem(props: {
   );
 }
 
+export interface DropdownMenuSubmenuProps {
+  /** The item's text, and the submenu's accessible name. */
+  label: string;
+  /** Drawn before the label; hidden from assistive tech. */
+  icon?: Child;
+  /** The submenu's items. One level only: a submenu holds no submenu. */
+  children: Child;
+  /** @default false */
+  isDisabled?: boolean;
+  /** On the item; the submenu gets `<testid>-menu`. */
+  'data-testid'?: string;
+}
+
+/** An item that opens a second menu at its side, for a few choices that belong under one name: "Move to". */
+export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false, 'data-testid': testId }: DropdownMenuSubmenuProps) {
+  const size = useContext(MenuSize);
+  const drill = useContext(Drill);
+  const id = useId();
+  if (size === null) throw Error('DropdownMenuSubmenu: place it inside a DropdownMenu');
+  const row = (
+    <>
+      {icon !== undefined && <view aria-hidden className={cx(r.itemIcon.base, r.itemIcon.variant.default)}>{icon}</view>}
+      <view className={r.itemText.base}>
+        <text className={r.itemLabel.base}>{label}</text>
+      </view>
+      <Glyph name="chevron-end" className={r.submenuChevron.base} />
+    </>
+  );
+  // No room beside the item: the submenu takes the panel, under a row that goes back.
+  if (drill?.isCompact) {
+    if (drill.open === id) {
+      return (
+        <>
+          <button aria-label={label} aria-expanded onClick={() => drill.set(null)} data-testid={testId && `${testId}-back`} className={cx(r.item.base, r.item.size[size], r.back.base)}>
+            <Glyph name="chevron-start" className={r.submenuChevron.base} />
+            <text className={r.back.label}>{label}</text>
+          </button>
+          <view aria-hidden className={r.divider.base} />
+          <Drill.Provider value={{ ...drill, open: null }}>
+            <view role="group" aria-label={label} data-testid={testId && `${testId}-menu`} className={r.group.base}>{children}</view>
+          </Drill.Provider>
+        </>
+      );
+    }
+    if (drill.open !== null) return null;
+    // A plain button: a menu item would close the menu as it is pressed.
+    return (
+      <button aria-label={label} aria-expanded={false} disabled={isDisabled} onClick={() => drill.set(id)} data-testid={testId} className={cx(r.item.base, r.item.size[size])}>
+        {row}
+      </button>
+    );
+  }
+  return (
+    <>
+      <button role="menuitem" popoverTarget={id} aria-label={label} disabled={isDisabled} data-testid={testId} className={cx(r.item.base, r.item.size[size])}>
+        {row}
+      </button>
+      <view
+        id={id}
+        popover
+        role="menu"
+        aria-label={label}
+        data-testid={testId && `${testId}-menu`}
+        // Beside the item, tops lined up; it flips to the other side, or drops below, for room.
+        style={{ positionArea: 'inline-end span-block-end' }}
+        className={cx(r.menu.base, r.menu.side)}
+      >
+        {children}
+      </view>
+    </>
+  );
+}
+
 /** A hairline between groups of items; hidden from assistive tech. */
 export function DropdownMenuDivider() {
+  if (isReplaced(useContext(Drill))) return null;
   return <view aria-hidden className={r.divider.base} />;
 }

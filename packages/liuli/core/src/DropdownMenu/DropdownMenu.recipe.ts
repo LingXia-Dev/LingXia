@@ -4,12 +4,15 @@ import type { DropdownMenuItemVariant, DropdownMenuPlacement } from './DropdownM
 export const dropdownMenuParts = {
   chevron: 'vector',
   menu: 'view',
+  items: 'view',
   item: 'button',
   itemIcon: 'view',
   itemText: 'view',
   itemLabel: 'text',
   itemDescription: 'text',
   itemCheck: 'vector',
+  submenuChevron: 'vector',
+  back: 'button',
   radioGroup: 'view',
   group: 'view',
   groupLabel: 'text',
@@ -25,6 +28,14 @@ export const dropdownMenuRecipe = {
     base: 'min-w-48 p-1 gap-0.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-150 ease-out starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-95',
     /** The gap between the trigger and the menu, on the side the menu opens to. */
     offset: { bottom: 'mt-1 origin-top', top: 'mb-1 origin-bottom' } satisfies Record<DropdownMenuPlacement, string>,
+    /** A submenu overlaps its parent by the parent's padding, so the two read as one piece. */
+    side: '-ms-1',
+    /** Where a submenu takes the panel, the panel changes height around it. */
+    drill: 'overflow-hidden transition-[height]',
+  },
+  /** The items, at the menu's own rhythm. */
+  items: {
+    base: 'gap-0.5',
   },
   item: {
     /** Concentric with the menu: its radius less the menu's padding. */
@@ -58,6 +69,15 @@ export const dropdownMenuRecipe = {
   /** A quiet heading at the items' inset. */
   groupLabel: {
     base: 'px-3 pt-1.5 pb-1 text-caption font-medium text-muted',
+  },
+  /** Points to where the submenu opens; mirrored for right-to-left text by the icon itself. */
+  submenuChevron: {
+    base: 'size-4 shrink-0 text-muted',
+  },
+  /** The first row of a submenu that has taken the panel: it names the submenu and goes back. */
+  back: {
+    base: 'gap-2',
+    label: 'grow basis-0 min-w-0 truncate text-body font-medium',
   },
   divider: {
     base: 'h-px -mx-1 my-1 bg-text/8',

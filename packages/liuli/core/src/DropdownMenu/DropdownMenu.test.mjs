@@ -30,7 +30,7 @@ test('More: an icon-only square trigger; a disabled item takes no press; the div
   let item = share;
   while (item.tag !== 'button') item = item.parent;
   assert.equal(item.props.onClick, undefined);
-  assert.ok(menus(screen)[0].children.some(node => node.props.accessibilityHidden === 1 && node.children.length === 0), 'divider');
+  assert.ok(menus(screen)[0].children[0].children.some(node => node.props.accessibilityHidden === 1 && node.children.length === 0), 'divider');
   screen.press(screen.getByTestId('delete'));
   assert.equal(screen.getByText('Removed').tag, 'text');
 });
@@ -127,4 +127,32 @@ test('Grouped: each group is named by its heading, which is not read twice', asy
   const groups = screen.queryAll(node => node.props.role === 'group' && node.children[0]?.tag === 'text');
   assert.deepEqual(groups.map(group => [group.props.accessibilityLabel, group.children[0].props.accessibilityHidden]), [['Sort by', 1], ['Show', 1]]);
   assert.equal(screen.queryAll(node => node.props.role === 'menuitemradio').length, 3);
+});
+
+test('Submenu, wide: an item opens a second menu named by it, anchored at its side; choosing there runs the action', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Submenu', { env: { viewport: { width: 1024, height: 768 } } });
+  screen.press(screen.getByTestId('note-menu'));
+  screen.press(screen.getByTestId('move'));
+  const sub = screen.getByTestId('move-menu');
+  assert.deepEqual([sub.props.role, sub.props.accessibilityLabel], ['menu', 'Move to']);
+  assert.ok(JSON.stringify(sub.props).includes('inline-end span-block-end'));
+  screen.press(screen.getByTestId('move-travel'));
+  screen.getByText('In Travel');
+});
+
+test('Submenu, narrow: the submenu takes the panel under a row that goes back; choosing there closes the menu', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Submenu');
+  screen.press(screen.getByTestId('note-menu'));
+  const labels = () => menus(screen)[0].children[0].children.filter(node => node.tag === 'button' || node.props.role === 'group').map(node => node.props.accessibilityLabel);
+  assert.deepEqual(labels(), ['Rename', 'Move to', 'Delete']);
+  screen.press(screen.getByTestId('move'));
+  assert.equal(menus(screen).length, 1, 'the same panel');
+  assert.deepEqual(labels(), ['Move to', 'Move to'], 'the back row, then the submenu as a group');
+  assert.equal(screen.getByTestId('move-back').props.stateExpanded, 1);
+  screen.press(screen.getByTestId('move-back'));
+  assert.deepEqual(labels(), ['Rename', 'Move to', 'Delete']);
+  screen.press(screen.getByTestId('move'));
+  screen.press(screen.getByTestId('move-recipes'));
+  assert.equal(menus(screen).length, 0);
+  screen.getByText('In Recipes');
 });

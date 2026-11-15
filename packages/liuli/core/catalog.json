@@ -5893,6 +5893,7 @@
         "DropdownMenuGroup",
         "DropdownMenuRadioGroup",
         "DropdownMenuRadioItem",
+        "DropdownMenuSubmenu",
         "DropdownMenuDivider"
       ],
       "category": "overlays",
@@ -6163,12 +6164,15 @@
       "parts": {
         "chevron": "vector",
         "menu": "view",
+        "items": "view",
         "item": "button",
         "itemIcon": "view",
         "itemText": "view",
         "itemLabel": "text",
         "itemDescription": "text",
         "itemCheck": "vector",
+        "submenuChevron": "vector",
+        "back": "button",
         "radioGroup": "view",
         "group": "view",
         "groupLabel": "text",
@@ -6274,18 +6278,23 @@
           "name": "Grouped",
           "title": "Groups under headings",
           "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';\n\n/** Groups under their headings, when a menu holds more than one kind of thing. */\nexport function Grouped() {\n  const sort = useLocal('sort', 'Edited');\n  const completed = useLocal('done', true);\n  return (\n    <DropdownMenu label=\"View options\" data-testid=\"options\">\n      <DropdownMenuGroup label=\"Sort by\">\n        <DropdownMenuRadioGroup value={sort.value} onChange={next => sort.set(next)}>\n          {['Edited', 'Created', 'Title'].map(option => (\n            <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`sort-${option}`} />\n          ))}\n        </DropdownMenuRadioGroup>\n      </DropdownMenuGroup>\n      <DropdownMenuDivider />\n      <DropdownMenuGroup label=\"Show\">\n        <DropdownMenuCheckboxItem label=\"Completed\" isChecked={completed.value} onCheckedChange={next => completed.set(next)} data-testid=\"show-done\" />\n      </DropdownMenuGroup>\n    </DropdownMenu>\n  );\n}"
+        },
+        {
+          "name": "Submenu",
+          "title": "A submenu",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem, DropdownMenuSubmenu } from '@liulidesign/core/DropdownMenu';\n\n/** A submenu for a few choices under one name; it opens at the item's side. */\nexport function Submenu() {\n  const moved = useLocal('moved', 'Notes');\n  return (\n    <view className=\"items-start gap-2\">\n      <DropdownMenu label=\"Note\" data-testid=\"note-menu\">\n        <DropdownMenuItem label=\"Rename\" onClick={() => {}} />\n        <DropdownMenuSubmenu label=\"Move to\" data-testid=\"move\">\n          {['Notes', 'Travel', 'Recipes', 'Archive'].map(folder => (\n            <DropdownMenuItem key={folder} label={folder} onClick={() => moved.set(folder)} data-testid={`move-${folder.toLowerCase()}`} />\n          ))}\n        </DropdownMenuSubmenu>\n        <DropdownMenuDivider />\n        <DropdownMenuItem label=\"Delete\" variant=\"destructive\" onClick={() => {}} />\n      </DropdownMenu>\n      <text role=\"status\" className=\"text-footnote text-muted\">{`In ${moved.value}`}</text>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
         {
-          "missing": "Submenus and side placement.",
-          "needs": "inline-start and inline-end position areas",
-          "today": "One level; top or bottom only."
+          "missing": "A submenu inside a submenu, and the menu itself opening at the trigger's side.",
+          "needs": "nothing from the View",
+          "today": "One level of submenu; the menu opens under or over its trigger."
         },
         {
-          "missing": "Opening by long press or secondary click.",
-          "needs": "a long-press and secondary-click invoker",
-          "today": "Tap on the trigger only."
+          "missing": "On a narrow screen, the row that opens a submenu and the row that goes back as menu items, and Left or Escape going back one step.",
+          "needs": "a menu item that does not close its menu when pressed, and a key handler on a menu",
+          "today": "They are plain buttons inside the menu; Escape closes the whole menu."
         },
         {
           "missing": "Anchoring when opened from code with isOpen.",
@@ -6299,7 +6308,8 @@
         }
       ],
       "related": [
-        "Button"
+        "Button",
+        "ContextMenu"
       ],
       "gallery": {
         "specimen": "Specimen",
@@ -6324,6 +6334,10 @@
             {
               "name": "Grouped",
               "title": "Named groups, for a menu with more than one kind of item"
+            },
+            {
+              "name": "Submenu",
+              "title": "A submenu at the side of its item, one level deep"
             }
           ],
           "sizes": [

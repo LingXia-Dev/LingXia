@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSubmenu,
 } from './DropdownMenu';
 
 const dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];
@@ -180,5 +181,25 @@ export function Grouped() {
         <DropdownMenuCheckboxItem label="Completed" isChecked={completed.value} onCheckedChange={next => completed.set(next)} data-testid="show-done" />
       </DropdownMenuGroup>
     </DropdownMenu>
+  );
+}
+
+/** A submenu for a few choices under one name; it opens at the item's side. */
+export function Submenu() {
+  const moved = useLocal('moved', 'Notes');
+  return (
+    <view className="items-start gap-2">
+      <DropdownMenu label="Note" data-testid="note-menu">
+        <DropdownMenuItem label="Rename" onClick={() => {}} />
+        <DropdownMenuSubmenu label="Move to" data-testid="move">
+          {['Notes', 'Travel', 'Recipes', 'Archive'].map(folder => (
+            <DropdownMenuItem key={folder} label={folder} onClick={() => moved.set(folder)} data-testid={`move-${folder.toLowerCase()}`} />
+          ))}
+        </DropdownMenuSubmenu>
+        <DropdownMenuDivider />
+        <DropdownMenuItem label="Delete" variant="destructive" onClick={() => {}} />
+      </DropdownMenu>
+      <text role="status" className="text-footnote text-muted">{`In ${moved.value}`}</text>
+    </view>
   );
 }

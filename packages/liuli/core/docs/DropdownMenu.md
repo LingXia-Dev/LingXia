@@ -5,7 +5,7 @@
 Button that opens a short menu of actions. Status: preview.
 
 ```ts
-import { DropdownMenu, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuDivider } from '@liulidesign/core/DropdownMenu';
+import { DropdownMenu, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSubmenu, DropdownMenuDivider } from '@liulidesign/core/DropdownMenu';
 ```
 
 DropdownMenu groups a few related actions behind one button: sort options, a "more" menu on a row, account actions. Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu. DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one choice; both keep the menu open.
@@ -185,6 +185,33 @@ export function Grouped() {
 }
 ```
 
+### A submenu
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem, DropdownMenuSubmenu } from '@liulidesign/core/DropdownMenu';
+
+/** A submenu for a few choices under one name; it opens at the item's side. */
+export function Submenu() {
+  const moved = useLocal('moved', 'Notes');
+  return (
+    <view className="items-start gap-2">
+      <DropdownMenu label="Note" data-testid="note-menu">
+        <DropdownMenuItem label="Rename" onClick={() => {}} />
+        <DropdownMenuSubmenu label="Move to" data-testid="move">
+          {['Notes', 'Travel', 'Recipes', 'Archive'].map(folder => (
+            <DropdownMenuItem key={folder} label={folder} onClick={() => moved.set(folder)} data-testid={`move-${folder.toLowerCase()}`} />
+          ))}
+        </DropdownMenuSubmenu>
+        <DropdownMenuDivider />
+        <DropdownMenuItem label="Delete" variant="destructive" onClick={() => {}} />
+      </DropdownMenu>
+      <text role="status" className="text-footnote text-muted">{`In ${moved.value}`}</text>
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -257,6 +284,8 @@ export function Grouped() {
 | item | `<button>` | yes | DropdownMenuItem: a menu item button with icon, label and description. |
 | itemCheck | `<vector>` | no | A check at the end of a checked checkbox or radio item; hidden from assistive tech. |
 | divider | `<view>` | no | DropdownMenuDivider: a hairline between groups; hidden from assistive tech. |
+| submenuChevron | `<vector>` | no | DropdownMenuSubmenu: an item with a chevron that opens a second menu at its side; choosing there closes both. |
+| back | `<button>` | no | On a narrow screen a submenu takes the panel instead: this first row names it and goes back to the menu. |
 
 ## Accessibility
 
@@ -294,9 +323,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Submenus and side placement. | inline-start and inline-end position areas | One level; top or bottom only. |
-| Opening by long press or secondary click. | a long-press and secondary-click invoker | Tap on the trigger only. |
+| A submenu inside a submenu, and the menu itself opening at the trigger's side. | nothing from the View | One level of submenu; the menu opens under or over its trigger. |
+| On a narrow screen, the row that opens a submenu and the row that goes back as menu items, and Left or Escape going back one step. | a menu item that does not close its menu when pressed, and a key handler on a menu | They are plain buttons inside the menu; Escape closes the whole menu. |
 | Anchoring when opened from code with isOpen. | a popover anchor that does not depend on which control opened it | Opened from code it is placed by its classes; the trigger is the normal way in. |
 | A destructive item in danger-coloured text. | a text-grade danger role (4.5:1 on surface-overlay) | The icon carries the danger colour; the text stays in the text role. |
 
-Related: Button.
+Related: Button, ContextMenu.
