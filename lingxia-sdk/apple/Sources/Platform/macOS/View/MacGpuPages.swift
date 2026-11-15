@@ -185,7 +185,7 @@ final class GpuPageView: NSView {
         report()
     }
 
-    private func report() {
+    fileprivate func report() {
         guard let window, bounds.width > 0, bounds.height > 0 else { return }
         let presentable = !window.isMiniaturized && !NSApp.isHidden
         let scale = window.backingScaleFactor
@@ -530,6 +530,12 @@ public enum GpuPages {
             }
             return view.show(pixels: pointer, length: Int(length), width: Int(width), height: Int(height))
         }
+    }
+
+    /// The lxapp's scheme changed: its pages measure again. AppKit's own appearance change
+    /// reaches a view before the runtime has resolved the scheme it should take.
+    @MainActor static func schemeChanged(appId: String) {
+        for view in views.values where view.refreshAppId == appId { view.report() }
     }
 
     /// The GPU view showing the page `webtag` of `appId`.

@@ -145,6 +145,9 @@ enum LxAppAppearanceRegistry {
         for webView in webViews[appId]?.allObjects ?? [] {
             apply(dark, to: webView)
         }
+        #if os(macOS)
+        GpuPages.schemeChanged(appId: appId)
+        #endif
         NotificationCenter.default.post(name: .navBarStateChanged, object: appId)
         NotificationCenter.default.post(name: .tabBarStateChanged, object: appId)
     }
