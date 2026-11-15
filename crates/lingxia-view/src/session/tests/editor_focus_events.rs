@@ -52,3 +52,52 @@ fn an_editor_without_the_handlers_and_a_disabled_one_report_nothing() {
     let focused = page.focus_input(page.generation(), &a).unwrap().unwrap();
     assert!(page.blur_input(focused.token, &a).unwrap());
 }
+
+#[test]
+fn a_read_only_editor_takes_focus_and_a_selection_but_no_edits_or_keyboard() {
+    use crate::text::input::Edit;
+    let mut page = ViewSession::new(&super::source(
+        "function render(){const a=useLocal('a','kept');return h('view',{},h('input',{'data-testid':'a',bind:a,readOnly:true,'aria-label':'A'}),h('text',{'data-testid':'value'},a.value))}",
+    ))
+    .unwrap();
+    let frame = page.layout(300, 400, 1.0).unwrap();
+    let a = node(&frame, "a").identity.clone();
+    assert!(
+        node(&frame, "a")
+            .input
+            .as_ref()
+            .unwrap()
+            .attributes
+            .read_only
+    );
+    let focused = page.focus_input(page.generation(), &a).unwrap().unwrap();
+    let frame = page.layout(300, 400, 1.0).unwrap();
+    let input = node(&frame, "a").input.as_ref().unwrap();
+    assert!(input.edit_token.is_some(), "it takes focus");
+    assert!(!input.raise_keyboard, "and raises no keyboard");
+    page.edit_input(
+        focused.token,
+        &a,
+        &[
+            Edit::SelectAll,
+            Edit::Replace {
+                text: "typed".into(),
+                cursor: 1,
+                composing: false,
+            },
+        ],
+        false,
+    )
+    .unwrap();
+    let frame = page.layout(300, 400, 1.0).unwrap();
+    assert_eq!(node(&frame, "value").text, "kept", "its text stays");
+    let edit = node(&frame, "a")
+        .input
+        .as_ref()
+        .unwrap()
+        .edit
+        .clone()
+        .unwrap();
+    assert_eq!(edit.text, "kept");
+    assert_ne!(edit.selection[0], edit.selection[1], "the selection moved");
+}

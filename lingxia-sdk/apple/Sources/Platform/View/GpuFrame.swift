@@ -439,6 +439,7 @@ public struct GpuFrameInput: Decodable, Sendable {
     public let min: GpuJSON?
     public let max: GpuJSON?
     public let step: Double?
+    public let readOnly: Bool?
     public let picker: String?
     public let edit: GpuFrameEdit?
     public let editToken: UInt64?
@@ -465,6 +466,7 @@ public struct GpuFrameInput: Decodable, Sendable {
         case min = "min"
         case max = "max"
         case step = "step"
+        case readOnly = "read_only"
         case picker = "picker"
         case edit = "edit"
         case editToken = "edit_token"

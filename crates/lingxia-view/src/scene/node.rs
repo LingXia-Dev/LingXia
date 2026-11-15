@@ -374,6 +374,9 @@ pub struct EditorAttributes {
     pub max: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub step: Option<f64>,
+    /// Focusable and selectable; takes no edits and raises no keyboard.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub read_only: bool,
     /// `date` or `time`: the platform opens its picker instead of a keyboard.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub picker: Option<String>,

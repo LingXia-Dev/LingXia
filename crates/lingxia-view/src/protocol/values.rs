@@ -388,7 +388,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
                 "UI_INPUT: invalid text",
             )
         }
-        field::SECURE | field::AUTO_FOCUS | field::SPELL_CHECK => {
+        field::SECURE | field::AUTO_FOCUS | field::SPELL_CHECK | field::READ_ONLY => {
             ensure(flag(value), "UI_INPUT: invalid flag")
         }
         field::SELECT_OPTIONS => ensure(

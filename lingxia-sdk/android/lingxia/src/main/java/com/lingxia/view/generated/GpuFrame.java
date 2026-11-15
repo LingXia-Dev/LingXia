@@ -441,6 +441,8 @@ public final class GpuFrame {
         public Object max() { return json.isNull("max") ? null : json.opt("max"); }
         /** `step`: f64? */
         public Double step() { if (json.isNull("step")) return null; return json.optDouble("step"); }
+        /** `read_only`: bool? */
+        public Boolean readOnly() { if (json.isNull("read_only")) return null; return json.optBoolean("read_only"); }
         /** `picker`: string? */
         public String picker() { return json.isNull("picker") ? null : json.optString("picker", null); }
         /** `edit`: Edit? */

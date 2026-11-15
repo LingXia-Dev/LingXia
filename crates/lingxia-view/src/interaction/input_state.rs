@@ -273,7 +273,9 @@ impl Inputs {
                 input.edit = Some(snapshot);
                 input.edit_token =
                     (self.focused.as_deref() == Some(&*node.identity)).then_some(self.token);
-                input.raise_keyboard = input.edit_token.is_some() && !self.keyboard_held;
+                input.raise_keyboard = input.edit_token.is_some()
+                    && !self.keyboard_held
+                    && !input.attributes.read_only;
             }
         }
         display.decorate_inputs();

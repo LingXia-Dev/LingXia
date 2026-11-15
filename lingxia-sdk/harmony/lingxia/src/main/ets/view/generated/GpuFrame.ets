@@ -321,6 +321,7 @@ export interface GpuFrameInput {
   min?: Object | null;
   max?: Object | null;
   step?: number | null;
+  read_only?: boolean | null;
   picker?: string | null;
   edit?: GpuFrameEdit | null;
   edit_token?: number | null;

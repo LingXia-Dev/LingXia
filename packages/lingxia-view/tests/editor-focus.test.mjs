@@ -37,3 +37,13 @@ test('a disabled editor and an older host get no focus handlers; a value that is
     assert.equal(old.props.onFocus, undefined);
   } finally { globalThis.__lingxiaViewHost = previous; }
 });
+
+test('readOnly travels as a flag only when true, and takes a boolean', () => {
+  reset();
+  const nodes = render(() => h('page', {},
+    h('input', { value: 'kept', readOnly: true, 'aria-label': 'A', 'data-testid': 'a' }),
+    h('textarea', { value: 'kept', readOnly: false, 'aria-label': 'B', 'data-testid': 'b' })));
+  assert.equal(byId(nodes, 'a').props.readOnly, 1);
+  assert.equal(byId(nodes, 'b').props.readOnly, undefined);
+  assert.throws(() => prepare(() => h('page', {}, h('input', { value: '', readOnly: 'yes', 'aria-label': 'A' })), { env: {} }), /UI_INPUT: readOnly must be boolean/);
+});

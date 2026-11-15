@@ -234,6 +234,10 @@ export function editor(tag, props, keyboard) {
     if (typeof props.spellCheck !== 'boolean') throw Error('UI_INPUT: spellCheck must be boolean');
     out.push(['spellCheck', +props.spellCheck]);
   }
+  if (props.readOnly !== undefined) {
+    if (typeof props.readOnly !== 'boolean') throw Error('UI_INPUT: readOnly must be boolean');
+    if (props.readOnly) out.push(['readOnly', 1]);
+  }
   const bounded = ['min', 'max', 'step'].filter(name => props[name] !== undefined);
   if (bounded.length) {
     if (tag !== 'input' || !['number', 'date', 'time'].includes(props.type)) throw Error('UI_INPUT: min, max and step need type="number", "date" or "time"');

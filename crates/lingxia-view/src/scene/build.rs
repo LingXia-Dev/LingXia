@@ -1540,6 +1540,7 @@ impl Renderer {
                             min: field_value(record, field::INPUT_MIN),
                             max: field_value(record, field::INPUT_MAX),
                             step: record.number(field::INPUT_STEP).map(f64::from),
+                            read_only: record.number(field::READ_ONLY) == Some(1.0),
                             picker: record
                                 .string(field::KEYBOARD)
                                 .filter(|k| matches!(*k, "date" | "time"))

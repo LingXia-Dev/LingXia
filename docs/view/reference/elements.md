@@ -147,6 +147,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `readOnly` | `boolean` |  |
 | `onFocus` | `() => void` |  |
 | `onBlur` | `() => void` |  |
 | `aria-label` | `string` |  |
@@ -173,6 +174,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `readOnly` | `boolean` |  |
 | `onFocus` | `() => void` |  |
 | `onBlur` | `() => void` |  |
 | `rows` | `number` |  |

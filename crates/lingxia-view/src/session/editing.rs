@@ -102,6 +102,10 @@ impl ViewSession {
     /// (ISO) replaces the clock's date, for renders that must not change from day to day.
     pub fn open_picker_now(&mut self, identity: &str, today: Option<&str>) -> Result<bool, String> {
         self.check_input_active()?;
+        // A read-only date or time field shows its value and opens no picker.
+        if self.read_only(identity) {
+            return Ok(false);
+        }
         match self.inputs.picker_request(identity) {
             Some(mut request) => {
                 if let Some(today) = today {
@@ -255,6 +259,16 @@ impl ViewSession {
         }
         let mut inputs = self.inputs.clone();
         let mut edits = edits.to_vec();
+        // A read-only editor keeps its text: the caret and the selection still move.
+        if self.read_only(identity) {
+            use crate::text::input::Edit;
+            edits.retain(|edit| {
+                matches!(
+                    edit,
+                    Edit::Focus | Edit::Blur | Edit::Selection { .. } | Edit::SelectAll
+                )
+            });
+        }
         if submit {
             edits.push(crate::text::input::Edit::FinishComposition);
         }
@@ -333,6 +347,14 @@ impl ViewSession {
         self.inputs = inputs;
         self.input_dirty = true;
         Ok(true)
+    }
+
+    fn read_only(&self, identity: &str) -> bool {
+        self.retained
+            .as_ref()
+            .and_then(|retained| retained.nodes.iter().find(|node| node.identity == identity))
+            .and_then(|node| node.input.as_ref())
+            .is_some_and(|input| input.attributes.read_only)
     }
 
     /// Calls the editor's `onFocus` or `onBlur`; the View renders again if one ran.
