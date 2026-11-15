@@ -3,6 +3,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuDivider,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -157,6 +158,27 @@ export function Checkable() {
           <DropdownMenuRadioItem key={option} value={option} label={`Group by ${option.toLowerCase()}`} data-testid={`group-${option}`} />
         ))}
       </DropdownMenuRadioGroup>
+    </DropdownMenu>
+  );
+}
+
+/** Groups under their headings, when a menu holds more than one kind of thing. */
+export function Grouped() {
+  const sort = useLocal('sort', 'Edited');
+  const completed = useLocal('done', true);
+  return (
+    <DropdownMenu label="View options" data-testid="options">
+      <DropdownMenuGroup label="Sort by">
+        <DropdownMenuRadioGroup value={sort.value} onChange={next => sort.set(next)}>
+          {['Edited', 'Created', 'Title'].map(option => (
+            <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`sort-${option}`} />
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuGroup>
+      <DropdownMenuDivider />
+      <DropdownMenuGroup label="Show">
+        <DropdownMenuCheckboxItem label="Completed" isChecked={completed.value} onCheckedChange={next => completed.set(next)} data-testid="show-done" />
+      </DropdownMenuGroup>
     </DropdownMenu>
   );
 }

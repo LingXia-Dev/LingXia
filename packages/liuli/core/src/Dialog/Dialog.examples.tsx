@@ -1,5 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Button } from '../Button/Button';
+import { TextArea } from '../TextArea/TextArea';
 import { TextInput } from '../TextInput/TextInput';
 import { Dialog } from './Dialog';
 import { dialogRecipe } from './Dialog.recipe';
@@ -90,6 +91,36 @@ export function Parts() {
           <Button label="Delete" variant="destructive" />
         </view>
       </view>
+    </view>
+  );
+}
+
+/** Full screen: a task with its own content to scroll, closed from its header. */
+export function Full() {
+  const open = useLocal('open', false);
+  const title = useLocal('title', 'Trip to the coast');
+  const body = useLocal('body', '');
+  return (
+    <view className="gap-2">
+      <Button label="New note" variant="primary" width="content" onClick={() => open.set(true)} data-testid="full-open" />
+      <Dialog
+        isOpen={open.value}
+        onOpenChange={next => open.set(next)}
+        label="New note"
+        size="full"
+        closeLabel="Close"
+        dismissOn="closeRequest"
+        data-testid="full-dialog"
+        actions={
+          <>
+            <Button label="Discard" onClick={() => open.set(false)} data-testid="full-discard" />
+            <Button label="Save note" variant="primary" onClick={() => open.set(false)} data-testid="full-save" />
+          </>
+        }
+      >
+        <TextInput bind={title} label="Title" />
+        <TextArea bind={body} label="Note" rows={8} maxRows={16} />
+      </Dialog>
     </view>
   );
 }

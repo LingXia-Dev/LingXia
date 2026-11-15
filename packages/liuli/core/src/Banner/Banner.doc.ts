@@ -58,6 +58,7 @@ export const doc: ComponentDoc = {
     { name: 'Payment', title: 'A problem with one action, dismissible' },
     { name: 'Tones', title: 'Tones' },
     { name: 'OverList', title: 'Above the list it is about' },
+    { name: 'Collapsible', title: 'Folded to its title' },
   ],
   gaps: [],
   related: ['Badge', 'Dialog', 'ProgressBar'],
@@ -68,7 +69,7 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a banner to say something about the page or the account that people should act on or know.',
       hero: 'Payment',
-      variants: [{ name: 'Tones', title: 'Neutral, info, success, warning and danger' }],
+      variants: [{ name: 'Tones', title: 'Neutral, info, success, warning and danger' }, { name: 'Collapsible', title: 'Collapsible: the title stays, the rest opens on demand' }],
       states: [
         { name: 'StateTitleOnly', title: 'A title only' },
         { name: 'StateWithMessage', title: 'With a message' },

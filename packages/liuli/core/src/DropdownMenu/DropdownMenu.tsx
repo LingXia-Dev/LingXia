@@ -206,6 +206,23 @@ export function DropdownMenuCheckboxItem({ label, description, isChecked, onChec
   );
 }
 
+export interface DropdownMenuGroupProps {
+  /** The group's heading, drawn over its items and read as the group's name: "Sort by". */
+  label: string;
+  /** `DropdownMenuItem`s or checkable items, in order. */
+  children: Child;
+}
+
+/** Items under a heading. Put a DropdownMenuDivider between groups. */
+export function DropdownMenuGroup({ label, children }: DropdownMenuGroupProps) {
+  return (
+    <view role="group" aria-label={label} className={r.group.base}>
+      <text aria-hidden className={r.groupLabel.base}>{label}</text>
+      {children}
+    </view>
+  );
+}
+
 /** DropdownMenuRadioItems of which one is checked. It draws nothing of its own; set it off with dividers. */
 export function DropdownMenuRadioGroup(props: DropdownMenuRadioGroupProps) {
   return (

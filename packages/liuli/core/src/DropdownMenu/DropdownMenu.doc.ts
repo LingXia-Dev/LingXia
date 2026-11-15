@@ -67,6 +67,7 @@ export const doc: ComponentDoc = {
     { name: 'InList', title: 'A menu on every row' },
     { name: 'Value', title: 'A menu that sets a value' },
     { name: 'Checkable', title: 'Options and a choice, checked' },
+    { name: 'Grouped', title: 'Groups under headings' },
   ],
   gaps: [
     {
@@ -102,6 +103,7 @@ export const doc: ComponentDoc = {
         { name: 'More', title: 'Icon only, at the end of a row' },
         { name: 'Value', title: 'Showing the current choice' },
         { name: 'Checkable', title: 'Checkbox and radio items' },
+        { name: 'Grouped', title: 'Named groups, for a menu with more than one kind of item' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large triggers' }],
       states: [

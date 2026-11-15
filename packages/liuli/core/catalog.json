@@ -530,6 +530,26 @@
           "description": "The dismiss button's name: \"Dismiss\"."
         },
         {
+          "name": "isCollapsible",
+          "type": "boolean",
+          "required": false,
+          "description": "Folds the message and the action under the title, behind a chevron button.",
+          "default": "false"
+        },
+        {
+          "name": "toggleLabel",
+          "type": "string",
+          "required": false,
+          "description": "The chevron button's name: \"Details\". Read with whether it is open."
+        },
+        {
+          "name": "isDefaultCollapsed",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether it starts folded.",
+          "default": "false"
+        },
+        {
           "name": "title",
           "type": "string",
           "required": true,
@@ -656,6 +676,11 @@
           "name": "OverList",
           "title": "Above the list it is about",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Banner } from '@liulidesign/core/Banner';\n\n/** At the top of a list it is about, before the content. */\nexport function OverList() {\n  const retried = useLocal(false);\n  return (\n    <view className=\"gap-3\">\n      <Banner\n        tone=\"danger\"\n        title={retried.value ? 'Still offline' : 'Sync stopped'}\n        message=\"Changes are kept on this device until the connection returns.\"\n        action={{ label: 'Retry now', onClick: () => retried.set(true) }}\n        data-testid=\"sync\"\n      />\n      <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface divide-y divide-text/8\">\n        {['Q3 plan', 'Reading list', 'Interview notes'].map(note => (\n          <view key={note} className=\"px-4 py-3\"><text className=\"text-body text-text\">{note}</text></view>\n        ))}\n      </view>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Collapsible",
+          "title": "Folded to its title",
+          "source": "import { Banner } from '@liulidesign/core/Banner';\n\n/** Folded to its title until someone wants the rest: for a notice that stays for days. */\nexport function Collapsible() {\n  return (\n    <Banner\n      tone=\"warning\"\n      title=\"Scheduled maintenance on Sunday\"\n      message=\"Sync pauses from 02:00 to 04:00 UTC. Notes you write then are kept on this device and sent when it ends.\"\n      action={{ label: 'See the schedule', onClick: () => {} }}\n      isCollapsible\n      toggleLabel=\"Details\"\n      isDefaultCollapsed\n      data-testid=\"maintenance\"\n    />\n  );\n}"
         }
       ],
       "gaps": [],
@@ -675,6 +700,10 @@
             {
               "name": "Tones",
               "title": "Neutral, info, success, warning and danger"
+            },
+            {
+              "name": "Collapsible",
+              "title": "Collapsible: the title stays, the rest opens on demand"
             }
           ],
           "states": [
@@ -4102,7 +4131,7 @@
           "name": "size",
           "type": "DialogSize",
           "required": false,
-          "description": "Maximum width: 360, 480 or 640.",
+          "description": "Maximum width: 360, 480 or 640. `full` covers the screen, for a task with its own scrolling content: an editor, a long form on a phone.",
           "default": "'md'"
         },
         {
@@ -4163,6 +4192,22 @@
               "surface-overlay"
             ],
             "minimum": "4.5:1"
+          },
+          {
+            "what": "title, full screen",
+            "pair": [
+              "text",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "description, full screen",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
@@ -4181,6 +4226,11 @@
           "name": "Form",
           "title": "A short form",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/**\n * A short form. The draft lives outside the dialog, since closing discards the dialog's own state.\n * Only Escape and back cancel, so a stray backdrop tap does not lose the typing.\n */\nexport function Form() {\n  const open = useLocal('open', false);\n  const name = useLocal('name', '');\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Rename\" width=\"content\" onClick={() => open.set(true)} data-testid=\"rename-open\" />\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Rename notebook\"\n        closeLabel=\"Close\"\n        dismissOn=\"closeRequest\"\n        data-testid=\"rename-dialog\"\n        actions={<Button label=\"Save\" variant=\"primary\" isDisabled={name.value.trim() === ''} onClick={() => open.set(false)} data-testid=\"save\" />}\n      >\n        <TextInput bind={name} label=\"Name\" hasAutoFocus enterKeyHint=\"done\" onSubmit={() => open.set(false)} data-testid=\"name\" />\n      </Dialog>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Full",
+          "title": "Full screen",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { TextArea } from '@liulidesign/core/TextArea';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** Full screen: a task with its own content to scroll, closed from its header. */\nexport function Full() {\n  const open = useLocal('open', false);\n  const title = useLocal('title', 'Trip to the coast');\n  const body = useLocal('body', '');\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"New note\" variant=\"primary\" width=\"content\" onClick={() => open.set(true)} data-testid=\"full-open\" />\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"New note\"\n        size=\"full\"\n        closeLabel=\"Close\"\n        dismissOn=\"closeRequest\"\n        data-testid=\"full-dialog\"\n        actions={\n          <>\n            <Button label=\"Discard\" onClick={() => open.set(false)} data-testid=\"full-discard\" />\n            <Button label=\"Save note\" variant=\"primary\" onClick={() => open.set(false)} data-testid=\"full-save\" />\n          </>\n        }\n      >\n        <TextInput bind={title} label=\"Title\" />\n        <TextArea bind={body} label=\"Note\" rows={8} maxRows={16} />\n      </Dialog>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -4209,6 +4259,10 @@
             {
               "name": "Form",
               "title": "A short task: renaming"
+            },
+            {
+              "name": "Full",
+              "title": "Full screen, for a task with its own content"
             }
           ]
         }
@@ -4345,6 +4399,7 @@
         "DropdownMenu",
         "DropdownMenuItem",
         "DropdownMenuCheckboxItem",
+        "DropdownMenuGroup",
         "DropdownMenuRadioGroup",
         "DropdownMenuRadioItem",
         "DropdownMenuDivider"
@@ -4624,6 +4679,8 @@
         "itemDescription": "text",
         "itemCheck": "vector",
         "radioGroup": "view",
+        "group": "view",
+        "groupLabel": "text",
         "divider": "view"
       },
       "accessibility": {
@@ -4721,6 +4778,11 @@
           "name": "Checkable",
           "title": "Options and a choice, checked",
           "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';\n\n/** Options turned on and off, and one choice among several, in one menu that stays open while they change. */\nexport function Checkable() {\n  const completed = useLocal('completed', true);\n  const archived = useLocal('archived', false);\n  const grouping = useLocal('grouping', 'Day');\n  return (\n    <DropdownMenu label=\"View\" data-testid=\"view-menu\">\n      <DropdownMenuCheckboxItem label=\"Show completed\" isChecked={completed.value} onCheckedChange={next => completed.set(next)} data-testid=\"show-completed\" />\n      <DropdownMenuCheckboxItem label=\"Show archived\" isChecked={archived.value} onCheckedChange={next => archived.set(next)} data-testid=\"show-archived\" />\n      <DropdownMenuDivider />\n      <DropdownMenuRadioGroup label=\"Group by\" value={grouping.value} onChange={next => grouping.set(next)}>\n        {['Day', 'Week', 'Month'].map(option => (\n          <DropdownMenuRadioItem key={option} value={option} label={`Group by ${option.toLowerCase()}`} data-testid={`group-${option}`} />\n        ))}\n      </DropdownMenuRadioGroup>\n    </DropdownMenu>\n  );\n}"
+        },
+        {
+          "name": "Grouped",
+          "title": "Groups under headings",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';\n\n/** Groups under their headings, when a menu holds more than one kind of thing. */\nexport function Grouped() {\n  const sort = useLocal('sort', 'Edited');\n  const completed = useLocal('done', true);\n  return (\n    <DropdownMenu label=\"View options\" data-testid=\"options\">\n      <DropdownMenuGroup label=\"Sort by\">\n        <DropdownMenuRadioGroup value={sort.value} onChange={next => sort.set(next)}>\n          {['Edited', 'Created', 'Title'].map(option => (\n            <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`sort-${option}`} />\n          ))}\n        </DropdownMenuRadioGroup>\n      </DropdownMenuGroup>\n      <DropdownMenuDivider />\n      <DropdownMenuGroup label=\"Show\">\n        <DropdownMenuCheckboxItem label=\"Completed\" isChecked={completed.value} onCheckedChange={next => completed.set(next)} data-testid=\"show-done\" />\n      </DropdownMenuGroup>\n    </DropdownMenu>\n  );\n}"
         }
       ],
       "gaps": [
@@ -4767,6 +4829,10 @@
             {
               "name": "Checkable",
               "title": "Checkbox and radio items"
+            },
+            {
+              "name": "Grouped",
+              "title": "Named groups, for a menu with more than one kind of item"
             }
           ],
           "sizes": [

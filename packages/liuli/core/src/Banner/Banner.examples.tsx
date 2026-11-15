@@ -72,3 +72,19 @@ export function StateDismissible() {
 export function Specimen() {
   return <Banner tone="success" title="All synced" className="w-44" />;
 }
+
+/** Folded to its title until someone wants the rest: for a notice that stays for days. */
+export function Collapsible() {
+  return (
+    <Banner
+      tone="warning"
+      title="Scheduled maintenance on Sunday"
+      message="Sync pauses from 02:00 to 04:00 UTC. Notes you write then are kept on this device and sent when it ends."
+      action={{ label: 'See the schedule', onClick: () => {} }}
+      isCollapsible
+      toggleLabel="Details"
+      isDefaultCollapsed
+      data-testid="maintenance"
+    />
+  );
+}

@@ -17,8 +17,11 @@ export const dialogParts = {
  */
 export const dialogRecipe = {
   panel: {
-    base: 'w-[90%] max-h-[85vh] p-5 gap-4 rounded-dialog border border-text/12 bg-surface-overlay shadow-modal transition duration-200 ease-out starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-96 motion-safe:exit:scale-96',
-    size: { sm: 'max-w-[360px]', md: 'max-w-[480px]', lg: 'max-w-[640px]' } satisfies Record<DialogSize, string>,
+    base: 'p-5 gap-4 transition duration-200 ease-out starting:opacity-0 exit:opacity-0',
+    /** A floating panel sits on the overlay surface and scales in from 96%. */
+    floating: 'w-[90%] max-h-[85vh] rounded-dialog border border-text/12 bg-surface-overlay shadow-modal motion-safe:starting:scale-96 motion-safe:exit:scale-96',
+    /** `full` has nothing behind it to float over: it is a page, on the page's canvas, and only fades. */
+    size: { sm: 'max-w-[360px]', md: 'max-w-[480px]', lg: 'max-w-[640px]', full: 'w-full h-full rounded-none bg-canvas' } satisfies Record<DialogSize, string>,
   },
   header: {
     base: 'flex-row items-start gap-3',
@@ -37,6 +40,8 @@ export const dialogRecipe = {
   },
   body: {
     base: 'shrink min-h-0 gap-3',
+    /** In a full dialog the body takes the height the header and footer leave. */
+    full: 'grow',
   },
   footer: {
     base: 'flex-row flex-wrap justify-end gap-2',

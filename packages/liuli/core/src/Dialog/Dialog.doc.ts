@@ -13,7 +13,7 @@ export const doc: ComponentDoc = {
   propsType: 'DialogProps',
   recipe: { map: 'dialogRecipe', parts: 'dialogParts' },
   anatomy: [
-    { part: 'panel', required: true, description: 'The dialog primitive: a centred panel in the top layer above a scrim.' },
+    { part: 'panel', required: true, description: 'The dialog primitive: a centred panel on the overlay surface, in the top layer above a scrim; at `full` it covers the screen on the page\'s canvas.' },
     { part: 'title', required: true, description: '`label` as a level-2 heading, unless `isLabelHidden`.' },
     { part: 'close', required: false, description: 'A close button named by `closeLabel`.' },
     { part: 'description', required: false, description: 'Text under the title.' },
@@ -29,6 +29,8 @@ export const doc: ComponentDoc = {
     contrast: [
       { what: 'title', pair: ['text', 'surface-overlay'], minimum: '4.5:1' },
       { what: 'description', pair: ['text-muted', 'surface-overlay'], minimum: '4.5:1' },
+      { what: 'title, full screen', pair: ['text', 'canvas'], minimum: '4.5:1' },
+      { what: 'description, full screen', pair: ['text-muted', 'canvas'], minimum: '4.5:1' },
     ],
     notes: [
       'Opened from a hardware keyboard, focus moves to the first control and returns to the opener on close; opened by touch, focus stays put.',
@@ -51,6 +53,7 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Confirm', title: 'Confirm a destructive action, as an alert dialog' },
     { name: 'Form', title: 'A short form' },
+    { name: 'Full', title: 'Full screen' },
   ],
   gaps: [
     {
@@ -68,7 +71,7 @@ export const doc: ComponentDoc = {
       lead: 'Use a dialog for a decision or a short task that must be finished before going on.',
       hero: 'Confirm',
       parts: { name: 'Parts', title: 'Title, then the body, then the actions with the main one last' },
-      variants: [{ name: 'Form', title: 'A short task: renaming' }],
+      variants: [{ name: 'Form', title: 'A short task: renaming' }, { name: 'Full', title: 'Full screen, for a task with its own content' }],
     },
   },
 };

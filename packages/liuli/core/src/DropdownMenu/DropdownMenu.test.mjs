@@ -120,3 +120,11 @@ test('a radio item outside a DropdownMenuRadioGroup fails, naming the fix', asyn
     screen.press(screen.getByTestId('menu'));
   }, /DropdownMenuRadioGroup/);
 });
+
+test('Grouped: each group is named by its heading, which is not read twice', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Grouped');
+  screen.press(screen.getByTestId('options'));
+  const groups = screen.queryAll(node => node.props.role === 'group' && node.children[0]?.tag === 'text');
+  assert.deepEqual(groups.map(group => [group.props.accessibilityLabel, group.children[0].props.accessibilityHidden]), [['Sort by', 1], ['Show', 1]]);
+  assert.equal(screen.queryAll(node => node.props.role === 'menuitemradio').length, 3);
+});

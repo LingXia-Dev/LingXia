@@ -1,9 +1,9 @@
-import { cx, useId, type Child } from '@lingxia/view';
+import { cx, useId, useView, type Child } from '@lingxia/view';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { dialogRecipe as r } from './Dialog.recipe';
 
-export type DialogSize = 'sm' | 'md' | 'lg';
+export type DialogSize = 'sm' | 'md' | 'lg' | 'full';
 export type DialogDismissOn = 'any' | 'closeRequest' | 'none';
 
 export interface DialogProps {
@@ -34,7 +34,7 @@ export interface DialogProps {
    * @default 'any'
    */
   dismissOn?: DialogDismissOn;
-  /** Maximum width: 360, 480 or 640. @default 'md' */
+  /** Maximum width: 360, 480 or 640. `full` covers the screen, for a task with its own scrolling content: an editor, a long form on a phone. @default 'md' */
   size?: DialogSize;
   /** Classes for the panel. */
   className?: string;
@@ -64,6 +64,9 @@ export function Dialog({
 }: DialogProps) {
   const descriptionId = `${useId()}-description`;
   const close = () => onOpenChange(false);
+  const { env } = useView();
+  // A full dialog covers the system bars, so its own padding clears them.
+  const clear = size === 'full' ? { paddingTop: env.safeArea.top + 20, paddingBottom: env.safeArea.bottom + 20 } : undefined;
   return (
     <dialog
       open={isOpen}
@@ -73,7 +76,8 @@ export function Dialog({
       aria-label={label}
       aria-describedby={description !== undefined ? descriptionId : undefined}
       data-testid={testId}
-      className={cx(r.panel.base, r.panel.size[size], className)}
+      style={clear}
+      className={cx(r.panel.base, size !== 'full' && r.panel.floating, r.panel.size[size], className)}
     >
       {(!isLabelHidden || closeLabel !== undefined) && (
         <view className={r.header.base}>
@@ -86,7 +90,7 @@ export function Dialog({
         </view>
       )}
       {description !== undefined && <text id={descriptionId} className={r.description.base}>{description}</text>}
-      {children !== undefined && <LayerContext.Provider value="overlay"><scroll className={r.body.base}>{children}</scroll></LayerContext.Provider>}
+      {children !== undefined && <LayerContext.Provider value="overlay"><scroll className={cx(r.body.base, size === 'full' && r.body.full)}>{children}</scroll></LayerContext.Provider>}
       {actions !== undefined && <view className={r.footer.base}>{actions}</view>}
     </dialog>
   );

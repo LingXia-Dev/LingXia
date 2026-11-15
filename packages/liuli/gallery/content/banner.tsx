@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Payment, Tones, StateTitleOnly, StateWithMessage, StateWithAction, StateDismissible, OverList } from '../../core/src/Banner/Banner.examples';
+import { Payment, Tones, Collapsible, StateTitleOnly, StateWithMessage, StateWithAction, StateDismissible, OverList } from '../../core/src/Banner/Banner.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -11,6 +11,9 @@ export function Content() {
       <PageSection title={"Variants"}>
         <Stage caption={"Neutral, info, success, warning and danger"}>
           <Tones />
+        </Stage>
+        <Stage caption={"Collapsible: the title stays, the rest opens on demand"}>
+          <Collapsible />
         </Stage>
       </PageSection>
       <PageSection title={"States"}>

@@ -11,6 +11,8 @@ export const dropdownMenuParts = {
   itemDescription: 'text',
   itemCheck: 'vector',
   radioGroup: 'view',
+  group: 'view',
+  groupLabel: 'text',
   divider: 'view',
 } as const;
 
@@ -49,6 +51,13 @@ export const dropdownMenuRecipe = {
   /** Spaced as the menu spaces its items. */
   radioGroup: {
     base: 'gap-0.5',
+  },
+  group: {
+    base: 'gap-0.5',
+  },
+  /** A quiet heading at the items' inset. */
+  groupLabel: {
+    base: 'px-3 pt-1.5 pb-1 text-caption font-medium text-muted',
   },
   divider: {
     base: 'h-px -mx-1 my-1 bg-text/8',

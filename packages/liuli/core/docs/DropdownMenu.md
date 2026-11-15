@@ -5,7 +5,7 @@
 Button that opens a short menu of actions. Status: preview.
 
 ```ts
-import { DropdownMenu, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuDivider } from '@liulidesign/core/DropdownMenu';
+import { DropdownMenu, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuDivider } from '@liulidesign/core/DropdownMenu';
 ```
 
 DropdownMenu groups a few related actions behind one button: sort options, a "more" menu on a row, account actions. Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu. DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one choice; both keep the menu open.
@@ -152,6 +152,34 @@ export function Checkable() {
           <DropdownMenuRadioItem key={option} value={option} label={`Group by ${option.toLowerCase()}`} data-testid={`group-${option}`} />
         ))}
       </DropdownMenuRadioGroup>
+    </DropdownMenu>
+  );
+}
+```
+
+### Groups under headings
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';
+
+/** Groups under their headings, when a menu holds more than one kind of thing. */
+export function Grouped() {
+  const sort = useLocal('sort', 'Edited');
+  const completed = useLocal('done', true);
+  return (
+    <DropdownMenu label="View options" data-testid="options">
+      <DropdownMenuGroup label="Sort by">
+        <DropdownMenuRadioGroup value={sort.value} onChange={next => sort.set(next)}>
+          {['Edited', 'Created', 'Title'].map(option => (
+            <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`sort-${option}`} />
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuGroup>
+      <DropdownMenuDivider />
+      <DropdownMenuGroup label="Show">
+        <DropdownMenuCheckboxItem label="Completed" isChecked={completed.value} onCheckedChange={next => completed.set(next)} data-testid="show-done" />
+      </DropdownMenuGroup>
     </DropdownMenu>
   );
 }

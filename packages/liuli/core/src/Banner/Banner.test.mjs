@@ -19,3 +19,13 @@ test('OverList: a danger banner is an alert', async () => {
   screen.press(screen.getByTestId('sync-action'));
   screen.getByText('Still offline');
 });
+
+test('Collapsible: folded to its title, the toggle says whether it is open and brings the rest back', async () => {
+  const screen = await renderExample('Banner/Banner', 'Collapsible');
+  const texts = () => screen.getByTestId('maintenance').children[1].children.length;
+  const toggle = () => screen.getByTestId('maintenance-toggle');
+  assert.deepEqual([texts(), toggle().props.accessibilityLabel, toggle().props.stateExpanded], [1, 'Details', 0]);
+  screen.press(toggle());
+  assert.equal(texts(), 3, 'the message and the action');
+  assert.equal(toggle().props.stateExpanded, 1);
+});

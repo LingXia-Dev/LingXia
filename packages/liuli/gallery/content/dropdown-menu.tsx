@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Basic, More, Value, Checkable, Sizes, StateEnabled, StateDisabled, InList } from '../../core/src/DropdownMenu/DropdownMenu.examples';
+import { Basic, More, Value, Checkable, Grouped, Sizes, StateEnabled, StateDisabled, InList } from '../../core/src/DropdownMenu/DropdownMenu.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -17,6 +17,9 @@ export function Content() {
         </Stage>
         <Stage caption={"Checkbox and radio items"}>
           <Checkable />
+        </Stage>
+        <Stage caption={"Named groups, for a menu with more than one kind of item"}>
+          <Grouped />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

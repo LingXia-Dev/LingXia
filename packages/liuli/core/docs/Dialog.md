@@ -82,6 +82,46 @@ export function Form() {
 }
 ```
 
+### Full screen
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Button } from '@liulidesign/core/Button';
+import { TextArea } from '@liulidesign/core/TextArea';
+import { TextInput } from '@liulidesign/core/TextInput';
+import { Dialog } from '@liulidesign/core/Dialog';
+
+/** Full screen: a task with its own content to scroll, closed from its header. */
+export function Full() {
+  const open = useLocal('open', false);
+  const title = useLocal('title', 'Trip to the coast');
+  const body = useLocal('body', '');
+  return (
+    <view className="gap-2">
+      <Button label="New note" variant="primary" width="content" onClick={() => open.set(true)} data-testid="full-open" />
+      <Dialog
+        isOpen={open.value}
+        onOpenChange={next => open.set(next)}
+        label="New note"
+        size="full"
+        closeLabel="Close"
+        dismissOn="closeRequest"
+        data-testid="full-dialog"
+        actions={
+          <>
+            <Button label="Discard" onClick={() => open.set(false)} data-testid="full-discard" />
+            <Button label="Save note" variant="primary" onClick={() => open.set(false)} data-testid="full-save" />
+          </>
+        }
+      >
+        <TextInput bind={title} label="Title" />
+        <TextArea bind={body} label="Note" rows={8} maxRows={16} />
+      </Dialog>
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -96,7 +136,7 @@ export function Form() {
 | `actions` | `Child` |  | The footer, typically Buttons, the main action last. |
 | `closeLabel` | `string` |  | Shows a close button in the header, named by this text. |
 | `dismissOn` | `DialogDismissOn` | `'any'` | Which requests close it: `any` adds a backdrop tap to `closeRequest` (Escape, back); `none` leaves closing to your code, for a step that must finish. |
-| `size` | `DialogSize` | `'md'` | Maximum width: 360, 480 or 640. |
+| `size` | `DialogSize` | `'md'` | Maximum width: 360, 480 or 640. `full` covers the screen, for a task with its own scrolling content: an editor, a long form on a phone. |
 | `className` | `string` |  | Classes for the panel. |
 | `data-testid` | `string` |  |  |
 
@@ -104,7 +144,7 @@ export function Form() {
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
-| panel | `<dialog>` | yes | The dialog primitive: a centred panel in the top layer above a scrim. |
+| panel | `<dialog>` | yes | The dialog primitive: a centred panel on the overlay surface, in the top layer above a scrim; at `full` it covers the screen on the page's canvas. |
 | title | `<text>` | yes | `label` as a level-2 heading, unless `isLabelHidden`. |
 | close | `<button>` | no | A close button named by `closeLabel`. |
 | description | `<text>` | no | Text under the title. |
@@ -126,6 +166,8 @@ export function Form() {
 | --- | --- | --- | --- | --- |
 | title | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.10:1 |
 | description | `text-muted` on `surface-overlay` | 4.5:1 | 5.89:1 | 4.84:1 |
+| title, full screen | `text` on `canvas` | 4.5:1 | 15.19:1 | 15.31:1 |
+| description, full screen | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

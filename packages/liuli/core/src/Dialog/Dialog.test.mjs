@@ -36,3 +36,11 @@ test('Form: the close button is named by closeLabel and closes; Save waits for a
   screen.press(close[0]);
   assert.equal(dialogs(screen).length, 0);
 });
+
+test('Full: covers the screen with square corners and no floating shadow; the body takes the room left', async () => {
+  const screen = await renderExample('Dialog/Dialog', 'Full');
+  screen.press(screen.getByTestId('full-open'));
+  const dialog = screen.getByTestId('full-dialog');
+  assert.deepEqual([dialog.props.widthPercent, dialog.props.heightPercent, dialog.props.radius, dialog.props.boxShadow, dialog.props.background], [100, 100, 0, undefined, 'canvas']);
+  assert.equal(dialog.children.find(node => node.tag === 'scroll').props.grow, 1);
+});

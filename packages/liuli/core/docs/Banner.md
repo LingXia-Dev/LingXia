@@ -83,12 +83,37 @@ export function OverList() {
 }
 ```
 
+### Folded to its title
+
+```tsx
+import { Banner } from '@liulidesign/core/Banner';
+
+/** Folded to its title until someone wants the rest: for a notice that stays for days. */
+export function Collapsible() {
+  return (
+    <Banner
+      tone="warning"
+      title="Scheduled maintenance on Sunday"
+      message="Sync pauses from 02:00 to 04:00 UTC. Notes you write then are kept on this device and sent when it ends."
+      action={{ label: 'See the schedule', onClick: () => {} }}
+      isCollapsible
+      toggleLabel="Details"
+      isDefaultCollapsed
+      data-testid="maintenance"
+    />
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `onDismiss` | `(() => void)` |  | Removes the banner; the app stops rendering it. |
 | `dismissLabel` | `string` |  | The dismiss button's name: "Dismiss". |
+| `isCollapsible` | `boolean` | `false` | Folds the message and the action under the title, behind a chevron button. |
+| `toggleLabel` | `string` |  | The chevron button's name: "Details". Read with whether it is open. |
+| `isDefaultCollapsed` | `boolean` | `false` | Whether it starts folded. |
 | `title` (required) | `string` |  | The point, in a few words. |
 | `message` | `string` |  | What it means or what to do, in a sentence. |
 | `tone` | `BannerTone` | `'info'` |  |
