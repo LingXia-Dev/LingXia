@@ -2108,6 +2108,413 @@
       }
     },
     {
+      "name": "Combobox",
+      "import": "@liulidesign/core/Combobox",
+      "exports": [
+        "Combobox"
+      ],
+      "category": "selection",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "One choice from a long list, found by typing: a field that opens a search over its options",
+      "description": "Combobox is a Select for lists too long to scan: countries, people, products. The field shows the chosen option; pressing it opens a search field over the list, in a panel under the field for a mouse and in a sheet from the bottom edge for a finger. Typing narrows the list, and Return takes the first match. It takes Field's label, help text and status, and the app can do the matching itself, for its own rule or a server.",
+      "keywords": [
+        "combobox",
+        "autocomplete",
+        "typeahead",
+        "searchable select",
+        "picker",
+        "filter",
+        "search select",
+        "lookup"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the control's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the visible label; the control keeps it as its name.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the control, read as the control's description."
+        },
+        {
+          "name": "status",
+          "type": "FieldStatus",
+          "required": false,
+          "description": "An `error` status marks the control invalid; its message is read as the control's description."
+        },
+        {
+          "name": "isRequired",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
+          "default": "false"
+        },
+        {
+          "name": "hasRequiredMark",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
+          "default": "true"
+        },
+        {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Shown in place of `description` while disabled."
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "bind",
+          "type": "Local<string>",
+          "required": false,
+          "description": "A View-local cell the combobox reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false,
+          "description": "The chosen option's value; `''` shows the placeholder."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: string) => void)",
+          "required": false,
+          "description": "Runs with the chosen option's value."
+        },
+        {
+          "name": "options",
+          "type": "readonly ComboboxOption[]",
+          "required": true,
+          "description": "The choices. By default the list shows those whose label contains what was typed, whatever its case."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "required": false,
+          "description": "Shown in the box while nothing is chosen."
+        },
+        {
+          "name": "searchLabel",
+          "type": "string",
+          "required": true,
+          "description": "The search field's accessible name: \"Search countries\"."
+        },
+        {
+          "name": "searchPlaceholder",
+          "type": "string",
+          "required": false,
+          "description": "Shown in the search field while it is empty."
+        },
+        {
+          "name": "emptyLabel",
+          "type": "string",
+          "required": true,
+          "description": "Shown in place of the list when no option matches: \"No country matches\"."
+        },
+        {
+          "name": "moreLabel",
+          "type": "string",
+          "required": false,
+          "description": "Shown under the list when more than fifty options match: \"Keep typing to see more\"."
+        },
+        {
+          "name": "closeLabel",
+          "type": "string",
+          "required": false,
+          "description": "Names a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back."
+        },
+        {
+          "name": "onQueryChange",
+          "type": "((query: string) => void)",
+          "required": false,
+          "description": "Runs with each change of the search text. With it the list shows `options` as given, so the app does the matching: by its own rule, or by asking a server."
+        },
+        {
+          "name": "isLoading",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows a spinner in place of the list while the app fetches options.",
+          "default": "false"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the trigger; the search field is `<id>-search`, an option `<id>-<value>`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "trigger": "button",
+        "value": "text",
+        "chevron": "vector",
+        "popover": "view",
+        "sheet": "dialog",
+        "grabber": "view",
+        "header": "view",
+        "title": "text",
+        "close": "button",
+        "list": "scroll",
+        "option": "button",
+        "optionText": "view",
+        "optionLabel": "text",
+        "optionDescription": "text",
+        "optionCheck": "vector",
+        "note": "text",
+        "spinner": "vector"
+      },
+      "accessibility": {
+        "pattern": "button",
+        "name": "label",
+        "description": [
+          "the chosen option",
+          "description",
+          "status message"
+        ],
+        "states": [
+          {
+            "state": "expanded",
+            "from": "the open panel or sheet"
+          },
+          {
+            "state": "selected",
+            "from": "value, on the chosen option"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          },
+          {
+            "state": "modal",
+            "from": "the sheet on touch"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Enter or Space",
+            "effect": "On the field: opens the panel with focus in the search field"
+          },
+          {
+            "keys": "Return",
+            "effect": "In the search field: chooses the first match and closes"
+          },
+          {
+            "keys": "Tab, then Up and Down",
+            "effect": "From the search field into the list, and between options; Enter chooses"
+          },
+          {
+            "keys": "Escape",
+            "effect": "Closes without changing the choice; focus returns to the field"
+          }
+        ],
+        "target": {
+          "sm": 32,
+          "md": 40,
+          "lg": 48
+        },
+        "contrast": [
+          {
+            "what": "chosen option in the field",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "placeholder",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "field edge",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "option in the panel",
+            "pair": [
+              "text",
+              "surface-overlay"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "option's second line and the notes",
+            "pair": [
+              "text-muted",
+              "surface-overlay"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "tick on the chosen option",
+            "pair": [
+              "accent",
+              "surface-overlay"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "error edge",
+            "pair": [
+              "danger",
+              "surface"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "The field is a button named by `label`; the chosen option, then the help text and status, are read as its description. It reports expanded while open.",
+          "The search field is named by `searchLabel`. The options are a listbox named by `label`, each an option that reports selected; `emptyLabel` is announced when nothing matches.",
+          "On touch the sheet is modal and titled by `label`; a tap outside, a drag down or Back closes it. With a mouse a click outside or Escape closes the panel.",
+          "Arrow keys do not move through the options while focus is in the search field: Return takes the first match, or Tab moves into the list."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Country",
+          "title": "A long list, found by typing",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Combobox } from '@liulidesign/core/Combobox';\n\nconst countries = [\n  'Argentina', 'Australia', 'Brazil', 'Canada', 'Chile', 'China', 'Egypt', 'France', 'Germany', 'India', 'Indonesia', 'Italy', 'Japan',\n  'Kenya', 'Mexico', 'Morocco', 'Netherlands', 'Nigeria', 'Norway', 'Peru', 'Portugal', 'South Africa', 'South Korea', 'Spain', 'Sweden', 'Türkiye',\n  'United Kingdom', 'United States', 'Vietnam',\n].map(name => ({ value: name.toLowerCase().replace(/[^a-z]+/g, '-'), label: name }));\n\n/** A long list found by typing: the field opens a search over its options. */\nexport function Country() {\n  const country = useLocal('country', '');\n  return (\n    <Combobox\n      label=\"Country\"\n      bind={country}\n      options={countries}\n      placeholder=\"Choose a country\"\n      searchLabel=\"Search countries\"\n      searchPlaceholder=\"Search\"\n      emptyLabel=\"No country matches\"\n      closeLabel=\"Close\"\n      data-testid=\"country\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Assignee",
+          "title": "Options with a second line",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Combobox } from '@liulidesign/core/Combobox';\n\nconst people = [\n  { value: 'ana', label: 'Ana Lee', description: 'Design' },\n  { value: 'ben', label: 'Ben Okafor', description: 'Engineering' },\n  { value: 'chloe', label: 'Chloé Martin', description: 'Engineering' },\n  { value: 'dev', label: 'Dev Patel', description: 'On leave until June', isDisabled: true },\n  { value: 'emi', label: 'Emi Sato', description: 'Research' },\n];\n\n/** A second line tells apart options with similar names; one that cannot be chosen stays in the list, dimmed. */\nexport function Assignee() {\n  const person = useLocal('person', 'ben');\n  return (\n    <Combobox\n      label=\"Assignee\"\n      description=\"They are notified when the task changes.\"\n      bind={person}\n      options={people}\n      searchLabel=\"Search people\"\n      emptyLabel=\"Nobody by that name\"\n      data-testid=\"assignee\"\n    />\n  );\n}"
+        },
+        {
+          "name": "OwnMatching",
+          "title": "The app does the matching",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Combobox } from '@liulidesign/core/Combobox';\n\nconst airports = [\n  { value: 'LIS', label: 'Lisbon', description: 'LIS · Humberto Delgado' },\n  { value: 'LHR', label: 'London', description: 'LHR · Heathrow' },\n  { value: 'LGW', label: 'London', description: 'LGW · Gatwick' },\n  { value: 'NBO', label: 'Nairobi', description: 'NBO · Jomo Kenyatta' },\n  { value: 'OSL', label: 'Oslo', description: 'OSL · Gardermoen' },\n];\n\n/** The app does the matching itself: here a code finds its airport as well as a city does. */\nexport function OwnMatching() {\n  const airport = useLocal('airport', '');\n  const typed = useLocal('typed', '');\n  const text = typed.value.trim().toLowerCase();\n  return (\n    <Combobox\n      label=\"Airport\"\n      bind={airport}\n      options={airports.filter(each => each.label.toLowerCase().includes(text) || each.value.toLowerCase().includes(text))}\n      placeholder=\"City or code\"\n      searchLabel=\"Search airports\"\n      emptyLabel=\"No airport matches\"\n      onQueryChange={typed.set}\n      data-testid=\"airport\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Combobox } from '@liulidesign/core/Combobox';\n\nconst countries = [\n  'Argentina', 'Australia', 'Brazil', 'Canada', 'Chile', 'China', 'Egypt', 'France', 'Germany', 'India', 'Indonesia', 'Italy', 'Japan',\n  'Kenya', 'Mexico', 'Morocco', 'Netherlands', 'Nigeria', 'Norway', 'Peru', 'Portugal', 'South Africa', 'South Korea', 'Spain', 'Sweden', 'Türkiye',\n  'United Kingdom', 'United States', 'Vietnam',\n].map(name => ({ value: name.toLowerCase().replace(/[^a-z]+/g, '-'), label: name }));\n\nexport function Sizes() {\n  const value = useLocal('value', 'kenya');\n  return (\n    <view className=\"gap-3\">\n      <Combobox label=\"Small\" size=\"sm\" bind={value} options={countries} searchLabel=\"Search countries\" emptyLabel=\"No country matches\" data-testid=\"small\" />\n      <Combobox label=\"Medium\" bind={value} options={countries} searchLabel=\"Search countries\" emptyLabel=\"No country matches\" />\n      <Combobox label=\"Large\" size=\"lg\" bind={value} options={countries} searchLabel=\"Search countries\" emptyLabel=\"No country matches\" data-testid=\"large\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Shipping",
+          "title": "In a form",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Combobox } from '@liulidesign/core/Combobox';\n\nconst countries = [\n  'Argentina', 'Australia', 'Brazil', 'Canada', 'Chile', 'China', 'Egypt', 'France', 'Germany', 'India', 'Indonesia', 'Italy', 'Japan',\n  'Kenya', 'Mexico', 'Morocco', 'Netherlands', 'Nigeria', 'Norway', 'Peru', 'Portugal', 'South Africa', 'South Korea', 'Spain', 'Sweden', 'Türkiye',\n  'United Kingdom', 'United States', 'Vietnam',\n].map(name => ({ value: name.toLowerCase().replace(/[^a-z]+/g, '-'), label: name }));\n\n/** In a form, beside the fields it belongs with. */\nexport function Shipping() {\n  const country = useLocal('ship-country', 'portugal');\n  const saved = useLocal('saved', '');\n  return (\n    <view className=\"gap-4\">\n      <Combobox label=\"Ship to\" bind={country} options={countries} searchLabel=\"Search countries\" emptyLabel=\"No country matches\" isRequired data-testid=\"ship-to\" />\n      <Button label=\"Save address\" variant=\"primary\" width=\"content\" onClick={() => saved.set(country.value)} data-testid=\"save-address\" />\n      <text role=\"status\" data-testid=\"saved\" className=\"text-footnote text-muted\">{saved.value === '' ? 'Not saved' : `Saved: ${saved.value}`}</text>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Typing in the field itself with suggestions under it, and arrow keys moving through them while typing.",
+          "needs": "a popover anchored to an editor and opened from state, key events from an editor or an active option it points at, and the combobox role",
+          "today": "The field is a button; the search field is inside the panel or sheet, and Return takes the first match."
+        },
+        {
+          "missing": "A panel as wide as its field.",
+          "needs": "reading a laid-out box's size (`useBox`)",
+          "today": "The panel is 288 points wide."
+        },
+        {
+          "missing": "Several choices at once, and clearing the choice.",
+          "needs": "nothing from the View",
+          "today": "One choice; an app that needs \"none\" adds an option for it."
+        }
+      ],
+      "related": [
+        "Select",
+        "TextInput",
+        "DropdownMenu"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Search, then choose",
+        "order": 6,
+        "page": {
+          "lead": "Use a combobox to choose one option from a list too long to scan, by typing part of its name.",
+          "hero": "Country",
+          "variants": [
+            {
+              "name": "Assignee",
+              "title": "A second line for options with similar names; one that cannot be chosen is dimmed"
+            },
+            {
+              "name": "OwnMatching",
+              "title": "The app matches by its own rule: a code finds its airport"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small, medium and large"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateEmpty",
+              "title": "Nothing chosen"
+            },
+            {
+              "name": "StateChosen",
+              "title": "Chosen"
+            },
+            {
+              "name": "StateInvalid",
+              "title": "Invalid"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ],
+          "statesLayout": "stack",
+          "inContext": [
+            {
+              "name": "Shipping",
+              "title": "In a form"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "DateInput",
       "import": "@liulidesign/core/DateInput",
       "exports": [
@@ -5703,6 +6110,289 @@
               "title": "A required question, after a failed send"
             }
           ]
+        }
+      }
+    },
+    {
+      "name": "SearchField",
+      "import": "@liulidesign/core/SearchField",
+      "exports": [
+        "SearchField"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A field for searching what is on the page, with a clear button and a line that says what was found",
+      "description": "SearchField is the field at the top of a list or a catalogue: a magnifier, the text, a button that clears it, and under it a line the app words to say what the search found. That line is announced when it changes, so a person who cannot see the list still learns the result. While a search runs elsewhere, a spinner takes the magnifier's place.",
+      "keywords": [
+        "search",
+        "search field",
+        "search box",
+        "filter",
+        "find",
+        "query",
+        "magnifier"
+      ],
+      "props": [
+        {
+          "name": "bind",
+          "type": "Local<string>",
+          "required": false,
+          "description": "A View-local cell the field reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false,
+          "description": "The search text; pass `onChange` with it."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: string) => void)",
+          "required": false,
+          "description": "Runs with each change of the text."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The accessible name: what is searched (\"Search notes\"). Drawn only with `isLabelShown`."
+        },
+        {
+          "name": "isLabelShown",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws the label above the field. A search field at the top of a list is usually named by its placeholder's place alone.",
+          "default": "false"
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "required": false,
+          "description": "A hint shown while empty: \"Search notes\"."
+        },
+        {
+          "name": "clearLabel",
+          "type": "string",
+          "required": true,
+          "description": "The clear button's accessible name: \"Clear search\". The button shows while there is text."
+        },
+        {
+          "name": "resultsLabel",
+          "type": "string",
+          "required": false,
+          "description": "What the search found, as the app words it: \"12 notes\", \"No notes match\". Announced when it changes."
+        },
+        {
+          "name": "isResultsLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Keeps `resultsLabel` for assistive tech only, when the list under the field already shows it.",
+          "default": "false"
+        },
+        {
+          "name": "isLoading",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows a spinner in place of the magnifier while a search runs.",
+          "default": "false"
+        },
+        {
+          "name": "onSubmit",
+          "type": "((value: string) => void)",
+          "required": false,
+          "description": "Runs on the keyboard's search key, or Enter."
+        },
+        {
+          "name": "hasAutoFocus",
+          "type": "boolean",
+          "required": false,
+          "description": "Focus it when it first appears.",
+          "default": "false"
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the editor."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "spinner": "vector",
+        "results": "text"
+      },
+      "accessibility": {
+        "pattern": "textbox",
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "busy",
+            "from": "isLoading"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Enter, or the keyboard's search key",
+            "effect": "Runs `onSubmit` with the text"
+          },
+          {
+            "keys": "Tab",
+            "effect": "Moves from the text to the clear button while there is text"
+          }
+        ],
+        "target": {
+          "sm": 32,
+          "md": 40,
+          "lg": 48
+        },
+        "contrast": [
+          {
+            "what": "text",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "placeholder, magnifier and results line",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "results line on the page",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "field edge",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "A search editor named by `label`; a placeholder is never the name, so `label` is required even when it is not drawn.",
+          "The results line is a status region: each new `resultsLabel` is announced. Word it for the ear: \"3 of 6 notes\", \"No notes match\".",
+          "The clear button is named by `clearLabel` and appears only while there is text.",
+          "The on-screen keyboard's action key reads \"search\"."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Notes",
+          "title": "A list that narrows as you type",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\nconst notes = ['Budget for Q3', 'Kitchen plans', 'Reading list', 'Recipes to try', 'Trip to Lisbon', 'Weekly review'];\n\n/** The list under the field narrows as you type, and the line between them says how many are left. */\nexport function Notes() {\n  const query = useLocal('query', '');\n  const text = query.value.trim().toLowerCase();\n  const found = notes.filter(note => note.toLowerCase().includes(text));\n  return (\n    <view className=\"gap-3\">\n      <SearchField\n        label=\"Search notes\"\n        placeholder=\"Search notes\"\n        clearLabel=\"Clear search\"\n        bind={query}\n        resultsLabel={text === '' ? undefined : found.length === 0 ? 'No notes match' : `${found.length} of ${notes.length} notes`}\n        data-testid=\"notes\"\n      />\n      <ItemList label=\"Notes\">\n        {found.map(note => <Item key={note} label={note} />)}\n      </ItemList>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Loading",
+          "title": "While a search runs",
+          "source": "import { SearchField } from '@liulidesign/core/SearchField';\n\n/** While a search runs elsewhere, the magnifier gives way to a spinner. */\nexport function Loading() {\n  return <SearchField label=\"Search the catalogue\" placeholder=\"Search the catalogue\" clearLabel=\"Clear search\" value=\"lamp\" onChange={() => {}} isLoading resultsLabel=\"Searching\" data-testid=\"catalogue\" />;\n}"
+        },
+        {
+          "name": "Labelled",
+          "title": "With its label shown",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\n/** With a label above, where the field is one of several on a form. */\nexport function Labelled() {\n  const query = useLocal('order', '');\n  return <SearchField label=\"Find an order\" isLabelShown placeholder=\"Order number or name\" clearLabel=\"Clear\" bind={query} data-testid=\"order\" />;\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\nexport function Sizes() {\n  const query = useLocal('sized', '');\n  return (\n    <view className=\"gap-3\">\n      <SearchField label=\"Search, small\" placeholder=\"Small\" clearLabel=\"Clear\" size=\"sm\" bind={query} data-testid=\"small\" />\n      <SearchField label=\"Search, medium\" placeholder=\"Medium\" clearLabel=\"Clear\" bind={query} />\n      <SearchField label=\"Search, large\" placeholder=\"Large\" clearLabel=\"Clear\" size=\"lg\" bind={query} data-testid=\"large\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Recent searches and suggestions under the field while typing.",
+          "needs": "a popover anchored to an editor and opened from state, with key events from the editor",
+          "today": "The page shows its own results under the field."
+        },
+        {
+          "missing": "A cancel button beside the field that ends the search, as a phone's search bar has.",
+          "needs": "focus and blur events on an editor",
+          "today": "The clear button empties the text; the page decides what an empty search shows."
+        }
+      ],
+      "related": [
+        "TextInput",
+        "Combobox"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Find in a list",
+        "order": 7,
+        "page": {
+          "lead": "Use a search field above a list or a catalogue, so people can narrow it by typing.",
+          "hero": "Notes",
+          "variants": [
+            {
+              "name": "Loading",
+              "title": "A spinner in the magnifier's place while a search runs elsewhere"
+            },
+            {
+              "name": "Labelled",
+              "title": "With its label shown, among other fields"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small, medium and large"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateEmpty",
+              "title": "Empty"
+            },
+            {
+              "name": "StateFilled",
+              "title": "With text and a result"
+            },
+            {
+              "name": "StateNothing",
+              "title": "Nothing found"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ],
+          "statesLayout": "stack"
         }
       }
     },

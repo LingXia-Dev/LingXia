@@ -26,12 +26,14 @@ import { Content as DateInput } from '../content/date-input';
 import { Content as TimeInput } from '../content/time-input';
 import { Content as Slider } from '../content/slider';
 import { Content as Field } from '../content/field';
+import { Content as SearchField } from '../content/search-field';
 import { Content as NumberInput } from '../content/number-input';
 import { Content as CheckboxInput } from '../content/checkbox-input';
 import { Content as RadioGroup } from '../content/radio-group';
 import { Content as Switch } from '../content/switch';
 import { Content as Select } from '../content/select';
 import { Content as SegmentedControl } from '../content/segmented-control';
+import { Content as Combobox } from '../content/combobox';
 import { Content as CheckboxList } from '../content/checkbox-list';
 import { Content as Tabs } from '../content/tabs';
 import { Content as NavList } from '../content/nav-list';
@@ -94,12 +96,14 @@ export const contents: Record<string, GalleryContent> = {
   "time-input": TimeInput,
   "slider": Slider,
   "field": Field,
+  "search-field": SearchField,
   "number-input": NumberInput,
   "checkbox-input": CheckboxInput,
   "radio-group": RadioGroup,
   "switch": Switch,
   "select": Select,
   "segmented-control": SegmentedControl,
+  "combobox": Combobox,
   "checkbox-list": CheckboxList,
   "tabs": Tabs,
   "nav-list": NavList,

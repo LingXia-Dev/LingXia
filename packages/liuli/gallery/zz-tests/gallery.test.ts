@@ -10,8 +10,8 @@ const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 const categories: Record<string, string[]> = {
   'category-foundations': ['colour', 'typography', 'shape-and-spacing', 'elevation', 'motion'],
   'category-actions': ['button', 'toggle-button', 'icon-button', 'button-group'],
-  'category-inputs': ['text-input', 'text-area', 'date-input', 'time-input', 'slider', 'field', 'number-input'],
-  'category-selection': ['checkbox-input', 'radio-group', 'switch', 'select', 'segmented-control', 'checkbox-list'],
+  'category-inputs': ['text-input', 'text-area', 'date-input', 'time-input', 'slider', 'field', 'search-field', 'number-input'],
+  'category-selection': ['checkbox-input', 'radio-group', 'switch', 'select', 'segmented-control', 'combobox', 'checkbox-list'],
   'category-navigation': ['tabs', 'nav-list'],
   'category-feedback': ['badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast'],
   'category-overlays': ['dialog', 'dropdown-menu', 'tooltip', 'bottom-sheet', 'popover'],

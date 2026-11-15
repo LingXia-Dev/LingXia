@@ -229,6 +229,23 @@ export const entries: GalleryEntry[] = [
     "status": "preview"
   },
   {
+    "name": "SearchField",
+    "page": "search-field",
+    "category": "inputs",
+    "summary": "A field for searching what is on the page, with a clear button and a line that says what was found",
+    "keywords": [
+      "search",
+      "search field",
+      "search box",
+      "filter",
+      "find",
+      "query",
+      "magnifier"
+    ],
+    "since": "2026-11-15",
+    "status": "preview"
+  },
+  {
     "name": "NumberInput",
     "page": "number-input",
     "category": "inputs",
@@ -333,6 +350,24 @@ export const entries: GalleryEntry[] = [
       "picker"
     ],
     "since": "2026-11-13",
+    "status": "preview"
+  },
+  {
+    "name": "Combobox",
+    "page": "combobox",
+    "category": "selection",
+    "summary": "One choice from a long list, found by typing: a field that opens a search over its options",
+    "keywords": [
+      "combobox",
+      "autocomplete",
+      "typeahead",
+      "searchable select",
+      "picker",
+      "filter",
+      "search select",
+      "lookup"
+    ],
+    "since": "2026-11-15",
     "status": "preview"
   },
   {
@@ -893,14 +928,14 @@ export const galleryCategories: GalleryCategory[] = [
     "title": "Inputs",
     "description": "Fields a person types into or sets: text, dates, times and amounts.",
     "page": "category-inputs",
-    "count": 7
+    "count": 8
   },
   {
     "id": "selection",
     "title": "Selection",
     "description": "Controls for choosing among options: one, several, or on and off.",
     "page": "category-selection",
-    "count": 6
+    "count": 7
   },
   {
     "id": "navigation",
@@ -954,7 +989,7 @@ export const galleryCategories: GalleryCategory[] = [
 ];
 
 /** The 6 latest components, newest first. */
-export const newest: string[] = ["CheckboxList","NumberInput","BarChart","ButtonGroup","Chart","Icon"];
+export const newest: string[] = ["CheckboxList","Combobox","NumberInput","SearchField","BarChart","ButtonGroup"];
 
 export const version = "0.1.0";
 export const packageStatus = "Preview";

@@ -1,0 +1,89 @@
+import type { FieldSize, FieldStatusType } from '../Field/Field';
+
+export const comboboxParts = {
+  trigger: 'button',
+  value: 'text',
+  chevron: 'vector',
+  popover: 'view',
+  sheet: 'dialog',
+  grabber: 'view',
+  header: 'view',
+  title: 'text',
+  close: 'button',
+  list: 'scroll',
+  option: 'button',
+  optionText: 'view',
+  optionLabel: 'text',
+  optionDescription: 'text',
+  optionCheck: 'vector',
+  note: 'text',
+  spinner: 'vector',
+} as const;
+
+/**
+ * The trigger is a field: Select's box with the chosen option's label and a chevron. It opens a
+ * search field over a list of options: in a panel under the trigger for a mouse, in a sheet on
+ * the bottom edge for a finger. Options are rows that wash on hover and focus, as menu items do.
+ */
+export const comboboxRecipe = {
+  trigger: {
+    base: 'flex-row items-center gap-2 px-3 rounded-control border border-line-strong bg-surface text-start transition duration-150 ease-out hover:border-text/30 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:bg-text/5 disabled:border-text/8',
+    size: { sm: 'min-h-control-sm', md: 'min-h-control-md', lg: 'min-h-control-lg' } satisfies Record<FieldSize, string>,
+    status: { error: 'border-danger', warning: 'border-warning', success: 'border-line-strong' } satisfies Record<FieldStatusType, string>,
+  },
+  value: {
+    base: 'min-w-0 grow basis-0 truncate text-text',
+    placeholder: 'min-w-0 grow basis-0 truncate text-muted',
+    disabled: 'text-faint',
+    size: { sm: 'text-footnote', md: 'text-body', lg: 'text-base' } satisfies Record<FieldSize, string>,
+  },
+  chevron: {
+    base: 'size-4 shrink-0 text-muted',
+  },
+  popover: {
+    base: 'mt-1 w-72 max-w-[90vw] p-2 gap-2 origin-top rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-150 ease-out starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-95',
+  },
+  sheet: {
+    base: 'mt-auto mb-0 w-full max-w-[640px] max-h-[90vh] px-4 pt-2 gap-3 rounded-t-dialog border border-b-0 border-text/12 bg-surface-overlay shadow-modal transition duration-300 ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
+  },
+  grabber: {
+    base: 'self-center w-9 h-1 rounded-full bg-text/20',
+  },
+  header: {
+    base: 'flex-row items-start gap-3 min-h-8 px-1',
+  },
+  title: {
+    base: 'grow basis-0 pt-1 text-title font-semibold tracking-tight text-text',
+  },
+  close: {
+    base: 'size-8 -me-1.5 items-center justify-center rounded-full text-muted hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+    icon: 'size-5',
+  },
+  list: {
+    popover: 'max-h-64 shrink min-h-0 overscroll-contain',
+    sheet: 'max-h-[50vh] shrink min-h-0 overscroll-contain',
+    box: 'gap-0.5',
+  },
+  option: {
+    base: 'flex-row items-center gap-3 px-3 py-2 rounded-control text-start text-text hover:bg-text/5 active:bg-text/8 focus-visible:bg-text/8 disabled:opacity-40',
+    size: { sm: 'min-h-control-sm', md: 'min-h-control-md', lg: 'min-h-control-lg' } satisfies Record<FieldSize, string>,
+  },
+  optionText: {
+    base: 'min-w-0 grow basis-0',
+  },
+  optionLabel: {
+    base: 'text-body',
+  },
+  optionDescription: {
+    base: 'text-footnote text-muted',
+  },
+  optionCheck: {
+    base: 'size-4 shrink-0 text-accent',
+  },
+  note: {
+    base: 'px-3 py-3 text-footnote text-muted',
+  },
+  spinner: {
+    base: 'mx-3 my-3 size-4 text-muted motion-safe:animate-spin',
+  },
+} as const;

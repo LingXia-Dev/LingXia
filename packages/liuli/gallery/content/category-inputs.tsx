@@ -5,6 +5,7 @@ import { Specimen as DateInputSpecimen } from '../../core/src/DateInput/DateInpu
 import { Specimen as TimeInputSpecimen } from '../../core/src/TimeInput/TimeInput.examples';
 import { Specimen as SliderSpecimen } from '../../core/src/Slider/Slider.examples';
 import { Specimen as FieldSpecimen } from '../../core/src/Field/Field.examples';
+import { Specimen as SearchFieldSpecimen } from '../../core/src/SearchField/SearchField.examples';
 import { Specimen as NumberInputSpecimen } from '../../core/src/NumberInput/NumberInput.examples';
 import { Category, Tile } from '../shared/Layout';
 
@@ -12,7 +13,7 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Fields a person types into or sets: text, dates, times and amounts."}</text>
-      <Category title={"7 components"}>
+      <Category title={"8 components"}>
         <Tile
           name={"TextInput"}
           tagline={"One line of text"}
@@ -62,9 +63,16 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           <FieldSpecimen />
         </Tile>
         <Tile
+          name={"SearchField"}
+          tagline={"Find in a list"}
+          onOpen={() => onOpen("search-field")}
+          testId={"open-search-field"}
+        >
+          <SearchFieldSpecimen />
+        </Tile>
+        <Tile
           name={"NumberInput"}
           tagline={"A number, by steps"}
-          isWide
           onOpen={() => onOpen("number-input")}
           testId={"open-number-input"}
         >
