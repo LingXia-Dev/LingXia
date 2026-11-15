@@ -40,6 +40,7 @@ Children: any elements and text. Renders as `column`.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `anchor` | `string` |  |
 | `onPointer` | `(event: PointerEvent) => void` |  |
 | `pointerAxis` | `"x" \| "y" \| "both"` |  |
 | `onLayout` | `(box: BoxSize) => void` |  |

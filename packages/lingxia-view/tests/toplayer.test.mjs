@@ -103,6 +103,25 @@ test('a popover its invoker opened is owned; closing it as an orphan tells the p
   assert.deepEqual(toggled, [true, false]);
 });
 
+test('a popover that names its anchor is placed against that element however it opens, and is owned by it', () => {
+  reset();
+  const open = { value: false };
+  const view = () => h('page', {},
+    h('view', { id: 'field', 'data-testid': 'field' }, h('text', {}, 'Field')),
+    h('button', { popoverTarget: 'list', 'data-testid': 'more' }, 'More'),
+    h('view', { id: 'list', popover: 'manual', anchor: 'field', open: open.value, 'data-testid': 'list' }, h('text', {}, 'List')));
+  let nodes = render(view);
+  assert.equal(byId(nodes, 'field').props.anchorName, undefined, 'closed: nothing is anchored');
+  open.value = true;
+  nodes = render(view);
+  assert.equal(byId(nodes, 'list').props.anchorTo, '--lx-popover-list');
+  assert.equal(byId(nodes, 'field').props.anchorName, '--lx-popover-list');
+  assert.equal(byId(nodes, 'more').props.anchorName, undefined, 'the named element anchors it, not a button that targets it');
+  assert.deepEqual(ownedPopovers(), ['list']);
+  assert.throws(() => prepare(() => h('page', {}, h('view', { id: 'p', popover: 'manual', anchor: 'two words' })), { env: {} }), /UI_ID: anchor names an element id/);
+  assert.throws(() => prepare(() => h('page', {}, h('view', { anchor: 'field' })), { env: {} }), /UI_PROP: anchor belongs to a popover/);
+});
+
 test('an invoker in a list row anchors the popover it opens and announces it open', () => {
   reset();
   const view = () => h('page', {},

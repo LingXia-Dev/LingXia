@@ -5229,6 +5229,8 @@ mod box_reading;
 mod orphan_overlays;
 #[path = "pointer_events.rs"]
 mod pointer_events;
+#[path = "popover_anchor.rs"]
+mod popover_anchor;
 #[path = "reveal_element.rs"]
 mod reveal_element;
 

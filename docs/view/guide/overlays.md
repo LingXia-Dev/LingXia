@@ -44,6 +44,7 @@ export function render() {
   tap outside (that tap reaches nothing else), on Escape or back, and when another auto popover opens;
   `popover="manual"` closes only from its button or code. Pass `open` and `onToggle(open)` to drive it
   from state instead.
+- `anchor="<element id>"` places a popover against that element, as against the button that opens one, even when it opens from `open`. With `popover="manual"` it has no backdrop, so a field under it keeps its taps and its focus: a list of suggestions under an editor. It closes if its anchor unmounts.
 - A popover closes, with `onToggle(false)`, when the button that opened it unmounts; one opened from
   state stays. A date, time or select picker closes with its field the same way.
 - Escape and back close only the topmost dialog or popover.

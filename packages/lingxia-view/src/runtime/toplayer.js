@@ -81,7 +81,7 @@ const backdropFade = { opacity: 1, transition: { properties: ['opacity'], durati
  * `<dialog>` and popovers expand to a top-layer box holding a backdrop and the panel; `null`
  * when closed, `undefined` for any other node. `finish` decorates the resolved layer.
  */
-const popoverProps = ['open', 'onToggle', 'closeAfter'];
+const popoverProps = ['open', 'onToggle', 'closeAfter', 'anchor'];
 export function expand(tag, props, children, identity, parent) {
   if (props[panelMark]) return undefined;
   if (tag === 'dialog') return dialog(props, children, identity, parent);
@@ -119,11 +119,13 @@ function dialog(props, children, identity, parent) {
 
 function popover(tag, props, children, identity, parent) {
   common(props, parent, 'popover');
-  const { popover: type, id, open, onToggle, closeAfter, ...rest } = props;
+  const { popover: type, id, open, onToggle, closeAfter, anchor: anchorId, ...rest } = props;
   const kind = type === true || type === '' || type === 'auto' ? 'auto' : type === 'manual' || type === 'hint' ? type : null;
   if (!kind) throw Error('UI_PROP: popover is "auto", "manual" or "hint"');
   if (typeof id !== 'string' || !id.length || id.length > 256) throw Error('UI_ID: a popover needs an id of 1..256 characters');
   if (onToggle !== undefined && typeof onToggle !== 'function') throw Error('UI_PROP: onToggle');
+  if (anchorId !== undefined && (typeof anchorId !== 'string' || !anchorId.length || anchorId.length > 256 || /\s/.test(anchorId)))
+    throw Error('UI_ID: anchor names an element id');
   if (closeAfter !== undefined && (kind !== 'manual' || !Number.isInteger(closeAfter) || closeAfter < 1 || closeAfter > 60000))
     throw Error('UI_PROP: closeAfter takes 1..60000 ms on a popover="manual"');
   const top = collected();
@@ -131,13 +133,14 @@ function popover(tag, props, children, identity, parent) {
   const controlled = open !== undefined;
   const shown = controlled ? open : uncontrolled.has(id);
   const scope = parent.popovers ?? [];
-  const entry = { kind, controlled, onToggle, open: false, ancestors: scope };
+  const entry = { kind, controlled, onToggle, open: false, ancestors: scope, anchorId };
   top.popovers.set(id, entry);
   if (!shown || !admitted(identity)) { anchors.delete(id); return null; }
   entry.open = true;
-  // The invoker that opened it anchors it; one opened from code is placed by its classes.
+  // The invoker that opened it anchors it; one opened from code is placed by its classes,
+  // unless it names the element it sits against.
   if (!anchors.has(id)) anchors.set(id, invoker?.id === id ? invoker.identity : null);
-  const anchor = anchors.get(id);
+  const anchor = anchorId ?? anchors.get(id);
   top.entries.push({ identity, kind, sequence: opened.get(identity), close: kind === 'manual' ? null : () => toggle(id, false) });
   const env = envOf(render.view);
   const style = anchor ? { ...rest.style, position: 'absolute', top: 0, left: 0 } : { ...placement(rest, env), ...rest.style };
@@ -194,7 +197,7 @@ export function closeAfterExpired(id) {
 /** The open popovers an invoker or interest trigger opened; one opened from code has no owner. */
 export function ownedPopovers() {
   const top = render.candidate?.topLayer ?? page.committed?.topLayer;
-  return top ? [...top.popovers].filter(([id, entry]) => entry.open && anchors.get(id)).map(([id]) => id) : [];
+  return top ? [...top.popovers].filter(([id, entry]) => entry.open && (entry.anchorId || anchors.get(id))).map(([id]) => id) : [];
 }
 
 /** The controls that opened popovers `ids` left the page: each closes, whatever its kind. */
@@ -264,14 +267,19 @@ export function finishTopLayerRow(row) {
 function wireInvokers(top, tree) {
   const invokers = new Map(top.invokers.map(entry => [entry.identity, entry]));
   const interests = new Map(top.interests.map(entry => [entry.identity, entry]));
+  // Open popovers that name their anchor element, by that element's id.
+  const named = new Map();
+  for (const [id, entry] of top.popovers) if (entry.open && entry.anchorId) named.set(entry.anchorId, id);
   const walk = node => {
+    const anchored = named.size && typeof node.props?.id === 'string' ? named.get(node.props.id) : undefined;
+    if (anchored !== undefined) node.wire.push(['anchorName', anchorName(anchored)]);
     const interest = interests.get(node.identity);
     if (interest) {
       const target = top.popovers.get(interest.target);
       if (!target) throw Error(`UI_ID: interestFor "${interest.target}" names no popover on this page`);
       // While it shows, the hint describes its trigger; the trigger keeps its own description if it has one.
       if (target.open && node.props['aria-describedby'] === undefined) node.wire.push(['ariaDescribedBy', interest.target]);
-      if (!invokers.has(node.identity) && target.open && anchors.get(interest.target) === node.identity)
+      if (!invokers.has(node.identity) && target.open && !target.anchorId && anchors.get(interest.target) === node.identity)
         node.wire.push(['anchorName', anchorName(interest.target)]);
     }
     const entry = invokers.get(node.identity);
@@ -280,7 +288,7 @@ function wireInvokers(top, tree) {
       if (!target) throw Error(`UI_ID: popoverTarget "${entry.target}" names no popover on this page`);
       if (node.props.accessibilityState?.expanded === undefined) node.wire.push(['stateExpanded', +target.open]);
       // The invoker that opened the popover carries the CSS anchor name it sits against.
-      if (target.open && anchors.get(entry.target) === node.identity) node.wire.push(['anchorName', anchorName(entry.target)]);
+      if (target.open && !target.anchorId && anchors.get(entry.target) === node.identity) node.wire.push(['anchorName', anchorName(entry.target)]);
     }
     for (const child of node.children ?? []) walk(child);
   };
