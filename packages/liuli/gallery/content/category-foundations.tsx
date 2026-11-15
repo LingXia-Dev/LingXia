@@ -1,12 +1,12 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { ColourSpecimen, TypographySpecimen, ShapeAndSpacingSpecimen, ElevationSpecimen, MotionSpecimen } from '../shared/Specimens';
+import { ColourSpecimen, TypographySpecimen, ShapeAndSpacingSpecimen, ElevationSpecimen, MotionSpecimen, PlaygroundSpecimen } from '../shared/Specimens';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"The colour roles, type, shape, elevation and motion every component draws from."}</text>
-      <Category title={"5 guides"}>
+      <Category title={"6 guides"}>
         <Tile
           name={"Colour"}
           tagline={"Theme colour roles"}
@@ -42,11 +42,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"Motion"}
           tagline={"Enter, move, react"}
-          isWide
           onOpen={() => onOpen("motion")}
           testId={"open-motion"}
         >
           <MotionSpecimen />
+        </Tile>
+        <Tile
+          name={"Playground"}
+          tagline={"Change the props"}
+          onOpen={() => onOpen("playground")}
+          testId={"open-playground"}
+        >
+          <PlaygroundSpecimen />
         </Tile>
       </Category>
     </>

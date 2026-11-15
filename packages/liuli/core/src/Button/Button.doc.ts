@@ -89,6 +89,7 @@ export const doc: ComponentDoc = {
     },
   ],
   related: ['IconButton', 'ButtonGroup', 'DropdownMenu', 'Dialog'],
+  playground: { props: { label: 'Save changes', variant: 'primary', size: 'md', isDisabled: false, isLoading: false, isFloating: false } },
   gallery: {
     specimen: 'Specimen',
     tagline: 'Starts an action',

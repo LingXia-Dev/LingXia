@@ -4,7 +4,8 @@
     { "page": "typography", "title": "Typography", "tagline": "Sizes and weights", "summary": "Six type sizes, their line heights and weights" },
     { "page": "shape-and-spacing", "title": "Shape & spacing", "tagline": "Corners and heights", "summary": "Corner radii, control heights, spacing steps and focus shapes" },
     { "page": "elevation", "title": "Elevation", "tagline": "Raised and modal", "summary": "Flat, resting, raised and modal surfaces" },
-    { "page": "motion", "title": "Motion", "tagline": "Enter, move, react", "summary": "How things enter, move and respond, and reduced motion" }
+    { "page": "motion", "title": "Motion", "tagline": "Enter, move, react", "summary": "How things enter, move and respond, and reduced motion" },
+    { "page": "playground", "layout": "fill", "title": "Playground", "tagline": "Change the props", "summary": "Set a component's props and see it redrawn, with the code to copy" }
   ],
   "patterns": [
     { "page": "sign-in", "title": "Sign in", "tagline": "A form that checks", "summary": "A sign-in form that validates and reports errors" },

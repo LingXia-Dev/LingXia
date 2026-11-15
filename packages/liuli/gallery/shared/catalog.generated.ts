@@ -42,6 +42,13 @@ export const entries: GalleryEntry[] = [
     "keywords": []
   },
   {
+    "name": "Playground",
+    "page": "playground",
+    "category": "foundations",
+    "summary": "Set a component's props and see it redrawn, with the code to copy",
+    "keywords": []
+  },
+  {
     "name": "Button",
     "page": "button",
     "category": "actions",
@@ -1324,7 +1331,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "palette",
     "description": "Colour, type, shape and motion",
     "page": "category-foundations",
-    "count": 5
+    "count": 6
   },
   {
     "id": "actions",

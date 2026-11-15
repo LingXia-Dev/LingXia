@@ -57,6 +57,7 @@ export const doc: ComponentDoc = {
   ],
   gaps: [],
   related: ['Skeleton', 'Banner', 'Button'],
+  playground: { props: { title: 'No notes yet', description: 'Notes you write show up here.', size: 'md' } },
   gallery: {
     specimen: 'Specimen',
     tagline: 'Nothing here yet',

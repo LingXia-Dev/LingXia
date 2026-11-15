@@ -37,6 +37,8 @@ export interface ComponentDoc {
   readonly related?: readonly string[];
   /** What the gallery shows, by example export name. */
   readonly gallery: GalleryDoc;
+  /** Puts the component in the gallery's playground, starting from these props. Only for components that draw from plain values: no handlers, no children. */
+  readonly playground?: { readonly props: Readonly<Record<string, string | number | boolean>> };
   /** Optional translations of the prose fields, keyed by BCP 47 tag (`zh-Hans`). */
   readonly translations?: Readonly<Record<string, Partial<Pick<ComponentDoc, 'summary' | 'description' | 'guidance'>>>>;
 }

@@ -228,6 +228,15 @@
         }
       ],
       "gaps": [],
+      "playground": {
+        "props": {
+          "name": "Ana Lima",
+          "size": "md",
+          "shape": "circle",
+          "status": "online",
+          "statusLabel": "Online"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -514,6 +523,13 @@
           "today": "Five tones; use neutral for categories."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "In review",
+          "tone": "warning",
+          "size": "md"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -763,6 +779,13 @@
         }
       ],
       "gaps": [],
+      "playground": {
+        "props": {
+          "title": "Storage almost full",
+          "message": "You have used 9.6 of 10 GB.",
+          "tone": "warning"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -1534,6 +1557,16 @@
           "today": "A ring on the fill blends into it, so Button draws no focus style of its own."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Save changes",
+          "variant": "primary",
+          "size": "md",
+          "isDisabled": false,
+          "isLoading": false,
+          "isFloating": false
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -3409,6 +3442,15 @@
       "gaps": [
         "The arc jumps to a new value; it does not sweep there."
       ],
+      "playground": {
+        "props": {
+          "label": "Steps today",
+          "value": 72,
+          "valueLabel": "72%",
+          "size": "lg",
+          "tone": "accent"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -7079,6 +7121,13 @@
         }
       ],
       "gaps": [],
+      "playground": {
+        "props": {
+          "title": "No notes yet",
+          "description": "Notes you write show up here.",
+          "size": "md"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -11883,6 +11932,15 @@
         }
       ],
       "gaps": [],
+      "playground": {
+        "props": {
+          "label": "Uploading photos",
+          "value": 40,
+          "valueLabel": "3 of 8",
+          "size": "md",
+          "tone": "accent"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -14103,6 +14161,14 @@
       "gaps": [
         "It does not pulse or blink."
       ],
+      "playground": {
+        "props": {
+          "label": "Running",
+          "tone": "success",
+          "size": "md",
+          "isLabelHidden": false
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -16801,6 +16867,13 @@
       "gaps": [
         "Timer has no clock of its own; the app passes the seconds."
       ],
+      "playground": {
+        "props": {
+          "seconds": 125,
+          "size": "lg",
+          "hasHours": false
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -17602,6 +17675,14 @@
         "Tokens are not reordered by dragging.",
         "Backspace in a field does not remove the last token; MultiSelect removes by each token's button."
       ],
+      "playground": {
+        "props": {
+          "label": "Travel",
+          "size": "md",
+          "isSelected": false,
+          "isDisabled": false
+        }
+      },
       "theming": {
         "classProps": [
           {

@@ -66,6 +66,7 @@ export const doc: ComponentDoc = {
   ],
   gaps: [],
   related: ['Button'],
+  playground: { props: { label: 'Uploading photos', value: 40, valueLabel: '3 of 8', size: 'md', tone: 'accent' } },
   gallery: {
     specimen: 'Specimen',
     tagline: 'Progress, or a wait',

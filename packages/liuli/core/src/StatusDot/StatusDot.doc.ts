@@ -55,6 +55,7 @@ export const doc: ComponentDoc = {
   ],
   gaps: ['It does not pulse or blink.'],
   related: ['Badge', 'Avatar', 'Banner'],
+  playground: { props: { label: 'Running', tone: 'success', size: 'md', isLabelHidden: false } },
   gallery: {
     specimen: 'Specimen',
     tagline: 'A dot and a word',

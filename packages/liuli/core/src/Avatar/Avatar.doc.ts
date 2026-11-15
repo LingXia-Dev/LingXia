@@ -63,6 +63,7 @@ export const doc: ComponentDoc = {
   ],
   gaps: [],
   related: ['Item', 'Badge'],
+  playground: { props: { name: 'Ana Lima', size: 'md', shape: 'circle', status: 'online', statusLabel: 'Online' } },
   gallery: {
     specimen: 'Specimen',
     tagline: 'Who, at a glance',

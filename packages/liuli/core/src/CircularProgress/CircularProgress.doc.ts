@@ -58,6 +58,7 @@ export const doc: ComponentDoc = {
   ],
   gaps: ['The arc jumps to a new value; it does not sweep there.'],
   related: ['ProgressBar', 'Stat'],
+  playground: { props: { label: 'Steps today', value: 72, valueLabel: '72%', size: 'lg', tone: 'accent' } },
   gallery: {
     specimen: 'Specimen',
     tagline: 'Progress as a ring',

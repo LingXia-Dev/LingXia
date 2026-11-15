@@ -66,6 +66,7 @@ export const doc: ComponentDoc = {
     },
   ],
   related: ['Item', 'Card'],
+  playground: { props: { label: 'In review', tone: 'warning', size: 'md' } },
   gallery: {
     specimen: 'Specimen',
     tagline: 'A status label',

@@ -16,6 +16,7 @@ import { Content as Typography } from '../content/typography';
 import { Content as ShapeAndSpacing } from '../content/shape-and-spacing';
 import { Content as Elevation } from '../content/elevation';
 import { Content as Motion } from '../content/motion';
+import { Content as Playground } from '../content/playground';
 import { Content as Button } from '../content/button';
 import { Content as ToggleButton } from '../content/toggle-button';
 import { Content as IconButton } from '../content/icon-button';
@@ -123,6 +124,7 @@ export const contents: Record<string, GalleryContent> = {
   "shape-and-spacing": ShapeAndSpacing,
   "elevation": Elevation,
   "motion": Motion,
+  "playground": Playground,
   "button": Button,
   "toggle-button": ToggleButton,
   "icon-button": IconButton,

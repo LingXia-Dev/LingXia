@@ -8,7 +8,7 @@ const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 // Home's category cards and each category page's tiles, in order; core's gallery.test.mjs keeps these
 // equal to the gallery.
 const categories: Record<string, string[]> = {
-  'category-foundations': ['colour', 'typography', 'shape-and-spacing', 'elevation', 'motion'],
+  'category-foundations': ['colour', 'typography', 'shape-and-spacing', 'elevation', 'motion', 'playground'],
   'category-actions': ['button', 'toggle-button', 'icon-button', 'button-group'],
   'category-inputs': ['text-input', 'text-area', 'date-input', 'time-input', 'slider', 'field', 'search-field', 'number-input', 'calendar', 'date-range-input', 'form-layout', 'date-time-input', 'file-input', 'composer'],
   'category-selection': ['checkbox-input', 'radio-group', 'switch', 'select', 'segmented-control', 'combobox', 'checkbox-list', 'token', 'multi-select'],
@@ -479,4 +479,23 @@ spec('time input: a tap opens the picker; a filled time reaches the page', { sta
   await expect(view.testId('lx-picker-cancel')).toHaveCount(0);
   await remind.fill('07:30');
   await expect(view.testId('remind-value')).toHaveText('Set for 07:30');
+});
+
+spec('playground: a changed prop redraws the component and rewrites the code', { id: 'PLAYGROUND-001', start: { page: 'playground' }, timeout: 90_000 }, async (t) => {
+  const view = t.app.view;
+  const stage = view.testId('playground-stage');
+  const code = view.testId('playground-code');
+  await expect(stage.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+  await view.getByRole('textbox', { name: 'label' }).fill('Send');
+  await expect(stage.getByRole('button', { name: 'Send' })).toBeAttached();
+  await expect(code).toContainText('label="Send"');
+  await view.getByRole('switch', { name: 'isDisabled' }).click();
+  await expect(code).toContainText('isDisabled');
+  await t.attach('playground-button.png', await view.screenshot());
+  await view.testId('playground-reset').click();
+  await expect(stage.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+  await view.getByRole('combobox', { name: 'Component' }).selectOption('Badge');
+  await expect(code).toContainText('<Badge');
+  await expect(stage).toContainText('In review');
+  await t.attach('playground-badge.png', await view.screenshot());
 });

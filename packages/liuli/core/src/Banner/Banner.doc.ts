@@ -62,6 +62,7 @@ export const doc: ComponentDoc = {
   ],
   gaps: [],
   related: ['Badge', 'Dialog', 'ProgressBar'],
+  playground: { props: { title: 'Storage almost full', message: 'You have used 9.6 of 10 GB.', tone: 'warning' } },
   gallery: {
     specimen: 'Specimen',
     tagline: 'Stays until fixed',

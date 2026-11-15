@@ -39,6 +39,7 @@ export const doc: ComponentDoc = {
   ],
   gaps: ['Timer has no clock of its own; the app passes the seconds.'],
   related: ['Timestamp', 'ProgressBar'],
+  playground: { props: { seconds: 125, size: 'lg', hasHours: false } },
   gallery: {
     specimen: 'Specimen',
     tagline: 'Minutes and seconds',

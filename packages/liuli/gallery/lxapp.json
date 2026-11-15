@@ -25,6 +25,7 @@
     { "name": "shape-and-spacing", "path": "pages/shape-and-spacing/index" },
     { "name": "elevation", "path": "pages/elevation/index" },
     { "name": "motion", "path": "pages/motion/index" },
+    { "name": "playground", "path": "pages/playground/index" },
     { "name": "button", "path": "pages/button/index" },
     { "name": "toggle-button", "path": "pages/toggle-button/index" },
     { "name": "icon-button", "path": "pages/icon-button/index" },

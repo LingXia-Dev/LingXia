@@ -35,6 +35,17 @@ const config = ts.parseJsonConfigFileContent(JSON.parse(readFileSync(join(core, 
 const program = ts.createProgram(config.fileNames, config.options);
 const checker = program.getTypeChecker();
 
+// A prop's values when its type is a set of string literals, however the type is named; the
+// playground offers them as a choice.
+const choiceValues = new Map();
+const sizeOrder = ['xs', 'sm', 'md', 'lg', 'xl'];
+function literalChoices(type) {
+  const members = (type.isUnion() ? type.types : [type]).filter(member => !(member.flags & ts.TypeFlags.Undefined));
+  if (members.length < 2 || !members.every(member => member.isStringLiteral())) return null;
+  const values = members.map(member => member.value).sort();
+  return values.every(value => sizeOrder.includes(value)) ? values.sort((a, b) => sizeOrder.indexOf(a) - sizeOrder.indexOf(b)) : values;
+}
+
 /** The exported props type's properties: name, type, required, description, default. */
 function props(name, typeName) {
   const component = typeName.replace(/Props$/, '');
@@ -46,6 +57,8 @@ function props(name, typeName) {
   return checker.getPropertiesOfType(type).map(property => {
     const declaration = property.valueDeclaration ?? property.declarations?.[0];
     const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration ?? file);
+    const literals = literalChoices(propertyType);
+    if (literals) choiceValues.set(`${typeName}.${property.name}`, literals);
     const tags = property.getJsDocTags(checker);
     const tagged = tags.find(tag => tag.name === 'default');
     const fallback = tagged ? ts.displayPartsToString(tagged.text).trim() : undefined;
@@ -124,6 +137,51 @@ const roleNames = Object.keys((await palette()).roles.light).sort((a, b) => b.le
 const rolePattern = new RegExp(`(?:bg|text|border(?:-[a-z])?|ring|inset-ring|divide|decoration|fill|stroke)-(${roleNames.map(name => name.replace(/-/g, '\\-')).join('|')})(?![a-z-])`, 'g');
 
 const textRolePattern = new RegExp(`(?:^|[\\s:])text-(${roleNames.filter(name => name.startsWith('text-')).map(name => name.slice(5)).join('|')})(?![a-z-])`, 'g');
+
+// The gallery's playground: each component that opts in, its starting props, and a control for
+// every prop that is a plain value.
+const playgroundChoiceLimit = 12;
+function playgroundControl(entry, prop) {
+  if (/^(className|data-testid)$|ClassName$|^aria-/.test(prop.name)) return null;
+  const base = { name: prop.name, required: prop.required };
+  if (prop.type === 'boolean') return { ...base, kind: 'boolean' };
+  if (prop.type === 'string') return { ...base, kind: 'text' };
+  if (prop.type === 'number') return { ...base, kind: 'number' };
+  const options = choiceValues.get(`${entry.name}Props.${prop.name}`);
+  return options && options.length <= playgroundChoiceLimit ? { ...base, kind: 'choice', options } : null;
+}
+
+function playgroundModule(entries) {
+  const playable = entries.filter(entry => entry.playground);
+  const data = playable.map(entry => {
+    const controls = entry.props.map(prop => playgroundControl(entry, prop)).filter(Boolean);
+    for (const [name, value] of Object.entries(entry.playground.props)) {
+      const control = controls.find(each => each.name === name);
+      const fits = control && (control.kind === 'choice' ? control.options.includes(value) : typeof value === { boolean: 'boolean', text: 'string', number: 'number' }[control.kind]);
+      if (!fits) problems.push(`src/${entry.name}/${entry.name}.doc.ts: playground: ${name} is not a plain-value prop of ${entry.name}, or ${JSON.stringify(value)} is not one of its values`);
+    }
+    for (const control of controls)
+      if (control.required && !(control.name in entry.playground.props)) problems.push(`src/${entry.name}/${entry.name}.doc.ts: playground: ${control.name} is required and has no starting value`);
+    return { name: entry.name, defaults: entry.playground.props, controls };
+  });
+  return [
+    `// ${generated}`,
+    ...playable.map(entry => `import { ${entry.name} } from '${entry.import}';`),
+    '',
+    "export interface PlaygroundControl { name: string; required: boolean; kind: 'boolean' | 'text' | 'number' | 'choice'; options?: string[] }",
+    'export type PlaygroundProps = Record<string, string | number | boolean>;',
+    'export interface PlaygroundEntry { name: string; defaults: PlaygroundProps; controls: PlaygroundControl[] }',
+    '',
+    `export const playgroundEntries: PlaygroundEntry[] = ${JSON.stringify(data, null, 2)};`,
+    '',
+    '/** The chosen component, drawn from the props in hand. */',
+    'export function PlaygroundSubject({ name, props }: { name: string; props: PlaygroundProps }) {',
+    ...playable.map(entry => `  if (name === ${JSON.stringify(entry.name)}) return <${entry.name} {...(props as any)} />;`),
+    '  return null;',
+    '}',
+    '',
+  ].join('\n');
+}
 
 function classesOf(value) {
   return typeof value === 'string' ? [value] : value && typeof value === 'object' ? Object.values(value).flatMap(classesOf) : [];
@@ -430,6 +488,7 @@ for (const name of names) {
     accessibility: doc.accessibility,
     examples: doc.examples.map(example => ({ ...example, source: sources.get(example.name) ?? '' })),
     gaps: doc.gaps,
+    playground: doc.playground,
     theming: undefined,
     related: doc.related ?? [],
     gallery: doc.gallery,
@@ -478,6 +537,7 @@ if (isCore) {
     outputs.set(join(gallery, 'pages', guide.page, 'index.ts'), pageLogic(guide.page));
     if (!new RegExp(`export function ${guideSpecimen(guide)}\\b`).test(specimens)) problems.push(`${where}: shared/Specimens.tsx does not export ${guideSpecimen(guide)}`);
   }
+  outputs.set(join(gallery, 'shared', 'playground.generated.tsx'), playgroundModule(shown));
   outputs.set(join(gallery, 'shared', 'catalog.generated.ts'), indexModule(shown, guides));
   outputs.set(join(gallery, 'shared', 'contents.generated.ts'), contentsModule(shown, guides));
   for (const category of categories) {
