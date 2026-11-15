@@ -56,7 +56,7 @@
     "grid-auto-flow": ["row", "column", "row-dense", "column-dense"],
     "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"],
     "direction": ["ltr", "rtl", "auto"],
-    "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip", "tablist", "tab", "tabpanel", "radiogroup", "radio", "toolbar", "tree", "treeitem", "row", "menuitemcheckbox", "menuitemradio", "img"],
+    "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip", "tablist", "tab", "tabpanel", "radiogroup", "radio", "toolbar", "tree", "treeitem", "row", "menuitemcheckbox", "menuitemradio", "img", "combobox", "spinbutton"],
     "anchor-area": ["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top"],
     "live-region": ["off", "polite", "assertive"],
     "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time"],
@@ -320,7 +320,8 @@
     {"id": 248, "key": "onBlur", "wire": "onBlur", "kind": "handle", "ignorable": true, "tags": ["input", "textarea", "search"]},
     {"id": 249, "key": "readOnly", "wire": "readOnly", "kind": "input-flag", "ignorable": true, "tags": ["input", "textarea", "search"]},
     {"id": 250, "key": "keyMap", "wire": "keyMap", "kind": "key-map", "ignorable": true, "tags": ["input", "textarea", "search"]},
-    {"id": 251, "key": "onKeyDown", "wire": "onKeyDown", "kind": "input-handle", "ignorable": true, "tags": ["input", "textarea", "search"]}
+    {"id": 251, "key": "onKeyDown", "wire": "onKeyDown", "kind": "input-handle", "ignorable": true, "tags": ["input", "textarea", "search"]},
+    {"id": 252, "key": "ariaActiveDescendant", "wire": "ariaActiveDescendant", "kind": "element-id", "ignorable": true, "tags": ["input", "textarea", "search"]}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},

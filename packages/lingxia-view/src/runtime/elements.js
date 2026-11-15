@@ -774,7 +774,14 @@ function progressValues(role, props, wire, tag) {
     return;
   }
   // An `onPointer` element reports the value its handler steps.
-  if (role !== 'progressbar' && typeof props.onPointer !== 'function') throw Error('UI_PROP: aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar" or an onPointer element');
+  // A combobox says what is chosen; it has no number.
+  if (role === 'combobox') {
+    if (now !== undefined || min !== undefined || max !== undefined || typeof text !== 'string') throw Error('UI_PROP: role="combobox" takes aria-valuetext only, a string');
+    wire('ariaValueText', text);
+    return;
+  }
+  if (role !== 'progressbar' && role !== 'spinbutton' && typeof props.onPointer !== 'function')
+    throw Error('UI_PROP: aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element');
   const number = (value, name) => {
     if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value))) throw Error(`UI_PROP: ${name} must be a finite number`);
   };
@@ -800,12 +807,28 @@ function semantics(tag, props, wire) {
     if (!fieldOptions.role.includes(role)) throw Error(`UI_PROP: role must be one of ${fieldOptions.role.join(', ')}`);
     if (itemRoles.has(role) && role !== 'option' && tag !== 'button') throw Error(`UI_PROP: role="${role}" belongs on a <button>`);
     if (containerRoles.has(role) && tag !== 'view') throw Error(`UI_PROP: role="${role}" belongs on a <view>`);
+    if (role === 'combobox' && tag !== 'input' && tag !== 'button') throw Error('UI_PROP: role="combobox" belongs on an <input> or a <button>');
+    if (role === 'spinbutton' && tag !== 'input') throw Error('UI_PROP: role="spinbutton" belongs on an <input>');
     if (role === 'img' && (!['view', 'text'].includes(tag) || typeof props.accessibilityLabel !== 'string' || !props.accessibilityLabel.trim()))
       throw Error('UI_PROP: role="img" goes on a <view> or <text> with an aria-label, which is spoken in place of its content');
     // A <dialog> wires its own role.
     if (tag !== 'dialog') wire('role', role);
   }
   progressValues(role, props, wire, tag);
+  const idOf = name => {
+    const value = props[name];
+    if (typeof value !== 'string' || !value.length || value.length > 256 || /\s/.test(value)) throw Error(`UI_ID: ${name} names an element id`);
+    return value;
+  };
+  if (props['aria-activedescendant'] !== undefined) {
+    if (tag !== 'input' && tag !== 'textarea') throw Error('UI_PROP: aria-activedescendant belongs on an <input> or <textarea>');
+    wire('ariaActiveDescendant', idOf('aria-activedescendant'));
+  }
+  if (props['aria-controls'] !== undefined || props['aria-autocomplete'] !== undefined) {
+    if (role !== 'combobox') throw Error('UI_PROP: aria-controls and aria-autocomplete belong on role="combobox"');
+    if (props['aria-controls'] !== undefined) idOf('aria-controls');
+    if (props['aria-autocomplete'] !== undefined && !['list', 'none'].includes(props['aria-autocomplete'])) throw Error('UI_PROP: aria-autocomplete is "list" or "none"');
+  }
   if (headingLevel !== undefined) {
     if (role !== 'heading' || !Number.isInteger(headingLevel) || headingLevel < 1 || headingLevel > 6)
       throw Error('UI_PROP: headingLevel is an integer 1..6 on role="heading"');

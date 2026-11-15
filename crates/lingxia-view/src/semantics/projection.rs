@@ -403,6 +403,7 @@ impl Projection<'_> {
         let check = node.checked.is_some();
         let input = node.input.as_ref();
         let select = node.select.as_ref();
+        let spin = input.is_some() && node.role.as_deref() == Some("spinbutton");
         let role = if select.is_some() {
             Role::ComboBox
         } else if input.is_some() {
@@ -439,6 +440,7 @@ impl Projection<'_> {
                         | "treeitem"
                         | "menuitemcheckbox"
                         | "menuitemradio"
+                        | "combobox"
                 )
         }) {
             match role {
@@ -454,6 +456,7 @@ impl Projection<'_> {
                 "menu" => Role::Menu,
                 "menuitem" => Role::MenuItem,
                 "progressbar" => Role::ProgressBar,
+                "combobox" => Role::ComboBox,
                 "alertdialog" => Role::AlertDialog,
                 "group" => Role::Group,
                 "tooltip" => Role::Tooltip,
@@ -554,6 +557,16 @@ impl Projection<'_> {
                 actions.push(Action::ScrollForward);
             }
             if at > 0 {
+                actions.push(Action::ScrollBackward);
+            }
+        }
+        // A spinbutton editor steps through the Up and Down handlers its page gave `onKeyDown`.
+        if spin && let Some((_, keys)) = &node.key_map {
+            use crate::interaction::view::Key;
+            if keys.contains(&Key::Up) {
+                actions.push(Action::ScrollForward);
+            }
+            if keys.contains(&Key::Down) {
                 actions.push(Action::ScrollBackward);
             }
         }
@@ -705,7 +718,7 @@ impl Projection<'_> {
         let progress = node
             .progress
             .as_ref()
-            .filter(|_| role == Role::ProgressBar || steppable(node))
+            .filter(|_| role == Role::ProgressBar || steppable(node) || spin)
             .and_then(|progress| {
                 let now = progress.now?.clamp(progress.min, progress.max);
                 let share = (now - progress.min) / (progress.max - progress.min);
@@ -781,6 +794,13 @@ impl Projection<'_> {
                 .map(|_| node.text.clone())
                 .filter(|text| !text.is_empty())
                 .or_else(|| progress.map(|(_, text)| text))
+                // A combobox button says what is chosen.
+                .or_else(|| {
+                    node.progress
+                        .as_ref()
+                        .filter(|_| node.role.as_deref() == Some("combobox"))
+                        .and_then(|value| value.text.clone())
+                })
                 .or_else(|| node.range.as_ref().and_then(|range| range.text.clone())),
             scroll: node.scroll.as_ref().map(|scroll| ScrollPosition {
                 offset: scroll.offset,
@@ -1057,6 +1077,34 @@ pub fn semantic_changes(
             && range.value != old.value
         {
             events.push(Event::ValueChanged { id });
+        }
+        // A stepped element or spinbutton moved to another value.
+        if let (Some(value), Some(old)) = (&node.progress, &prior.progress)
+            && node.role.as_deref() != Some("progressbar")
+            && value.now != old.now
+        {
+            events.push(Event::ValueChanged { id });
+        }
+        // The option an editor's keys point at changed: it is spoken while focus stays in the text.
+        if node.active_descendant != prior.active_descendant
+            && let Some(active) = &node.active_descendant
+            && let Some(option) = next
+                .nodes
+                .iter()
+                .find(|other| other.element_id.as_deref() == Some(active))
+        {
+            let text = option
+                .accessibility_label
+                .clone()
+                .filter(|label| !label.is_empty())
+                .unwrap_or_else(|| spoken(next, option));
+            if !text.is_empty() {
+                events.push(Event::Announce {
+                    id,
+                    text,
+                    assertive: false,
+                });
+            }
         }
         if let (Some(kind), Some(previous)) = (&node.live_region, previous)
             && !node.accessibility_hidden.unwrap_or(false)

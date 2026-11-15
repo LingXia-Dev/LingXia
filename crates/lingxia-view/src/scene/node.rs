@@ -143,6 +143,9 @@ pub struct NodeSnapshot {
     /// `onPointerEnter` and `onPointerLeave` handles: a fine pointer crossing the box.
     #[serde(skip)]
     pub on_pointer: [Option<u64>; 2],
+    /// `aria-activedescendant`: the id of the option an editor's keys point at.
+    #[serde(skip)]
+    pub active_descendant: Option<String>,
     /// An editor's `onKeyDown`: its handle and the keys the page takes from the editor.
     #[serde(skip)]
     pub key_map: Option<(u64, Vec<crate::interaction::view::Key>)>,

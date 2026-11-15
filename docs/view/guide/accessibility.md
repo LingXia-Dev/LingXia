@@ -68,6 +68,8 @@ below (`tab`, `radio`, `option`, `menuitem`, `menuitemcheckbox`, `menuitemradio`
 | `tree`, `treeitem` | nested items, such as folders: give each its depth with `aria-level` (1–32) and its open state with `aria-expanded`; Right moves into an open item, Left moves to the item above it |
 | `menuitemcheckbox`, `menuitemradio` | menu items that are on or off (`aria-checked`); in a `menuitemradio` set only one is on |
 | `progressbar` | an amount done: `aria-valuenow` within `aria-valuemin` (0) and `aria-valuemax` (100), spoken as a percentage unless `aria-valuetext` is set; leave the value out while indeterminate. The kit `<Progress>` draws one as a bar or a ring |
+| `combobox` | on a `<button>` that opens a list: `aria-expanded`, `aria-controls` and an `aria-valuetext` naming what is chosen. On an `<input>` that filters a list: also `aria-autocomplete="list"`, and `aria-activedescendant` naming the option its `onKeyDown` arrows point at, which is spoken as it changes while focus stays in the text |
+| `spinbutton` | on a number `<input>`: `aria-valuenow`, `-valuemin`, `-valuemax` and an `aria-valuetext` with the unit; a screen reader's increment and decrement call the `ArrowUp` and `ArrowDown` handlers of its `onKeyDown` |
 
 A modal is the `<dialog>` element, not a role: it keeps focus inside and hides the page behind it
 ([Overlays](overlays.md#focus-and-assistive-tech)). `role="menu"` names a popover of actions and

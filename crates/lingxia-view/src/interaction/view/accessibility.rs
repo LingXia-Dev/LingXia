@@ -201,6 +201,25 @@ impl ViewInteraction {
                 )
             }
             AccessibilityAction::ScrollForward | AccessibilityAction::ScrollBackward
+                if node.input.is_some() && node.role.as_deref() == Some("spinbutton") =>
+            {
+                // A spinbutton steps through the Up and Down handlers of its key map.
+                let key = if action == AccessibilityAction::ScrollForward {
+                    super::Key::Up
+                } else {
+                    super::Key::Down
+                };
+                let stepped = self.editor_key_dispatch(&frame, node, key);
+                (
+                    stepped,
+                    if stepped {
+                        vec![Effect::Dispatch]
+                    } else {
+                        Vec::new()
+                    },
+                )
+            }
+            AccessibilityAction::ScrollForward | AccessibilityAction::ScrollBackward
                 if frame::steppable(node) =>
             {
                 let identity = node.identity.to_string();

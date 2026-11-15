@@ -207,7 +207,8 @@ export function editorKind(tag, props) {
   }
   if (inputMode !== undefined && !Object.hasOwn(inputModes, inputMode))
     throw Error(`UI_INPUT: inputMode ${JSON.stringify(inputMode)} is not one of ${Object.keys(inputModes).join(', ')}`);
-  if (inputMode !== undefined && ['number', 'search', 'date', 'time'].includes(type))
+  // A number field may say which number keyboard: digits only, or with a decimal point.
+  if (inputMode !== undefined && ['number', 'search', 'date', 'time'].includes(type) && !(type === 'number' && ['numeric', 'decimal'].includes(inputMode)))
     throw Error(`UI_INPUT: type="${type}" picks its own keyboard; drop inputMode`);
   const keyboard = inputMode !== undefined ? inputModes[inputMode] : type !== undefined ? inputTypes[type] : undefined;
   return { keyboard, secure: type === 'password' };

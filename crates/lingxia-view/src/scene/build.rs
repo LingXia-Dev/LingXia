@@ -1320,6 +1320,9 @@ impl Renderer {
                         .and_then(|(_, value)| value.as_u64())
                         .filter(|handle| *handle != 0)
                 }),
+                active_descendant: record
+                    .string(field::ARIA_ACTIVE_DESCENDANT)
+                    .map(str::to_owned),
                 key_map: record
                     .fields
                     .iter()
@@ -1465,8 +1468,10 @@ impl Renderer {
                 ]
                 .map(|id| record.number(id).map(|v| v == 1.0)),
                 // A progressbar's amount, or the value an `onPointer` element steps.
-                progress: (record.string(field::ROLE) == Some("progressbar")
-                    || record.number(field::ON_POINTER).is_some())
+                progress: (matches!(
+                    record.string(field::ROLE),
+                    Some("progressbar" | "spinbutton" | "combobox")
+                ) || record.number(field::ON_POINTER).is_some())
                 .then(|| {
                     let value = |id: usize| {
                         record

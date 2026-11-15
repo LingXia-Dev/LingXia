@@ -536,11 +536,15 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         ),
         field::ELEMENT_ID
         | field::INTEREST_FOR
+        | field::ARIA_ACTIVE_DESCENDANT
         | field::ARIA_ACTIONS
         | field::ARIA_DESCRIBED_BY => ensure(
             value.as_str().is_some_and(|ids| {
                 let count = ids.split(' ').count();
-                (1..=if matches!(id, field::ELEMENT_ID | field::INTEREST_FOR) {
+                (1..=if matches!(
+                    id,
+                    field::ELEMENT_ID | field::INTEREST_FOR | field::ARIA_ACTIVE_DESCENDANT
+                ) {
                     1
                 } else {
                     8

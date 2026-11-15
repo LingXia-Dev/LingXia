@@ -46,7 +46,7 @@ test('an onPointer element may report the value its handler steps; other element
   assert.equal(node.props.ariaValueMax, 11);
   assert.equal(node.props.ariaValueText, 'March: 42');
   assert.throws(() => prepare(() => h('page', {}, h('view', { 'aria-valuenow': 2 })), { env: {} }),
-    /UI_PROP: aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar" or an onPointer element/);
+    /UI_PROP: aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element/);
 });
 
 test('an older host gets neither field', () => {

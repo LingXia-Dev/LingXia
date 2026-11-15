@@ -22,10 +22,14 @@ export interface Props {
    * `toolbar` › any control, `listbox` › `option`, `menu` › `menuitem`/`menuitemcheckbox`/`menuitemradio`, `tree` › `treeitem`.
    * Item roles go on a `<button>`. `img` on a `<view>` or `<text>` with an `aria-label` speaks that label in place of its content. */
   role?: "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "menuitem" | "progressbar" | "alertdialog" | "group" | "tooltip"
-    | "tablist" | "tab" | "tabpanel" | "radiogroup" | "radio" | "toolbar" | "tree" | "treeitem" | "row" | "menuitemcheckbox" | "menuitemradio" | "img";
+    | "tablist" | "tab" | "tabpanel" | "radiogroup" | "radio" | "toolbar" | "tree" | "treeitem" | "row" | "menuitemcheckbox" | "menuitemradio" | "img" | "combobox" | "spinbutton";
   headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   /** A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. On an `onPointer` element it is the value arrows and a screen reader step. */
   "aria-valuenow"?: number; "aria-valuemin"?: number; "aria-valuemax"?: number; "aria-valuetext"?: string;
+  /** On an `<input>` or `<textarea>`: the id of the option the editor's keys point at while focus stays in the text; a screen reader hears that option as it changes. */
+  "aria-activedescendant"?: string;
+  /** With `role="combobox"`: the id of the list it opens, and `"list"` when typing filters that list. Checked, not reported to assistive tech yet. */
+  "aria-controls"?: string; "aria-autocomplete"?: "list" | "none";
   /** Removes the node and its subtree from accessibility. */
   "aria-hidden"?: boolean;
   /** Announce changes; `alert` is assertive and `status` polite unless set. */

@@ -286,6 +286,7 @@ pub mod field {
     pub const READ_ONLY: usize = 249;
     pub const KEY_MAP: usize = 250;
     pub const ON_KEY_DOWN: usize = 251;
+    pub const ARIA_ACTIVE_DESCENDANT: usize = 252;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video"];
@@ -544,6 +545,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("readOnly", "input-flag"),
     ("keyMap", "key-map"),
     ("onKeyDown", "input-handle"),
+    ("ariaActiveDescendant", "element-id"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -576,7 +578,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "grid-auto-flow" => Some(&["row", "column", "row-dense", "column-dense"]),
         "align-content" => Some(&["start", "center", "end", "between", "around", "evenly", "stretch"]),
         "direction" => Some(&["ltr", "rtl", "auto"]),
-        "role" => Some(&["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip", "tablist", "tab", "tabpanel", "radiogroup", "radio", "toolbar", "tree", "treeitem", "row", "menuitemcheckbox", "menuitemradio", "img"]),
+        "role" => Some(&["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip", "tablist", "tab", "tabpanel", "radiogroup", "radio", "toolbar", "tree", "treeitem", "row", "menuitemcheckbox", "menuitemradio", "img", "combobox", "spinbutton"]),
         "anchor-area" => Some(&["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top"]),
         "live-region" => Some(&["off", "polite", "assertive"]),
         "input-keyboard" => Some(&["text", "number", "email", "phone", "search", "date", "time"]),
@@ -996,6 +998,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::TEXT, tag::VECTOR, tag::PLOT, tag::SCROLL]), parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON, tag::VECTOR]), parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON, tag::VECTOR]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
