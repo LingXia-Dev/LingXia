@@ -197,7 +197,15 @@ impl ViewInteraction {
         if let Some(dialog) = open
             && self.dialogs.last().is_none_or(|(top, _)| *top != dialog)
         {
-            self.dialogs.push((dialog.to_string(), before));
+            // A menu returns focus to the control that opened it, wherever focus was: a tap on
+            // a menu item opens its submenu while focus still rests on the menu's first item.
+            let opener = self.invoker.clone().filter(|identity| {
+                overlay.is_some_and(|index| frame.nodes[index].role.as_deref() == Some("menu"))
+                    && frame
+                        .index_of(identity)
+                        .is_some_and(|index| frame.nodes[index].states[2] == Some(true))
+            });
+            self.dialogs.push((dialog.to_string(), opener.or(before)));
             if let Some(first) = overlay.and_then(|overlay| {
                 navigation::first_inside(
                     &frame,

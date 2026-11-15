@@ -138,6 +138,28 @@ fn a_press_on_another_item_reaches_it_past_the_open_submenu() {
 }
 
 #[test]
+fn a_submenu_a_press_opened_hands_focus_back_to_its_item() {
+    let worker = ViewWorker::spawn("test-submenu-press-open").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = page(&platform, &worker, "ltr");
+    let click = |id: &str| {
+        host.automation_request(&serde_json::json!({"op": "act", "css": format!("[data-testid=\"{id}\"]"), "action": {"kind": "click"}}))
+            .unwrap();
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 2);
+    };
+    click("more");
+    click("move-to");
+    assert!(exists(&host, "move"));
+    assert!(key(&platform, &host, Key::Left));
+    assert!(exists(&host, "menu") && !exists(&host, "move"));
+    assert!(focused(&host, "move-to"), "not the menu's first item");
+    assert!(key(&platform, &host, Key::Escape));
+    assert!(!exists(&host, "menu"));
+    assert!(focused(&host, "more"));
+}
+
+#[test]
 fn the_arrows_swap_in_a_right_to_left_menu() {
     let worker = ViewWorker::spawn("test-submenu-rtl").unwrap();
     let platform = Platform::new(&[&worker]);
