@@ -570,7 +570,9 @@ impl ScrollModel {
     }
 
     pub fn can_reveal(&self, frame: &PresentedFrame, target: &NodeSnapshot) -> bool {
-        target.scroll_parent.is_some() && self.reveal_offsets(frame, target).is_some()
+        target.scroll_parent.is_some()
+            && !clipped_away(frame, target)
+            && self.reveal_offsets(frame, target).is_some()
     }
 
     /// Apply reveal offsets; returns whether any region moved.
@@ -587,6 +589,26 @@ impl ScrollModel {
             _ => false,
         }
     }
+}
+
+/// A box that clips its children, inside the scroll `target` is in, shows none of `target`:
+/// the box moves with it, so no scrolling brings it into view.
+fn clipped_away(frame: &PresentedFrame, target: &NodeSnapshot) -> bool {
+    use super::frame::descends;
+    let owner = frame.nodes.iter().find(|node| {
+        node.scroll
+            .as_ref()
+            .is_some_and(|scroll| Some(&scroll.id) == target.scroll_parent.as_ref())
+    });
+    let [x, y, w, h] = target.bounds;
+    frame.nodes.iter().any(|node| {
+        let [cx, cy, cw, ch] = node.bounds;
+        node.clips_children
+            && node.scroll.is_none()
+            && descends(target, node)
+            && owner.is_none_or(|owner| descends(node, owner))
+            && !(x < cx + cw && cx < x + w && y < cy + ch && cy < y + h)
+    })
 }
 
 fn nearest(points: &[f32], at: f32) -> Option<f32> {

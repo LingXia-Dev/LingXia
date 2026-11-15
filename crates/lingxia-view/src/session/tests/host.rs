@@ -5241,6 +5241,8 @@ mod pointer_events;
 mod popover_anchor;
 #[path = "reveal_element.rs"]
 mod reveal_element;
+#[path = "clipped_focus.rs"]
+mod clipped_focus;
 #[path = "submenu.rs"]
 mod submenu;
 
