@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Hero, VariantsEveryday, VariantDestructive, VariantLink, WithIcons, Sizes, StateDefault, StateBusy, StateDisabled, StateSecondaryDisabled, DisabledWithReason, AsyncAction } from '../../core/src/Button/Button.examples';
+import { Hero, VariantsEveryday, VariantDestructive, VariantLink, WithIcons, Sizes, StateDefault, StateBusy, StateDisabled, StateSecondaryDisabled, DisabledWithReason, AsyncAction, Floating } from '../../core/src/Button/Button.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -49,6 +49,9 @@ export function Content() {
         </Stage>
         <Stage caption={"Waiting on a Logic action"}>
           <AsyncAction />
+        </Stage>
+        <Stage caption={"Floating: one main action over content that scrolls"}>
+          <Floating />
         </Stage>
       </PageSection>
     </>

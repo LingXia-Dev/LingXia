@@ -37,6 +37,24 @@ export function Variants() {
 }
 ```
 
+### Floating over a map
+
+```tsx
+import { Card } from '@liulidesign/core/Card';
+
+/** Floating: over a map or a picture, where an outline alone would be lost. */
+export function Floating() {
+  return (
+    <view className="h-52 justify-end rounded-container bg-accent-soft p-3">
+      <Card variant="floating" padding="sm" data-testid="floating">
+        <text className="text-body font-medium text-text">Pier 4, east gate</text>
+        <text className="text-footnote text-muted">6 minutes on foot · Opens at 08:00</text>
+      </Card>
+    </view>
+  );
+}
+```
+
 ### A card with actions
 
 ```tsx
@@ -96,7 +114,7 @@ export function Choice() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `children` (required) | `Child` |  |  |
-| `variant` | `CardVariant` | `'outlined'` | `outlined` sits on the page, `raised` rests one step above it, `sunken` groups content inside another surface. |
+| `variant` | `CardVariant` | `'outlined'` | `outlined` sits on the page, `raised` rests one step above it, `floating` hovers over what is behind it (a map, a picture), `sunken` groups content inside another surface. |
 | `padding` | `CardPadding` | `'md'` | The inset and the gap between children. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
@@ -106,7 +124,7 @@ export function Choice() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `children` (required) | `Child` |  |  |
-| `variant` | `CardVariant` | `'outlined'` | `outlined` sits on the page, `raised` rests one step above it, `sunken` groups content inside another surface. |
+| `variant` | `CardVariant` | `'outlined'` | `outlined` sits on the page, `raised` rests one step above it, `floating` hovers over what is behind it (a map, a picture), `sunken` groups content inside another surface. |
 | `padding` | `CardPadding` | `'md'` | The inset and the gap between children. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |

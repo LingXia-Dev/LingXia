@@ -55,6 +55,7 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'Variants', title: 'Outlined, raised and sunken' },
+    { name: 'Floating', title: 'Floating over a map' },
     { name: 'WithActions', title: 'A card with actions' },
     { name: 'Choice', title: 'Choosing one card of several' },
   ],
@@ -74,7 +75,10 @@ export const doc: ComponentDoc = {
       stage: 'bare',
       lead: 'Use a card to group content that belongs together, and a clickable card when the whole card opens or chooses something.',
       hero: 'WithActions',
-      variants: [{ name: 'Variants', title: 'Outlined, raised and sunken' }],
+      variants: [
+        { name: 'Variants', title: 'Outlined, raised and sunken' },
+        { name: 'Floating', title: 'Floating, over a map or a picture' },
+      ],
       states: [
         { name: 'StateUnselected', title: 'Clickable' },
         { name: 'StateSelected', title: 'Selected' },

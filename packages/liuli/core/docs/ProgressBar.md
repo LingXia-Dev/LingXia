@@ -80,6 +80,23 @@ export function Spinners() {
 }
 ```
 
+### Meters in a tone
+
+```tsx
+import { ProgressBar } from '@liulidesign/core/ProgressBar';
+
+/** Meters: the fill says how the amount stands, and the words say it too. */
+export function Tones() {
+  return (
+    <view className="gap-4">
+      <ProgressBar label="Monthly goal" value={100} valueLabel="Reached" tone="success" data-testid="tone-goal" />
+      <ProgressBar label="Storage" value={86} valueLabel="43 of 50 GB, nearly full" tone="warning" data-testid="tone-storage" />
+      <ProgressBar label="Data plan" value={100} valueLabel="Over by 1.2 GB" tone="danger" data-testid="tone-plan" />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -90,6 +107,7 @@ export function Spinners() {
 | `max` | `number` | `100` |  |
 | `valueLabel` | `string` |  | The amount as the app words it ("3 of 8 files"), shown after the label and read in place of a percentage. |
 | `size` | `ProgressBarSize` | `'md'` | The track's thickness. |
+| `tone` | `ProgressBarTone` | `'accent'` | The fill's colour, for a bar that is a meter: storage, a quota, a goal. Say the state in `valueLabel` too. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the progress bar. |
 
@@ -125,6 +143,9 @@ export function Spinners() {
 | --- | --- | --- | --- | --- |
 | fill against the track | `accent` on `text/10` over `surface` | 3:1 | 4.62:1 | 4.75:1 |
 | fill and spinner on a card | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
+| success fill | `success` on `surface` | 3:1 | 5.31:1 | 7.61:1 |
+| warning fill | `warning` on `surface` | 3:1 | 5.40:1 | 8.18:1 |
+| danger fill | `danger` on `surface` | 3:1 | 5.21:1 | 5.42:1 |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | value | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 

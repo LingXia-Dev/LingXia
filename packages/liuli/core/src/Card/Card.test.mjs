@@ -58,3 +58,9 @@ test('a pressed card keeps its surface under a wash of the text colour', async (
   assert.equal(card.props.pressedStyle.background, undefined, 'the fill is not swapped for another surface');
   assert.deepEqual(JSON.parse(card.props.pressedStyle.ring).inner, { width: 999, color: 'text/7' });
 });
+
+test('Floating: the raised surface under the raised shadow, with a fainter edge', async () => {
+  const card = (await renderExample('Card/Card', 'Floating')).getByTestId('floating');
+  assert.deepEqual([card.props.background, card.props.borderColor], ['surface-raised', 'text/8']);
+  assert.equal(JSON.parse(card.props.boxShadow)[1].blur, 24);
+});

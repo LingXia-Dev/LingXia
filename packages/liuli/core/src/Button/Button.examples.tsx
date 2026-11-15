@@ -1,5 +1,6 @@
 import { useLocal, useView, type View } from '@lingxia/view';
 import { Button } from './Button';
+import { Item } from '../Item/Item';
 
 export function Variants() {
   return (
@@ -117,6 +118,31 @@ export function WithIcons() {
       <Button label="Share" startIcon="share" />
       <Button label="Continue" endIcon="arrow-end" data-testid="continue-on" />
       <Button label="Delete" variant="destructive" startIcon="delete" />
+    </view>
+  );
+}
+
+const notes = [
+  ['Trip to the coast', 'Edited yesterday'],
+  ['Reading list', 'Edited on Monday'],
+  ['Ideas for the garden', 'Edited last week'],
+  ['Recipes to try', 'Edited on 2 November'],
+  ['Gift list', 'Edited on 28 October'],
+  ['Books of the year', 'Edited on 14 October'],
+] as const;
+
+/** Floating: the screen's one main action, inside the frame, over a list that scrolls under it. */
+export function Floating() {
+  return (
+    <view className="relative h-72 overflow-hidden rounded-container border border-text/12 bg-surface">
+      <scroll className="h-full">
+        <view className="divide-y divide-text/8">
+          {notes.map(([label, edited]) => <Item key={label} label={label} description={edited} />)}
+        </view>
+      </scroll>
+      <view className="absolute bottom-4 end-4">
+        <Button label="New note" variant="primary" size="lg" startIcon="add" isFloating data-testid="floating" />
+      </view>
     </view>
   );
 }

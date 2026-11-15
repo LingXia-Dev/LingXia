@@ -28,6 +28,8 @@ export interface ButtonProps {
   isIconOnly?: boolean;
   /** Drawn after the label: a count, a shortcut hint. Hidden from assistive tech. */
   endContent?: Child;
+  /** Lifts the button off the page with a shadow, for the one action that floats over scrolling content. @default false */
+  isFloating?: boolean;
   /** `content` keeps its own width in a column; `fill` stretches across. Unset follows the parent. */
   width?: ButtonWidth;
   /** @default false */
@@ -65,6 +67,7 @@ export function Button({
   endIcon,
   isIconOnly = false,
   endContent,
+  isFloating = false,
   width,
   isDisabled: ownDisabled = false,
   disabledMessage,
@@ -104,7 +107,7 @@ export function Button({
       onClick={press}
       className={cx(
         r.root.base, r.root.variant[variant], r.root.disabled[variant], isIconOnly ? r.root.square[size] : r.root.size[size],
-        group?.isAttached && r.root.attached, width && r.root.width[width], className,
+        group?.isAttached && r.root.attached, isFloating && !isDisabled && r.root.floating, width && r.root.width[width], className,
       )}
     >
       {busy ? (

@@ -1,12 +1,12 @@
 import { createContext, cx, useContext, type Child, type Local } from '@lingxia/view';
 import { cardRecipe as r } from './Card.recipe';
 
-export type CardVariant = 'outlined' | 'raised' | 'sunken';
+export type CardVariant = 'outlined' | 'raised' | 'floating' | 'sunken';
 export type CardPadding = 'none' | 'sm' | 'md' | 'lg';
 
 export interface CardProps {
   children: Child;
-  /** `outlined` sits on the page, `raised` rests one step above it, `sunken` groups content inside another surface. @default 'outlined' */
+  /** `outlined` sits on the page, `raised` rests one step above it, `floating` hovers over what is behind it (a map, a picture), `sunken` groups content inside another surface. @default 'outlined' */
   variant?: CardVariant;
   /** The inset and the gap between children. @default 'md' */
   padding?: CardPadding;

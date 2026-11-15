@@ -3,6 +3,8 @@ import { spinner, spinnerBox } from '../internal/spinner';
 import { progressBarRecipe as r } from './ProgressBar.recipe';
 
 export type ProgressBarSize = 'sm' | 'md';
+/** What the progress stands for: `success` for a goal met, `warning` for a limit near, `danger` for a limit passed. */
+export type ProgressBarTone = 'accent' | 'success' | 'warning' | 'danger';
 export type SpinnerSize = 'sm' | 'md' | 'lg';
 
 export interface ProgressBarProps {
@@ -18,6 +20,8 @@ export interface ProgressBarProps {
   valueLabel?: string;
   /** The track's thickness. @default 'md' */
   size?: ProgressBarSize;
+  /** The fill's colour, for a bar that is a meter: storage, a quota, a goal. Say the state in `valueLabel` too. @default 'accent' */
+  tone?: ProgressBarTone;
   className?: string;
   /** On the progress bar. */
   'data-testid'?: string;
@@ -31,6 +35,7 @@ export function ProgressBar({
   max = 100,
   valueLabel,
   size = 'md',
+  tone = 'accent',
   className,
   'data-testid': testId,
 }: ProgressBarProps) {
@@ -55,9 +60,9 @@ export function ProgressBar({
         className={cx(r.track.base, r.track.size[size])}
       >
         {now === undefined ? (
-          <view className={cx(r.fill.base, r.fill.indeterminate)} />
+          <view className={cx(r.fill.base, r.fill.tone[tone], r.fill.indeterminate)} />
         ) : (
-          <view className={cx(r.fill.base, r.fill.determinate)} style={{ width: `${(now / max) * 100}%` }} />
+          <view className={cx(r.fill.base, r.fill.tone[tone], r.fill.determinate)} style={{ width: `${(now / max) * 100}%` }} />
         )}
       </view>
     </view>

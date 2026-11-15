@@ -103,3 +103,8 @@ test('WithIcons: a start icon comes before the label and an end icon after it, b
   assert.equal(screen.getByTestId('new-note').props.accessibilityLabel, 'New note');
   assert.match(screen.getByTestId('continue-on').children[1].props.vectorSource, /M5 12h14/, 'the set\'s arrow');
 });
+
+test('Floating: the raised shadow in place of the variant\'s hairline one', async () => {
+  const button = (await renderExample('Button/Button', 'Floating')).getByTestId('floating');
+  assert.deepEqual(JSON.parse(button.props.boxShadow).map(layer => layer.blur), [2, 24]);
+});

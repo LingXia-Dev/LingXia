@@ -109,6 +109,38 @@ export function DisabledWithReason() {
 }
 ```
 
+### Floating over a list
+
+```tsx
+import { Button } from '@liulidesign/core/Button';
+import { Item } from '@liulidesign/core/Item';
+
+const notes = [
+  ['Trip to the coast', 'Edited yesterday'],
+  ['Reading list', 'Edited on Monday'],
+  ['Ideas for the garden', 'Edited last week'],
+  ['Recipes to try', 'Edited on 2 November'],
+  ['Gift list', 'Edited on 28 October'],
+  ['Books of the year', 'Edited on 14 October'],
+] as const;
+
+/** Floating: the screen's one main action, inside the frame, over a list that scrolls under it. */
+export function Floating() {
+  return (
+    <view className="relative h-72 overflow-hidden rounded-container border border-text/12 bg-surface">
+      <scroll className="h-full">
+        <view className="divide-y divide-text/8">
+          {notes.map(([label, edited]) => <Item key={label} label={label} description={edited} />)}
+        </view>
+      </scroll>
+      <view className="absolute bottom-4 end-4">
+        <Button label="New note" variant="primary" size="lg" startIcon="add" isFloating data-testid="floating" />
+      </view>
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -120,6 +152,7 @@ export function DisabledWithReason() {
 | `endIcon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "checklist" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "click" \| "clock" \| "close" \| "cloud" \| "collapse" \| "compass" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "layers" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "palette" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "rows" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "success" \| "tag" \| "template" \| "text-input" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  | An icon after the label: a chevron for a button that opens something, an arrow for one that goes on. |
 | `isIconOnly` | `boolean` | `false` | Draws `startIcon` alone in a square; `label` stays the accessible name. For a named icon button use IconButton. |
 | `endContent` | `Child` |  | Drawn after the label: a count, a shortcut hint. Hidden from assistive tech. |
+| `isFloating` | `boolean` | `false` | Lifts the button off the page with a shadow, for the one action that floats over scrolling content. |
 | `width` | `ButtonWidth` |  | `content` keeps its own width in a column; `fill` stretches across. Unset follows the parent. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Why it is disabled: read as the button's description while disabled; not drawn. |
@@ -171,6 +204,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Put two primary buttons side by side.
 - Don't: Build a button from a view and classes; only a button takes presses, focus and a role.
 - Don't: Hard-code copy inside the button; labels come from the app.
+- Don't: Use a button for words in a sentence that lead to another page; that is a Link.
 
 ## Not yet
 

@@ -47,3 +47,15 @@ test('Unread: a badge sits on the top end edge and is read by its own label', as
   assert.equal(slot.props.accessibilityHidden, undefined);
   screen.getByText('3');
 });
+
+test('Teams: a rounded square for a team, its corner about a quarter of its size', async () => {
+  const team = (await renderExample('Avatar/Avatar', 'Teams')).getByTestId('team');
+  assert.deepEqual([team.props.width, team.props.radius], [40, 12]);
+});
+
+test('Group: the count takes the group\'s shape, a circle like the avatars beside it', async () => {
+  const screen = await renderExample('Avatar/Avatar', 'Group');
+  const group = screen.getByTestId('editors');
+  const radii = [group.children[0].children[0], screen.getByTestId('editors-overflow')].map(node => node.props.radius);
+  assert.deepEqual(radii, [16384, 16384]);
+});

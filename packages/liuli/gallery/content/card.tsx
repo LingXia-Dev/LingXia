@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { WithActions, Variants, StateUnselected, StateSelected, StateDisabled, Choice } from '../../core/src/Card/Card.examples';
+import { WithActions, Variants, Floating, StateUnselected, StateSelected, StateDisabled, Choice } from '../../core/src/Card/Card.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -11,6 +11,9 @@ export function Content() {
       <PageSection title={"Variants"}>
         <Stage caption={"Outlined, raised and sunken"} bare>
           <Variants />
+        </Stage>
+        <Stage caption={"Floating, over a map or a picture"} bare>
+          <Floating />
         </Stage>
       </PageSection>
       <PageSection title={"States"}>

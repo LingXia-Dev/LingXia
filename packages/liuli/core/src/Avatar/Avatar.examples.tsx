@@ -103,3 +103,25 @@ export function Specimen() {
     </AvatarGroup>
   );
 }
+
+/** A rounded square for what is not a person: a team, a workspace. */
+export function Teams() {
+  return (
+    <view className="gap-3">
+      <view className="flex-row items-center gap-3">
+        <Avatar name="Design Systems" shape="rounded" isDecorative data-testid="team" />
+        <view className="gap-0.5">
+          <text className="text-body font-medium text-text">Design Systems</text>
+          <text className="text-footnote text-muted">Team · 12 members</text>
+        </view>
+      </view>
+      <view className="flex-row items-center gap-3">
+        <Avatar name="Ana Lima" isDecorative />
+        <view className="gap-0.5">
+          <text className="text-body font-medium text-text">Ana Lima</text>
+          <text className="text-footnote text-muted">Owner</text>
+        </view>
+      </view>
+    </view>
+  );
+}

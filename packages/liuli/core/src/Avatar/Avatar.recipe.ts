@@ -1,4 +1,4 @@
-import type { AvatarGroupSurface, AvatarSize, AvatarStatus } from './Avatar';
+import type { AvatarShape, AvatarGroupSurface, AvatarSize, AvatarStatus } from './Avatar';
 
 export const avatarParts = {
   root: 'view',
@@ -13,7 +13,12 @@ export const avatarParts = {
 /** A circle: the photo when it loads, else initials on the accent's soft step. */
 export const avatarRecipe = {
   root: {
-    base: 'relative shrink-0 items-center-safe justify-center-safe rounded-full bg-accent-soft',
+    base: 'relative shrink-0 items-center-safe justify-center-safe bg-accent-soft',
+    /** A rounded square's corner grows with its size, staying near a quarter of it. */
+    shape: {
+      circle: { xs: 'rounded-full', sm: 'rounded-full', md: 'rounded-full', lg: 'rounded-full' },
+      rounded: { xs: 'rounded-md', sm: 'rounded-lg', md: 'rounded-xl', lg: 'rounded-2xl' },
+    } satisfies Record<AvatarShape, Record<AvatarSize, string>>,
     size: { xs: 'size-6', sm: 'size-8', md: 'size-10', lg: 'size-14' } satisfies Record<AvatarSize, string>,
     /** In a group, a 2 px edge in the colour of the surface behind cuts each one out of the next. */
     inGroup: {
@@ -23,7 +28,7 @@ export const avatarRecipe = {
     } satisfies Record<AvatarGroupSurface, string>,
   },
   image: {
-    base: 'absolute inset-0 size-full rounded-full object-cover',
+    base: 'absolute inset-0 size-full object-cover',
   },
   initials: {
     base: 'font-semibold text-on-accent-soft',

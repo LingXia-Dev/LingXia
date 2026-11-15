@@ -50,6 +50,13 @@
           "default": "'md', or the group's size"
         },
         {
+          "name": "shape",
+          "type": "AvatarShape",
+          "required": false,
+          "description": "",
+          "default": "'circle', or the group's shape"
+        },
+        {
           "name": "status",
           "type": "AvatarStatus",
           "required": false,
@@ -189,6 +196,11 @@
           "name": "Unread",
           "title": "A count on the avatar",
           "source": "import { Badge } from '@liulidesign/core/Badge';\nimport { Avatar } from '@liulidesign/core/Avatar';\n\n/** A count on the avatar: unread messages from this person. */\nexport function Unread() {\n  return <Avatar name=\"Kai Chen\" badge={<Badge label=\"3\" tone=\"danger\" emphasis=\"solid\" size=\"sm\" />} data-testid=\"unread\" />;\n}"
+        },
+        {
+          "name": "Teams",
+          "title": "A rounded square for a team",
+          "source": "import { Avatar } from '@liulidesign/core/Avatar';\n\n/** A rounded square for what is not a person: a team, a workspace. */\nexport function Teams() {\n  return (\n    <view className=\"gap-3\">\n      <view className=\"flex-row items-center gap-3\">\n        <Avatar name=\"Design Systems\" shape=\"rounded\" isDecorative data-testid=\"team\" />\n        <view className=\"gap-0.5\">\n          <text className=\"text-body font-medium text-text\">Design Systems</text>\n          <text className=\"text-footnote text-muted\">Team · 12 members</text>\n        </view>\n      </view>\n      <view className=\"flex-row items-center gap-3\">\n        <Avatar name=\"Ana Lima\" isDecorative />\n        <view className=\"gap-0.5\">\n          <text className=\"text-body font-medium text-text\">Ana Lima</text>\n          <text className=\"text-footnote text-muted\">Owner</text>\n        </view>\n      </view>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -215,6 +227,10 @@
             {
               "name": "Unread",
               "title": "A count on the top end edge"
+            },
+            {
+              "name": "Teams",
+              "title": "A rounded square for a team or a workspace, a circle for a person"
             }
           ],
           "states": [
@@ -1135,6 +1151,13 @@
           "description": "Drawn after the label: a count, a shortcut hint. Hidden from assistive tech."
         },
         {
+          "name": "isFloating",
+          "type": "boolean",
+          "required": false,
+          "description": "Lifts the button off the page with a shadow, for the one action that floats over scrolling content.",
+          "default": "false"
+        },
+        {
           "name": "width",
           "type": "ButtonWidth",
           "required": false,
@@ -1307,6 +1330,11 @@
           "name": "DisabledWithReason",
           "title": "Disabled, with the reason",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\n\n/** The reason is read after the label while disabled. Pass translated copy; Liuli ships none. */\nexport function DisabledWithReason() {\n  const agreed = useLocal('agreed', false);\n  return (\n    <view className=\"gap-2\">\n      <Button\n        label=\"Continue\"\n        variant=\"primary\"\n        width=\"fill\"\n        isDisabled={!agreed.value}\n        disabledMessage=\"Accept the terms first\"\n        data-testid=\"continue\"\n      />\n      <Button\n        label={agreed.value ? 'Withdraw consent' : 'Accept the terms'}\n        variant=\"ghost\"\n        width=\"content\"\n        onClick={() => agreed.set(!agreed.value)}\n        data-testid=\"toggle-terms\"\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Floating",
+          "title": "Floating over a list",
+          "source": "import { Button } from '@liulidesign/core/Button';\nimport { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  ['Trip to the coast', 'Edited yesterday'],\n  ['Reading list', 'Edited on Monday'],\n  ['Ideas for the garden', 'Edited last week'],\n  ['Recipes to try', 'Edited on 2 November'],\n  ['Gift list', 'Edited on 28 October'],\n  ['Books of the year', 'Edited on 14 October'],\n] as const;\n\n/** Floating: the screen's one main action, inside the frame, over a list that scrolls under it. */\nexport function Floating() {\n  return (\n    <view className=\"relative h-72 overflow-hidden rounded-container border border-text/12 bg-surface\">\n      <scroll className=\"h-full\">\n        <view className=\"divide-y divide-text/8\">\n          {notes.map(([label, edited]) => <Item key={label} label={label} description={edited} />)}\n        </view>\n      </scroll>\n      <view className=\"absolute bottom-4 end-4\">\n        <Button label=\"New note\" variant=\"primary\" size=\"lg\" startIcon=\"add\" isFloating data-testid=\"floating\" />\n      </view>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -1394,6 +1422,10 @@
             {
               "name": "AsyncAction",
               "title": "Waiting on a Logic action"
+            },
+            {
+              "name": "Floating",
+              "title": "Floating: one main action over content that scrolls"
             }
           ]
         }
@@ -1943,7 +1975,7 @@
           "name": "variant",
           "type": "CardVariant",
           "required": false,
-          "description": "`outlined` sits on the page, `raised` rests one step above it, `sunken` groups content inside another surface.",
+          "description": "`outlined` sits on the page, `raised` rests one step above it, `floating` hovers over what is behind it (a map, a picture), `sunken` groups content inside another surface.",
           "default": "'outlined'"
         },
         {
@@ -1978,7 +2010,7 @@
             "name": "variant",
             "type": "CardVariant",
             "required": false,
-            "description": "`outlined` sits on the page, `raised` rests one step above it, `sunken` groups content inside another surface.",
+            "description": "`outlined` sits on the page, `raised` rests one step above it, `floating` hovers over what is behind it (a map, a picture), `sunken` groups content inside another surface.",
             "default": "'outlined'"
           },
           {
@@ -2137,6 +2169,11 @@
           "source": "import { Card } from '@liulidesign/core/Card';\n\nexport function Variants() {\n  return (\n    <view className=\"gap-3\">\n      <Card data-testid=\"outlined\">\n        <text className=\"text-callout font-semibold text-text\">Outlined</text>\n        <text className=\"text-footnote text-muted\">Sits on the page.</text>\n      </Card>\n      <Card variant=\"raised\">\n        <text className=\"text-callout font-semibold text-text\">Raised</text>\n        <text className=\"text-footnote text-muted\">Rests one step above the page.</text>\n      </Card>\n      <Card variant=\"sunken\">\n        <text className=\"text-callout font-semibold text-text\">Sunken</text>\n        <text className=\"text-footnote text-muted\">Groups content inside another surface.</text>\n      </Card>\n    </view>\n  );\n}"
         },
         {
+          "name": "Floating",
+          "title": "Floating over a map",
+          "source": "import { Card } from '@liulidesign/core/Card';\n\n/** Floating: over a map or a picture, where an outline alone would be lost. */\nexport function Floating() {\n  return (\n    <view className=\"h-52 justify-end rounded-container bg-accent-soft p-3\">\n      <Card variant=\"floating\" padding=\"sm\" data-testid=\"floating\">\n        <text className=\"text-body font-medium text-text\">Pier 4, east gate</text>\n        <text className=\"text-footnote text-muted\">6 minutes on foot · Opens at 08:00</text>\n      </Card>\n    </view>\n  );\n}"
+        },
+        {
           "name": "WithActions",
           "title": "A card with actions",
           "source": "import { Button } from '@liulidesign/core/Button';\nimport { Card, ClickableCard } from '@liulidesign/core/Card';\n\n/** Actions go in a plain Card, never in a ClickableCard. */\nexport function WithActions() {\n  return (\n    <Card>\n      <text role=\"heading\" headingLevel={3} className=\"text-callout font-semibold text-text\">Back up your notes</text>\n      <text className=\"text-footnote text-muted\">Keep a copy on another device in case this one is lost.</text>\n      <view className=\"flex-row justify-end gap-2\">\n        <Button label=\"Not now\" variant=\"ghost\" size=\"sm\" />\n        <Button label=\"Turn on\" variant=\"primary\" size=\"sm\" data-testid=\"turn-on\" />\n      </view>\n    </Card>\n  );\n}"
@@ -2170,6 +2207,10 @@
             {
               "name": "Variants",
               "title": "Outlined, raised and sunken"
+            },
+            {
+              "name": "Floating",
+              "title": "Floating, over a map or a picture"
             }
           ],
           "states": [
@@ -7920,6 +7961,13 @@
           "default": "'md'"
         },
         {
+          "name": "tone",
+          "type": "ProgressBarTone",
+          "required": false,
+          "description": "The fill's colour, for a bar that is a meter: storage, a quota, a goal. Say the state in `valueLabel` too.",
+          "default": "'accent'"
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -7995,6 +8043,30 @@
             "minimum": "3:1"
           },
           {
+            "what": "success fill",
+            "pair": [
+              "success",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "warning fill",
+            "pair": [
+              "warning",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "danger fill",
+            "pair": [
+              "danger",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
             "what": "label",
             "pair": [
               "text",
@@ -8038,6 +8110,11 @@
           "name": "Spinners",
           "title": "Spinner sizes",
           "source": "import { Spinner } from '@liulidesign/core/ProgressBar';\n\nexport function Spinners() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <Spinner label=\"Loading\" size=\"sm\" />\n      <Spinner label=\"Loading messages\" data-testid=\"spinner\" />\n      <Spinner label=\"Loading\" size=\"lg\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Tones",
+          "title": "Meters in a tone",
+          "source": "import { ProgressBar } from '@liulidesign/core/ProgressBar';\n\n/** Meters: the fill says how the amount stands, and the words say it too. */\nexport function Tones() {\n  return (\n    <view className=\"gap-4\">\n      <ProgressBar label=\"Monthly goal\" value={100} valueLabel=\"Reached\" tone=\"success\" data-testid=\"tone-goal\" />\n      <ProgressBar label=\"Storage\" value={86} valueLabel=\"43 of 50 GB, nearly full\" tone=\"warning\" data-testid=\"tone-storage\" />\n      <ProgressBar label=\"Data plan\" value={100} valueLabel=\"Over by 1.2 GB\" tone=\"danger\" data-testid=\"tone-plan\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -8059,6 +8136,10 @@
             {
               "name": "Spinners",
               "title": "Spinner, for a short wait"
+            },
+            {
+              "name": "Tones",
+              "title": "A tone for a meter: reached, nearly full, over"
             }
           ],
           "sizes": [

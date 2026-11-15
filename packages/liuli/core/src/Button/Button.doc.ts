@@ -55,6 +55,7 @@ export const doc: ComponentDoc = {
       'Put two primary buttons side by side.',
       'Build a button from a view and classes; only a button takes presses, focus and a role.',
       'Hard-code copy inside the button; labels come from the app.',
+      'Use a button for words in a sentence that lead to another page; that is a Link.',
     ],
   },
   examples: [
@@ -63,6 +64,7 @@ export const doc: ComponentDoc = {
     { name: 'WithIcons', title: 'With icons' },
     { name: 'AsyncAction', title: 'Waiting on a Logic action' },
     { name: 'DisabledWithReason', title: 'Disabled, with the reason' },
+    { name: 'Floating', title: 'Floating over a list' },
   ],
   gaps: [
     {
@@ -110,6 +112,7 @@ export const doc: ComponentDoc = {
       inContext: [
         { name: 'DisabledWithReason', title: 'A form footer that waits for consent' },
         { name: 'AsyncAction', title: 'Waiting on a Logic action' },
+        { name: 'Floating', title: 'Floating: one main action over content that scrolls' },
       ],
     },
   },

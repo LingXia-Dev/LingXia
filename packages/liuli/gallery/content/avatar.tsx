@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { People, Group, Presence, Unread, Sizes, StatePicture, StateInitials, StateFailed, StateOverflow, WithName } from '../../core/src/Avatar/Avatar.examples';
+import { People, Group, Presence, Unread, Teams, Sizes, StatePicture, StateInitials, StateFailed, StateOverflow, WithName } from '../../core/src/Avatar/Avatar.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -17,6 +17,9 @@ export function Content() {
         </Stage>
         <Stage caption={"A count on the top end edge"}>
           <Unread />
+        </Stage>
+        <Stage caption={"A rounded square for a team or a workspace, a circle for a person"}>
+          <Teams />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

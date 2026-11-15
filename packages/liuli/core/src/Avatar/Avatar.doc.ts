@@ -56,6 +56,7 @@ export const doc: ComponentDoc = {
     { name: 'WithName', title: 'Beside the name' },
     { name: 'Presence', title: 'A status dot' },
     { name: 'Unread', title: 'A count on the avatar' },
+    { name: 'Teams', title: 'A rounded square for a team' },
   ],
   gaps: [],
   related: ['Item', 'Badge'],
@@ -70,6 +71,7 @@ export const doc: ComponentDoc = {
         { name: 'Group', title: 'Overlapping, with the rest as a count' },
         { name: 'Presence', title: 'A status dot: online, away, busy, and offline as a hollow dot' },
         { name: 'Unread', title: 'A count on the top end edge' },
+        { name: 'Teams', title: 'A rounded square for a team or a workspace, a circle for a person' },
       ],
       states: [
         { name: 'StatePicture', title: 'A picture' },

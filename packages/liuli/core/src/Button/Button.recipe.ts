@@ -39,6 +39,8 @@ export const buttonRecipe = {
       md: 'size-control-md px-0',
       lg: 'size-control-lg px-0',
     } satisfies Record<ButtonSize, string>,
+    /** Over scrolling content: the raised elevation in place of the variant's hairline shadow. */
+    floating: 'shadow-raised',
     width: {
       content: 'self-start',
       fill: 'self-stretch',

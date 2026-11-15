@@ -94,3 +94,15 @@ export function StateDisabled() {
     </ClickableCard>
   );
 }
+
+/** Floating: over a map or a picture, where an outline alone would be lost. */
+export function Floating() {
+  return (
+    <view className="h-52 justify-end rounded-container bg-accent-soft p-3">
+      <Card variant="floating" padding="sm" data-testid="floating">
+        <text className="text-body font-medium text-text">Pier 4, east gate</text>
+        <text className="text-footnote text-muted">6 minutes on foot · Opens at 08:00</text>
+      </Card>
+    </view>
+  );
+}

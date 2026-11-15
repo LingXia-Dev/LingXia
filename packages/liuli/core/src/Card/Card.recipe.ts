@@ -9,6 +9,7 @@ export const cardRecipe = {
     variant: {
       outlined: 'bg-surface border border-text/12',
       raised: 'bg-surface-raised border border-text/12 shadow-contact',
+      floating: 'bg-surface-raised border border-text/8 shadow-raised',
       sunken: 'bg-surface-sunken border border-transparent',
     } satisfies Record<CardVariant, string>,
     padding: {

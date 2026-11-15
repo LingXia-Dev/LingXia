@@ -78,3 +78,14 @@ export function StateDone() {
 export function StateUnknown() {
   return <ProgressBar label="Sync" />;
 }
+
+/** Meters: the fill says how the amount stands, and the words say it too. */
+export function Tones() {
+  return (
+    <view className="gap-4">
+      <ProgressBar label="Monthly goal" value={100} valueLabel="Reached" tone="success" data-testid="tone-goal" />
+      <ProgressBar label="Storage" value={86} valueLabel="43 of 50 GB, nearly full" tone="warning" data-testid="tone-storage" />
+      <ProgressBar label="Data plan" value={100} valueLabel="Over by 1.2 GB" tone="danger" data-testid="tone-plan" />
+    </view>
+  );
+}

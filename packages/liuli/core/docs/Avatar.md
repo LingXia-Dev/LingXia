@@ -122,6 +122,34 @@ export function Unread() {
 }
 ```
 
+### A rounded square for a team
+
+```tsx
+import { Avatar } from '@liulidesign/core/Avatar';
+
+/** A rounded square for what is not a person: a team, a workspace. */
+export function Teams() {
+  return (
+    <view className="gap-3">
+      <view className="flex-row items-center gap-3">
+        <Avatar name="Design Systems" shape="rounded" isDecorative data-testid="team" />
+        <view className="gap-0.5">
+          <text className="text-body font-medium text-text">Design Systems</text>
+          <text className="text-footnote text-muted">Team · 12 members</text>
+        </view>
+      </view>
+      <view className="flex-row items-center gap-3">
+        <Avatar name="Ana Lima" isDecorative />
+        <view className="gap-0.5">
+          <text className="text-body font-medium text-text">Ana Lima</text>
+          <text className="text-footnote text-muted">Owner</text>
+        </view>
+      </view>
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -130,6 +158,7 @@ export function Unread() {
 | `src` | `string` |  | A photo; initials show until it loads and if it fails. |
 | `initials` | `string` |  | Overrides the initials taken from the first letters of the first two words of `name`. |
 | `size` | `AvatarSize` | `'md', or the group's size` |  |
+| `shape` | `AvatarShape` | `'circle', or the group's shape` |  |
 | `status` | `AvatarStatus` |  | A dot at the bottom end edge: whether the person is around. Give `statusLabel` with it. |
 | `statusLabel` | `string` |  | The status in words, read after the name: "Online", "In a meeting". |
 | `badge` | `Child` |  | Drawn on the top end edge: a Badge with a count. It is read by its own label. |

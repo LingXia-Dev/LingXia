@@ -50,3 +50,10 @@ test('Spinners: each is a progressbar named by its label, the arc hidden and spi
   assert.equal(arc.props.width, 24);
   assert.match(arc.props.animation, /"name":"spin"/);
 });
+
+test('Tones: the fill takes the tone, and the words say how it stands', async () => {
+  const screen = await renderExample('ProgressBar/ProgressBar', 'Tones');
+  const fills = ['tone-goal', 'tone-storage', 'tone-plan'].map(id => screen.getByTestId(id));
+  assert.deepEqual(fills.map(bar => bar.children[0].props.background), ['success', 'warning', 'danger']);
+  assert.deepEqual(fills.map(bar => bar.props.ariaValueText), ['Reached', '43 of 50 GB, nearly full', 'Over by 1.2 GB']);
+});

@@ -2,11 +2,13 @@ import { childrenToArray, createContext, cx, useContext, useLocal, type Child } 
 import { avatarRecipe as r } from './Avatar.recipe';
 
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg';
+/** `circle` for a person; `rounded` for a team, a workspace or an app. */
+export type AvatarShape = 'circle' | 'rounded';
 export type AvatarGroupSurface = 'surface' | 'raised' | 'sunken';
 /** `offline` is a hollow dot, so the four are told apart without colour as far as a dot can. */
 export type AvatarStatus = 'online' | 'away' | 'busy' | 'offline';
 
-const InGroup = createContext<{ size: AvatarSize; surface: AvatarGroupSurface } | null>(null);
+const InGroup = createContext<{ size: AvatarSize; surface: AvatarGroupSurface; shape: AvatarShape } | null>(null);
 
 export interface AvatarProps {
   /** Whose avatar: the accessible name, and the source of the initials. */
@@ -17,6 +19,8 @@ export interface AvatarProps {
   initials?: string;
   /** @default 'md', or the group's size */
   size?: AvatarSize;
+  /** @default 'circle', or the group's shape */
+  shape?: AvatarShape;
   /** A dot at the bottom end edge: whether the person is around. Give `statusLabel` with it. */
   status?: AvatarStatus;
   /** The status in words, read after the name: "Online", "In a meeting". */
@@ -32,9 +36,10 @@ export interface AvatarProps {
 }
 
 /** A person or team as a circle: their photo, or their initials. */
-export function Avatar({ name, src, initials, size, status, statusLabel, badge, surface, isDecorative = false, className, 'data-testid': testId }: AvatarProps) {
+export function Avatar({ name, src, initials, size, shape: ownShape, status, statusLabel, badge, surface, isDecorative = false, className, 'data-testid': testId }: AvatarProps) {
   const group = useContext(InGroup);
   const actual = size ?? group?.size ?? 'md';
+  const shape = ownShape ?? group?.shape ?? 'circle';
   const failed = useLocal(false);
   const letters = initials ?? initialsOf(name);
   const showImage = src !== undefined && !failed.value;
@@ -43,11 +48,11 @@ export function Avatar({ name, src, initials, size, status, statusLabel, badge, 
     <view
       aria-hidden={isDecorative || undefined}
       data-testid={testId}
-      className={cx(r.root.base, r.root.size[actual], group && r.root.inGroup[group.surface], className)}
+      className={cx(r.root.base, r.root.shape[shape][actual], r.root.size[actual], group && r.root.inGroup[group.surface], className)}
     >
       {/* The initials stay under the photo, so a slow or failed load never shows an empty circle. */}
       <text role={showImage ? undefined : 'img'} aria-label={showImage ? undefined : spoken} aria-hidden={showImage || undefined} className={cx(r.initials.base, r.initials.size[actual])}>{letters}</text>
-      {showImage && <image src={src} alt={spoken} onError={() => failed.set(true)} className={r.image.base} />}
+      {showImage && <image src={src} alt={spoken} onError={() => failed.set(true)} className={cx(r.image.base, r.root.shape[shape][actual])} />}
       {status !== undefined && <view aria-hidden className={cx(r.status.base, r.status.size[actual], r.status.edge[surface ?? group?.surface ?? 'surface'], r.status.tone[status])} />}
       {badge !== undefined && <view className={r.badge.base}>{badge}</view>}
     </view>
@@ -69,6 +74,8 @@ export interface AvatarGroupProps {
   overflowLabel?: (count: number) => string;
   /** @default 'md' */
   size?: AvatarSize;
+  /** The shape of every avatar in the group, and of the count. @default 'circle' */
+  shape?: AvatarShape;
   /** The surface the group sits on; each avatar's edge takes its colour. @default 'surface' */
   surface?: AvatarGroupSurface;
   className?: string;
@@ -76,18 +83,18 @@ export interface AvatarGroupProps {
 }
 
 /** Avatars overlapping in a row, with the rest as a count. */
-export function AvatarGroup({ label, children, max, overflowLabel, size = 'md', surface = 'surface', className, 'data-testid': testId }: AvatarGroupProps) {
+export function AvatarGroup({ label, children, max, overflowLabel, size = 'md', shape = 'circle', surface = 'surface', className, 'data-testid': testId }: AvatarGroupProps) {
   const all = childrenToArray(children);
   const shown = max === undefined ? all : all.slice(0, max);
   const rest = all.length - shown.length;
   return (
-    <InGroup.Provider value={{ size, surface }}>
+    <InGroup.Provider value={{ size, surface, shape }}>
       <view role="group" aria-label={label} data-testid={testId} className={cx(r.group.base, className)}>
         {shown.map((child, index) => (
           <view key={String(index)} className={cx(index > 0 && r.overlap.size[size])}>{child}</view>
         ))}
         {rest > 0 && (
-          <view className={cx(r.root.base, r.root.size[size], r.root.inGroup[surface], r.overflow.base, r.overlap.size[size])}>
+          <view data-testid={testId && `${testId}-overflow`} className={cx(r.root.base, r.root.shape[shape][size], r.root.size[size], r.root.inGroup[surface], r.overflow.base, r.overlap.size[size])}>
             <text aria-label={overflowLabel?.(rest)} className={cx(r.initials.base, r.initials.size[size], r.overflow.text)}>{`+${rest}`}</text>
           </view>
         )}
