@@ -1,4 +1,5 @@
 import { createContext, cx, useContext, useLocal, type Child } from '@lingxia/view';
+import type { IconName } from '../Icon/names';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { detailsRecipe as r } from './Details.recipe';
@@ -15,6 +16,10 @@ const Group = createContext<GroupState | null>(null);
 export interface DetailsProps {
   /** The summary row's text; also what the toggle is named. */
   label: string;
+  /** A second, quieter line under the label: what is inside. */
+  description?: string;
+  /** An icon before the label, by name; not read. */
+  startIcon?: IconName;
   /** The body, which exists only while open. */
   children: Child;
   /** Identifies the row in an exclusive `DetailsGroup`. */
@@ -24,13 +29,15 @@ export interface DetailsProps {
   /** Controlled open state; pass `onOpenChange` with it. */
   isOpen?: boolean;
   onOpenChange?: (isOpen: boolean) => void;
+  /** Cannot be opened or closed. @default false */
+  isDisabled?: boolean;
   className?: string;
   /** On the disclosure. */
   'data-testid'?: string;
 }
 
 /** A summary row that shows and hides the content under it. */
-export function Details({ label, children, value, isDefaultOpen = false, isOpen, onOpenChange, className, 'data-testid': testId }: DetailsProps) {
+export function Details({ label, description, startIcon, children, value, isDefaultOpen = false, isOpen, onOpenChange, isDisabled = false, className, 'data-testid': testId }: DetailsProps) {
   const group = useContext(Group);
   const local = useLocal(isDefaultOpen);
   const exclusive = group?.isExclusive && value !== undefined;
@@ -47,11 +54,16 @@ export function Details({ label, children, value, isDefaultOpen = false, isOpen,
       <button
         aria-expanded={open}
         data-state={open ? 'open' : 'closed'}
+        disabled={isDisabled}
         onClick={() => toggle(!open)}
         data-testid={testId && `${testId}-summary`}
         className={cx(r.summary.base, inGroup ? r.summary.inGroup : r.summary.alone)}
       >
-        <text className={r.label.base}>{label}</text>
+        {startIcon !== undefined && <Glyph name={startIcon} className={r.icon.base} />}
+        <view className={r.text.base}>
+          <text className={r.label.base}>{label}</text>
+          {description !== undefined && <text className={r.description.base}>{description}</text>}
+        </view>
         <Glyph name="chevron-down" className={cx(r.chevron.base, open && r.chevron.open)} />
       </button>
       {open && <view data-testid={testId && `${testId}-body`} className={cx(r.body.base, inGroup && r.body.inGroup)}>{children}</view>}
@@ -66,17 +78,24 @@ export interface DetailsGroupProps {
   isExclusive?: boolean;
   /** In an exclusive group, the row open at first. */
   defaultValue?: string;
+  /** In an exclusive group, the open row, controlled: its value, or `null` for none. Pass `onChange` with it. */
+  value?: string | null;
+  onChange?: (value: string | null) => void;
+  /** Names the group for assistive tech: "Questions". */
+  label?: string;
   className?: string;
   'data-testid'?: string;
 }
 
 /** Details rows in one bordered list: an accordion. */
-export function DetailsGroup({ children, isExclusive = false, defaultValue, className, 'data-testid': testId }: DetailsGroupProps) {
-  const open = useLocal<string | null>(defaultValue ?? null);
+export function DetailsGroup({ children, isExclusive = false, defaultValue, value, onChange, label, className, 'data-testid': testId }: DetailsGroupProps) {
+  const own = useLocal<string | null>(defaultValue ?? null);
+  const current = value === undefined ? own.value : value;
+  const set = (next: string | null) => { if (value === undefined) own.set(next); onChange?.(next); };
   const layer = useContext(LayerContext);
   return (
-    <Group.Provider value={{ open: open.value, isExclusive, set: next => open.set(next) }}>
-      <view data-testid={testId} className={cx(r.group.base, r.group.layer[layer], className)}>{children}</view>
+    <Group.Provider value={{ open: current, isExclusive, set }}>
+      <view role={label === undefined ? undefined : 'group'} aria-label={label} data-testid={testId} className={cx(r.group.base, r.group.layer[layer], className)}>{children}</view>
     </Group.Provider>
   );
 }

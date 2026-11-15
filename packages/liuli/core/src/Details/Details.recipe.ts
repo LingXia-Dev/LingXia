@@ -4,7 +4,10 @@ export const detailsParts = {
   group: 'view',
   root: 'view',
   summary: 'button',
+  icon: 'vector',
+  text: 'view',
   label: 'text',
+  description: 'text',
   chevron: 'vector',
   body: 'view',
 } as const;
@@ -20,13 +23,22 @@ export const detailsRecipe = {
     base: '',
   },
   summary: {
-    base: 'flex-row items-center gap-3 min-h-control-lg py-2.5 text-start transition-colors duration-150 ease-out hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7',
+    base: 'flex-row items-center gap-3 min-h-control-lg py-2.5 text-start transition-colors duration-150 ease-out hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7 disabled:opacity-40',
     /** Alone, the hover wash reaches past the text, which stays in line with the content around it. */
     alone: '-mx-3 px-3 rounded-control',
     inGroup: 'px-4',
   },
+  icon: {
+    base: 'size-5 shrink-0 text-muted',
+  },
+  text: {
+    base: 'grow shrink basis-0 min-w-0 gap-0.5',
+  },
   label: {
-    base: 'grow shrink basis-0 text-body font-medium text-text',
+    base: 'text-body font-medium text-text',
+  },
+  description: {
+    base: 'text-footnote text-muted',
   },
   chevron: {
     base: 'size-5 shrink-0 text-muted transition-transform duration-200 ease-out',

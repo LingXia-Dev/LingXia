@@ -75,16 +75,44 @@ export function Independent() {
 }
 ```
 
+### Sections with an icon and a second line
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Details, DetailsGroup } from '@liulidesign/core/Details';
+
+/** Sections of a settings page: an icon and a second line say what is inside; one cannot be opened. */
+export function Sections() {
+  const open = useLocal<string | null>('open', 'notifications');
+  return (
+    <DetailsGroup isExclusive label="Settings" value={open.value} onChange={open.set} data-testid="sections">
+      <Details value="notifications" label="Notifications" description="Mentions and the weekly digest" startIcon="notifications" data-testid="section-notifications">
+        <text className="text-body text-muted">You are told about mentions at once and get a digest on Mondays.</text>
+      </Details>
+      <Details value="privacy" label="Privacy" description="Who can see your profile" startIcon="lock" data-testid="section-privacy">
+        <text className="text-body text-muted">Only members of your workspace can see your profile.</text>
+      </Details>
+      <Details value="billing" label="Billing" description="Managed by your workspace owner" startIcon="payment" isDisabled data-testid="section-billing">
+        <text className="text-body text-muted">Ask the owner for an invoice.</text>
+      </Details>
+    </DetailsGroup>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | The summary row's text; also what the toggle is named. |
+| `description` | `string` |  | A second, quieter line under the label: what is inside. |
+| `startIcon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "clock" \| "close" \| "cloud" \| "collapse" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "success" \| "tag" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  | An icon before the label, by name; not read. |
 | `children` (required) | `Child` |  | The body, which exists only while open. |
 | `value` | `string` |  | Identifies the row in an exclusive `DetailsGroup`. |
 | `isDefaultOpen` | `boolean` | `false` | Open on first render, uncontrolled. |
 | `isOpen` | `boolean` |  | Controlled open state; pass `onOpenChange` with it. |
 | `onOpenChange` | `((isOpen: boolean) => void)` |  |  |
+| `isDisabled` | `boolean` | `false` | Cannot be opened or closed. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the disclosure. |
 
@@ -94,6 +122,8 @@ export function Independent() {
 | --- | --- | --- | --- |
 | group | `<view>` | no | DetailsGroup: rows in one bordered list, divided by hairlines. |
 | summary | `<button>` | yes | The toggle: a button named by `label` that announces whether it is expanded. |
+| icon | `<vector>` | no | `startIcon`, before the label; not read. |
+| description | `<text>` | no | A second line under the label, read with it. |
 | chevron | `<vector>` | yes | Turns over as the row opens. |
 | body | `<view>` | no | The content, which exists only while open. |
 

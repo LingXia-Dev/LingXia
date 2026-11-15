@@ -3768,6 +3768,18 @@
           "description": "The summary row's text; also what the toggle is named."
         },
         {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "A second, quieter line under the label: what is inside."
+        },
+        {
+          "name": "startIcon",
+          "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"success\" | \"tag\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
+          "required": false,
+          "description": "An icon before the label, by name; not read."
+        },
+        {
           "name": "children",
           "type": "Child",
           "required": true,
@@ -3799,6 +3811,13 @@
           "description": ""
         },
         {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "Cannot be opened or closed.",
+          "default": "false"
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -3816,7 +3835,10 @@
         "group": "view",
         "root": "view",
         "summary": "button",
+        "icon": "vector",
+        "text": "view",
         "label": "text",
+        "description": "text",
         "chevron": "vector",
         "body": "view"
       },
@@ -3869,6 +3891,11 @@
           "name": "Independent",
           "title": "Rows that open on their own",
           "source": "import { Details, DetailsGroup } from '@liulidesign/core/Details';\n\n/** Several rows open at once. */\nexport function Independent() {\n  return (\n    <DetailsGroup>\n      <Details label=\"Shipping\" isDefaultOpen>\n        <text className=\"text-body text-muted\">Free over €40. Two to four working days.</text>\n      </Details>\n      <Details label=\"Returns\" isDefaultOpen>\n        <text className=\"text-body text-muted\">30 days, in the original packaging.</text>\n      </Details>\n    </DetailsGroup>\n  );\n}"
+        },
+        {
+          "name": "Sections",
+          "title": "Sections with an icon and a second line",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Details, DetailsGroup } from '@liulidesign/core/Details';\n\n/** Sections of a settings page: an icon and a second line say what is inside; one cannot be opened. */\nexport function Sections() {\n  const open = useLocal<string | null>('open', 'notifications');\n  return (\n    <DetailsGroup isExclusive label=\"Settings\" value={open.value} onChange={open.set} data-testid=\"sections\">\n      <Details value=\"notifications\" label=\"Notifications\" description=\"Mentions and the weekly digest\" startIcon=\"notifications\" data-testid=\"section-notifications\">\n        <text className=\"text-body text-muted\">You are told about mentions at once and get a digest on Mondays.</text>\n      </Details>\n      <Details value=\"privacy\" label=\"Privacy\" description=\"Who can see your profile\" startIcon=\"lock\" data-testid=\"section-privacy\">\n        <text className=\"text-body text-muted\">Only members of your workspace can see your profile.</text>\n      </Details>\n      <Details value=\"billing\" label=\"Billing\" description=\"Managed by your workspace owner\" startIcon=\"payment\" isDisabled data-testid=\"section-billing\">\n        <text className=\"text-body text-muted\">Ask the owner for an invoice.</text>\n      </Details>\n    </DetailsGroup>\n  );\n}"
         }
       ],
       "gaps": [
@@ -3903,6 +3930,10 @@
             {
               "name": "Independent",
               "title": "A group whose rows open on their own"
+            },
+            {
+              "name": "Sections",
+              "title": "An icon and a second line on each row; the app holds which is open; one row is disabled"
             }
           ],
           "states": [

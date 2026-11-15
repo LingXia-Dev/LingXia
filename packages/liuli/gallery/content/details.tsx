@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Single, Accordion, Independent, StateClosed, StateOpen } from '../../core/src/Details/Details.examples';
+import { Single, Accordion, Independent, Sections, StateClosed, StateOpen } from '../../core/src/Details/Details.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -14,6 +14,9 @@ export function Content() {
         </Stage>
         <Stage caption={"A group whose rows open on their own"} bare>
           <Independent />
+        </Stage>
+        <Stage caption={"An icon and a second line on each row; the app holds which is open; one row is disabled"} bare>
+          <Sections />
         </Stage>
       </PageSection>
       <PageSection title={"States"}>

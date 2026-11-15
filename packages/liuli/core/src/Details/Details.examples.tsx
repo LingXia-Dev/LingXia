@@ -1,3 +1,4 @@
+import { useLocal } from '@lingxia/view';
 import { Details, DetailsGroup } from './Details';
 
 const surface = 'gap-1 rounded-container border border-text/12 bg-surface px-5 pt-4 pb-1';
@@ -26,6 +27,24 @@ export function Accordion() {
       </Details>
       <Details value="delete" label="What happens when I delete my account?" data-testid="delete">
         <text className="text-body text-muted">Your notes are removed from every device after 30 days. Shared notebooks pass to their next member.</text>
+      </Details>
+    </DetailsGroup>
+  );
+}
+
+/** Sections of a settings page: an icon and a second line say what is inside; one cannot be opened. */
+export function Sections() {
+  const open = useLocal<string | null>('open', 'notifications');
+  return (
+    <DetailsGroup isExclusive label="Settings" value={open.value} onChange={open.set} data-testid="sections">
+      <Details value="notifications" label="Notifications" description="Mentions and the weekly digest" startIcon="notifications" data-testid="section-notifications">
+        <text className="text-body text-muted">You are told about mentions at once and get a digest on Mondays.</text>
+      </Details>
+      <Details value="privacy" label="Privacy" description="Who can see your profile" startIcon="lock" data-testid="section-privacy">
+        <text className="text-body text-muted">Only members of your workspace can see your profile.</text>
+      </Details>
+      <Details value="billing" label="Billing" description="Managed by your workspace owner" startIcon="payment" isDisabled data-testid="section-billing">
+        <text className="text-body text-muted">Ask the owner for an invoice.</text>
       </Details>
     </DetailsGroup>
   );

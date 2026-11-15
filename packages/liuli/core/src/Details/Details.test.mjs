@@ -28,3 +28,19 @@ test('Independent: rows open and close on their own', async () => {
   const screen = await renderExample('Details/Details', 'Independent');
   assert.equal(screen.queryAll(node => node.tag === 'button' && node.props.stateExpanded === 1).length, 2);
 });
+
+test('Sections: a named group the app controls; a row carries an icon and a second line; a disabled row does not open', async () => {
+  const screen = await renderExample('Details/Details', 'Sections');
+  const group = screen.getByTestId('sections');
+  assert.deepEqual([group.props.role, group.props.accessibilityLabel], ['group', 'Settings']);
+  const summary = id => screen.getByTestId(`section-${id}-summary`);
+  assert.equal(summary('notifications').props.stateExpanded, 1);
+  assert.equal(summary('privacy').children[0].tag, 'vector');
+  assert.equal(summary('privacy').children[0].props.accessibilityHidden, 1);
+  assert.deepEqual(summary('privacy').children[1].children.map(node => node.text), ['Privacy', 'Who can see your profile']);
+  screen.press(summary('privacy'));
+  assert.deepEqual([summary('notifications').props.stateExpanded, summary('privacy').props.stateExpanded], [0, 1]);
+  screen.press(summary('privacy'));
+  assert.equal(summary('privacy').props.stateExpanded, 0, 'the open row closes, and none is open');
+  assert.equal(summary('billing').props.onClick, undefined);
+});

@@ -15,6 +15,8 @@ export const doc: ComponentDoc = {
   anatomy: [
     { part: 'group', required: false, description: 'DetailsGroup: rows in one bordered list, divided by hairlines.' },
     { part: 'summary', required: true, description: 'The toggle: a button named by `label` that announces whether it is expanded.' },
+    { part: 'icon', required: false, description: '`startIcon`, before the label; not read.' },
+    { part: 'description', required: false, description: 'A second line under the label, read with it.' },
     { part: 'chevron', required: true, description: 'Turns over as the row opens.' },
     { part: 'body', required: false, description: 'The content, which exists only while open.' },
   ],
@@ -45,6 +47,7 @@ export const doc: ComponentDoc = {
     { name: 'Single', title: 'One row' },
     { name: 'Accordion', title: 'An accordion' },
     { name: 'Independent', title: 'Rows that open on their own' },
+    { name: 'Sections', title: 'Sections with an icon and a second line' },
   ],
   gaps: [
     {
@@ -70,6 +73,7 @@ export const doc: ComponentDoc = {
       variants: [
         { name: 'Accordion', title: 'An accordion: one row open at a time' },
         { name: 'Independent', title: 'A group whose rows open on their own' },
+        { name: 'Sections', title: 'An icon and a second line on each row; the app holds which is open; one row is disabled' },
       ],
       states: [
         { name: 'StateClosed', title: 'Closed' },
