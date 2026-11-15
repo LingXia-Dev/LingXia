@@ -681,6 +681,20 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "Drawer",
+    "page": "drawer",
+    "category": "overlays",
+    "summary": "A panel that slides in from a side edge",
+    "keywords": [
+      "drawer",
+      "side sheet",
+      "side panel",
+      "slide over",
+      "off-canvas",
+      "sidebar"
+    ]
+  },
+  {
     "name": "Card",
     "page": "card",
     "category": "content",
@@ -1163,7 +1177,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "layers",
     "description": "Dialogs, sheets and menus",
     "page": "category-overlays",
-    "count": 5
+    "count": 6
   },
   {
     "id": "content",

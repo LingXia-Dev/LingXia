@@ -4905,6 +4905,194 @@
       }
     },
     {
+      "name": "Drawer",
+      "import": "@liulidesign/core/Drawer",
+      "exports": [
+        "Drawer"
+      ],
+      "category": "overlays",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A panel that slides in from a side edge",
+      "description": "Drawer is a modal panel the height of the screen on its end or start edge, with the same title, body and footer as a Dialog. It suits a wide screen, where it leaves the page it came from in view beside it: filters for a list, the details of a row, an app's places. On a phone it takes most of the width; a BottomSheet is often the better fit there.",
+      "keywords": [
+        "drawer",
+        "side sheet",
+        "side panel",
+        "slide over",
+        "off-canvas",
+        "sidebar"
+      ],
+      "props": [
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": true,
+          "description": "Whether it is shown. A closed drawer renders nothing, so local state inside starts over."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "(isOpen: boolean) => void",
+          "required": true,
+          "description": "Called with `false` on a close request: Escape, back, the backdrop per `dismissOn`, the close button."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The title, and the drawer's accessible name."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "A sentence under the title, read as the drawer's description."
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": false,
+          "description": "The body; it scrolls when it is taller than the drawer."
+        },
+        {
+          "name": "actions",
+          "type": "Child",
+          "required": false,
+          "description": "The footer, typically Buttons, the main action last."
+        },
+        {
+          "name": "closeLabel",
+          "type": "string",
+          "required": false,
+          "description": "Shows a close button in the header, named by this text."
+        },
+        {
+          "name": "side",
+          "type": "DrawerSide",
+          "required": false,
+          "description": "`end` for details and filters of what is on the page; `start` for navigation.",
+          "default": "'end'"
+        },
+        {
+          "name": "size",
+          "type": "DrawerSize",
+          "required": false,
+          "description": "Maximum width: 320, 420 or 560; never more than most of the screen.",
+          "default": "'md'"
+        },
+        {
+          "name": "dismissOn",
+          "type": "DialogDismissOn",
+          "required": false,
+          "description": "",
+          "default": "'any'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Classes for the panel."
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "panel": "dialog",
+        "header": "view",
+        "title": "text",
+        "close": "button",
+        "closeIcon": "vector",
+        "description": "text",
+        "body": "scroll",
+        "footer": "view"
+      },
+      "accessibility": {
+        "pattern": "dialog",
+        "name": "label",
+        "description": [
+          "description"
+        ],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Escape",
+            "effect": "Closes it, unless `dismissOn` is `none`"
+          },
+          {
+            "keys": "Tab",
+            "effect": "Through the drawer only, while it is open"
+          }
+        ],
+        "target": {
+          "md": 32
+        },
+        "contrast": [
+          {
+            "what": "title",
+            "pair": [
+              "text",
+              "surface-overlay"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "description",
+            "pair": [
+              "text-muted",
+              "surface-overlay"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "A dialog named by its title: assistive tech reads only the drawer while it is open, and focus returns to what opened it.",
+          "It mirrors with the reading direction: `end` is the right edge in left-to-right text.",
+          "Under reduced motion it fades and does not slide."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Filters",
+          "title": "Filters, from the end edge",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { CheckboxList } from '@liulidesign/core/CheckboxList';\nimport { RadioGroup } from '@liulidesign/core/RadioGroup';\nimport { Drawer } from '@liulidesign/core/Drawer';\n\n/** Filters for the list behind it: the list stays in view while they are chosen. */\nexport function Filters() {\n  const open = useLocal('open', false);\n  const sort = useLocal<string | null>('sort', 'edited');\n  const kinds = useLocal<readonly string[]>('kinds', ['notes', 'lists']);\n  return (\n    <view className=\"items-start gap-2\">\n      <Button label=\"Filters\" startIcon=\"filter\" onClick={() => open.set(true)} data-testid=\"filters-open\" />\n      <Drawer\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Filters\"\n        closeLabel=\"Close\"\n        data-testid=\"filters\"\n        actions={\n          <>\n            <Button label=\"Clear\" onClick={() => { kinds.set([]); sort.set('edited'); }} />\n            <Button label=\"Show results\" variant=\"primary\" onClick={() => open.set(false)} data-testid=\"filters-apply\" />\n          </>\n        }\n      >\n        <RadioGroup bind={sort} label=\"Sort by\" options={[{ value: 'edited', label: 'Last edited' }, { value: 'created', label: 'Created' }, { value: 'title', label: 'Title' }]} />\n        <CheckboxList\n          label=\"Show\"\n          value={kinds.value}\n          onChange={next => kinds.set(next)}\n          options={[{ value: 'notes', label: 'Notes' }, { value: 'lists', label: 'Lists' }, { value: 'photos', label: 'Photos' }, { value: 'archived', label: 'Archived' }]}\n        />\n      </Drawer>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Navigation",
+          "title": "Navigation, from the start edge",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { Drawer } from '@liulidesign/core/Drawer';\n\n/** From the start edge, for the places of an app. */\nexport function Navigation() {\n  const open = useLocal('nav', false);\n  return (\n    <view className=\"items-start\">\n      <Button label=\"Menu\" startIcon=\"menu\" onClick={() => open.set(true)} data-testid=\"nav-open\" />\n      <Drawer isOpen={open.value} onOpenChange={next => open.set(next)} label=\"Notes\" description=\"ana@example.com\" side=\"start\" size=\"sm\" data-testid=\"nav\">\n        <ItemList label=\"Places\">\n          <Item label=\"All notes\" startIcon=\"file\" onClick={() => open.set(false)} data-testid=\"nav-all\" />\n          <Item label=\"Shared with me\" startIcon=\"users\" onClick={() => open.set(false)} />\n          <Item label=\"Archive\" startIcon=\"folder\" onClick={() => open.set(false)} />\n          <Item label=\"Settings\" startIcon=\"settings\" onClick={() => open.set(false)} />\n        </ItemList>\n      </Drawer>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "It does not follow the finger; it opens and closes as a whole.",
+        "It is always modal: a panel that stays open beside the page is SplitView."
+      ],
+      "related": [
+        "Dialog",
+        "BottomSheet",
+        "SplitView"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A side panel",
+        "order": 6,
+        "page": {
+          "lead": "Use a drawer for a panel of its own beside the page it came from.",
+          "hero": "Filters",
+          "variants": [
+            {
+              "name": "Navigation",
+              "title": "From the start edge, narrow, for an app's places"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "DropdownMenu",
       "import": "@liulidesign/core/DropdownMenu",
       "exports": [

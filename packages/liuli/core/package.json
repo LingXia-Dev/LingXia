@@ -124,6 +124,8 @@
     "./Carousel/recipe": "./src/Carousel/Carousel.recipe.ts",
     "./Thumbnail": "./src/Thumbnail/Thumbnail.tsx",
     "./Thumbnail/recipe": "./src/Thumbnail/Thumbnail.recipe.ts",
+    "./Drawer": "./src/Drawer/Drawer.tsx",
+    "./Drawer/recipe": "./src/Drawer/Drawer.recipe.ts",
     "./Link": "./src/Link/Link.tsx",
     "./Link/recipe": "./src/Link/Link.recipe.ts",
     "./Kbd": "./src/Kbd/Kbd.tsx",

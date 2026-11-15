@@ -4,13 +4,14 @@ import { Specimen as DropdownMenuSpecimen } from '../../core/src/DropdownMenu/Dr
 import { Specimen as TooltipSpecimen } from '../../core/src/Tooltip/Tooltip.examples';
 import { Specimen as BottomSheetSpecimen } from '../../core/src/BottomSheet/BottomSheet.examples';
 import { Specimen as PopoverSpecimen } from '../../core/src/Popover/Popover.examples';
+import { Specimen as DrawerSpecimen } from '../../core/src/Drawer/Drawer.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Surfaces that float over the page: dialogs, sheets, menus and popovers."}</text>
-      <Category title={"5 components"}>
+      <Category title={"6 components"}>
         <Tile
           name={"Dialog"}
           tagline={"A decision, on top"}
@@ -46,11 +47,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"Popover"}
           tagline={"A panel beside it"}
-          isWide
           onOpen={() => onOpen("popover")}
           testId={"open-popover"}
         >
           <PopoverSpecimen />
+        </Tile>
+        <Tile
+          name={"Drawer"}
+          tagline={"A side panel"}
+          onOpen={() => onOpen("drawer")}
+          testId={"open-drawer"}
+        >
+          <DrawerSpecimen />
         </Tile>
       </Category>
     </>
