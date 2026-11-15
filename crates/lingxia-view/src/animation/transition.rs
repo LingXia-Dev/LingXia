@@ -20,6 +20,8 @@ pub enum Property {
     Parts,
     /// Moves with `shadow`, as Tailwind's rings are box shadows.
     Ring,
+    /// How much larger the box paints than layout made it, animating to zero.
+    Size,
 }
 
 /// The paint properties; `Layout` is reconciled on its own.
@@ -36,7 +38,7 @@ const PROPERTIES: [Property; 8] = [
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TransitionDef {
-    properties: [bool; 9],
+    properties: [bool; 10],
     duration: Duration,
     delay: Duration,
     timing: Timing,
@@ -65,7 +67,7 @@ impl TransitionDef {
             return Err(invalid());
         }
         let wire: Wire = serde_json::from_str(source).map_err(|_| invalid())?;
-        let mut properties = [false; 9];
+        let mut properties = [false; 10];
         for name in &wire.properties {
             let index = [
                 "opacity",
@@ -75,9 +77,17 @@ impl TransitionDef {
                 "border",
                 "shadow",
                 "layout",
+                "size",
             ]
             .iter()
             .position(|known| known == name)
+            .map(|index| {
+                if index == 7 {
+                    Property::Size as usize
+                } else {
+                    index
+                }
+            })
             .ok_or_else(invalid)?;
             if std::mem::replace(&mut properties[index], true) {
                 return Err(invalid());
@@ -114,7 +124,7 @@ impl TransitionDef {
 
     /// Only slider parts: 150 ms on the standard ease, as Tailwind's default transition.
     pub fn parts() -> Self {
-        let mut properties = [false; 9];
+        let mut properties = [false; 10];
         properties[Property::Parts as usize] = true;
         Self {
             properties,
@@ -250,6 +260,8 @@ pub struct Resolved {
     pub position: Option<[f64; 2]>,
     /// A slider's part sizes and colours.
     pub parts: Option<crate::scene::slider::PartValues>,
+    /// The box layout made; `None` when it has none to resize.
+    pub size: Option<[f64; 2]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -272,7 +284,7 @@ impl Resolved {
             Property::Foreground => Some(Value::Color(self.foreground)),
             Property::Border => self.border.map(Value::Color),
             Property::Shadow => self.shadows.clone().map(Value::Shadows),
-            Property::Layout => None,
+            Property::Layout | Property::Size => None,
             Property::Parts => self.parts.clone().map(Value::Parts),
             Property::Ring => self.ring.map(Value::Ring),
         }
@@ -652,6 +664,51 @@ impl Node {
             velocity,
         )?))
     }
+
+    /// The motion of a box that layout resized: from the size on screen to the one it has now.
+    fn size_motion(
+        &self,
+        target: &Resolved,
+        definition: &TransitionDef,
+        now: Duration,
+        policy: Policy,
+    ) -> Result<Option<Instance>, String> {
+        let (Some(before), Some(after)) = (self.target.size, target.size) else {
+            return Ok(None);
+        };
+        if !definition.covers(Property::Size) {
+            return Ok(None);
+        }
+        let running = self
+            .instances
+            .get(&Property::Size)
+            .filter(|instance| policy.keep && !instance.finished(now));
+        if before == after {
+            return Ok(running.cloned());
+        }
+        if !policy.start {
+            return Ok(None);
+        }
+        let shown = match running.map(|instance| instance.sample(now)).transpose()? {
+            Some(Value::Offset(delta)) => delta,
+            _ => [0.0; 2],
+        };
+        let from = [
+            before[0] + shown[0] - after[0],
+            before[1] + shown[1] - after[1],
+        ];
+        if from[0].abs() < 0.5 && from[1].abs() < 0.5 {
+            return Ok(None);
+        }
+        let velocity = running.and_then(|instance| instance.velocity(now));
+        Ok(Some(Instance::new(
+            definition,
+            policy,
+            Value::Offset(from),
+            Value::Offset([0.0; 2]),
+            velocity,
+        )?))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -676,6 +733,8 @@ pub struct Overrides {
     pub shadows: Option<Vec<ShadowLayer>>,
     pub(crate) ring: Option<crate::scene::ring::RingValue>,
     pub parts: Option<crate::scene::slider::PartValues>,
+    /// Added to the laid-out width and height of the painted box, which clips its children.
+    pub size: Option<[f64; 2]>,
 }
 
 impl Overrides {
@@ -802,6 +861,13 @@ impl Transitions {
                     instances.insert(Property::Layout, instance);
                     moving += 1;
                 }
+                if let Some(instance) = old
+                    .size_motion(&target, &definition, now, policy)?
+                    .filter(|_| moving < crate::protocol::limits::LAYOUT_MOTIONS)
+                {
+                    instances.insert(Property::Size, instance);
+                    moving += 1;
+                }
             }
             next.insert(
                 identity,
@@ -910,9 +976,11 @@ impl Transitions {
         self.0
             .values()
             .filter(|node| {
-                node.instances
-                    .get(&Property::Layout)
-                    .is_some_and(|instance| !instance.finished(now))
+                [Property::Layout, Property::Size].iter().any(|property| {
+                    node.instances
+                        .get(property)
+                        .is_some_and(|instance| !instance.finished(now))
+                })
             })
             .count()
     }
@@ -953,6 +1021,7 @@ impl Transitions {
                 (Property::Border, Value::Color(v)) => overrides.border = Some(v),
                 (Property::Shadow, Value::Shadows(v)) => overrides.shadows = Some(v),
                 (Property::Layout, Value::Offset(v)) => offset = Some(v),
+                (Property::Size, Value::Offset(v)) => overrides.size = Some(v),
                 (Property::Parts, Value::Parts(v)) => overrides.parts = Some(v),
                 (Property::Ring, Value::Ring(v)) => overrides.ring = Some(v),
                 _ => return Err("UI_TRANSITION: mismatched value".into()),
@@ -1040,6 +1109,7 @@ mod tests {
             shadows: Some(Vec::new()),
             ring: Some(Default::default()),
             position: Some([0.0; 2]),
+            size: Some([0.0; 2]),
             parts: None,
         }
     }

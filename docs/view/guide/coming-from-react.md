@@ -107,7 +107,7 @@ A render that throws keeps the previous frame on screen ([Diagnostics](diagnosti
   grey `bg-muted` as `bg-surface-sunken`.
 - A `<button>` is unstyled, as after Tailwind's preflight: give it its fill, padding and radius.
 - Transitions and animations are utilities ([Motion](motion.md)), including `starting:`/`exit:` and
-  `transition-layout`; size transitions and 3D transforms are not supported.
+  `transition-layout` and `transition-size`; 3D transforms are not supported.
 
 ## The DOM and the browser
 

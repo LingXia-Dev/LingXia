@@ -340,6 +340,16 @@ test('transition-layout adds layout motion to whatever transition-* sets', async
   assert.equal(classStyle('transition-none').transition, 'none');
 });
 
+test('transition-size and a transition of width or height animate the box size beside the rest', async () => {
+  await use(['transition-size', 'transition-layout', 'transition-opacity', 'transition-[height]', 'transition-[width,opacity]', 'duration-300']);
+  assert.deepEqual(classStyle('transition-size').transition.properties, ['size']);
+  assert.deepEqual(classStyle('transition-[height]').transition.properties, ['size']);
+  assert.deepEqual(classStyle('transition-[width,opacity]').transition.properties, ['size', 'opacity']);
+  const all = classStyle('transition-opacity transition-layout transition-size duration-300').transition;
+  assert.deepEqual([all.properties, all.durationMs], [['opacity', 'layout', 'size'], 300]);
+  assert.deepEqual(classStyle('transition-[height] transition-size').transition.properties, ['size']);
+});
+
 test('bg-clip-text paints a text background through its glyphs, on <text> only', async () => {
   await use(['bg-clip-text', 'bg-clip-border', 'text-transparent', 'bg-linear-to-r', 'from-accent', 'to-danger']);
   assert.deepEqual(classStyle('bg-clip-text'), { backgroundClip: 'text' });
@@ -568,13 +578,13 @@ test('custom theme tokens and arbitrary values retain Tailwind semantics', async
 });
 
 test('unsupported rendering and missing dynamic candidates fail visibly', async () => {
-  const rules = await compileUtilities(new Set(['backdrop-invert', 'transition-[width]', 'skew-y-3', 'group-hover:underline', 'p-4']));
+  const rules = await compileUtilities(new Set(['backdrop-invert', 'transition-[padding]', 'skew-y-3', 'group-hover:underline', 'p-4']));
   const errors = Object.fromEntries(rules.filter(rule => rule.error).map(rule => [rule.name, rule.error]));
-  assert.deepEqual(Object.keys(errors).sort(), ['backdrop-invert', 'group-hover:underline', 'skew-y-3', 'transition-[width]']);
+  assert.deepEqual(Object.keys(errors).sort(), ['backdrop-invert', 'group-hover:underline', 'skew-y-3', 'transition-[padding]']);
   assert.ok(Object.values(errors).every(error => error.category === 'unsupported'));
-  assert.match(errors['transition-[width]'].message, /animates layout/);
+  assert.match(errors['transition-[padding]'].message, /animates layout/);
   configureClasses(rules);
-  for (const name of ['backdrop-invert', 'transition-[width]', 'p-8']) assert.throws(() => classStyle(name), /UI_CLASS/);
+  for (const name of ['backdrop-invert', 'transition-[padding]', 'p-8']) assert.throws(() => classStyle(name), /UI_CLASS/);
   assert.throws(() => classStyle(false), /className must be a string/);
   assert.deepEqual(classStyle(undefined), {});
   assert.deepEqual(classStyle('p-4'), { paddingTop: 16, paddingRight: 16, paddingBottom: 16, paddingLeft: 16 });

@@ -1780,6 +1780,7 @@ mod motion;
 mod presence;
 #[path = "select.rs"]
 mod select;
+mod size_transition;
 #[path = "text_selection.rs"]
 mod text_selection;
 #[path = "time_field.rs"]

@@ -63,7 +63,7 @@
     "auto-complete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"],
     "enter-key-hint": ["enter", "done", "go", "next", "previous", "search", "send"],
     "auto-capitalize": ["none", "sentences", "words", "characters"],
-    "transition-property": ["opacity", "transform", "bg", "fg", "border", "shadow", "layout"],
+    "transition-property": ["opacity", "transform", "bg", "fg", "border", "shadow", "layout", "size"],
     "user-select": ["none", "text", "all"],
     "touch-target": ["auto", "none"],
     "pointer-axis": ["x", "y", "both"]

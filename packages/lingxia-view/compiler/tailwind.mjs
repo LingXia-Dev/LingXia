@@ -160,6 +160,11 @@ export const viewExtensions = `@custom-variant exit (&:where(.lx-exit));
   --lx-transition-layout: 1;
   transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
   transition-duration: var(--tw-duration, var(--default-transition-duration));
+}
+@utility transition-size {
+  --lx-transition-size: 1;
+  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+  transition-duration: var(--tw-duration, var(--default-transition-duration));
 }`;
 export const roleTheme = `@theme inline {\n${roles.map(role => `  --color-${role.replace(/^text-/, '')}: role(${role});`).join('\n')}\n}`;
 
@@ -672,6 +677,7 @@ function transformDeclaration(prop, raw, local, style, transform) {
 // CSS transition properties onto the painted properties a transition may animate.
 const transitionTargets = {
   opacity: ['opacity'], transform: ['transform'], translate: ['transform'], scale: ['transform'], rotate: ['transform'],
+  width: ['size'], height: ['size'],
   color: ['fg'], fill: ['fg'], stroke: ['fg'], 'text-decoration-color': ['fg'], 'background-color': ['bg'],
   '--tw-gradient-from': ['bg'], '--tw-gradient-via': ['bg'], '--tw-gradient-to': ['bg'], 'border-color': ['border'], 'box-shadow': ['shadow'],
   all: ['opacity', 'transform', 'bg', 'fg', 'border', 'shadow'],
@@ -695,11 +701,12 @@ function transitionDeclaration(prop, raw, local, motion) {
     const properties = new Set();
     for (const name of value === 'none' ? [] : postcss.list.comma(value)) {
       if (transitionTargets[name]) transitionTargets[name].forEach(target => properties.add(target));
-      else if (layoutProperty.test(name)) unsupported(`transition of ${name} animates layout; nearest supported: transition-transform (scale or translate) or transition-opacity`);
+      else if (layoutProperty.test(name)) unsupported(`transition of ${name} animates layout; nearest supported: transition-size (width and height), transition-layout (position), transition-transform or transition-opacity`);
       else if (!transitionInert.has(name)) unsupported(`transition of ${name}`);
     }
     motion.properties = [...properties];
   } else if (prop === '--lx-transition-layout') motion.layout = true;
+  else if (prop === '--lx-transition-size') motion.size = true;
   else if (prop === '--tw-duration') motion.duration = transitionMs(value);
   else if (prop === 'transition-duration') {
     // `var(--tw-duration, default)` follows whichever duration-* utility applies.
@@ -728,7 +735,7 @@ function declarations(nodes, vars, root) {
       style.animation = lowerAnimation(node.value, root, value => variables(value, local));
       continue;
     }
-    if (/^transition(?:-property|-duration|-delay|-timing-function)?$/.test(prop) || ['--tw-duration', '--tw-ease', '--lx-transition-layout'].includes(prop)) {
+    if (/^transition(?:-property|-duration|-delay|-timing-function)?$/.test(prop) || ['--tw-duration', '--tw-ease', '--lx-transition-layout', '--lx-transition-size'].includes(prop)) {
       transitionDeclaration(prop, node.value, local, motion); continue;
     }
     // Of the filter functions only blur is drawn; the others leave the rule with nothing to draw.

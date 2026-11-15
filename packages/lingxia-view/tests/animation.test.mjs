@@ -179,7 +179,7 @@ test('default Tailwind animations lower with implicit endpoints, rotation, relat
 
 test('transition utilities lower to one bounded transition of painted properties', async () => {
   const names = ['transition', 'transition-all', 'transition-colors', 'transition-opacity', 'transition-transform', 'transition-none', 'duration-200',
-    'delay-150', 'ease-in', 'ease-[cubic-bezier(0.1,0.2,0.3,1)]', 'transition-[height]', 'duration-[12s]', 'motion-reduce:transition-none', 'motion-safe:animate-spin'];
+    'delay-150', 'ease-in', 'ease-[cubic-bezier(0.1,0.2,0.3,1)]', 'transition-[padding]', 'duration-[12s]', 'motion-reduce:transition-none', 'motion-safe:animate-spin'];
   configureClasses(await compileUtilities(new Set(names), ''));
   const transition = (classes, env) => resolveClasses(classes, env).base.transition;
   assert.deepEqual(transition('transition-opacity duration-200 ease-in delay-150'), { properties: ['opacity'], durationMs: 200, delayMs: 150, easing: [0.4, 0, 1, 1] });
@@ -193,7 +193,7 @@ test('transition utilities lower to one bounded transition of painted properties
   assert.equal(transition('transition-opacity motion-reduce:transition-none', { reducedMotion: true }), 'none');
   assert.deepEqual(transition('transition-opacity motion-reduce:transition-none', { reducedMotion: false }).properties, ['opacity']);
   assert.equal(resolveClasses('motion-safe:animate-spin', { reducedMotion: true }).base.animation, undefined);
-  assert.throws(() => resolveClasses('transition-[height]'), /animates layout; nearest supported: transition-transform/);
+  assert.throws(() => resolveClasses('transition-[padding]'), /animates layout; nearest supported: transition-size/);
   assert.throws(() => resolveClasses('duration-[12s]'), /over 10000ms/);
   const records = describe(() => h('view', { className: 'transition-opacity duration-200' }));
   assert.equal(records[6], 171);

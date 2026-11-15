@@ -100,7 +100,7 @@ test('inline styles are CSS-named and checked per element', () => {
 
 test('class diagnostics separate unknown, unsupported and wrong-element utilities and report all at once', async () => {
   await project({ 'page.tsx': `export function render(view) {
-  return <view className="grid-cols-2 not-a-utility transition-[width]">
+  return <view className="grid-cols-2 not-a-utility transition-[padding]">
     <text className={view.data.on ? "grid-cols-2" : "items-center"}>A</text>
     <view className="active:bg-danger hover:p-4 focus-visible:bg-danger"/>
   </view>;
@@ -111,7 +111,7 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
     for (const pattern of [
       /^page.tsx:3:\d+: UI_CLASS_ELEMENT: grid-cols-2 does not apply to <text>; layout classes go on the element that holds it$/,
       /^page.tsx:2:\d+: UI_CLASS_UNKNOWN: not-a-utility is not a Tailwind utility$/,
-      /^page.tsx:2:\d+: UI_CLASS_UNSUPPORTED: transition-\[width\]: the native renderer does not support transition of width animates layout/,
+      /^page.tsx:2:\d+: UI_CLASS_UNSUPPORTED: transition-\[padding\]: the native renderer does not support transition of padding animates layout/,
       /^page.tsx:3:\d+: UI_CLASS_ELEMENT: items-center does not apply to <text>; layout classes go on the element that holds it$/,
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: active:bg-danger needs a control; <view> is never pressed$/,
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: hover:p-4: hover styles change paint only, not paddingTop, paddingRight, paddingBottom, paddingLeft$/,

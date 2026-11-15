@@ -40,16 +40,17 @@ Some changes land at once instead of animating:
 - a shadow on an element with unequal corner radii;
 - a transform to `scale-0`, which paints nothing until it lands.
 
-Layout does not animate. A transition of width, height, padding, margin, gap, insets or font size is
-refused, naming `transition-transform` or `transition-opacity` as the alternative:
+Layout does not animate per frame. A transition of padding, margin, gap, insets or font size is
+refused, naming the alternatives:
 
 ```tsx error UI_CLASS_UNSUPPORTED
 export function render() {
-  return <page><view className="h-10 bg-accent transition-[width]" /></page>;
+  return <page><view className="h-10 bg-accent transition-[padding]" /></page>;
 }
 ```
 
-Animate a scale or translate instead of a size, or let `transition-layout` move the box (below).
+A box's size and position do animate, as paint over the finished layout: `transition-size` and
+`transition-layout` (below).
 
 ## Springs
 
@@ -106,6 +107,37 @@ but it takes no input and is hidden from accessibility; the layout closes the ga
 outermost removed element plays its exit, and at most 64 play at once per page; past that, removed elements
 vanish. An element that comes back mid-exit enters from where its exit had got to. A hidden page, and
 reduced motion, add and remove elements at once.
+
+## Size
+
+`transition-size` (or `transition-[height]`, `transition-[width]`) grows or shrinks a box from the
+size it had to the size layout gives it now, with the element's `duration-*`, `delay-*` and `ease-*`;
+like `transition-layout` it adds to the other `transition-*` properties.
+
+```tsx
+import { useLocal } from '@lingxia/view';
+
+export function render() {
+  const open = useLocal('open', false);
+  return (
+    <page className="p-4 gap-2">
+      <button onClick={() => open.set(!open.value)} className="h-11 rounded-lg bg-accent text-on-accent">Details</button>
+      <view className={`overflow-hidden rounded-lg bg-surface-raised transition-size duration-200 ${open.value ? 'h-24' : 'h-0'}`}>
+        <text className="p-3">Shipped on Tuesday.</text>
+      </view>
+      <text className="transition-layout duration-200">Next section</text>
+    </page>
+  );
+}
+```
+
+Layout runs once, at the new size. While the box changes it paints its background, border and
+shadow at the size reached and clips its children there; the children are not laid out again each
+frame, so text does not re-wrap on the way. Keep the content in the tree, change the box's size
+(`h-0` to `h-24`) and give it `overflow-hidden` so the closed box hides it: content removed in the
+same render is gone before the box closes. What sits
+after the box jumps to its new place unless it takes `transition-layout` with the same duration
+and ease. Taps and assistive tech see the final size from the first frame.
 
 ## Layout motion
 

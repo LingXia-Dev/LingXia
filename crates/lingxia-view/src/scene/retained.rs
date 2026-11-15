@@ -378,6 +378,7 @@ impl RetainedLayout {
             }),
             ring: style.ring.as_ref().map(|ring| ring.value),
             position: Some([f64::from(x - moved[0]), f64::from(y - moved[1])]),
+            size: Some([f64::from(w), f64::from(h)]),
             parts: style
                 .slider
                 .as_ref()
@@ -633,6 +634,28 @@ impl RetainedLayout {
             let visual = visuals.get(&*node.identity);
             let paint_style = &self.paint_styles[index];
             let overrides = visual.map(|v| &v.transition);
+            // A box whose size is in transition paints at the size it has reached and clips its
+            // children there; layout, hit testing and semantics keep the size it is going to.
+            let laid_out = node.bounds;
+            let sized = overrides.and_then(|o| o.size).map(|[dw, dh]| {
+                [
+                    laid_out[0],
+                    laid_out[1],
+                    (laid_out[2] + dw as f32).max(0.0),
+                    (laid_out[3] + dh as f32).max(0.0),
+                ]
+            });
+            let resized = |bounds: [f32; 4]| match sized {
+                Some(sized)
+                    if bounds
+                        .iter()
+                        .zip(laid_out)
+                        .all(|(a, b)| (a - b).abs() < 0.01) =>
+                {
+                    sized
+                }
+                _ => bounds,
+            };
             let inherited = match (
                 overrides.and_then(|o| o.transform).filter(|_| !composed),
                 self.transforms[index],
@@ -703,9 +726,18 @@ impl RetainedLayout {
                 node.visible_bounds[2] = 0.0;
                 node.visible_bounds[3] = 0.0;
             }
-            let clips_children = node.scroll.is_some() || node.clips_children;
+            let clips_children = node.scroll.is_some() || node.clips_children || sized.is_some();
+            let content_clip = match sized {
+                Some(bounds) => Some(ClipSnapshot {
+                    radii: node.radii,
+                    bounds,
+                    radius: node.radius,
+                    transform: None,
+                }),
+                None => node.content_clip,
+            };
             if clips_children {
-                if let Some(content) = node.content_clip {
+                if let Some(content) = content_clip {
                     children_clips.push(transformed_clip(content, matrix)?);
                 } else if node.radius > 0.0 || node.radii.is_some() {
                     children_clips.push(transformed_clip(
@@ -754,7 +786,7 @@ impl RetainedLayout {
             }
             let mut descendants = desired.clone();
             if clips_children {
-                descendants.push(Paint::Clip(node.content_clip.unwrap_or(ClipSnapshot {
+                descendants.push(Paint::Clip(content_clip.unwrap_or(ClipSnapshot {
                     bounds: node.bounds,
                     radius: node.radius,
                     radii: node.radii,
@@ -782,9 +814,11 @@ impl RetainedLayout {
             translations[index] = child_translation;
             clips[index] = transformed_bounds(
                 if clips_children {
-                    node.content_clip
-                        .map(|content| intersect(node.visible_bounds, content.bounds))
-                        .unwrap_or(node.visible_bounds)
+                    match (sized, content_clip) {
+                        (Some(sized), _) => intersect(sized, clip),
+                        (None, Some(content)) => intersect(node.visible_bounds, content.bounds),
+                        (None, None) => node.visible_bounds,
+                    }
                 } else {
                     clip
                 },
@@ -803,7 +837,7 @@ impl RetainedLayout {
                 .zip(overrides.and_then(|o| o.ring))
                 .map(|(slot, value)| {
                     let target = crate::scene::ring::RingBox {
-                        bounds: node.bounds,
+                        bounds: sized.unwrap_or(node.bounds),
                         radius: paint_style.radius,
                         corners: paint_style.corners,
                         border: slot.border,
@@ -891,6 +925,7 @@ impl RetainedLayout {
                         let mut bounds = *bounds;
                         bounds[0] -= translation[0];
                         bounds[1] -= translation[1];
+                        let bounds = resized(bounds);
                         if let Some(shape) = shadow.geometry(bounds, *radius) {
                             let visible = intersect(shape.extent, clip);
                             if visible[2] > 0.0
@@ -984,6 +1019,7 @@ impl RetainedLayout {
                         let mut bounds = *bounds;
                         bounds[0] -= translation[0];
                         bounds[1] -= translation[1];
+                        let bounds = resized(bounds);
                         let visible = intersect(bounds, clip);
                         if visible[2] > 0.0
                             && visible[3] > 0.0
@@ -1008,6 +1044,7 @@ impl RetainedLayout {
                         let mut bounds = *bounds;
                         bounds[0] -= translation[0];
                         bounds[1] -= translation[1];
+                        let bounds = resized(bounds);
                         let visible = intersect(bounds, clip);
                         if visible[2] > 0.0
                             && visible[3] > 0.0
@@ -1035,6 +1072,7 @@ impl RetainedLayout {
                         let mut bounds = *bounds;
                         bounds[0] -= translation[0];
                         bounds[1] -= translation[1];
+                        let bounds = resized(bounds);
                         let visible = intersect(bounds, clip);
                         if visible[2] > 0.0
                             && visible[3] > 0.0
@@ -1177,7 +1215,7 @@ impl RetainedLayout {
                     Paint::Rect {
                         corners: paint_style.corners,
                         color,
-                        bounds: node.bounds,
+                        bounds: sized.unwrap_or(node.bounds),
                         radius: paint_style.radius,
                     },
                 );
@@ -1194,7 +1232,7 @@ impl RetainedLayout {
                             color: "currentColor".into(),
                         },
                         color: layer.color,
-                        bounds: node.bounds,
+                        bounds: sized.unwrap_or(node.bounds),
                         radius: paint_style.radius,
                     }),
                 );
