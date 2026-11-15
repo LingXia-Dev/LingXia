@@ -6,7 +6,7 @@ import { described, renderExample } from '../testing/harness.mjs';
 test('Tones: soft tints, text in the text role except on accent', async () => {
   const screen = await renderExample('Badge/Badge', 'Tones');
   const look = id => [screen.getByTestId(id).props.background, screen.getByTestId(id).props.color];
-  assert.deepEqual(look('neutral'), ['surface-sunken', 'text']);
+  assert.deepEqual(look('neutral'), ['text/8', 'text']);
   assert.deepEqual(look('accent'), ['accent-soft', 'on-accent-soft']);
   assert.deepEqual(look('danger'), ['danger-soft', 'text']);
   assert.equal(textOf(screen.getByTestId('danger')), 'Overdue');

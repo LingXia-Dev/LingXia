@@ -119,8 +119,8 @@ export function OverList() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| title and message on neutral | `text` on `surface-sunken` | 4.5:1 | 14.36:1 | 15.55:1 |
-| neutral icon | `text-muted` on `surface-sunken` | 3:1 | 5.20:1 | 7.45:1 |
+| title and message on neutral | `text` on `text/6` over `canvas` | 4.5:1 | 13.54:1 | 13.46:1 |
+| neutral icon | `text-muted` on `text/6` over `canvas` | 3:1 | 4.90:1 | 6.45:1 |
 | title and message on info | `text` on `accent-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
 | title and message on success | `text` on `success-soft` | 4.5:1 | 14.34:1 | 11.76:1 |
 | title and message on warning | `text` on `warning-soft` | 4.5:1 | 14.59:1 | 11.36:1 |

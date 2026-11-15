@@ -51,3 +51,10 @@ test('ClickableCard: a control inside is refused by the View', async () => {
       }
   `), /UI_BUTTON/);
 });
+
+test('a pressed card keeps its surface under a wash of the text colour', async () => {
+  const screen = await renderExample('Card/Card', 'Choice');
+  const card = screen.queryAll(node => node.tag === 'button' && node.props.pressedStyle)[0];
+  assert.equal(card.props.pressedStyle.background, undefined, 'the fill is not swapped for another surface');
+  assert.deepEqual(JSON.parse(card.props.pressedStyle.ring).inner, { width: 999, color: 'text/7' });
+});

@@ -123,7 +123,7 @@ export function Spinners() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| fill against the track | `accent` on `surface-sunken` | 3:1 | 4.97:1 | 6.94:1 |
+| fill against the track | `accent` on `text/10` over `surface` | 3:1 | 4.62:1 | 4.75:1 |
 | fill and spinner on a card | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | value | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |

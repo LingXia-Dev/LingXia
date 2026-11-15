@@ -39,7 +39,7 @@ export const doc: ComponentDoc = {
       { what: 'progress line', pair: ['on-media', 'media'], minimum: '3:1' },
       { what: 'progress against the unplayed track', pair: ['on-media', 'on-media/25'], over: 'media', minimum: '3:1' },
       { what: 'chosen speed or quality', pair: ['media', 'on-media'], minimum: '4.5:1' },
-      { what: 'speed or quality under the picture', pair: ['text', 'surface-sunken'], minimum: '4.5:1' },
+      { what: 'speed or quality under the picture', pair: ['text', 'text/8'], over: 'surface', minimum: '4.5:1' },
       { what: 'chosen speed or quality under the picture', pair: ['on-accent', 'accent'], minimum: '4.5:1' },
     ],
     notes: [

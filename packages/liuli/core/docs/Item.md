@@ -318,7 +318,7 @@ export function Compact() {
 | second line and end values, selected | `text-muted` on `accent-soft` | 4.5:1 | 5.10:1 | 5.39:1 |
 | chevron, selected | `text-muted` on `accent-soft` | 3:1 | 5.10:1 | 5.39:1 |
 | list heading and the line under it | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
-| swipe action, neutral, on its 8% wash | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
+| swipe action, neutral | `text` on `text/8` over `surface` | 4.5:1 | 13.91:1 | 11.29:1 |
 | swipe action, accent | `on-accent` on `accent` | 4.5:1 | 5.62:1 | 7.12:1 |
 | swipe action, danger | `on-danger` on `danger` | 4.5:1 | 5.21:1 | 6.29:1 |
 

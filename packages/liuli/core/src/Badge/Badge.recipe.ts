@@ -11,7 +11,8 @@ export const badgeRecipe = {
     base: 'flex-row items-center-safe self-start rounded-full',
     size: { sm: 'h-5 px-2 gap-1', md: 'h-6 px-2.5 gap-1.5' } satisfies Record<BadgeSize, string>,
     soft: {
-      neutral: 'bg-surface-sunken text-text',
+      // A quiet tint of the text colour: it reads as a pill on any surface, where a sunken surface reads as a hole.
+      neutral: 'bg-text/8 text-text',
       accent: 'bg-accent-soft text-on-accent-soft',
       success: 'bg-success-soft text-text',
       warning: 'bg-warning-soft text-text',

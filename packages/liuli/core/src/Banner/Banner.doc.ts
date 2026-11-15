@@ -29,8 +29,8 @@ export const doc: ComponentDoc = {
     states: [],
     keyboard: [],
     contrast: [
-      { what: 'title and message on neutral', pair: ['text', 'surface-sunken'], minimum: '4.5:1' },
-      { what: 'neutral icon', pair: ['text-muted', 'surface-sunken'], minimum: '3:1' },
+      { what: 'title and message on neutral', pair: ['text', 'text/6'], over: 'canvas', minimum: '4.5:1' },
+      { what: 'neutral icon', pair: ['text-muted', 'text/6'], over: 'canvas', minimum: '3:1' },
       { what: 'title and message on info', pair: ['text', 'accent-soft'], minimum: '4.5:1' },
       { what: 'title and message on success', pair: ['text', 'success-soft'], minimum: '4.5:1' },
       { what: 'title and message on warning', pair: ['text', 'warning-soft'], minimum: '4.5:1' },

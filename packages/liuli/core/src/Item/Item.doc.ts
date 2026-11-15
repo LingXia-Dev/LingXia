@@ -49,7 +49,7 @@ export const doc: ComponentDoc = {
       { what: 'second line and end values, selected', pair: ['text-muted', 'accent-soft'], minimum: '4.5:1' },
       { what: 'chevron, selected', pair: ['text-muted', 'accent-soft'], minimum: '3:1' },
       { what: 'list heading and the line under it', pair: ['text-muted', 'canvas'], minimum: '4.5:1' },
-      { what: 'swipe action, neutral, on its 8% wash', pair: ['text', 'surface'], minimum: '4.5:1' },
+      { what: 'swipe action, neutral', pair: ['text', 'text/8'], over: 'surface', minimum: '4.5:1' },
       { what: 'swipe action, accent', pair: ['on-accent', 'accent'], minimum: '4.5:1' },
       { what: 'swipe action, danger', pair: ['on-danger', 'danger'], minimum: '4.5:1' },
     ],

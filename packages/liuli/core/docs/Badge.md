@@ -118,7 +118,8 @@ export function InARow() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| neutral | `text` on `surface-sunken` | 4.5:1 | 14.36:1 | 15.55:1 |
+| neutral, on a surface | `text` on `text/8` over `surface` | 4.5:1 | 13.91:1 | 11.29:1 |
+| neutral, on a selected row | `text` on `text/8` over `accent-soft` | 4.5:1 | 12.09:1 | 9.07:1 |
 | soft accent | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.44:1 | 9.49:1 |
 | soft success | `text` on `success-soft` | 4.5:1 | 14.34:1 | 11.76:1 |
 | soft warning | `text` on `warning-soft` | 4.5:1 | 14.59:1 | 11.36:1 |

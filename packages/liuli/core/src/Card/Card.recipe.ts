@@ -17,7 +17,8 @@ export const cardRecipe = {
       md: 'p-4 gap-3',
       lg: 'p-6 gap-4',
     } satisfies Record<CardPadding, string>,
-    pressable: 'items-stretch transition-colors duration-150 ease-out hover:border-text/20 active:bg-surface-sunken disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+    // A press is a wash over the card's own surface: an inset ring wide enough to fill it, so the fill underneath stays.
+    pressable: 'items-stretch transition-colors duration-150 ease-out hover:border-text/20 active:inset-ring-[999px] active:inset-ring-text/7 disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     /** A wider accent border; it swaps colour and width, never the card's size. */
     selected: 'border-accent ring-1 ring-accent',
   },

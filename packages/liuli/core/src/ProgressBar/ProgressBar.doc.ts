@@ -27,7 +27,7 @@ export const doc: ComponentDoc = {
     states: [],
     keyboard: [],
     contrast: [
-      { what: 'fill against the track', pair: ['accent', 'surface-sunken'], minimum: '3:1' },
+      { what: 'fill against the track', pair: ['accent', 'text/10'], over: 'surface', minimum: '3:1' },
       { what: 'fill and spinner on a card', pair: ['accent', 'surface'], minimum: '3:1' },
       { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1' },
       { what: 'value', pair: ['text-muted', 'surface'], minimum: '4.5:1' },

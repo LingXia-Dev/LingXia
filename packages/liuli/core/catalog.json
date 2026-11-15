@@ -253,11 +253,21 @@
         "keyboard": [],
         "contrast": [
           {
-            "what": "neutral",
+            "what": "neutral, on a surface",
             "pair": [
               "text",
-              "surface-sunken"
+              "text/8"
             ],
+            "over": "surface",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "neutral, on a selected row",
+            "pair": [
+              "text",
+              "text/8"
+            ],
+            "over": "accent-soft",
             "minimum": "4.5:1"
           },
           {
@@ -483,16 +493,18 @@
             "what": "title and message on neutral",
             "pair": [
               "text",
-              "surface-sunken"
+              "text/6"
             ],
+            "over": "canvas",
             "minimum": "4.5:1"
           },
           {
             "what": "neutral icon",
             "pair": [
               "text-muted",
-              "surface-sunken"
+              "text/6"
             ],
+            "over": "canvas",
             "minimum": "3:1"
           },
           {
@@ -4814,11 +4826,12 @@
             "minimum": "4.5:1"
           },
           {
-            "what": "swipe action, neutral, on its 8% wash",
+            "what": "swipe action, neutral",
             "pair": [
               "text",
-              "surface"
+              "text/8"
             ],
+            "over": "surface",
             "minimum": "4.5:1"
           },
           {
@@ -5842,8 +5855,9 @@
             "what": "fill against the track",
             "pair": [
               "accent",
-              "surface-sunken"
+              "text/10"
             ],
+            "over": "surface",
             "minimum": "3:1"
           },
           {
@@ -10274,8 +10288,9 @@
             "what": "speed or quality under the picture",
             "pair": [
               "text",
-              "surface-sunken"
+              "text/8"
             ],
+            "over": "surface",
             "minimum": "4.5:1"
           },
           {

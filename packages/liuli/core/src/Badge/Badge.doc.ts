@@ -24,7 +24,8 @@ export const doc: ComponentDoc = {
     states: [],
     keyboard: [],
     contrast: [
-      { what: 'neutral', pair: ['text', 'surface-sunken'], minimum: '4.5:1' },
+      { what: 'neutral, on a surface', pair: ['text', 'text/8'], over: 'surface', minimum: '4.5:1' },
+      { what: 'neutral, on a selected row', pair: ['text', 'text/8'], over: 'accent-soft', minimum: '4.5:1' },
       { what: 'soft accent', pair: ['on-accent-soft', 'accent-soft'], minimum: '4.5:1' },
       { what: 'soft success', pair: ['text', 'success-soft'], minimum: '4.5:1' },
       { what: 'soft warning', pair: ['text', 'warning-soft'], minimum: '4.5:1' },

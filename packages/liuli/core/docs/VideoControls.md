@@ -129,7 +129,7 @@ export function Bar() {
 | progress line | `on-media` on `media` | 3:1 | 7.94:1 | 7.94:1 |
 | progress against the unplayed track | `on-media` on `on-media/25` over `media` | 3:1 | 4.14:1 | 4.14:1 |
 | chosen speed or quality | `media` on `on-media` | 4.5:1 | 7.94:1 | 7.94:1 |
-| speed or quality under the picture | `text` on `surface-sunken` | 4.5:1 | 14.36:1 | 15.55:1 |
+| speed or quality under the picture | `text` on `text/8` over `surface` | 4.5:1 | 13.91:1 | 11.29:1 |
 | chosen speed or quality under the picture | `on-accent` on `accent` | 4.5:1 | 5.62:1 | 7.12:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
