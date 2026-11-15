@@ -101,6 +101,7 @@ import { Content as Settings } from '../content/settings';
 import { Content as Uploads } from '../content/uploads';
 import { Content as ListDetail } from '../content/list-detail';
 import { Content as Dashboard } from '../content/dashboard';
+import { Content as Conversation } from '../content/conversation';
 
 /** Category contents open a page through `onOpen`; the others ignore it. */
 export type GalleryContent = Component<{ onOpen: (page: string) => void }>;
@@ -207,4 +208,5 @@ export const contents: Record<string, GalleryContent> = {
   "uploads": Uploads,
   "list-detail": ListDetail,
   "dashboard": Dashboard,
+  "conversation": Conversation,
 };

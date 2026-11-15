@@ -18,7 +18,7 @@ const categories: Record<string, string[]> = {
   'category-content': ['card', 'item', 'details', 'avatar', 'split-view', 'icon', 'table', 'markdown', 'metadata-list', 'section', 'divider', 'kbd', 'timer', 'code', 'timestamp', 'message-bubble'],
   'category-charts': ['stat', 'sparkline', 'bar-chart', 'line-chart', 'pie-chart', 'chart'],
   'category-media': ['video-player', 'video-controls', 'carousel', 'thumbnail', 'lightbox'],
-  'category-patterns': ['sign-in', 'settings', 'uploads', 'list-detail', 'dashboard'],
+  'category-patterns': ['sign-in', 'settings', 'uploads', 'list-detail', 'dashboard', 'conversation'],
 };
 
 spec('gallery: home opens every category, and each category every page', { start: { page: 'home' }, timeout: 360_000 }, async (t) => {

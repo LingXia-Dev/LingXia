@@ -244,7 +244,7 @@ const pageLogic = page => [
   '',
 ].join('\n');
 
-function pageWrapper(page, { opens = false } = {}) {
+function pageWrapper(page, { opens = false, isFilled = false } = {}) {
   return [
     `// ${generated}`,
     ...(opens ? ["import type { View } from '@lingxia/view';"] : []),
@@ -254,7 +254,7 @@ function pageWrapper(page, { opens = false } = {}) {
     ...(opens ? ['type Actions = { open(target: { page: string }): Promise<void> };', ''] : []),
     `export function render(${opens ? '{ actions }: View<Actions>' : ''}) {`,
     '  return (',
-    '    <GalleryPage>',
+    isFilled ? '    <GalleryPage isFilled>' : '    <GalleryPage>',
     opens ? '      <Content onOpen={page => actions.open({ page })} />' : '      <Content />',
     '    </GalleryPage>',
     '  );',
@@ -439,7 +439,7 @@ if (isCore) {
     if (!existsSync(join(gallery, 'pages', guide.page, 'index.json'))) problems.push(`${where}: pages/${guide.page}/index.json is missing`);
     const content = join(gallery, 'content', `${guide.page}.tsx`);
     if (!existsSync(content) || !/export function Content\b/.test(readFileSync(content, 'utf8'))) problems.push(`${where}: content/${guide.page}.tsx does not export Content`);
-    outputs.set(join(gallery, 'pages', guide.page, 'index.tsx'), pageWrapper(guide.page));
+    outputs.set(join(gallery, 'pages', guide.page, 'index.tsx'), pageWrapper(guide.page, { isFilled: guide.layout === 'fill' }));
     outputs.set(join(gallery, 'pages', guide.page, 'index.ts'), pageLogic(guide.page));
     if (!new RegExp(`export function ${guideSpecimen(guide)}\\b`).test(specimens)) problems.push(`${where}: shared/Specimens.tsx does not export ${guideSpecimen(guide)}`);
   }

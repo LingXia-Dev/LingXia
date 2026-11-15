@@ -1307,6 +1307,13 @@ export const entries: GalleryEntry[] = [
     "category": "patterns",
     "summary": "A period's figures, their charts and a table, laid out for a phone and for a desk",
     "keywords": []
+  },
+  {
+    "name": "Conversation",
+    "page": "conversation",
+    "category": "patterns",
+    "summary": "Messages in runs with day breaks, one that failed with a way to send it again, and a composer that keeps the newest in view",
+    "keywords": []
   }
 ];
 
@@ -1397,7 +1404,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "template",
     "description": "Whole screens, put together",
     "page": "category-patterns",
-    "count": 5
+    "count": 6
   }
 ];
 

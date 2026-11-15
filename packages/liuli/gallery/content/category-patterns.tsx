@@ -1,12 +1,12 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { SignInSpecimen, SettingsSpecimen, UploadsSpecimen, ListDetailSpecimen, DashboardSpecimen } from '../shared/Specimens';
+import { SignInSpecimen, SettingsSpecimen, UploadsSpecimen, ListDetailSpecimen, DashboardSpecimen, ConversationSpecimen } from '../shared/Specimens';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Whole screens built from the components: forms, settings, lists with their records, and dashboards."}</text>
-      <Category title={"5 patterns"}>
+      <Category title={"6 patterns"}>
         <Tile
           name={"Sign in"}
           tagline={"A form that checks"}
@@ -42,11 +42,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"Dashboard"}
           tagline={"Figures and charts"}
-          isWide
           onOpen={() => onOpen("dashboard")}
           testId={"open-dashboard"}
         >
           <DashboardSpecimen />
+        </Tile>
+        <Tile
+          name={"Conversation"}
+          tagline={"Messages, a reply"}
+          onOpen={() => onOpen("conversation")}
+          testId={"open-conversation"}
+        >
+          <ConversationSpecimen />
         </Tile>
       </Category>
     </>

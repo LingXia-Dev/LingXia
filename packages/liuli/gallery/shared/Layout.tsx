@@ -4,13 +4,18 @@ import { cx, useView, type Child } from '@lingxia/view';
 // The gallery's one page skeleton: every page takes its rhythm from these, never its own classes.
 
 /** A gallery page: a scrolling column with the page gutter and section spacing. */
-export function GalleryPage({ children }: { children: Child }) {
+export function GalleryPage({ children, isFilled = false }: { children: Child; isFilled?: boolean }) {
   const { env } = useView();
   return (
     <page className="bg-canvas">
-      <scroll className="grow">
-        <view className="px-4 pt-4 pb-10 gap-8">{children}</view>
-      </scroll>
+      {isFilled ? (
+        // A pattern that owns its height: it fills what the page leaves, so the keyboard shortens it and nothing scrolls under.
+        <view className="grow basis-0 min-h-0 px-4 pt-4 pb-3">{children}</view>
+      ) : (
+        <scroll className="grow">
+          <view className="px-4 pt-4 pb-10 gap-8">{children}</view>
+        </scroll>
+      )}
       {/* Test probe: specs read the bottom inset from its height (inset + 1); no handlers, so taps pass through. */}
       <view aria-hidden data-testid="safe-area-bottom" className="absolute start-0 bottom-0 w-px" style={{ height: env.insets.bottom + 1 }} />
     </page>

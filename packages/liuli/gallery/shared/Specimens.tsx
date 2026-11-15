@@ -1,3 +1,4 @@
+import { MessageBubble } from '@liulidesign/core/MessageBubble';
 import { Button } from '@liulidesign/core/Button';
 import { Stat } from '@liulidesign/charts/Stat';
 import { Item, ItemList } from '@liulidesign/core/Item';
@@ -96,6 +97,15 @@ export function DashboardSpecimen() {
   return (
     <view className="w-full rounded-container border border-text/12 bg-surface p-3">
       <Stat label="Revenue" value="€34,020" delta="8.8%" deltaDirection="up" deltaLabel="Up 8.8%" size="sm" />
+    </view>
+  );
+}
+
+export function ConversationSpecimen() {
+  return (
+    <view className="w-full gap-1 rounded-container border border-text/12 bg-surface p-3">
+      <MessageBubble text="Saturday?" />
+      <MessageBubble side="end" text="Yes!" />
     </view>
   );
 }

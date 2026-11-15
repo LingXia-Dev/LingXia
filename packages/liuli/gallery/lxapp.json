@@ -109,6 +109,7 @@
     { "name": "settings", "path": "pages/settings/index" },
     { "name": "uploads", "path": "pages/uploads/index" },
     { "name": "list-detail", "path": "pages/list-detail/index" },
-    { "name": "dashboard", "path": "pages/dashboard/index" }
+    { "name": "dashboard", "path": "pages/dashboard/index" },
+    { "name": "conversation", "path": "pages/conversation/index" }
   ]
 }
