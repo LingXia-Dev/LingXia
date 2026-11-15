@@ -123,6 +123,17 @@ final class GpuPageView: NSView {
         report()
         gpuPageSetVisible(token, window != nil && !isHiddenOrHasHiddenAncestor)
         visibilityChanged()
+        takeKeysIfUnclaimed()
+    }
+
+    /// Keys reach the page without a click when nothing else in the key window holds them: a
+    /// page shown where the last one was, or a window that comes forward. A focused sidebar,
+    /// address field or terminal keeps them.
+    private func takeKeysIfUnclaimed() {
+        guard let window, window.isKeyWindow, !isHiddenOrHasHiddenAncestor,
+              window.firstResponder === window
+        else { return }
+        window.makeFirstResponder(self)
     }
 
     /// Off screen and not kept: drop the layer's last frame and drawables; the next attach
@@ -161,6 +172,7 @@ final class GpuPageView: NSView {
         let focused = window?.isKeyWindow ?? false
         gpuPageWindowFocus(token, focused)
         ime.updateCaret()
+        takeKeysIfUnclaimed()
     }
 
     override func viewDidChangeBackingProperties() {
