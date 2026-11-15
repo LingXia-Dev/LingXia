@@ -28,6 +28,7 @@ import { Content as Slider } from '../content/slider';
 import { Content as Field } from '../content/field';
 import { Content as SearchField } from '../content/search-field';
 import { Content as NumberInput } from '../content/number-input';
+import { Content as Calendar } from '../content/calendar';
 import { Content as CheckboxInput } from '../content/checkbox-input';
 import { Content as RadioGroup } from '../content/radio-group';
 import { Content as Switch } from '../content/switch';
@@ -100,6 +101,7 @@ export const contents: Record<string, GalleryContent> = {
   "field": Field,
   "search-field": SearchField,
   "number-input": NumberInput,
+  "calendar": Calendar,
   "checkbox-input": CheckboxInput,
   "radio-group": RadioGroup,
   "switch": Switch,

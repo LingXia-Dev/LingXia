@@ -264,6 +264,23 @@ export const entries: GalleryEntry[] = [
     "status": "preview"
   },
   {
+    "name": "Calendar",
+    "page": "calendar",
+    "category": "inputs",
+    "summary": "A month of days in the page, to choose one day or a span",
+    "keywords": [
+      "calendar",
+      "date picker",
+      "date range",
+      "month",
+      "day picker",
+      "range picker",
+      "schedule"
+    ],
+    "since": "2026-11-15",
+    "status": "preview"
+  },
+  {
     "name": "CheckboxInput",
     "page": "checkbox-input",
     "category": "selection",
@@ -964,7 +981,7 @@ export const galleryCategories: GalleryCategory[] = [
     "title": "Inputs",
     "description": "Fields a person types into or sets: text, dates, times and amounts.",
     "page": "category-inputs",
-    "count": 8
+    "count": 9
   },
   {
     "id": "selection",
@@ -1025,7 +1042,7 @@ export const galleryCategories: GalleryCategory[] = [
 ];
 
 /** The 6 latest components, newest first. */
-export const newest: string[] = ["CheckboxList","Combobox","Markdown","NumberInput","SearchField","Table"];
+export const newest: string[] = ["Calendar","CheckboxList","Combobox","Markdown","NumberInput","SearchField"];
 
 export const version = "0.1.0";
 export const packageStatus = "Preview";

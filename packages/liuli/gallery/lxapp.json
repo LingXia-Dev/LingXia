@@ -37,6 +37,7 @@
     { "name": "field", "path": "pages/field/index" },
     { "name": "search-field", "path": "pages/search-field/index" },
     { "name": "number-input", "path": "pages/number-input/index" },
+    { "name": "calendar", "path": "pages/calendar/index" },
     { "name": "checkbox-input", "path": "pages/checkbox-input/index" },
     { "name": "radio-group", "path": "pages/radio-group/index" },
     { "name": "switch", "path": "pages/switch/index" },

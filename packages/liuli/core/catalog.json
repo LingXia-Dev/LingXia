@@ -1333,6 +1333,327 @@
       }
     },
     {
+      "name": "Calendar",
+      "import": "@liulidesign/core/Calendar",
+      "exports": [
+        "Calendar"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A month of days in the page, to choose one day or a span",
+      "description": "Calendar draws a month in the page and lets people press a day, or two days for a span: a due date beside its task, the nights of a stay. Days are `YYYY-MM-DD` text. The chosen day is a filled circle, a span is a soft band between its ends, and today is ringed. Its words come from a `locale` object; English and Chinese ones are ready to import. For a date typed into a form, DateInput opens the platform's own picker.",
+      "keywords": [
+        "calendar",
+        "date picker",
+        "date range",
+        "month",
+        "day picker",
+        "range picker",
+        "schedule"
+      ],
+      "props": [
+        {
+          "name": "value",
+          "type": "string | null",
+          "required": false,
+          "description": "The chosen day, or `null`."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: string) => void)",
+          "required": false,
+          "description": "Runs with the pressed day."
+        },
+        {
+          "name": "range",
+          "type": "CalendarRange",
+          "required": false,
+          "description": "The chosen span. A first press sets `start` and clears `end`; a second sets `end`, the earlier day first."
+        },
+        {
+          "name": "onRangeChange",
+          "type": "((range: CalendarRange) => void)",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Names the calendar for assistive tech: \"Due date\", \"Stay\"."
+        },
+        {
+          "name": "locale",
+          "type": "CalendarLocale",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "month",
+          "type": "string",
+          "required": false,
+          "description": "The month shown, as `YYYY-MM`; pass it with `onMonthChange` to control it. By default the chosen day's month, else today's."
+        },
+        {
+          "name": "onMonthChange",
+          "type": "((month: string) => void)",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "min",
+          "type": "string",
+          "required": false,
+          "description": "The earliest and latest day that can be chosen."
+        },
+        {
+          "name": "max",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "isDateDisabled",
+          "type": "((date: string) => boolean)",
+          "required": false,
+          "description": "Days that cannot be chosen: closed days, taken days."
+        },
+        {
+          "name": "today",
+          "type": "string",
+          "required": true,
+          "description": "The day marked as today, and the month shown when nothing is chosen. A View takes the time from its page, not from a clock."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the calendar; a day is `<id>-<YYYY-MM-DD>`, the month buttons `<id>-previous` and `<id>-next`."
+        }
+      ],
+      "otherProps": {
+        "CalendarLocale": [
+          {
+            "name": "firstDay",
+            "type": "number",
+            "required": true,
+            "description": "The day a week starts on: 0 for Sunday, 1 for Monday."
+          },
+          {
+            "name": "weekdays",
+            "type": "readonly string[]",
+            "required": true,
+            "description": "Seven short weekday names, Sunday first: \"S\", \"M\", …"
+          },
+          {
+            "name": "monthTitle",
+            "type": "(year: number, month: number) => string",
+            "required": true,
+            "description": "The month's title: \"November 2026\". `month` is 1 to 12."
+          },
+          {
+            "name": "dayLabel",
+            "type": "(year: number, month: number, day: number, weekday: number, isToday: boolean) => string",
+            "required": true,
+            "description": "A day's accessible name: \"Sunday 15 November 2026\", saying so when it is today. `weekday` is 0 for Sunday."
+          },
+          {
+            "name": "previousMonth",
+            "type": "string",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "nextMonth",
+            "type": "string",
+            "required": true,
+            "description": ""
+          }
+        ],
+        "CalendarRange": [
+          {
+            "name": "start",
+            "type": "string | null",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "end",
+            "type": "string | null",
+            "required": true,
+            "description": ""
+          }
+        ]
+      },
+      "parts": {
+        "root": "view",
+        "header": "view",
+        "title": "text",
+        "grid": "view",
+        "week": "view",
+        "weekday": "text",
+        "slot": "view",
+        "day": "button",
+        "dayLabel": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "selected",
+            "from": "value, or range"
+          },
+          {
+            "state": "disabled",
+            "from": "min, max, isDateDisabled"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "To the month buttons, then through the days"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Chooses the day"
+          }
+        ],
+        "target": {
+          "md": 40
+        },
+        "contrast": [
+          {
+            "what": "day",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "chosen day",
+            "pair": [
+              "on-accent",
+              "accent"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "day inside a span",
+            "pair": [
+              "text",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "weekday names",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "ring on today",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "Each day is named in full by the locale, \"Thursday 19 November 2026\", with \"Today\" said where it is today, so the weekday row is not read.",
+          "A chosen day, both ends of a span and the days between them report selected.",
+          "The month's title is a status: moving to another month announces it.",
+          "A day that cannot be chosen stays in the grid, dimmed and disabled, so the weeks keep their shape.",
+          "Today is marked by a ring and named in words; the chosen day by a fill. Neither depends on colour alone."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Day",
+          "title": "One day",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar } from '@liulidesign/core/Calendar';\nimport { calendarEn } from './locale/en';\n\nconst today = '2026-11-15';\n\n/** One day: the chosen day is filled, today is ringed. */\nexport function Day() {\n  const day = useLocal<string | null>('day', '2026-11-19');\n  return <Calendar label=\"Due date\" locale={calendarEn} value={day.value} onChange={day.set} today={today} data-testid=\"due\" />;\n}"
+        },
+        {
+          "name": "Stay",
+          "title": "A span of days",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar, type CalendarRange } from '@liulidesign/core/Calendar';\nimport { calendarEn } from './locale/en';\n\nconst today = '2026-11-15';\n\n/** A span: the first press starts it, the second ends it. Days before today cannot be chosen. */\nexport function Stay() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return (\n    <view className=\"gap-2\">\n      <Calendar label=\"Stay\" locale={calendarEn} range={stay.value} onRangeChange={stay.set} min={today} today={today} data-testid=\"stay\" />\n      <text role=\"status\" className=\"px-2 text-footnote text-muted tabular-nums\">{`${stay.value.start ?? ''} – ${stay.value.end ?? ''}`}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Weekdays",
+          "title": "Days ruled out",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar, calendarWeekday } from '@liulidesign/core/Calendar';\nimport { calendarEn } from './locale/en';\n\nconst today = '2026-11-15';\nconst closed = (date: string) => calendarWeekday(date) % 6 === 0;\n\n/** Days the app rules out stay in the grid, dimmed: here the weekends. */\nexport function Weekdays() {\n  const day = useLocal<string | null>('day', null);\n  return <Calendar label=\"Appointment\" locale={calendarEn} value={day.value} onChange={day.set} isDateDisabled={closed} today={today} month=\"2026-12\" data-testid=\"appointment\" />;\n}"
+        },
+        {
+          "name": "Chinese",
+          "title": "Another language",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar } from '@liulidesign/core/Calendar';\nimport { calendarZh } from './locale/zh';\n\nconst today = '2026-11-15';\n\n/** Another language: the words and the first day of the week come from the locale. */\nexport function Chinese() {\n  const day = useLocal<string | null>('day', '2026-11-19');\n  return <Calendar label=\"截止日期\" locale={calendarZh} value={day.value} onChange={day.set} today={today} data-testid=\"zh\" />;\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Arrow keys moving through the days as one Tab stop, a week up and down.",
+          "needs": "a grid whose cells take one Tab stop and move by arrows in two directions",
+          "today": "Every day is its own Tab stop."
+        },
+        {
+          "missing": "A field that opens the calendar, for a span typed into a form.",
+          "needs": "nothing from the View",
+          "today": "The calendar sits in the page; put it in a Popover or a BottomSheet."
+        },
+        {
+          "missing": "Jumping to a month or year, and two months side by side.",
+          "needs": "nothing from the View",
+          "today": "One month, a month at a time."
+        },
+        {
+          "missing": "Month and weekday names from the device's own language.",
+          "needs": "date formatting in the View's engine",
+          "today": "The app passes a `locale`."
+        }
+      ],
+      "related": [
+        "DateInput",
+        "TimeInput",
+        "Popover"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A month of days",
+        "order": 9,
+        "page": {
+          "lead": "Use a calendar where people choose a day, or a span of days, by looking at a month.",
+          "hero": "Day",
+          "variants": [
+            {
+              "name": "Stay",
+              "title": "A span: the first press starts it, the second ends it; past days cannot be chosen"
+            },
+            {
+              "name": "Weekdays",
+              "title": "Days the app rules out are dimmed"
+            },
+            {
+              "name": "Chinese",
+              "title": "Words and week start from the locale"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Card",
       "import": "@liulidesign/core/Card",
       "exports": [
