@@ -5,6 +5,7 @@ export const checkboxInputParts = {
   control: 'checkbox',
   row: 'view',
   box: 'view',
+  dash: 'view',
   mark: 'vector',
   text: 'view',
   label: 'text',
@@ -40,6 +41,11 @@ export const checkboxInputRecipe = {
   },
   mark: {
     size: { sm: 'size-3', md: 'size-3.5', lg: 'size-4' } satisfies Record<FieldSize, string>,
+  },
+  /** Partly chosen: a dash on the filled box. */
+  dash: {
+    base: 'h-0.5 rounded-full bg-on-accent',
+    size: { sm: 'w-2', md: 'w-2.5', lg: 'w-3' } satisfies Record<FieldSize, string>,
   },
   text: {
     base: 'grow shrink min-w-0 gap-0.5',

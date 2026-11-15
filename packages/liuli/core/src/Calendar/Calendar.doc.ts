@@ -29,7 +29,10 @@ export const doc: ComponentDoc = {
     description: [],
     states: [{ state: 'selected', from: 'value, or range' }, { state: 'disabled', from: 'min, max, isDateDisabled' }],
     keyboard: [
-      { keys: 'Tab', effect: 'To the month buttons, then through the days' },
+      { keys: 'Tab', effect: 'To the month buttons, then into the days as one stop' },
+      { keys: 'Arrow keys', effect: 'A day along the week, a week up and down; days that cannot be chosen are passed over' },
+      { keys: 'Home and End', effect: 'To the ends of the week' },
+      { keys: 'PageUp and PageDown', effect: 'To the month before and after' },
       { keys: 'Enter or Space', effect: 'Chooses the day' },
     ],
     target: { md: 40 },
@@ -67,11 +70,6 @@ export const doc: ComponentDoc = {
     { name: 'Chinese', title: 'Another language' },
   ],
   gaps: [
-    {
-      missing: 'Arrow keys moving through the days as one Tab stop, a week up and down.',
-      needs: 'a grid whose cells take one Tab stop and move by arrows in two directions',
-      today: 'Every day is its own Tab stop.',
-    },
     { missing: 'A field that opens the calendar, for a span typed into a form.', needs: 'nothing from the View', today: 'The calendar sits in the page; put it in a Popover or a BottomSheet.' },
     { missing: 'Jumping to a month or year, and two months side by side.', needs: 'nothing from the View', today: 'One month, a month at a time.' },
     { missing: 'Month and weekday names from the device\'s own language.', needs: 'date formatting in the View\'s engine', today: 'The app passes a `locale`.' },

@@ -5,6 +5,7 @@ export const checkboxListParts = {
   label: 'text',
   description: 'text',
   options: 'view',
+  all: 'CheckboxInput',
 } as const;
 
 /**
@@ -22,6 +23,10 @@ export const checkboxListRecipe = {
   },
   description: {
     base: 'text-footnote text-muted',
+  },
+  /** The box for all sits over a hairline, apart from the options it stands for. */
+  all: {
+    base: 'pb-2.5 border-b border-text/8',
   },
   options: {
     size: { sm: 'gap-2', md: 'gap-2.5', lg: 'gap-3' } satisfies Record<FieldSize, string>,

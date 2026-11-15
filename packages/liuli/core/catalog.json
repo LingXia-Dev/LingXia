@@ -1860,7 +1860,19 @@
         "keyboard": [
           {
             "keys": "Tab",
-            "effect": "To the month buttons, then through the days"
+            "effect": "To the month buttons, then into the days as one stop"
+          },
+          {
+            "keys": "Arrow keys",
+            "effect": "A day along the week, a week up and down; days that cannot be chosen are passed over"
+          },
+          {
+            "keys": "Home and End",
+            "effect": "To the ends of the week"
+          },
+          {
+            "keys": "PageUp and PageDown",
+            "effect": "To the month before and after"
           },
           {
             "keys": "Enter or Space",
@@ -1943,11 +1955,6 @@
         }
       ],
       "gaps": [
-        {
-          "missing": "Arrow keys moving through the days as one Tab stop, a week up and down.",
-          "needs": "a grid whose cells take one Tab stop and move by arrows in two directions",
-          "today": "Every day is its own Tab stop."
-        },
         {
           "missing": "A field that opens the calendar, for a span typed into a form.",
           "needs": "nothing from the View",
@@ -2534,6 +2541,13 @@
           "description": "Runs with the new value; the app passes it back as `value`."
         },
         {
+          "name": "isIndeterminate",
+          "type": "boolean",
+          "required": false,
+          "description": "Stands for a set that is partly chosen: draws a dash and is read as mixed. A press asks for all; the app clears it when the set is all or none.",
+          "default": "false"
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -2552,6 +2566,7 @@
         "control": "checkbox",
         "row": "view",
         "box": "view",
+        "dash": "view",
         "mark": "vector",
         "text": "view",
         "label": "text",
@@ -2639,6 +2654,11 @@
           "name": "Sizes",
           "title": "Sizes",
           "source": "import { useLocal } from '@lingxia/view';\nimport { CheckboxInput } from '@liulidesign/core/CheckboxInput';\n\nexport function Sizes() {\n  const small = useLocal('small', false);\n  const medium = useLocal('medium', true);\n  const large = useLocal('large', false);\n  return (\n    <view className=\"gap-2\">\n      <CheckboxInput bind={small} label=\"Small\" size=\"sm\" />\n      <CheckboxInput bind={medium} label=\"Medium\" />\n      <CheckboxInput bind={large} label=\"Large\" size=\"lg\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "StateMixed",
+          "title": "Partly chosen",
+          "source": "import { CheckboxInput } from '@liulidesign/core/CheckboxInput';\n\n/** Partly chosen: one box that stands for a set of which some are on. */\nexport function StateMixed() {\n  return <CheckboxInput value={false} onChange={() => {}} isIndeterminate label=\"All folders\" description=\"3 of 8 chosen\" data-testid=\"mixed\" />;\n}"
         }
       ],
       "gaps": [
@@ -2680,6 +2700,10 @@
             {
               "name": "StateDisabled",
               "title": "Disabled"
+            },
+            {
+              "name": "StateMixed",
+              "title": "Mixed"
             }
           ],
           "inContext": [
@@ -2768,6 +2792,12 @@
           "description": ""
         },
         {
+          "name": "selectAllLabel",
+          "type": "string",
+          "required": false,
+          "description": "Adds a first box that chooses or clears every option, named by this text: \"Select all\". It shows a dash while some are chosen."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -2799,7 +2829,8 @@
         "root": "view",
         "label": "text",
         "description": "text",
-        "options": "view"
+        "options": "view",
+        "all": "CheckboxInput"
       },
       "accessibility": {
         "pattern": null,
@@ -2877,6 +2908,11 @@
           "name": "Sizes",
           "title": "Sizes",
           "source": "import { useLocal } from '@lingxia/view';\nimport { CheckboxList } from '@liulidesign/core/CheckboxList';\n\nexport function Sizes() {\n  const chosen = useLocal<readonly string[]>('sized', ['a']);\n  const two = [{ value: 'a', label: 'First' }, { value: 'b', label: 'Second' }];\n  return (\n    <view className=\"grid grid-cols-2 gap-4\">\n      <CheckboxList label=\"Small\" size=\"sm\" bind={chosen} options={two} data-testid=\"small\" />\n      <CheckboxList label=\"Large\" size=\"lg\" bind={chosen} options={two} data-testid=\"large\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "SelectAll",
+          "title": "With a box for all",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { CheckboxList } from '@liulidesign/core/CheckboxList';\n\n/** A box for all of them: checked when all are, a dash when some are. */\nexport function SelectAll() {\n  const chosen = useLocal<readonly string[]>('folders', ['travel', 'recipes']);\n  return (\n    <CheckboxList\n      bind={chosen}\n      label=\"Folders to export\"\n      selectAllLabel=\"All folders\"\n      options={[{ value: 'travel', label: 'Travel' }, { value: 'work', label: 'Work' }, { value: 'recipes', label: 'Recipes' }, { value: 'garden', label: 'Garden' }]}\n      data-testid=\"export\"\n    />\n  );\n}"
         }
       ],
       "gaps": [
@@ -2911,6 +2947,10 @@
             {
               "name": "WithUnavailable",
               "title": "An option that cannot be chosen stays in the list, with its reason"
+            },
+            {
+              "name": "SelectAll",
+              "title": "A box that chooses all, with a dash while some are chosen"
             }
           ],
           "sizes": [
@@ -7837,7 +7877,7 @@
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
-          "description": "Takes no press and is drawn faint.",
+          "description": "Takes no press, is drawn faint and is read as unavailable.",
           "default": "false"
         },
         {
@@ -7855,7 +7895,9 @@
         "pattern": null,
         "name": "label",
         "description": [],
-        "states": [],
+        "states": [
+          "disabled"
+        ],
         "keyboard": [
           {
             "keys": "Tab",
@@ -7889,7 +7931,7 @@
           "It is read as a link, by its label. Write the label so it makes sense out of its sentence, or give `aria-label`.",
           "The underline tells it from the text around it without colour.",
           "A link in a line of text is as tall as the line; a finger press that misses goes to the nearest link within reach.",
-          "A disabled link takes no press and is faint; it is still read as a link, see the gaps."
+          "A disabled link is read as unavailable and takes no press."
         ]
       },
       "examples": [
@@ -7910,7 +7952,6 @@
         }
       ],
       "gaps": [
-        "A disabled link is not read as unavailable: the View refuses `disabled` on a link today.",
         "A link has no hover or focus style of its own beyond the system focus ring."
       ],
       "related": [

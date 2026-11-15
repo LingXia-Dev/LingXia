@@ -22,6 +22,8 @@ export type CheckboxInputBinding =
     };
 
 export type CheckboxInputProps = FieldOwnProps & CheckboxInputBinding & {
+  /** Stands for a set that is partly chosen: draws a dash and is read as mixed. A press asks for all; the app clears it when the set is all or none. @default false */
+  isIndeterminate?: boolean;
   className?: string;
   /** On the checkbox. */
   'data-testid'?: string;
@@ -35,12 +37,14 @@ export type CheckboxInputProps = FieldOwnProps & CheckboxInputBinding & {
 export function CheckboxInput(props: CheckboxInputProps) {
   const {
     label, isLabelHidden = false, description, status, isRequired = false, isDisabled = false, disabledMessage, size = 'md',
-    className, 'data-testid': testId,
+    isIndeterminate = false, className, 'data-testid': testId,
   } = props;
   const id = useId();
   const helpId = `${id}-help`;
   const statusId = `${id}-status`;
   const checked = props.bind ? props.bind.value : props.value;
+  const isMixed = isIndeterminate && !checked;
+  const state = checked ? 'checked' : isMixed ? 'mixed' : 'unchecked';
   const help = isDisabled && disabledMessage ? disabledMessage : description;
   const semantics = {
     'aria-label': label,
@@ -50,8 +54,9 @@ export function CheckboxInput(props: CheckboxInputProps) {
   };
   const content = (
     <view className={r.row.base}>
-      <view aria-hidden className={cx(r.box.base, r.box.size[size], r.box.state[checked ? 'on' : 'off'], !checked && status?.type === 'error' && r.box.invalid)}>
+      <view aria-hidden className={cx(r.box.base, r.box.size[size], r.box.state[checked || isMixed ? 'on' : 'off'], !checked && !isMixed && status?.type === 'error' && r.box.invalid)}>
         {checked && <Glyph name="check" weight={2.5} className={r.mark.size[size]} />}
+        {isMixed && <view className={cx(r.dash.base, r.dash.size[size])} />}
       </view>
       <view className={r.text.base}>
         <text className={cx(r.label.base, r.label.size[size], isLabelHidden && r.label.hidden)}>
@@ -71,9 +76,10 @@ export function CheckboxInput(props: CheckboxInputProps) {
           aria-describedby={semantics['aria-describedby']}
           aria-invalid={semantics['aria-invalid']}
           aria-required={semantics['aria-required']}
+          indeterminate={isMixed || undefined}
           disabled={isDisabled}
           data-testid={testId}
-          data-state={checked ? 'checked' : 'unchecked'}
+          data-state={state}
           className={r.control.base}
         >
           {content}
@@ -86,9 +92,10 @@ export function CheckboxInput(props: CheckboxInputProps) {
           aria-describedby={semantics['aria-describedby']}
           aria-invalid={semantics['aria-invalid']}
           aria-required={semantics['aria-required']}
+          indeterminate={isMixed || undefined}
           disabled={isDisabled}
           data-testid={testId}
-          data-state={checked ? 'checked' : 'unchecked'}
+          data-state={state}
           className={r.control.base}
         >
           {content}

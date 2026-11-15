@@ -49,3 +49,8 @@ test('the status message starts under the label, past the box and the row gap', 
   assert.ok(padding > 0, 'the focus fill reaches past the box');
   assert.equal(margin + padding, 0, 'no net inset before the box');
 });
+
+test('StateMixed: a dash on the filled box, read as mixed', async () => {
+  const box = (await renderExample('CheckboxInput/CheckboxInput', 'StateMixed')).getByTestId('mixed');
+  assert.deepEqual([box.props.mixed, JSON.parse(box.props.dataAttributes).state], [1, 'mixed']);
+});

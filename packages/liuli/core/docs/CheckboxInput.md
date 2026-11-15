@@ -66,6 +66,17 @@ export function Sizes() {
 }
 ```
 
+### Partly chosen
+
+```tsx
+import { CheckboxInput } from '@liulidesign/core/CheckboxInput';
+
+/** Partly chosen: one box that stands for a set of which some are on. */
+export function StateMixed() {
+  return <CheckboxInput value={false} onChange={() => {}} isIndeterminate label="All folders" description="3 of 8 chosen" data-testid="mixed" />;
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -84,6 +95,7 @@ export function Sizes() {
 | `bind` | `Local<boolean>` |  | A View-local cell the control reads and writes; use it or `value` with `onChange`. |
 | `value` | `boolean` |  | The app's value; pass `onChange` with it. |
 | `onChange` | `((value: boolean) => void)` |  | Runs with the new value; the app passes it back as `value`. |
+| `isIndeterminate` | `boolean` | `false` | Stands for a set that is partly chosen: draws a dash and is read as mixed. A press asks for all; the app clears it when the set is all or none. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the checkbox. |
 

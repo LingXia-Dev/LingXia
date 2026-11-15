@@ -54,3 +54,8 @@ export function StateInvalid() {
 export function StateDisabled() {
   return <CheckboxInput value onChange={() => {}} label="Backups" isDisabled />;
 }
+
+/** Partly chosen: one box that stands for a set of which some are on. */
+export function StateMixed() {
+  return <CheckboxInput value={false} onChange={() => {}} isIndeterminate label="All folders" description="3 of 8 chosen" data-testid="mixed" />;
+}

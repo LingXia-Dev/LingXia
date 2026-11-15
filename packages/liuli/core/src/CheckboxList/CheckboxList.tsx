@@ -43,6 +43,8 @@ export type CheckboxListProps = CheckboxListBinding & {
   /** Marks the question with an asterisk. Validation is the app's. @default false */
   isRequired?: boolean;
   options: readonly CheckboxListOption[];
+  /** Adds a first box that chooses or clears every option, named by this text: "Select all". It shows a dash while some are chosen. */
+  selectAllLabel?: string;
   /** Disables every option. @default false */
   isDisabled?: boolean;
   /** @default 'md' */
@@ -55,7 +57,7 @@ export type CheckboxListProps = CheckboxListBinding & {
 /** Several on/off choices under one question, any number of which can be chosen. */
 export function CheckboxList(props: CheckboxListProps) {
   const {
-    label, isLabelHidden = false, description, status, isRequired = false, options, isDisabled = false, size = 'md',
+    label, isLabelHidden = false, description, status, isRequired = false, options, selectAllLabel, isDisabled = false, size = 'md',
     className, 'data-testid': testId,
   } = props;
   const id = useId();
@@ -64,6 +66,14 @@ export function CheckboxList(props: CheckboxListProps) {
   const toggle = (value: string, isOn: boolean) => {
     // Kept in the options' order, whatever order they were chosen in.
     const next = options.map(option => option.value).filter(each => (each === value ? isOn : chosen.includes(each)));
+    if (props.bind) props.bind.set(next);
+    else props.onChange(next);
+  };
+  // Options the list may change; a disabled one keeps its state through "all" and "none".
+  const free = options.filter(option => !option.isDisabled).map(option => option.value);
+  const on = free.filter(value => chosen.includes(value)).length;
+  const setAll = (isOn: boolean) => {
+    const next = options.map(option => option.value).filter(each => (free.includes(each) ? isOn : chosen.includes(each)));
     if (props.bind) props.bind.set(next);
     else props.onChange(next);
   };
@@ -84,6 +94,18 @@ export function CheckboxList(props: CheckboxListProps) {
       )}
       {description !== undefined && <text id={helpId} className={r.description.base}>{description}</text>}
       <view className={r.options.size[size]}>
+        {selectAllLabel !== undefined && (
+          <CheckboxInput
+            label={selectAllLabel}
+            value={free.length > 0 && on === free.length}
+            isIndeterminate={on > 0 && on < free.length}
+            onChange={() => setAll(on < free.length)}
+            isDisabled={isDisabled || free.length === 0}
+            size={size}
+            className={r.all.base}
+            data-testid={testId && `${testId}-all`}
+          />
+        )}
         {options.map(option => (
           <CheckboxInput
             key={option.value}

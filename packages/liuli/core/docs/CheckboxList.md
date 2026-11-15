@@ -97,6 +97,27 @@ export function Sizes() {
 }
 ```
 
+### With a box for all
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { CheckboxList } from '@liulidesign/core/CheckboxList';
+
+/** A box for all of them: checked when all are, a dash when some are. */
+export function SelectAll() {
+  const chosen = useLocal<readonly string[]>('folders', ['travel', 'recipes']);
+  return (
+    <CheckboxList
+      bind={chosen}
+      label="Folders to export"
+      selectAllLabel="All folders"
+      options={[{ value: 'travel', label: 'Travel' }, { value: 'work', label: 'Work' }, { value: 'recipes', label: 'Recipes' }, { value: 'garden', label: 'Garden' }]}
+      data-testid="export"
+    />
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -110,6 +131,7 @@ export function Sizes() {
 | `status` | `FieldStatus` |  | A message about the group as a whole: "Choose at least one". |
 | `isRequired` | `boolean` | `false` | Marks the question with an asterisk. Validation is the app's. |
 | `options` (required) | `readonly CheckboxListOption[]` |  |  |
+| `selectAllLabel` | `string` |  | Adds a first box that chooses or clears every option, named by this text: "Select all". It shows a dash while some are chosen. |
 | `isDisabled` | `boolean` | `false` | Disables every option. |
 | `size` | `FieldSize` | `'md'` |  |
 | `className` | `string` |  |  |

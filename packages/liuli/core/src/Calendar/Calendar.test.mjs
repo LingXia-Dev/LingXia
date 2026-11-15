@@ -70,3 +70,9 @@ test('Weekdays and Chinese: ruled-out days are disabled in place; the locale giv
   assert.equal(zh.getByTestId('zh-2026-11-19').props.accessibilityLabel, '2026年11月19日星期四');
   assert.equal(textOf(zh.queryAll(node => node.props.role === 'grid')[0].children[0]), '一二三四五六日');
 });
+
+test('Day: the days are one grid that turns the month on PageUp and PageDown', async () => {
+  const screen = await renderExample('Calendar/Calendar', 'Day');
+  const grid = screen.queryAll(node => node.props.role === 'grid')[0];
+  assert.ok(grid.props.onPage ?? grid.props.onGridPage, JSON.stringify(Object.keys(grid.props)));
+});

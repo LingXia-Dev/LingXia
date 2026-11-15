@@ -68,3 +68,17 @@ export function StateDisabled() {
 export function Specimen() {
   return <CheckboxList label="Days" isLabelHidden value={['a']} onChange={none} options={[{ value: 'a', label: 'Mentions' }, { value: 'b', label: 'Comments' }]} size="sm" />;
 }
+
+/** A box for all of them: checked when all are, a dash when some are. */
+export function SelectAll() {
+  const chosen = useLocal<readonly string[]>('folders', ['travel', 'recipes']);
+  return (
+    <CheckboxList
+      bind={chosen}
+      label="Folders to export"
+      selectAllLabel="All folders"
+      options={[{ value: 'travel', label: 'Travel' }, { value: 'work', label: 'Work' }, { value: 'recipes', label: 'Recipes' }, { value: 'garden', label: 'Garden' }]}
+      data-testid="export"
+    />
+  );
+}

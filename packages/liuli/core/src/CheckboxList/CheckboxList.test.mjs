@@ -48,3 +48,15 @@ test('Sizes: the options take the list\'s size', async () => {
   const boxSize = id => box(screen, id).children[0].children[0].props.width;
   assert.deepEqual([boxSize('small-a'), boxSize('large-a')], [16, 24]);
 });
+
+test('SelectAll: a dash while some are chosen; a press chooses all, the next clears all', async () => {
+  const screen = await renderExample('CheckboxList/CheckboxList', 'SelectAll');
+  const all = () => screen.getByTestId('export-all');
+  const state = () => JSON.parse(all().props.dataAttributes).state;
+  assert.equal(state(), 'mixed');
+  screen.toggle(all(), true);
+  assert.equal(state(), 'checked');
+  assert.equal(JSON.parse(screen.getByTestId('export-garden').props.dataAttributes).state, 'checked');
+  screen.toggle(all(), false);
+  assert.equal(state(), 'unchecked');
+});

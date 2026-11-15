@@ -56,6 +56,7 @@ export const doc: ComponentDoc = {
     { name: 'Basic', title: 'With help text' },
     { name: 'Controlled', title: 'Owned by the app, with an error' },
     { name: 'Sizes', title: 'Sizes' },
+    { name: 'StateMixed', title: 'Partly chosen' },
   ],
   gaps: [
     {
@@ -78,6 +79,7 @@ export const doc: ComponentDoc = {
         { name: 'StateOn', title: 'On' },
         { name: 'StateInvalid', title: 'Invalid' },
         { name: 'StateDisabled', title: 'Disabled' },
+        { name: 'StateMixed', title: 'Mixed' },
       ],
       inContext: [{ name: 'Controlled', title: 'Terms on a sign-up form, with an error' }],
     },

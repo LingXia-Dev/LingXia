@@ -17,7 +17,7 @@ export const doc: ComponentDoc = {
     pattern: null,
     name: 'label',
     description: [],
-    states: [],
+    states: ['disabled'],
     keyboard: [
       { keys: 'Tab', effect: 'Moves to the link' },
       { keys: 'Enter', effect: 'Follows it' },
@@ -31,7 +31,7 @@ export const doc: ComponentDoc = {
       'It is read as a link, by its label. Write the label so it makes sense out of its sentence, or give `aria-label`.',
       'The underline tells it from the text around it without colour.',
       'A link in a line of text is as tall as the line; a finger press that misses goes to the nearest link within reach.',
-      'A disabled link takes no press and is faint; it is still read as a link, see the gaps.',
+      'A disabled link is read as unavailable and takes no press.',
     ],
   },
   guidance: {
@@ -51,7 +51,6 @@ export const doc: ComponentDoc = {
     { name: 'Disabled', title: 'Not available yet' },
   ],
   gaps: [
-    'A disabled link is not read as unavailable: the View refuses `disabled` on a link today.',
     'A link has no hover or focus style of its own beyond the system focus ring.',
   ],
   related: ['Button', 'Breadcrumb', 'Markdown'],

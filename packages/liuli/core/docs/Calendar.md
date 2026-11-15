@@ -137,7 +137,10 @@ export function Chinese() {
 - Name: label.
 - Description: none.
 - States: selected (from value, or range); disabled (from min, max, isDateDisabled).
-- Tab: To the month buttons, then through the days.
+- Tab: To the month buttons, then into the days as one stop.
+- Arrow keys: A day along the week, a week up and down; days that cannot be chosen are passed over.
+- Home and End: To the ends of the week.
+- PageUp and PageDown: To the month before and after.
 - Enter or Space: Chooses the day.
 - Press target: md 40 px.
 - Each day is named in full by the locale, "Thursday 19 November 2026", with "Today" said where it is today, so the weekday row is not read.
@@ -169,7 +172,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Arrow keys moving through the days as one Tab stop, a week up and down. | a grid whose cells take one Tab stop and move by arrows in two directions | Every day is its own Tab stop. |
 | A field that opens the calendar, for a span typed into a form. | nothing from the View | The calendar sits in the page; put it in a Popover or a BottomSheet. |
 | Jumping to a month or year, and two months side by side. | nothing from the View | One month, a month at a time. |
 | Month and weekday names from the device's own language. | date formatting in the View's engine | The app passes a `locale`. |

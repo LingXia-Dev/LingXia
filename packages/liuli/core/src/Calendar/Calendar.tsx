@@ -109,7 +109,7 @@ export function Calendar(props: CalendarProps) {
           data-testid={testId && `${testId}-next`}
         />
       </view>
-      <view role="grid" aria-label={locale.monthTitle(year, month)} className={r.grid.base}>
+      <view role="grid" aria-label={locale.monthTitle(year, month)} onPage={direction => go(direction === 'next' ? 1 : -1)} className={r.grid.base}>
         <view aria-hidden className={r.week.base}>
           {ordered.map((name, index) => <text key={String(index)} className={r.weekday.base}>{name}</text>)}
         </view>

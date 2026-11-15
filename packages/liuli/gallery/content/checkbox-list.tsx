@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Notifications, AtLeastOne, WithUnavailable, Sizes, StateDisabled } from '../../core/src/CheckboxList/CheckboxList.examples';
+import { Notifications, AtLeastOne, WithUnavailable, SelectAll, Sizes, StateDisabled } from '../../core/src/CheckboxList/CheckboxList.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -14,6 +14,9 @@ export function Content() {
         </Stage>
         <Stage caption={"An option that cannot be chosen stays in the list, with its reason"}>
           <WithUnavailable />
+        </Stage>
+        <Stage caption={"A box that chooses all, with a dash while some are chosen"}>
+          <SelectAll />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>
