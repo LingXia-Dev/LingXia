@@ -72,6 +72,10 @@
     "./NavList/recipe": "./src/NavList/NavList.recipe.ts",
     "./SplitView": "./src/SplitView/SplitView.tsx",
     "./SplitView/recipe": "./src/SplitView/SplitView.recipe.ts",
+    "./Icon": "./src/Icon/Icon.tsx",
+    "./Icon/recipe": "./src/Icon/Icon.recipe.ts",
+    "./Icon/set": "./src/Icon/set.ts",
+    "./Icon/icons/*": "./src/Icon/icons/*.ts",
     "./doc": "./src/doc.ts",
     "./contrast": "./scripts/contrast.mjs",
     "./testing": "./src/testing/harness.mjs",
@@ -82,8 +86,8 @@
   },
   "scripts": {
     "test": "node --test \"src/**/*.test.mjs\"",
-    "check": "node scripts/check.mjs && node scripts/generate.mjs --check",
-    "generate": "node scripts/generate.mjs",
+    "check": "node scripts/icons.mjs --check && node scripts/check.mjs && node scripts/generate.mjs --check",
+    "generate": "node scripts/icons.mjs && node scripts/generate.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {

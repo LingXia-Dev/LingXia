@@ -114,7 +114,7 @@ export function Readout() {
 | `label` (required) | `string` |  | The list's accessible name: "Series", "Parts". |
 | `items` (required) | `readonly ChartLegendItem[]` |  |  |
 | `variant` | `ChartLegendVariant` | `'inline'` | `inline` wraps entries on a line; `list` gives each entry a row with its figures. |
-| `mark` | `"square" \| "line"` | `'square'` | `line` draws each swatch as a stroke with the entry's dash. |
+| `mark` | `"line" \| "square"` | `'square'` | `line` draws each swatch as a stroke with the entry's dash. |
 | `selectedKey` | `string \| null` |  | The entry shown as chosen. Lists only. |
 | `onItemPress` | `((key: string) => void)` |  | Makes each entry a button and runs with its key. |
 | `pressedState` | `"selected" \| "shown"` | `'selected'` | What a pressed entry means to assistive tech: `selected` picks one, `shown` toggles a series. |

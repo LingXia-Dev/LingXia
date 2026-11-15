@@ -107,10 +107,10 @@ export function Invalid() {
 | `placeholder` | `string` |  | A hint shown while empty; never a substitute for `label`. |
 | `rows` | `number` | `3` | Lines shown while empty or short. |
 | `maxRows` | `number` | `8` | Lines it grows to as the text gets longer; then it scrolls. Never below `rows`. |
-| `inputMode` | `"text" \| "numeric" \| "decimal" \| "tel" \| "email"` |  |  |
+| `inputMode` | `"decimal" \| "email" \| "numeric" \| "tel" \| "text"` |  |  |
 | `autoComplete` | `AutoComplete` |  |  |
-| `enterKeyHint` | `"enter" \| "done" \| "go" \| "next" \| "previous" \| "search" \| "send"` |  | The keyboard's action key. `send`, `go`, `done` and `search` make Return submit and Shift+Return add a line. |
-| `autoCapitalize` | `"none" \| "sentences" \| "words" \| "characters"` |  |  |
+| `enterKeyHint` | `"done" \| "enter" \| "go" \| "next" \| "previous" \| "search" \| "send"` |  | The keyboard's action key. `send`, `go`, `done` and `search` make Return submit and Shift+Return add a line. |
+| `autoCapitalize` | `"characters" \| "none" \| "sentences" \| "words"` |  |  |
 | `hasSpellCheck` | `boolean` |  | Unset follows the platform. |
 | `hasAutoFocus` | `boolean` | `false` | Focus it when it first appears. |
 | `maxLength` | `number` |  |  |

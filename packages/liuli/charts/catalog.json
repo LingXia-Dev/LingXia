@@ -554,7 +554,7 @@
           },
           {
             "name": "mark",
-            "type": "\"square\" | \"line\"",
+            "type": "\"line\" | \"square\"",
             "required": false,
             "description": "`line` draws each swatch as a stroke with the entry's dash.",
             "default": "'square'"

@@ -56,12 +56,21 @@ function props(name, typeName) {
       problems.push(`src/${name}/${name}.tsx: ${property.name}: defaults to ${written} without an @default tag`);
     return {
       name: property.name,
-      type: checker.typeToString(propertyType, undefined, ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseAliasDefinedOutsideCurrentScope).replace(/ \| undefined$/, ''),
+      type: typeText(propertyType),
       required: !(property.flags & ts.SymbolFlags.Optional),
       description: ts.displayPartsToString(property.getDocumentationComment(checker)).replace(/\s+/g, ' ').trim(),
       ...(fallback !== undefined ? { default: fallback } : {}),
     };
   });
+}
+
+/**
+ * A type as the reference prints it. TypeScript orders a union's members by when it first met
+ * each, so an unrelated file can reorder them; a union of string literals is printed sorted.
+ */
+function typeText(type) {
+  const text = checker.typeToString(type, undefined, ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseAliasDefinedOutsideCurrentScope).replace(/ \| undefined$/, '');
+  return /^"[^"|]*"( \| "[^"|]*")+$/.test(text) ? text.split(' | ').sort().join(' | ') : text;
 }
 
 /** Defaults written in the component's destructuring: `{ size = 'md' }`. */

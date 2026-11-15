@@ -611,6 +611,23 @@ export const entries: GalleryEntry[] = [
     "status": "preview"
   },
   {
+    "name": "Icon",
+    "page": "icon",
+    "category": "content",
+    "summary": "An icon by what it means, from a set an app or theme can replace",
+    "keywords": [
+      "icon",
+      "glyph",
+      "symbol",
+      "pictogram",
+      "lucide",
+      "icon set",
+      "vector"
+    ],
+    "since": "2026-11-14",
+    "status": "preview"
+  },
+  {
     "name": "Stat",
     "page": "stat",
     "category": "charts",
@@ -845,7 +862,7 @@ export const galleryCategories: GalleryCategory[] = [
     "title": "Content",
     "description": "Containers and rows that hold what the app shows.",
     "page": "category-content",
-    "count": 5
+    "count": 6
   },
   {
     "id": "charts",
@@ -871,7 +888,7 @@ export const galleryCategories: GalleryCategory[] = [
 ];
 
 /** The 6 latest components, newest first. */
-export const newest: string[] = ["BarChart","Chart","LineChart","NavList","PieChart","Sparkline"];
+export const newest: string[] = ["BarChart","Chart","Icon","LineChart","NavList","PieChart"];
 
 export const version = "0.1.0";
 export const packageStatus = "Preview";

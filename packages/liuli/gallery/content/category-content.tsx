@@ -4,13 +4,14 @@ import { Specimen as ItemSpecimen } from '../../core/src/Item/Item.examples';
 import { Specimen as DetailsSpecimen } from '../../core/src/Details/Details.examples';
 import { Specimen as AvatarSpecimen } from '../../core/src/Avatar/Avatar.examples';
 import { Specimen as SplitViewSpecimen } from '../../core/src/SplitView/SplitView.examples';
+import { Specimen as IconSpecimen } from '../../core/src/Icon/Icon.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Containers and rows that hold what the app shows."}</text>
-      <Category title={"5 components"}>
+      <Category title={"6 components"}>
         <Tile
           name={"Card"}
           tagline={"Related content"}
@@ -46,11 +47,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"SplitView"}
           tagline={"Sidebar and content"}
-          isWide
           onOpen={() => onOpen("split-view")}
           testId={"open-split-view"}
         >
           <SplitViewSpecimen />
+        </Tile>
+        <Tile
+          name={"Icon"}
+          tagline={"Icons by meaning"}
+          onOpen={() => onOpen("icon")}
+          testId={"open-icon"}
+        >
+          <IconSpecimen />
         </Tile>
       </Category>
     </>

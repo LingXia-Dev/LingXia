@@ -47,6 +47,7 @@ import { Content as Item } from '../content/item';
 import { Content as Details } from '../content/details';
 import { Content as Avatar } from '../content/avatar';
 import { Content as SplitView } from '../content/split-view';
+import { Content as Icon } from '../content/icon';
 import { Content as Stat } from '../content/stat';
 import { Content as Sparkline } from '../content/sparkline';
 import { Content as BarChart } from '../content/bar-chart';
@@ -110,6 +111,7 @@ export const contents: Record<string, GalleryContent> = {
   "details": Details,
   "avatar": Avatar,
   "split-view": SplitView,
+  "icon": Icon,
   "stat": Stat,
   "sparkline": Sparkline,
   "bar-chart": BarChart,

@@ -30,6 +30,9 @@ const oldLayoutTags = new Set(['column', 'row', 'grid', 'stack', 'spacer']);
 const engineGlobals = new Set(['Intl', 'globalThis', 'window', 'document', 'navigator', 'setTimeout', 'setInterval', 'requestAnimationFrame']);
 // Physical sides; Liuli uses logical ones so every recipe mirrors in RTL.
 const physical = /^(?:[a-z-]+:)*-?(?:pl|pr|ml|mr|left|right|border-l|border-r|rounded-l|rounded-r|rounded-tl|rounded-tr|rounded-bl|rounded-br|text-left|text-right|scroll-ml|scroll-mr)(?:-|$)/;
+// The names every icon set answers to; an icon asked for by another name would have nothing to draw.
+const iconNames = new Set(Object.keys(JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../icons/icons.json'), 'utf8')).icons));
+const iconProps = new Set(['startIcon', 'endIcon']);
 const replacedProps = new Set(['disabled', 'checked', 'open', 'onPress', 'onClose', 'onValueChange', 'style', 'ref']);
 
 for (const path of files) {
@@ -64,7 +67,12 @@ for (const path of files) {
       const tag = node.tagName.getText(file);
       if (oldLayoutTags.has(tag)) report(node, 'layout', `<${tag}> no longer exists; use <view> with Tailwind`);
       for (const attribute of node.attributes.properties) {
-        if (!ts.isJsxAttribute(attribute) || attribute.name.getText(file) !== 'className' || !attribute.initializer) continue;
+        if (!ts.isJsxAttribute(attribute) || !attribute.initializer) continue;
+        const prop = attribute.name.getText(file);
+        const literal = ts.isStringLiteral(attribute.initializer) ? attribute.initializer : ts.isJsxExpression(attribute.initializer) && attribute.initializer.expression && ts.isStringLiteral(attribute.initializer.expression) ? attribute.initializer.expression : undefined;
+        if (literal && ((tag === 'Icon' && prop === 'name') || iconProps.has(prop)) && !iconNames.has(literal.text))
+          report(attribute, 'icon', `${literal.text} is not an icon name; see icons/icons.json`);
+        if (prop !== 'className') continue;
         const value = ts.isJsxExpression(attribute.initializer) ? attribute.initializer.expression : attribute.initializer;
         checkClassName(value, role, report);
       }

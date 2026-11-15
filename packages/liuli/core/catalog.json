@@ -3194,6 +3194,210 @@
       }
     },
     {
+      "name": "Icon",
+      "import": "@liulidesign/core/Icon",
+      "exports": [
+        "Icon",
+        "IconSetProvider"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-14",
+      "summary": "An icon by what it means, from a set an app or theme can replace",
+      "description": "Icon draws one icon in the colour of the text around it. Code asks for an icon by meaning, such as `close`, `search` or `chevron-end`, and the set in use decides its shape: the default set is 88 icons from Lucide, and `IconSetProvider` swaps in another set, or a single icon, for everything inside it. Icons that point along the reading direction turn round in right-to-left layouts.",
+      "keywords": [
+        "icon",
+        "glyph",
+        "symbol",
+        "pictogram",
+        "lucide",
+        "icon set",
+        "vector"
+      ],
+      "props": [
+        {
+          "name": "name",
+          "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"success\" | \"tag\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
+          "required": false,
+          "description": "The icon by what it means: `close`, `search`, `chevron-end`. The set in use decides how it is drawn."
+        },
+        {
+          "name": "icon",
+          "type": "IconDefinition",
+          "required": false,
+          "description": "An icon of the app's own, or one module from a set, drawn as given whatever set is in use."
+        },
+        {
+          "name": "size",
+          "type": "IconSize",
+          "required": false,
+          "description": "16, 20 or 24 points.",
+          "default": "'md'"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": false,
+          "description": "What the icon says, when nothing beside it does. Without it the icon is decoration and is not read."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {
+        "IconSetProvider": [
+          {
+            "name": "icons",
+            "type": "Partial<Readonly<Record<\"success\" | \"warning\" | \"info\" | \"link\" | \"add\" | \"remove\" | \"close\" | \"check\" | \"edit\" | \"delete\" | \"copy\" | \"share\" | \"download\" | \"upload\" | \"refresh\" | \"search\" | \"filter\" | \"sort\" | \"more\" | \"more-vertical\" | \"menu\" | \"settings\" | \"send\" | \"save\" | \"undo\" | \"redo\" | \"external-link\" | \"attach\" | \"print\" | \"sign-in\" | \"sign-out\" | \"chevron-down\" | \"chevron-up\" | \"chevron-start\" | \"chevron-end\" | \"arrow-up\" | \"arrow-down\" | \"arrow-start\" | \"arrow-end\" | \"home\" | \"expand\" | \"collapse\" | \"error\" | \"help\" | \"cancel\" | \"add-circle\" | \"blocked\" | \"lock\" | \"unlock\" | \"visible\" | \"hidden\" | \"user\" | \"users\" | \"calendar\" | \"clock\" | \"mail\" | \"phone\" | \"message\" | \"notifications\" | \"notifications-off\" | \"star\" | \"heart\" | \"like\" | \"bookmark\" | \"tag\" | \"flag\" | \"location\" | \"image\" | \"camera\" | \"file\" | \"document\" | \"folder\" | \"cloud\" | \"globe\" | \"light\" | \"dark\" | \"cart\" | \"payment\" | \"chart\" | \"list\" | \"grid\" | \"play\" | \"pause\" | \"volume\" | \"mute\" | \"microphone\" | \"video\" | \"wifi\", IconDefinition>>>",
+            "required": true,
+            "description": "The icons to draw for the names they cover; the rest stay as the default set draws them."
+          },
+          {
+            "name": "children",
+            "type": "Element",
+            "required": true,
+            "description": "One element; every Liuli component inside it draws from `icons`."
+          }
+        ]
+      },
+      "parts": {
+        "box": "view",
+        "glyph": "vector"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "an icon that stands alone, in text colour",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "an icon that stands alone, muted",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "Without `label` an icon is decoration: it is hidden from assistive tech, and the text or control beside it says what it means.",
+          "With `label` it is an image named by the label. Use it only when the icon stands alone and carries meaning.",
+          "An icon is never a control. A pressable icon is an IconButton, which has the press target and the name.",
+          "An icon that carries meaning alone needs 3:1 against its background; `text-faint` does not reach it on every surface."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Common",
+          "title": "Icons by name",
+          "source": "import { Icon } from '@liulidesign/core/Icon';\n\n/** Icons are named by what they mean, so a theme can redraw them without touching this code. */\nexport function Common() {\n  return (\n    <view className=\"flex-row flex-wrap gap-5 text-text\">\n      <Icon name=\"search\" data-testid=\"search\" />\n      <Icon name=\"add\" />\n      <Icon name=\"edit\" />\n      <Icon name=\"share\" />\n      <Icon name=\"delete\" />\n      <Icon name=\"settings\" />\n      <Icon name=\"more\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { Icon } from '@liulidesign/core/Icon';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row items-center gap-5 text-text\">\n      <Icon name=\"calendar\" size=\"sm\" data-testid=\"small\" />\n      <Icon name=\"calendar\" data-testid=\"medium\" />\n      <Icon name=\"calendar\" size=\"lg\" data-testid=\"large\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Colours",
+          "title": "Colour from the text around it",
+          "source": "import { Icon } from '@liulidesign/core/Icon';\n\n/** An icon takes the colour of the text around it. */\nexport function Colours() {\n  return (\n    <view className=\"gap-3\">\n      <view className=\"flex-row items-center gap-2 text-text\">\n        <Icon name=\"document\" />\n        <text className=\"text-body\">Quarterly report</text>\n      </view>\n      <view className=\"flex-row items-center gap-2 text-muted\">\n        <Icon name=\"clock\" size=\"sm\" />\n        <text className=\"text-footnote\">Edited 2 hours ago</text>\n      </view>\n      <view className=\"flex-row items-center gap-2 text-danger\">\n        <Icon name=\"error\" size=\"sm\" data-testid=\"tinted\" />\n        <text className=\"text-footnote\">Upload failed</text>\n      </view>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Labelled",
+          "title": "Read, or silent",
+          "source": "import { Icon } from '@liulidesign/core/Icon';\n\n/** Alone, an icon needs a label to be read; beside text that says the same, it stays silent. */\nexport function Labelled() {\n  return (\n    <view className=\"flex-row items-center gap-5\">\n      <Icon name=\"lock\" label=\"Private\" className=\"text-muted\" data-testid=\"private\" />\n      <view className=\"flex-row items-center gap-1.5 text-success\">\n        <Icon name=\"success\" size=\"sm\" data-testid=\"silent\" />\n        <text className=\"text-footnote font-medium\">Paid</text>\n      </view>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Mirrored",
+          "title": "Right to left",
+          "source": "import { Icon } from '@liulidesign/core/Icon';\n\n/** Icons that point along the reading direction turn round in a right-to-left layout; the rest do not. */\nexport function Mirrored() {\n  return (\n    <view className=\"gap-3 text-text\">\n      <view className=\"flex-row items-center gap-5\">\n        <Icon name=\"chevron-end\" data-testid=\"forward\" />\n        <Icon name=\"arrow-end\" />\n        <Icon name=\"send\" />\n        <Icon name=\"search\" />\n      </view>\n      <view dir=\"rtl\" className=\"flex-row items-center gap-5\">\n        <Icon name=\"chevron-end\" data-testid=\"forward-rtl\" />\n        <Icon name=\"arrow-end\" />\n        <Icon name=\"send\" />\n        <Icon name=\"search\" />\n      </view>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Custom",
+          "title": "Your own icon, and a swapped one",
+          "source": "import { Icon, IconSetProvider, type IconDefinition } from '@liulidesign/core/Icon';\n\nconst bolt: IconDefinition = { paths: ['M13 2 4.5 13.5H11L10 22l8.5-11.5H12z'] };\nconst cross: IconDefinition = { paths: ['M7 7l10 10M17 7 7 17', 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0z'] };\n\n/** An icon of the app's own, and a set that redraws one name for everything inside it. */\nexport function Custom() {\n  return (\n    <view className=\"flex-row items-center gap-5 text-text\">\n      <Icon icon={bolt} data-testid=\"own\" />\n      <Icon name=\"close\" data-testid=\"default-close\" />\n      <IconSetProvider icons={{ close: cross }}>\n        <view className=\"flex-row items-center gap-5\">\n          <Icon name=\"close\" data-testid=\"swapped-close\" />\n          <Icon name=\"search\" data-testid=\"kept-search\" />\n        </view>\n      </IconSetProvider>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Everything",
+          "title": "The whole set",
+          "source": "import { Icon, iconNames } from '@liulidesign/core/Icon';\n\nconst half = Math.ceil(iconNames.length / 2);\n\n/** Every name in the set, in two columns. */\nexport function Everything() {\n  return (\n    <view className=\"flex-row gap-4\">\n      {[iconNames.slice(0, half), iconNames.slice(half)].map((column, index) => (\n        <view key={String(index)} className=\"min-w-0 grow basis-0 gap-3\">\n          {column.map(name => (\n            <view key={name} className=\"min-w-0 flex-row items-center gap-2.5\">\n              <Icon name={name} className=\"text-text\" />\n              <text className=\"min-w-0 grow basis-0 truncate text-footnote text-muted\">{name}</text>\n            </view>\n          ))}\n        </view>\n      ))}\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "A stroke that keeps one weight at every size.",
+          "needs": "nothing from the View; a decision on optical sizes",
+          "today": "The stroke scales with the icon: 1.2 px at 16, 1.5 px at 20, 1.8 px at 24."
+        },
+        {
+          "missing": "Filled and two-tone variants of a name.",
+          "needs": "a second set and a variant on the name",
+          "today": "One outline per name; an app passes its own filled icon with `icon`."
+        }
+      ],
+      "related": [
+        "Button",
+        "Item"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Icons by meaning",
+        "order": 6,
+        "page": {
+          "lead": "Use an icon to make an action or a kind of thing quick to spot, beside the word that names it.",
+          "hero": "Common",
+          "variants": [
+            {
+              "name": "Colours",
+              "title": "An icon takes the colour of the text around it"
+            },
+            {
+              "name": "Labelled",
+              "title": "Alone, it needs a label; beside text that says the same, it stays silent"
+            },
+            {
+              "name": "Mirrored",
+              "title": "Left to right above, right to left below: the first three turn round, the search glass does not"
+            },
+            {
+              "name": "Custom",
+              "title": "An icon of your own, the default close, then a set that redraws close and keeps the rest"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "16, 20 and 24"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Everything",
+              "title": "The whole set, by name"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Item",
       "import": "@liulidesign/core/Item",
       "exports": [
@@ -6060,7 +6264,7 @@
         },
         {
           "name": "inputMode",
-          "type": "\"text\" | \"numeric\" | \"decimal\" | \"tel\" | \"email\"",
+          "type": "\"decimal\" | \"email\" | \"numeric\" | \"tel\" | \"text\"",
           "required": false,
           "description": ""
         },
@@ -6072,13 +6276,13 @@
         },
         {
           "name": "enterKeyHint",
-          "type": "\"enter\" | \"done\" | \"go\" | \"next\" | \"previous\" | \"search\" | \"send\"",
+          "type": "\"done\" | \"enter\" | \"go\" | \"next\" | \"previous\" | \"search\" | \"send\"",
           "required": false,
           "description": "The keyboard's action key. `send`, `go`, `done` and `search` make Return submit and Shift+Return add a line."
         },
         {
           "name": "autoCapitalize",
-          "type": "\"none\" | \"sentences\" | \"words\" | \"characters\"",
+          "type": "\"characters\" | \"none\" | \"sentences\" | \"words\"",
           "required": false,
           "description": ""
         },
@@ -6400,14 +6604,14 @@
         },
         {
           "name": "type",
-          "type": "\"number\" | \"text\" | \"tel\" | \"email\" | \"search\" | \"password\"",
+          "type": "\"email\" | \"number\" | \"password\" | \"search\" | \"tel\" | \"text\"",
           "required": false,
           "description": "`search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`.",
           "default": "'text'"
         },
         {
           "name": "inputMode",
-          "type": "\"text\" | \"numeric\" | \"decimal\" | \"tel\" | \"email\"",
+          "type": "\"decimal\" | \"email\" | \"numeric\" | \"tel\" | \"text\"",
           "required": false,
           "description": ""
         },
@@ -6419,13 +6623,13 @@
         },
         {
           "name": "enterKeyHint",
-          "type": "\"enter\" | \"done\" | \"go\" | \"next\" | \"previous\" | \"search\" | \"send\"",
+          "type": "\"done\" | \"enter\" | \"go\" | \"next\" | \"previous\" | \"search\" | \"send\"",
           "required": false,
           "description": "The label of the keyboard's action key; `onSubmit` runs on it."
         },
         {
           "name": "autoCapitalize",
-          "type": "\"none\" | \"sentences\" | \"words\" | \"characters\"",
+          "type": "\"characters\" | \"none\" | \"sentences\" | \"words\"",
           "required": false,
           "description": ""
         },
