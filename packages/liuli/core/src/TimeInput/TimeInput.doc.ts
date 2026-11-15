@@ -43,7 +43,7 @@ export const doc: ComponentDoc = {
     notes: [
       'The picker is the View\'s own, drawn in the theme\'s roles: a popover under the field with a pointer, a sheet with Cancel and Done on touch.',
       'The picker follows the user\'s 12- or 24-hour setting; the value is always 24-hour.',
-      'Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg.',
+      'Sizes sm (32) and md (40) are shorter than the 44 pt touch minimum; a finger still reaches them in a 44 pt band around the box, which the host adds without changing what is drawn.',
     ],
   },
   guidance: {

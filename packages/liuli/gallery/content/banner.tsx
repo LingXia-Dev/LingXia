@@ -17,7 +17,7 @@ export function Content() {
         </Stage>
       </PageSection>
       <PageSection title={"States"}>
-        <StageGrid>
+        <StageGrid stack>
           <Stage caption={"A title only"}>
             <StateTitleOnly />
           </Stage>

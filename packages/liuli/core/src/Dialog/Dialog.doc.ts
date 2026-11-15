@@ -35,7 +35,7 @@ export const doc: ComponentDoc = {
     notes: [
       'Opened from a hardware keyboard, focus moves to the first control and returns to the opener on close; opened by touch, focus stays put.',
       'Android back and the screen reader dismiss gesture are close requests, like Escape.',
-      'The close button is 32 px; it is below the 44 pt touch minimum until hit slop exists, so always offer an action button too.',
+      'The close button is 32 px; a finger reaches it in a 44 pt band around it. Offer an action button too, so closing is never the only way on.',
     ],
   },
   guidance: {

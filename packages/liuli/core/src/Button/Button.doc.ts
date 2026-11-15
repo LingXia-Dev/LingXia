@@ -41,7 +41,7 @@ export const doc: ComponentDoc = {
     notes: [
       'A loading button stays enabled and focusable, reports busy, and ignores presses.',
       'Disabled, every variant turns to a faint ink fill with muted text, so the label stays readable in both themes.',
-      'Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.',
+      'Sizes sm (32) and md (40) are shorter than the 44 pt touch minimum; a finger still reaches them in a 44 pt band around the box, which the host adds without changing what is drawn.',
     ],
   },
   guidance: {
@@ -67,11 +67,6 @@ export const doc: ComponentDoc = {
     { name: 'Floating', title: 'Floating over a list' },
   ],
   gaps: [
-    {
-      missing: 'A 44 px press target around the sm and md sizes.',
-      needs: 'hit slop: a press area larger than the painted box',
-      today: 'The press area equals the box; the docs steer touch layouts to lg.',
-    },
     {
       missing: 'The disabled reason shown to sighted users.',
       needs: 'a focusable disabled state, so a hint note can open from it',

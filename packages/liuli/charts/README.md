@@ -4,7 +4,7 @@ Liuli's figures and small charts for GPU pages, as `@lingxia/view` TSX source, i
 It follows `@liulidesign/core` in every convention: one import path per component, a recipe beside
 each, every visible or spoken string a prop, colours from the app's theme roles.
 
-Status: preview. Six components, each unit-tested in Node. None has been reviewed on a device yet.
+Status: preview. Each component is unit-tested in Node and has a page in the gallery (`../gallery`).
 
 ## What it needs
 
@@ -34,14 +34,21 @@ export function render() {
 }
 ```
 
-| Import | What |
+<!-- components:start -->
+6 components, each at its own import path:
+
+| Import | Exports | What it is |
+| --- | --- | --- |
+| `@liulidesign/charts/Stat` | Stat | One figure with its label, how it changed, and an optional small chart |
+| `@liulidesign/charts/Sparkline` | Sparkline | A small chart without axes: the shape of a series as a line, an area or bars |
+| `@liulidesign/charts/BarChart` | BarChart | Amounts by category, as bars on a zero line, with selection and grouped series |
+| `@liulidesign/charts/LineChart` | LineChart | A number over time, as a line that fits its data or an area from zero, for up to five series |
+| `@liulidesign/charts/PieChart` | PieChart | Parts of one whole, as a ring or a solid pie, listed with their amounts in a legend that selects |
+| `@liulidesign/charts/Chart` | Chart, ChartLegend, ChartReadout | The frame every chart sits in: heading, plot, legend, readout and the loading, empty and error states |
+<!-- components:end -->
+
+| Import | What it is |
 | --- | --- |
-| `@liulidesign/charts/Stat` | Stat: one figure with its label, how it changed, and a slot for a small chart |
-| `@liulidesign/charts/Sparkline` | Sparkline: the shape of a series as a line, an area or bars, without axes |
-| `@liulidesign/charts/BarChart` | BarChart: amounts by category on a zero line, grouped series, selection by pressing a bar |
-| `@liulidesign/charts/LineChart` | LineChart: a number over time, as a line that fits its data or an area from zero, up to five series |
-| `@liulidesign/charts/PieChart` | PieChart: parts of a whole as a ring or a pie, selected through its legend |
-| `@liulidesign/charts/Chart` | Chart, ChartLegend and ChartReadout: the frame, legend and readout the charts share, for a plot of your own |
 | `@liulidesign/charts/summary/en`, `/summary/zh` | `summarize`: a chart's facts as sentences for a screen reader, in English or Chinese |
 
 Each also exports its class recipe at `@liulidesign/charts/<Name>/recipe`. The reference for each

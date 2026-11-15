@@ -308,7 +308,7 @@ export function Submenu() {
 - Escape: closes and returns focus to the trigger; inside a submenu that took the panel, goes back to the menu first.
 - Press target: sm 32 px, md 40 px, lg 48 px.
 - An item is named by its label and then its description, both inside the item.
-- Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.
+- Sizes sm (32) and md (40) are shorter than the 44 pt touch minimum; a finger still reaches them in a 44 pt band around the box, which the host adds without changing what is drawn.
 - A tap outside, Escape and back close the menu; that tap reaches nothing else.
 - On a narrow screen the row that opens a submenu and the row that goes back are menu items that keep the menu open, so the arrow keys reach them; Escape and back go up one level before they close the menu.
 - Checkbox and radio items are read as checked or not, and keep the menu open so the change can be seen.

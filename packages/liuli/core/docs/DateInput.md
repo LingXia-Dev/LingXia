@@ -147,7 +147,7 @@ export function Sizes() {
 - Press target: sm 32 px, md 40 px, lg 48 px.
 - The picker is the View's own, drawn in the theme's roles: a popover under the field with a pointer, a sheet with Cancel and Done on touch.
 - Month and day names follow the display language; the week starts on the user's first weekday.
-- Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg.
+- Sizes sm (32) and md (40) are shorter than the 44 pt touch minimum; a finger still reaches them in a 44 pt band around the box, which the host adds without changing what is drawn.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |

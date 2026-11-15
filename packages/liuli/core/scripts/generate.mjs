@@ -523,6 +523,30 @@ for (const name of names) {
   outputs.set(join(page, 'index.json'), `{ "navigationBar": { "title": ${JSON.stringify(name)} } }\n`);
 }
 outputs.set(join(core, 'catalog.json'), `${JSON.stringify({ generated, components: catalog }, null, 2)}\n`);
+
+// The README's component list: how many there are and what each import gives, between two markers.
+const readmePath = join(core, 'README.md');
+if (existsSync(readmePath)) {
+  const readme = readFileSync(readmePath, 'utf8');
+  const [start, end] = ['<!-- components:start -->', '<!-- components:end -->'];
+  const [from, to] = [readme.indexOf(start), readme.indexOf(end)];
+  if (from < 0 || to < from) problems.push('README.md: the component list needs its <!-- components:start --> and <!-- components:end --> markers');
+  else {
+    const inOrder = Object.keys(categoryTitles).flatMap(category => inCategory(catalog, category));
+    const listed = [...inOrder, ...catalog.filter(entry => !inOrder.includes(entry))];
+    const rows = listed.map(entry => `| \`${entry.import}\` | ${entry.exports.join(', ')} | ${cell(entry.summary)} |`);
+    const list = [
+      start,
+      `${catalog.length} components, each at its own import path:`,
+      '',
+      '| Import | Exports | What it is |',
+      '| --- | --- | --- |',
+      ...rows,
+      '',
+    ].join('\n');
+    outputs.set(readmePath, `${readme.slice(0, from)}${list}${readme.slice(to)}`);
+  }
+}
 // The gallery's index holds every package's components, so core's run reads its siblings' catalogs.
 const folderOf = new Map(catalog.map(entry => [entry, folder]));
 const siblings = !isCore ? [] : readdirSync(resolve(core, '..')).filter(name => name !== folder && existsSync(resolve(core, '..', name, 'catalog.json'))).sort()

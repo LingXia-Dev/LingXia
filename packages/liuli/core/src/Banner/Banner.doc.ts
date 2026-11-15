@@ -71,6 +71,7 @@ export const doc: ComponentDoc = {
       lead: 'Use a banner to say something about the page or the account that people should act on or know.',
       hero: 'Payment',
       variants: [{ name: 'Tones', title: 'Neutral, info, success, warning and danger' }, { name: 'Collapsible', title: 'Collapsible: the title stays, the rest opens on demand' }],
+      statesLayout: 'stack',
       states: [
         { name: 'StateTitleOnly', title: 'A title only' },
         { name: 'StateWithMessage', title: 'With a message' },

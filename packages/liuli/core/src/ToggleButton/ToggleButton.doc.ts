@@ -39,7 +39,7 @@ export const doc: ComponentDoc = {
     notes: [
       'The state is read as pressed and drawn as the fill and the edge, never as the label\'s colour alone.',
       'Disabled keeps the soft fill when on, so a locked option still shows its state.',
-      'Sizes sm and md are below the 44 pt touch minimum; on touch layouts prefer lg or leave room around them.',
+      'Sizes sm and md are shorter than the 44 pt touch minimum; a finger still reaches them in a 44 pt band around the box, which the host adds without changing what is drawn. Leave room between neighbours, since two bands that meet share the gap.',
     ],
   },
   guidance: {

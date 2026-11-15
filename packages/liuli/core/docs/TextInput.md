@@ -187,7 +187,7 @@ export function ReadOnly() {
 - The keyboard action key, Enter: runs onSubmit.
 - Press target: sm 32 px, md 40 px, lg 48 px.
 - The clear button is a separate control named by `clearLabel`.
-- Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.
+- Sizes sm (32) and md (40) are shorter than the 44 pt touch minimum; a finger still reaches them in a 44 pt band around the box, which the host adds without changing what is drawn.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
