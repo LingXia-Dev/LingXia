@@ -27,9 +27,12 @@ export const doc: ComponentDoc = {
     keyboard: [],
     contrast: [
       { what: 'initials', pair: ['on-accent-soft', 'accent-soft'], minimum: '4.5:1' },
-      { what: 'online dot', pair: ['success', 'surface'], minimum: '3:1' },
-      { what: 'away dot', pair: ['warning', 'surface'], minimum: '3:1' },
-      { what: 'busy dot', pair: ['danger', 'surface'], minimum: '3:1' },
+      { what: 'online dot', pair: ['success-mark', 'surface'], minimum: '3:1' },
+      { what: 'away dot', pair: ['warning-mark', 'surface'], minimum: '3:1' },
+      { what: 'busy dot', pair: ['danger-mark', 'surface'], minimum: '3:1' },
+      { what: 'online dot, in a sunken card', pair: ['success-mark', 'surface-sunken'], minimum: '3:1' },
+      { what: 'away dot, in a sunken card', pair: ['warning-mark', 'surface-sunken'], minimum: '3:1' },
+      { what: 'busy dot, in a sunken card', pair: ['danger-mark', 'surface-sunken'], minimum: '3:1' },
       { what: 'offline dot\'s ring', pair: ['text-muted', 'surface'], minimum: '3:1' },
     ],
     notes: [

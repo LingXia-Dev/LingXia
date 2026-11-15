@@ -66,8 +66,8 @@ test('Smooth: a curve through every value that never leaves the range of its two
 
 test('Tones: the tone is the stroke role', async () => {
   const screen = await renderExample('Sparkline/Sparkline', 'Tones');
-  assert.equal(drawing(screen.getByTestId('positive')).paths[0].stroke, 'success');
-  assert.equal(drawing(screen.getByTestId('negative')).paths[0].stroke, 'danger');
+  assert.equal(drawing(screen.getByTestId('positive')).paths[0].stroke, 'success-mark');
+  assert.equal(drawing(screen.getByTestId('negative')).paths[0].stroke, 'danger-mark');
 });
 
 test('Sizes: 24, 32 and 48 tall, as wide as the container', async () => {

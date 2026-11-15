@@ -29,9 +29,9 @@ export const doc: ComponentDoc = {
     contrast: [
       { what: 'fill against the track', pair: ['accent', 'text/10'], over: 'surface', minimum: '3:1' },
       { what: 'fill and spinner on a card', pair: ['accent', 'surface'], minimum: '3:1' },
-      { what: 'success fill', pair: ['success', 'surface'], minimum: '3:1' },
-      { what: 'warning fill', pair: ['warning', 'surface'], minimum: '3:1' },
-      { what: 'danger fill', pair: ['danger', 'surface'], minimum: '3:1' },
+      { what: 'success fill', pair: ['success-mark', 'surface'], minimum: '3:1' },
+      { what: 'warning fill', pair: ['warning-mark', 'surface'], minimum: '3:1' },
+      { what: 'danger fill', pair: ['danger-mark', 'surface'], minimum: '3:1' },
       { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1' },
       { what: 'value', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
     ],

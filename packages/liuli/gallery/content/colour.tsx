@@ -13,7 +13,7 @@ interface Swatch {
   isVeil?: boolean;
 }
 
-const groups: { title: string; swatches: Swatch[] }[] = [
+const groups: { title: string; note?: string; swatches: Swatch[] }[] = [
   {
     title: 'Surfaces',
     swatches: [
@@ -52,12 +52,16 @@ const groups: { title: string; swatches: Swatch[] }[] = [
   },
   {
     title: 'Status',
+    note: 'Each status has three tones: the status colour for words and filled buttons, its mark for dots and shapes, its soft for fills behind text. A mark is never used for text. Information has no colour of its own: it takes the accent.',
     swatches: [
-      { role: 'danger', use: 'Destructive actions and errors', sample: 'bg-danger', ink: 'text-on-danger' },
+      { role: 'danger', use: 'Destructive actions and errors, in words', sample: 'bg-danger', ink: 'text-on-danger' },
+      { role: 'danger-mark', use: 'A dot or a shape that says danger', sample: 'bg-danger-mark' },
       { role: 'danger-soft', use: 'Behind an error label', sample: 'bg-danger-soft', ink: 'text-text' },
-      { role: 'warning', use: 'Something needs a look', sample: 'bg-warning', ink: 'text-on-warning' },
+      { role: 'warning', use: 'Something needs a look, in words', sample: 'bg-warning', ink: 'text-on-warning' },
+      { role: 'warning-mark', use: 'A dot or a shape that says take care', sample: 'bg-warning-mark' },
       { role: 'warning-soft', use: 'Behind a warning label', sample: 'bg-warning-soft', ink: 'text-text' },
-      { role: 'success', use: 'Done, or healthy', sample: 'bg-success', ink: 'text-on-success' },
+      { role: 'success', use: 'Done, or healthy, in words', sample: 'bg-success', ink: 'text-on-success' },
+      { role: 'success-mark', use: 'A dot or a shape that says all is well', sample: 'bg-success-mark' },
       { role: 'success-soft', use: 'Behind a success label', sample: 'bg-success-soft', ink: 'text-text' },
     ],
   },
@@ -108,6 +112,7 @@ export function Content() {
       </text>
       {groups.map(group => (
         <PageSection key={group.title} title={group.title}>
+          {group.note !== undefined && <text className="text-footnote text-muted">{group.note}</text>}
           <view className="rounded-container border border-text/12 bg-surface divide-y divide-text/8">
             {group.swatches.map(swatch => <SwatchRow key={swatch.role} swatch={swatch} />)}
           </view>

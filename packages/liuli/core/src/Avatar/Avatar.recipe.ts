@@ -41,9 +41,10 @@ export const avatarRecipe = {
     size: { xs: 'size-2 end-0 bottom-0', sm: 'size-2.5 end-0 bottom-0', md: 'size-3 end-0.5 bottom-0.5', lg: 'size-4 end-1 bottom-1' } satisfies Record<AvatarSize, string>,
     edge: { surface: 'border-surface', raised: 'border-surface-raised', sunken: 'border-surface-sunken' } satisfies Record<AvatarGroupSurface, string>,
     tone: {
-      online: 'bg-success',
-      away: 'bg-warning',
-      busy: 'bg-danger',
+      // The mark tones: mid-tones made for dots and shapes, where the status colours are made for words.
+      online: 'bg-success-mark',
+      away: 'bg-warning-mark',
+      busy: 'bg-danger-mark',
       // Hollow: a ring of the muted text colour around the surface.
       offline: 'bg-surface inset-ring-2 inset-ring-muted',
     } satisfies Record<AvatarStatus, string>,

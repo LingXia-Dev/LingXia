@@ -30,7 +30,7 @@ export interface SparklineProps {
   'data-testid'?: string;
 }
 
-const toneRole = { series: 'chart-1', neutral: 'text-muted', positive: 'success', negative: 'danger' } as const satisfies Record<SparklineTone, string>;
+const toneRole = { series: 'chart-1', neutral: 'text-muted', positive: 'success-mark', negative: 'danger-mark' } as const satisfies Record<SparklineTone, string>;
 
 const strokeWidth = 1.5;
 const dotWidth = 5;

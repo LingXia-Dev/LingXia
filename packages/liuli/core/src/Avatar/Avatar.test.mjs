@@ -32,7 +32,7 @@ test('WithName: a decorative avatar is hidden from assistive tech', async () => 
 test('Presence: the status is a dot that is not read; its words follow the name; offline is hollow', async () => {
   const screen = await renderExample('Avatar/Avatar', 'Presence');
   const dot = id => screen.getByTestId(id).children.find(node => node.props.position === 'absolute' && node.tag !== 'image' && node.props.accessibilityHidden === 1);
-  assert.deepEqual(['online', 'away', 'busy'].map(id => dot(id).props.background), ['success', 'warning', 'danger']);
+  assert.deepEqual(['online', 'away', 'busy'].map(id => dot(id).props.background), ['success-mark', 'warning-mark', 'danger-mark']);
   assert.deepEqual([dot('offline').props.background, Boolean(dot('offline').props.ring)], ['surface', true]);
   assert.deepEqual([dot('online').props.width, dot('online').props.borderColor], [12, 'surface'], 'cut out of the avatar by the surface colour');
   const named = id => screen.getByTestId(id).children.map(node => node.props.accessibilityLabel ?? node.props.alt).filter(Boolean);

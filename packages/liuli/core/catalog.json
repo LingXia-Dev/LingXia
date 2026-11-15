@@ -129,7 +129,7 @@
           {
             "what": "online dot",
             "pair": [
-              "success",
+              "success-mark",
               "surface"
             ],
             "minimum": "3:1"
@@ -137,7 +137,7 @@
           {
             "what": "away dot",
             "pair": [
-              "warning",
+              "warning-mark",
               "surface"
             ],
             "minimum": "3:1"
@@ -145,8 +145,32 @@
           {
             "what": "busy dot",
             "pair": [
-              "danger",
+              "danger-mark",
               "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "online dot, in a sunken card",
+            "pair": [
+              "success-mark",
+              "surface-sunken"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "away dot, in a sunken card",
+            "pair": [
+              "warning-mark",
+              "surface-sunken"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "busy dot, in a sunken card",
+            "pair": [
+              "danger-mark",
+              "surface-sunken"
             ],
             "minimum": "3:1"
           },
@@ -8158,7 +8182,7 @@
           {
             "what": "success fill",
             "pair": [
-              "success",
+              "success-mark",
               "surface"
             ],
             "minimum": "3:1"
@@ -8166,7 +8190,7 @@
           {
             "what": "warning fill",
             "pair": [
-              "warning",
+              "warning-mark",
               "surface"
             ],
             "minimum": "3:1"
@@ -8174,7 +8198,7 @@
           {
             "what": "danger fill",
             "pair": [
-              "danger",
+              "danger-mark",
               "surface"
             ],
             "minimum": "3:1"

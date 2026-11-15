@@ -30,7 +30,7 @@ export const progressBarRecipe = {
   },
   fill: {
     base: 'h-full rounded-full',
-    tone: { accent: 'bg-accent', success: 'bg-success', warning: 'bg-warning', danger: 'bg-danger' } satisfies Record<ProgressBarTone, string>,
+    tone: { accent: 'bg-accent', success: 'bg-success-mark', warning: 'bg-warning-mark', danger: 'bg-danger-mark' } satisfies Record<ProgressBarTone, string>,
     determinate: 'transition-layout duration-200 ease-out',
     indeterminate: 'w-2/5 motion-safe:animate-progress-sweep',
   },

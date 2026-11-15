@@ -190,9 +190,12 @@ export function Teams() {
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | initials | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.44:1 | 9.49:1 |
-| online dot | `success` on `surface` | 3:1 | 5.31:1 | 7.61:1 |
-| away dot | `warning` on `surface` | 3:1 | 5.40:1 | 8.18:1 |
-| busy dot | `danger` on `surface` | 3:1 | 5.21:1 | 5.42:1 |
+| online dot | `success-mark` on `surface` | 3:1 | 3.61:1 | 6.91:1 |
+| away dot | `warning-mark` on `surface` | 3:1 | 3.64:1 | 8.03:1 |
+| busy dot | `danger-mark` on `surface` | 3:1 | 3.91:1 | 5.19:1 |
+| online dot, in a sunken card | `success-mark` on `surface-sunken` | 3:1 | 3.19:1 | 7.75:1 |
+| away dot, in a sunken card | `warning-mark` on `surface-sunken` | 3:1 | 3.22:1 | 9.00:1 |
+| busy dot, in a sunken card | `danger-mark` on `surface-sunken` | 3:1 | 3.45:1 | 5.82:1 |
 | offline dot's ring | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

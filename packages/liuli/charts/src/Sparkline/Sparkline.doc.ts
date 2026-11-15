@@ -27,8 +27,8 @@ export const doc: ComponentDoc = {
       { what: 'series line and bars', pair: ['chart-1', 'surface'], minimum: '3:1' },
       { what: 'series line and bars, straight on the page', pair: ['chart-1', 'canvas'], minimum: '3:1' },
       { what: 'neutral line', pair: ['text-muted', 'surface'], minimum: '3:1' },
-      { what: 'positive line', pair: ['success', 'surface'], minimum: '3:1' },
-      { what: 'negative line', pair: ['danger', 'surface'], minimum: '3:1' },
+      { what: 'positive line', pair: ['success-mark', 'surface'], minimum: '3:1' },
+      { what: 'negative line', pair: ['danger-mark', 'surface'], minimum: '3:1' },
     ],
     notes: [
       'One image named by `label`; the drawing itself is hidden. A screen reader gets nothing but the label, so it carries the finding: the direction, and the first and last values.',
