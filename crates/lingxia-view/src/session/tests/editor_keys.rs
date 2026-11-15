@@ -11,9 +11,13 @@ struct Bench {
 
 impl Bench {
     fn new(name: &'static str) -> Self {
+        Self::with(name, PAGE)
+    }
+
+    fn with(name: &'static str, page: &str) -> Self {
         let worker = ViewWorker::spawn(name).unwrap();
         let platform = Platform::new(&[&worker]);
-        let host = platform.host(&worker, &source(PAGE), false);
+        let host = platform.host(&worker, &source(page), false);
         host.set_visible(true);
         platform.settle(&[&host]);
         Self { platform, host }
@@ -144,4 +148,45 @@ fn automation_presses_a_listed_key_on_an_editor_and_refuses_one_that_is_not() {
     assert!(!bench.list_open());
     let refused = press("ArrowLeft").unwrap_err();
     assert!(refused.starts_with("E_UNSUPPORTED"), "{refused}");
+}
+
+#[test]
+fn a_listed_key_pressed_straight_after_typing_reaches_the_page() {
+    let bench = Bench::new("test-editor-keys-after-typing");
+    let (identity, token) = bench.focus("q");
+    let edit = |text: &str| {
+        serde_json::json!({"op":"edit","identity":identity,"token":token,"submit":false,
+        "edits":[{"op":"replace","text":text,"cursor":1,"composing":false}]})
+        .to_string()
+    };
+    // The key arrives with the edit, before any frame shows the typed text.
+    bench.host.input(edit("b"), |_| {});
+    let taken = bench.host.editor_key(Key::Activate);
+    bench.settle();
+    assert!(taken, "same tick: the page takes the listed key");
+    assert_eq!(bench.text("log"), "enter ");
+    // And after the edit's reply, still before a frame.
+    bench.ask(serde_json::from_str(&edit("a")).unwrap());
+    let taken = bench.host.editor_key(Key::Down);
+    bench.settle();
+    assert!(taken, "after the reply: the page takes the listed key");
+    assert_eq!(bench.text("log"), "enter down ");
+}
+
+/// A typeahead as pages write it: a controlled value, a list that follows the text.
+const TYPEAHEAD: &str = "function render(){const q=useLocal('q',''),open=useLocal('open',false),active=useLocal('active',0),log=useLocal('log','');const all=['Apple','Banana'];const matches=all.filter(n=>n.toLowerCase().startsWith(q.value.toLowerCase()));const shown=open.value&&matches.length>0;return h('page',{},h('view',{id:'field'},h('input',{'data-testid':'q',value:q.value,'aria-label':'Fruit',role:'combobox','aria-expanded':shown,'aria-activedescendant':shown?'opt-'+active.value:undefined,onInput(text){q.set(text);open.set(true);active.set(0)},onFocus(){open.set(true)},onBlur(){open.set(false)},onKeyDown:{ArrowDown(){active.set(active.value+1)},Enter(){log.set(log.value+'took '+matches[active.value]+' ');open.set(false)}}})),h('view',{id:'list',popover:'manual',anchor:'field',open:shown,'data-testid':'list'},matches.map((n,i)=>h('button',{key:n,id:'opt-'+i,role:'option',onClick(){}},n))),h('text',{'data-testid':'log'},log.value||'-'))}";
+
+#[test]
+fn a_typeahead_takes_enter_once_the_typed_text_is_on_screen() {
+    let bench = Bench::with("test-editor-keys-typeahead", TYPEAHEAD);
+    let (identity, token) = bench.focus("q");
+    for text in ["b", "a", "n"] {
+        bench.ask(
+            serde_json::json!({"op":"edit","identity":identity,"token":token,"submit":false,
+            "edits":[{"op":"replace","text":text,"cursor":1,"composing":false}]}),
+        );
+        bench.settle();
+    }
+    assert!(bench.key(Key::Activate), "the page takes the listed Enter");
+    assert_eq!(bench.text("log"), "took Banana ");
 }
