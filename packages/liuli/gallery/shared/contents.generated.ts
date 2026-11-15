@@ -18,6 +18,8 @@ import { Content as Elevation } from '../content/elevation';
 import { Content as Motion } from '../content/motion';
 import { Content as Button } from '../content/button';
 import { Content as ToggleButton } from '../content/toggle-button';
+import { Content as IconButton } from '../content/icon-button';
+import { Content as ButtonGroup } from '../content/button-group';
 import { Content as TextInput } from '../content/text-input';
 import { Content as TextArea } from '../content/text-area';
 import { Content as DateInput } from '../content/date-input';
@@ -82,6 +84,8 @@ export const contents: Record<string, GalleryContent> = {
   "motion": Motion,
   "button": Button,
   "toggle-button": ToggleButton,
+  "icon-button": IconButton,
+  "button-group": ButtonGroup,
   "text-input": TextInput,
   "text-area": TextArea,
   "date-input": DateInput,

@@ -91,7 +91,7 @@ export function Specimen() {
 
 export function Sizes() {
   return (
-    <view className="flex-row items-center gap-2">
+    <view className="flex-row flex-wrap items-center gap-2">
       <DropdownMenu label="Small" size="sm">
         <DropdownMenuItem label="Rename" onClick={() => {}} />
       </DropdownMenu>

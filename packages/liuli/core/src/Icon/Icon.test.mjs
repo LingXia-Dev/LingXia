@@ -84,9 +84,10 @@ test('the vendored set: one file per name in use, with its licence beside it', (
   assert.deepEqual(readdirSync(new URL('./icons/', import.meta.url)).sort(), names.map(name => `${name}.ts`).sort());
 });
 
-test('a component draws its own marks from the set in use: a provided set redraws the status mark and close of a banner', async () => {
+test('a component draws its own marks from the set in use: a provided set redraws the status mark and close of a banner and the icon of a button', async () => {
   const screen = await renderPage(`
     import { Banner } from '@liulidesign/core/Banner';
+    import { Button } from '@liulidesign/core/Button';
     import { IconSetProvider } from '@liulidesign/core/Icon';
     const cross = { paths: ['M7 7l10 10M17 7 7 17'] };
     const dot = { paths: ['M12 11v2'] };
@@ -94,9 +95,10 @@ test('a component draws its own marks from the set in use: a provided set redraw
       return (
         <page>
           <Banner tone="warning" title="Offline" onDismiss={() => {}} dismissLabel="Dismiss" data-testid="plain" />
-          <IconSetProvider icons={{ close: cross, warning: dot }}>
+          <IconSetProvider icons={{ close: cross, warning: dot, add: dot }}>
             <view>
               <Banner tone="warning" title="Offline" onDismiss={() => {}} dismissLabel="Dismiss" data-testid="themed" />
+              <Button label="New" startIcon="add" data-testid="button" />
             </view>
           </IconSetProvider>
         </page>
@@ -111,4 +113,5 @@ test('a component draws its own marks from the set in use: a provided set redraw
   };
   assert.deepEqual(marks('themed'), ['M12 11v2', 'M7 7l10 10M17 7 7 17']);
   assert.notDeepEqual(marks('plain'), marks('themed'));
+  assert.deepEqual(marks('button'), ['M12 11v2']);
 });

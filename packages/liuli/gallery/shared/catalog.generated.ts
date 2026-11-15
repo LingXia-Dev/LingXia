@@ -87,6 +87,38 @@ export const entries: GalleryEntry[] = [
     "status": "preview"
   },
   {
+    "name": "IconButton",
+    "page": "icon-button",
+    "category": "actions",
+    "summary": "A button that shows only an icon, with a name that is always read",
+    "keywords": [
+      "icon button",
+      "toolbar button",
+      "action icon",
+      "square button",
+      "close button",
+      "more button"
+    ],
+    "since": "2026-11-14",
+    "status": "preview"
+  },
+  {
+    "name": "ButtonGroup",
+    "page": "button-group",
+    "category": "actions",
+    "summary": "Buttons that belong together, apart or joined edge to edge, as one keyboard stop",
+    "keywords": [
+      "button group",
+      "toolbar",
+      "action group",
+      "attached buttons",
+      "split actions",
+      "button bar"
+    ],
+    "since": "2026-11-14",
+    "status": "preview"
+  },
+  {
     "name": "TextInput",
     "page": "text-input",
     "category": "inputs",
@@ -820,7 +852,7 @@ export const galleryCategories: GalleryCategory[] = [
     "title": "Actions",
     "description": "Buttons that start something, or turn a setting on and off.",
     "page": "category-actions",
-    "count": 2
+    "count": 4
   },
   {
     "id": "inputs",
@@ -888,7 +920,7 @@ export const galleryCategories: GalleryCategory[] = [
 ];
 
 /** The 6 latest components, newest first. */
-export const newest: string[] = ["BarChart","Chart","Icon","LineChart","NavList","PieChart"];
+export const newest: string[] = ["BarChart","ButtonGroup","Chart","Icon","IconButton","LineChart"];
 
 export const version = "0.1.0";
 export const packageStatus = "Preview";

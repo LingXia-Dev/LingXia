@@ -1,0 +1,55 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { textOf } from '@lingxia/view/testing';
+import { renderExample } from '../testing/harness.mjs';
+
+test('Actions: a toolbar named by its label; the buttons keep a gap, their own variants and their presses', async () => {
+  const screen = await renderExample('ButtonGroup/ButtonGroup', 'Actions');
+  const group = screen.getByTestId('actions');
+  assert.equal(group.props.role, 'toolbar');
+  assert.equal(group.props.accessibilityLabel, 'Draft actions');
+  assert.equal(group.props.gap, 8);
+  assert.deepEqual(group.children.map(button => button.props.accessibilityLabel), ['Discard', 'Save', 'Publish']);
+  assert.equal(screen.getByTestId('publish').props.background, 'accent');
+  assert.equal(screen.getByTestId('save').props.radius, 10, 'apart, each button keeps its own corners');
+  screen.press(screen.getByTestId('publish'));
+  assert.equal(textOf(screen.getByTestId('outcome')), 'Published');
+});
+
+test('Attached: no gap, shared edges, and only the group\'s two ends are round', async () => {
+  const screen = await renderExample('ButtonGroup/ButtonGroup', 'Attached');
+  assert.equal(screen.getByTestId('history').props.gap, 0);
+  const [undo, redo, reset] = ['undo', 'redo', 'reset'].map(id => screen.getByTestId(id));
+  const round = button => JSON.stringify(['radiusStartStart', 'radiusStartEnd', 'radiusEndEnd', 'radiusEndStart'].map(corner => button.props[corner] ?? 0));
+  assert.equal(round(redo), '[0,0,0,0]', 'a middle button is square');
+  assert.equal(round(undo), '[10,0,0,10]', 'the first rounds its start edge');
+  assert.equal(round(reset), '[0,10,10,0]', 'the last rounds its end edge');
+  assert.notEqual(round(undo), '[0,0,0,0]');
+  assert.notEqual(round(reset), '[0,0,0,0]');
+  assert.notEqual(round(undo), round(reset), 'the first rounds its start edge, the last its end edge');
+  assert.equal(redo.props.marginInlineStart, -1, 'neighbours overlap by their edge, so it is drawn once');
+  assert.equal(undo.props.marginInlineStart ?? 0, 0);
+  assert.ok(undo.children.some(child => child.tag === 'vector'), 'a start icon by name');
+  assert.match(redo.props.focusVisibleStyle.ring, /"inner":\{"width":2,"color":"focus"\}/, 'the focus ring is inside the button, where a neighbour cannot cover it');
+  assert.doesNotMatch(redo.props.focusVisibleStyle.ring, /outer/);
+});
+
+test('the group gives its buttons a variant, a size and a disabled state; a button that sets its own keeps it', async () => {
+  const icons = await renderExample('ButtonGroup/ButtonGroup', 'IconsAttached');
+  const out = icons.getByTestId('zoom-out');
+  assert.deepEqual([out.props.background, out.props.width, out.props.accessibilityLabel], ['surface', 40, 'Zoom out']);
+  const sizes = await renderExample('ButtonGroup/ButtonGroup', 'Sizes');
+  assert.deepEqual([sizes.getByTestId('small-day').props.minHeight, sizes.getByTestId('large-day').props.minHeight], [32, 48]);
+  const disabled = await renderExample('ButtonGroup/ButtonGroup', 'StateDisabled');
+  assert.equal(disabled.getByTestId('disabled-undo').props.onClick, undefined, 'the group disables its buttons');
+  const actions = await renderExample('ButtonGroup/ButtonGroup', 'Actions');
+  assert.equal(actions.getByTestId('discard').props.background, '#00000000', 'its own ghost variant');
+});
+
+test('Toolbar: icon buttons in a quiet group, each named', async () => {
+  const screen = await renderExample('ButtonGroup/ButtonGroup', 'Toolbar');
+  const group = screen.getByTestId('message');
+  assert.deepEqual(group.children.map(button => [button.props.accessibilityLabel, button.props.width, button.props.background]), [
+    ['Reply', 32, '#00000000'], ['Forward', 32, '#00000000'], ['Delete', 32, '#00000000'],
+  ]);
+});

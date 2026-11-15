@@ -14,7 +14,8 @@ export const doc: ComponentDoc = {
   recipe: { map: 'buttonRecipe', parts: 'buttonParts' },
   anatomy: [
     { part: 'root', required: true, description: 'The pressable box: fill, border, press and hover paint.' },
-    { part: 'icon', required: false, description: '`startIcon`, replaced by the spinner while loading; a trailing slot holds `endContent`.' },
+    { part: 'glyph', required: false, description: '`startIcon`, replaced by the spinner while loading, and `endIcon`; from the icon set in use, hidden from assistive tech.' },
+    { part: 'icon', required: false, description: 'The trailing slot that holds `endContent`.' },
     { part: 'spinner', required: false, description: 'Spins while `isLoading` or a `clickAction` is pending.' },
     { part: 'label', required: true, description: 'The text; never truncated, so keep it short.' },
   ],
@@ -59,6 +60,7 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Variants', title: 'Variants' },
     { name: 'Sizes', title: 'Sizes' },
+    { name: 'WithIcons', title: 'With icons' },
     { name: 'AsyncAction', title: 'Waiting on a Logic action' },
     { name: 'DisabledWithReason', title: 'Disabled, with the reason' },
   ],
@@ -84,7 +86,7 @@ export const doc: ComponentDoc = {
       today: 'A ring on the fill blends into it, so Button draws no focus style of its own.',
     },
   ],
-  related: ['DropdownMenu', 'Dialog'],
+  related: ['IconButton', 'ButtonGroup', 'DropdownMenu', 'Dialog'],
   gallery: {
     specimen: 'Specimen',
     tagline: 'Starts an action',
@@ -96,6 +98,7 @@ export const doc: ComponentDoc = {
         { name: 'VariantsEveryday', title: 'Primary for the main action, secondary and ghost for the rest' },
         { name: 'VariantDestructive', title: 'Destructive, for loss' },
         { name: 'VariantLink', title: 'Link, a quiet way out beside a form' },
+        { name: 'WithIcons', title: 'An icon before the label for the kind of action, after it for where it leads' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large; prefer large on touch layouts' }],
       states: [

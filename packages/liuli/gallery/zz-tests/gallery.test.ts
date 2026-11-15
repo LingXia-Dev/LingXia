@@ -9,7 +9,7 @@ const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 // equal to the gallery.
 const categories: Record<string, string[]> = {
   'category-foundations': ['colour', 'typography', 'shape-and-spacing', 'elevation', 'motion'],
-  'category-actions': ['button', 'toggle-button'],
+  'category-actions': ['button', 'toggle-button', 'icon-button', 'button-group'],
   'category-inputs': ['text-input', 'text-area', 'date-input', 'time-input', 'slider', 'field'],
   'category-selection': ['checkbox-input', 'radio-group', 'switch', 'select', 'segmented-control'],
   'category-navigation': ['tabs', 'nav-list'],

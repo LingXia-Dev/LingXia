@@ -92,3 +92,14 @@ test('link: accent text at regular weight, no fill at rest', async () => {
   assert.equal(link.props.color, 'accent');
   assert.equal(screen.getByText('Forgot password?').props.fontWeight, 400);
 });
+
+test('WithIcons: a start icon comes before the label and an end icon after it, both by name and unread; the label stays the name', async () => {
+  const screen = await renderExample('Button/Button', 'WithIcons');
+  const parts = id => screen.getByTestId(id).children.map(child => child.tag);
+  assert.deepEqual(parts('new-note'), ['vector', 'text']);
+  assert.deepEqual(parts('continue-on'), ['text', 'vector']);
+  const icon = screen.getByTestId('new-note').children[0];
+  assert.deepEqual([icon.props.accessibilityHidden, icon.props.width], [1, 18]);
+  assert.equal(screen.getByTestId('new-note').props.accessibilityLabel, 'New note');
+  assert.match(screen.getByTestId('continue-on').children[1].props.vectorSource, /M5 12h14/, 'the set\'s arrow');
+});

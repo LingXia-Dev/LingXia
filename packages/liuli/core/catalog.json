@@ -832,21 +832,34 @@
           "name": "variant",
           "type": "ButtonVariant",
           "required": false,
-          "description": "`primary` for the one main action in view, `destructive` for an action that loses data, `link` for a quiet way out beside a form's main action (\"Forgot password?\").",
+          "description": "In a ButtonGroup the group's variant, unless set here. `primary` for the one main action in view, `destructive` for an action that loses data, `link` for a quiet way out beside a form's main action (\"Forgot password?\").",
           "default": "'secondary'"
         },
         {
           "name": "size",
           "type": "ButtonSize",
           "required": false,
-          "description": "",
+          "description": "In a ButtonGroup the group's size, unless set here.",
           "default": "'md'"
         },
         {
           "name": "startIcon",
-          "type": "Child",
+          "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"success\" | \"tag\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
           "required": false,
-          "description": "Drawn before the label; hidden from assistive tech, since the label names the button."
+          "description": "An icon before the label, by name; hidden from assistive tech, since the label names the button."
+        },
+        {
+          "name": "endIcon",
+          "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"success\" | \"tag\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
+          "required": false,
+          "description": "An icon after the label: a chevron for a button that opens something, an arrow for one that goes on."
+        },
+        {
+          "name": "isIconOnly",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws `startIcon` alone in a square; `label` stays the accessible name. For a named icon button use IconButton.",
+          "default": "false"
         },
         {
           "name": "endContent",
@@ -908,6 +921,7 @@
       "otherProps": {},
       "parts": {
         "root": "button",
+        "glyph": "vector",
         "icon": "view",
         "spinner": "vector",
         "label": "text",
@@ -1013,6 +1027,11 @@
           "source": "import { Button } from '@liulidesign/core/Button';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row flex-wrap items-center gap-2\">\n      <Button label=\"Small\" size=\"sm\" />\n      <Button label=\"Medium\" />\n      <Button label=\"Large\" size=\"lg\" />\n    </view>\n  );\n}"
         },
         {
+          "name": "WithIcons",
+          "title": "With icons",
+          "source": "import { Button } from '@liulidesign/core/Button';\n\n/** An icon before the label says what kind of action it is; one after it says where the button leads. */\nexport function WithIcons() {\n  return (\n    <view className=\"flex-row flex-wrap gap-3\">\n      <Button label=\"New note\" variant=\"primary\" startIcon=\"add\" data-testid=\"new-note\" />\n      <Button label=\"Share\" startIcon=\"share\" />\n      <Button label=\"Continue\" endIcon=\"arrow-end\" data-testid=\"continue-on\" />\n      <Button label=\"Delete\" variant=\"destructive\" startIcon=\"delete\" />\n    </view>\n  );\n}"
+        },
+        {
           "name": "AsyncAction",
           "title": "Waiting on a Logic action",
           "source": "import { useView, type View } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\n\ntype Actions = { publish(): Promise<void> };\n\n/** `clickAction` takes a Logic action as it is; the button shows loading until it settles. */\nexport function AsyncAction() {\n  const { actions } = useView() as View<Actions>;\n  return <Button label=\"Publish\" variant=\"primary\" width=\"content\" clickAction={() => actions.publish()} data-testid=\"publish\" />;\n}"
@@ -1046,6 +1065,8 @@
         }
       ],
       "related": [
+        "IconButton",
+        "ButtonGroup",
         "DropdownMenu",
         "Dialog"
       ],
@@ -1068,6 +1089,10 @@
             {
               "name": "VariantLink",
               "title": "Link, a quiet way out beside a form"
+            },
+            {
+              "name": "WithIcons",
+              "title": "An icon before the label for the kind of action, after it for where it leads"
             }
           ],
           "sizes": [
@@ -1102,6 +1127,194 @@
             {
               "name": "AsyncAction",
               "title": "Waiting on a Logic action"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "ButtonGroup",
+      "import": "@liulidesign/core/ButtonGroup",
+      "exports": [
+        "ButtonGroup"
+      ],
+      "category": "actions",
+      "status": "preview",
+      "since": "2026-11-14",
+      "summary": "Buttons that belong together, apart or joined edge to edge, as one keyboard stop",
+      "description": "ButtonGroup lays out Buttons and IconButtons that act on the same thing. Apart, they keep a gap and wrap; attached, they share edges and read as one shape. The group gives its buttons a size and a variant, can disable them all, and is a toolbar for assistive tech: one Tab stop, with the arrow keys moving among the buttons.",
+      "keywords": [
+        "button group",
+        "toolbar",
+        "action group",
+        "attached buttons",
+        "split actions",
+        "button bar"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "What the buttons have in common, read once as the group's name: \"Text style\"."
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": true,
+          "description": "Button and IconButton elements."
+        },
+        {
+          "name": "isAttached",
+          "type": "boolean",
+          "required": false,
+          "description": "Joins the buttons edge to edge, for actions of one kind. Apart, they keep a gap and wrap.",
+          "default": "false"
+        },
+        {
+          "name": "size",
+          "type": "ButtonSize",
+          "required": false,
+          "description": "The size of every button that sets none."
+        },
+        {
+          "name": "variant",
+          "type": "ButtonVariant",
+          "required": false,
+          "description": "The variant of every button that sets none."
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "Disables every button in the group.",
+          "default": "false"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "disabled",
+            "from": "isDisabled, on every button"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Enters the group on one button and leaves it"
+          },
+          {
+            "keys": "Left, Right",
+            "effect": "Move focus between the buttons without pressing them"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Presses the focused button"
+          }
+        ],
+        "contrast": [],
+        "notes": [
+          "Role toolbar, named by `label`; each button keeps its own name and state.",
+          "The shared edge of attached secondary buttons is decorative and below 3:1 by design: each button is told apart by its label or icon, not by the line.",
+          "A group is not a choice among values: nothing in it stays selected. For that use SegmentedControl or a ToggleButton."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Actions",
+          "title": "Actions on one thing",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { ButtonGroup } from '@liulidesign/core/ButtonGroup';\n\n/** Actions on one thing sit together, the main one last. */\nexport function Actions() {\n  const outcome = useLocal('outcome', 'Draft');\n  return (\n    <view className=\"gap-3\">\n      <ButtonGroup label=\"Draft actions\" data-testid=\"actions\">\n        <Button label=\"Discard\" variant=\"ghost\" onClick={() => outcome.set('Discarded')} data-testid=\"discard\" />\n        <Button label=\"Save\" onClick={() => outcome.set('Saved')} data-testid=\"save\" />\n        <Button label=\"Publish\" variant=\"primary\" onClick={() => outcome.set('Published')} data-testid=\"publish\" />\n      </ButtonGroup>\n      <text role=\"status\" data-testid=\"outcome\" className=\"text-footnote text-muted\">{outcome.value}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Attached",
+          "title": "Attached",
+          "source": "import { Button } from '@liulidesign/core/Button';\nimport { ButtonGroup } from '@liulidesign/core/ButtonGroup';\n\n/** Attached, for actions of one kind: the buttons share edges and the group is one shape. */\nexport function Attached() {\n  return (\n    <ButtonGroup label=\"History\" isAttached data-testid=\"history\">\n      <Button label=\"Undo\" startIcon=\"undo\" data-testid=\"undo\" />\n      <Button label=\"Redo\" startIcon=\"redo\" data-testid=\"redo\" />\n      <Button label=\"Reset\" data-testid=\"reset\" />\n    </ButtonGroup>\n  );\n}"
+        },
+        {
+          "name": "IconsAttached",
+          "title": "Attached icon buttons",
+          "source": "import { IconButton } from '@liulidesign/core/IconButton';\nimport { ButtonGroup } from '@liulidesign/core/ButtonGroup';\n\nexport function IconsAttached() {\n  return (\n    <ButtonGroup label=\"Zoom\" isAttached variant=\"secondary\" data-testid=\"zoom\">\n      <IconButton label=\"Zoom out\" icon=\"remove\" data-testid=\"zoom-out\" />\n      <IconButton label=\"Zoom in\" icon=\"add\" />\n      <IconButton label=\"Fit to screen\" icon=\"expand\" />\n    </ButtonGroup>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { Button } from '@liulidesign/core/Button';\nimport { ButtonGroup } from '@liulidesign/core/ButtonGroup';\n\nexport function Sizes() {\n  return (\n    <view className=\"gap-4\">\n      <ButtonGroup label=\"Small\" isAttached size=\"sm\" data-testid=\"small\">\n        <Button label=\"Day\" data-testid=\"small-day\" />\n        <Button label=\"Week\" />\n        <Button label=\"Month\" />\n      </ButtonGroup>\n      <ButtonGroup label=\"Large\" isAttached size=\"lg\">\n        <Button label=\"Day\" data-testid=\"large-day\" />\n        <Button label=\"Week\" />\n        <Button label=\"Month\" />\n      </ButtonGroup>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Toolbar",
+          "title": "A toolbar",
+          "source": "import { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { ButtonGroup } from '@liulidesign/core/ButtonGroup';\n\n/** A toolbar over content: icon buttons in a quiet group, a labelled action apart from it. */\nexport function Toolbar() {\n  return (\n    <view className=\"flex-row items-center justify-between gap-3\">\n      <ButtonGroup label=\"Message actions\" size=\"sm\" data-testid=\"message\">\n        <IconButton label=\"Reply\" icon=\"message\" />\n        <IconButton label=\"Forward\" icon=\"send\" />\n        <IconButton label=\"Delete\" icon=\"delete\" />\n      </ButtonGroup>\n      <Button label=\"Archive\" size=\"sm\" startIcon=\"folder\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "An attached group that wraps or scrolls when it does not fit.",
+          "needs": "reading a laid-out box's size (`useBox`) to fold buttons into a menu",
+          "today": "An attached group stays on one line and can be clipped; keep it short."
+        },
+        {
+          "missing": "A vertical group.",
+          "needs": "nothing from the View",
+          "today": "Rows only."
+        }
+      ],
+      "related": [
+        "Button",
+        "IconButton",
+        "SegmentedControl"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Buttons together",
+        "order": 4,
+        "page": {
+          "lead": "Use a button group for actions on the same thing, so they read and are reached as one set.",
+          "hero": "Actions",
+          "variants": [
+            {
+              "name": "Attached",
+              "title": "Attached: actions of one kind share edges"
+            },
+            {
+              "name": "IconsAttached",
+              "title": "Attached icon buttons"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "The group sets the size of its buttons"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateDisabled",
+              "title": "Disabled, all at once"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Toolbar",
+              "title": "A quiet group of icon buttons, with a labelled action apart"
             }
           ]
         }
@@ -3394,6 +3607,249 @@
             {
               "name": "Everything",
               "title": "The whole set, by name"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "IconButton",
+      "import": "@liulidesign/core/IconButton",
+      "exports": [
+        "IconButton"
+      ],
+      "category": "actions",
+      "status": "preview",
+      "since": "2026-11-14",
+      "summary": "A button that shows only an icon, with a name that is always read",
+      "description": "IconButton is a Button drawn as a square with its icon alone, for actions people know by sight: like, share, close, more. It has no visible text, so `label` is required and is what a screen reader says. It takes Button's variants, sizes, loading and disabled states, and is quiet by default.",
+      "keywords": [
+        "icon button",
+        "toolbar button",
+        "action icon",
+        "square button",
+        "close button",
+        "more button"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The accessible name: what pressing it does (\"Delete note\"). Not drawn, so it is never optional."
+        },
+        {
+          "name": "icon",
+          "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"success\" | \"tag\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
+          "required": true,
+          "description": "The icon, by name."
+        },
+        {
+          "name": "variant",
+          "type": "ButtonVariant",
+          "required": false,
+          "description": "In a ButtonGroup the group's variant, unless set here. Quiet by default: an icon button is rarely the main action.",
+          "default": "'ghost'"
+        },
+        {
+          "name": "size",
+          "type": "ButtonSize",
+          "required": false,
+          "description": "32, 40 or 48 points square. In a ButtonGroup the group's size, unless set here.",
+          "default": "'md'"
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Why it is disabled: read as its description while disabled; not drawn."
+        },
+        {
+          "name": "isLoading",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows a spinner in place of the icon and ignores presses.",
+          "default": "false"
+        },
+        {
+          "name": "onClick",
+          "type": "(() => void)",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "clickAction",
+          "type": "(() => Promise<unknown>)",
+          "required": false,
+          "description": "An async action; the button shows loading until it settles."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "button"
+      },
+      "accessibility": {
+        "pattern": "button",
+        "name": "label",
+        "description": [
+          "disabledMessage, while disabled"
+        ],
+        "states": [
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          },
+          {
+            "state": "busy",
+            "from": "isLoading, or a pending clickAction"
+          }
+        ],
+        "keyboard": [],
+        "target": {
+          "sm": 32,
+          "md": 40,
+          "lg": 48
+        },
+        "contrast": [
+          {
+            "what": "quiet icon on a card",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "quiet icon under the pointer",
+            "pair": [
+              "text",
+              "text/5"
+            ],
+            "over": "surface",
+            "minimum": "3:1"
+          },
+          {
+            "what": "primary icon",
+            "pair": [
+              "on-accent",
+              "accent"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "destructive icon",
+            "pair": [
+              "on-danger",
+              "danger"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "disabled icon",
+            "pair": [
+              "text-muted",
+              "text/6"
+            ],
+            "over": "surface",
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "Role button, named by `label`; the icon is hidden. The name stays the same while loading.",
+          "On touch, a finger reaches a 32 or 40 point button within 44 points around it, never over a neighbour; the drawn square stays its size.",
+          "The quiet variant has no edge at rest, so it relies on its place (a toolbar, the end of a row) to read as a control."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Toolbar",
+          "title": "A row of actions",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { IconButton } from '@liulidesign/core/IconButton';\n\n/** The label is never drawn and always read: name what the press does. */\nexport function Toolbar() {\n  const liked = useLocal('liked', 0);\n  return (\n    <view className=\"flex-row items-center gap-1\">\n      <IconButton label=\"Like\" icon=\"heart\" onClick={() => liked.set(liked.value + 1)} data-testid=\"like\" />\n      <IconButton label=\"Share\" icon=\"share\" data-testid=\"share\" />\n      <IconButton label=\"Bookmark\" icon=\"bookmark\" />\n      <IconButton label=\"More actions\" icon=\"more\" />\n      <text role=\"status\" data-testid=\"likes\" className=\"ps-2 text-footnote text-muted tabular-nums\">{`${liked.value} likes`}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Variants",
+          "title": "Variants",
+          "source": "import { IconButton } from '@liulidesign/core/IconButton';\n\nexport function Variants() {\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <IconButton label=\"Add\" icon=\"add\" variant=\"primary\" data-testid=\"add\" />\n      <IconButton label=\"Edit\" icon=\"edit\" variant=\"secondary\" />\n      <IconButton label=\"Settings\" icon=\"settings\" data-testid=\"quiet\" />\n      <IconButton label=\"Delete\" icon=\"delete\" variant=\"destructive\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { IconButton } from '@liulidesign/core/IconButton';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <IconButton label=\"Search, small\" icon=\"search\" size=\"sm\" variant=\"secondary\" data-testid=\"small\" />\n      <IconButton label=\"Search, medium\" icon=\"search\" variant=\"secondary\" data-testid=\"medium\" />\n      <IconButton label=\"Search, large\" icon=\"search\" size=\"lg\" variant=\"secondary\" data-testid=\"large\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "InRows",
+          "title": "At the end of a row",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { IconButton } from '@liulidesign/core/IconButton';\n\n/** At the end of a row, an icon button acts on that row alone. */\nexport function InRows() {\n  const removed = useLocal<readonly string[]>('removed', []);\n  const files = ['Budget.xlsx', 'Notes.txt', 'Plan.pdf'].filter(name => !removed.value.includes(name));\n  return (\n    <view role=\"list\" aria-label=\"Attachments\" className=\"divide-y divide-text/8\">\n      {files.map(name => (\n        <view key={name} role=\"listitem\">\n          <Item\n            label={name}\n            endContent={<IconButton label={`Remove ${name}`} icon=\"close\" size=\"sm\" onClick={() => removed.set([...removed.value, name])} data-testid={`remove-${name}`} />}\n          />\n        </view>\n      ))}\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "The label shown as a tooltip on hover and keyboard focus.",
+          "needs": "a hint that opens from any control",
+          "today": "The label is read by assistive tech only."
+        }
+      ],
+      "related": [
+        "Button",
+        "ButtonGroup",
+        "Icon"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "An icon that acts",
+        "order": 3,
+        "page": {
+          "lead": "Use an icon button for an action people know by its icon, where a word would crowd the row.",
+          "hero": "Toolbar",
+          "variants": [
+            {
+              "name": "Variants",
+              "title": "Primary, secondary, quiet and destructive; quiet by default"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "32, 40 and 48 points square"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateDefault",
+              "title": "Default"
+            },
+            {
+              "name": "StateBusy",
+              "title": "Busy"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "InRows",
+              "title": "At the end of a row, named with the row it acts on"
             }
           ]
         }

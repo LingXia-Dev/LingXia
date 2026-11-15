@@ -108,3 +108,15 @@ export function VariantDestructive() {
 export function VariantLink() {
   return <Button label="Forgot password?" variant="link" width="content" data-testid="forgot" />;
 }
+
+/** An icon before the label says what kind of action it is; one after it says where the button leads. */
+export function WithIcons() {
+  return (
+    <view className="flex-row flex-wrap gap-3">
+      <Button label="New note" variant="primary" startIcon="add" data-testid="new-note" />
+      <Button label="Share" startIcon="share" />
+      <Button label="Continue" endIcon="arrow-end" data-testid="continue-on" />
+      <Button label="Delete" variant="destructive" startIcon="delete" />
+    </view>
+  );
+}

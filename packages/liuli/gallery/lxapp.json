@@ -27,6 +27,8 @@
     { "name": "motion", "path": "pages/motion/index" },
     { "name": "button", "path": "pages/button/index" },
     { "name": "toggle-button", "path": "pages/toggle-button/index" },
+    { "name": "icon-button", "path": "pages/icon-button/index" },
+    { "name": "button-group", "path": "pages/button-group/index" },
     { "name": "text-input", "path": "pages/text-input/index" },
     { "name": "text-area", "path": "pages/text-area/index" },
     { "name": "date-input", "path": "pages/date-input/index" },

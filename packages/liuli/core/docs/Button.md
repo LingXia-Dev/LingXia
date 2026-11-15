@@ -45,6 +45,24 @@ export function Sizes() {
 }
 ```
 
+### With icons
+
+```tsx
+import { Button } from '@liulidesign/core/Button';
+
+/** An icon before the label says what kind of action it is; one after it says where the button leads. */
+export function WithIcons() {
+  return (
+    <view className="flex-row flex-wrap gap-3">
+      <Button label="New note" variant="primary" startIcon="add" data-testid="new-note" />
+      <Button label="Share" startIcon="share" />
+      <Button label="Continue" endIcon="arrow-end" data-testid="continue-on" />
+      <Button label="Delete" variant="destructive" startIcon="delete" />
+    </view>
+  );
+}
+```
+
 ### Waiting on a Logic action
 
 ```tsx
@@ -96,9 +114,11 @@ export function DisabledWithReason() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | The visible text and the accessible name. Name the outcome: "Save changes", not "OK". |
-| `variant` | `ButtonVariant` | `'secondary'` | `primary` for the one main action in view, `destructive` for an action that loses data, `link` for a quiet way out beside a form's main action ("Forgot password?"). |
-| `size` | `ButtonSize` | `'md'` |  |
-| `startIcon` | `Child` |  | Drawn before the label; hidden from assistive tech, since the label names the button. |
+| `variant` | `ButtonVariant` | `'secondary'` | In a ButtonGroup the group's variant, unless set here. `primary` for the one main action in view, `destructive` for an action that loses data, `link` for a quiet way out beside a form's main action ("Forgot password?"). |
+| `size` | `ButtonSize` | `'md'` | In a ButtonGroup the group's size, unless set here. |
+| `startIcon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "clock" \| "close" \| "cloud" \| "collapse" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "success" \| "tag" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  | An icon before the label, by name; hidden from assistive tech, since the label names the button. |
+| `endIcon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "clock" \| "close" \| "cloud" \| "collapse" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "success" \| "tag" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  | An icon after the label: a chevron for a button that opens something, an arrow for one that goes on. |
+| `isIconOnly` | `boolean` | `false` | Draws `startIcon` alone in a square; `label` stays the accessible name. For a named icon button use IconButton. |
 | `endContent` | `Child` |  | Drawn after the label: a count, a shortcut hint. Hidden from assistive tech. |
 | `width` | `ButtonWidth` |  | `content` keeps its own width in a column; `fill` stretches across. Unset follows the parent. |
 | `isDisabled` | `boolean` | `false` |  |
@@ -114,7 +134,8 @@ export function DisabledWithReason() {
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
 | root | `<button>` | yes | The pressable box: fill, border, press and hover paint. |
-| icon | `<view>` | no | `startIcon`, replaced by the spinner while loading; a trailing slot holds `endContent`. |
+| glyph | `<vector>` | no | `startIcon`, replaced by the spinner while loading, and `endIcon`; from the icon set in use, hidden from assistive tech. |
+| icon | `<view>` | no | The trailing slot that holds `endContent`. |
 | spinner | `<vector>` | no | Spins while `isLoading` or a `clickAction` is pending. |
 | label | `<text>` | yes | The text; never truncated, so keep it short. |
 
@@ -160,4 +181,4 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Announcing that loading started. | an announcement without a mounted live region | Busy state only; a page that needs speech keeps its own status line. |
 | A keyboard focus ring that shows on a filled button. | ring offset: a gap between the box and its ring | A ring on the fill blends into it, so Button draws no focus style of its own. |
 
-Related: DropdownMenu, Dialog.
+Related: IconButton, ButtonGroup, DropdownMenu, Dialog.

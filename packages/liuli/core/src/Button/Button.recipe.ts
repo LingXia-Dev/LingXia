@@ -1,7 +1,7 @@
 import type { ButtonSize, ButtonVariant, ButtonWidth } from './Button';
 
 /** The element each part lands on. */
-export const buttonParts = { root: 'button', icon: 'view', spinner: 'vector', label: 'text', reason: 'text' } as const;
+export const buttonParts = { root: 'button', glyph: 'vector', icon: 'view', spinner: 'vector', label: 'text', reason: 'text' } as const;
 
 /**
  * Button classes by part, then by prop value. Exported so an app can style a raw `<button>` (a
@@ -43,6 +43,14 @@ export const buttonRecipe = {
       content: 'self-start',
       fill: 'self-stretch',
     } satisfies Record<ButtonWidth, string>,
+    /**
+     * In an attached group: neighbours share an edge and only the group's ends are round. The focus
+     * ring is drawn inside the button, where the next button cannot cover it.
+     */
+    attached: 'rounded-none first:rounded-s-control last:rounded-e-control -ms-px first:ms-0 focus-visible:ring-0 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
+  },
+  glyph: {
+    size: { sm: 'size-4 shrink-0', md: 'size-[1.125rem] shrink-0', lg: 'size-5 shrink-0' } satisfies Record<ButtonSize, string>,
   },
   icon: {
     base: 'items-center justify-center',
