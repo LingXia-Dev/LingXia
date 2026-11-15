@@ -5251,6 +5251,8 @@ mod submenu;
 mod close_request;
 #[path = "failed_first_frame.rs"]
 mod failed_first_frame;
+#[path = "tree_keys.rs"]
+mod tree_keys;
 
 #[test]
 fn escape_pressed_on_any_match_closes_an_open_light_dismiss_popover() {

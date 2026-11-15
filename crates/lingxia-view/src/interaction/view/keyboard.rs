@@ -422,6 +422,20 @@ impl ViewInteraction {
                 return (true, vec![Effect::Dispatch]);
             }
         }
+        // In a tree the arrow pointing forward opens a closed branch and the arrow pointing back
+        // closes an open one; on any other item they move to its first child and to its parent.
+        if let Some(index) = origin
+            && matches!(key, Key::Left | Key::Right)
+            && let Some((container, crate::interaction::composite::Composite::Tree)) =
+                Composites::new(&frame).container_of(index)
+        {
+            let forward = (key == Key::Right) != frame.nodes[container].rtl;
+            if frame.nodes[index].states[2] == Some(!forward)
+                && frame::clickable(&frame.nodes[index])
+            {
+                return (true, self.activate(index, None, false, None));
+            }
+        }
         // A grid that pages (a calendar's months) hears PageUp and PageDown itself.
         if let Some(index) = origin
             && matches!(key, Key::PageUp | Key::PageDown)

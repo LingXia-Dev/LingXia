@@ -414,12 +414,52 @@ fn a_list_box_stops_at_its_ends_and_a_tree_walks_levels() {
         Some(5),
         "up to the parent"
     );
+    assert!(
+        clicks(&mut interaction).is_empty(),
+        "moving presses nothing"
+    );
     assert_eq!(
         press(&mut interaction, "t-3", "ArrowRight"),
         Some(8),
-        "a closed item stays"
+        "a closed branch keeps focus"
     );
+    assert_eq!(clicks(&mut interaction), [103], "and is pressed open");
+    assert_eq!(press(&mut interaction, "t-0", "ArrowLeft"), Some(5));
+    assert_eq!(
+        clicks(&mut interaction),
+        [100],
+        "an open branch is pressed shut"
+    );
+    assert_eq!(
+        press(&mut interaction, "t-3", "ArrowLeft"),
+        Some(8),
+        "a closed top-level branch has nowhere to go"
+    );
+    assert_eq!(
+        press(&mut interaction, "t-1", "ArrowRight"),
+        Some(6),
+        "a leaf stays"
+    );
+    assert!(clicks(&mut interaction).is_empty());
     assert_eq!(press(&mut interaction, "t-3", "ArrowUp"), Some(7));
+    // Right to left the arrows swap.
+    let mut mirrored = nodes();
+    mirrored[4].rtl = true;
+    present(&mut interaction, mirrored, 2);
+    press(&mut interaction, "t-3", "ArrowLeft");
+    assert_eq!(clicks(&mut interaction), [103], "Left opens");
+    press(&mut interaction, "t-0", "ArrowRight");
+    assert_eq!(clicks(&mut interaction), [100], "Right closes");
+    assert_eq!(
+        press(&mut interaction, "t-0", "ArrowLeft"),
+        Some(6),
+        "Left moves into an open branch"
+    );
+    assert_eq!(
+        press(&mut interaction, "t-2", "ArrowRight"),
+        Some(5),
+        "Right moves to the parent"
+    );
 }
 
 fn tap(interaction: &mut ViewInteraction, y: f32) {
