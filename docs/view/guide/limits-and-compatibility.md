@@ -33,7 +33,8 @@ Both the View runtime and the host enforce fixed bounds on every frame; the curr
 - **Images.** One resource has an encoded-size cap; a page has a budget of decoded image bytes painted at
   once, past which images get `onError` instead of failing the frame.
 - **JavaScript time.** One render or callback may use a fixed amount of CPU time on the View's thread
-  (a page's first render twice that); past it the render is dropped (`UI_OVERRUN`) and runs again, and only several
+  (twice that for a page's first render and for the one a theme, language, text-size or size-class
+  change causes); past it the render is dropped (`UI_OVERRUN`) and runs again, and only several
   in a row, or one far past the budget, stop the page with `UI_TIMEOUT`. A busy machine does not
   count against it, a render that computes too much does.
 

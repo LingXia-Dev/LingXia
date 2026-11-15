@@ -1765,16 +1765,14 @@ fn native_validation_failure_does_not_commit_state_or_handlers() {
 }
 #[path = "editor_focus.rs"]
 mod editor_focus;
-#[path = "input_ellipsis.rs"]
-mod input_ellipsis;
-#[path = "time_field.rs"]
-mod time_field;
 #[path = "editor_rules.rs"]
 mod editor_rules;
 mod flip;
 #[cfg(feature = "hot-swap")]
 #[path = "hot_swap.rs"]
 mod hot_swap;
+#[path = "input_ellipsis.rs"]
+mod input_ellipsis;
 #[path = "motion.rs"]
 mod motion;
 mod presence;
@@ -1782,6 +1780,8 @@ mod presence;
 mod select;
 #[path = "text_selection.rs"]
 mod text_selection;
+#[path = "time_field.rs"]
+mod time_field;
 mod top_layer;
 #[path = "transition.rs"]
 mod transition;
@@ -2230,6 +2230,53 @@ fn a_run_past_the_limit_is_interrupted_at_once_and_a_first_render_gets_the_warm_
         error.starts_with("UI_TIMEOUT:") && error.contains("execution limit"),
         "{error}"
     );
+}
+
+#[test]
+fn a_render_an_environment_change_caused_gets_the_warm_up_budget_once() {
+    let Some((mut page, mut per_ms)) = spinning_page() else {
+        return;
+    };
+    let over = |page: &mut ViewSession, per_ms: &mut f64, rev: u64| {
+        spin_for(page, per_ms, 1.4, rev, "slow").map_err(|error| error.starts_with(super::OVERRUN))
+    };
+    assert_eq!(over(&mut page, &mut per_ms, 1), Err(true), "steady state");
+    // Appearance: the whole page renders again by design.
+    let mut environment = page.environment.clone();
+    environment["theme"] = "dark".into();
+    page.set_environment(environment.clone()).unwrap();
+    assert_eq!(over(&mut page, &mut per_ms, 2).as_deref(), Ok("slow"));
+    assert_eq!(
+        over(&mut page, &mut per_ms, 3),
+        Err(true),
+        "one render only"
+    );
+    // The keyboard and the insets move every frame of an animation: no allowance.
+    environment["keyboard"] = serde_json::json!({"height": 300});
+    environment["insets"] = serde_json::json!({"top": 0, "right": 0, "bottom": 300, "left": 0});
+    page.set_environment(environment.clone()).unwrap();
+    assert_eq!(
+        over(&mut page, &mut per_ms, 4),
+        Err(true),
+        "the keyboard rose"
+    );
+    // A quick render ends the run of overruns before the next rows.
+    assert_eq!(
+        spin_for(&mut page, &mut per_ms, 0.2, 5, "quick").unwrap(),
+        "quick"
+    );
+    // The same snapshot again changes nothing.
+    page.set_environment(environment.clone()).unwrap();
+    assert_eq!(
+        over(&mut page, &mut per_ms, 6),
+        Err(true),
+        "nothing changed"
+    );
+    // Language is a whole-page change too.
+    environment["displayLanguage"] = "fr".into();
+    environment["contentLanguage"] = "fr".into();
+    page.set_environment(environment).unwrap();
+    assert_eq!(over(&mut page, &mut per_ms, 7).as_deref(), Ok("slow"));
 }
 
 #[test]

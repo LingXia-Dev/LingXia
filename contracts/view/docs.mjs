@@ -301,7 +301,7 @@ const limitNotes = {
   transitionMs: 'Longest transition duration or delay, in milliseconds.',
   evalBudgetMs: 'CPU-time budget for one View render or callback. A render past it is dropped: the page keeps its last frame, renders again, and fails with UI_TIMEOUT only after `evalOverrunFrames` such renders in a row. A callback past it keeps its effects.',
   evalBudgetDebugMultiplier: 'Multiplier on that budget in unoptimized (debug) builds.',
-  evalWarmupMultiplier: 'Budget multiple for a module\'s first render after it loads, reloads or is hot-swapped; that render also warms the engine.',
+  evalWarmupMultiplier: 'Budget multiple for a module\'s first render after it loads, reloads or is hot-swapped (that render also warms the engine), and for the render an appearance, language, text-size or size-class change causes, which runs the whole page again.',
   evalLimitMultiplier: 'Budget multiple at which any render or callback is interrupted (ten times that in wall time for a hang) and the page fails with UI_TIMEOUT.',
   evalOverrunFrames: 'Renders in a row past the budget, each dropped, after which the page fails with UI_TIMEOUT.',
   editorTextBytes: 'Text one editor holds, as UTF-8.',

@@ -88,6 +88,18 @@ impl ViewSession {
         }
         self.reveal_input |= self.environment["insets"] != value["insets"]
             || self.environment["keyboard"] != value["keyboard"];
+        // A change that re-renders the whole page by design (appearance, language, text size)
+        // gets a first render's allowance. Insets, the keyboard and the viewport move with every
+        // frame of an animation and get none.
+        let steady = |key: &str| matches!(key, "insets" | "keyboard" | "viewport" | "safeArea");
+        if let (Some(old), Some(new)) = (self.environment.as_object(), value.as_object())
+            && (old.len() != new.len()
+                || new
+                    .iter()
+                    .any(|(key, value)| !steady(key) && old.get(key) != Some(value)))
+        {
+            self.warm.set(true);
+        }
         self.environment = value;
         Ok(())
     }

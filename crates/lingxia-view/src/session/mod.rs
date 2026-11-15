@@ -46,6 +46,8 @@ pub struct ViewSession {
     /// The next frame is the module's first since it loaded or was swapped in: it also warms
     /// the engine, so it gets the warm-up budget.
     warm: Cell<bool>,
+    /// Whether the last render was at the compact size class.
+    compact: Option<bool>,
     /// Frames prepared since this isolate last collected garbage.
     uncollected: Cell<u32>,
     /// The page opted its dev clock into eval phases (`__lingxiaClock.phases = true`).
@@ -307,6 +309,7 @@ impl ViewSession {
             console,
             poisoned: Cell::new(false),
             warm: Cell::new(true),
+            compact: None,
             uncollected: Cell::new(0),
             eval_phases,
             module,

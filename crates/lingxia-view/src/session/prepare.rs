@@ -825,6 +825,21 @@ impl ViewSession {
         // Platform interpolation samples are an internal layout contract.
         environment.as_object_mut().unwrap().remove("textScale");
         environment["viewport"] = serde_json::json!({"width":width_dp,"height":height_dp});
+        // Crossing the size class lays the page out anew, as an appearance change repaints it.
+        let compact = match environment
+            .get("sizeClass")
+            .and_then(|class| class.as_str())
+        {
+            Some(class) => class == "compact",
+            None => width_dp < 600.0,
+        };
+        if self
+            .compact
+            .replace(compact)
+            .is_some_and(|was| was != compact)
+        {
+            self.warm.set(true);
+        }
         if environment.get("sizeClass").is_none() {
             environment["sizeClass"] = serde_json::json!(if width_dp < 600.0 {
                 "compact"

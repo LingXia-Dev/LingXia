@@ -9,7 +9,7 @@ decodable and its GPU memory bounded, and page code cannot act on them.
 | --- | --- | --- |
 | `decodedImageBytes` | 100663296 (96 MiB) | Decoded-image cache shared by every page; it evicts, never fails. |
 | `evalBudgetDebugMultiplier` | 8 | Multiplier on that budget in unoptimized (debug) builds. |
-| `evalWarmupMultiplier` | 2 | Budget multiple for a module's first render after it loads, reloads or is hot-swapped; that render also warms the engine. |
+| `evalWarmupMultiplier` | 2 | Budget multiple for a module's first render after it loads, reloads or is hot-swapped (that render also warms the engine), and for the render an appearance, language, text-size or size-class change causes, which runs the whole page again. |
 | `evalLimitMultiplier` | 4 | Budget multiple at which any render or callback is interrupted (ten times that in wall time for a hang) and the page fails with UI_TIMEOUT. |
 | `evalOverrunFrames` | 3 | Renders in a row past the budget, each dropped, after which the page fails with UI_TIMEOUT. |
 | `inputRequestBytes` | 524288 (512 KiB) | One input-method request from the platform, as UTF-8 JSON. |
