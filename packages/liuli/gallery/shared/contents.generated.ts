@@ -57,6 +57,7 @@ import { Content as EmptyState } from '../content/empty-state';
 import { Content as Skeleton } from '../content/skeleton';
 import { Content as Toast } from '../content/toast';
 import { Content as CircularProgress } from '../content/circular-progress';
+import { Content as StatusDot } from '../content/status-dot';
 import { Content as Dialog } from '../content/dialog';
 import { Content as DropdownMenu } from '../content/dropdown-menu';
 import { Content as Tooltip } from '../content/tooltip';
@@ -156,6 +157,7 @@ export const contents: Record<string, GalleryContent> = {
   "skeleton": Skeleton,
   "toast": Toast,
   "circular-progress": CircularProgress,
+  "status-dot": StatusDot,
   "dialog": Dialog,
   "dropdown-menu": DropdownMenu,
   "tooltip": Tooltip,

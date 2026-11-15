@@ -11936,6 +11936,180 @@
       }
     },
     {
+      "name": "StatusDot",
+      "import": "@liulidesign/core/StatusDot",
+      "exports": [
+        "StatusDot"
+      ],
+      "category": "feedback",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "How something stands, as a dot and a word",
+      "description": "StatusDot is a small dot in a status mark colour with the status in words beside it: a service that is running, a record that needs review. The word carries the meaning; the dot lets the eye find it down a column. Neutral is a hollow ring. For a status that should stand out in a line of text, use a Badge.",
+      "keywords": [
+        "status",
+        "dot",
+        "indicator",
+        "presence",
+        "state",
+        "health"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The status in words: \"Online\", \"Degraded\", \"Paused\". Shown beside the dot, and what is read."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the words, keeping them as the dot\\'s name: only where the same words are already beside it.",
+          "default": "false"
+        },
+        {
+          "name": "tone",
+          "type": "StatusDotTone",
+          "required": false,
+          "description": "",
+          "default": "'neutral'"
+        },
+        {
+          "name": "size",
+          "type": "StatusDotSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "dot": "view",
+        "label": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "target": {},
+        "contrast": [
+          {
+            "what": "success dot",
+            "pair": [
+              "success-mark",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "warning dot",
+            "pair": [
+              "warning-mark",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "danger dot",
+            "pair": [
+              "danger-mark",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "accent dot",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "neutral ring",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "label",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The word is read; the dot is not. With `isLabelHidden` the dot is an image named by the word.",
+          "Colour is never the only sign: the word says the status, and neutral differs by shape.",
+          "It does not announce a change; say that with a Toast or a status of your own."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Services",
+          "title": "Down a column",
+          "source": "import { Item, ItemList } from '@liulidesign/core/Item';\nimport { StatusDot } from '@liulidesign/core/StatusDot';\n\n/** Services and how each stands: the word says it, the dot lets the eye find it. */\nexport function Services() {\n  return (\n    <ItemList label=\"Services\">\n      <Item label=\"Sync\" endContent={<StatusDot label=\"Running\" tone=\"success\" size=\"sm\" data-testid=\"sync\" />} />\n      <Item label=\"Search\" endContent={<StatusDot label=\"Slow\" tone=\"warning\" size=\"sm\" />} />\n      <Item label=\"Exports\" endContent={<StatusDot label=\"Down\" tone=\"danger\" size=\"sm\" />} />\n      <Item label=\"Backups\" endContent={<StatusDot label=\"Paused\" size=\"sm\" data-testid=\"backups\" />} />\n    </ItemList>\n  );\n}"
+        },
+        {
+          "name": "Tones",
+          "title": "The five tones",
+          "source": "import { StatusDot } from '@liulidesign/core/StatusDot';\n\n/** The five tones. */\nexport function Tones() {\n  return (\n    <view className=\"gap-2\">\n      <StatusDot label=\"Published\" tone=\"success\" />\n      <StatusDot label=\"Needs review\" tone=\"warning\" />\n      <StatusDot label=\"Rejected\" tone=\"danger\" />\n      <StatusDot label=\"In progress\" tone=\"accent\" />\n      <StatusDot label=\"Draft\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "DotOnly",
+          "title": "Without its words",
+          "source": "import { StatusDot } from '@liulidesign/core/StatusDot';\n\n/** Without its words, where they are already beside it. */\nexport function DotOnly() {\n  return (\n    <view className=\"flex-row items-center gap-2\">\n      <StatusDot label=\"Online\" tone=\"success\" isLabelHidden data-testid=\"bare\" />\n      <text className=\"text-body font-medium text-text\">Ana Lima</text>\n      <text className=\"text-footnote text-muted\">Online</text>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "It does not pulse or blink."
+      ],
+      "related": [
+        "Badge",
+        "Avatar",
+        "Banner"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A dot and a word",
+        "order": 8,
+        "page": {
+          "lead": "Use a status dot to say how something stands, in a row or a column of like things.",
+          "hero": "Services",
+          "variants": [
+            {
+              "name": "Tones",
+              "title": "Success, warning, danger, accent, and neutral as a ring"
+            },
+            {
+              "name": "DotOnly",
+              "title": "The dot alone, named by its word"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Stepper",
       "import": "@liulidesign/core/Stepper",
       "exports": [

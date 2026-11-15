@@ -676,6 +676,20 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "StatusDot",
+    "page": "status-dot",
+    "category": "feedback",
+    "summary": "How something stands, as a dot and a word",
+    "keywords": [
+      "status",
+      "dot",
+      "indicator",
+      "presence",
+      "state",
+      "health"
+    ]
+  },
+  {
     "name": "Dialog",
     "page": "dialog",
     "category": "overlays",
@@ -1258,7 +1272,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "notifications",
     "description": "Status and progress",
     "page": "category-feedback",
-    "count": 7
+    "count": 8
   },
   {
     "id": "overlays",

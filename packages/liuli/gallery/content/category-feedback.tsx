@@ -6,13 +6,14 @@ import { Specimen as EmptyStateSpecimen } from '../../core/src/EmptyState/EmptyS
 import { Specimen as SkeletonSpecimen } from '../../core/src/Skeleton/Skeleton.examples';
 import { Specimen as ToastSpecimen } from '../../core/src/Toast/Toast.examples';
 import { Specimen as CircularProgressSpecimen } from '../../core/src/CircularProgress/CircularProgress.examples';
+import { Specimen as StatusDotSpecimen } from '../../core/src/StatusDot/StatusDot.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Status, progress and confirmation, from a badge to a toast."}</text>
-      <Category title={"7 components"}>
+      <Category title={"8 components"}>
         <Tile
           name={"Badge"}
           tagline={"A status label"}
@@ -64,11 +65,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"CircularProgress"}
           tagline={"Progress as a ring"}
-          isWide
           onOpen={() => onOpen("circular-progress")}
           testId={"open-circular-progress"}
         >
           <CircularProgressSpecimen />
+        </Tile>
+        <Tile
+          name={"StatusDot"}
+          tagline={"A dot and a word"}
+          onOpen={() => onOpen("status-dot")}
+          testId={"open-status-dot"}
+        >
+          <StatusDotSpecimen />
         </Tile>
       </Category>
     </>
