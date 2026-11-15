@@ -49,6 +49,7 @@ import { Content as Pagination } from '../content/pagination';
 import { Content as Stepper } from '../content/stepper';
 import { Content as Link } from '../content/link';
 import { Content as PageControl } from '../content/page-control';
+import { Content as TreeList } from '../content/tree-list';
 import { Content as Badge } from '../content/badge';
 import { Content as ProgressBar } from '../content/progress-bar';
 import { Content as Banner } from '../content/banner';
@@ -146,6 +147,7 @@ export const contents: Record<string, GalleryContent> = {
   "stepper": Stepper,
   "link": Link,
   "page-control": PageControl,
+  "tree-list": TreeList,
   "badge": Badge,
   "progress-bar": ProgressBar,
   "banner": Banner,

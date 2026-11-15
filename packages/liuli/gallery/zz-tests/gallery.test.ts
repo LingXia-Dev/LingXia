@@ -12,7 +12,7 @@ const categories: Record<string, string[]> = {
   'category-actions': ['button', 'toggle-button', 'icon-button', 'button-group'],
   'category-inputs': ['text-input', 'text-area', 'date-input', 'time-input', 'slider', 'field', 'search-field', 'number-input', 'calendar', 'date-range-input', 'form-layout', 'date-time-input', 'file-input'],
   'category-selection': ['checkbox-input', 'radio-group', 'switch', 'select', 'segmented-control', 'combobox', 'checkbox-list', 'token', 'multi-select'],
-  'category-navigation': ['tabs', 'nav-list', 'breadcrumb', 'pagination', 'stepper', 'link', 'page-control'],
+  'category-navigation': ['tabs', 'nav-list', 'breadcrumb', 'pagination', 'stepper', 'link', 'page-control', 'tree-list'],
   'category-feedback': ['badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast', 'circular-progress'],
   'category-overlays': ['dialog', 'dropdown-menu', 'tooltip', 'bottom-sheet', 'popover', 'drawer'],
   'category-content': ['card', 'item', 'details', 'avatar', 'split-view', 'icon', 'table', 'markdown', 'metadata-list', 'section', 'divider', 'kbd', 'timer', 'code', 'timestamp'],

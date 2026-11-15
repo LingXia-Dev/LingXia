@@ -549,6 +549,21 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "TreeList",
+    "page": "tree-list",
+    "category": "navigation",
+    "summary": "Things inside things, opened in place",
+    "keywords": [
+      "tree",
+      "tree view",
+      "outline",
+      "folders",
+      "hierarchy",
+      "nested",
+      "file tree"
+    ]
+  },
+  {
     "name": "Badge",
     "page": "badge",
     "category": "feedback",
@@ -1220,7 +1235,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "compass",
     "description": "Tabs, steps and pages",
     "page": "category-navigation",
-    "count": 7
+    "count": 8
   },
   {
     "id": "feedback",

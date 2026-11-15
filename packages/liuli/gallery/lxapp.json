@@ -58,6 +58,7 @@
     { "name": "stepper", "path": "pages/stepper/index" },
     { "name": "link", "path": "pages/link/index" },
     { "name": "page-control", "path": "pages/page-control/index" },
+    { "name": "tree-list", "path": "pages/tree-list/index" },
     { "name": "badge", "path": "pages/badge/index" },
     { "name": "progress-bar", "path": "pages/progress-bar/index" },
     { "name": "banner", "path": "pages/banner/index" },
