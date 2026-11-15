@@ -6,6 +6,10 @@ export const sliderParts = {
   label: 'text',
   value: 'text',
   control: 'slider',
+  marks: 'view',
+  mark: 'view',
+  tick: 'view',
+  markLabel: 'text',
   description: 'text',
 } as const;
 
@@ -39,6 +43,23 @@ export const sliderRecipe = {
       sm: '-mx-2 h-control-sm track:h-[3px] range:h-[3px] secondary:h-[3px] thumb:size-4',
       md: '-mx-2.5 h-control-md track:h-1 range:h-1 secondary:h-1 thumb:size-5',
     } satisfies Record<SliderSize, string>,
+  },
+  /** Ticks under the track, each at its value's share of the width; the thumb's centre travels the same span. */
+  marks: {
+    base: 'flex-row items-start',
+    /** Drawn up under the track, into the control's own height. */
+    size: { sm: '-mt-2', md: '-mt-2.5' } satisfies Record<SliderSize, string>,
+  },
+  /** A zero-width seat, so the tick sits on the value and the label spreads to both sides; at the ends the label keeps inside. */
+  mark: {
+    base: 'w-0 gap-1',
+    edge: { start: 'items-start', middle: 'items-center', end: 'items-end' },
+  },
+  tick: {
+    base: 'w-px h-1.5 bg-line-strong',
+  },
+  markLabel: {
+    base: 'text-caption text-muted whitespace-nowrap tabular-nums',
   },
   description: {
     base: 'text-footnote text-muted',

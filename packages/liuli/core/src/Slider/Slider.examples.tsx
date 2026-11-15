@@ -68,3 +68,32 @@ export function StateDisabled() {
 export function Specimen() {
   return <Slider value={60} onChange={() => {}} label="Volume" isLabelHidden className="w-28" />;
 }
+
+/** A short scale with its points named: ticks under the track, labels at the ends and the middle. */
+export function Marks() {
+  const size = useLocal('size', 2);
+  const names = ['Small', 'Default', 'Large', 'Larger', 'Largest'];
+  return (
+    <Slider
+      bind={size}
+      label="Text size"
+      valueLabel={names[size.value]}
+      min={0}
+      max={4}
+      marks={[{ value: 0, label: 'Small' }, { value: 1 }, { value: 2 }, { value: 3 }, { value: 4, label: 'Largest' }]}
+      data-testid="marked"
+    />
+  );
+}
+
+/** Saving waits for the finger to lift: the label follows the drag, the saved value follows its end. */
+export function SaveOnRelease() {
+  const level = useLocal('level', 60);
+  const saved = useLocal('saved', 60);
+  return (
+    <view className="gap-2">
+      <Slider bind={level} label="Brightness" valueLabel={`${level.value}%`} onChangeEnd={value => saved.set(value)} data-testid="brightness" />
+      <text role="status" className="text-footnote text-muted">{`Saved at ${saved.value}%`}</text>
+    </view>
+  );
+}

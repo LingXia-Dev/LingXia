@@ -31,6 +31,8 @@ import { Content as NumberInput } from '../content/number-input';
 import { Content as Calendar } from '../content/calendar';
 import { Content as DateRangeInput } from '../content/date-range-input';
 import { Content as FormLayout } from '../content/form-layout';
+import { Content as DateTimeInput } from '../content/date-time-input';
+import { Content as FileInput } from '../content/file-input';
 import { Content as CheckboxInput } from '../content/checkbox-input';
 import { Content as RadioGroup } from '../content/radio-group';
 import { Content as Switch } from '../content/switch';
@@ -126,6 +128,8 @@ export const contents: Record<string, GalleryContent> = {
   "calendar": Calendar,
   "date-range-input": DateRangeInput,
   "form-layout": FormLayout,
+  "date-time-input": DateTimeInput,
+  "file-input": FileInput,
   "checkbox-input": CheckboxInput,
   "radio-group": RadioGroup,
   "switch": Switch,

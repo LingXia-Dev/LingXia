@@ -4345,6 +4345,242 @@
       }
     },
     {
+      "name": "DateTimeInput",
+      "import": "@liulidesign/core/DateTimeInput",
+      "exports": [
+        "DateTimeInput"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A day and a time of day as one value",
+      "description": "DateTimeInput puts a DateInput and a TimeInput side by side under one label, help text and status, and gives the app one value, `YYYY-MM-DDTHH:mm`, once both parts are set. Each part opens the platform's own picker. The value is in the user's own time; the app converts it.",
+      "keywords": [
+        "date time",
+        "datetime",
+        "date and time",
+        "schedule",
+        "reminder",
+        "appointment"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the control's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the visible label; the control keeps it as its name.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the control, read as the control's description."
+        },
+        {
+          "name": "status",
+          "type": "FieldStatus",
+          "required": false,
+          "description": "An `error` status marks the control invalid; its message is read as the control's description."
+        },
+        {
+          "name": "isRequired",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
+          "default": "false"
+        },
+        {
+          "name": "hasRequiredMark",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
+          "default": "true"
+        },
+        {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Shown in place of `description` while disabled."
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "bind",
+          "type": "Local<string>",
+          "required": false,
+          "description": "A View-local cell holding `YYYY-MM-DDTHH:mm`, or `''` until both parts are set."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false,
+          "description": "`YYYY-MM-DDTHH:mm` in the user's own time, or `''`."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: string) => void)",
+          "required": false,
+          "description": "Runs with the whole value once both parts are set, and with `''` when either is cleared."
+        },
+        {
+          "name": "dateLabel",
+          "type": "string",
+          "required": true,
+          "description": "The date part's accessible name: \"Start date\"."
+        },
+        {
+          "name": "timeLabel",
+          "type": "string",
+          "required": true,
+          "description": "The time part's accessible name: \"Start time\"."
+        },
+        {
+          "name": "minDate",
+          "type": "string",
+          "required": false,
+          "description": "The earliest day, as `YYYY-MM-DD`."
+        },
+        {
+          "name": "maxDate",
+          "type": "string",
+          "required": false,
+          "description": "The latest day, as `YYYY-MM-DD`."
+        },
+        {
+          "name": "timeStep",
+          "type": "number",
+          "required": false,
+          "description": "The time's step in seconds.",
+          "default": "60"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the group; the parts get `<testid>-date` and `<testid>-time`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "group": "view",
+        "date": "DateInput",
+        "time": "TimeInput"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [
+          "description",
+          "status"
+        ],
+        "states": [
+          "disabled"
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "To the date, then to the time"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Opens the part's picker"
+          }
+        ],
+        "target": {},
+        "contrast": [],
+        "notes": [
+          "A group named by the field's label and described by its help and status; each part has its own name.",
+          "An error marks both parts invalid and is said once, under the pair."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Reminder",
+          "title": "A reminder",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DateTimeInput } from '@liulidesign/core/DateTimeInput';\n\n/** When a reminder goes off: one value, two parts. */\nexport function Reminder() {\n  const when = useLocal('when', '2026-11-20T09:00');\n  return (\n    <view className=\"gap-2\">\n      <DateTimeInput bind={when} label=\"Remind me\" dateLabel=\"Reminder date\" timeLabel=\"Reminder time\" description=\"In your own time zone.\" data-testid=\"remind\" />\n      <text role=\"status\" className=\"text-footnote text-muted\">{when.value === '' ? 'No reminder set' : `Set for ${when.value.replace('T', ' at ')}`}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Required",
+          "title": "Required, with an error",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DateTimeInput } from '@liulidesign/core/DateTimeInput';\n\n/** Empty and required, after a send with no time. */\nexport function Required() {\n  const starts = useLocal('starts', '');\n  return (\n    <DateTimeInput\n      bind={starts}\n      label=\"Starts\"\n      dateLabel=\"Start date\"\n      timeLabel=\"Start time\"\n      isRequired\n      minDate=\"2026-11-15\"\n      status={starts.value === '' ? { type: 'error', message: 'Choose a day and a time.' } : undefined}\n      data-testid=\"starts\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Narrow",
+          "title": "In a narrow place",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DateTimeInput } from '@liulidesign/core/DateTimeInput';\n\n/** In a narrow place, such as a side panel, the time goes under the date and both fill the width. */\nexport function Narrow() {\n  const when = useLocal('due', '2026-12-01T17:30');\n  return (\n    <view className=\"w-56\">\n      <DateTimeInput bind={when} label=\"Due\" dateLabel=\"Due date\" timeLabel=\"Due time\" data-testid=\"due\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "The earliest and latest are days: a time cannot be limited on one particular day."
+      ],
+      "related": [
+        "DateInput",
+        "TimeInput",
+        "DateRangeInput",
+        "Timestamp"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A day and a time",
+        "order": 12,
+        "page": {
+          "lead": "Use a date-time input when a day and a time are one answer.",
+          "hero": "Reminder",
+          "variants": [
+            {
+              "name": "Required",
+              "title": "Empty and required, with an error"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled, with the reason"
+            },
+            {
+              "name": "Narrow",
+              "title": "In a narrow place the time goes under the date"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Details",
       "import": "@liulidesign/core/Details",
       "exports": [
@@ -5981,6 +6217,263 @@
             {
               "name": "StateDisabled",
               "title": "Disabled"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "FileInput",
+      "import": "@liulidesign/core/FileInput",
+      "exports": [
+        "FileInput"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "Files the user chose, and a way to choose more",
+      "description": "FileInput is a wide button that asks the app to open its file picker, over a list of the files chosen so far: each row has the name, a line the app writes, a ring while it is sending, and a button that removes it. Liuli does not read files: picking happens in Logic, and the app owns the list. It carries Field's label, help text and status.",
+      "keywords": [
+        "file",
+        "upload",
+        "attachment",
+        "picker",
+        "document",
+        "dropzone",
+        "browse"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the control's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the visible label; the control keeps it as its name.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the control, read as the control's description."
+        },
+        {
+          "name": "status",
+          "type": "FieldStatus",
+          "required": false,
+          "description": "An `error` status marks the control invalid; its message is read as the control's description."
+        },
+        {
+          "name": "isRequired",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
+          "default": "false"
+        },
+        {
+          "name": "hasRequiredMark",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
+          "default": "true"
+        },
+        {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Shown in place of `description` while disabled."
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "files",
+          "type": "readonly FileInputFile[]",
+          "required": true,
+          "description": "The chosen files, in order. The app owns the list."
+        },
+        {
+          "name": "onPick",
+          "type": "() => void",
+          "required": true,
+          "description": "Opens the app\\'s own picker, in Logic. Liuli cannot read files."
+        },
+        {
+          "name": "pickLabel",
+          "type": "string",
+          "required": true,
+          "description": "The words on the button: \"Choose files\", \"Add a photo\"."
+        },
+        {
+          "name": "hint",
+          "type": "string",
+          "required": false,
+          "description": "A line under them: what may be chosen. \"PDF or image, up to 25 MB each\"."
+        },
+        {
+          "name": "onRemove",
+          "type": "(id: string) => void",
+          "required": true,
+          "description": "Takes a file out of the list."
+        },
+        {
+          "name": "removeLabel",
+          "type": "(name: string) => string",
+          "required": true,
+          "description": "Each remove button, named with what it removes: `name => \\`Remove ${name}\\``."
+        },
+        {
+          "name": "progressLabel",
+          "type": "(name: string) => string",
+          "required": true,
+          "description": "Each ring, named with what is sending: `name => \\`Uploading ${name}\\``."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the button; the list gets `<testid>-files`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "pick": "button",
+        "pickIcon": "vector",
+        "pickLabel": "text",
+        "hint": "text",
+        "list": "view",
+        "file": "view",
+        "fileIcon": "vector",
+        "fileText": "view",
+        "name": "text",
+        "detail": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [
+          "description",
+          "status"
+        ],
+        "states": [
+          "disabled"
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "To the button, then to each file's remove button"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Opens the picker, or removes the file"
+          }
+        ],
+        "target": {
+          "md": 32
+        },
+        "contrast": [
+          {
+            "what": "button boundary",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "file name",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "failure line",
+            "pair": [
+              "danger",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The button is named \"label: pickLabel\" and described by the help text and status.",
+          "The files are a list; a failed file has an error icon and says why in words, not only in colour.",
+          "Each ring is a progressbar named by `progressLabel`; each remove button says what it removes."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Documents",
+          "title": "Documents for a request",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { FileInput, type FileInputFile } from '@liulidesign/core/FileInput';\n\nconst first: FileInputFile[] = [\n  { id: 'lease', name: 'Lease agreement.pdf', detail: '1.8 MB' },\n  { id: 'meter', name: 'Meter reading, November.jpg', detail: 'Uploading, 64%', progress: 64 },\n  { id: 'scan', name: 'Passport scan.tiff', detail: 'Too large: 25 MB at most', isFailed: true },\n];\nconst more: FileInputFile = { id: 'bill', name: 'Electricity bill.pdf', detail: 'Waiting to upload', progress: true };\n\n/** Documents for a request: the app opens its picker and owns the list; each row says how its file stands. */\nexport function Documents() {\n  const files = useLocal<readonly FileInputFile[]>('files', first);\n  return (\n    <FileInput\n      label=\"Documents\"\n      description=\"We keep them until the request is closed.\"\n      files={files.value}\n      onPick={() => { if (!files.value.some(file => file.id === more.id)) files.set([...files.value, more]); }}\n      pickLabel=\"Choose files\"\n      hint=\"PDF or image, up to 25 MB each\"\n      onRemove={id => files.set(files.value.filter(file => file.id !== id))}\n      removeLabel={name => `Remove ${name}`}\n      progressLabel={name => `Uploading ${name}`}\n      data-testid=\"documents\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Empty",
+          "title": "Nothing chosen, with an error",
+          "source": "import { FileInput } from '@liulidesign/core/FileInput';\n\n/** Nothing chosen, on a required field after a failed send. */\nexport function Empty() {\n  return (\n    <FileInput\n      label=\"Proof of address\"\n      isRequired\n      status={{ type: 'error', message: 'Add one document.' }}\n      files={[]}\n      onPick={() => {}}\n      pickLabel=\"Add a document\"\n      onRemove={() => {}}\n      removeLabel={name => `Remove ${name}`}\n      progressLabel={name => `Uploading ${name}`}\n      data-testid=\"proof\"\n    />\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "Nothing can be dropped onto it: the View has no drop target.",
+        "It shows no previews; pair it with Thumbnail for pictures."
+      ],
+      "related": [
+        "Field",
+        "CircularProgress",
+        "Thumbnail"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Choose files",
+        "order": 13,
+        "page": {
+          "lead": "Use a file input to collect files with a form.",
+          "hero": "Documents",
+          "variants": [
+            {
+              "name": "Empty",
+              "title": "Empty and required, with an error"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled, with the reason"
             }
           ]
         }
@@ -10876,6 +11369,18 @@
           "default": "1"
         },
         {
+          "name": "marks",
+          "type": "readonly SliderMark[]",
+          "required": false,
+          "description": "Ticks under the track, with optional labels, in ascending order: the ends of the scale, or each step of a short one."
+        },
+        {
+          "name": "onChangeEnd",
+          "type": "((value: number) => void)",
+          "required": false,
+          "description": "Runs once when a drag ends, with the value it ended on: for work too heavy to do at every step, such as saving."
+        },
+        {
           "name": "size",
           "type": "SliderSize",
           "required": false,
@@ -10916,6 +11421,10 @@
         "label": "text",
         "value": "text",
         "control": "slider",
+        "marks": "view",
+        "mark": "view",
+        "tick": "view",
+        "markLabel": "text",
         "description": "text"
       },
       "accessibility": {
@@ -11014,6 +11523,16 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** Among list rows: the row's label style, the value at the end. The stage's own padding is undone so the rows meet its edges. */\nexport function InList() {\n  const speed = useLocal('speed', 2);\n  return (\n    <view className=\"-m-5 divide-y divide-text/8\">\n      <Item label=\"Read aloud\" description=\"Notes are read in the system voice\" />\n      <Slider bind={speed} label=\"Speed\" valueLabel={['Slow', 'Normal', 'Fast'][speed.value - 1]} min={1} max={3} variant=\"row\" data-testid=\"speed\" />\n    </view>\n  );\n}"
         },
         {
+          "name": "Marks",
+          "title": "With marks",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** A short scale with its points named: ticks under the track, labels at the ends and the middle. */\nexport function Marks() {\n  const size = useLocal('size', 2);\n  const names = ['Small', 'Default', 'Large', 'Larger', 'Largest'];\n  return (\n    <Slider\n      bind={size}\n      label=\"Text size\"\n      valueLabel={names[size.value]}\n      min={0}\n      max={4}\n      marks={[{ value: 0, label: 'Small' }, { value: 1 }, { value: 2 }, { value: 3 }, { value: 4, label: 'Largest' }]}\n      data-testid=\"marked\"\n    />\n  );\n}"
+        },
+        {
+          "name": "SaveOnRelease",
+          "title": "Acting when the drag ends",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** Saving waits for the finger to lift: the label follows the drag, the saved value follows its end. */\nexport function SaveOnRelease() {\n  const level = useLocal('level', 60);\n  const saved = useLocal('saved', 60);\n  return (\n    <view className=\"gap-2\">\n      <Slider bind={level} label=\"Brightness\" valueLabel={`${level.value}%`} onChangeEnd={value => saved.set(value)} data-testid=\"brightness\" />\n      <text role=\"status\" className=\"text-footnote text-muted\">{`Saved at ${saved.value}%`}</text>\n    </view>\n  );\n}"
+        },
+        {
           "name": "Position",
           "title": "A position in a recording, with what has loaded",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** A position in a recording: the label is hidden, the times stay visible, the loaded part is quieter. */\nexport function Position() {\n  const at = useLocal('at', 84);\n  const time = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;\n  return (\n    <view className=\"gap-1\">\n      <text className=\"text-body font-medium text-text\">Interview with the architect</text>\n      <Slider bind={at} label=\"Position\" isLabelHidden valueLabel={`${time(at.value)} of 3:10`} max={190} secondaryValue={132} size=\"sm\" data-testid=\"position\" />\n    </view>\n  );\n}"
@@ -11049,6 +11568,14 @@
             {
               "name": "InList",
               "title": "As a row in a list, beside Item rows"
+            },
+            {
+              "name": "Marks",
+              "title": "Marks: ticks under the track, labelled where it helps"
+            },
+            {
+              "name": "SaveOnRelease",
+              "title": "Saving once, when the drag ends"
             }
           ],
           "sizes": [

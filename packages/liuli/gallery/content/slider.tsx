@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Volume, Stepped, InList, Sizes, StateDefault, StateDisabled, Position } from '../../core/src/Slider/Slider.examples';
+import { Volume, Stepped, InList, Marks, SaveOnRelease, Sizes, StateDefault, StateDisabled, Position } from '../../core/src/Slider/Slider.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -14,6 +14,12 @@ export function Content() {
         </Stage>
         <Stage caption={"As a row in a list, beside Item rows"}>
           <InList />
+        </Stage>
+        <Stage caption={"Marks: ticks under the track, labelled where it helps"}>
+          <Marks />
+        </Stage>
+        <Stage caption={"Saving once, when the drag ends"}>
+          <SaveOnRelease />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

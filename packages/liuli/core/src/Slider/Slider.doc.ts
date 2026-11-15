@@ -58,6 +58,8 @@ export const doc: ComponentDoc = {
     { name: 'Volume', title: 'With the value in words' },
     { name: 'Stepped', title: 'Whole steps, with help text' },
     { name: 'InList', title: 'As a list row' },
+    { name: 'Marks', title: 'With marks' },
+    { name: 'SaveOnRelease', title: 'Acting when the drag ends' },
     { name: 'Position', title: 'A position in a recording, with what has loaded' },
     { name: 'Sizes', title: 'Small and medium' },
   ],
@@ -79,6 +81,8 @@ export const doc: ComponentDoc = {
       variants: [
         { name: 'Stepped', title: 'Whole steps, named in words' },
         { name: 'InList', title: 'As a row in a list, beside Item rows' },
+        { name: 'Marks', title: 'Marks: ticks under the track, labelled where it helps' },
+        { name: 'SaveOnRelease', title: 'Saving once, when the drag ends' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small for dense rows and media, medium by default' }],
       states: [

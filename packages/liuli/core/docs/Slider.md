@@ -67,6 +67,49 @@ export function InList() {
 }
 ```
 
+### With marks
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Slider } from '@liulidesign/core/Slider';
+
+/** A short scale with its points named: ticks under the track, labels at the ends and the middle. */
+export function Marks() {
+  const size = useLocal('size', 2);
+  const names = ['Small', 'Default', 'Large', 'Larger', 'Largest'];
+  return (
+    <Slider
+      bind={size}
+      label="Text size"
+      valueLabel={names[size.value]}
+      min={0}
+      max={4}
+      marks={[{ value: 0, label: 'Small' }, { value: 1 }, { value: 2 }, { value: 3 }, { value: 4, label: 'Largest' }]}
+      data-testid="marked"
+    />
+  );
+}
+```
+
+### Acting when the drag ends
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Slider } from '@liulidesign/core/Slider';
+
+/** Saving waits for the finger to lift: the label follows the drag, the saved value follows its end. */
+export function SaveOnRelease() {
+  const level = useLocal('level', 60);
+  const saved = useLocal('saved', 60);
+  return (
+    <view className="gap-2">
+      <Slider bind={level} label="Brightness" valueLabel={`${level.value}%`} onChangeEnd={value => saved.set(value)} data-testid="brightness" />
+      <text role="status" className="text-footnote text-muted">{`Saved at ${saved.value}%`}</text>
+    </view>
+  );
+}
+```
+
 ### A position in a recording, with what has loaded
 
 ```tsx
@@ -116,6 +159,8 @@ export function Sizes() {
 | `min` | `number` | `0` |  |
 | `max` | `number` | `100` |  |
 | `step` | `number` | `1` | The value snaps to it. |
+| `marks` | `readonly SliderMark[]` |  | Ticks under the track, with optional labels, in ascending order: the ends of the scale, or each step of a short one. |
+| `onChangeEnd` | `((value: number) => void)` |  | Runs once when a drag ends, with the value it ended on: for work too heavy to do at every step, such as saving. |
 | `size` | `SliderSize` | `'md'` | `sm` for dense rows and media controls. |
 | `variant` | `SliderVariant` | `'standalone'` | `row` sits in a list group among `Item` rows: the row's padding, the Item label style, the value at the end in muted. |
 | `isDisabled` | `boolean` | `false` |  |

@@ -276,6 +276,35 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "DateTimeInput",
+    "page": "date-time-input",
+    "category": "inputs",
+    "summary": "A day and a time of day as one value",
+    "keywords": [
+      "date time",
+      "datetime",
+      "date and time",
+      "schedule",
+      "reminder",
+      "appointment"
+    ]
+  },
+  {
+    "name": "FileInput",
+    "page": "file-input",
+    "category": "inputs",
+    "summary": "Files the user chose, and a way to choose more",
+    "keywords": [
+      "file",
+      "upload",
+      "attachment",
+      "picker",
+      "document",
+      "dropzone",
+      "browse"
+    ]
+  },
+  {
     "name": "CheckboxInput",
     "page": "checkbox-input",
     "category": "selection",
@@ -1175,7 +1204,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "text-input",
     "description": "Text, dates and amounts",
     "page": "category-inputs",
-    "count": 11
+    "count": 13
   },
   {
     "id": "selection",

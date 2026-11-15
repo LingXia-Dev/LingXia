@@ -44,3 +44,16 @@ test('the thumb grows while pressed and rings on keyboard focus', async () => {
   assert.notEqual(slider.props.pressedStyle.thumbStyle, slider.props.thumbStyle);
   assert.match(slider.props.focusVisibleStyle.thumbStyle, /"color\\?":\\?"focus/);
 });
+
+test('Marks: a tick at each value\'s share of the track, labels at the ends, none of it read', async () => {
+  const screen = await renderExample('Slider/Slider', 'Marks');
+  const marks = screen.getByTestId('marked').parent.children.find(node => node.props.accessibilityHidden === 1 && node.props.flexDirection === 'row' && node.children.length === 10);
+  assert.deepEqual(marks.children.filter((_, index) => index % 2 === 0).map(gap => gap.props.widthPercent), [0, 25, 25, 25, 25]);
+  const seats = marks.children.filter((_, index) => index % 2 === 1);
+  assert.deepEqual(seats.map(seat => [seat.props.width, seat.props.align]), [[0, 'start'], [0, 'center'], [0, 'center'], [0, 'center'], [0, 'end']]);
+});
+
+test('SaveOnRelease: the slider listens for the finger leaving', async () => {
+  const slider = (await renderExample('Slider/Slider', 'SaveOnRelease')).getByTestId('brightness');
+  assert.ok(slider.props.onSliderPress);
+});
