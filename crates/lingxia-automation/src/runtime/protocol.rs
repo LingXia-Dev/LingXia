@@ -14,8 +14,9 @@ pub const MAX_CONSOLE_EVENT_BYTES: usize = 64 * 1024;
 pub const MAX_RETAINED_EVENT_BYTES: usize = 8 * 1024 * 1024;
 /// Maximum decoded bytes for one attachment.
 pub const MAX_ATTACHMENT_BYTES: usize = 16 * 1024 * 1024;
-/// Maximum decoded attachment bytes retained by one run.
-pub const MAX_RUN_ATTACHMENT_BYTES: usize = 32 * 1024 * 1024;
+/// Maximum decoded attachment bytes a run holds before the client acks them;
+/// acked attachments are dropped and stop counting.
+pub const MAX_UNACKED_ATTACHMENT_BYTES: usize = 32 * 1024 * 1024;
 /// Maximum serialized event bytes returned by one poll response.
 pub const MAX_POLL_EVENT_BYTES: usize = 24 * 1024 * 1024;
 pub const MIN_TIMEOUT_MS: u64 = 1_000;

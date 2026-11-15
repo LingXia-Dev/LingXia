@@ -10,7 +10,7 @@
 use super::authority::RunAuthority;
 use super::profile::{AutomationProfile, Quarantine, RunProfileSlot, SpawnFn, TeardownFn};
 use super::protocol::*;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -67,7 +67,9 @@ struct RunInner {
     /// Approximate bytes of retained, undelivered non-artifact events.
     retained_event_bytes: usize,
     truncation_warned: bool,
-    attachment_total: usize,
+    /// Decoded bytes of artifacts the client has not acked yet, by event seq.
+    unacked_attachments: HashMap<u64, usize>,
+    unacked_attachment_bytes: usize,
     attachment_names: HashSet<String>,
     result: Option<AutomationRunResult>,
     completed_at: Option<Instant>,
@@ -101,7 +103,8 @@ impl RunShared {
                 next_seq: 1,
                 retained_event_bytes: 0,
                 truncation_warned: false,
-                attachment_total: 0,
+                unacked_attachments: HashMap::new(),
+                unacked_attachment_bytes: 0,
                 attachment_names: HashSet::new(),
                 result: None,
                 completed_at: None,
@@ -275,19 +278,22 @@ impl RunShared {
                 "attachment '{name}' is {decoded_len} bytes; the limit is {MAX_ATTACHMENT_BYTES}"
             ));
         }
-        let attachment_total = inner
-            .attachment_total
+        let unacked = inner
+            .unacked_attachment_bytes
             .checked_add(decoded_len)
             .ok_or_else(|| "attachment size overflow".to_string())?;
-        if attachment_total > MAX_RUN_ATTACHMENT_BYTES {
+        if unacked > MAX_UNACKED_ATTACHMENT_BYTES {
             return Err(format!(
-                "attachment '{name}' would exceed the {MAX_RUN_ATTACHMENT_BYTES}-byte run total"
+                "attachment '{name}' would hold more than {MAX_UNACKED_ATTACHMENT_BYTES} bytes \
+                 the client has not collected yet"
             ));
         }
         if !inner.attachment_names.insert(name.clone()) {
             return Err(format!("duplicate attachment name '{name}'"));
         }
-        inner.attachment_total = attachment_total;
+        inner.unacked_attachment_bytes = unacked;
+        let seq = inner.next_seq;
+        inner.unacked_attachments.insert(seq, decoded_len);
         inner.push_event(AutomationEventPayload::Artifact {
             name,
             mime_type: mime_type.to_string(),
@@ -361,14 +367,22 @@ impl RunShared {
         let mut inner = self.inner.lock().unwrap();
         inner.last_poll_at = Some(Instant::now());
         let mut released = 0usize;
+        let mut acked = Vec::new();
         inner.events.retain(|event| {
             let keep = event.seq > after_seq;
             if !keep {
                 released += retained_event_size(&event.payload);
+                if matches!(event.payload, AutomationEventPayload::Artifact { .. }) {
+                    acked.push(event.seq);
+                }
             }
             keep
         });
         inner.retained_event_bytes = inner.retained_event_bytes.saturating_sub(released);
+        for seq in acked {
+            let len = inner.unacked_attachments.remove(&seq).unwrap_or(0);
+            inner.unacked_attachment_bytes = inner.unacked_attachment_bytes.saturating_sub(len);
+        }
 
         let mut event_bytes = 0usize;
         let events = inner
@@ -875,6 +889,46 @@ mod tests {
         assert_eq!(first.events.len(), 1);
         let second = run.poll(first.events[0].seq);
         assert_eq!(second.events.len(), 1);
+    }
+
+    #[test]
+    fn acked_attachments_stop_counting_toward_the_cap() {
+        let run = shared();
+        let mib: usize = 1024 * 1024;
+        let base64 = "A".repeat(mib.div_ceil(3) * 4);
+        let mut after = 0;
+        // Far past the cap in total, collected as it goes: never refused, never retained.
+        for i in 0..100 {
+            run.push_artifact(&format!("shot-{i}.png"), "image/png", base64.clone(), mib)
+                .unwrap();
+            let poll = run.poll(after);
+            after = poll.events.last().map_or(after, |event| event.seq);
+        }
+        run.poll(after);
+        let inner = run.inner.lock().unwrap();
+        assert!(inner.events.is_empty());
+        assert_eq!(inner.unacked_attachment_bytes, 0);
+        assert!(inner.unacked_attachments.is_empty());
+    }
+
+    #[test]
+    fn uncollected_attachments_are_capped() {
+        let run = shared();
+        let mib = 1024 * 1024;
+        let fits = MAX_UNACKED_ATTACHMENT_BYTES / mib;
+        for i in 0..fits {
+            run.push_artifact(&format!("shot-{i}.png"), "image/png", String::new(), mib)
+                .unwrap();
+        }
+        let error = run
+            .push_artifact("over.png", "image/png", String::new(), mib)
+            .unwrap_err();
+        assert!(error.contains("not collected"), "{error}");
+        // Collecting what is held makes room again.
+        let poll = run.poll(0);
+        run.poll(poll.events.last().unwrap().seq);
+        run.push_artifact("over.png", "image/png", String::new(), mib)
+            .unwrap();
     }
 
     #[test]
