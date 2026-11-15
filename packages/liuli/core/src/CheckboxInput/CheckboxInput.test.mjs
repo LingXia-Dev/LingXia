@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
 import { described, renderExample } from '../testing/harness.mjs';
 
-const mark = node => node.children.length > 0 && JSON.stringify(node).includes('M5 12.5l4.5 4.5L19 7.5');
+const mark = node => node.children.length > 0 && JSON.stringify(node).includes('M20 6 9 17l-5-5');
 
 test('Basic: named by the label, described by the help text; toggling draws and removes the mark', async () => {
   const screen = await renderExample('CheckboxInput/CheckboxInput', 'Basic');

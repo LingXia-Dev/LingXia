@@ -1,5 +1,5 @@
 import { createContext, cx, useContext, useLocal, type Child } from '@lingxia/view';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { detailsRecipe as r } from './Details.recipe';
 
@@ -52,7 +52,7 @@ export function Details({ label, children, value, isDefaultOpen = false, isOpen,
         className={cx(r.summary.base, inGroup ? r.summary.inGroup : r.summary.alone)}
       >
         <text className={r.label.base}>{label}</text>
-        <vector aria-hidden paths={glyphs.chevronDown} viewBox={glyphBox} className={cx(r.chevron.base, open && r.chevron.open)} />
+        <Glyph name="chevron-down" className={cx(r.chevron.base, open && r.chevron.open)} />
       </button>
       {open && <view data-testid={testId && `${testId}-body`} className={cx(r.body.base, inGroup && r.body.inGroup)}>{children}</view>}
     </view>

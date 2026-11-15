@@ -3197,6 +3197,8 @@
       "name": "Icon",
       "import": "@liulidesign/core/Icon",
       "exports": [
+        "iconPaths",
+        "useIcon",
         "Icon",
         "IconSetProvider"
       ],

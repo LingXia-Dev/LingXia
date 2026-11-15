@@ -1,5 +1,5 @@
 import { cx, useId, useLocal, type Child } from '@lingxia/view';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { spinner, spinnerBox } from '../internal/spinner';
 import { settleFlag } from '../internal/settle';
 import { buttonRecipe as r } from './Button.recipe';
 
@@ -82,7 +82,7 @@ export function Button({
       className={cx(r.root.base, r.root.variant[variant], r.root.disabled[variant], r.root.size[size], width && r.root.width[width], className)}
     >
       {busy ? (
-        <vector aria-hidden paths={glyphs.spinner} viewBox={glyphBox} className={cx(r.spinner.base, r.spinner.size[size])} />
+        <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={cx(r.spinner.base, r.spinner.size[size])} />
       ) : (
         startIcon !== undefined && <view aria-hidden className={r.icon.base}>{startIcon}</view>
       )}

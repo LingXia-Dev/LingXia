@@ -1,5 +1,5 @@
 import { cx } from '@lingxia/view';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { spinner, spinnerBox } from '../internal/spinner';
 import { progressBarRecipe as r } from './ProgressBar.recipe';
 
 export type ProgressBarSize = 'sm' | 'md';
@@ -77,7 +77,7 @@ export interface SpinnerProps {
 export function Spinner({ label, size = 'md', className, 'data-testid': testId }: SpinnerProps) {
   return (
     <view role="progressbar" aria-label={label} data-testid={testId} className={className}>
-      <vector aria-hidden paths={glyphs.spinner} viewBox={glyphBox} className={cx(r.spinner.base, r.spinner.size[size])} />
+      <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={cx(r.spinner.base, r.spinner.size[size])} />
     </view>
   );
 }

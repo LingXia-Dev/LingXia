@@ -34,28 +34,38 @@ const grid = [0, 0, 24, 24] as const;
 // 1.8 units on the 24-unit grid is a 1.5 px stroke at 20 px.
 const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
 
-// A definition's paths, made once: icons repeat on a page and are redrawn with it.
-const drawn = new WeakMap<IconDefinition, VectorPath[]>();
-function pathsOf(icon: IconDefinition): VectorPath[] {
-  let paths = drawn.get(icon);
-  if (!paths) drawn.set(icon, (paths = icon.paths.map(path => (typeof path === 'string' ? { d: path, ...stroke } : path))));
+export const iconGrid = grid;
+
+// A definition's paths, made once per stroke weight: icons repeat on a page and are redrawn with it.
+const drawn = new WeakMap<IconDefinition, Map<number, VectorPath[]>>();
+
+/** An icon's paths on the 24-unit grid, stroked in the current colour; `weight` is the stroke in grid units. */
+export function iconPaths(icon: IconDefinition, weight: number = stroke.strokeWidth): VectorPath[] {
+  let weights = drawn.get(icon);
+  if (!weights) drawn.set(icon, (weights = new Map()));
+  let paths = weights.get(weight);
+  if (!paths) weights.set(weight, (paths = icon.paths.map(path => (typeof path === 'string' ? { d: path, ...stroke, strokeWidth: weight } : path))));
   return paths;
 }
 
 const Icons = createContext<Partial<IconSet>>(lucide);
 
+/** The icon a name draws in the set in use; a name the set leaves out comes from the default set, so a name never draws blank. */
+export function useIcon(name: IconName): IconDefinition {
+  return useContext(Icons)[name] ?? lucide[name];
+}
+
 /** One icon from the set in use, in the colour of the text around it. */
 export function Icon(props: IconProps) {
   const { size = 'md', label, className, 'data-testid': testId } = props;
-  const set = useContext(Icons);
-  // A set may leave names out; those come from the default set, so a name never draws blank.
-  const icon = props.icon ?? set[props.name] ?? lucide[props.name];
+  const named = useIcon(props.name ?? 'close');
+  const icon = props.icon ?? named;
   const mirrored = icon.isMirrored && r.glyph.mirrored;
   if (label === undefined)
-    return <vector aria-hidden data-testid={testId} paths={pathsOf(icon)} viewBox={grid} className={cx(r.glyph.base, r.glyph.size[size], mirrored, className)} />;
+    return <vector aria-hidden data-testid={testId} paths={iconPaths(icon)} viewBox={grid} className={cx(r.glyph.base, r.glyph.size[size], mirrored, className)} />;
   return (
     <view role="img" aria-label={label} data-testid={testId} className={cx(r.box.base, r.box.size[size], className)}>
-      <vector aria-hidden paths={pathsOf(icon)} viewBox={grid} className={cx(r.glyph.base, r.glyph.size[size], mirrored)} />
+      <vector aria-hidden paths={iconPaths(icon)} viewBox={grid} className={cx(r.glyph.base, r.glyph.size[size], mirrored)} />
     </view>
   );
 }

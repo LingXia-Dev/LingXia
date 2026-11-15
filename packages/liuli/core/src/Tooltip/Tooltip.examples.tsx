@@ -1,5 +1,5 @@
 import { cx } from '@lingxia/view';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { Glyph } from '../internal/Glyph';
 import { Tooltip } from './Tooltip';
 import { tooltipRecipe } from './Tooltip.recipe';
 
@@ -63,7 +63,7 @@ export function Parts() {
 function DrawnTrigger({ fill }: { fill?: string }) {
   return (
     <view className={cx('size-10 items-center justify-center rounded-full text-muted', fill)}>
-      <vector aria-hidden paths={glyphs.info} viewBox={glyphBox} className={tooltipRecipe.icon.size.md} />
+      <Glyph name="info" className={tooltipRecipe.icon.size.md} />
     </view>
   );
 }
@@ -95,7 +95,7 @@ export function Specimen() {
         <text className={tooltipRecipe.text.base}>Counts attachments</text>
       </view>
       <view className="size-8 items-center justify-center rounded-full text-muted">
-        <vector aria-hidden paths={glyphs.info} viewBox={glyphBox} className={tooltipRecipe.icon.size.sm} />
+        <Glyph name="info" className={tooltipRecipe.icon.size.sm} />
       </view>
     </view>
   );

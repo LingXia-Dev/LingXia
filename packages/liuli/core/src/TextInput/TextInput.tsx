@@ -1,6 +1,6 @@
 import { cx, type AutoComplete, type Child, type Local } from '@lingxia/view';
 import { Field, type FieldOwnProps } from '../Field/Field';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { Glyph } from '../internal/Glyph';
 import { textInputRecipe as r } from './TextInput.recipe';
 
 /** Controlled by the app (`value` + `onChange`), or bound to a View-local cell (`bind`). */
@@ -69,7 +69,7 @@ export function TextInput(props: TextInputProps) {
   const isSearch = type === 'search';
   const editorType = isSearch ? undefined : type;
   const keyHint = enterKeyHint ?? (isSearch ? 'search' : undefined);
-  const leading = startIcon ?? (isSearch ? <vector aria-hidden paths={glyphs.search} viewBox={glyphBox} className={r.searchIcon.base} /> : undefined);
+  const leading = startIcon ?? (isSearch ? <Glyph name="search" className={r.searchIcon.base} /> : undefined);
   const clear = () => (props.bind ? props.bind.set('') : props.onChange(''));
   const inputClass = cx(r.input.base, r.input.size[size]);
   return (
@@ -134,7 +134,7 @@ export function TextInput(props: TextInputProps) {
           )}
           {props.hasClear && text !== '' && !isDisabled && (
             <button aria-label={props.clearLabel} onClick={clear} className={r.clear.base}>
-              <vector aria-hidden paths={glyphs.close} viewBox={glyphBox} className={r.clearIcon.base} />
+              <Glyph name="close" className={r.clearIcon.base} />
             </button>
           )}
         </view>

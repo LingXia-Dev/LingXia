@@ -1,6 +1,6 @@
 import { cx, useId, useLocal, useView, type Child } from '@lingxia/view';
 import type { DialogDismissOn } from '../Dialog/Dialog';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { bottomSheetRecipe as r } from './BottomSheet.recipe';
 
@@ -88,7 +88,7 @@ export function BottomSheet({
           {!isLabelHidden && <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>}
           {closeLabel !== undefined && (
             <button aria-label={closeLabel} onClick={close} data-testid={testId && `${testId}-close`} className={r.close.base}>
-              <vector aria-hidden paths={glyphs.close} viewBox={glyphBox} className={r.closeIcon.base} />
+              <Glyph name="close" className={r.closeIcon.base} />
             </button>
           )}
         </view>

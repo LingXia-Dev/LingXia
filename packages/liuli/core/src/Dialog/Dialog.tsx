@@ -1,5 +1,5 @@
 import { cx, useId, type Child } from '@lingxia/view';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { dialogRecipe as r } from './Dialog.recipe';
 
@@ -80,7 +80,7 @@ export function Dialog({
           {!isLabelHidden && <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>}
           {closeLabel !== undefined && (
             <button aria-label={closeLabel} onClick={close} className={r.close.base}>
-              <vector aria-hidden paths={glyphs.close} viewBox={glyphBox} className={r.closeIcon.base} />
+              <Glyph name="close" className={r.closeIcon.base} />
             </button>
           )}
         </view>

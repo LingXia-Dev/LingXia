@@ -1,5 +1,5 @@
 import { cx, useId, useLocal } from '@lingxia/view';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { Glyph } from '../internal/Glyph';
 import { tooltipRecipe as r } from './Tooltip.recipe';
 
 export type TooltipPlacement = 'top' | 'bottom';
@@ -46,7 +46,7 @@ export function Tooltip({ label, content, placement = 'top', size = 'md', isOpen
         data-testid={testId}
         className={cx(r.trigger.base, r.trigger.size[size], className)}
       >
-        <vector aria-hidden paths={glyphs.info} viewBox={glyphBox} className={r.icon.size[size]} />
+        <Glyph name="info" className={r.icon.size[size]} />
       </button>
       <view
         id={id}

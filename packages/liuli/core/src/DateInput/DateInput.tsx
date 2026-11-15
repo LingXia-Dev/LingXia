@@ -1,5 +1,4 @@
 import type { FieldOwnProps } from '../Field/Field';
-import { glyphs } from '../internal/glyphs';
 import { PickerField, type PickerBinding } from '../internal/PickerField';
 import { dateInputRecipe } from './DateInput.recipe';
 
@@ -25,5 +24,5 @@ export type DateInputProps = FieldOwnProps & PickerBinding & {
  * on touch. The value is `YYYY-MM-DD`, or `''` while empty.
  */
 export function DateInput(props: DateInputProps) {
-  return <PickerField {...props} type="date" glyph={glyphs.calendar} recipe={dateInputRecipe} />;
+  return <PickerField {...props} type="date" icon="calendar" recipe={dateInputRecipe} />;
 }

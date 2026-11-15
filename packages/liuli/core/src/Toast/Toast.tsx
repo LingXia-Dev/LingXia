@@ -1,12 +1,12 @@
 import { createContext, cx, useContext, useId, useLocal, useView, type Env, type Local } from '@lingxia/view';
 import type { BannerTone } from '../Banner/Banner';
 import { Button } from '../Button/Button';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { Glyph } from '../internal/Glyph';
 import { toastRecipe as r } from './Toast.recipe';
 
 export type ToastTone = BannerTone;
 
-const toneGlyph = { neutral: null, info: glyphs.info, success: glyphs.success, warning: glyphs.warning, danger: glyphs.error } as const;
+const toneGlyph = { neutral: null, info: 'info', success: 'success', warning: 'warning', danger: 'error' } as const;
 
 export interface ToastAction {
   /** A verb for undoing or following up: "Undo", "View". */
@@ -62,14 +62,14 @@ export function Toast({ message, tone = 'neutral', action, onDismiss, dismissLab
   const glyph = toneGlyph[tone];
   return (
     <view data-testid={testId} className={cx(r.toast.base, onDismiss === undefined && r.toast.plain, className)}>
-      {glyph && <vector aria-hidden paths={glyph} viewBox={glyphBox} className={cx(r.icon.base, r.icon.tone[tone])} />}
+      {glyph && <Glyph name={glyph} className={cx(r.icon.base, r.icon.tone[tone])} />}
       <text className={r.message.base}>{message}</text>
       {action !== undefined && (
         <Button label={action.label} onClick={action.onClick} variant="link" size="sm" className={r.action.base} data-testid={testId && `${testId}-action`} />
       )}
       {onDismiss !== undefined && (
         <button aria-label={dismissLabel} onClick={onDismiss} data-testid={testId && `${testId}-dismiss`} className={r.dismiss.base}>
-          <vector aria-hidden paths={glyphs.close} viewBox={glyphBox} className={r.dismissIcon.base} />
+          <Glyph name="close" className={r.dismissIcon.base} />
         </button>
       )}
     </view>

@@ -83,3 +83,32 @@ test('the vendored set: one file per name in use, with its licence beside it', (
   assert.deepEqual(files.filter(file => file.endsWith('.svg')).sort(), [...new Set(Object.values(source.icons).map(entry => `${entry.lucide}.svg`))].sort());
   assert.deepEqual(readdirSync(new URL('./icons/', import.meta.url)).sort(), names.map(name => `${name}.ts`).sort());
 });
+
+test('a component draws its own marks from the set in use: a provided set redraws the status mark and close of a banner', async () => {
+  const screen = await renderPage(`
+    import { Banner } from '@liulidesign/core/Banner';
+    import { IconSetProvider } from '@liulidesign/core/Icon';
+    const cross = { paths: ['M7 7l10 10M17 7 7 17'] };
+    const dot = { paths: ['M12 11v2'] };
+    export function render() {
+      return (
+        <page>
+          <Banner tone="warning" title="Offline" onDismiss={() => {}} dismissLabel="Dismiss" data-testid="plain" />
+          <IconSetProvider icons={{ close: cross, warning: dot }}>
+            <view>
+              <Banner tone="warning" title="Offline" onDismiss={() => {}} dismissLabel="Dismiss" data-testid="themed" />
+            </view>
+          </IconSetProvider>
+        </page>
+      );
+    }
+  `);
+  const marks = id => {
+    const found = [];
+    const walk = node => { if (node.tag === 'vector') found.push(drawing(node).paths.map(path => path.d).join(' ')); node.children.forEach(walk); };
+    walk(screen.getByTestId(id));
+    return found;
+  };
+  assert.deepEqual(marks('themed'), ['M12 11v2', 'M7 7l10 10M17 7 7 17']);
+  assert.notDeepEqual(marks('plain'), marks('themed'));
+});

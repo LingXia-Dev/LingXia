@@ -1,5 +1,5 @@
 import { cx, useLocal } from '@lingxia/view';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { Glyph } from '../internal/Glyph';
 import { navListRecipe as r } from './NavList.recipe';
 
 export interface NavListItem {
@@ -61,7 +61,7 @@ export function NavList({ label, sections, value, onChange, defaultClosed = [], 
             className={r.group.base}
           >
             <text className={r.groupLabel.base}>{section.title}</text>
-            <vector aria-hidden paths={glyphs.chevronDown} viewBox={glyphBox} className={cx(r.groupChevron.base, !isOpen && r.groupChevron.closed)} />
+            <Glyph name="chevron-down" className={cx(r.groupChevron.base, !isOpen && r.groupChevron.closed)} />
           </button>,
         ];
         const rows = !isOpen ? [] : section.items.map(item => {

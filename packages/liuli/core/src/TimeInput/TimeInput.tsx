@@ -1,5 +1,4 @@
 import type { FieldOwnProps } from '../Field/Field';
-import { glyphs } from '../internal/glyphs';
 import { PickerField, type PickerBinding } from '../internal/PickerField';
 import { timeInputRecipe } from './TimeInput.recipe';
 
@@ -27,5 +26,5 @@ export type TimeInputProps = FieldOwnProps & PickerBinding & {
  * The value is `HH:MM` (or `HH:MM:SS`), or `''` while empty.
  */
 export function TimeInput(props: TimeInputProps) {
-  return <PickerField {...props} type="time" glyph={glyphs.clock} recipe={timeInputRecipe} />;
+  return <PickerField {...props} type="time" icon="clock" recipe={timeInputRecipe} />;
 }

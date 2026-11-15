@@ -1,7 +1,7 @@
 import { createContext, cx, useContext, useId, type Child } from '@lingxia/view';
 import type { ButtonSize, ButtonVariant } from '../Button/Button';
 import { buttonRecipe as b } from '../Button/Button.recipe';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { Glyph } from '../internal/Glyph';
 import { dropdownMenuRecipe as r } from './DropdownMenu.recipe';
 
 export type DropdownMenuItemVariant = 'default' | 'destructive';
@@ -146,7 +146,7 @@ export function DropdownMenu({
       >
         {icon !== undefined && <view aria-hidden className={b.icon.base}>{icon}</view>}
         {!isLabelHidden && <text id={value !== undefined ? valueId : undefined} className={cx(b.label.base, b.label.weight[variant], b.label.size[size])}>{value ?? label}</text>}
-        {hasChevron && <vector aria-hidden paths={glyphs.chevronDown} viewBox={glyphBox} className={r.chevron.base} />}
+        {hasChevron && <Glyph name="chevron-down" className={r.chevron.base} />}
       </button>
       <MenuSize.Provider value={size}>
         <view
@@ -253,7 +253,7 @@ function CheckableItem(props: {
         <text className={r.itemLabel.base}>{props.label}</text>
         {props.description !== undefined && <text id={descriptionId} className={r.itemDescription.base}>{props.description}</text>}
       </view>
-      {props.isChecked && <vector aria-hidden paths={glyphs.check} viewBox={glyphBox} className={r.itemCheck.base} />}
+      {props.isChecked && <Glyph name="check" weight={2.5} className={r.itemCheck.base} />}
     </button>
   );
 }

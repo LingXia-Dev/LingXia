@@ -1,11 +1,11 @@
 import { cx } from '@lingxia/view';
 import { Button } from '../Button/Button';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { Glyph } from '../internal/Glyph';
 import { bannerRecipe as r } from './Banner.recipe';
 
 export type BannerTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 
-const toneGlyph = { neutral: glyphs.info, info: glyphs.info, success: glyphs.success, warning: glyphs.warning, danger: glyphs.error } as const;
+const toneGlyph = { neutral: 'info', info: 'info', success: 'success', warning: 'warning', danger: 'error' } as const;
 
 export type BannerDismiss =
   | {
@@ -40,7 +40,7 @@ export function Banner({ title, message, tone = 'info', action, onDismiss, dismi
       data-testid={testId}
       className={cx(r.root.base, r.root.tone[tone], onDismiss === undefined && r.root.plain, className)}
     >
-      <vector aria-hidden paths={toneGlyph[tone]} viewBox={glyphBox} className={cx(r.icon.base, r.icon.tone[tone])} />
+      <Glyph name={toneGlyph[tone]} className={cx(r.icon.base, r.icon.tone[tone])} />
       <view className={r.text.base}>
         <text className={r.title.base}>{title}</text>
         {message !== undefined && <text className={r.message.base}>{message}</text>}
@@ -50,7 +50,7 @@ export function Banner({ title, message, tone = 'info', action, onDismiss, dismi
       </view>
       {onDismiss !== undefined && (
         <button aria-label={dismissLabel} onClick={onDismiss} data-testid={testId && `${testId}-dismiss`} className={r.dismiss.base}>
-          <vector aria-hidden paths={glyphs.close} viewBox={glyphBox} className={r.dismissIcon.base} />
+          <Glyph name="close" className={r.dismissIcon.base} />
         </button>
       )}
     </view>

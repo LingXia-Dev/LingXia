@@ -51,5 +51,9 @@ npm run check
 npm run typecheck
 ```
 
+Before a commit, also build the gallery as a device attach does: `npm run build:release` in
+`../gallery` (it needs the `lingxia` CLI). The release build minifies every page, which the Node
+tests do not, and a page that does not survive it cannot be attached.
+
 Node tests do not prove device behaviour. Run the gallery (`../gallery`) with `lingxia dev` before
 calling a change verified, and say which platforms it ran on.

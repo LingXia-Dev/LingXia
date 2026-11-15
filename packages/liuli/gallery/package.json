@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build:lxapp": "lingxia build",
+    "build:release": "lingxia build --release",
     "pretypecheck": "npm run build --workspace @lingxia/test",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p zz-tests/tsconfig.json"
   },

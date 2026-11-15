@@ -1,6 +1,6 @@
 import { childrenToArray, cx, useContext, useId, type Child } from '@lingxia/view';
 import { describedBy } from '../internal/describedBy';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { itemRecipe as r } from './Item.recipe';
 
@@ -56,7 +56,7 @@ export function Item(props: ItemProps) {
         {help !== undefined && <text id={pressable ? descriptionId : undefined} className={r.description.base}>{help}</text>}
       </view>
       {endContent !== undefined && <view aria-hidden={pressable || undefined} className={r.end.base}>{endContent}</view>}
-      {props.hasChevron && <vector aria-hidden paths={glyphs.chevronEnd} viewBox={glyphBox} className={cx(r.chevron.base, isSelected && r.chevron.selected)} />}
+      {props.hasChevron && <Glyph name="chevron-end" className={cx(r.chevron.base, isSelected && r.chevron.selected)} />}
     </>
   );
   if (!pressable) return <view data-testid={testId} className={cx(r.root.base, className)}>{content}</view>;

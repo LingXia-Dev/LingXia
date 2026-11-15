@@ -70,7 +70,7 @@ for (const path of files) {
         if (!ts.isJsxAttribute(attribute) || !attribute.initializer) continue;
         const prop = attribute.name.getText(file);
         const literal = ts.isStringLiteral(attribute.initializer) ? attribute.initializer : ts.isJsxExpression(attribute.initializer) && attribute.initializer.expression && ts.isStringLiteral(attribute.initializer.expression) ? attribute.initializer.expression : undefined;
-        if (literal && ((tag === 'Icon' && prop === 'name') || iconProps.has(prop)) && !iconNames.has(literal.text))
+        if (literal && (((tag === 'Icon' || tag === 'Glyph') && prop === 'name') || iconProps.has(prop)) && !iconNames.has(literal.text))
           report(attribute, 'icon', `${literal.text} is not an icon name; see icons/icons.json`);
         if (prop !== 'className') continue;
         const value = ts.isJsxExpression(attribute.initializer) ? attribute.initializer.expression : attribute.initializer;

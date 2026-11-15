@@ -51,7 +51,7 @@ export const itemRecipe = {
     base: 'shrink-0 flex-row items-center gap-2 text-muted',
   },
   chevron: {
-    base: 'size-5 shrink-0 text-faint rtl:-scale-x-100',
+    base: 'size-5 shrink-0 text-faint',
     /** Faint is below 3:1 on the selected wash. */
     selected: 'text-muted',
   },

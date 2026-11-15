@@ -1,6 +1,7 @@
-import { cx, type Local, type VectorPath } from '@lingxia/view';
+import { cx, type Local } from '@lingxia/view';
 import { Field, type FieldOwnProps, type FieldSize, type FieldStatusType } from '../Field/Field';
-import { glyphBox } from './glyphs';
+import type { IconName } from '../Icon/Icon';
+import { Glyph } from './Glyph';
 
 /** Controlled by the app (`value` + `onChange`), or bound to a View-local cell (`bind`); ISO text, `''` while empty. */
 export type PickerBinding =
@@ -26,7 +27,7 @@ interface PickerRecipe {
 
 export type PickerFieldProps = FieldOwnProps & PickerBinding & {
   type: 'date' | 'time';
-  glyph: readonly VectorPath[];
+  icon: IconName;
   recipe: PickerRecipe;
   placeholder?: string;
   min?: string;
@@ -42,7 +43,7 @@ export type PickerFieldProps = FieldOwnProps & PickerBinding & {
 export function PickerField(props: PickerFieldProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, isDisabled = false, disabledMessage, size = 'md',
-    type, glyph, recipe: r, placeholder, min, max, step, onSubmit, className, controlClassName, 'data-testid': testId,
+    type, icon, recipe: r, placeholder, min, max, step, onSubmit, className, controlClassName, 'data-testid': testId,
   } = props;
   const inputClass = cx(r.input.base, r.input.size[size]);
   return (
@@ -77,7 +78,7 @@ export function PickerField(props: PickerFieldProps) {
         return (
           <view className={cx(r.box.base, r.box.size[size], status && r.box.status[status.type], isDisabled && r.box.disabled, controlClassName)}>
             {props.bind ? <input bind={props.bind} {...shared} /> : <input value={props.value} onInput={props.onChange} {...shared} />}
-            <vector aria-hidden paths={glyph} viewBox={glyphBox} className={r.icon.base} />
+            <Glyph name={icon} className={r.icon.base} />
           </view>
         );
       }}

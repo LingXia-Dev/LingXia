@@ -5,7 +5,7 @@
 An icon by what it means, from a set an app or theme can replace. Status: preview.
 
 ```ts
-import { Icon, IconSetProvider } from '@liulidesign/core/Icon';
+import { iconPaths, useIcon, Icon, IconSetProvider } from '@liulidesign/core/Icon';
 ```
 
 Icon draws one icon in the colour of the text around it. Code asks for an icon by meaning, such as `close`, `search` or `chevron-end`, and the set in use decides its shape: the default set is 88 icons from Lucide, and `IconSetProvider` swaps in another set, or a single icon, for everything inside it. Icons that point along the reading direction turn round in right-to-left layouts.

@@ -2,7 +2,7 @@ import { cx, useId, type Local } from '@lingxia/view';
 import type { FieldOwnProps } from '../Field/Field';
 import { fieldRecipe } from '../Field/Field.recipe';
 import { describedBy } from '../internal/describedBy';
-import { glyphBox, glyphs } from '../internal/glyphs';
+import { Glyph } from '../internal/Glyph';
 import { hasMessage, StatusRegion } from '../internal/StatusRegion';
 import { checkboxInputRecipe as r } from './CheckboxInput.recipe';
 
@@ -51,7 +51,7 @@ export function CheckboxInput(props: CheckboxInputProps) {
   const content = (
     <view className={r.row.base}>
       <view aria-hidden className={cx(r.box.base, r.box.size[size], r.box.state[checked ? 'on' : 'off'], !checked && status?.type === 'error' && r.box.invalid)}>
-        {checked && <vector aria-hidden paths={glyphs.check} viewBox={glyphBox} className={r.mark.size[size]} />}
+        {checked && <Glyph name="check" weight={2.5} className={r.mark.size[size]} />}
       </view>
       <view className={r.text.base}>
         <text className={cx(r.label.base, r.label.size[size], isLabelHidden && r.label.hidden)}>
