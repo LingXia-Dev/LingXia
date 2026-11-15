@@ -445,6 +445,24 @@ fn slot_for(prepared: [Option<u64>; 2], revision: u64) -> usize {
     }
 }
 
+/// A page that loads again numbers its frames from the start: `revision` is then below every
+/// revision held, which frames of one page, prepared in order, never are.
+fn restarted(prepared: [Option<u64>; 2], revision: u64) -> bool {
+    let mut held = prepared.iter().flatten().peekable();
+    held.peek().is_some() && held.all(|held| revision < *held)
+}
+
+/// The slot a capture reads: what is on screen, else the newest frame prepared.
+fn shown_slot(prepared: [Option<u64>; 2], presented: Option<u64>) -> Option<usize> {
+    presented
+        .and_then(|shown| prepared.iter().position(|held| *held == Some(shown)))
+        .or_else(|| {
+            (0..2)
+                .filter(|slot| prepared[*slot].is_some())
+                .max_by_key(|slot| prepared[*slot])
+        })
+}
+
 /// Surface ownership and presentation stay on the platform UI thread.
 pub struct Presenter {
     surface: Option<RenderSurface<'static>>,
@@ -835,6 +853,16 @@ impl Presenter {
         }
         surface.ensure_targets(&context.devices[surface.dev_id].device);
         let device = &context.devices[surface.dev_id];
+        // The frames held belong to the page as it was before it loaded again: kept, the
+        // higher one would look newest for good and every new frame would share one slot.
+        if restarted(self.prepared, revision) {
+            self.prepared = [None; 2];
+            self.drawn = [None; 2];
+            self.composed = [None, None];
+            self.presented = None;
+            self.retained = None;
+            self.video_plan = None;
+        }
         let slot = slot_for(self.prepared, revision);
         self.prepared[slot] = None;
         // The slot's previous output was presented; its texture can serve this frame.
@@ -1213,10 +1241,7 @@ impl Presenter {
         let Some(surface) = &self.surface else {
             return Ok(None);
         };
-        let Some(slot) = (0..2)
-            .filter(|slot| self.prepared[*slot].is_some())
-            .max_by_key(|slot| self.prepared[*slot])
-        else {
+        let Some(slot) = shown_slot(self.prepared, self.presented) else {
             return Ok(None);
         };
         let texture = match &self.composed[slot] {
@@ -1357,6 +1382,40 @@ mod tests {
             slot_for(prepared, 4),
             1,
             "a revision drawn again keeps its slot"
+        );
+    }
+
+    #[test]
+    fn a_page_that_loads_again_starts_its_frames_over() {
+        assert!(!restarted([None, None], 1));
+        assert!(!restarted([Some(3), Some(4)], 5), "the next frame");
+        assert!(!restarted([Some(3), Some(4)], 4), "a frame drawn again");
+        assert!(!restarted([Some(5), Some(4)], 5));
+        assert!(restarted([Some(923), Some(924)], 2));
+        assert!(restarted([Some(923), None], 2));
+        // Forgotten, the new frames alternate slots again.
+        let mut prepared = [None; 2];
+        for revision in 2..=5u64 {
+            let slot = slot_for(prepared, revision);
+            assert_eq!(slot, revision as usize % 2);
+            prepared[slot] = Some(revision);
+        }
+    }
+
+    #[test]
+    fn a_capture_reads_the_frame_on_screen() {
+        assert_eq!(shown_slot([None, None], None), None);
+        assert_eq!(shown_slot([Some(7), Some(8)], Some(7)), Some(0));
+        assert_eq!(shown_slot([Some(7), Some(8)], Some(8)), Some(1));
+        assert_eq!(
+            shown_slot([Some(7), Some(8)], None),
+            Some(1),
+            "none shown yet"
+        );
+        assert_eq!(
+            shown_slot([Some(9), Some(8)], Some(6)),
+            Some(0),
+            "the shown one is gone"
         );
     }
 
