@@ -706,8 +706,9 @@ impl Projection<'_> {
                 label,
             });
         }
-        if matches!(role, Role::Dialog | Role::AlertDialog)
-            && self.frame.nodes.iter().any(|node| node.close_request)
+        if (matches!(role, Role::Dialog | Role::AlertDialog)
+            && self.frame.nodes.iter().any(|node| node.close_request))
+            || crate::interaction::frame::dismissable(&self.frame.nodes, node)
         {
             actions.push(Action::Dismiss);
         }

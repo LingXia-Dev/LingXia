@@ -93,4 +93,5 @@ how much of it shows. Its `exit:` styles have nothing left to show by then.
   submenu (swapped in a right-to-left page). A submenu has no backdrop of its own: a press on
   another item of its menu reaches that item.
 - Specs find a dialog with `getByRole('dialog', { name })` and close it as a user would with
-  `locator.performAction('dismiss')`.
+  `locator.performAction('dismiss')`. A screen reader's dismiss gesture is offered on every dialog and
+  popover that Escape can close, whatever its role, and asks `onCloseRequest` first.

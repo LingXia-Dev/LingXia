@@ -77,3 +77,22 @@ fn escape_asks_the_popover_first_and_a_refusal_keeps_it_and_its_focus() {
     assert!(!exists(&host, "menu"), "the second request is let through");
     assert!(focused(&host, "more"));
 }
+
+#[test]
+fn assistive_tech_may_dismiss_a_popover_and_the_popover_is_asked_first() {
+    let worker = ViewWorker::spawn("test-close-dismiss").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = page(&platform, &worker);
+    open_menu(&platform, &host);
+    let dismiss = || {
+        host.automation_request(&serde_json::json!({"op": "act", "css": "[data-testid=\"menu\"]", "action": {"kind": "action", "name": "dismiss"}}))
+            .unwrap();
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 2);
+    };
+    dismiss();
+    assert_eq!(query(&host, "log")["text"], "ask ");
+    assert!(exists(&host, "menu"), "a refused dismiss keeps it open");
+    dismiss();
+    assert!(!exists(&host, "menu"));
+}

@@ -453,6 +453,15 @@ pub fn descends(node: &NodeSnapshot, ancestor: &NodeSnapshot) -> bool {
         && node.identity.as_bytes()[ancestor.identity.len()] == b'/'
 }
 
+/// A shown popover's or dialog's panel whose layer takes a close request: assistive tech may
+/// dismiss it, whatever role it has.
+pub fn dismissable(nodes: &[NodeSnapshot], node: &NodeSnapshot) -> bool {
+    node.panel
+        && nodes
+            .iter()
+            .any(|layer| layer.close_request && descends(node, layer))
+}
+
 pub fn contains_content(node: &NodeSnapshot, point: [f32; 2]) -> bool {
     node.content_clip.is_none_or(|clip| clip.contains(point))
 }

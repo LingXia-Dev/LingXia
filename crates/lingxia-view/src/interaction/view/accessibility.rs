@@ -175,7 +175,8 @@ impl ViewInteraction {
                 }
             }
             AccessibilityAction::Dismiss
-                if matches!(node.role.as_deref(), Some("dialog" | "alertdialog")) =>
+                if matches!(node.role.as_deref(), Some("dialog" | "alertdialog"))
+                    || frame::dismissable(&frame.nodes, node) =>
             {
                 match self.close_request() {
                     Some(effects) => (true, effects),
