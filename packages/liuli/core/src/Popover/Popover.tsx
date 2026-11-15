@@ -4,7 +4,8 @@ import { buttonRecipe as b } from '../Button/Button.recipe';
 import { LayerContext } from '../internal/layer';
 import { popoverRecipe as r } from './Popover.recipe';
 
-export type PopoverPlacement = 'bottom' | 'top';
+/** `end` and `start` open beside the trigger, where there is room at its side: a toolbar down an edge, a row in a sidebar. */
+export type PopoverPlacement = 'bottom' | 'top' | 'end' | 'start';
 export type PopoverAlignment = 'start' | 'center' | 'end';
 
 export interface PopoverProps {
@@ -22,9 +23,9 @@ export interface PopoverProps {
   variant?: ButtonVariant;
   /** @default 'md' */
   size?: ButtonSize;
-  /** Which side of the trigger the panel opens on. @default 'bottom' */
+  /** Which side of the trigger the panel opens on. Beside the trigger it flips to the other side for room, and falls back to below or above. @default 'bottom' */
   placement?: PopoverPlacement;
-  /** Which edge of the trigger the panel lines up with. @default 'start' */
+  /** Which edge of the trigger the panel lines up with: for `end` and `start`, `start` is the top of the trigger and `end` its bottom. @default 'start' */
   alignment?: PopoverAlignment;
   /** Controls whether it is open; leave it out to let the trigger own it. */
   isOpen?: boolean;
@@ -43,6 +44,8 @@ export interface PopoverProps {
 const areas = {
   bottom: { start: 'bottom span-inline-end', center: 'bottom', end: 'bottom span-inline-start' },
   top: { start: 'top span-inline-end', center: 'top', end: 'top span-inline-start' },
+  end: { start: 'inline-end span-block-end', center: 'inline-end', end: 'inline-end span-block-start' },
+  start: { start: 'inline-start span-block-end', center: 'inline-start', end: 'inline-start span-block-start' },
 } as const satisfies Record<PopoverPlacement, Record<PopoverAlignment, string>>;
 
 /**

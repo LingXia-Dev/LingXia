@@ -52,6 +52,7 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'ViewOptions', title: 'View options under the trigger' },
     { name: 'Share', title: 'A share link above the trigger' },
+    { name: 'Beside', title: 'Beside the trigger' },
   ],
   gaps: [
     {
@@ -69,7 +70,7 @@ export const doc: ComponentDoc = {
       lead: 'Use a popover for a few controls or lines that belong to the button that opens them.',
       hero: 'ViewOptions',
       parts: { name: 'Parts', title: 'The trigger, then the panel with its title' },
-      variants: [{ name: 'Share', title: 'Above, lined up with the trigger\'s end' }],
+      variants: [{ name: 'Share', title: 'Above, lined up with the trigger\'s end' }, { name: 'Beside', title: 'At the side of the trigger; it flips or drops below when there is no room' }],
     },
   },
 };

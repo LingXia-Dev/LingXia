@@ -52,6 +52,7 @@ export const doc: ComponentDoc = {
     { name: 'Below', title: 'Opening below' },
     { name: 'InForm', title: 'Next to a field label' },
     { name: 'Sizes', title: 'Sizes' },
+    { name: 'Beside', title: 'Beside the button' },
   ],
   gaps: [
     {
@@ -79,7 +80,7 @@ export const doc: ComponentDoc = {
       lead: 'Use a tooltip for a short note that explains what is beside it. Tap the info button to open it.',
       hero: 'Storage',
       parts: { name: 'Parts', title: 'The note over its button' },
-      variants: [{ name: 'Below', title: 'Opening below, where there is no room above' }],
+      variants: [{ name: 'Below', title: 'Opening below, where there is no room above' }, { name: 'Beside', title: 'At the side of the button' }],
       states: [
         { name: 'StateClosed', title: 'Closed' },
         { name: 'StatePressed', title: 'Pressed' },

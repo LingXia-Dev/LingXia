@@ -13,7 +13,7 @@ export const popoverRecipe = {
   panel: {
     base: 'w-72 p-4 gap-3 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-150 ease-out starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-95',
     /** The gap between the trigger and the panel, on the side it opens to. */
-    offset: { bottom: 'mt-1.5 origin-top', top: 'mb-1.5 origin-bottom' } satisfies Record<PopoverPlacement, string>,
+    offset: { bottom: 'mt-1.5 origin-top', top: 'mb-1.5 origin-bottom', end: 'ms-1.5', start: 'me-1.5' } satisfies Record<PopoverPlacement, string>,
   },
   title: {
     base: 'text-body font-semibold text-text',

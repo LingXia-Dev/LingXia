@@ -61,3 +61,14 @@ export function Specimen() {
     </view>
   );
 }
+
+/** Beside its trigger: a tool at the edge of a canvas opens its options at its side. */
+export function Beside() {
+  return (
+    <view className="items-start gap-2">
+      <Popover label="Line" title="Line" placement="end" data-testid="beside">
+        <text className="text-footnote text-muted">Weight and style for the shapes you draw next.</text>
+      </Popover>
+    </view>
+  );
+}

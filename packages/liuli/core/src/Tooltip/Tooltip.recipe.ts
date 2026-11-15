@@ -22,7 +22,7 @@ export const tooltipRecipe = {
   },
   bubble: {
     base: 'max-w-64 px-3 py-2 rounded-control bg-text shadow-raised transition duration-150 ease-out starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-95',
-    offset: { bottom: 'mt-1 origin-top', top: 'mb-1 origin-bottom' } satisfies Record<TooltipPlacement, string>,
+    offset: { bottom: 'mt-1 origin-top', top: 'mb-1 origin-bottom', end: 'ms-1', start: 'me-1' } satisfies Record<TooltipPlacement, string>,
   },
   text: {
     base: 'text-footnote text-surface',

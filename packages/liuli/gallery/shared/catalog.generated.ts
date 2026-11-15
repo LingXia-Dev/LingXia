@@ -783,6 +783,34 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "HoverCard",
+    "page": "hover-card",
+    "category": "overlays",
+    "summary": "A preview of what a word names",
+    "keywords": [
+      "hover card",
+      "preview",
+      "peek",
+      "profile card",
+      "definition",
+      "hint"
+    ]
+  },
+  {
+    "name": "ContextMenu",
+    "page": "context-menu",
+    "category": "overlays",
+    "summary": "A menu for one thing, asked for on the thing",
+    "keywords": [
+      "context menu",
+      "long press",
+      "right click",
+      "secondary click",
+      "actions",
+      "menu"
+    ]
+  },
+  {
     "name": "Card",
     "page": "card",
     "category": "content",
@@ -1280,7 +1308,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "layers",
     "description": "Dialogs, sheets and menus",
     "page": "category-overlays",
-    "count": 6
+    "count": 8
   },
   {
     "id": "content",

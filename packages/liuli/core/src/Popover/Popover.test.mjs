@@ -31,3 +31,9 @@ test('Share: opens above the trigger, with the gap on its lower side', async () 
   screen.press(screen.getByTestId('copy'));
   screen.getByText('Copied');
 });
+
+test('Beside: the panel is anchored at the end side of the trigger, their tops lined up', async () => {
+  const screen = await renderExample('Popover/Popover', 'Beside');
+  screen.press(screen.getByTestId('beside'));
+  assert.ok(JSON.stringify(screen.getByTestId('beside-panel').props).includes('inline-end span-block-end'));
+});

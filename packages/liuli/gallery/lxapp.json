@@ -73,6 +73,8 @@
     { "name": "bottom-sheet", "path": "pages/bottom-sheet/index" },
     { "name": "popover", "path": "pages/popover/index" },
     { "name": "drawer", "path": "pages/drawer/index" },
+    { "name": "hover-card", "path": "pages/hover-card/index" },
+    { "name": "context-menu", "path": "pages/context-menu/index" },
     { "name": "card", "path": "pages/card/index" },
     { "name": "item", "path": "pages/item/index" },
     { "name": "details", "path": "pages/details/index" },

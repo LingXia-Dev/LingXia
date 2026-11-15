@@ -5,13 +5,15 @@ import { Specimen as TooltipSpecimen } from '../../core/src/Tooltip/Tooltip.exam
 import { Specimen as BottomSheetSpecimen } from '../../core/src/BottomSheet/BottomSheet.examples';
 import { Specimen as PopoverSpecimen } from '../../core/src/Popover/Popover.examples';
 import { Specimen as DrawerSpecimen } from '../../core/src/Drawer/Drawer.examples';
+import { Specimen as HoverCardSpecimen } from '../../core/src/HoverCard/HoverCard.examples';
+import { Specimen as ContextMenuSpecimen } from '../../core/src/ContextMenu/ContextMenu.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Surfaces that float over the page: dialogs, sheets, menus and popovers."}</text>
-      <Category title={"6 components"}>
+      <Category title={"8 components"}>
         <Tile
           name={"Dialog"}
           tagline={"A decision, on top"}
@@ -59,6 +61,22 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           testId={"open-drawer"}
         >
           <DrawerSpecimen />
+        </Tile>
+        <Tile
+          name={"HoverCard"}
+          tagline={"More, on rest"}
+          onOpen={() => onOpen("hover-card")}
+          testId={"open-hover-card"}
+        >
+          <HoverCardSpecimen />
+        </Tile>
+        <Tile
+          name={"ContextMenu"}
+          tagline={"Hold for actions"}
+          onOpen={() => onOpen("context-menu")}
+          testId={"open-context-menu"}
+        >
+          <ContextMenuSpecimen />
         </Tile>
       </Category>
     </>

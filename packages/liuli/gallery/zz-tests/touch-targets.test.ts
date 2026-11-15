@@ -34,3 +34,28 @@ spec('checkbox-input: a small checkbox row already meets the touch target', {
   await tap(view, [box.x + 4, box.y + box.height / 2]);
   await expect(small).toBeChecked();
 });
+
+// Controls drawn smaller than a finger: the box a finger reaches is still the platform's minimum
+// in both directions, whatever the drawn box is.
+const drawnSmall: Array<[page: string, testId: string, what: string]> = [
+  ['breadcrumb', 'deep-more', 'the folded levels button'],
+  ['token', 'person-kai-remove', 'a token\'s remove button'],
+  ['page-control', 'welcome-1', 'a page dot'],
+  ['tooltip', 'side', 'a small info button'],
+];
+
+for (const [page, testId, what] of drawnSmall) {
+  spec(`${page}: ${what} reaches a finger-sized target`, {
+    id: `TOUCH-TARGET-REACH-${page.toUpperCase()}`, start: { page }, timeout: 60_000,
+    reason: 'touch targets apply to a real finger on a phone',
+  }, async (t) => {
+    const view = t.app.view;
+    const minimum = await touchMinimum(t);
+    const control = view.testId(testId);
+    const drawn = await reveal(view, control);
+    const reach = await control.touchTarget();
+    expect(Math.min(drawn.width, drawn.height), 'drawn smaller than the minimum').toBeLessThan(minimum);
+    expect(reach.width, 'reach, across').toBeGreaterThanOrEqual(minimum - 0.5);
+    expect(reach.height, 'reach, down').toBeGreaterThanOrEqual(minimum - 0.5);
+  });
+}

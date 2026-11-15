@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Storage, Parts, Below, Sizes, StateClosed, StatePressed, StateOpen, InForm } from '../../core/src/Tooltip/Tooltip.examples';
+import { Storage, Parts, Below, Beside, Sizes, StateClosed, StatePressed, StateOpen, InForm } from '../../core/src/Tooltip/Tooltip.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -16,6 +16,9 @@ export function Content() {
       <PageSection title={"Variants"}>
         <Stage caption={"Opening below, where there is no room above"}>
           <Below />
+        </Stage>
+        <Stage caption={"At the side of the button"}>
+          <Beside />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

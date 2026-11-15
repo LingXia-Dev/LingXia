@@ -107,7 +107,10 @@ const areas = {
   top: { start: 'top span-inline-end', center: 'top', end: 'top span-inline-start' },
 } as const satisfies Record<DropdownMenuPlacement, Record<DropdownMenuAlignment, string>>;
 
-const MenuSize = createContext<ButtonSize | null>(null);
+/** The items' height; set by whatever holds them: a DropdownMenu or a ContextMenu. */
+export const MenuSize = createContext<ButtonSize | null>(null);
+/** Set by a holder that does not close by itself, such as a sheet: an item calls it after its action. */
+export const MenuClose = createContext<(() => void) | null>(null);
 const RadioGroup = createContext<DropdownMenuRadioGroupProps | null>(null);
 
 /**
@@ -177,6 +180,7 @@ export function DropdownMenuItem({
   'data-testid': testId,
 }: DropdownMenuItemProps) {
   const size = useContext(MenuSize);
+  const close = useContext(MenuClose);
   const descriptionId = `${useId()}-description`;
   if (size === null) throw Error('DropdownMenuItem: place it inside a DropdownMenu');
   return (
@@ -185,7 +189,7 @@ export function DropdownMenuItem({
       aria-label={label}
       aria-describedby={description !== undefined ? descriptionId : undefined}
       disabled={isDisabled}
-      onClick={onClick}
+      onClick={() => { onClick?.(); close?.(); }}
       data-testid={testId}
       className={cx(r.item.base, r.item.size[size])}
     >

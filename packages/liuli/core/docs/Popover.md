@@ -58,6 +58,23 @@ export function Share() {
 }
 ```
 
+### Beside the trigger
+
+```tsx
+import { Popover } from '@liulidesign/core/Popover';
+
+/** Beside its trigger: a tool at the edge of a canvas opens its options at its side. */
+export function Beside() {
+  return (
+    <view className="items-start gap-2">
+      <Popover label="Line" title="Line" placement="end" data-testid="beside">
+        <text className="text-footnote text-muted">Weight and style for the shapes you draw next.</text>
+      </Popover>
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -69,8 +86,8 @@ export function Share() {
 | `icon` | `Child` |  | An icon on the trigger, before the label. |
 | `variant` | `ButtonVariant` | `'secondary'` | The trigger's look, from Button. |
 | `size` | `ButtonSize` | `'md'` |  |
-| `placement` | `PopoverPlacement` | `'bottom'` | Which side of the trigger the panel opens on. |
-| `alignment` | `PopoverAlignment` | `'start'` | Which edge of the trigger the panel lines up with. |
+| `placement` | `PopoverPlacement` | `'bottom'` | Which side of the trigger the panel opens on. Beside the trigger it flips to the other side for room, and falls back to below or above. |
+| `alignment` | `PopoverAlignment` | `'start'` | Which edge of the trigger the panel lines up with: for `end` and `start`, `start` is the top of the trigger and `end` its bottom. |
 | `isOpen` | `boolean` |  | Controls whether it is open; leave it out to let the trigger own it. |
 | `onOpenChange` | `((isOpen: boolean) => void)` |  |  |
 | `isDisabled` | `boolean` | `false` |  |

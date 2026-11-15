@@ -80,6 +80,22 @@ export function Sizes() {
 }
 ```
 
+### Beside the button
+
+```tsx
+import { Tooltip } from '@liulidesign/core/Tooltip';
+
+/** Beside its button, where the note would cover what is above and below. */
+export function Beside() {
+  return (
+    <view className="flex-row items-center gap-1">
+      <text className="text-body text-text">Sync</text>
+      <Tooltip label="About sync" content="Notes are sent when you are online." placement="end" size="sm" data-testid="side" />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |

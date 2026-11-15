@@ -2,7 +2,7 @@ import { cx, useId, useLocal } from '@lingxia/view';
 import { Glyph } from '../internal/Glyph';
 import { tooltipRecipe as r } from './Tooltip.recipe';
 
-export type TooltipPlacement = 'top' | 'bottom';
+export type TooltipPlacement = 'top' | 'bottom' | 'end' | 'start';
 export type TooltipSize = 'sm' | 'md';
 
 export interface TooltipProps {
@@ -21,6 +21,8 @@ export interface TooltipProps {
   /** On the info button; the note gets `<testid>-content`. */
   'data-testid'?: string;
 }
+
+const areas = { top: 'top', bottom: 'bottom', end: 'inline-end', start: 'inline-start' } as const satisfies Record<TooltipPlacement, string>;
 
 /**
  * An info button that opens a short note about what is next to it. It opens on a tap, Enter or
@@ -55,7 +57,7 @@ export function Tooltip({ label, content, placement = 'top', size = 'md', isOpen
         open={isOpen}
         onToggle={toggle}
         data-testid={testId && `${testId}-content`}
-        style={{ positionArea: placement }}
+        style={{ positionArea: areas[placement] }}
         className={cx(r.bubble.base, r.bubble.offset[placement])}
       >
         <text id={textId} className={r.text.base}>{content}</text>
