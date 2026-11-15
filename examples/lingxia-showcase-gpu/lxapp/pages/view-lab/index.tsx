@@ -18,7 +18,7 @@ const groups = {
   data: { label: 'Data', sections: [Plots] },
   gesture: { label: 'Gesture', sections: [Drag, DragChain, Detents] },
   swipe: { label: 'Swipe', sections: [SwipeRows, Pager, KitPager] },
-  engine: { label: 'Engine', sections: [Scrub, Orphan, Reveal] },
+  engine: { label: 'Engine', sections: [Scrub, Typeahead, Appearance, Orphan, Reveal] },
 };
 type Group = keyof typeof groups;
 
@@ -729,6 +729,66 @@ function Scrub() {
       <text data-testid="lab-scrub-state" className="text-xs text-muted tabular-nums">
         {`box=${box.value ? `${box.value.width}x${box.value.height}` : 'none'} at=${at.value} last=${last.value}`}
       </text>
+    </Section>
+  );
+}
+
+// A typeahead: suggestions sit under the field in a manual popover while the caret stays in the
+// text. Arrows move the active option, Enter takes it, Escape closes; a tap on one takes it too.
+function Typeahead() {
+  const fruits = ['Apple', 'Apricot', 'Banana', 'Cherry', 'Grape'];
+  const query = useLocal('lab-type-query', '');
+  const open = useLocal('lab-type-open', false);
+  const active = useLocal('lab-type-active', 0);
+  const last = useLocal('lab-type-last', 'none');
+  const matches = fruits.filter(name => name.toLowerCase().startsWith(query.value.toLowerCase()));
+  const shown = open.value && matches.length > 0;
+  const take = (name: string) => { query.set(name); open.set(false); last.set(`picked ${name}`); };
+  return (
+    <Section title="Typeahead" testId="lab-type">
+      <view id="lab-type-field" data-testid="lab-type-field" className="rounded-lg border border-line-strong bg-surface">
+        <input data-testid="lab-type-input" value={query.value} aria-label="Fruit" placeholder="Fruit" className="px-3 py-2 text-sm"
+          role="combobox" aria-expanded={shown} aria-controls="lab-type-list" aria-autocomplete="list"
+          aria-activedescendant={shown ? `lab-type-option-${active.value}` : undefined}
+          onInput={text => { query.set(text); open.set(true); active.set(0); }}
+          onFocus={() => { open.set(true); last.set('focus'); }}
+          onBlur={() => { open.set(false); last.set('blur'); }}
+          onKeyDown={{
+            ArrowDown: () => active.set(Math.min(matches.length - 1, active.value + 1)),
+            ArrowUp: () => active.set(Math.max(0, active.value - 1)),
+            Enter: () => { if (matches[active.value]) take(matches[active.value]); },
+            Escape: () => { open.set(false); last.set('escape'); },
+          }} />
+      </view>
+      <view id="lab-type-list" popover="manual" anchor="lab-type-field" open={shown} onToggle={next => open.set(next)}
+        role="listbox" aria-label="Fruits" data-testid="lab-type-list" className="w-40 rounded-lg border border-line-strong bg-surface p-1">
+        {matches.map((name, index) => (
+          <button key={name} id={`lab-type-option-${index}`} role="option" aria-selected={index === active.value}
+            data-testid={`lab-type-option-${name}`} onClick={() => take(name)}
+            className={`px-3 py-2 rounded-md text-sm ${index === active.value ? 'bg-surface-sunken' : ''}`}>{name}</button>
+        ))}
+      </view>
+      <text data-testid="lab-type-state" className="text-xs text-muted tabular-nums">{`open=${shown} active=${active.value} last=${last.value}`}</text>
+      <input data-testid="lab-type-readonly" value="Read only" readOnly aria-label="Reference"
+        className="px-3 py-2 rounded-lg border border-line-strong bg-surface-sunken text-sm" />
+    </Section>
+  );
+}
+
+// Counts this page's View runs: a theme change repaints a page that never read the appearance
+// without running it, and runs one that did.
+let labRuns = 0;
+function Appearance() {
+  const reads = useLocal('lab-appearance-reads', false);
+  const { env } = useView();
+  labRuns += 1;
+  return (
+    <Section title="Appearance" testId="lab-appearance">
+      <text data-testid="lab-appearance-runs" className="text-sm tabular-nums">{`runs ${labRuns}`}</text>
+      <text data-testid="lab-appearance-theme" className="text-sm text-muted">{reads.value ? `theme ${env.theme}` : 'theme not read'}</text>
+      <Button testId="lab-appearance-toggle" size="sm" variant="secondary" onClick={() => reads.set(!reads.value)}>
+        {reads.value ? 'Stop reading the theme' : 'Read the theme'}
+      </Button>
     </Section>
   );
 }
