@@ -30,6 +30,7 @@ import { Content as SearchField } from '../content/search-field';
 import { Content as NumberInput } from '../content/number-input';
 import { Content as Calendar } from '../content/calendar';
 import { Content as DateRangeInput } from '../content/date-range-input';
+import { Content as FormLayout } from '../content/form-layout';
 import { Content as CheckboxInput } from '../content/checkbox-input';
 import { Content as RadioGroup } from '../content/radio-group';
 import { Content as Switch } from '../content/switch';
@@ -61,6 +62,9 @@ import { Content as SplitView } from '../content/split-view';
 import { Content as Icon } from '../content/icon';
 import { Content as Table } from '../content/table';
 import { Content as Markdown } from '../content/markdown';
+import { Content as MetadataList } from '../content/metadata-list';
+import { Content as Section } from '../content/section';
+import { Content as Divider } from '../content/divider';
 import { Content as Stat } from '../content/stat';
 import { Content as Sparkline } from '../content/sparkline';
 import { Content as BarChart } from '../content/bar-chart';
@@ -109,6 +113,7 @@ export const contents: Record<string, GalleryContent> = {
   "number-input": NumberInput,
   "calendar": Calendar,
   "date-range-input": DateRangeInput,
+  "form-layout": FormLayout,
   "checkbox-input": CheckboxInput,
   "radio-group": RadioGroup,
   "switch": Switch,
@@ -140,6 +145,9 @@ export const contents: Record<string, GalleryContent> = {
   "icon": Icon,
   "table": Table,
   "markdown": Markdown,
+  "metadata-list": MetadataList,
+  "section": Section,
+  "divider": Divider,
   "stat": Stat,
   "sparkline": Sparkline,
   "bar-chart": BarChart,

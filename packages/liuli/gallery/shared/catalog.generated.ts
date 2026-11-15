@@ -262,6 +262,20 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "FormLayout",
+    "page": "form-layout",
+    "category": "inputs",
+    "summary": "A form's fields at one rhythm: a column on a phone, two where there is room",
+    "keywords": [
+      "form",
+      "form layout",
+      "fields",
+      "two column form",
+      "form grid",
+      "form actions"
+    ]
+  },
+  {
     "name": "CheckboxInput",
     "page": "checkbox-input",
     "category": "selection",
@@ -752,6 +766,49 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "MetadataList",
+    "page": "metadata-list",
+    "category": "content",
+    "summary": "What is known about one thing, as labels and their values",
+    "keywords": [
+      "metadata",
+      "key value",
+      "details",
+      "description list",
+      "properties",
+      "facts",
+      "definition list"
+    ]
+  },
+  {
+    "name": "Section",
+    "page": "section",
+    "category": "content",
+    "summary": "A titled part of a page: a heading, then its content",
+    "keywords": [
+      "section",
+      "heading",
+      "group",
+      "page section",
+      "header",
+      "titled block"
+    ]
+  },
+  {
+    "name": "Divider",
+    "page": "divider",
+    "category": "content",
+    "summary": "A hairline between two things that belong apart",
+    "keywords": [
+      "divider",
+      "separator",
+      "rule",
+      "line",
+      "hairline",
+      "hr"
+    ]
+  },
+  {
     "name": "Stat",
     "page": "stat",
     "category": "charts",
@@ -946,7 +1003,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "text-input",
     "description": "Text, dates and amounts",
     "page": "category-inputs",
-    "count": 10
+    "count": 11
   },
   {
     "id": "selection",
@@ -986,7 +1043,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "rows",
     "description": "Cards, rows and tables",
     "page": "category-content",
-    "count": 8
+    "count": 11
   },
   {
     "id": "charts",

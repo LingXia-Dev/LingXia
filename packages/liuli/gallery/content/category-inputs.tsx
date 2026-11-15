@@ -9,13 +9,14 @@ import { Specimen as SearchFieldSpecimen } from '../../core/src/SearchField/Sear
 import { Specimen as NumberInputSpecimen } from '../../core/src/NumberInput/NumberInput.examples';
 import { Specimen as CalendarSpecimen } from '../../core/src/Calendar/Calendar.examples';
 import { Specimen as DateRangeInputSpecimen } from '../../core/src/DateRangeInput/DateRangeInput.examples';
+import { Specimen as FormLayoutSpecimen } from '../../core/src/FormLayout/FormLayout.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Fields a person types into or sets: text, dates, times and amounts."}</text>
-      <Category title={"10 components"}>
+      <Category title={"11 components"}>
         <Tile
           name={"TextInput"}
           tagline={"One line of text"}
@@ -95,6 +96,15 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           testId={"open-date-range-input"}
         >
           <DateRangeInputSpecimen />
+        </Tile>
+        <Tile
+          name={"FormLayout"}
+          tagline={"Fields in a rhythm"}
+          isWide
+          onOpen={() => onOpen("form-layout")}
+          testId={"open-form-layout"}
+        >
+          <FormLayoutSpecimen />
         </Tile>
       </Category>
     </>

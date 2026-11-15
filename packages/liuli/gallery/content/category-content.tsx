@@ -7,13 +7,16 @@ import { Specimen as SplitViewSpecimen } from '../../core/src/SplitView/SplitVie
 import { Specimen as IconSpecimen } from '../../core/src/Icon/Icon.examples';
 import { Specimen as TableSpecimen } from '../../core/src/Table/Table.examples';
 import { Specimen as MarkdownSpecimen } from '../../core/src/Markdown/Markdown.examples';
+import { Specimen as MetadataListSpecimen } from '../../core/src/MetadataList/MetadataList.examples';
+import { Specimen as SectionSpecimen } from '../../core/src/Section/Section.examples';
+import { Specimen as DividerSpecimen } from '../../core/src/Divider/Divider.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Containers, rows and tables that hold what the app shows."}</text>
-      <Category title={"8 components"}>
+      <Category title={"11 components"}>
         <Tile
           name={"Card"}
           tagline={"Related content"}
@@ -77,6 +80,31 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           testId={"open-markdown"}
         >
           <MarkdownSpecimen />
+        </Tile>
+        <Tile
+          name={"MetadataList"}
+          tagline={"Labels and values"}
+          onOpen={() => onOpen("metadata-list")}
+          testId={"open-metadata-list"}
+        >
+          <MetadataListSpecimen />
+        </Tile>
+        <Tile
+          name={"Section"}
+          tagline={"A titled part"}
+          onOpen={() => onOpen("section")}
+          testId={"open-section"}
+        >
+          <SectionSpecimen />
+        </Tile>
+        <Tile
+          name={"Divider"}
+          tagline={"A line between"}
+          isWide
+          onOpen={() => onOpen("divider")}
+          testId={"open-divider"}
+        >
+          <DividerSpecimen />
         </Tile>
       </Category>
     </>

@@ -4150,6 +4150,130 @@
       }
     },
     {
+      "name": "Divider",
+      "import": "@liulidesign/core/Divider",
+      "exports": [
+        "Divider"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A hairline between two things that belong apart",
+      "description": "Divider draws the system's subtle hairline between blocks, across a card or upright between items in a row. It can carry a word in its middle, \"or\". Space parts most things better than a line does; use a divider where two blocks would otherwise read as one.",
+      "keywords": [
+        "divider",
+        "separator",
+        "rule",
+        "line",
+        "hairline",
+        "hr"
+      ],
+      "props": [
+        {
+          "name": "orientation",
+          "type": "DividerOrientation",
+          "required": false,
+          "description": "`vertical` parts items in a row and takes their height.",
+          "default": "'horizontal'"
+        },
+        {
+          "name": "inset",
+          "type": "DividerInset",
+          "required": false,
+          "description": "Sets the line in from the edge: `start` to line up with text after an icon, `both` inside a padded card. Horizontal only.",
+          "default": "'none'"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": false,
+          "description": "A word in the middle of the line: \"or\". Horizontal only."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "line": "view",
+        "labelled": "view",
+        "label": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "target": {},
+        "contrast": [
+          {
+            "what": "label",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The line is decoration and is not read: headings and groups carry the structure. Its contrast is below 3:1 on purpose.",
+          "A label on the line is read as text where it stands."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Between",
+          "title": "Between two blocks",
+          "source": "import { Divider } from '@liulidesign/core/Divider';\n\n/** Between two blocks of a card that belong apart. */\nexport function Between() {\n  return (\n    <view className=\"gap-4\">\n      <view className=\"gap-1\">\n        <text className=\"text-body font-medium text-text\">Delivery</text>\n        <text className=\"text-footnote text-muted\">Tuesday 17 November, between 9 and 12</text>\n      </view>\n      <Divider data-testid=\"line\" />\n      <view className=\"gap-1\">\n        <text className=\"text-body font-medium text-text\">Payment</text>\n        <text className=\"text-footnote text-muted\">Card ending 4421</text>\n      </view>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Labelled",
+          "title": "With a word on the line",
+          "source": "import { Button } from '@liulidesign/core/Button';\nimport { Divider } from '@liulidesign/core/Divider';\n\n/** A word on the line, between two ways to do the same thing. */\nexport function Labelled() {\n  return (\n    <view className=\"gap-4\">\n      <Button label=\"Continue with email\" variant=\"primary\" width=\"fill\" />\n      <Divider label=\"or\" data-testid=\"or\" />\n      <Button label=\"Use a passkey\" width=\"fill\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Vertical",
+          "title": "Upright, in a row",
+          "source": "import { Divider } from '@liulidesign/core/Divider';\n\n/** Upright, between items in a row. */\nexport function Vertical() {\n  return (\n    <view className=\"flex-row items-center gap-3 h-6\">\n      <text className=\"text-footnote text-muted\">12 notes</text>\n      <Divider orientation=\"vertical\" data-testid=\"upright\" />\n      <text className=\"text-footnote text-muted\">3 shared</text>\n      <Divider orientation=\"vertical\" />\n      <text className=\"text-footnote text-muted\">Edited today</text>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "related": [
+        "Section",
+        "Card",
+        "Item"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A line between",
+        "order": 11,
+        "page": {
+          "lead": "Use a divider where two blocks would otherwise read as one.",
+          "hero": "Between",
+          "variants": [
+            {
+              "name": "Labelled",
+              "title": "A word on the line"
+            },
+            {
+              "name": "Vertical",
+              "title": "Upright, between items in a row"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "DropdownMenu",
       "import": "@liulidesign/core/DropdownMenu",
       "exports": [
@@ -5009,6 +5133,144 @@
             {
               "name": "StateDisabled",
               "title": "Disabled"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "FormLayout",
+      "import": "@liulidesign/core/FormLayout",
+      "exports": [
+        "FormLayout",
+        "FormSpan"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A form's fields at one rhythm: a column on a phone, two where there is room",
+      "description": "FormLayout sets the distance between a form's fields and puts its buttons after them. With `columns={2}` the fields pair up where the form is at least 560 points wide and stay in one column below that; FormSpan, from the same import, gives a field the whole line. It lays fields out and nothing more: each field keeps its own label, help and status.",
+      "keywords": [
+        "form",
+        "form layout",
+        "fields",
+        "two column form",
+        "form grid",
+        "form actions"
+      ],
+      "props": [
+        {
+          "name": "children",
+          "type": "Child",
+          "required": true,
+          "description": "The fields, in reading order; a `FormSpan` takes a whole line."
+        },
+        {
+          "name": "columns",
+          "type": "1 | 2",
+          "required": false,
+          "description": "The most columns the fields may take, where the form is wide enough for them.",
+          "default": "1"
+        },
+        {
+          "name": "actions",
+          "type": "Child",
+          "required": false,
+          "description": "The buttons that submit or leave the form, drawn after the fields."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {
+        "FormSpan": [
+          {
+            "name": "children",
+            "type": "Child",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "className",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
+        ]
+      },
+      "parts": {
+        "root": "view",
+        "fields": "view",
+        "span": "view",
+        "actions": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Through the fields in the order they are written, across a line before down, then the actions"
+          }
+        ],
+        "target": {},
+        "contrast": [],
+        "notes": [
+          "The reading and Tab order is the order the fields are written in, in one column and in two.",
+          "It adds no role: the page's heading names the form, and each field names itself."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Address",
+          "title": "A delivery address",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Select } from '@liulidesign/core/Select';\nimport { TextArea } from '@liulidesign/core/TextArea';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { FormLayout, FormSpan } from '@liulidesign/core/FormLayout';\n\nconst countries = [{ value: 'pt', label: 'Portugal' }, { value: 'es', label: 'Spain' }, { value: 'fr', label: 'France' }];\n\n/** A delivery address: one column on a phone, two where there is room; the street and the notes take a whole line. Every field is needed but the one that says optional. */\nexport function Address() {\n  const first = useLocal('first', 'Ana');\n  const last = useLocal('last', 'Lima');\n  const street = useLocal('street', '');\n  const city = useLocal('city', '');\n  const post = useLocal('post', '');\n  const country = useLocal('country', 'pt');\n  const notes = useLocal('notes', '');\n  return (\n    <FormLayout\n      columns={2}\n      actions={<><Button label=\"Cancel\" /><Button label=\"Save address\" variant=\"primary\" /></>}\n      data-testid=\"address\"\n    >\n      <TextInput label=\"First name\" bind={first} autoComplete=\"given-name\" isRequired hasRequiredMark={false} />\n      <TextInput label=\"Last name\" bind={last} autoComplete=\"family-name\" isRequired hasRequiredMark={false} />\n      <FormSpan><TextInput label=\"Street and number\" bind={street} isRequired hasRequiredMark={false} data-testid=\"street\" /></FormSpan>\n      <TextInput label=\"City\" bind={city} isRequired hasRequiredMark={false} />\n      <TextInput label=\"Postcode\" bind={post} isRequired hasRequiredMark={false} />\n      <Select label=\"Country\" bind={country} options={countries} />\n      <FormSpan><TextArea label=\"Notes for the courier\" optionalLabel=\"optional\" bind={notes} /></FormSpan>\n    </FormLayout>\n  );\n}"
+        },
+        {
+          "name": "Profile",
+          "title": "Mostly optional, the required field starred",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { TextArea } from '@liulidesign/core/TextArea';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { FormLayout } from '@liulidesign/core/FormLayout';\n\n/** A profile where little is needed: the one required field carries the mark, and nothing says optional. */\nexport function Profile() {\n  const name = useLocal('name', '');\n  const site = useLocal('site', '');\n  const about = useLocal('about', '');\n  return (\n    <FormLayout actions={<Button label=\"Save profile\" variant=\"primary\" />} data-testid=\"profile\">\n      <TextInput label=\"Display name\" bind={name} isRequired data-testid=\"display-name\" />\n      <TextInput label=\"Website\" bind={site} placeholder=\"example.com\" />\n      <TextArea label=\"About you\" bind={about} />\n    </FormLayout>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Actions that stack full-width on a phone.",
+          "needs": "nothing from the View",
+          "today": "The buttons sit at the end edge and wrap."
+        },
+        {
+          "missing": "More than two columns, and fields that span some of them.",
+          "needs": "nothing from the View",
+          "today": "One or two columns; a field takes one or the whole line."
+        }
+      ],
+      "related": [
+        "Field",
+        "TextInput",
+        "Section"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Fields in a rhythm",
+        "order": 11,
+        "page": {
+          "lead": "Use a form layout to set a form's fields at one rhythm and put its buttons after them.",
+          "hero": "Address",
+          "variants": [
+            {
+              "name": "Profile",
+              "title": "Where most fields are optional, the required one is starred"
             }
           ]
         }
@@ -6155,6 +6417,176 @@
             {
               "name": "Comment",
               "title": "Small, for a comment or a card"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "MetadataList",
+      "import": "@liulidesign/core/MetadataList",
+      "exports": [
+        "MetadataList"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "What is known about one thing, as labels and their values",
+      "description": "MetadataList shows the facts about a single record: who owns it, when it was made, what state it is in. In rows the labels share a column and the values line up beside them; stacked, each label sits over its value, a few to a line. A value can be drawn as a Badge or an Avatar and is still read as its text. For many records side by side, use a Table.",
+      "keywords": [
+        "metadata",
+        "key value",
+        "details",
+        "description list",
+        "properties",
+        "facts",
+        "definition list"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Names the list for assistive tech: \"Details\"."
+        },
+        {
+          "name": "items",
+          "type": "readonly MetadataItem[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "layout",
+          "type": "MetadataListLayout",
+          "required": false,
+          "description": "`rows` puts each label beside its value; `stacked` puts it above, in `columns`.",
+          "default": "'rows'"
+        },
+        {
+          "name": "columns",
+          "type": "1 | 2 | 3",
+          "required": false,
+          "description": "With `stacked`: how many pairs share a line.",
+          "default": "2"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {
+        "MetadataItem": [
+          {
+            "name": "key",
+            "type": "string",
+            "required": true,
+            "description": "Identifies the pair: its test id is `<id>-<key>`."
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "What the value is: \"Owner\", \"Created\"."
+          },
+          {
+            "name": "value",
+            "type": "string",
+            "required": true,
+            "description": "The value as text: shown, and what is read."
+          },
+          {
+            "name": "content",
+            "type": "Child",
+            "required": false,
+            "description": "Drawn in place of the value's text: a Badge, an Avatar with a name. The text is still what is read."
+          }
+        ]
+      },
+      "parts": {
+        "root": "view",
+        "item": "view",
+        "label": "text",
+        "value": "text",
+        "content": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "target": {},
+        "contrast": [
+          {
+            "what": "value",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "label",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The pairs are a list, so a screen reader says how many there are; each is read as one phrase, \"Status: Overdue\".",
+          "A value drawn by `content` is read as its `value` text, so a badge's meaning must be in that text."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Invoice",
+          "title": "Labels beside their values",
+          "source": "import { Badge } from '@liulidesign/core/Badge';\nimport { MetadataList } from '@liulidesign/core/MetadataList';\n\n/** What is known about a record: the labels in one column, the values in the next. */\nexport function Invoice() {\n  return (\n    <MetadataList\n      label=\"Invoice details\"\n      items={[\n        { key: 'customer', label: 'Customer', value: 'Blue Harbor Ltd' },\n        { key: 'status', label: 'Status', value: 'Overdue', content: <Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" /> },\n        { key: 'issued', label: 'Issued', value: '9 October 2026' },\n        { key: 'due', label: 'Due', value: '9 November 2026' },\n        { key: 'address', label: 'Billing address', value: '14 Quay Street, Harbour Buildings, Unit 3, Bristol BS1 4DA' },\n      ]}\n      data-testid=\"invoice\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Stacked",
+          "title": "Labels over their values",
+          "source": "import { MetadataList } from '@liulidesign/core/MetadataList';\n\n/** Each label over its value, two to a line: for a few short facts at the top of a page. */\nexport function Stacked() {\n  return (\n    <MetadataList\n      label=\"File details\"\n      layout=\"stacked\"\n      items={[\n        { key: 'size', label: 'Size', value: '4.2 MB' },\n        { key: 'kind', label: 'Kind', value: 'PDF document' },\n        { key: 'created', label: 'Created', value: '12 March 2026' },\n        { key: 'owner', label: 'Owner', value: 'Ana Lima' },\n      ]}\n      data-testid=\"file\"\n    />\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "A label column as wide as its longest label.",
+          "needs": "text measurement before layout",
+          "today": "A third of the row."
+        },
+        {
+          "missing": "A value that can be copied with a press.",
+          "needs": "nothing from the View",
+          "today": "The app puts an IconButton in `content`."
+        }
+      ],
+      "related": [
+        "Table",
+        "Item",
+        "Badge"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Labels and values",
+        "order": 9,
+        "page": {
+          "lead": "Use a metadata list for the facts about one record.",
+          "hero": "Invoice",
+          "variants": [
+            {
+              "name": "Stacked",
+              "title": "Each label over its value, two to a line"
             }
           ]
         }
@@ -7975,6 +8407,144 @@
             }
           ],
           "statesLayout": "stack"
+        }
+      }
+    },
+    {
+      "name": "Section",
+      "import": "@liulidesign/core/Section",
+      "exports": [
+        "Section"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A titled part of a page: a heading, then its content",
+      "description": "Section gives a part of a page its heading, an optional line of explanation and an action at the end of the heading's line, and keeps one distance between the heading and what follows. It draws no frame: put a Card, an ItemList or plain content inside.",
+      "keywords": [
+        "section",
+        "heading",
+        "group",
+        "page section",
+        "header",
+        "titled block"
+      ],
+      "props": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "description": "The section's heading."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "A line under the heading: what the section is for."
+        },
+        {
+          "name": "action",
+          "type": "Child",
+          "required": false,
+          "description": "At the end of the heading's line: a Button or a link to see everything."
+        },
+        {
+          "name": "headingLevel",
+          "type": "2 | 3 | 4",
+          "required": false,
+          "description": "The heading's level in the page outline.",
+          "default": "2"
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "header": "view",
+        "heading": "view",
+        "title": "text",
+        "description": "text",
+        "action": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "target": {},
+        "contrast": [
+          {
+            "what": "heading",
+            "pair": [
+              "text",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "line under it, and a level-4 heading",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The title is a heading at `headingLevel`, so a screen reader can move through a page by its sections.",
+          "Step the level down inside another section: 2, then 3, then 4."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Recent",
+          "title": "A heading, a line and an action",
+          "source": "import { Button } from '@liulidesign/core/Button';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { Section } from '@liulidesign/core/Section';\n\n/** A part of a page with its heading, a line about it and a way to see more. */\nexport function Recent() {\n  return (\n    <Section title=\"Recent notes\" description=\"Edited in the last week\" action={<Button label=\"See all\" variant=\"link\" size=\"sm\" />} data-testid=\"recent\">\n      <ItemList label=\"Recent notes\">\n        <Item label=\"Trip to the coast\" description=\"Edited yesterday\" hasChevron onClick={() => {}} />\n        <Item label=\"Reading list\" description=\"Edited on Monday\" hasChevron onClick={() => {}} />\n      </ItemList>\n    </Section>\n  );\n}"
+        },
+        {
+          "name": "Nested",
+          "title": "Sections inside a section",
+          "source": "import { Section } from '@liulidesign/core/Section';\n\n/** Sections inside a section step their headings down. */\nexport function Nested() {\n  return (\n    <Section title=\"Notifications\" data-testid=\"outer\">\n      <Section title=\"Email\" headingLevel={3} description=\"Sent to ana@example.com\" data-testid=\"inner\">\n        <text className=\"text-body text-muted\">A digest every Monday.</text>\n      </Section>\n      <Section title=\"On this device\" headingLevel={3}>\n        <text className=\"text-body text-muted\">Mentions, at once.</text>\n      </Section>\n    </Section>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "related": [
+        "Card",
+        "Item",
+        "Divider"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A titled part",
+        "order": 10,
+        "page": {
+          "stage": "bare",
+          "lead": "Use a section to give a part of a page its heading.",
+          "hero": "Recent",
+          "variants": [
+            {
+              "name": "Nested",
+              "title": "Sections inside a section, their headings a level down"
+            }
+          ]
         }
       }
     },
