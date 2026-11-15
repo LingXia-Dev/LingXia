@@ -63,6 +63,7 @@ Children: any elements and text. Renders as `column`.
 | `onPointerEnter` | `() => void` |  |
 | `onPointerLeave` | `() => void` |  |
 | `closeAfter` | `number` |  |
+| `onCloseRequest` | `() => boolean \| void` |  |
 
 ## `<page>`
 
@@ -97,6 +98,7 @@ Children: text, or noninteractive content elements (a composed control).
 | `aria-label` | `string` |  |
 | `popoverTarget` | `string` |  |
 | `interestFor` | `string` |  |
+| `keepOpen` | `boolean` |  |
 | `drag` | `"x" \| "y"` |  |
 | `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
 | `bind` | `Local<number>` |  |

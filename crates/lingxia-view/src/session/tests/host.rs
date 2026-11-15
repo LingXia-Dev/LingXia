@@ -5247,6 +5247,8 @@ mod clipped_focus;
 mod list_name;
 #[path = "submenu.rs"]
 mod submenu;
+#[path = "close_request.rs"]
+mod close_request;
 
 #[test]
 fn escape_pressed_on_any_match_closes_an_open_light_dismiss_popover() {

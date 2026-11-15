@@ -83,7 +83,7 @@ const backdropFade = { opacity: 1, transition: { properties: ['opacity'], durati
  * `<dialog>` and popovers expand to a top-layer box holding a backdrop and the panel; `null`
  * when closed, `undefined` for any other node. `finish` decorates the resolved layer.
  */
-const popoverProps = ['open', 'onToggle', 'closeAfter', 'anchor'];
+const popoverProps = ['open', 'onToggle', 'onCloseRequest', 'closeAfter', 'anchor'];
 export function expand(tag, props, children, identity, parent) {
   if (props[panelMark]) return undefined;
   if (tag === 'dialog') return dialog(props, children, identity, parent);
@@ -121,11 +121,13 @@ function dialog(props, children, identity, parent) {
 
 function popover(tag, props, children, identity, parent) {
   common(props, parent, 'popover');
-  const { popover: type, id, open, onToggle, closeAfter, anchor: anchorId, ...rest } = props;
+  const { popover: type, id, open, onToggle, onCloseRequest, closeAfter, anchor: anchorId, ...rest } = props;
   const kind = type === true || type === '' || type === 'auto' ? 'auto' : type === 'manual' || type === 'hint' ? type : null;
   if (!kind) throw Error('UI_PROP: popover is "auto", "manual" or "hint"');
   if (typeof id !== 'string' || !id.length || id.length > 256) throw Error('UI_ID: a popover needs an id of 1..256 characters');
   if (onToggle !== undefined && typeof onToggle !== 'function') throw Error('UI_PROP: onToggle');
+  if (onCloseRequest !== undefined && (kind === 'manual' || typeof onCloseRequest !== 'function'))
+    throw Error('UI_PROP: onCloseRequest takes a function on a popover that is not manual');
   if (anchorId !== undefined && (typeof anchorId !== 'string' || !anchorId.length || anchorId.length > 256 || /\s/.test(anchorId)))
     throw Error('UI_ID: anchor names an element id');
   if (closeAfter !== undefined && (kind !== 'manual' || !Number.isInteger(closeAfter) || closeAfter < 1 || closeAfter > 60000))
@@ -143,7 +145,7 @@ function popover(tag, props, children, identity, parent) {
   // unless it names the element it sits against.
   if (!anchors.has(id)) anchors.set(id, invoker?.id === id ? invoker.identity : null);
   const anchor = anchorId ?? anchors.get(id);
-  top.entries.push({ identity, kind, sequence: opened.get(identity), close: kind === 'manual' ? null : () => toggle(id, false) });
+  top.entries.push({ identity, kind, sequence: opened.get(identity), close: kind === 'manual' ? null : () => { if (onCloseRequest?.() !== false) toggle(id, false); } });
   const env = envOf(render.view);
   const style = anchor ? { ...rest.style, position: 'absolute', top: 0, left: 0 } : { ...placement(rest, env), ...rest.style };
   const testId = props['data-testid'];
@@ -240,16 +242,18 @@ export function dismissHints(keep) {
 
 /**
  * A button's `popoverTarget`: its click toggles the popover. A `role="menuitem"` closes its menu
- * and the menus that one opened from; one that opens a submenu keeps them open.
+ * and the menus that one opened from; one that opens a submenu or has `keepOpen` keeps them open.
  */
+const menuItems = new Set(['menuitem', 'menuitemcheckbox', 'menuitemradio']);
 export function invokerHandler(props, identity, scope) {
-  const { popoverTarget: target, onClick, role } = props;
+  const { popoverTarget: target, onClick, role, keepOpen } = props;
+  if (keepOpen !== undefined && (typeof keepOpen !== 'boolean' || !menuItems.has(role))) throw Error('UI_PROP: keepOpen is a boolean on a menu item');
   if (target !== undefined) {
     if (typeof target !== 'string' || !target.length) throw Error('UI_ID: popoverTarget names a popover id');
     collected().invokers.push({ target, identity, scope });
   }
   if (role === 'menuitem' && !scope.length) throw Error('UI_PROP: role="menuitem" belongs inside a popover menu');
-  if (target === undefined && role !== 'menuitem') return onClick;
+  if (target === undefined && (role !== 'menuitem' || keepOpen)) return onClick;
   return () => {
     onClick?.();
     const menu = role === 'menuitem' ? scope[scope.length - 1] : undefined;

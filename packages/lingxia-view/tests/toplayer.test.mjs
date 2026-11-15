@@ -259,6 +259,52 @@ test('a menu item that opens a submenu keeps its menu; a choice in the submenu c
   assert.equal(byId(nodes, 'move-to').props.stateExpanded, 0);
 });
 
+test('a menu item with keepOpen runs its click and leaves its menu open', () => {
+  reset();
+  const calls = [];
+  const view = () => h('page', {},
+    h('button', { popoverTarget: 'menu', 'data-testid': 'more' }, 'More'),
+    h('view', { id: 'menu', popover: true, role: 'menu', 'aria-label': 'View', onToggle: open => calls.push(open), 'data-testid': 'menu' },
+      h('button', { role: 'menuitem', keepOpen: true, 'data-testid': 'zoom', onClick: () => calls.push('zoom') }, 'Zoom in'),
+      h('button', { role: 'menuitem', keepOpen: false, 'data-testid': 'reset', onClick: () => calls.push('reset') }, 'Reset')));
+  dispatch(byId(render(view), 'more').props.onClick);
+  let nodes = render(view);
+  dispatch(byId(nodes, 'zoom').props.onClick);
+  nodes = render(view);
+  assert.ok(byId(nodes, 'menu'), 'the menu stays');
+  dispatch(byId(nodes, 'zoom').props.onClick);
+  dispatch(byId(render(view), 'reset').props.onClick);
+  assert.equal(byId(render(view), 'menu'), undefined, 'an item without it still closes the menu');
+  assert.deepEqual(calls, [true, 'zoom', 'zoom', 'reset', false]);
+  assert.throws(() => render(() => h('page', {}, h('button', { keepOpen: true }, 'X'))), /UI_PROP: keepOpen/);
+  assert.throws(() => render(() => h('page', {}, h('view', { id: 'm', popover: true, open: true }, h('button', { role: 'menuitem', keepOpen: 1 }, 'X')))), /UI_PROP: keepOpen/);
+});
+
+test('onCloseRequest hears Escape before a popover closes and can refuse it; a press outside still closes', () => {
+  reset();
+  const calls = [];
+  let allow = false;
+  const view = () => h('page', {},
+    h('button', { popoverTarget: 'form', 'data-testid': 'edit' }, 'Edit'),
+    h('view', { id: 'form', popover: true, onToggle: open => calls.push(open), onCloseRequest: () => { calls.push('request'); return allow; }, 'data-testid': 'form' }, h('text', {}, 'Draft')));
+  dispatch(byId(render(view), 'edit').props.onClick);
+  render(view);
+  assert.equal(escapeOverlay(), true, 'a refused request is still taken');
+  assert.ok(byId(render(view), 'form'), 'returning false keeps it open');
+  dispatch(byId(render(view), 'form-backdrop').props.onClick);
+  assert.equal(byId(render(view), 'form'), undefined, 'a press outside does not ask');
+  assert.deepEqual(calls, [true, 'request', false]);
+  dispatch(byId(render(view), 'edit').props.onClick);
+  render(view);
+  allow = undefined;
+  assert.equal(escapeOverlay(), true);
+  assert.equal(byId(render(view), 'form'), undefined, 'anything but false lets it close');
+  assert.deepEqual(calls.slice(3), [true, 'request', false]);
+  assert.throws(() => render(() => h('page', {}, h('view', { id: 'p', popover: 'manual', onCloseRequest: () => false }))), /UI_PROP: onCloseRequest/);
+  assert.throws(() => render(() => h('page', {}, h('view', { id: 'p', popover: true, onCloseRequest: true }))), /UI_PROP: onCloseRequest/);
+  assert.throws(() => render(() => h('page', {}, h('view', { onCloseRequest: () => false }))), /add popover/);
+});
+
 test('interestFor shows a hint on the core\'s word; a hint closes other hints, an auto popover closes hints', () => {
   reset();
   const view = () => h('page', {},

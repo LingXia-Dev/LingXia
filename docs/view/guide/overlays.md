@@ -52,6 +52,9 @@ export function render() {
 - A popover closes, with `onToggle(false)`, when the button that opened it unmounts; one opened from
   state stays. A date, time or select picker closes with its field the same way.
 - Escape and back close only the topmost dialog or popover.
+- `onCloseRequest` on a popover is called when Escape, back or the screen reader's dismiss asks it
+  to close, before it does. Return `false` to keep it open, for a draft the reader has not saved. A
+  tap outside still closes it, and `popover="manual"` takes no close request, so it cannot have one.
 - **A closed one renders nothing**, so `useLocal` state inside it starts over at the next open. Keep what
   must survive (a draft, a scroll position) in state declared outside it.
 - `starting:` and `exit:` styles animate the open and close, as in [Motion](motion.md#enter-and-exit).
@@ -83,6 +86,8 @@ how much of it shows. Its `exit:` styles have nothing left to show by then.
 - `role="menu"` names a popover of actions; a `<button role="menuitem">` closes its popover after its
   `onClick`. Inside a menu the arrow keys, Home, End and a typed letter move between items
   ([Keyboard](interaction.md#keyboard)).
+- `keepOpen` on a menu item runs its `onClick` and leaves the menu open: a zoom step, or a setting
+  the reader may change twice.
 - A menu item with `popoverTarget` opens a submenu and keeps its menu open. A choice in the submenu
   closes every menu above it, Escape closes the innermost, and Right opens and Left closes the
   submenu (swapped in a right-to-left page). A submenu has no backdrop of its own: a press on
