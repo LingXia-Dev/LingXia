@@ -2,6 +2,7 @@ import { cx, useId, type AutoComplete, type Child, type Local } from '@lingxia/v
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { describedBy } from '../internal/describedBy';
 import { Glyph } from '../internal/Glyph';
+import { spinner, spinnerBox } from '../internal/spinner';
 import { textInputRecipe as r } from './TextInput.recipe';
 
 /** Controlled by the app (`value` + `onChange`), or bound to a View-local cell (`bind`). */
@@ -45,6 +46,10 @@ export type TextInputProps = FieldOwnProps & TextInputBinding & TextInputClear &
   /** Focus it when it first appears. @default false */
   hasAutoFocus?: boolean;
   maxLength?: number;
+  /** Shows the value without letting it be changed; it can still be selected, copied and focused. For a value that does not apply, use `isDisabled`. @default false */
+  isReadOnly?: boolean;
+  /** A spinner at the end of the box while the app checks or fetches the value; the field reports busy and stays editable. @default false */
+  isLoading?: boolean;
   /** An icon inside the box, before the text; drawn 16 px in the muted colour. Replaces the search magnifier. */
   startIcon?: Child;
   /** Fixed text inside the box before the value, as the app writes it: "$", "https://". Read with the description. */
@@ -64,8 +69,8 @@ export type TextInputProps = FieldOwnProps & TextInputBinding & TextInputClear &
 /** A labelled one-line text editor. */
 export function TextInput(props: TextInputProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, isDisabled = false, disabledMessage, size = 'md',
-    placeholder, type, inputMode, autoComplete, enterKeyHint, autoCapitalize, hasSpellCheck, hasAutoFocus = false, maxLength,
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size = 'md',
+    placeholder, type, inputMode, autoComplete, enterKeyHint, autoCapitalize, hasSpellCheck, hasAutoFocus = false, maxLength, isReadOnly = false, isLoading = false,
     startIcon, prefix, suffix, onSubmit, className, controlClassName, 'data-testid': testId,
   } = props;
   const text = props.bind ? props.bind.value : props.value;
@@ -88,13 +93,14 @@ export function TextInput(props: TextInputProps) {
       isRequired={isRequired}
       hasRequiredMark={hasRequiredMark}
       optionalLabel={optionalLabel}
+      info={info}
       isDisabled={isDisabled}
       disabledMessage={disabledMessage}
       size={size}
       className={className}
     >
       {control => (
-        <view className={cx(r.box.base, r.box.size[size], status && r.box.status[status.type], isDisabled && r.box.disabled, controlClassName)}>
+        <view className={cx(r.box.base, r.box.size[size], status && r.box.status[status.type], isReadOnly && r.box.readOnly, isDisabled && r.box.disabled, controlClassName)}>
           {leading !== undefined && <view aria-hidden className={r.icon.base}>{leading}</view>}
           {prefix !== undefined && <text id={prefixId} className={cx(r.adornment.base, r.input.size[size])}>{prefix}</text>}
           {props.bind ? (
@@ -114,6 +120,8 @@ export function TextInput(props: TextInputProps) {
               spellCheck={hasSpellCheck}
               autoFocus={hasAutoFocus}
               maxLength={maxLength}
+              readOnly={isReadOnly || undefined}
+              aria-busy={isLoading || undefined}
               disabled={control.disabled}
               onSubmit={onSubmit}
               className={inputClass}
@@ -136,13 +144,16 @@ export function TextInput(props: TextInputProps) {
               spellCheck={hasSpellCheck}
               autoFocus={hasAutoFocus}
               maxLength={maxLength}
+              readOnly={isReadOnly || undefined}
+              aria-busy={isLoading || undefined}
               disabled={control.disabled}
               onSubmit={onSubmit}
               className={inputClass}
             />
           )}
           {suffix !== undefined && <text id={suffixId} className={cx(r.adornment.base, r.input.size[size])}>{suffix}</text>}
-          {props.hasClear && text !== '' && !isDisabled && (
+          {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />}
+          {props.hasClear && text !== '' && !isDisabled && !isReadOnly && (
             <button aria-label={props.clearLabel} onClick={clear} className={r.clear.base}>
               <Glyph name="close" className={r.clearIcon.base} />
             </button>

@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Basic, InList, Sizes, StateOff, StateOn, StateDisabledOff, StateDisabledOn } from '../../core/src/Switch/Switch.examples';
+import { Basic, InList, Applying, Sizes, StateOff, StateOn, StateDisabledOff, StateDisabledOn } from '../../core/src/Switch/Switch.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -11,6 +11,9 @@ export function Content() {
       <PageSection title={"Variants"}>
         <Stage caption={"As rows in a list, beside an Item"}>
           <InList />
+        </Stage>
+        <Stage caption={"Loading: waiting for the app to apply the change"}>
+          <Applying />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

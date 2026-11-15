@@ -2304,6 +2304,12 @@
           "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
         },
         {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -2804,6 +2810,12 @@
           "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
         },
         {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -3222,6 +3234,12 @@
           "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
         },
         {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -3530,6 +3548,12 @@
           "type": "string",
           "required": false,
           "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
         },
         {
           "name": "isDisabled",
@@ -5048,6 +5072,12 @@
           "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
         },
         {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -5138,6 +5168,11 @@
           "name": "WrappedSelect",
           "title": "Wrapping a primitive select",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Field } from '@liulidesign/core/Field';\n\nconst periods = [\n  { value: 'monthly', label: 'Monthly' },\n  { value: 'yearly', label: 'Yearly' },\n] as const;\n\n/** A raw select takes Field's label, help and status until Liuli has its own. */\nexport function WrappedSelect() {\n  const period = useLocal('period', '');\n  return (\n    <Field\n      label=\"Billing period\"\n      description=\"You can change it later.\"\n      status={period.value ? undefined : { type: 'warning', message: 'Choose a period to see the price.' }}\n      isRequired\n      data-testid=\"field\"\n    >\n      {control => (\n        <select\n          bind={period}\n          aria-label={control['aria-label']}\n          aria-describedby={control['aria-describedby']}\n          aria-invalid={control['aria-invalid']}\n          aria-required={control['aria-required']}\n          disabled={control.disabled}\n          placeholder=\"Choose…\"\n          options={periods}\n          data-testid=\"period\"\n          className=\"min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-body text-text\"\n        />\n      )}\n    </Field>\n  );\n}"
+        },
+        {
+          "name": "Info",
+          "title": "A note behind an info button",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\n/** A note behind an info button, for what only some people need to know. */\nexport function Info() {\n  const number = useLocal('vat', '');\n  return (\n    <TextInput\n      bind={number}\n      label=\"VAT number\"\n      optionalLabel=\"optional\"\n      info={{ label: 'About the VAT number', content: 'Businesses in the EU can add it to have VAT left off their invoices.' }}\n      placeholder=\"PT123456789\"\n      data-testid=\"vat\"\n    />\n  );\n}"
         }
       ],
       "gaps": [
@@ -5158,6 +5193,12 @@
         "page": {
           "lead": "Use a field to give a control Liuli's label, help text and status when Liuli has no component for it yet.",
           "hero": "WrappedSelect",
+          "variants": [
+            {
+              "name": "Info",
+              "title": "A note behind an info button beside the label"
+            }
+          ],
           "states": [
             {
               "name": "StateHelp",
@@ -7161,6 +7202,12 @@
           "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
         },
         {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -8243,6 +8290,12 @@
           "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
         },
         {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -8292,6 +8345,13 @@
           "required": false,
           "description": "`list` stacks plain rows; `card` makes each option a bordered card, for plans and other choices with a second line.",
           "default": "'list'"
+        },
+        {
+          "name": "orientation",
+          "type": "RadioGroupOrientation",
+          "required": false,
+          "description": "`horizontal` sets two or three short options side by side; they wrap when the line is full.",
+          "default": "'vertical'"
         },
         {
           "name": "className",
@@ -8413,6 +8473,11 @@
           "name": "Sizes",
           "title": "Sizes",
           "source": "import { useLocal } from '@lingxia/view';\nimport { RadioGroup } from '@liulidesign/core/RadioGroup';\n\nexport function Sizes() {\n  const pick = useLocal<string | null>('pick', 'a');\n  const options = [{ value: 'a', label: 'Chosen' }, { value: 'b', label: 'Not chosen' }];\n  return (\n    <view className=\"gap-5\">\n      <RadioGroup bind={pick} label=\"Small\" size=\"sm\" options={options} />\n      <RadioGroup bind={pick} label=\"Medium\" options={options} />\n      <RadioGroup bind={pick} label=\"Large\" size=\"lg\" options={options} />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Inline",
+          "title": "Side by side",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { RadioGroup } from '@liulidesign/core/RadioGroup';\n\n/** Two short options side by side. */\nexport function Inline() {\n  const billing = useLocal<string | null>('billing', 'yearly');\n  return (\n    <RadioGroup\n      bind={billing}\n      label=\"Billing\"\n      orientation=\"horizontal\"\n      options={[{ value: 'monthly', label: 'Monthly' }, { value: 'yearly', label: 'Yearly' }]}\n      description=\"Yearly saves two months.\"\n      data-testid=\"billing\"\n    />\n  );\n}"
         }
       ],
       "gaps": [],
@@ -8436,6 +8501,10 @@
             {
               "name": "Plain",
               "title": "A plain list with help text"
+            },
+            {
+              "name": "Inline",
+              "title": "Horizontal, for two or three short options"
             }
           ],
           "sizes": [
@@ -9162,6 +9231,12 @@
           "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
         },
         {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -9315,6 +9390,7 @@
       ],
       "gaps": [],
       "related": [
+        "Combobox",
         "RadioGroup",
         "DropdownMenu",
         "Field"
@@ -10196,6 +10272,13 @@
           "default": "false"
         },
         {
+          "name": "isLoading",
+          "type": "boolean",
+          "required": false,
+          "description": "A spinner before the track while the app applies the change; the switch reports busy and takes no press until it settles.",
+          "default": "false"
+        },
+        {
           "name": "size",
           "type": "SwitchSize",
           "required": false,
@@ -10227,6 +10310,8 @@
         "root": "view",
         "control": "switch",
         "text": "view",
+        "loading": "view",
+        "spinner": "vector",
         "label": "text",
         "description": "text"
       },
@@ -10334,6 +10419,11 @@
           "name": "Sizes",
           "title": "Small and medium",
           "source": "import { Switch } from '@liulidesign/core/Switch';\n\nexport function Sizes() {\n  return (\n    <view className=\"gap-3\">\n      <Switch value onChange={() => {}} label=\"Small, for dense rows\" size=\"sm\" />\n      <Switch value onChange={() => {}} label=\"Medium\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Applying",
+          "title": "Waiting for the app to apply it",
+          "source": "import { Switch } from '@liulidesign/core/Switch';\n\n/** While the app applies a change that takes a moment, the switch waits and says so. */\nexport function Applying() {\n  return <Switch value onChange={() => {}} label=\"Back up over Wi-Fi\" description=\"Turning on: checking your storage.\" isLoading data-testid=\"applying\" />;\n}"
         }
       ],
       "gaps": [
@@ -10358,6 +10448,10 @@
             {
               "name": "InList",
               "title": "As rows in a list, beside an Item"
+            },
+            {
+              "name": "Applying",
+              "title": "Loading: waiting for the app to apply the change"
             }
           ],
           "sizes": [
@@ -11029,6 +11123,12 @@
           "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
         },
         {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -11130,6 +11230,13 @@
           "description": ""
         },
         {
+          "name": "hasCount",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows how much of `maxLength` is used, at the bottom end of the box: \"118 / 280\". Needs `maxLength`.",
+          "default": "false"
+        },
+        {
           "name": "onSubmit",
           "type": "((value: string) => void)",
           "required": false,
@@ -11157,7 +11264,8 @@
       "otherProps": {},
       "parts": {
         "box": "view",
-        "editor": "textarea"
+        "editor": "textarea",
+        "count": "text"
       },
       "accessibility": {
         "pattern": "textbox",
@@ -11244,6 +11352,11 @@
           "name": "Invalid",
           "title": "Required, with an error",
           "source": "import { useLocal } from '@lingxia/view';\nimport { TextArea } from '@liulidesign/core/TextArea';\n\n/** A required field with an error that names the fix. */\nexport function Invalid() {\n  const reason = useLocal('reason', '');\n  const short = reason.value.trim().length < 10;\n  return (\n    <TextArea\n      bind={reason}\n      label=\"Why are you leaving?\"\n      isRequired\n      status={short ? { type: 'error', message: 'Write at least 10 characters.' } : undefined}\n      data-testid=\"reason\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Counted",
+          "title": "With a character count",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TextArea } from '@liulidesign/core/TextArea';\n\n/** A limit the writer can see coming. */\nexport function Counted() {\n  const bio = useLocal('bio', 'Designer in Lisbon. I write about type, maps and small tools.');\n  return <TextArea bind={bio} label=\"About you\" description=\"Shown on your profile.\" maxLength={160} hasCount data-testid=\"bio\" />;\n}"
         }
       ],
       "gaps": [
@@ -11273,6 +11386,10 @@
             {
               "name": "Reply",
               "title": "A reply box that sends on Return"
+            },
+            {
+              "name": "Counted",
+              "title": "A character count against the limit"
             }
           ],
           "sizes": [
@@ -11374,6 +11491,12 @@
           "type": "string",
           "required": false,
           "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
         },
         {
           "name": "isDisabled",
@@ -11481,6 +11604,20 @@
           "type": "number",
           "required": false,
           "description": ""
+        },
+        {
+          "name": "isReadOnly",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows the value without letting it be changed; it can still be selected, copied and focused. For a value that does not apply, use `isDisabled`.",
+          "default": "false"
+        },
+        {
+          "name": "isLoading",
+          "type": "boolean",
+          "required": false,
+          "description": "A spinner at the end of the box while the app checks or fetches the value; the field reports busy and stays editable.",
+          "default": "false"
         },
         {
           "name": "startIcon",
@@ -11626,6 +11763,16 @@
           "name": "Disabled",
           "title": "Disabled, with the reason",
           "source": "import { useLocal } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\nexport function Disabled() {\n  const code = useLocal('code', 'LX-2041');\n  return <TextInput bind={code} label=\"Invite code\" isDisabled disabledMessage=\"Codes are fixed once sent.\" data-testid=\"code\" />;\n}"
+        },
+        {
+          "name": "Checking",
+          "title": "Checking what was typed",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\n/** The app is checking what was typed; the field stays editable. */\nexport function Checking() {\n  const handle = useLocal('handle', 'ana');\n  return <TextInput bind={handle} label=\"Username\" prefix=\"@\" description=\"Checking it is free.\" isLoading autoCapitalize=\"none\" data-testid=\"handle\" />;\n}"
+        },
+        {
+          "name": "ReadOnly",
+          "title": "Read-only",
+          "source": "import { TextInput } from '@liulidesign/core/TextInput';\n\n/** A value to read and copy, not to change. */\nexport function ReadOnly() {\n  return <TextInput value=\"C-204188\" onChange={() => {}} label=\"Customer ID\" description=\"Set when the account was opened.\" isReadOnly data-testid=\"iban\" />;\n}"
         }
       ],
       "gaps": [
@@ -11691,6 +11838,14 @@
             {
               "name": "StateDisabled",
               "title": "Disabled"
+            },
+            {
+              "name": "Checking",
+              "title": "Loading"
+            },
+            {
+              "name": "ReadOnly",
+              "title": "Read-only"
             }
           ],
           "inContext": [
@@ -11769,6 +11924,12 @@
           "type": "string",
           "required": false,
           "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
         },
         {
           "name": "isDisabled",

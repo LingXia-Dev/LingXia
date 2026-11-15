@@ -32,7 +32,7 @@ export type DateRangeInputProps = FieldOwnProps & {
 /** A span of days in a form: a field that opens a calendar and closes once both ends are chosen. */
 export function DateRangeInput(props: DateRangeInputProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size = 'md',
     range, onRangeChange, format, locale, today, placeholder, min, max, isDateDisabled, closeLabel, className, 'data-testid': testId,
   } = props;
   const { env } = useView();
@@ -72,6 +72,7 @@ export function DateRangeInput(props: DateRangeInputProps) {
       isRequired={isRequired}
       hasRequiredMark={hasRequiredMark}
       optionalLabel={optionalLabel}
+      info={info}
       isDisabled={isDisabled}
       disabledMessage={disabledMessage}
       size={size}

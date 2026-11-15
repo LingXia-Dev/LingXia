@@ -56,6 +56,8 @@ export const doc: ComponentDoc = {
     { name: 'Search', title: 'Search with a clear button' },
     { name: 'Adornments', title: 'Fixed text before and after the value, and an optional field' },
     { name: 'Disabled', title: 'Disabled, with the reason' },
+    { name: 'Checking', title: 'Checking what was typed' },
+    { name: 'ReadOnly', title: 'Read-only' },
   ],
   gaps: [
     {
@@ -93,6 +95,8 @@ export const doc: ComponentDoc = {
         { name: 'StateFilled', title: 'Filled' },
         { name: 'StateInvalid', title: 'Invalid' },
         { name: 'StateDisabled', title: 'Disabled' },
+        { name: 'Checking', title: 'Loading' },
+        { name: 'ReadOnly', title: 'Read-only' },
       ],
       inContext: [{ name: 'Disabled', title: 'A fixed value, with the reason' }],
     },

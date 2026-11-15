@@ -88,6 +88,19 @@ export function Invalid() {
 }
 ```
 
+### With a character count
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { TextArea } from '@liulidesign/core/TextArea';
+
+/** A limit the writer can see coming. */
+export function Counted() {
+  const bio = useLocal('bio', 'Designer in Lisbon. I write about type, maps and small tools.');
+  return <TextArea bind={bio} label="About you" description="Shown on your profile." maxLength={160} hasCount data-testid="bio" />;
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -99,6 +112,7 @@ export function Invalid() {
 | `isRequired` | `boolean` | `false` | Marks the label with an asterisk and the control as required. Validation is the app's. |
 | `hasRequiredMark` | `boolean` | `true` | Draws the asterisk on a required label; turn it off on a form where every field is required. |
 | `optionalLabel` | `string` |  | A word after the label for a field that may be left empty, as the app writes it: "optional". Read before the help text. |
+| `info` | `FieldInfo` |  | An info button after the label that opens a note. For what most people need, use `description`: it is always in view. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
 | `size` | `FieldSize` | `'md'` |  |
@@ -115,6 +129,7 @@ export function Invalid() {
 | `hasSpellCheck` | `boolean` |  | Unset follows the platform. |
 | `hasAutoFocus` | `boolean` | `false` | Focus it when it first appears. |
 | `maxLength` | `number` |  |  |
+| `hasCount` | `boolean` | `false` | Shows how much of `maxLength` is used, at the bottom end of the box: "118 / 280". Needs `maxLength`. |
 | `onSubmit` | `((value: string) => void)` |  | The keyboard's action key, or Return when `enterKeyHint` makes it submit. |
 | `className` | `string` |  | Classes for the field column. |
 | `controlClassName` | `string` |  | Classes for the bordered box. |

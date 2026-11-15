@@ -17,6 +17,8 @@ export const radioGroupRecipe = {
   group: {
     base: '',
     variant: { list: 'gap-1', card: 'gap-2' } satisfies Record<RadioGroupVariant, string>,
+    /** Side by side: plain rows keep a wide gap so each label stays with its own circle. */
+    horizontal: { list: 'flex-row flex-wrap gap-x-6 gap-y-1', card: 'flex-row flex-wrap gap-2' } satisfies Record<RadioGroupVariant, string>,
   },
   option: {
     base: 'flex-row items-start gap-3 text-start disabled:opacity-40',

@@ -61,6 +61,7 @@ export const doc: ComponentDoc = {
     { name: 'Plain', title: 'Short options with help text' },
     { name: 'Required', title: 'Required, with an error' },
     { name: 'Sizes', title: 'Sizes' },
+    { name: 'Inline', title: 'Side by side' },
   ],
   gaps: [],
   related: ['CheckboxInput', 'Field', 'Tabs'],
@@ -74,6 +75,7 @@ export const doc: ComponentDoc = {
       variants: [
         { name: 'Plans', title: 'Cards: the whole card chooses' },
         { name: 'Plain', title: 'A plain list with help text' },
+        { name: 'Inline', title: 'Horizontal, for two or three short options' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],
       states: [

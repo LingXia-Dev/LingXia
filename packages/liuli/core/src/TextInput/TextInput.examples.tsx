@@ -95,3 +95,14 @@ export function Adornments() {
     </view>
   );
 }
+
+/** The app is checking what was typed; the field stays editable. */
+export function Checking() {
+  const handle = useLocal('handle', 'ana');
+  return <TextInput bind={handle} label="Username" prefix="@" description="Checking it is free." isLoading autoCapitalize="none" data-testid="handle" />;
+}
+
+/** A value to read and copy, not to change. */
+export function ReadOnly() {
+  return <TextInput value="C-204188" onChange={() => {}} label="Customer ID" description="Set when the account was opened." isReadOnly data-testid="iban" />;
+}

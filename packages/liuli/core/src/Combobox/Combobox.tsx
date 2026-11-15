@@ -287,7 +287,7 @@ function ComboboxTypeahead({
 /** One choice from a long list, found by typing: in the field itself with a keyboard, in a sheet with a finger. */
 export function Combobox(props: ComboboxProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size = 'md',
     options, placeholder, searchLabel, searchPlaceholder, emptyLabel, moreLabel, closeLabel, onQueryChange, isLoading = false,
     className, 'data-testid': testId,
   } = props;
@@ -313,6 +313,7 @@ export function Combobox(props: ComboboxProps) {
       isRequired={isRequired}
       hasRequiredMark={hasRequiredMark}
       optionalLabel={optionalLabel}
+      info={info}
       isDisabled={isDisabled}
       disabledMessage={disabledMessage}
       size={size}

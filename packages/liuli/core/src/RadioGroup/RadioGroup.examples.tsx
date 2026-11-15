@@ -88,3 +88,18 @@ export function StateDisabled() {
 export function Specimen() {
   return <RadioGroup value="a" onChange={() => {}} label="Plan" isLabelHidden size="sm" options={[{ value: 'a', label: 'Monthly' }, { value: 'b', label: 'Yearly' }]} />;
 }
+
+/** Two short options side by side. */
+export function Inline() {
+  const billing = useLocal<string | null>('billing', 'yearly');
+  return (
+    <RadioGroup
+      bind={billing}
+      label="Billing"
+      orientation="horizontal"
+      options={[{ value: 'monthly', label: 'Monthly' }, { value: 'yearly', label: 'Yearly' }]}
+      description="Yearly saves two months."
+      data-testid="billing"
+    />
+  );
+}

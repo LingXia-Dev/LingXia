@@ -28,6 +28,8 @@ export const fieldRecipe = {
   },
   labelRow: {
     base: 'flex-row items-baseline gap-1.5',
+    /** The info button is taller than the label's line: centre the row on it and keep the label's height. */
+    withInfo: 'items-center -my-1',
   },
   required: {
     base: 'text-danger',

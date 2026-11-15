@@ -1,6 +1,7 @@
 import { cx, useId, type Child } from '@lingxia/view';
 import { describedBy } from '../internal/describedBy';
 import { hasMessage, StatusRegion } from '../internal/StatusRegion';
+import { Tooltip } from '../Tooltip/Tooltip';
 import { fieldRecipe as r } from './Field.recipe';
 
 export type FieldSize = 'sm' | 'md' | 'lg';
@@ -9,6 +10,14 @@ export type FieldStatusType = 'error' | 'warning' | 'success';
 export interface FieldStatus {
   type: FieldStatusType;
   message?: string;
+}
+
+/** A note behind an info button beside the label. */
+export interface FieldInfo {
+  /** The info button's accessible name: "About the tax number". */
+  label: string;
+  /** The note: a sentence or two that would crowd the help text. */
+  content: string;
 }
 
 /** The label, help and status props every Liuli form control shares. */
@@ -27,6 +36,8 @@ export interface FieldOwnProps {
   hasRequiredMark?: boolean;
   /** A word after the label for a field that may be left empty, as the app writes it: "optional". Read before the help text. */
   optionalLabel?: string;
+  /** An info button after the label that opens a note. For what most people need, use `description`: it is always in view. */
+  info?: FieldInfo;
   /** @default false */
   isDisabled?: boolean;
   /** Shown in place of `description` while disabled. */
@@ -63,6 +74,7 @@ export function Field({
   isRequired = false,
   hasRequiredMark = true,
   optionalLabel,
+  info,
   isDisabled = false,
   disabledMessage,
   size = 'md',
@@ -75,6 +87,7 @@ export function Field({
   const statusId = `${id}-status`;
   const optionalId = `${id}-optional`;
   const hasOptional = optionalLabel !== undefined && !isRequired && !isLabelHidden;
+  const hasInfo = info !== undefined && !isLabelHidden;
   const help = isDisabled && disabledMessage ? disabledMessage : description;
   const control: FieldControl = {
     'aria-label': label,
@@ -92,11 +105,12 @@ export function Field({
   );
   return (
     <view data-testid={testId} className={cx(r.root.base, className)}>
-      {!isLabelHidden && !hasOptional && visibleLabel}
-      {hasOptional && (
-        <view className={r.labelRow.base}>
+      {!isLabelHidden && !hasOptional && !hasInfo && visibleLabel}
+      {(hasOptional || hasInfo) && (
+        <view className={cx(r.labelRow.base, hasInfo && r.labelRow.withInfo)}>
           {visibleLabel}
-          <text id={optionalId} className={cx(r.optional.base, r.optional.size[size])}>{optionalLabel}</text>
+          {hasOptional && <text id={optionalId} className={cx(r.optional.base, r.optional.size[size])}>{optionalLabel}</text>}
+          {hasInfo && <Tooltip label={info.label} content={info.content} size="sm" />}
         </view>
       )}
       {children(control)}

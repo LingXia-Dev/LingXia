@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Bound, Plain, Search, Adornments, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Disabled } from '../../core/src/TextInput/TextInput.examples';
+import { Bound, Plain, Search, Adornments, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Checking, ReadOnly, Disabled } from '../../core/src/TextInput/TextInput.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -37,6 +37,12 @@ export function Content() {
           </Stage>
           <Stage caption={"Disabled"}>
             <StateDisabled />
+          </Stage>
+          <Stage caption={"Loading"}>
+            <Checking />
+          </Stage>
+          <Stage caption={"Read-only"}>
+            <ReadOnly />
           </Stage>
         </StageGrid>
       </PageSection>

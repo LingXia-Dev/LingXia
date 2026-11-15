@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Delivery, Plans, Plain, Sizes, StateDefault, StateInvalid, StateDisabledOption, StateDisabled, Required } from '../../core/src/RadioGroup/RadioGroup.examples';
+import { Delivery, Plans, Plain, Inline, Sizes, StateDefault, StateInvalid, StateDisabledOption, StateDisabled, Required } from '../../core/src/RadioGroup/RadioGroup.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -14,6 +14,9 @@ export function Content() {
         </Stage>
         <Stage caption={"A plain list with help text"}>
           <Plain />
+        </Stage>
+        <Stage caption={"Horizontal, for two or three short options"}>
+          <Inline />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

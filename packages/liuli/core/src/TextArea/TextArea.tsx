@@ -20,6 +20,8 @@ export type TextAreaProps = FieldOwnProps & TextInputBinding & {
   /** Focus it when it first appears. @default false */
   hasAutoFocus?: boolean;
   maxLength?: number;
+  /** Shows how much of `maxLength` is used, at the bottom end of the box: "118 / 280". Needs `maxLength`. @default false */
+  hasCount?: boolean;
   /** The keyboard's action key, or Return when `enterKeyHint` makes it submit. */
   onSubmit?: (value: string) => void;
   /** Classes for the field column. */
@@ -33,12 +35,14 @@ export type TextAreaProps = FieldOwnProps & TextInputBinding & {
 /** A labelled editor for several lines, growing with its text up to `maxRows`. */
 export function TextArea(props: TextAreaProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size = 'md',
     placeholder, rows = 3, inputMode, autoComplete, enterKeyHint, autoCapitalize, hasSpellCheck,
-    hasAutoFocus = false, maxLength, onSubmit, className, controlClassName, 'data-testid': testId,
+    hasAutoFocus = false, maxLength, hasCount = false, onSubmit, className, controlClassName, 'data-testid': testId,
   } = props;
   // The View refuses maxRows below rows, so a tall `rows` lifts the default.
   const maxRows = Math.max(rows, props.maxRows ?? 8);
+  // Counted as the editor counts it for `maxLength`.
+  const length = (props.bind ? props.bind.value : props.value).length;
   const editorClass = cx(r.editor.base, r.editor.size[size]);
   return (
     <Field
@@ -49,6 +53,7 @@ export function TextArea(props: TextAreaProps) {
       isRequired={isRequired}
       hasRequiredMark={hasRequiredMark}
       optionalLabel={optionalLabel}
+      info={info}
       isDisabled={isDisabled}
       disabledMessage={disabledMessage}
       size={size}
@@ -101,6 +106,9 @@ export function TextArea(props: TextAreaProps) {
               onSubmit={onSubmit}
               className={editorClass}
             />
+          )}
+          {hasCount && maxLength !== undefined && (
+            <text aria-hidden className={cx(r.count.base, length >= maxLength && r.count.full)}>{`${length} / ${maxLength}`}</text>
           )}
         </view>
       )}

@@ -61,6 +61,17 @@ export function Sizes() {
 }
 ```
 
+### Waiting for the app to apply it
+
+```tsx
+import { Switch } from '@liulidesign/core/Switch';
+
+/** While the app applies a change that takes a moment, the switch waits and says so. */
+export function Applying() {
+  return <Switch value onChange={() => {}} label="Back up over Wi-Fi" description="Turning on: checking your storage." isLoading data-testid="applying" />;
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -71,6 +82,7 @@ export function Sizes() {
 | `label` (required) | `string` |  | The visible label and the switch's name. Say what is on, not the action: "Wi-Fi", "Sync over mobile data". |
 | `description` | `string` |  | Help text under the label, read as the switch's description. |
 | `isDisabled` | `boolean` | `false` |  |
+| `isLoading` | `boolean` | `false` | A spinner before the track while the app applies the change; the switch reports busy and takes no press until it settles. |
 | `size` | `SwitchSize` | `'md'` | `sm` for dense rows. |
 | `variant` | `SwitchVariant` | `'standalone'` | `row` sits in a list group among `Item` rows, with the row's padding and height. |
 | `className` | `string` |  |  |

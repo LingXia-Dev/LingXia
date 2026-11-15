@@ -50,3 +50,8 @@ export function StateDisabledOn() {
 export function Specimen() {
   return <Switch value onChange={() => {}} label="Wi-Fi" className="w-32" />;
 }
+
+/** While the app applies a change that takes a moment, the switch waits and says so. */
+export function Applying() {
+  return <Switch value onChange={() => {}} label="Back up over Wi-Fi" description="Turning on: checking your storage." isLoading data-testid="applying" />;
+}

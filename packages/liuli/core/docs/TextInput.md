@@ -98,6 +98,30 @@ export function Disabled() {
 }
 ```
 
+### Checking what was typed
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { TextInput } from '@liulidesign/core/TextInput';
+
+/** The app is checking what was typed; the field stays editable. */
+export function Checking() {
+  const handle = useLocal('handle', 'ana');
+  return <TextInput bind={handle} label="Username" prefix="@" description="Checking it is free." isLoading autoCapitalize="none" data-testid="handle" />;
+}
+```
+
+### Read-only
+
+```tsx
+import { TextInput } from '@liulidesign/core/TextInput';
+
+/** A value to read and copy, not to change. */
+export function ReadOnly() {
+  return <TextInput value="C-204188" onChange={() => {}} label="Customer ID" description="Set when the account was opened." isReadOnly data-testid="iban" />;
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -109,6 +133,7 @@ export function Disabled() {
 | `isRequired` | `boolean` | `false` | Marks the label with an asterisk and the control as required. Validation is the app's. |
 | `hasRequiredMark` | `boolean` | `true` | Draws the asterisk on a required label; turn it off on a form where every field is required. |
 | `optionalLabel` | `string` |  | A word after the label for a field that may be left empty, as the app writes it: "optional". Read before the help text. |
+| `info` | `FieldInfo` |  | An info button after the label that opens a note. For what most people need, use `description`: it is always in view. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
 | `size` | `FieldSize` | `'md'` |  |
@@ -126,6 +151,8 @@ export function Disabled() {
 | `hasSpellCheck` | `boolean` |  | Unset follows the platform. |
 | `hasAutoFocus` | `boolean` | `false` | Focus it when it first appears. |
 | `maxLength` | `number` |  |  |
+| `isReadOnly` | `boolean` | `false` | Shows the value without letting it be changed; it can still be selected, copied and focused. For a value that does not apply, use `isDisabled`. |
+| `isLoading` | `boolean` | `false` | A spinner at the end of the box while the app checks or fetches the value; the field reports busy and stays editable. |
 | `startIcon` | `Child` |  | An icon inside the box, before the text; drawn 16 px in the muted colour. Replaces the search magnifier. |
 | `prefix` | `string` |  | Fixed text inside the box before the value, as the app writes it: "$", "https://". Read with the description. |
 | `suffix` | `string` |  | Fixed text inside the box after the value: a unit such as "kg" or "%". Read with the description. |

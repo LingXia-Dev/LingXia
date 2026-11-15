@@ -94,3 +94,13 @@ test('Adornments: fixed text sits inside the box around the editor and is read b
   assert.equal(word.props.color, 'text-muted');
   assert.equal(textOf(word.parent.children[0]), 'Weight');
 });
+
+test('Checking: busy with a spinner at the end, and still editable', async () => {
+  const input = (await renderExample('TextInput/TextInput', 'Checking')).getByTestId('handle');
+  assert.deepEqual([input.props.stateBusy, input.props.enabled, input.parent.children.at(-1).tag], [1, undefined, 'vector']);
+});
+
+test('ReadOnly: read-only on a sunken box, with no clear button', async () => {
+  const input = (await renderExample('TextInput/TextInput', 'ReadOnly')).getByTestId('iban');
+  assert.deepEqual([input.props.readOnly, input.parent.props.background, input.parent.children.length], [1, 'surface-sunken', 1]);
+});

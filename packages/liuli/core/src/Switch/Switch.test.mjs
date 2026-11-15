@@ -36,3 +36,10 @@ test('a row shows keyboard focus as a fill, not a thumb ring', async () => {
   assert.ok(focus.background !== undefined || focus.backgroundColor !== undefined, JSON.stringify(focus));
   assert.equal(focus.thumbStyle, undefined);
 });
+
+test('Applying: busy, takes no press, and shows a spinner beside the words', async () => {
+  const screen = await renderExample('Switch/Switch', 'Applying');
+  const control = screen.getByTestId('applying');
+  assert.deepEqual([control.props.stateBusy, control.props.enabled, control.props.checked], [1, 0, 1]);
+  assert.equal(screen.queryAll(node => node.tag === 'vector').length, 1);
+});

@@ -4,6 +4,8 @@ export const switchParts = {
   root: 'view',
   control: 'switch',
   text: 'view',
+  loading: 'view',
+  spinner: 'vector',
   label: 'text',
   description: 'text',
 } as const;
@@ -21,6 +23,8 @@ export const switchRecipe = {
   },
   control: {
     base: 'min-h-8 track:rounded-full track:bg-line-strong/45 checked:track:bg-accent/80 thumb:rounded-full thumb:bg-knob thumb:border thumb:border-text/12 thumb:shadow-contact disabled:checked:track:bg-accent/40 disabled:thumb:shadow-none',
+    /** Busy, not unavailable: the track keeps its colour while presses are held off. */
+    loading: 'disabled:checked:track:bg-accent/80 disabled:thumb:shadow-contact',
     size: {
       sm: 'track:w-9 track:h-5 thumb:size-4',
       md: 'track:w-11 track:h-[26px] thumb:size-[22px]',
@@ -34,6 +38,14 @@ export const switchRecipe = {
   /** Centred against the track; the primitive lays it out beside the track. */
   text: {
     base: 'min-w-0 gap-0.5 self-stretch my-auto',
+  },
+  /** While loading: the words, then the spinner beside the track. */
+  loading: {
+    base: 'flex-row items-center gap-3 self-stretch my-auto',
+    words: 'grow basis-0 min-w-0',
+  },
+  spinner: {
+    base: 'size-4 shrink-0 text-muted motion-safe:animate-spin',
   },
   label: {
     base: 'text-body text-text',

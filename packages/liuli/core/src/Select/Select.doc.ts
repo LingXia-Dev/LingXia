@@ -48,6 +48,7 @@ export const doc: ComponentDoc = {
     dont: [
       'Use a select for two to six options that fit; use a RadioGroup so they can be compared.',
       'Use a select to run an action; use a DropdownMenu.',
+      'Ask a select to search or to clear its value; that is a Combobox.',
     ],
   },
   examples: [
@@ -56,7 +57,7 @@ export const doc: ComponentDoc = {
     { name: 'Sizes', title: 'Sizes' },
   ],
   gaps: [],
-  related: ['RadioGroup', 'DropdownMenu', 'Field'],
+  related: ['Combobox', 'RadioGroup', 'DropdownMenu', 'Field'],
   gallery: {
     specimen: 'Specimen',
     tagline: 'One of many',

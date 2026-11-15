@@ -55,6 +55,7 @@ export const doc: ComponentDoc = {
     { name: 'Bound', title: 'Bound to local state, growing to six lines' },
     { name: 'Reply', title: 'A reply box that sends on Return' },
     { name: 'Invalid', title: 'Required, with an error' },
+    { name: 'Counted', title: 'With a character count' },
   ],
   gaps: [
     {
@@ -76,7 +77,7 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a text area when the answer may run to several lines: a note, a comment, a reply.',
       hero: 'Bound',
-      variants: [{ name: 'Reply', title: 'A reply box that sends on Return' }],
+      variants: [{ name: 'Reply', title: 'A reply box that sends on Return' }, { name: 'Counted', title: 'A character count against the limit' }],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],
       states: [
         { name: 'StateEmpty', title: 'Empty' },

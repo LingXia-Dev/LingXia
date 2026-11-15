@@ -53,6 +53,28 @@ export function WrappedSelect() {
 }
 ```
 
+### A note behind an info button
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { TextInput } from '@liulidesign/core/TextInput';
+
+/** A note behind an info button, for what only some people need to know. */
+export function Info() {
+  const number = useLocal('vat', '');
+  return (
+    <TextInput
+      bind={number}
+      label="VAT number"
+      optionalLabel="optional"
+      info={{ label: 'About the VAT number', content: 'Businesses in the EU can add it to have VAT left off their invoices.' }}
+      placeholder="PT123456789"
+      data-testid="vat"
+    />
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -67,6 +89,7 @@ export function WrappedSelect() {
 | `isRequired` | `boolean` | `false` | Marks the label with an asterisk and the control as required. Validation is the app's. |
 | `hasRequiredMark` | `boolean` | `true` | Draws the asterisk on a required label; turn it off on a form where every field is required. |
 | `optionalLabel` | `string` |  | A word after the label for a field that may be left empty, as the app writes it: "optional". Read before the help text. |
+| `info` | `FieldInfo` |  | An info button after the label that opens a note. For what most people need, use `description`: it is always in view. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
 | `size` | `FieldSize` | `'md'` |  |

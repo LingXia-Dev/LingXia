@@ -31,3 +31,8 @@ test('Required: invalid and required until chosen; the error is the group descri
   screen.press(screen.getByTestId('reason-other'));
   assert.notEqual(screen.getByTestId('reason').props.stateInvalid, 1);
 });
+
+test('Inline: the options sit in a row that wraps', async () => {
+  const group = (await renderExample('RadioGroup/RadioGroup', 'Inline')).getByTestId('billing');
+  assert.deepEqual([group.props.flexDirection, group.props.flexWrap, group.children.length], ['row', 'wrap', 2]);
+});

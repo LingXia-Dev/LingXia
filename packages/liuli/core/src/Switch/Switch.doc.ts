@@ -58,6 +58,7 @@ export const doc: ComponentDoc = {
     { name: 'Basic', title: 'With help text' },
     { name: 'InList', title: 'As list rows' },
     { name: 'Sizes', title: 'Small and medium' },
+    { name: 'Applying', title: 'Waiting for the app to apply it' },
   ],
   gaps: [
     {
@@ -74,7 +75,10 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a switch for a setting that takes effect the moment it flips. On a form that is sent later, use a checkbox.',
       hero: 'Basic',
-      variants: [{ name: 'InList', title: 'As rows in a list, beside an Item' }],
+      variants: [
+        { name: 'InList', title: 'As rows in a list, beside an Item' },
+        { name: 'Applying', title: 'Loading: waiting for the app to apply the change' },
+      ],
       sizes: [{ name: 'Sizes', title: 'Small (36 by 20) for dense rows, medium (44 by 26) by default' }],
       states: [
         { name: 'StateOff', title: 'Off' },

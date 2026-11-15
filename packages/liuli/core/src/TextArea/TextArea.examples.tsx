@@ -87,3 +87,9 @@ export function StateInvalid() {
 export function StateDisabled() {
   return <TextArea value="Sent on 3 May." onChange={() => {}} label="Message" rows={2} isDisabled />;
 }
+
+/** A limit the writer can see coming. */
+export function Counted() {
+  const bio = useLocal('bio', 'Designer in Lisbon. I write about type, maps and small tools.');
+  return <TextArea bind={bio} label="About you" description="Shown on your profile." maxLength={160} hasCount data-testid="bio" />;
+}

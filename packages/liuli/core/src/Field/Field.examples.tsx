@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { TextInput } from '../TextInput/TextInput';
 import { Field } from './Field';
 
 const periods = [
@@ -86,4 +87,19 @@ export function StateError() {
 
 export function StateDisabled() {
   return <PeriodField isDisabled />;
+}
+
+/** A note behind an info button, for what only some people need to know. */
+export function Info() {
+  const number = useLocal('vat', '');
+  return (
+    <TextInput
+      bind={number}
+      label="VAT number"
+      optionalLabel="optional"
+      info={{ label: 'About the VAT number', content: 'Businesses in the EU can add it to have VAT left off their invoices.' }}
+      placeholder="PT123456789"
+      data-testid="vat"
+    />
+  );
 }

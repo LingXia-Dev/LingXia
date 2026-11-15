@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Bound, Reply, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Invalid } from '../../core/src/TextArea/TextArea.examples';
+import { Bound, Reply, Counted, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Invalid } from '../../core/src/TextArea/TextArea.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -11,6 +11,9 @@ export function Content() {
       <PageSection title={"Variants"}>
         <Stage caption={"A reply box that sends on Return"}>
           <Reply />
+        </Stage>
+        <Stage caption={"A character count against the limit"}>
+          <Counted />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

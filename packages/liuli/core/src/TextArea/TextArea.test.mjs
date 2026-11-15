@@ -53,3 +53,10 @@ test('maxRows defaults to at least rows', async () => {
   assert.equal(editor.props.rows, 2);
   assert.equal(editor.props.maxRows, 8);
 });
+
+test('Counted: the count against the limit sits in the box and is not read', async () => {
+  const screen = await renderExample('TextArea/TextArea', 'Counted');
+  const editor = screen.getByTestId('bio');
+  const count = editor.parent.children[1];
+  assert.deepEqual([count.text, count.props.accessibilityHidden, editor.props.maxLength], ['61 / 160', 1, 160]);
+});

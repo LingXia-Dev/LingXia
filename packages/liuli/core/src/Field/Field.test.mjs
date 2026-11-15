@@ -43,3 +43,10 @@ test('the status region stays mounted and empties when the status goes', async (
   assert.equal(screen.getByTestId('period').props.ariaDescribedBy, undefined, 'nothing to describe');
   assert.equal(screen.getByTestId('period').props.stateInvalid, undefined);
 });
+
+test('Info: an info button after the label, named by the app, opening the note', async () => {
+  const screen = await renderExample('Field/Field', 'Info');
+  const button = screen.queryAll(node => node.props.accessibilityLabel === 'About the VAT number')[0];
+  assert.equal(button.tag, 'button');
+  screen.getByText('optional');
+});

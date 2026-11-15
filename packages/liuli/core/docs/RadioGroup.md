@@ -112,6 +112,28 @@ export function Sizes() {
 }
 ```
 
+### Side by side
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { RadioGroup } from '@liulidesign/core/RadioGroup';
+
+/** Two short options side by side. */
+export function Inline() {
+  const billing = useLocal<string | null>('billing', 'yearly');
+  return (
+    <RadioGroup
+      bind={billing}
+      label="Billing"
+      orientation="horizontal"
+      options={[{ value: 'monthly', label: 'Monthly' }, { value: 'yearly', label: 'Yearly' }]}
+      description="Yearly saves two months."
+      data-testid="billing"
+    />
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -123,6 +145,7 @@ export function Sizes() {
 | `isRequired` | `boolean` | `false` | Marks the label with an asterisk and the control as required. Validation is the app's. |
 | `hasRequiredMark` | `boolean` | `true` | Draws the asterisk on a required label; turn it off on a form where every field is required. |
 | `optionalLabel` | `string` |  | A word after the label for a field that may be left empty, as the app writes it: "optional". Read before the help text. |
+| `info` | `FieldInfo` |  | An info button after the label that opens a note. For what most people need, use `description`: it is always in view. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
 | `size` | `FieldSize` | `'md'` |  |
@@ -131,6 +154,7 @@ export function Sizes() {
 | `onChange` | `((value: string) => void)` |  | Runs with the option chosen by a tap or by arrowing onto it. |
 | `options` (required) | `readonly RadioOption[]` |  | The choices, in order. |
 | `variant` | `RadioGroupVariant` | `'list'` | `list` stacks plain rows; `card` makes each option a bordered card, for plans and other choices with a second line. |
+| `orientation` | `RadioGroupOrientation` | `'vertical'` | `horizontal` sets two or three short options side by side; they wrap when the line is full. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the group; each option gets `<testid>-<value>`. |
 

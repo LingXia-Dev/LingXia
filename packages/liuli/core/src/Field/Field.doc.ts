@@ -48,7 +48,7 @@ export const doc: ComponentDoc = {
       'Wrap a Liuli form control in a Field; it already has one.',
     ],
   },
-  examples: [{ name: 'WrappedSelect', title: 'Wrapping a primitive select' }],
+  examples: [{ name: 'WrappedSelect', title: 'Wrapping a primitive select' }, { name: 'Info', title: 'A note behind an info button' }],
   gaps: [
     {
       missing: 'Validation when the user leaves a field.',
@@ -64,6 +64,7 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a field to give a control Liuli\'s label, help text and status when Liuli has no component for it yet.',
       hero: 'WrappedSelect',
+      variants: [{ name: 'Info', title: 'A note behind an info button beside the label' }],
       states: [
         { name: 'StateHelp', title: 'With help' },
         { name: 'StateWarning', title: 'Warning' },
