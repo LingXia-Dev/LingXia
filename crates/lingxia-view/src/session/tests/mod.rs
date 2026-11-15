@@ -1,4 +1,5 @@
 mod animation;
+mod decoration;
 mod drag;
 mod flex_direction;
 mod host;

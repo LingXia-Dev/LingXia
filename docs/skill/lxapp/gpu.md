@@ -79,7 +79,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
   `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear, radial or conic, ≤8).
 - Rich text: `<text>Read <span className="font-bold">this</span> or <link onClick={go}>that</link></text>`;
-  runs take text paint only; links are accent + underline by default. `select-text` lets users
+  runs take text paint only; links are accent + underline by default. `decoration-dotted`/`-dashed` and `decoration-<role>/<alpha>` style an underline or strike. `select-text` lets users
   long-press to select the nearest word and copy; there a long-press on a link selects, elsewhere it presses.
 - Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `menu`/`menuitem`, `alert`/`status`
   (announced), `aria-hidden` for decoration, `role="img" aria-label` on a drawn picture (avatar, rating) speaks only the label. A layout element with a role, or a scroll,

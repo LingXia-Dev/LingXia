@@ -573,7 +573,7 @@ function longhand(prop, value) {
     case 'length': return prop.endsWith('radius') && /^calc\(infinity\s*\*\s*1px\)$/.test(value) ? 16384 : number(value, true);
     case 'font-size': return number(value, true);
     case 'number': case 'opacity': case 'font-weight': return number(value);
-    case 'color': return ['borderColor', 'backgroundColor'].includes(key) && value.toLowerCase() === 'currentcolor' ? 'currentColor' : roleColor(value);
+    case 'color': return ['borderColor', 'backgroundColor', 'textDecorationColor'].includes(key) && value.toLowerCase() === 'currentcolor' ? 'currentColor' : roleColor(value);
     case 'aspect-ratio': {
       if (value === 'auto') return value;
       const ratio = value.match(/^((?:\d*\.)?\d+)\s*(?:\/\s*((?:\d*\.)?\d+))?$/);

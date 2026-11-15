@@ -384,6 +384,28 @@ test('blur utilities and filter: blur() lower to a subtree blur; other filters a
   assert.throws(() => describe(() => h('view', { className: 'blur-[100px]' }), {}), /UI_STYLE_VALUE: filter/);
 });
 
+test('an underline takes a dotted or dashed style and its own colour; wavy and thickness fail by name', async () => {
+  await use(['underline', 'decoration-dotted', 'decoration-dashed', 'decoration-solid', 'decoration-accent/50', 'decoration-danger', 'decoration-current']);
+  assert.deepEqual(classStyle('decoration-dotted'), { textDecorationStyle: 'dotted' });
+  assert.deepEqual(classStyle('decoration-dashed'), { textDecorationStyle: 'dashed' });
+  assert.deepEqual(classStyle('decoration-solid'), { textDecorationStyle: 'solid' });
+  assert.deepEqual(classStyle('decoration-accent/50'), { textDecorationColor: 'accent/50' });
+  assert.deepEqual(classStyle('decoration-current'), { textDecorationColor: 'currentColor' });
+  const props = node('text', { className: 'underline decoration-dotted decoration-accent/50' });
+  assert.deepEqual([props.textDecorationLine, props.textDecorationStyle, props.textDecorationColor], ['underline', 'dotted', 'accent/50']);
+  const run = rendered(() => h('text', {}, 'Read the ', h('link', { onClick() {}, className: 'decoration-dashed decoration-danger' }, 'terms')));
+  const link = run.children.find(child => child.props.textDecorationStyle !== undefined);
+  assert.deepEqual([link.props.textDecorationStyle, link.props.textDecorationColor], ['dashed', 'danger'], 'a link styles its own underline');
+  const errors = Object.fromEntries((await compileUtilities(new Set(['decoration-wavy', 'decoration-2', 'underline-offset-2']))).map(rule => [rule.name, rule.error?.message]));
+  assert.deepEqual(errors, { 'decoration-wavy': 'text-decoration-style: wavy', 'decoration-2': 'text-decoration-thickness: 2px', 'underline-offset-2': 'text-underline-offset: 2px' });
+  const previous = globalThis.__lingxiaViewHost;
+  globalThis.__lingxiaViewHost = { maxField: field.textDecorationStyle - 1 };
+  try {
+    const older = node('text', { className: 'underline decoration-dotted decoration-accent/50' });
+    assert.deepEqual([older.textDecorationLine, older.textDecorationStyle, older.textDecorationColor], ['underline', undefined, undefined], 'an older host draws a plain underline');
+  } finally { globalThis.__lingxiaViewHost = previous; }
+});
+
 test('text utilities: transform, decoration, nowrap, alignment and families', async () => {
   const aligns = ['left', 'center', 'right', 'start', 'end', 'justify'];
   await use(['uppercase', 'capitalize', 'underline', 'line-through', 'no-underline', 'whitespace-nowrap', 'font-mono', 'font-sans', 'font-serif',

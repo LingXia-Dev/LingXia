@@ -110,6 +110,10 @@ export function render() {
 
 `<span>` and `<link>` are valid only inside `<text>` (`UI_TEXT` elsewhere).
 
+An underline or a strike takes a line style and its own colour, on the element that draws the line:
+`underline decoration-dotted decoration-accent/50` (`decoration-dashed` too). Without a colour the line
+follows the text. Thickness, offset and a wavy line are refused; an older host draws a plain line.
+
 ## Links
 
 `<link onClick>` is a pressable run: the `accent` role and underlined unless you style it, restyled by

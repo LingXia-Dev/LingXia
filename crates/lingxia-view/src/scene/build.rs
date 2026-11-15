@@ -874,16 +874,40 @@ impl Renderer {
                                         (metrics.underline_offset, metrics.underline_size)
                                     }
                                 };
-                                commands.push(Paint::Rect {
-                                    corners: None,
-                                    color: color(colors[owner])?,
-                                    bounds: [
-                                        x + layout.padding.left + label_x + glyph_run.offset(),
-                                        y + layout.padding.top + label_y + baseline - offset,
-                                        glyph_run.advance(),
-                                        size.max(1.0 / scale),
-                                    ],
-                                    radius: 0.0,
+                                let size = size.max(1.0 / scale);
+                                let bounds = [
+                                    x + layout.padding.left + label_x + glyph_run.offset(),
+                                    y + layout.padding.top + label_y + baseline - offset,
+                                    glyph_run.advance(),
+                                    size,
+                                ];
+                                let color = color(
+                                    match records[owner].string(field::TEXT_DECORATION_COLOR) {
+                                        Some(tint) if tint != "currentColor" => tint,
+                                        _ => colors[owner],
+                                    },
+                                )?;
+                                let style = crate::scene::border::LineStyle::from_wire(
+                                    records[owner].string(field::TEXT_DECORATION_STYLE),
+                                );
+                                commands.push(if style == crate::scene::border::LineStyle::Solid {
+                                    Paint::Rect {
+                                        corners: None,
+                                        color,
+                                        bounds,
+                                        radius: 0.0,
+                                    }
+                                } else {
+                                    // A border with only a top edge draws that edge's
+                                    // dashes or dots along the line.
+                                    Paint::Border {
+                                        corners: None,
+                                        color,
+                                        bounds,
+                                        widths: [size, 0.0, 0.0, 0.0],
+                                        radius: 0.0,
+                                        style,
+                                    }
                                 });
                             }
                         }

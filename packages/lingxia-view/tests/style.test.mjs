@@ -111,6 +111,11 @@ test('typography: CSS line-height multipliers inherit and recompute per font siz
   assert.equal(style({ fontFamily: 'serif' }, 'text').fontFamily, 'serif');
   const text = style({ textTransform: 'uppercase', whiteSpace: 'nowrap', textOverflow: 'ellipsis', textDecorationLine: 'underline' }, 'text');
   assert.deepEqual([text.textTransform, text.whiteSpace, text.textOverflow, text.textDecorationLine], ['uppercase', 'nowrap', 'ellipsis', 'underline']);
+  const line = style({ textDecorationLine: 'underline', textDecorationStyle: 'dotted', textDecorationColor: 'accent/50' }, 'text');
+  assert.deepEqual([line.textDecorationStyle, line.textDecorationColor], ['dotted', 'accent/50']);
+  assert.equal(style({ textDecorationColor: 'currentColor' }, 'text').textDecorationColor, 'currentColor');
+  rejects({ textDecorationStyle: 'wavy' }, /UI_STYLE_VALUE/, 'text');
+  rejects({ textDecorationColor: 'red' }, /UI_COLOR/, 'text');
 });
 
 test('opacity, placeholder and scroll axes accept only their element and range', () => {

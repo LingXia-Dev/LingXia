@@ -324,7 +324,9 @@
     {"id": 252, "key": "ariaActiveDescendant", "wire": "ariaActiveDescendant", "kind": "element-id", "ignorable": true, "tags": ["input", "textarea", "search"]},
     {"id": 253, "key": "mixed", "wire": "mixed", "kind": "flag", "ignorable": true, "tags": ["checkbox", "button", "column"]},
     {"id": 254, "key": "onContextMenu", "wire": "onContextMenu", "kind": "handle", "ignorable": true, "tags": ["column", "button", "link", "text"]},
-    {"id": 255, "key": "onPage", "wire": "onPage", "kind": "handle", "ignorable": true, "tags": ["column"]}
+    {"id": 255, "key": "onPage", "wire": "onPage", "kind": "handle", "ignorable": true, "tags": ["column"]},
+    {"id": 256, "key": "textDecorationStyle", "wire": "textDecorationStyle", "kind": "border-style", "ignorable": true},
+    {"id": 257, "key": "textDecorationColor", "wire": "textDecorationColor", "kind": "string", "ignorable": true}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
@@ -462,7 +464,7 @@
     "textScale": {"type": "never", "check": "external", "origin": "device", "optional": true, "internal": true},
     "palette": {"type": "never", "check": "external", "origin": "push", "optional": true, "internal": true, "doc": "The resolved theme: `{ revision, colors }`, one #rrggbbaa per role slot; the page never sees it."}
   },
-  "styleGroups": {"accent": ["color"], "ellipsis": ["textOverflow"], "run": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "letterSpacing", "textDecorationLine", "fontVariantNumeric", "backgroundColor"]},
+  "styleGroups": {"accent": ["color"], "ellipsis": ["textOverflow"], "run": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "letterSpacing", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "fontVariantNumeric", "backgroundColor"]},
   "style": {
     "width": {"type": "number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch` | \"auto\" | \"fit-content\" | \"max-content\" | \"min-content\"", "group": "box", "lower": "dimension", "wire": "width", "css": "width"},
     "height": {"type": "number | `${number}%` | `${number}vw` | `${number}vh` | \"auto\" | \"fit-content\" | \"max-content\" | \"min-content\"", "group": "box", "lower": "dimension", "wire": "height", "css": "height"},
@@ -567,6 +569,8 @@
     "userSelect": {"type": "\"none\" | \"text\" | \"all\"", "group": "text", "lower": "option", "wire": "userSelect", "css": "user-select"},
     "textAlign": {"type": "\"start\" | \"end\" | \"left\" | \"center\" | \"right\" | \"justify\"", "group": "text", "lower": "option", "wire": "textAlign", "css": "text-align"},
     "textDecorationLine": {"type": "\"none\" | \"line-through\" | \"underline\"", "group": "text", "lower": "option", "wire": "textDecorationLine", "css": "text-decoration-line"},
+    "textDecorationStyle": {"type": "\"solid\" | \"dashed\" | \"dotted\"", "group": "text", "lower": "option", "wire": "textDecorationStyle", "css": "text-decoration-style"},
+    "textDecorationColor": {"type": "string | \"currentColor\"", "group": "text", "lower": "color", "wire": "textDecorationColor", "css": "text-decoration-color"},
     "textTransform": {"type": "\"none\" | \"uppercase\" | \"lowercase\" | \"capitalize\"", "group": "text", "lower": "option", "wire": "textTransform", "css": "text-transform"},
     "backgroundClip": {"type": "\"border-box\" | \"text\"", "group": "textBlock", "lower": "option", "wire": "backgroundClip", "css": "background-clip"},
     "whiteSpace": {"type": "\"normal\" | \"nowrap\" | \"pre\" | \"pre-wrap\" | \"pre-line\"", "group": "text", "lower": "option", "wire": "whiteSpace", "css": "white-space"},

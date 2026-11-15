@@ -602,8 +602,13 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             ),
             _ => {
                 let value = value.as_str().ok_or("UI_STYLE: expected color")?;
-                if !matches!(id, field::COLOR | field::BORDER_COLOR | field::BACKGROUND)
-                    || value != "currentColor"
+                if !matches!(
+                    id,
+                    field::COLOR
+                        | field::BORDER_COLOR
+                        | field::BACKGROUND
+                        | field::TEXT_DECORATION_COLOR
+                ) || value != "currentColor"
                 {
                     crate::theme::parse(value)?;
                 }

@@ -127,6 +127,7 @@ Unlike Tailwind, `ring-offset-<n>` leaves a transparent gap between box and ring
 | --- | --- | --- |
 | `break` | `break-all`, `break-keep`, `break-normal` | break-after (8); break-before (8); break-inside (4) |
 | `capitalize` | `capitalize` |  |
+| `decoration` | `decoration-accent`, `decoration-accent-soft`, `decoration-canvas`, `decoration-chart-1`, `decoration-chart-2`, … (44) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); text-decoration-thickness (5); text-decoration-style (2) |
 | `diagonal` | `diagonal-fractions` |  |
 | `font` | `font-black`, `font-bold`, `font-extrabold`, `font-extralight`, `font-light`, … (12) |  |
 | `italic` | `italic` |  |
@@ -318,7 +319,6 @@ These compile but set nothing the renderer draws:
 | `contents` | 1 | display (1) |
 | `contrast` | 7 | contrast-0 (1); contrast-100 (1); contrast-125 (1) |
 | `cursor` | 36 | cursor (36) |
-| `decoration` | 340 | text-decoration-color (330); text-decoration-style (5); text-decoration-thickness (5) |
 | `drop-shadow` | 337 | drop-shadow colors (337) |
 | `field` | 2 | field-sizing (2) |
 | `fill` | 331 | fill (331) |
