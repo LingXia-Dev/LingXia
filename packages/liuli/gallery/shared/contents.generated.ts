@@ -72,6 +72,8 @@ import { Content as VideoControls } from '../content/video-controls';
 import { Content as SignIn } from '../content/sign-in';
 import { Content as Settings } from '../content/settings';
 import { Content as Uploads } from '../content/uploads';
+import { Content as ListDetail } from '../content/list-detail';
+import { Content as Dashboard } from '../content/dashboard';
 
 /** Category contents open a page through `onOpen`; the others ignore it. */
 export type GalleryContent = Component<{ onOpen: (page: string) => void }>;
@@ -149,4 +151,6 @@ export const contents: Record<string, GalleryContent> = {
   "sign-in": SignIn,
   "settings": Settings,
   "uploads": Uploads,
+  "list-detail": ListDetail,
+  "dashboard": Dashboard,
 };

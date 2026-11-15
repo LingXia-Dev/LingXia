@@ -9,6 +9,8 @@
   "patterns": [
     { "page": "sign-in", "title": "Sign in", "tagline": "A form that checks", "summary": "A sign-in form that validates and reports errors" },
     { "page": "settings", "title": "Settings", "tagline": "Rows and a confirm", "summary": "A settings screen of rows, switches and a confirmation" },
-    { "page": "uploads", "title": "Uploads", "tagline": "Long-running work", "summary": "Long-running work with progress, failure and retry" }
+    { "page": "uploads", "title": "Uploads", "tagline": "Long-running work", "summary": "Long-running work with progress, failure and retry" },
+    { "page": "list-detail", "title": "List & detail", "tagline": "A list and a record", "summary": "A list of records beside the open one: two panes on a wide screen, one at a time on a phone" },
+    { "page": "dashboard", "title": "Dashboard", "tagline": "Figures and charts", "summary": "A period's figures, their charts and a table, laid out for a phone and for a desk" }
   ]
 }

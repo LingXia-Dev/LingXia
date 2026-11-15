@@ -1,5 +1,6 @@
 import { Button } from '@liulidesign/core/Button';
-import { ItemList } from '@liulidesign/core/Item';
+import { Stat } from '@liulidesign/charts/Stat';
+import { Item, ItemList } from '@liulidesign/core/Item';
 import { ProgressBar } from '@liulidesign/core/ProgressBar';
 import { Switch } from '@liulidesign/core/Switch';
 import { TextInput } from '@liulidesign/core/TextInput';
@@ -80,6 +81,22 @@ export function SettingsSpecimen() {
     <ItemList className="w-full">
       <Switch value onChange={none} label="Wi-Fi" variant="row" />
     </ItemList>
+  );
+}
+
+export function ListDetailSpecimen() {
+  return (
+    <ItemList className="w-full">
+      <Item label="Two more seats" description="Ana Lima" isSelected onClick={none} />
+    </ItemList>
+  );
+}
+
+export function DashboardSpecimen() {
+  return (
+    <view className="w-full rounded-container border border-text/12 bg-surface p-3">
+      <Stat label="Revenue" value="€34,020" delta="8.8%" deltaDirection="up" deltaLabel="Up 8.8%" size="sm" />
+    </view>
   );
 }
 

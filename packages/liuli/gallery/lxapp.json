@@ -80,6 +80,8 @@
     { "name": "video-controls", "path": "pages/video-controls/index" },
     { "name": "sign-in", "path": "pages/sign-in/index" },
     { "name": "settings", "path": "pages/settings/index" },
-    { "name": "uploads", "path": "pages/uploads/index" }
+    { "name": "uploads", "path": "pages/uploads/index" },
+    { "name": "list-detail", "path": "pages/list-detail/index" },
+    { "name": "dashboard", "path": "pages/dashboard/index" }
   ]
 }

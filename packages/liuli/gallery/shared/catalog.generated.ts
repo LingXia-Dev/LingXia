@@ -906,6 +906,20 @@ export const entries: GalleryEntry[] = [
     "category": "patterns",
     "summary": "Long-running work with progress, failure and retry",
     "keywords": []
+  },
+  {
+    "name": "List & detail",
+    "page": "list-detail",
+    "category": "patterns",
+    "summary": "A list of records beside the open one: two panes on a wide screen, one at a time on a phone",
+    "keywords": []
+  },
+  {
+    "name": "Dashboard",
+    "page": "dashboard",
+    "category": "patterns",
+    "summary": "A period's figures, their charts and a table, laid out for a phone and for a desk",
+    "keywords": []
   }
 ];
 
@@ -996,7 +1010,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "template",
     "description": "Whole screens, put together",
     "page": "category-patterns",
-    "count": 3
+    "count": 5
   }
 ];
 
