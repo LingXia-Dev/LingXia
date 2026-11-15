@@ -522,6 +522,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         | field::ON_POINTER_LEAVE
         | field::ON_LAYOUT
         | field::ON_POINTER
+        | field::ON_CONTEXT_MENU
         | field::ON_FOCUS
         | field::ON_BLUR
         | field::ON_SLIDER_PRESS => ensure(handle(value), "UI_PROP: invalid handle or flag"),

@@ -113,6 +113,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `locator.dblclick()` selects the word at an element's center in selectable text and editors (a long press on touch).
 - `locator.blur()` takes keyboard focus from an editor that holds it (its `onBlur` runs); any other match is left alone.
 - `locator.click()` on content inside a control (a checkbox's label) clicks that control, as a finger would; it fails when the control is disabled.
+- `onContextMenu={e => …}` on `view`/`button`/`link`/`text`: long press, secondary click or `locator.performAction('contextmenu')`; `e = { x, y, pointer }` in page coordinates. The engine draws no menu.
 - `<checkbox indeterminate>` is partly checked: a dash, announced as mixed, `indeterminate:` variant; a press calls `onChange(true)`. Automation reads `checked: "mixed"`.
 - A press that misses every box goes to the nearest small control within the platform touch target (44 pt, 48 dp on Android); `locator.touchTarget()` reads that box.
 - `enterKeyHint="next"|"previous"` moves focus to the adjacent enabled editor in reading order

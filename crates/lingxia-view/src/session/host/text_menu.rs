@@ -264,6 +264,14 @@ impl<A: PlatformAdapter> Inner<A> {
             self.request_editor_menu(identity.to_string());
             return true;
         }
-        false
+        // No text menu there: the page's own, when an element under the point asks for one.
+        let effects = self.main().interaction.context_menu(point);
+        match effects {
+            Some(effects) => {
+                self.deliver(effects);
+                true
+            }
+            None => false,
+        }
     }
 }

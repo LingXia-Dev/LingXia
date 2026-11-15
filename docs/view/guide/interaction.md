@@ -202,6 +202,15 @@ export function render() {
   Focused, the arrow keys on its axis, Home and End do the same. Automation reads the point as the
   locator's value (`toHaveValue('2')`) and `drag: { axis, index, count }` in the accessibility tree.
 
+## Asking for an element's menu
+
+`onContextMenu={(event) => …}` on a `<view>`, `<button>`, `<link>` or `<text>` is called when the
+user asks for that element's menu: a finger held for half a second without moving, a secondary
+mouse click, or `locator.performAction('contextmenu')` in a spec. `event` is `{ x, y, pointer }`,
+the point in page coordinates and `"touch"`, `"mouse"` or `"keyboard"`. The innermost element with
+a handler is asked, once per gesture. After a long press the same finger neither clicks, scrolls
+nor drags. The engine draws nothing: open your own menu at the point.
+
 ## Dialogs, popovers and menus
 
 See [Overlays](overlays.md): where they draw against the host bars, closing, sheets, focus.

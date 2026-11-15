@@ -354,6 +354,18 @@ impl<A: PlatformAdapter> Inner<A> {
                     true,
                     Box::new(move |session| session.submit_editor(commit, &identity)),
                 ),
+                Dispatch::ContextMenu {
+                    commit,
+                    handle,
+                    identity,
+                    payload,
+                } => self.activate(
+                    page,
+                    false,
+                    Box::new(move |session| {
+                        session.context_menu_event(commit, handle, &identity, &payload)
+                    }),
+                ),
                 Dispatch::BlurEditor { identity } => self.activate(
                     page,
                     false,

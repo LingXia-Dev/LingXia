@@ -144,6 +144,14 @@ pub enum Dispatch {
         identity: String,
         key: &'static str,
     },
+    /// `onContextMenu`: a long press, a secondary click or the Menu key on an element.
+    ContextMenu {
+        commit: CommitTicket,
+        handle: u64,
+        /// The element, to find its callback in a newer View.
+        identity: String,
+        payload: String,
+    },
     /// `onPointer`: where a pointer is over an element.
     PointerEvent {
         commit: CommitTicket,

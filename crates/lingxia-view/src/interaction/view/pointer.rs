@@ -66,6 +66,10 @@ impl ViewInteraction {
                     target: frame.scroll_hit(point),
                     drag: reached_drag.or_else(|| self.drag.hit(&frame, point)),
                     touching: true,
+                    // A mouse asks with its secondary button instead.
+                    context: (!self.fine_pointer)
+                        .then(|| frame.context_menu_hit(point))
+                        .flatten(),
                     ..Default::default()
                 };
                 let pressed = self.gesture.pressed;
@@ -77,8 +81,12 @@ impl ViewInteraction {
                     && frame.outside_plot_selections(point).is_empty()
                     && frame.selectable_hit(point).is_none()
                     && !frame.has_text_selection()
+                    && self.gesture.context.is_none()
                 {
                     return (false, effects);
+                }
+                if self.gesture.context.is_some() {
+                    effects.push(Effect::ArmLongPress);
                 }
                 if self.gesture.target.is_some() {
                     effects.push(Effect::Claim { exclusive: true });
@@ -384,11 +392,62 @@ impl ViewInteraction {
         (true, effects)
     }
 
+    /// Queues `onContextMenu` for node `index`; false when it has no handler.
+    pub(super) fn context_menu_dispatch(
+        &mut self,
+        frame: &crate::interaction::frame::PresentedFrame,
+        index: usize,
+        point: [f32; 2],
+        pointer: &str,
+    ) -> bool {
+        let Some(node) = frame.nodes.get(index) else {
+            return false;
+        };
+        let Some(handle) = node.on_context_menu else {
+            return false;
+        };
+        self.dispatches.push(Dispatch::ContextMenu {
+            commit: frame.commit,
+            handle,
+            identity: node.identity.to_string(),
+            payload: serde_json::json!({ "x": point[0], "y": point[1], "pointer": pointer })
+                .to_string(),
+        });
+        true
+    }
+
+    /// A secondary click at a logical point: the innermost `onContextMenu` element there.
+    pub fn context_menu(&mut self, point: [f32; 2]) -> Option<Vec<Effect>> {
+        if self.inert {
+            return None;
+        }
+        let frame = self.frame.clone()?;
+        let index = frame.context_menu_hit(point)?;
+        self.context_menu_dispatch(&frame, index, point, "mouse")
+            .then(|| vec![Effect::Dispatch])
+    }
+
     /// The long-press timer fired for the pressed editor.
     pub fn long_press(&mut self) -> Vec<Effect> {
         let Some(frame) = self.frame.clone() else {
             return Vec::new();
         };
+        // A held finger asks for the element's menu: the press does not click, and what the
+        // finger does next neither scrolls nor drags.
+        if let Some(index) = self.gesture.context
+            && self.gesture.touching
+            && !self.gesture.moved
+            && !self.gesture.dragging
+            && self.gesture.pressed_commit == Some(frame.commit)
+        {
+            self.gesture.long_pressed = true;
+            let mut effects = self.cancel_press();
+            let point = self.logical(self.gesture.down[0], self.gesture.down[1]);
+            if self.context_menu_dispatch(&frame, index, point, "touch") {
+                effects.extend([Effect::Haptic, Effect::Dispatch]);
+            }
+            return effects;
+        }
         let link = self
             .gesture
             .pressed

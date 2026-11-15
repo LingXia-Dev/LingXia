@@ -333,6 +333,26 @@ impl ViewSession {
         }
     }
 
+    /// `onContextMenu` for `identity`, through the element's current callback.
+    pub fn context_menu_event(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        handle: u64,
+        identity: &str,
+        payload: &str,
+    ) -> Result<bool, String> {
+        let current = self
+            .retained
+            .as_ref()
+            .and_then(|retained| retained.nodes.iter().find(|node| node.identity == identity))
+            .map(|node| node.on_context_menu);
+        match current {
+            Some(Some(handle)) => self.text_event(self.generation, handle, payload),
+            Some(None) => Ok(false),
+            None => self.text_event(generation, handle, payload),
+        }
+    }
+
     /// `onPointer` for `identity`, through the element's current callback as a re-render
     /// renumbers them; the frame's handle only if the element is gone.
     pub fn pointer_event(

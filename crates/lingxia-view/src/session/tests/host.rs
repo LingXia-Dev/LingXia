@@ -5231,6 +5231,8 @@ mod combobox_semantics;
 mod editor_keys;
 #[path = "automation_blur.rs"]
 mod automation_blur;
+#[path = "context_menu.rs"]
+mod context_menu;
 #[path = "orphan_overlays.rs"]
 mod orphan_overlays;
 #[path = "pointer_events.rs"]

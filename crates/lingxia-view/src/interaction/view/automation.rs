@@ -218,6 +218,39 @@ impl ViewInteraction {
             | AutomationAct::SelectOption(_) => {
                 unreachable!("handled above")
             }
+            AutomationAct::Action(name) if name.eq_ignore_ascii_case("contextmenu") => {
+                // As the Menu key on the element: the nearest `onContextMenu` at or above it.
+                let frame = self
+                    .frame
+                    .clone()
+                    .ok_or("E_PAGE_NOT_READY: no presented frame")?;
+                let node = self
+                    .semantics()
+                    .and_then(|projection| projection.ids.index(id))
+                    .ok_or_else(|| format!("Element not found: {selector}"))?;
+                let [x, y, w, h] = frame.nodes[node].bounds;
+                let identity = frame.nodes[node].identity.to_string();
+                let target = (0..frame.nodes.len()).rev().find(|&index| {
+                    let other = &frame.nodes[index];
+                    other.on_context_menu.is_some()
+                        && (index == node || identity.starts_with(&format!("{}/", other.identity)))
+                });
+                return match target {
+                    Some(index)
+                        if self.context_menu_dispatch(
+                            &frame,
+                            index,
+                            [x + w / 2.0, y + h / 2.0],
+                            "keyboard",
+                        ) =>
+                    {
+                        Ok(vec![Effect::Dispatch])
+                    }
+                    _ => Err(format!(
+                        "Element not interactable: {selector} has no action {name:?}"
+                    )),
+                };
+            }
             AutomationAct::Action(name) => {
                 let projection = self
                     .semantics()

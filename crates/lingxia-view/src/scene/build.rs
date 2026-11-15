@@ -1355,6 +1355,12 @@ impl Renderer {
                         .and_then(|(_, value)| value.as_u64())
                         .filter(|handle| *handle != 0)
                 }),
+                on_context_menu: record
+                    .fields
+                    .iter()
+                    .find(|(field, _)| *field == field::ON_CONTEXT_MENU)
+                    .and_then(|(_, value)| value.as_u64())
+                    .filter(|handle| *handle != 0),
                 on_pointer_event: record
                     .fields
                     .iter()

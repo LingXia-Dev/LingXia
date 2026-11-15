@@ -73,6 +73,8 @@ struct Gesture {
     dragging: bool,
     moved: bool,
     long_pressed: bool,
+    /// The innermost `onContextMenu` element under a finger: a long press asks for its menu.
+    context: Option<usize>,
     /// A selectable static text under the press, for long-press selection.
     selectable: Option<usize>,
     /// A fine pointer is dragging a selection across `selectable` text.

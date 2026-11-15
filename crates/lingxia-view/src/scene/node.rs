@@ -152,6 +152,9 @@ pub struct NodeSnapshot {
     /// An editor's `onFocus` and `onBlur` handles.
     #[serde(skip)]
     pub on_focus: [Option<u64>; 2],
+    /// `onContextMenu`'s handle: a long press, a secondary click or the Menu key asks for it.
+    #[serde(skip)]
+    pub on_context_menu: Option<u64>,
     /// `onPointer`'s handle, and whether the element keeps horizontal and vertical movement
     /// from scrolls.
     #[serde(skip)]

@@ -142,6 +142,13 @@ impl PresentedFrame {
             .map(|(index, _)| index)
     }
 
+    /// The innermost element with `onContextMenu` under a logical point.
+    pub fn context_menu_hit(&self, point: [f32; 2]) -> Option<usize> {
+        self.hit_order()
+            .find(|(_, node)| node.on_context_menu.is_some() && contains(node, point, false))
+            .map(|(index, _)| index)
+    }
+
     pub fn has_text_selection(&self) -> bool {
         self.nodes.iter().any(|node| node.text_selection.is_some())
     }

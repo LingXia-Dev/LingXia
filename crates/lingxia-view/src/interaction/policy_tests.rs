@@ -58,6 +58,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         on_click: None,
         checked: None,
         mixed: false,
+        on_context_menu: None,
         range: None,
         plot: None,
         radio_group: None,

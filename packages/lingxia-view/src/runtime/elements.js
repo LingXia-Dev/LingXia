@@ -454,6 +454,13 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (pointerAxis !== 'both') wire('pointerAxis', pointerAxis);
     }
   }
+  // A request for the element's own menu: a long press, a secondary click, the Menu key.
+  if (props.onContextMenu !== undefined) {
+    if (!['view', 'button', 'link', 'text'].includes(tag)) throw Error('UI_PROP: onContextMenu belongs to a <view>, <button>, <link> or <text>');
+    const { onContextMenu } = props;
+    if (typeof onContextMenu !== 'function') throw Error('UI_PROP: onContextMenu takes a function');
+    if (!dropped('onContextMenu')) on('onContextMenu', payload => onContextMenu(Object.freeze(JSON.parse(payload))), 'text');
+  }
   // The element's content box once laid out, and after each change; an older host never reports one.
   if (props.onLayout !== undefined || props.box !== undefined) {
     if (!boxTags.has(tag)) throw Error('UI_PROP: onLayout and box belong to a <view>, <text>, <vector>, <plot> or <scroll>');

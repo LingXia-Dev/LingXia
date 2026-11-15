@@ -178,6 +178,14 @@ export declare function useVideo(name: string): Video;
  * that also gives `aria-valuenow` is a keyboard stop: arrows on its axis and a screen reader's
  * adjust send `increment` or `decrement` with `pointer: "keyboard"` and no position.
  */
+/** A request for an element's menu: a long press, a secondary click, or the Menu key. */
+export interface ContextMenuEvent {
+  /** The point in page coordinates; the element's centre from the keyboard. */
+  readonly x: number;
+  readonly y: number;
+  readonly pointer: "touch" | "mouse" | "keyboard";
+}
+
 export interface PointerEvent {
   readonly phase: "down" | "move" | "up" | "cancel" | "hover" | "leave" | "increment" | "decrement";
   readonly x: number; readonly y: number; readonly width: number; readonly height: number;

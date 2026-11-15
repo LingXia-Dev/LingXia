@@ -43,6 +43,7 @@ Children: any elements and text. Renders as `column`.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onContextMenu` | `(event: ContextMenuEvent) => void` |  |
 | `anchor` | `string` |  |
 | `onPointer` | `(event: PointerEvent) => void` |  |
 | `pointerAxis` | `"x" \| "y" \| "both"` |  |
@@ -76,6 +77,7 @@ Children: text, `<span>` and `<link>` runs.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onContextMenu` | `(event: ContextMenuEvent) => void` |  |
 | `onLayout` | `(box: BoxSize) => void` |  |
 | `box` | `Box` |  |
 | `aria-label` | `string` |  |
@@ -86,6 +88,7 @@ Children: text, or noninteractive content elements (a composed control).
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onContextMenu` | `(event: ContextMenuEvent) => void` |  |
 | `onPointer` | `(event: PointerEvent) => void` |  |
 | `pointerAxis` | `"x" \| "y" \| "both"` |  |
 | `onClick` | `() => void` |  |
@@ -312,6 +315,7 @@ Children: text and `<span>` runs; links do not nest. Only inside `<text>`.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onContextMenu` | `(event: ContextMenuEvent) => void` |  |
 | `onClick` | `() => void` |  |
 | `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
