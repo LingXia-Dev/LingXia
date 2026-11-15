@@ -578,15 +578,16 @@ impl LxApp {
         info!("BackPress trigered, page stack size: {}", stack_size).with_appid(self.appid.clone());
 
         if stack_size <= 1 {
-            // If it's the last page, hide this LxApp (except home app)
-            if !self.is_home_lxapp {
-                if let Some(manager) = lxapp::get_lxapps_manager() {
-                    manager.remove_from_stack(&self.appid);
-                }
-                let _ = self
-                    .runtime
-                    .hide_lxapp(self.appid.clone(), self.session_id());
+            // The home root has nothing to leave: unhandled, so the host backgrounds the app.
+            if self.is_home_lxapp {
+                return false;
             }
+            if let Some(manager) = lxapp::get_lxapps_manager() {
+                manager.remove_from_stack(&self.appid);
+            }
+            let _ = self
+                .runtime
+                .hide_lxapp(self.appid.clone(), self.session_id());
             return true;
         }
 
@@ -670,5 +671,39 @@ mod more_action_tests {
         assert_eq!(parse_more_action_token("more:42"), None);
         assert_eq!(parse_more_action_token("more:42:1:extra"), None);
         assert_eq!(parse_more_action_token("restart"), None);
+    }
+}
+
+#[cfg(test)]
+mod back_press_tests {
+    use crate::appservice::LxAppWorkers;
+    use crate::lxapp::{AppSessionClass, LxApp, register_synthetic_lxapp};
+    use std::sync::Arc;
+
+    #[test]
+    fn back_on_the_home_root_is_left_to_the_host() {
+        let root = tempfile::tempdir().unwrap();
+        let platform = Arc::new(
+            lingxia_platform::Platform::new(
+                root.path().join("data").display().to_string(),
+                root.path().join("cache").display().to_string(),
+                "en-US".to_string(),
+            )
+            .unwrap(),
+        );
+        let appid = format!("app.lingxia.back-press.{}", uuid::Uuid::new_v4());
+        register_synthetic_lxapp(&appid);
+        let mut app = LxApp::new_with_session_class_for_test(
+            appid,
+            platform,
+            LxAppWorkers::init(1),
+            AppSessionClass::StandardApp,
+        )
+        .unwrap();
+        app.is_home_lxapp = true;
+        let app = Arc::new(app);
+        app.bind_arc();
+        assert!(app.get_page_stack_size() <= 1);
+        assert!(!app.handle_back_press());
     }
 }
