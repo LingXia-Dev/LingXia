@@ -36,6 +36,7 @@ export const demos = {
   },
   overlays: {
     menu: { testId: 'lab-menu', title: { en: 'A menu you ask for', zh: '按需唤出的菜单' }, try: { en: 'Hold a finger on the row, or click it with the secondary mouse button: its menu opens. A tap does nothing.', zh: '长按这一行，或用鼠标右键点击：菜单打开。轻点没有反应。' } },
+    submenu: { testId: 'lab-submenu', title: { en: 'A menu inside a menu', zh: '菜单里的菜单' }, try: { en: 'Open the menu and choose "Move to": a second menu opens beside it and the first stays. Choose a folder and both close. With a keyboard, Right opens it and Left closes it.', zh: '打开菜单并选择“移动到”：第二个菜单在旁边打开，第一个保持不动；选一个文件夹后两个都关闭。使用键盘时，右方向键打开，左方向键关闭。' } },
     beside: { testId: 'lab-beside', title: { en: 'A popover beside what opens it', zh: '在触发处旁边打开的浮层' }, try: { en: 'Each button opens the note at its side. With no room there it opens on the other side, and under a wide button.', zh: '每个按钮都在自己旁边打开提示；那一侧放不下就换到另一侧，按钮太宽则在其下方。' } },
   },
   accessibility: {
@@ -116,6 +117,7 @@ export const readouts = {
     en: `${asked === 'none' ? 'Menu not asked for' : `Menu asked by ${asked}`} · last: ${last}`,
     zh: `${asked === 'none' ? '尚未唤出菜单' : `菜单由 ${asked} 唤出`} · 上次：${none(last)}`,
   }),
+  submenu: (last: string): Words => (last === 'none' ? { en: 'Nothing chosen yet', zh: '尚未选择' } : { en: `Chosen: ${last}`, zh: `已选择：${last}` }),
   panel: (open: boolean): Words => (open ? { en: 'Open', zh: '已展开' } : { en: 'Closed', zh: '已收起' }),
   days: (month: string, day: number): Words => ({ en: `${month} · day ${day} chosen`, zh: `${month} · 已选 ${day} 日` }),
   presses: (n: number): Words => ({ en: `Link pressed ${n} times`, zh: `链接已点 ${n} 次` }),
@@ -149,6 +151,11 @@ export const labels = {
   rowMenu: { en: 'File actions', zh: '文件操作' },
   months: { en: 'March|April|May', zh: '三月|四月|五月' },
   daysName: { en: 'Days', zh: '日期' },
+  subOpen: { en: 'File actions', zh: '文件操作' },
+  subRename: { en: 'Rename', zh: '重命名' },
+  subMove: { en: 'Move to', zh: '移动到' },
+  subInbox: { en: 'Inbox', zh: '收件箱' },
+  subArchive: { en: 'Archive', zh: '归档' },
   panelHeading: { en: 'Delivery details', zh: '配送详情' },
   panelBody: { en: 'Leaves the warehouse on Tuesday and arrives within three working days. Someone must be home to sign for it.', zh: '周二从仓库发出，三个工作日内送达，需要有人在家签收。' },
   panelAfter: { en: 'Order total', zh: '订单合计' },
