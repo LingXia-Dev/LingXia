@@ -270,6 +270,8 @@ export interface Locator {
   selectOption(value: string, options?: ActionOptions): Promise<void>;
   type(text: string, options?: InputOptions): Promise<void>;
   press(key: string, options?: InputOptions): Promise<void>;
+  /** Take keyboard focus from the match when it holds it: an editor hears its blur and the keyboard goes. */
+  blur(options?: InputOptions): Promise<void>;
   /** Pick the match at `index` (of the filtered matches, after `.filter()`). */
   nth(index: number): Locator;
   first(): Locator;

@@ -458,6 +458,15 @@ impl JSPageDriver {
             .map_err(fail(&app, options.page.as_deref()))
     }
 
+    /// Take keyboard focus from the match when it holds it.
+    #[js_method]
+    async fn blur(&self, ctx: JSContext, options: JSClickOptions) -> JSResult<()> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
+        auto::page_blur(&app, options.page.as_deref(), &options.css, options.index)
+            .await
+            .map_err(fail(&app, options.page.as_deref()))
+    }
+
     /// A semantic action by name on the match, as assistive tech performs it.
     #[js_method(rename = "semanticAction")]
     async fn semantic_action(&self, ctx: JSContext, options: JSSemanticOptions) -> JSResult<()> {

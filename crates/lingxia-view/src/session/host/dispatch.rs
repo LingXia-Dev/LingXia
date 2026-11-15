@@ -354,6 +354,11 @@ impl<A: PlatformAdapter> Inner<A> {
                     true,
                     Box::new(move |session| session.submit_editor(commit, &identity)),
                 ),
+                Dispatch::BlurEditor { identity } => self.activate(
+                    page,
+                    false,
+                    Box::new(move |session| session.blur_editor(&identity)),
+                ),
                 Dispatch::SnapChange {
                     commit,
                     handle,

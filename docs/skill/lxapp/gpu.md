@@ -111,6 +111,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `<select options={[{value,label,disabled?}]} bind={cell} placeholder aria-label/>` opens the View's own
   picker (popover with a mouse, sheet on touch); arrows change the choice; automation uses `locator.selectOption(valueOrLabel)`.
 - `locator.dblclick()` selects the word at an element's center in selectable text and editors (a long press on touch).
+- `locator.blur()` takes keyboard focus from an editor that holds it (its `onBlur` runs); any other match is left alone.
 - `locator.click()` on content inside a control (a checkbox's label) clicks that control, as a finger would; it fails when the control is disabled.
 - `enterKeyHint="next"|"previous"` moves focus to the adjacent enabled editor in reading order
   (the last one submits); `cell.focus()` focuses the editor bound to that `useLocal` cell.

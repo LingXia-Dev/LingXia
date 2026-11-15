@@ -35,6 +35,8 @@ pub enum GpuAction {
     },
     /// Select the word at the match's center (text, editors); a click elsewhere.
     DoubleClick,
+    /// Take keyboard focus from the match when it holds it.
+    Blur,
     /// A semantic action by name, as assistive tech performs it.
     Action {
         name: String,

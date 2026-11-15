@@ -867,6 +867,34 @@ pub async fn page_dblclick(
     }
 }
 
+/// Take keyboard focus from the match when it holds it, as the DOM's `blur()` does: an editor
+/// hears its blur and the keyboard goes. A match without focus is left alone.
+pub async fn page_blur(
+    app: &Arc<LxApp>,
+    page_name: Option<&str>,
+    selector: &str,
+    index: Option<usize>,
+) -> Result<(), String> {
+    if let Some(page) = gpu::backend(app, page_name)? {
+        return page.act(selector, index, gpu::GpuAction::Blur).await;
+    }
+    let script = format!(
+        r#"(() => {{
+  const el = document.querySelectorAll({selector})[{index}];
+  if (!el) return "Element not found: " + {selector};
+  el.blur();
+  return true;
+}})()"#,
+        selector = serde_json::to_string(selector).map_err(|e| e.to_string())?,
+        index = index.unwrap_or(0),
+    );
+    match page_eval(app, page_name, &script).await? {
+        Value::Bool(true) => Ok(()),
+        Value::String(error) => Err(error),
+        other => Err(format!("page blur: unexpected answer {other}")),
+    }
+}
+
 /// Choose an option of the matching `<select>` by value, else by label, firing its change.
 pub async fn page_select_option(
     app: &Arc<LxApp>,

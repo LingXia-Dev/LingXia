@@ -689,6 +689,8 @@ export interface PageDriver {
   click(options: PageClickOptions): Promise<void>;
   /** Double-click: on text and editors, select the word at the element's center. */
   dblclick(options: PageClickOptions): Promise<void>;
+  /** Take keyboard focus from the element when it holds it; an editor hears its blur. */
+  blur(options: PageSelectorOptions): Promise<void>;
   /** A semantic action by name, as assistive tech performs it: an `aria-actions` control's name, `increment`, `decrement` or `dismiss` (GPU pages). */
   semanticAction(options: PageClickOptions & { name: string }): Promise<void>;
   /** Type text into an element without clearing existing content. */

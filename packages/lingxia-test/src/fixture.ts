@@ -1484,6 +1484,7 @@ export class LiveFixture implements Fixture {
       scrollTo: (options) => counted(() => page().scrollTo(options)),
       selectOption: (options) => counted(() => page().selectOption(options)),
       dblclick: (options) => counted(() => page().dblclick(options)),
+      blur: (options) => counted(() => page().blur(options)),
       semanticAction: (options) => counted(() => page().semanticAction(options)),
     };
     const input = lazyDriver(() => ({ owner: page() as object, value: page() }), this, "page.") as PageDriver;

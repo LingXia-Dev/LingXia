@@ -96,6 +96,7 @@ export interface PageLike {
   type(options: { css: string; text: string; page?: string; index?: number }): Promise<void>;
   selectOption?(options: { css: string; value: string; page?: string; index?: number }): Promise<void>;
   dblclick?(options: { css: string; page?: string; index?: number }): Promise<void>;
+  blur?(options: { css: string; page?: string; index?: number }): Promise<void>;
   semanticAction?(options: { css: string; page?: string; index?: number; name: string }): Promise<void>;
   /** Bring a match on screen; GPU pages need it before an action. */
   scrollTo?(options: { css: string; page?: string; index?: number }): Promise<void>;
@@ -320,6 +321,11 @@ export class PageLocator implements Locator {
   dblclick(options?: ActionOptions): Promise<void> {
     if (!this.page.dblclick) return Promise.reject(new Error("This page driver does not support dblclick"));
     return this.act("dblclick", options, (css, index) => this.page.dblclick!({ page: this.options.page, css, index }));
+  }
+
+  blur(options?: InputOptions): Promise<void> {
+    if (!this.page.blur) return Promise.reject(new Error("This page driver does not support blur"));
+    return this.act("blur", options, (css, index) => this.page.blur!({ page: this.options.page, css, index }));
   }
 
   selectOption(value: string, options?: ActionOptions): Promise<void> {

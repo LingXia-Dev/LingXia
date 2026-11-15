@@ -22,6 +22,8 @@ pub enum AutomationAct {
     /// Select the word at the match's center (text and editors), as a long press or a
     /// desktop double click does; a click on anything else.
     DoubleClick,
+    /// Take keyboard focus from the match when it holds it, as the DOM's `blur()` does.
+    Blur,
     /// A semantic action by name: an `aria-actions` control's name, or `increment`,
     /// `decrement`, `dismiss`.
     Action(String),
@@ -112,6 +114,30 @@ impl ViewInteraction {
         if let AutomationAct::SelectOption(choice) = &act {
             return self.select_option(selector, index, choice);
         }
+        if act == AutomationAct::Blur {
+            let frame = self
+                .frame
+                .clone()
+                .ok_or("E_PAGE_NOT_READY: no presented frame")?;
+            let node = {
+                let projection = self
+                    .semantics()
+                    .ok_or("E_PAGE_NOT_READY: no presented frame")?;
+                let matches = query::select(&projection, selector)?;
+                let position = index.unwrap_or(0);
+                *matches
+                    .get(position)
+                    .ok_or_else(|| format!("Element not found: {selector} (index {position})"))?
+            };
+            // Only an editor holds the input method; the session checks it is the focused one.
+            if frame.nodes[node].input.is_none() {
+                return Ok(Vec::new());
+            }
+            self.dispatches.push(super::Dispatch::BlurEditor {
+                identity: frame.nodes[node].identity.to_string(),
+            });
+            return Ok(vec![Effect::Dispatch]);
+        }
         let (id, value, enabled, editable, visible, in_viewport) = {
             let projection = self
                 .semantics()
@@ -188,6 +214,7 @@ impl ViewInteraction {
             AutomationAct::Click | AutomationAct::DoubleClick => AccessibilityAction::Click,
             AutomationAct::ScrollIntoView
             | AutomationAct::Press(_)
+            | AutomationAct::Blur
             | AutomationAct::SelectOption(_) => {
                 unreachable!("handled above")
             }

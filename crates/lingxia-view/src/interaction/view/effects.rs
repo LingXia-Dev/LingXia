@@ -183,6 +183,10 @@ pub enum Dispatch {
         commit: CommitTicket,
         identity: String,
     },
+    /// Automation's `blur()` on an editor: the session blurs it when it holds focus.
+    BlurEditor {
+        identity: String,
+    },
     /// A tap outside the selection: the session drops it (`clear_text_selection`).
     ClearTextSelection,
     /// Edges reached by a presented frame.

@@ -1392,7 +1392,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
 
     /// One automation request from the page driver:
     /// `{op: "query", css, index, all, maxText}` or
-    /// `{op: "act", css, index, action: {kind: click|dblclick|fill|type|scroll|press|select, text, key, value, force}}`,
+    /// `{op: "act", css, index, action: {kind: click|dblclick|fill|type|scroll|press|select|blur, text, key, value, force}}`,
     /// `{op: "tree"}`, `{op: "frame", windowMs?}` (presentation counters and frame pacing over
     /// the last `windowMs`) or `{op: "hud", on}` (draw frame statistics over the page).
     /// Screenshots belong to the adapter's presenter.
@@ -1421,6 +1421,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     Some("press") => AutomationAct::Press(string("key")),
                     Some("select") => AutomationAct::SelectOption(string("value")),
                     Some("dblclick") => AutomationAct::DoubleClick,
+                    Some("blur") => AutomationAct::Blur,
                     Some("action") => AutomationAct::Action(string("name")),
                     other => return Err(format!("E_UNSUPPORTED: automation action {other:?}")),
                 };

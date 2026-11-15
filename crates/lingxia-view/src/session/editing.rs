@@ -238,6 +238,15 @@ impl ViewSession {
             .is_some())
     }
 
+    /// Blur editor `identity` when it holds focus, as the platform's blur does. False otherwise.
+    pub fn blur_editor(&mut self, identity: &str) -> Result<bool, String> {
+        if self.inputs.focused() != Some(identity) {
+            return Ok(false);
+        }
+        let token = self.inputs.reply(identity, false).token;
+        self.blur_input(token, identity)
+    }
+
     /// A focus token survives presentation; it cannot target a later input connection.
     pub fn input_state(&self, token: u64, identity: &str) -> Option<crate::InputReply> {
         self.inputs
