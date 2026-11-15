@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { People, Group, Sizes, StatePicture, StateInitials, StateFailed, StateOverflow, WithName } from '../../core/src/Avatar/Avatar.examples';
+import { People, Group, Presence, Unread, Sizes, StatePicture, StateInitials, StateFailed, StateOverflow, WithName } from '../../core/src/Avatar/Avatar.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -11,6 +11,12 @@ export function Content() {
       <PageSection title={"Variants"}>
         <Stage caption={"Overlapping, with the rest as a count"}>
           <Group />
+        </Stage>
+        <Stage caption={"A status dot: online, away, busy, and offline as a hollow dot"}>
+          <Presence />
+        </Stage>
+        <Stage caption={"A count on the top end edge"}>
+          <Unread />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

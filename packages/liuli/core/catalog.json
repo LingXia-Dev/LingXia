@@ -50,6 +50,31 @@
           "default": "'md', or the group's size"
         },
         {
+          "name": "status",
+          "type": "AvatarStatus",
+          "required": false,
+          "description": "A dot at the bottom end edge: whether the person is around. Give `statusLabel` with it."
+        },
+        {
+          "name": "statusLabel",
+          "type": "string",
+          "required": false,
+          "description": "The status in words, read after the name: \"Online\", \"In a meeting\"."
+        },
+        {
+          "name": "badge",
+          "type": "Child",
+          "required": false,
+          "description": "Drawn on the top end edge: a Badge with a count. It is read by its own label."
+        },
+        {
+          "name": "surface",
+          "type": "AvatarGroupSurface",
+          "required": false,
+          "description": "The surface the avatar sits on; the status dot's edge takes its colour.",
+          "default": "'surface', or the group's"
+        },
+        {
           "name": "isDecorative",
           "type": "boolean",
           "required": false,
@@ -75,7 +100,9 @@
         "image": "image",
         "initials": "text",
         "group": "view",
-        "overflow": "text"
+        "overflow": "text",
+        "status": "view",
+        "badge": "view"
       },
       "accessibility": {
         "pattern": null,
@@ -91,11 +118,45 @@
               "accent-soft"
             ],
             "minimum": "4.5:1"
+          },
+          {
+            "what": "online dot",
+            "pair": [
+              "success",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "away dot",
+            "pair": [
+              "warning",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "busy dot",
+            "pair": [
+              "danger",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "offline dot's ring",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "3:1"
           }
         ],
         "notes": [
           "Read as a picture of the person, by name, whether it shows the photo or the initials. Set `isDecorative` when the name is already written beside it.",
-          "The group is read by its label, then each name; the count by the app's own words."
+          "The group is read by its label, then each name; the count by the app's own words.",
+          "A status dot is drawn only: `statusLabel` is read after the name, \"Ana Lima, Online\". The four statuses differ by colour, and offline also by being hollow, so always pass the label.",
+          "A `badge` is read by its own label; say what the number counts in a label beside the avatar or in the row it sits in."
         ]
       },
       "examples": [
@@ -118,6 +179,16 @@
           "name": "WithName",
           "title": "Beside the name",
           "source": "import { Avatar } from '@liulidesign/core/Avatar';\n\n/** Beside the name it stands for, so it is decorative. */\nexport function WithName() {\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <Avatar name=\"Kai Chen\" isDecorative />\n      <view className=\"gap-0.5\">\n        <text className=\"text-body font-medium text-text\">Kai Chen</text>\n        <text className=\"text-footnote text-muted\">Edited 2 minutes ago</text>\n      </view>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Presence",
+          "title": "A status dot",
+          "source": "import { Avatar } from '@liulidesign/core/Avatar';\n\nconst photo = (n: number) => `public/avatars/avatar-${n}.png`;\n\n/** Whether each person is around, as a dot on the avatar and in words for a screen reader. */\nexport function Presence() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <Avatar name=\"Ana Lima\" src={photo(1)} status=\"online\" statusLabel=\"Online\" data-testid=\"online\" />\n      <Avatar name=\"Kai Chen\" status=\"away\" statusLabel=\"Away\" data-testid=\"away\" />\n      <Avatar name=\"Mira Patel\" status=\"busy\" statusLabel=\"Do not disturb\" data-testid=\"busy\" />\n      <Avatar name=\"Sam Ortiz\" status=\"offline\" statusLabel=\"Offline\" data-testid=\"offline\" />\n      <Avatar name=\"Design team\" size=\"lg\" status=\"online\" statusLabel=\"3 online\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Unread",
+          "title": "A count on the avatar",
+          "source": "import { Badge } from '@liulidesign/core/Badge';\nimport { Avatar } from '@liulidesign/core/Avatar';\n\n/** A count on the avatar: unread messages from this person. */\nexport function Unread() {\n  return <Avatar name=\"Kai Chen\" badge={<Badge label=\"3\" tone=\"danger\" emphasis=\"solid\" size=\"sm\" />} data-testid=\"unread\" />;\n}"
         }
       ],
       "gaps": [],
@@ -136,6 +207,14 @@
             {
               "name": "Group",
               "title": "Overlapping, with the rest as a count"
+            },
+            {
+              "name": "Presence",
+              "title": "A status dot: online, away, busy, and offline as a hollow dot"
+            },
+            {
+              "name": "Unread",
+              "title": "A count on the top end edge"
             }
           ],
           "states": [

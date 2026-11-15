@@ -89,6 +89,39 @@ export function WithName() {
 }
 ```
 
+### A status dot
+
+```tsx
+import { Avatar } from '@liulidesign/core/Avatar';
+
+const photo = (n: number) => `public/avatars/avatar-${n}.png`;
+
+/** Whether each person is around, as a dot on the avatar and in words for a screen reader. */
+export function Presence() {
+  return (
+    <view className="flex-row items-center gap-4">
+      <Avatar name="Ana Lima" src={photo(1)} status="online" statusLabel="Online" data-testid="online" />
+      <Avatar name="Kai Chen" status="away" statusLabel="Away" data-testid="away" />
+      <Avatar name="Mira Patel" status="busy" statusLabel="Do not disturb" data-testid="busy" />
+      <Avatar name="Sam Ortiz" status="offline" statusLabel="Offline" data-testid="offline" />
+      <Avatar name="Design team" size="lg" status="online" statusLabel="3 online" />
+    </view>
+  );
+}
+```
+
+### A count on the avatar
+
+```tsx
+import { Badge } from '@liulidesign/core/Badge';
+import { Avatar } from '@liulidesign/core/Avatar';
+
+/** A count on the avatar: unread messages from this person. */
+export function Unread() {
+  return <Avatar name="Kai Chen" badge={<Badge label="3" tone="danger" emphasis="solid" size="sm" />} data-testid="unread" />;
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -97,6 +130,10 @@ export function WithName() {
 | `src` | `string` |  | A photo; initials show until it loads and if it fails. |
 | `initials` | `string` |  | Overrides the initials taken from the first letters of the first two words of `name`. |
 | `size` | `AvatarSize` | `'md', or the group's size` |  |
+| `status` | `AvatarStatus` |  | A dot at the bottom end edge: whether the person is around. Give `statusLabel` with it. |
+| `statusLabel` | `string` |  | The status in words, read after the name: "Online", "In a meeting". |
+| `badge` | `Child` |  | Drawn on the top end edge: a Badge with a count. It is read by its own label. |
+| `surface` | `AvatarGroupSurface` | `'surface', or the group's` | The surface the avatar sits on; the status dot's edge takes its colour. |
 | `isDecorative` | `boolean` | `false` | Hides it from assistive tech when the name is already beside it. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
@@ -118,10 +155,16 @@ export function WithName() {
 - Description: none.
 - Read as a picture of the person, by name, whether it shows the photo or the initials. Set `isDecorative` when the name is already written beside it.
 - The group is read by its label, then each name; the count by the app's own words.
+- A status dot is drawn only: `statusLabel` is read after the name, "Ana Lima, Online". The four statuses differ by colour, and offline also by being hollow, so always pass the label.
+- A `badge` is read by its own label; say what the number counts in a label beside the avatar or in the row it sits in.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | initials | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.44:1 | 9.49:1 |
+| online dot | `success` on `surface` | 3:1 | 5.31:1 | 7.61:1 |
+| away dot | `warning` on `surface` | 3:1 | 5.40:1 | 8.18:1 |
+| busy dot | `danger` on `surface` | 3:1 | 5.21:1 | 5.42:1 |
+| offline dot's ring | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

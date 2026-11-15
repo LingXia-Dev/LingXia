@@ -1,4 +1,4 @@
-import type { AvatarGroupSurface, AvatarSize } from './Avatar';
+import type { AvatarGroupSurface, AvatarSize, AvatarStatus } from './Avatar';
 
 export const avatarParts = {
   root: 'view',
@@ -6,6 +6,8 @@ export const avatarParts = {
   initials: 'text',
   group: 'view',
   overflow: 'text',
+  status: 'view',
+  badge: 'view',
 } as const;
 
 /** A circle: the photo when it loads, else initials on the accent's soft step. */
@@ -26,6 +28,22 @@ export const avatarRecipe = {
   initials: {
     base: 'font-semibold text-on-accent-soft',
     size: { xs: 'text-caption', sm: 'text-caption', md: 'text-footnote', lg: 'text-callout' } satisfies Record<AvatarSize, string>,
+  },
+  /** A dot on the circle's bottom end edge, cut out of the avatar by an edge in the surface's colour. */
+  status: {
+    base: 'absolute end-0 bottom-0 rounded-full border-2',
+    size: { xs: 'size-2', sm: 'size-2.5', md: 'size-3', lg: 'size-4' } satisfies Record<AvatarSize, string>,
+    edge: { surface: 'border-surface', raised: 'border-surface-raised', sunken: 'border-surface-sunken' } satisfies Record<AvatarGroupSurface, string>,
+    tone: {
+      online: 'bg-success',
+      away: 'bg-warning',
+      busy: 'bg-danger',
+      // Hollow: a ring of the muted text colour around the surface.
+      offline: 'bg-surface inset-ring-2 inset-ring-muted',
+    } satisfies Record<AvatarStatus, string>,
+  },
+  badge: {
+    base: 'absolute -end-1.5 -top-1.5',
   },
   group: {
     base: 'flex-row',

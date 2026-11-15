@@ -28,3 +28,22 @@ test('WithName: a decorative avatar is hidden from assistive tech', async () => 
   const screen = await renderExample('Avatar/Avatar', 'WithName');
   assert.equal(screen.queryAll(node => node.props.accessibilityHidden === 1 && node.tag === 'column').length >= 1, true);
 });
+
+test('Presence: the status is a dot that is not read; its words follow the name; offline is hollow', async () => {
+  const screen = await renderExample('Avatar/Avatar', 'Presence');
+  const dot = id => screen.getByTestId(id).children.find(node => node.props.position === 'absolute' && node.tag !== 'image' && node.props.accessibilityHidden === 1);
+  assert.deepEqual(['online', 'away', 'busy'].map(id => dot(id).props.background), ['success', 'warning', 'danger']);
+  assert.deepEqual([dot('offline').props.background, Boolean(dot('offline').props.ring)], ['surface', true]);
+  assert.deepEqual([dot('online').props.width, dot('online').props.borderColor], [12, 'surface'], 'cut out of the avatar by the surface colour');
+  const named = id => screen.getByTestId(id).children.map(node => node.props.accessibilityLabel ?? node.props.alt).filter(Boolean);
+  assert.deepEqual(named('away'), ['Kai Chen, Away']);
+  assert.ok(screen.getByTestId('online').children.some(node => Object.values(node.props).includes('Ana Lima, Online')), 'a photo is named the same way');
+});
+
+test('Unread: a badge sits on the top end edge and is read by its own label', async () => {
+  const screen = await renderExample('Avatar/Avatar', 'Unread');
+  const slot = screen.getByTestId('unread').children.at(-1);
+  assert.equal(slot.props.position, 'absolute');
+  assert.equal(slot.props.accessibilityHidden, undefined);
+  screen.getByText('3');
+});

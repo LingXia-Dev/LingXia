@@ -1,3 +1,4 @@
+import { Badge } from '../Badge/Badge';
 import { Avatar, AvatarGroup } from './Avatar';
 
 // Pictures in the gallery package; a person's own photo goes here.
@@ -23,6 +24,24 @@ export function Sizes() {
       <Avatar name="Ana Lima" size="lg" />
     </view>
   );
+}
+
+/** Whether each person is around, as a dot on the avatar and in words for a screen reader. */
+export function Presence() {
+  return (
+    <view className="flex-row items-center gap-4">
+      <Avatar name="Ana Lima" src={photo(1)} status="online" statusLabel="Online" data-testid="online" />
+      <Avatar name="Kai Chen" status="away" statusLabel="Away" data-testid="away" />
+      <Avatar name="Mira Patel" status="busy" statusLabel="Do not disturb" data-testid="busy" />
+      <Avatar name="Sam Ortiz" status="offline" statusLabel="Offline" data-testid="offline" />
+      <Avatar name="Design team" size="lg" status="online" statusLabel="3 online" />
+    </view>
+  );
+}
+
+/** A count on the avatar: unread messages from this person. */
+export function Unread() {
+  return <Avatar name="Kai Chen" badge={<Badge label="3" tone="danger" emphasis="solid" size="sm" />} data-testid="unread" />;
 }
 
 /** Overlapping, with the rest folded into a count. */

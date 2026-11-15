@@ -25,10 +25,18 @@ export const doc: ComponentDoc = {
     description: [],
     states: [],
     keyboard: [],
-    contrast: [{ what: 'initials', pair: ['on-accent-soft', 'accent-soft'], minimum: '4.5:1' }],
+    contrast: [
+      { what: 'initials', pair: ['on-accent-soft', 'accent-soft'], minimum: '4.5:1' },
+      { what: 'online dot', pair: ['success', 'surface'], minimum: '3:1' },
+      { what: 'away dot', pair: ['warning', 'surface'], minimum: '3:1' },
+      { what: 'busy dot', pair: ['danger', 'surface'], minimum: '3:1' },
+      { what: 'offline dot\'s ring', pair: ['text-muted', 'surface'], minimum: '3:1' },
+    ],
     notes: [
       'Read as a picture of the person, by name, whether it shows the photo or the initials. Set `isDecorative` when the name is already written beside it.',
       'The group is read by its label, then each name; the count by the app\'s own words.',
+      'A status dot is drawn only: `statusLabel` is read after the name, "Ana Lima, Online". The four statuses differ by colour, and offline also by being hollow, so always pass the label.',
+      'A `badge` is read by its own label; say what the number counts in a label beside the avatar or in the row it sits in.',
     ],
   },
   guidance: {
@@ -46,6 +54,8 @@ export const doc: ComponentDoc = {
     { name: 'Sizes', title: 'Sizes' },
     { name: 'Group', title: 'A group with a count' },
     { name: 'WithName', title: 'Beside the name' },
+    { name: 'Presence', title: 'A status dot' },
+    { name: 'Unread', title: 'A count on the avatar' },
   ],
   gaps: [],
   related: ['Item', 'Badge'],
@@ -56,7 +66,11 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use an avatar to show who did something or who is here, next to their name or in a group.',
       hero: 'People',
-      variants: [{ name: 'Group', title: 'Overlapping, with the rest as a count' }],
+      variants: [
+        { name: 'Group', title: 'Overlapping, with the rest as a count' },
+        { name: 'Presence', title: 'A status dot: online, away, busy, and offline as a hollow dot' },
+        { name: 'Unread', title: 'A count on the top end edge' },
+      ],
       states: [
         { name: 'StatePicture', title: 'A picture' },
         { name: 'StateInitials', title: 'No picture' },

@@ -3,6 +3,8 @@ import { avatarRecipe as r } from './Avatar.recipe';
 
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg';
 export type AvatarGroupSurface = 'surface' | 'raised' | 'sunken';
+/** `offline` is a hollow dot, so the four are told apart without colour as far as a dot can. */
+export type AvatarStatus = 'online' | 'away' | 'busy' | 'offline';
 
 const InGroup = createContext<{ size: AvatarSize; surface: AvatarGroupSurface } | null>(null);
 
@@ -15,6 +17,14 @@ export interface AvatarProps {
   initials?: string;
   /** @default 'md', or the group's size */
   size?: AvatarSize;
+  /** A dot at the bottom end edge: whether the person is around. Give `statusLabel` with it. */
+  status?: AvatarStatus;
+  /** The status in words, read after the name: "Online", "In a meeting". */
+  statusLabel?: string;
+  /** Drawn on the top end edge: a Badge with a count. It is read by its own label. */
+  badge?: Child;
+  /** The surface the avatar sits on; the status dot's edge takes its colour. @default 'surface', or the group's */
+  surface?: AvatarGroupSurface;
   /** Hides it from assistive tech when the name is already beside it. @default false */
   isDecorative?: boolean;
   className?: string;
@@ -22,12 +32,13 @@ export interface AvatarProps {
 }
 
 /** A person or team as a circle: their photo, or their initials. */
-export function Avatar({ name, src, initials, size, isDecorative = false, className, 'data-testid': testId }: AvatarProps) {
+export function Avatar({ name, src, initials, size, status, statusLabel, badge, surface, isDecorative = false, className, 'data-testid': testId }: AvatarProps) {
   const group = useContext(InGroup);
   const actual = size ?? group?.size ?? 'md';
   const failed = useLocal(false);
   const letters = initials ?? initialsOf(name);
   const showImage = src !== undefined && !failed.value;
+  const spoken = statusLabel === undefined ? name : `${name}, ${statusLabel}`;
   return (
     <view
       aria-hidden={isDecorative || undefined}
@@ -35,8 +46,10 @@ export function Avatar({ name, src, initials, size, isDecorative = false, classN
       className={cx(r.root.base, r.root.size[actual], group && r.root.inGroup[group.surface], className)}
     >
       {/* The initials stay under the photo, so a slow or failed load never shows an empty circle. */}
-      <text role={showImage ? undefined : 'img'} aria-label={showImage ? undefined : name} aria-hidden={showImage || undefined} className={cx(r.initials.base, r.initials.size[actual])}>{letters}</text>
-      {showImage && <image src={src} alt={name} onError={() => failed.set(true)} className={r.image.base} />}
+      <text role={showImage ? undefined : 'img'} aria-label={showImage ? undefined : spoken} aria-hidden={showImage || undefined} className={cx(r.initials.base, r.initials.size[actual])}>{letters}</text>
+      {showImage && <image src={src} alt={spoken} onError={() => failed.set(true)} className={r.image.base} />}
+      {status !== undefined && <view aria-hidden className={cx(r.status.base, r.status.size[actual], r.status.edge[surface ?? group?.surface ?? 'surface'], r.status.tone[status])} />}
+      {badge !== undefined && <view className={r.badge.base}>{badge}</view>}
     </view>
   );
 }
