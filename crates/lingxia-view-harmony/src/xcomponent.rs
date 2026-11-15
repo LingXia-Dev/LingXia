@@ -356,8 +356,13 @@ fn key(host: &pages::Host, page: i64, input: *mut sys::ArkUI_UIInputEvent) {
     let Some(view_key) = view_key(code, unicode, shift) else {
         return;
     };
-    // An open editor takes typing through the input method; Tab still moves focus.
+    // An open editor takes typing through the input method; Tab still moves focus. A key its
+    // page listed in `onKeyDown` goes to the page first; Space is text there, not Enter.
     if view_key != Key::Tab && crate::ime::editing(page) {
+        if !shift && code != 2050 && host.editor_key(view_key) {
+            // SAFETY: as above.
+            unsafe { sys::OH_ArkUI_KeyEvent_SetConsumed(input, true) };
+        }
         return;
     }
     if host.key(view_key, shift, repeat) {
