@@ -61,23 +61,81 @@ test('Country, on touch: a sheet titled by the label; typing narrows the list; a
   assert.equal(textOf(screen.getByTestId('country')), 'Kenya', 'closing keeps the choice');
 });
 
-test('Country, with a mouse: a panel under the field with focus in the search field; Return takes the first match', async () => {
+const active = (screen, id) => {
+  const field = screen.getByTestId(id);
+  const option = screen.queryAll(node => node.props.elementId !== undefined && node.props.elementId === field.props.ariaActiveDescendant)[0];
+  return option ? textOf(option.children[0].children[0]) : null;
+};
+
+test('Country, with a mouse: the field is the editor; focus opens every option under it, anchored to the box and as wide', async () => {
   const screen = await renderExample('Combobox/Combobox', 'Country', fine);
-  screen.press(screen.getByTestId('country'));
+  const field = () => screen.getByTestId('country');
+  assert.equal(field().tag, 'input');
+  assert.deepEqual([field().props.role, field().props.accessibilityLabel, field().props.stateExpanded, field().props.placeholder], ['combobox', 'Country', 0, 'Choose a country']);
+  assert.equal(panel(screen, 'country').length, 0, 'closed, nothing of the list is rendered');
+  screen.focus(field());
   const [popover] = panel(screen, 'country');
-  assert.deepEqual([popover.props.width, popover.props.marginTop, popover.props.accessibilityLabel], [288, 4, 'Country']);
-  assert.equal(screen.queryAll(node => node.props.role === 'heading').length, 0, 'no sheet title');
-  const search = screen.getByTestId('country-search');
-  assert.equal(search.props.autoFocus, 1);
-  screen.type(search, 'por');
-  assert.deepEqual(labels(screen), ['Portugal']);
-  screen.submit(screen.getByTestId('country-search'));
-  assert.equal(textOf(screen.getByTestId('country')), 'Portugal');
+  assert.equal(popover.props.anchorTo, field().parent.props.anchorName, 'it hangs from the box, not from a button');
+  assert.equal(field().props.stateExpanded, 1);
+  assert.equal(options(screen).length, 29);
+  assert.equal(screen.queryAll(node => node.props.role === 'heading').length, 0, 'no sheet, no search field of its own');
+  screen.layout(field().parent, { width: 318, height: 38 });
+  assert.equal(panel(screen, 'country')[0].props.width, 344, 'the box with its padding and borders');
+});
+
+test('Country, with a keyboard: typing narrows, the arrows move an active option the text points at, Return chooses it', async () => {
+  const screen = await renderExample('Combobox/Combobox', 'Country', fine);
+  const field = () => screen.getByTestId('country');
+  const key = name => screen.key(field(), name);
+  screen.focus(field());
+  screen.type(field(), 'ni');
+  assert.deepEqual(labels(screen), ['Nigeria', 'United Kingdom', 'United States']);
+  assert.equal(active(screen, 'country'), null, 'nothing is active until an arrow moves');
+  key('ArrowDown');
+  assert.equal(active(screen, 'country'), 'Nigeria');
+  key('ArrowDown');
+  key('ArrowDown');
+  key('ArrowDown');
+  assert.equal(active(screen, 'country'), 'United States', 'it stops at the last');
+  key('Home');
+  assert.equal(active(screen, 'country'), 'Nigeria');
+  key('End');
+  key('ArrowUp');
+  assert.equal(active(screen, 'country'), 'United Kingdom');
+  const lit = screen.getByTestId('country-united-kingdom');
+  assert.equal(lit.props.background, 'text/8', 'the active option is washed');
+  key('Enter');
+  assert.equal(field().props.inputValue, 'United Kingdom');
   assert.equal(panel(screen, 'country').length, 0);
-  screen.press(screen.getByTestId('country'));
-  screen.escape();
+
+  screen.type(field(), 'por');
+  key('Enter');
+  assert.equal(field().props.inputValue, 'Portugal', 'with nothing active, Return takes the first match of what was typed');
+  key('ArrowDown');
+  assert.equal(options(screen).length, 29, 'Down opens the whole list again');
+  assert.equal(active(screen, 'country'), 'Portugal', 'on the chosen option');
+  key('Escape');
   assert.equal(panel(screen, 'country').length, 0);
-  assert.equal(textOf(screen.getByTestId('country')), 'Portugal');
+  assert.equal(field().props.inputValue, 'Portugal', 'Escape keeps the choice');
+  assert.equal(field().props.keyMap.includes('Escape'), false, 'closed, Escape and Home and End are the page\'s and the text\'s again');
+});
+
+test('Country, with a mouse: a click chooses; leaving drops what was typed, and leaving it empty clears the choice', async () => {
+  const screen = await renderExample('Combobox/Combobox', 'Country', fine);
+  const field = () => screen.getByTestId('country');
+  screen.focus(field());
+  screen.press(screen.getByTestId('country-kenya'));
+  assert.equal(field().props.inputValue, 'Kenya');
+  assert.equal(panel(screen, 'country').length, 0);
+  screen.type(field(), 'zz');
+  assert.equal(screen.getByText('No country matches').props.role, 'status');
+  screen.blur(field());
+  assert.equal(field().props.inputValue, 'Kenya', 'what was typed and not chosen is dropped');
+  assert.equal(panel(screen, 'country').length, 0);
+  screen.focus(field());
+  screen.type(field(), '');
+  screen.blur(field());
+  assert.equal(field().props.inputValue, '', 'the choice is cleared');
 });
 
 test('Assignee: the help text follows the choice in the description; a second line per option; a disabled option cannot be chosen', async () => {

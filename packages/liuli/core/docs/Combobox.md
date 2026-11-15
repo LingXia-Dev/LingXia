@@ -2,13 +2,13 @@
 
 # Combobox
 
-One choice from a long list, found by typing: a field that opens a search over its options. Status: preview.
+One choice from a long list, found by typing: in the field itself with a keyboard, in a sheet with a finger. Status: preview.
 
 ```ts
 import { Combobox } from '@liulidesign/core/Combobox';
 ```
 
-Combobox is a Select for lists too long to scan: countries, people, products. The field shows the chosen option; pressing it opens a search field over the list, in a panel under the field for a mouse and in a sheet from the bottom edge for a finger. Typing narrows the list, and Return takes the first match. Matching ignores case and looks in the label only: options whose label starts with what was typed come first, then those where a later word starts with it, then those that hold it inside a word, each group in the order the options were given. With `onQueryChange` the app replaces that: Combobox reports each change to the search text and shows `options` as passed, so the app filters and orders them by its own rule or a server's. It takes Field's label, help text and status.
+Combobox is a Select for lists too long to scan: countries, people, products. With a mouse and keyboard the field is the editor: typing narrows a list that hangs under it, the arrow keys move through it and Return chooses. With a finger the field is a button that opens a sheet from the bottom edge, with a search field over the list. Matching ignores case and looks in the label only: options whose label starts with what was typed come first, then those where a later word starts with it, then those that hold it inside a word, each group in the order the options were given. With `onQueryChange` the app replaces that: Combobox reports each change to the search text and shows `options` as passed, so the app filters and orders them by its own rule or a server's. It takes Field's label, help text and status.
 
 ## Examples
 
@@ -192,10 +192,11 @@ export function Shipping() {
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
-| trigger | `<button>` | yes | The field: the chosen option's label, or the placeholder, and a chevron. The button assistive tech names by `label`. |
+| trigger | `<button>` | yes | The field's box and chevron. On touch a button showing the chosen option's label or the placeholder; with a mouse the box around the editor. |
+| editor | `<input>` | no | With a mouse and keyboard: the text in the box. It shows the chosen option's label, and what is typed narrows the list. |
 | value | `<text>` | yes | The chosen option's label; read after the name, as a field's value is. |
-| popover | `<view>` | no | With a mouse or trackpad: a panel under the field holding the search field and the list. |
-| sheet | `<dialog>` | no | On touch: a sheet on the bottom edge, titled by `label`, holding the same. |
+| popover | `<view>` | no | With a mouse or trackpad: the list under the field, as wide as the field; focus stays in the text. |
+| sheet | `<dialog>` | no | On touch: a sheet on the bottom edge, titled by `label`, holding a search field and the list. |
 | list | `<scroll>` | yes | The matching options, scrolling under the search field, as a listbox; at most fifty are shown. |
 | option | `<button>` | yes | One option: its label, an optional second line, and a tick on the chosen one. |
 | note | `<text>` | no | `emptyLabel` when nothing matches, or `moreLabel` under a list cut at fifty. |
@@ -206,15 +207,19 @@ export function Shipping() {
 - Name: label.
 - Description: the chosen option, then description, then status message.
 - States: expanded (from the open panel or sheet); selected (from value, on the chosen option); disabled (from isDisabled); modal (from the sheet on touch).
-- Enter or Space: On the field: opens the panel with focus in the search field.
-- Return: In the search field: chooses the first match and closes.
-- Tab, then Up and Down: From the search field into the list, and between options; Enter chooses.
-- Escape: Closes without changing the choice; focus returns to the field.
+- Typing: In the field: opens the list and narrows it.
+- Down and Up: Open the list, and move through the options that can be chosen; focus stays in the text.
+- Home and End: With the list open: the first and last option.
+- Return: Chooses the active option, or the first match of what was typed, and closes.
+- Escape: Closes the list and puts the chosen option's label back.
+- Tab: Leaves the field; what was typed and not chosen is dropped, and an emptied field clears the choice.
 - Press target: sm 32 px, md 40 px, lg 48 px.
-- The field is a button named by `label`; the chosen option, then the help text and status, are read as its description. It reports expanded while open.
-- The search field is named by `searchLabel`. The options are a listbox named by `label`, each an option that reports selected; `emptyLabel` is announced when nothing matches.
-- On touch the sheet is modal and titled by `label`; a tap outside, a drag down or Back closes it. With a mouse a click outside or Escape closes the panel.
-- Arrow keys do not move through the options while focus is in the search field: Return takes the first match, or Tab moves into the list.
+- The button pattern applies on touch: the field is a button named by `label`; the chosen option, then the help text and status, are read as its description, and it reports expanded while the sheet is open.
+- With a mouse and keyboard the field is a combobox named by `label` whose value is its text. It reports expanded, and points at the active option, whose name is announced as the arrow keys move, while focus stays in the text.
+- The options are a listbox named by `label`, each an option that reports selected; `emptyLabel` is announced when nothing matches.
+- On touch the sheet is modal and titled by `label`; a tap outside, a drag down or Back closes it, and its search field is named by `searchLabel`.
+- With a mouse the list has no backdrop: a click on an option chooses it without taking focus from the text, and a click elsewhere leaves the field, which closes the list.
+- A screen reader hears a combobox on an editor as a text field today; the role and the list it controls are recorded for when the platform bridges carry them.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
@@ -242,8 +247,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Typing in the field itself with suggestions under it, and arrow keys moving through them while typing. | a popover anchored to an editor and opened from state, key events from an editor or an active option it points at, and the combobox role | The field is a button; the search field is inside the panel or sheet, and Return takes the first match. |
-| A panel as wide as its field. | reading a laid-out box's size (`useBox`) | The panel is 288 points wide. |
-| Several choices at once, and clearing the choice. | nothing from the View | One choice; an app that needs "none" adds an option for it. |
+| The typeahead on a host built before editor keys, focus events and anchored popovers. | a newer host | Not supported with a mouse on such a host; touch is unaffected. |
+| Typing in the field itself on touch. | nothing from the View | A sheet with its own search field, which leaves room for the keyboard. |
+| Several choices at once, and clearing the choice on touch. | nothing from the View | One choice. With a keyboard, emptying the field clears it; on touch an app that needs "none" adds an option for it. |
 
 Related: Select, TextInput, DropdownMenu.

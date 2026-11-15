@@ -356,7 +356,7 @@ export const entries: GalleryEntry[] = [
     "name": "Combobox",
     "page": "combobox",
     "category": "selection",
-    "summary": "One choice from a long list, found by typing: a field that opens a search over its options",
+    "summary": "One choice from a long list, found by typing: in the field itself with a keyboard, in a sheet with a finger",
     "keywords": [
       "combobox",
       "autocomplete",

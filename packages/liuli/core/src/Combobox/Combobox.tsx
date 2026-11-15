@@ -1,4 +1,4 @@
-import { cx, useId, useLocal, useView, type Local } from '@lingxia/view';
+import { cx, reveal, useBox, useId, useLocal, useView, type Local } from '@lingxia/view';
 import { Field, type FieldOwnProps, type FieldSize } from '../Field/Field';
 import { TextInput } from '../TextInput/TextInput';
 import { Glyph } from '../internal/Glyph';
@@ -82,6 +82,46 @@ function ranked(options: readonly ComboboxOption[], typed: string): readonly Com
   return tiers.flat();
 }
 
+interface OptionsProps {
+  label: string;
+  options: readonly ComboboxOption[];
+  current: string;
+  size: FieldSize;
+  testId?: string;
+  onChoose: (value: string) => void;
+  /** The list's id and the active option's index, for a field that keeps focus while its list is open. */
+  listId?: string;
+  active?: number;
+}
+
+const optionId = (listId: string, index: number) => `${listId}-${index}`;
+
+/** The options as a listbox; the chosen one carries a tick, the active one a wash. */
+function Options({ label, options, current, size, testId, onChoose, listId, active }: OptionsProps) {
+  return (
+    <view id={listId} role="listbox" aria-label={label} className={r.list.box}>
+      {options.map((option, index) => (
+        <button
+          key={option.value}
+          id={listId === undefined ? undefined : optionId(listId, index)}
+          role="option"
+          aria-selected={option.value === current}
+          disabled={option.isDisabled}
+          onClick={() => onChoose(option.value)}
+          data-testid={testId && `${testId}-${option.value}`}
+          className={cx(r.option.base, r.option.size[size], index === active && r.option.active)}
+        >
+          <view className={r.optionText.base}>
+            <text className={r.optionLabel.base}>{option.label}</text>
+            {option.description !== undefined && <text className={r.optionDescription.base}>{option.description}</text>}
+          </view>
+          {option.value === current && <Glyph name="check" weight={2.5} className={r.optionCheck.base} />}
+        </button>
+      ))}
+    </view>
+  );
+}
+
 interface PanelProps {
   label: string;
   options: readonly ComboboxOption[];
@@ -93,15 +133,14 @@ interface PanelProps {
   moreLabel?: string;
   onQueryChange?: (query: string) => void;
   isLoading: boolean;
-  hasAutoFocus: boolean;
   listClass: string;
   testId?: string;
   onChoose: (value: string) => void;
 }
 
-/** The search field and the list. It lives inside the popover or sheet, so what was typed is forgotten when that closes. */
+/** The sheet's search field and list. It lives inside the sheet, so what was typed is forgotten when that closes. */
 function ComboboxPanel({
-  label, options, current, size, searchLabel, searchPlaceholder, emptyLabel, moreLabel, onQueryChange, isLoading, hasAutoFocus, listClass, testId, onChoose,
+  label, options, current, size, searchLabel, searchPlaceholder, emptyLabel, moreLabel, onQueryChange, isLoading, listClass, testId, onChoose,
 }: PanelProps) {
   const query = useLocal('query', '');
   const typed = query.value.trim().toLowerCase();
@@ -121,31 +160,10 @@ function ComboboxPanel({
           onChange={text => { query.set(text); onQueryChange?.(text); }}
           // Return takes the first match, so a choice needs no pointer and no arrow keys.
           onSubmit={() => { if (first) onChoose(first.value); }}
-          hasAutoFocus={hasAutoFocus}
           data-testid={testId && `${testId}-search`}
         />
         <scroll className={listClass}>
-          {!isLoading && shown.length > 0 && (
-            <view role="listbox" aria-label={label} className={r.list.box}>
-              {shown.map(option => (
-                <button
-                  key={option.value}
-                  role="option"
-                  aria-selected={option.value === current}
-                  disabled={option.isDisabled}
-                  onClick={() => onChoose(option.value)}
-                  data-testid={testId && `${testId}-${option.value}`}
-                  className={cx(r.option.base, r.option.size[size])}
-                >
-                  <view className={r.optionText.base}>
-                    <text className={r.optionLabel.base}>{option.label}</text>
-                    {option.description !== undefined && <text className={r.optionDescription.base}>{option.description}</text>}
-                  </view>
-                  {option.value === current && <Glyph name="check" weight={2.5} className={r.optionCheck.base} />}
-                </button>
-              ))}
-            </view>
-          )}
+          {!isLoading && shown.length > 0 && <Options label={label} options={shown} current={current} size={size} testId={testId} onChoose={onChoose} />}
           {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />}
           {!isLoading && shown.length === 0 && <text role="status" className={r.note.base}>{emptyLabel}</text>}
           {!isLoading && matches.length > shown.length && moreLabel !== undefined && <text className={r.note.base}>{moreLabel}</text>}
@@ -155,7 +173,118 @@ function ComboboxPanel({
   );
 }
 
-/** One choice from a long list, found by typing: a field that opens a search over its options. */
+// The field box's side padding and borders, in points: what its measured content width leaves out.
+const boxEdges = 26;
+
+interface TypeaheadProps {
+  control: { 'aria-label': string; 'aria-describedby'?: string; 'aria-invalid'?: boolean; 'aria-required'?: boolean; disabled?: boolean };
+  label: string;
+  options: readonly ComboboxOption[];
+  current: string;
+  size: FieldSize;
+  statusType?: 'error' | 'warning' | 'success';
+  isDisabled: boolean;
+  placeholder?: string;
+  emptyLabel: string;
+  moreLabel?: string;
+  onQueryChange?: (query: string) => void;
+  isLoading: boolean;
+  testId?: string;
+  onChange: (value: string) => void;
+}
+
+/**
+ * The field for a mouse and keyboard: the box is the editor. Typing narrows a list that hangs
+ * under it while focus stays in the text; the arrow keys move through the list and Return chooses.
+ */
+function ComboboxTypeahead({
+  control, label, options, current, size, statusType, isDisabled, placeholder, emptyLabel, moreLabel, onQueryChange, isLoading, testId, onChange,
+}: TypeaheadProps) {
+  const id = useId();
+  const [boxId, listId, panelId] = [`${id}-box`, `${id}-list`, `${id}-panel`];
+  const box = useBox('field');
+  const open = useLocal('open', false);
+  // What was typed since the list opened; `null` while the box still shows the choice, when the list shows every option.
+  const query = useLocal<string | null>('query', null);
+  const active = useLocal('active', -1);
+  const chosen = options.find(option => option.value === current);
+  const typed = (query.value ?? '').trim().toLowerCase();
+  const matches = onQueryChange || query.value === null ? options : ranked(options, typed);
+  const shown = matches.slice(0, maxShown);
+  const close = () => { open.set(false); query.set(null); active.set(-1); };
+  const choose = (value: string) => { onChange(value); close(); };
+  const show = (index: number) => { open.set(true); active.set(index); if (index >= 0) reveal(optionId(listId, index)); };
+  // The next option that can be chosen, from `from` in `direction`, stopping at the ends.
+  const step = (from: number, direction: 1 | -1) => {
+    for (let index = from + direction; index >= 0 && index < shown.length; index += direction) if (!shown[index].isDisabled) return index;
+    return from;
+  };
+  const first = () => step(-1, 1);
+  const last = () => step(shown.length, -1);
+  const isShowing = open.value && !isDisabled;
+  const keys = {
+    ArrowDown: () => show(isShowing ? step(active.value, 1) : Math.max(first(), shown.findIndex(option => option.value === current))),
+    ArrowUp: () => show(isShowing && active.value >= 0 ? step(active.value, -1) : last()),
+    // Listed only while the list is open: closed, they belong to the text.
+    ...(isShowing ? {
+      Home: () => show(first()),
+      End: () => show(last()),
+      // Return takes the active option, or the first match of what was typed.
+      Enter: () => { const pick = shown[active.value] ?? (query.value !== null ? shown[first()] : undefined); if (pick && !pick.isDisabled) choose(pick.value); },
+      Escape: close,
+    } : {}),
+  };
+  return (
+    <>
+      <view id={boxId} box={box} className={cx(r.trigger.base, r.trigger.size[size], r.trigger.editable, statusType && r.trigger.status[statusType], isDisabled && r.trigger.off)}>
+        <input
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={isShowing}
+          aria-controls={listId}
+          aria-activedescendant={isShowing && active.value >= 0 ? optionId(listId, active.value) : undefined}
+          aria-label={control['aria-label']}
+          aria-describedby={control['aria-describedby']}
+          aria-invalid={control['aria-invalid']}
+          aria-required={control['aria-required']}
+          value={query.value ?? chosen?.label ?? ''}
+          placeholder={placeholder}
+          onInput={text => { query.set(text); open.set(true); active.set(-1); onQueryChange?.(text); }}
+          onFocus={() => open.set(true)}
+          // Leaving with the text emptied clears the choice; anything else typed and not chosen is dropped.
+          onBlur={() => { if (query.value !== null && query.value.trim() === '' && current !== '') onChange(''); close(); }}
+          onKeyDown={keys}
+          disabled={control.disabled}
+          data-testid={testId}
+          className={cx(r.editor.base, r.value.size[size])}
+        />
+        <Glyph name="chevron-down" className={r.chevron.base} />
+      </view>
+      {/* A manual popover takes no focus and has no backdrop, so the text keeps the keys while the list is open. */}
+      <view
+        id={panelId}
+        popover="manual"
+        anchor={boxId}
+        open={isShowing}
+        onToggle={value => { if (!value) close(); }}
+        data-testid={testId && `${testId}-panel`}
+        className={r.popover.typeahead}
+        style={box.value ? { width: box.value.width + boxEdges } : undefined}
+      >
+        <LayerContext.Provider value="overlay">
+          <scroll className={r.list.popover}>
+            {!isLoading && shown.length > 0 && <Options label={label} options={shown} current={current} size={size} testId={testId} onChoose={choose} listId={listId} active={active.value} />}
+            {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />}
+            {!isLoading && shown.length === 0 && <text role="status" className={r.note.base}>{emptyLabel}</text>}
+            {!isLoading && matches.length > shown.length && moreLabel !== undefined && <text className={r.note.base}>{moreLabel}</text>}
+          </scroll>
+        </LayerContext.Provider>
+      </view>
+    </>
+  );
+}
+
+/** One choice from a long list, found by typing: in the field itself with a keyboard, in a sheet with a finger. */
 export function Combobox(props: ComboboxProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, isDisabled = false, disabledMessage, size = 'md',
@@ -163,11 +292,11 @@ export function Combobox(props: ComboboxProps) {
     className, 'data-testid': testId,
   } = props;
   const { env } = useView();
-  // A finger gets a sheet with room for the keyboard; a mouse gets a panel under the field.
+  // A finger gets a sheet with room for the keyboard; a mouse and keyboard type in the field itself.
   const isSheet = env.pointer === 'coarse';
   const open = useLocal('open', false);
   const id = useId();
-  const [panelId, valueId] = [`${id}-panel`, `${id}-value`];
+  const valueId = `${id}-value`;
   const current = props.bind ? props.bind.value : props.value;
   const chosen = options.find(option => option.value === current);
   const choose = (value: string) => {
@@ -175,24 +304,6 @@ export function Combobox(props: ComboboxProps) {
     else props.onChange(value);
     open.set(false);
   };
-  const panel = (listClass: string) => (
-    <ComboboxPanel
-      label={label}
-      options={options}
-      current={current}
-      size={size}
-      searchLabel={searchLabel}
-      searchPlaceholder={searchPlaceholder}
-      emptyLabel={emptyLabel}
-      moreLabel={moreLabel}
-      onQueryChange={onQueryChange}
-      isLoading={isLoading}
-      hasAutoFocus={!isSheet}
-      listClass={listClass}
-      testId={testId}
-      onChoose={choose}
-    />
-  );
   return (
     <Field
       label={label}
@@ -207,52 +318,76 @@ export function Combobox(props: ComboboxProps) {
       size={size}
       className={className}
     >
-      {control => (
+      {control => (!isSheet ? (
+        <ComboboxTypeahead
+          control={control}
+          label={label}
+          options={options}
+          current={current}
+          size={size}
+          statusType={status?.type}
+          isDisabled={isDisabled}
+          placeholder={placeholder}
+          emptyLabel={emptyLabel}
+          moreLabel={moreLabel}
+          onQueryChange={onQueryChange}
+          isLoading={isLoading}
+          testId={testId}
+          onChange={choose}
+        />
+      ) : (
         <>
           <button
-            popoverTarget={isSheet ? undefined : panelId}
-            onClick={isSheet ? () => open.set(true) : undefined}
+            onClick={() => open.set(true)}
             aria-label={control['aria-label']}
             // The chosen option is read after the name, as a field's value is, then the help text.
             aria-describedby={control['aria-describedby'] ? `${valueId} ${control['aria-describedby']}` : valueId}
-            aria-expanded={isSheet ? open.value : undefined}
+            aria-expanded={open.value}
             disabled={control.disabled}
             data-testid={testId}
-            className={cx(r.trigger.base, r.trigger.size[size], status && r.trigger.status[status.type])}
+            className={cx(r.trigger.base, r.trigger.size[size], r.trigger.pressable, status && r.trigger.status[status.type])}
           >
             <text id={valueId} className={cx(chosen ? r.value.base : r.value.placeholder, r.value.size[size], isDisabled && r.value.disabled)}>
               {chosen?.label ?? placeholder ?? ''}
             </text>
             <Glyph name="chevron-down" className={r.chevron.base} />
           </button>
-          {isSheet ? (
-            <dialog
-              open={open.value}
-              onClose={() => open.set(false)}
-              closedby="any"
-              aria-label={label}
-              data-testid={testId && `${testId}-panel`}
-              className={r.sheet.base}
-              style={{ paddingBottom: env.safeArea.bottom + 16 }}
-            >
-              <view aria-hidden className={r.grabber.base} />
-              <view className={r.header.base}>
-                <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>
-                {closeLabel !== undefined && (
-                  <button aria-label={closeLabel} onClick={() => open.set(false)} data-testid={testId && `${testId}-close`} className={r.close.base}>
-                    <Glyph name="close" className={r.close.icon} />
-                  </button>
-                )}
-              </view>
-              {panel(r.list.sheet)}
-            </dialog>
-          ) : (
-            <view id={panelId} popover aria-label={label} open={open.value} onToggle={open.set} data-testid={testId && `${testId}-panel`} className={r.popover.base}>
-              {panel(r.list.popover)}
+          <dialog
+            open={open.value}
+            onClose={() => open.set(false)}
+            closedby="any"
+            aria-label={label}
+            data-testid={testId && `${testId}-panel`}
+            className={r.sheet.base}
+            style={{ paddingBottom: env.safeArea.bottom + 16 }}
+          >
+            <view aria-hidden className={r.grabber.base} />
+            <view className={r.header.base}>
+              <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>
+              {closeLabel !== undefined && (
+                <button aria-label={closeLabel} onClick={() => open.set(false)} data-testid={testId && `${testId}-close`} className={r.close.base}>
+                  <Glyph name="close" className={r.close.icon} />
+                </button>
+              )}
             </view>
-          )}
+            <ComboboxPanel
+              label={label}
+              options={options}
+              current={current}
+              size={size}
+              searchLabel={searchLabel}
+              searchPlaceholder={searchPlaceholder}
+              emptyLabel={emptyLabel}
+              moreLabel={moreLabel}
+              onQueryChange={onQueryChange}
+              isLoading={isLoading}
+              listClass={r.list.sheet}
+              testId={testId}
+              onChoose={choose}
+            />
+          </dialog>
         </>
-      )}
+      ))}
     </Field>
   );
 }
