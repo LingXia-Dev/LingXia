@@ -1,4 +1,5 @@
 import { cx, useBox, useContext, useView, type Child } from '@lingxia/view';
+import { useDensity } from '../density';
 import { LayerContext } from '../internal/layer';
 import { tableRecipe as r } from './Table.recipe';
 
@@ -79,8 +80,10 @@ const track = (column: TableColumn) => (typeof column.width === 'number' ? `${co
 
 /** Records in rows and fields in columns, under headings that stay in view. */
 export function Table({
-  label, columns, rows, keyField, layout = 'auto', density = 'comfortable', maxHeight, isHeaderSticky = false, onRowClick, selectedKey, emptyLabel, className, 'data-testid': testId,
+  label, columns, rows, keyField, layout = 'auto', density: ownDensity, maxHeight, isHeaderSticky = false, onRowClick, selectedKey, emptyLabel, className, 'data-testid': testId,
 }: TableProps) {
+  const screenDensity = useDensity();
+  const density = ownDensity ?? screenDensity;
   const layer = useContext(LayerContext);
   const { env } = useView();
   const box = useBox('table');

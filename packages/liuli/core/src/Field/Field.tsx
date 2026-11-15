@@ -1,4 +1,5 @@
 import { cx, useId, type Child } from '@lingxia/view';
+import { useControlSize } from '../density';
 import { describedBy } from '../internal/describedBy';
 import { hasMessage, StatusRegion } from '../internal/StatusRegion';
 import { Tooltip } from '../Tooltip/Tooltip';
@@ -77,11 +78,12 @@ export function Field({
   info,
   isDisabled = false,
   disabledMessage,
-  size = 'md',
+  size: ownSize,
   children,
   className,
   'data-testid': testId,
 }: FieldProps) {
+  const size = useControlSize(ownSize);
   const id = useId();
   const helpId = `${id}-help`;
   const statusId = `${id}-status`;

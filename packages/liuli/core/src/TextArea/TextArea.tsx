@@ -1,4 +1,5 @@
 import { cx, type AutoComplete } from '@lingxia/view';
+import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import type { TextInputBinding } from '../TextInput/TextInput';
 import { textAreaRecipe as r } from './TextArea.recipe';
@@ -35,10 +36,11 @@ export type TextAreaProps = FieldOwnProps & TextInputBinding & {
 /** A labelled editor for several lines, growing with its text up to `maxRows`. */
 export function TextArea(props: TextAreaProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
     placeholder, rows = 3, inputMode, autoComplete, enterKeyHint, autoCapitalize, hasSpellCheck,
     hasAutoFocus = false, maxLength, hasCount = false, onSubmit, className, controlClassName, 'data-testid': testId,
   } = props;
+  const size = useControlSize(ownSize);
   // The View refuses maxRows below rows, so a tall `rows` lifts the default.
   const maxRows = Math.max(rows, props.maxRows ?? 8);
   // Counted as the editor counts it for `maxLength`.

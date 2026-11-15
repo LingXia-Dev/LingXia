@@ -1,4 +1,5 @@
 import { cx, type Local } from '@lingxia/view';
+import { useControlSize } from '../density';
 import { DropdownMenu, DropdownMenuCheckboxItem } from '../DropdownMenu/DropdownMenu';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { Glyph } from '../internal/Glyph';
@@ -46,9 +47,10 @@ export type MultiSelectProps = FieldOwnProps & MultiSelectBinding & {
 /** Several choices from a list, shown as tokens in the field, with Field\'s label, help text and status. */
 export function MultiSelect(props: MultiSelectProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
     options, placeholder, addLabel, removeLabel, className, 'data-testid': testId,
   } = props;
+  const size = useControlSize(ownSize);
   const chosen = props.bind ? props.bind.value : props.value;
   // Kept in the options' order, whatever order they were chosen in.
   const set = (next: readonly string[]) => {

@@ -1,4 +1,5 @@
 import { cx, useId, type Local } from '@lingxia/view';
+import { useControlSize } from '../density';
 import { CheckboxInput } from '../CheckboxInput/CheckboxInput';
 import type { FieldSize, FieldStatus } from '../Field/Field';
 import { fieldRecipe } from '../Field/Field.recipe';
@@ -57,9 +58,10 @@ export type CheckboxListProps = CheckboxListBinding & {
 /** Several on/off choices under one question, any number of which can be chosen. */
 export function CheckboxList(props: CheckboxListProps) {
   const {
-    label, isLabelHidden = false, description, status, isRequired = false, options, selectAllLabel, isDisabled = false, size = 'md',
+    label, isLabelHidden = false, description, status, isRequired = false, options, selectAllLabel, isDisabled = false, size: ownSize,
     className, 'data-testid': testId,
   } = props;
+  const size = useControlSize(ownSize);
   const id = useId();
   const [helpId, statusId] = [`${id}-help`, `${id}-status`];
   const chosen = props.bind ? props.bind.value : props.value;

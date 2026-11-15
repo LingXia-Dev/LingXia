@@ -260,7 +260,7 @@ export function Compact() {
 | `label` | `string` |  | Names the list for assistive input, when neither `title` nor a heading above it does. |
 | `title` | `string` |  | A heading over the list, in the quiet type of a settings group; it names the list. |
 | `description` | `string` |  | A line under the list that explains the group. |
-| `density` | `ItemDensity` | `'comfortable'` | The rows' height and padding; a row's own `density` wins. |
+| `density` | `ItemDensity` | `the screen's density, 'comfortable' unless a DensityProvider says otherwise` | The rows' height and padding; a row's own `density` wins. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
@@ -337,6 +337,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
+- Do: For a dense screen set `density` on the ItemList, or wrap the screen in a DensityProvider with `compact` so every list and table in it follows.
 - Do: Use `onClick` with `hasChevron` for a row that opens another page.
 - Do: Keep the label short and put detail in `description`.
 - Do: Group rows in an ItemList, so the rows are divided and read with their position.

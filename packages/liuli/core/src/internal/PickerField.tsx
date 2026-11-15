@@ -1,4 +1,5 @@
 import { cx, type Local } from '@lingxia/view';
+import { useControlSize } from '../density';
 import { Field, type FieldOwnProps, type FieldSize, type FieldStatusType } from '../Field/Field';
 import type { IconName } from '../Icon/Icon';
 import { Glyph } from './Glyph';
@@ -42,9 +43,10 @@ export type PickerFieldProps = FieldOwnProps & PickerBinding & {
 /** A Field around the View's date or time input, which opens the View's own picker. */
 export function PickerField(props: PickerFieldProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
     type, icon, recipe: r, placeholder, min, max, step, onSubmit, className, controlClassName, 'data-testid': testId,
   } = props;
+  const size = useControlSize(ownSize);
   const inputClass = cx(r.input.base, r.input.size[size]);
   return (
     <Field

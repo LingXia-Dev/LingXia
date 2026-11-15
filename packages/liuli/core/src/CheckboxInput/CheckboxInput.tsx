@@ -1,4 +1,5 @@
 import { cx, useId, type Local } from '@lingxia/view';
+import { useControlSize } from '../density';
 import type { FieldOwnProps } from '../Field/Field';
 import { fieldRecipe } from '../Field/Field.recipe';
 import { describedBy } from '../internal/describedBy';
@@ -36,9 +37,10 @@ export type CheckboxInputProps = FieldOwnProps & CheckboxInputBinding & {
  */
 export function CheckboxInput(props: CheckboxInputProps) {
   const {
-    label, isLabelHidden = false, description, status, isRequired = false, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden = false, description, status, isRequired = false, isDisabled = false, disabledMessage, size: ownSize,
     isIndeterminate = false, className, 'data-testid': testId,
   } = props;
+  const size = useControlSize(ownSize);
   const id = useId();
   const helpId = `${id}-help`;
   const statusId = `${id}-status`;

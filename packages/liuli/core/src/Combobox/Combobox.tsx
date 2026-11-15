@@ -1,4 +1,5 @@
 import { cx, reveal, useBox, useId, useLocal, useView, type Local } from '@lingxia/view';
+import { useControlSize } from '../density';
 import { Field, type FieldOwnProps, type FieldSize } from '../Field/Field';
 import { TextInput } from '../TextInput/TextInput';
 import { Glyph } from '../internal/Glyph';
@@ -287,10 +288,11 @@ function ComboboxTypeahead({
 /** One choice from a long list, found by typing: in the field itself with a keyboard, in a sheet with a finger. */
 export function Combobox(props: ComboboxProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
     options, placeholder, searchLabel, searchPlaceholder, emptyLabel, moreLabel, closeLabel, onQueryChange, isLoading = false,
     className, 'data-testid': testId,
   } = props;
+  const size = useControlSize(ownSize);
   const { env } = useView();
   // A finger gets a sheet with room for the keyboard; a mouse and keyboard type in the field itself.
   const isSheet = env.pointer === 'coarse';

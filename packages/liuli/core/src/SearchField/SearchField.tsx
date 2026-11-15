@@ -1,4 +1,5 @@
 import { cx, type Local } from '@lingxia/view';
+import { useControlSize } from '../density';
 import type { FieldSize } from '../Field/Field';
 import { TextInput } from '../TextInput/TextInput';
 import { spinner, spinnerBox } from '../internal/spinner';
@@ -51,8 +52,9 @@ export type SearchFieldProps = SearchFieldBinding & {
 export function SearchField(props: SearchFieldProps) {
   const {
     label, isLabelShown = false, placeholder, clearLabel, resultsLabel, isResultsLabelHidden = false, isLoading = false, onSubmit,
-    hasAutoFocus = false, size = 'md', isDisabled = false, className, 'data-testid': testId,
+    hasAutoFocus = false, size: ownSize, isDisabled = false, className, 'data-testid': testId,
   } = props;
+  const size = useControlSize(ownSize);
   const shared = {
     label,
     isLabelHidden: !isLabelShown,

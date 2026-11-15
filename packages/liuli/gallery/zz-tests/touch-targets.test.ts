@@ -59,3 +59,18 @@ for (const [page, testId, what] of drawnSmall) {
     expect(reach.height, 'reach, down').toBeGreaterThanOrEqual(minimum - 0.5);
   });
 }
+
+// Compact density tightens what is drawn, not what a finger reaches.
+spec('shape-and-spacing: a compact field and a compact row still reach a finger-sized target', {
+  id: 'TOUCH-TARGET-DENSITY-001', start: { page: 'shape-and-spacing' }, timeout: 60_000,
+  reason: 'touch targets apply to a real finger on a phone',
+}, async (t) => {
+  const view = t.app.view;
+  const minimum = await touchMinimum(t);
+  for (const id of ['compact-name', 'compact-row']) {
+    const control = view.testId(id);
+    await reveal(view, control);
+    const reach = await control.touchTarget();
+    expect(reach.height, `${id} reach`).toBeGreaterThanOrEqual(minimum - 0.5);
+  }
+});

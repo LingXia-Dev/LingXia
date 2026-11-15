@@ -1,4 +1,5 @@
 import { cx, type Local } from '@lingxia/view';
+import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { selectRecipe as r } from './Select.recipe';
 
@@ -39,9 +40,10 @@ export type SelectProps = FieldOwnProps & SelectBinding & {
 /** One choice from a list that opens on demand, with Field's label, help text and status. */
 export function Select(props: SelectProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
     options, placeholder, className, 'data-testid': testId,
   } = props;
+  const size = useControlSize(ownSize);
   const choices = options.map(option => ({ value: option.value, label: option.label, disabled: option.isDisabled }));
   const controlClass = cx(r.control.base, r.control.size[size], status && r.control.status[status.type]);
   return (

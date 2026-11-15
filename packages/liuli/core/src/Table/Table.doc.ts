@@ -54,6 +54,7 @@ export const doc: ComponentDoc = {
   },
   guidance: {
     do: [
+      'For a dense screen set `density`, or wrap the screen in a DensityProvider with `compact`.',
       'Show the few columns a person compares; put the rest on the page a row opens.',
       'Align numbers to the end edge and format them alike, with the same number of decimals.',
       'Give a narrow, fixed-content column (a date, a count) a width in points and let the text columns share the rest.',

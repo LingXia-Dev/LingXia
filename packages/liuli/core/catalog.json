@@ -8613,7 +8613,7 @@
             "type": "ItemDensity",
             "required": false,
             "description": "The rows' height and padding; a row's own `density` wins.",
-            "default": "'comfortable'"
+            "default": "the screen's density, 'comfortable' unless a DensityProvider says otherwise"
           },
           {
             "name": "className",

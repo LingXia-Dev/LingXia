@@ -1,4 +1,5 @@
 import { childrenToArray, createContext, cx, useContext, useId, useLocal, type Child } from '@lingxia/view';
+import { useDensity } from '../density';
 import type { IconName } from '../Icon/names';
 import { describedBy } from '../internal/describedBy';
 import { Glyph } from '../internal/Glyph';
@@ -76,7 +77,8 @@ const swipeActionWidth = 72;
 export function Item(props: ItemProps) {
   const { label, tone = 'default', description, startContent, startIcon, endContent, swipeActions, className, 'data-testid': testId } = props;
   const listDensity = useContext(ItemDensityContext);
-  const density = props.density ?? listDensity ?? 'comfortable';
+  const screenDensity = useDensity();
+  const density = props.density ?? listDensity ?? screenDensity;
   const layer = useContext(LayerContext);
   const baseId = useId();
   const open = useLocal('open', 0);
@@ -155,7 +157,7 @@ export interface ItemListProps {
   title?: string;
   /** A line under the list that explains the group. */
   description?: string;
-  /** The rows' height and padding; a row's own `density` wins. @default 'comfortable' */
+  /** The rows' height and padding; a row's own `density` wins. @default the screen's density, 'comfortable' unless a DensityProvider says otherwise */
   density?: ItemDensity;
   className?: string;
   'data-testid'?: string;

@@ -67,6 +67,7 @@ export const doc: ComponentDoc = {
   },
   guidance: {
     do: [
+      'For a dense screen set `density` on the ItemList, or wrap the screen in a DensityProvider with `compact` so every list and table in it follows.',
       'Use `onClick` with `hasChevron` for a row that opens another page.',
       'Keep the label short and put detail in `description`.',
       'Group rows in an ItemList, so the rows are divided and read with their position.',

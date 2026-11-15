@@ -1,4 +1,5 @@
 import { cx, useId, type AutoComplete, type Child, type Local } from '@lingxia/view';
+import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { describedBy } from '../internal/describedBy';
 import { Glyph } from '../internal/Glyph';
@@ -69,10 +70,11 @@ export type TextInputProps = FieldOwnProps & TextInputBinding & TextInputClear &
 /** A labelled one-line text editor. */
 export function TextInput(props: TextInputProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
     placeholder, type, inputMode, autoComplete, enterKeyHint, autoCapitalize, hasSpellCheck, hasAutoFocus = false, maxLength, isReadOnly = false, isLoading = false,
     startIcon, prefix, suffix, onSubmit, className, controlClassName, 'data-testid': testId,
   } = props;
+  const size = useControlSize(ownSize);
   const text = props.bind ? props.bind.value : props.value;
   // The platform search field draws its own magnifier at its own size and colour, so search is a
   // plain editor with Liuli's icon.

@@ -1,4 +1,5 @@
 import { cx, useId, type Local } from '@lingxia/view';
+import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { radioGroupRecipe as r } from './RadioGroup.recipe';
 
@@ -49,7 +50,8 @@ export type RadioGroupProps = FieldOwnProps & RadioGroupBinding & {
  * radio named by its label. One Tab stop: arrows move between options and choose on arrival.
  */
 export function RadioGroup(props: RadioGroupProps) {
-  const { options, variant = 'list', size = 'md', isDisabled = false, status, className, orientation = 'vertical', 'data-testid': testId } = props;
+  const { options, variant = 'list', size: ownSize, isDisabled = false, status, className, orientation = 'vertical', 'data-testid': testId } = props;
+  const size = useControlSize(ownSize);
   const id = useId();
   const chosen = props.bind ? props.bind.value : props.value;
   const choose = (value: string) => {

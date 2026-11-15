@@ -1,4 +1,5 @@
 import { cx, useId, useLocal, useView } from '@lingxia/view';
+import { useControlSize } from '../density';
 import { Calendar, type CalendarDate, type CalendarLocale, type CalendarRange } from '../Calendar/Calendar';
 import { comboboxRecipe as c } from '../Combobox/Combobox.recipe';
 import { Field, type FieldOwnProps } from '../Field/Field';
@@ -32,9 +33,10 @@ export type DateRangeInputProps = FieldOwnProps & {
 /** A span of days in a form: a field that opens a calendar and closes once both ends are chosen. */
 export function DateRangeInput(props: DateRangeInputProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
     range, onRangeChange, format, locale, today, placeholder, min, max, isDateDisabled, closeLabel, className, 'data-testid': testId,
   } = props;
+  const size = useControlSize(ownSize);
   const { env } = useView();
   // A finger gets a sheet; a mouse gets the calendar in a panel under the field.
   const isSheet = env.pointer === 'coarse';

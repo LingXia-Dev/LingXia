@@ -129,6 +129,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
+- Do: On a dense desktop screen wrap the form in a DensityProvider with `compact` (from `@liulidesign/core/density`): every control built on Field defaults to its small size, and one that sets `size` keeps it.
 - Do: Pass every prop Field hands the control on to the control element.
 - Do: Say what to fix in a status message, not only that something is wrong.
 - Don't: Use the placeholder as the label; it disappears as soon as someone types.

@@ -1,3 +1,7 @@
+import { DensityProvider } from '@liulidesign/core/density';
+import { Item, ItemList } from '@liulidesign/core/Item';
+import { Select } from '@liulidesign/core/Select';
+import { TextInput } from '@liulidesign/core/TextInput';
 import { PageSection, Stage, StageGrid } from '../shared/Layout';
 
 // Every number on this page is a token from tokens.css or Tailwind's 4-point step.
@@ -35,6 +39,22 @@ const rhythm = [
   { name: 'Label to its control', value: '8' },
   { name: 'Control to its help text', value: '6' },
 ];
+
+const roles = [{ value: 'editor', label: 'Editor' }, { value: 'viewer', label: 'Viewer' }];
+
+/** The same short form and list, for the density comparison; ids keep the two copies apart. */
+function Sample({ id }: { id: string }) {
+  return (
+    <view className="gap-4">
+      <TextInput label="Name" value="Ana Lima" onChange={() => {}} data-testid={`${id}-name`} />
+      <Select label="Role" value="editor" onChange={() => {}} options={roles} data-testid={`${id}-role`} />
+      <ItemList label="Members">
+        <Item label="Kai Chen" description="Editor" hasChevron onClick={() => {}} data-testid={`${id}-row`} />
+        <Item label="Mira Patel" description="Viewer" hasChevron onClick={() => {}} />
+      </ItemList>
+    </view>
+  );
+}
 
 export function Content() {
   return (
@@ -92,6 +112,16 @@ export function Content() {
             </view>
           </Stage>
         </StageGrid>
+      </PageSection>
+      <PageSection title="Density">
+        <Stage caption="Comfortable, the default: 40-point fields and roomy rows">
+          <Sample id="comfortable" />
+        </Stage>
+        <Stage caption="Compact, inside a DensityProvider: for dense desktop screens with a pointer, not a phone default. A control's label and value step down one size with it; row text does not change">
+          <DensityProvider value="compact">
+            <Sample id="compact" />
+          </DensityProvider>
+        </Stage>
       </PageSection>
       <PageSection title="Rhythm">
         <view className="rounded-container border border-text/12 bg-surface divide-y divide-text/8">

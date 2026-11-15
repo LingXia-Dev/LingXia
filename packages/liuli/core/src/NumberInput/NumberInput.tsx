@@ -1,4 +1,5 @@
 import { cx, useId, useLocal, type Local } from '@lingxia/view';
+import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { textInputRecipe as t } from '../TextInput/TextInput.recipe';
 import { describedBy } from '../internal/describedBy';
@@ -59,9 +60,10 @@ const decimalsOf = (value: number) => (String(value).split('.')[1] ?? '').length
 /** A number typed or nudged by steps, kept between a minimum and a maximum. */
 export function NumberInput(props: NumberInputProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
     min, max, step = 1, decrementLabel, incrementLabel, hasSteppers = true, prefix, suffix, placeholder, className, 'data-testid': testId,
   } = props;
+  const size = useControlSize(ownSize);
   const current = props.bind ? props.bind.value : props.value;
   const set = (value: number | null) => (props.bind ? props.bind.set(value) : props.onChange(value));
   // The text as typed, and the value it stood for. While they still match, the field shows the

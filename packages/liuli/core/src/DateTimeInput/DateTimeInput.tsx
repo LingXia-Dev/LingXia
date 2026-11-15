@@ -1,4 +1,5 @@
 import { cx, useLocal, type Local } from '@lingxia/view';
+import { useControlSize } from '../density';
 import { DateInput } from '../DateInput/DateInput';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { TimeInput } from '../TimeInput/TimeInput';
@@ -38,9 +39,10 @@ export type DateTimeInputProps = FieldOwnProps & DateTimeInputBinding & {
 /** A day and a time of day as one value, under one label. */
 export function DateTimeInput(props: DateTimeInputProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
     dateLabel, timeLabel, minDate, maxDate, timeStep, className, 'data-testid': testId,
   } = props;
+  const size = useControlSize(ownSize);
   const whole = props.bind ? props.bind.value : props.value;
   const [wholeDate = '', wholeTime = ''] = whole.split('T');
   // One part can be set before the other; the whole value exists only once both are.
