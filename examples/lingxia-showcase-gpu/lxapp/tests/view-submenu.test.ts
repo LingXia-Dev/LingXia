@@ -18,9 +18,14 @@ spec('a second menu opens beside the first, arrows open and close it, and a choi
   await view.testId('lab-submenu-inbox').press('ArrowLeft');
   await expect(folders).toBeHidden();
   await expect(menu).toBeVisible();
-  await expect(move).toBeFocused();
   await move.press('ArrowRight');
   await expect(folders).toBeVisible();
+  await expect(view.testId('lab-submenu-inbox')).toBeFocused();
+  // Opened from the keyboard, it hands focus back to the item that opened it.
+  await view.testId('lab-submenu-inbox').press('ArrowLeft');
+  await expect(folders).toBeHidden();
+  await expect(move).toBeFocused();
+  await move.press('ArrowRight');
   await expect(view.testId('lab-submenu-inbox')).toBeFocused();
   await view.testId('lab-submenu-inbox').press('ArrowDown');
   await expect(view.testId('lab-submenu-archive')).toBeFocused();
