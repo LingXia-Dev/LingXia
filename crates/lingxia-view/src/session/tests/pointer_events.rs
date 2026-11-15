@@ -212,6 +212,16 @@ fn an_element_with_a_value_is_a_keyboard_stop_that_arrows_and_assistive_input_st
         text(&host, "log"),
         "increment:keyboard increment:keyboard decrement:keyboard "
     );
+    // Assistive tech finds it as a slider at its value.
+    let tree = host
+        .automation_request(&serde_json::json!({"op": "tree"}))
+        .unwrap()
+        .to_string();
+    assert!(
+        tree.contains(r#""name":"Sales""#) && tree.contains(r#""role":"slider""#),
+        "{tree}"
+    );
+    assert!(tree.contains(r#""value":3.0"#), "{tree}");
     // A screen reader's adjust, as automation performs it.
     let act = |name: &str| {
         host.automation_request(&serde_json::json!({"op":"act","css":"[data-testid=\"pad\"]","action":{"kind":"action","name":name}}))

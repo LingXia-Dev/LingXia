@@ -196,6 +196,7 @@ pub fn meaningful(node: &NodeSnapshot) -> bool {
             || node.input.is_some()
             || matches!(node.tag, "image" | "video")
             || node.drag.is_some()
+            || steppable(node)
             || (node.tag == "plot"
                 && node
                     .accessibility_label
@@ -472,8 +473,8 @@ impl Projection<'_> {
             }
         } else if button {
             Role::Button
-        } else if node.drag.is_some() {
-            // Moved between its snap points, a drag element adjusts like a slider.
+        } else if node.drag.is_some() || steppable(node) {
+            // Moved between its snap points, or stepped through its values, it adjusts like a slider.
             Role::Slider
         } else if node.tag == "video" {
             Role::Video
