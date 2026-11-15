@@ -114,6 +114,8 @@
     "./PageControl/recipe": "./src/PageControl/PageControl.recipe.ts",
     "./Timer": "./src/Timer/Timer.tsx",
     "./Timer/recipe": "./src/Timer/Timer.recipe.ts",
+    "./Code": "./src/Code/Code.tsx",
+    "./Code/recipe": "./src/Code/Code.recipe.ts",
     "./Timestamp": "./src/Timestamp/Timestamp.tsx",
     "./Timestamp/recipe": "./src/Timestamp/Timestamp.recipe.ts",
     "./Timestamp/en": "./src/Timestamp/locale/en.ts",

@@ -879,6 +879,21 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "Code",
+    "page": "code",
+    "category": "content",
+    "summary": "Code as it was written, in a sentence or as a block",
+    "keywords": [
+      "code",
+      "code block",
+      "snippet",
+      "monospace",
+      "pre",
+      "terminal",
+      "command"
+    ]
+  },
+  {
     "name": "Timestamp",
     "page": "timestamp",
     "category": "content",
@@ -1156,7 +1171,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "rows",
     "description": "Cards, rows and tables",
     "page": "category-content",
-    "count": 14
+    "count": 15
   },
   {
     "id": "charts",

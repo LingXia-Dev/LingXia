@@ -70,6 +70,7 @@ import { Content as Section } from '../content/section';
 import { Content as Divider } from '../content/divider';
 import { Content as Kbd } from '../content/kbd';
 import { Content as Timer } from '../content/timer';
+import { Content as Code } from '../content/code';
 import { Content as Timestamp } from '../content/timestamp';
 import { Content as Stat } from '../content/stat';
 import { Content as Sparkline } from '../content/sparkline';
@@ -161,6 +162,7 @@ export const contents: Record<string, GalleryContent> = {
   "divider": Divider,
   "kbd": Kbd,
   "timer": Timer,
+  "code": Code,
   "timestamp": Timestamp,
   "stat": Stat,
   "sparkline": Sparkline,

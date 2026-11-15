@@ -79,6 +79,7 @@
     { "name": "divider", "path": "pages/divider/index" },
     { "name": "kbd", "path": "pages/kbd/index" },
     { "name": "timer", "path": "pages/timer/index" },
+    { "name": "code", "path": "pages/code/index" },
     { "name": "timestamp", "path": "pages/timestamp/index" },
     { "name": "stat", "path": "pages/stat/index" },
     { "name": "sparkline", "path": "pages/sparkline/index" },

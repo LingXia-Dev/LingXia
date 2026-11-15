@@ -12,6 +12,7 @@ import { Specimen as SectionSpecimen } from '../../core/src/Section/Section.exam
 import { Specimen as DividerSpecimen } from '../../core/src/Divider/Divider.examples';
 import { Specimen as KbdSpecimen } from '../../core/src/Kbd/Kbd.examples';
 import { Specimen as TimerSpecimen } from '../../core/src/Timer/Timer.examples';
+import { Specimen as CodeSpecimen } from '../../core/src/Code/Code.examples';
 import { Specimen as TimestampSpecimen } from '../../core/src/Timestamp/Timestamp.examples';
 import { Category, Tile } from '../shared/Layout';
 
@@ -19,7 +20,7 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Containers, rows and tables that hold what the app shows."}</text>
-      <Category title={"14 components"}>
+      <Category title={"15 components"}>
         <Tile
           name={"Card"}
           tagline={"Related content"}
@@ -125,8 +126,17 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           <TimerSpecimen />
         </Tile>
         <Tile
+          name={"Code"}
+          tagline={"Code, as written"}
+          onOpen={() => onOpen("code")}
+          testId={"open-code"}
+        >
+          <CodeSpecimen />
+        </Tile>
+        <Tile
           name={"Timestamp"}
           tagline={"When it happened"}
+          isWide
           onOpen={() => onOpen("timestamp")}
           testId={"open-timestamp"}
         >

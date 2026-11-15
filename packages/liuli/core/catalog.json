@@ -3131,6 +3131,159 @@
       }
     },
     {
+      "name": "Code",
+      "import": "@liulidesign/core/Code",
+      "exports": [
+        "Code",
+        "CodeBlock"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "Code as it was written, in a sentence or as a block",
+      "description": "Code is a run inside a sentence, in the fixed-width face on a tint: a file name, a key, a value to type exactly. CodeBlock keeps lines of code as they were written: it never wraps a line, it scrolls sideways, and it can carry a title and one action, usually copy. Neither colours the code by language.",
+      "keywords": [
+        "code",
+        "code block",
+        "snippet",
+        "monospace",
+        "pre",
+        "terminal",
+        "command"
+      ],
+      "props": [
+        {
+          "name": "code",
+          "type": "string",
+          "required": true,
+          "description": "The code, with its own line breaks and indentation."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Names the block for assistive tech: \"Shell command\", \"Example response\"."
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": "Shown over the code: a file name, a language."
+        },
+        {
+          "name": "action",
+          "type": "Child",
+          "required": false,
+          "description": "At the end of the title's line: a Button or IconButton that copies the code. The app does the copying."
+        },
+        {
+          "name": "isSelectable",
+          "type": "boolean",
+          "required": false,
+          "description": "Lets the code be selected.",
+          "default": "true"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "inline": "span",
+        "block": "view",
+        "header": "view",
+        "title": "text",
+        "scroll": "scroll",
+        "text": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "target": {},
+        "contrast": [
+          {
+            "what": "code on its tint",
+            "pair": [
+              "text",
+              "text/8"
+            ],
+            "over": "surface",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "title",
+            "pair": [
+              "text-muted",
+              "text/6"
+            ],
+            "over": "surface",
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "A block is a group named by `label`; its code is read as text, line by line.",
+          "The action is the app's own Button or IconButton, with its own name.",
+          "Inline code is read with its sentence; nothing announces the change of face."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Command",
+          "title": "A command to copy",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { CodeBlock } from '@liulidesign/core/Code';\n\nconst install = `npm install @liulidesign/core\nnpx lingxia dev --platform ios`;\n\n/** A command to copy: the title says what it is, and the app copies it. */\nexport function Command() {\n  const copied = useLocal('copied', false);\n  return (\n    <view className=\"gap-2\">\n      <CodeBlock\n        code={install}\n        label=\"Install commands\"\n        title=\"Terminal\"\n        action={<IconButton label=\"Copy the commands\" icon=\"copy\" size=\"sm\" variant=\"ghost\" onClick={() => copied.set(true)} data-testid=\"copy\" />}\n        data-testid=\"install\"\n      />\n      <text role=\"status\" className=\"text-footnote text-muted\">{copied.value ? 'Copied' : 'Not copied yet'}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Plain",
+          "title": "A block without a header",
+          "source": "import { CodeBlock } from '@liulidesign/core/Code';\n\nconst response = `{\n  \"id\": \"note_8f2c\",\n  \"title\": \"Trip to the coast\",\n  \"updatedAt\": \"2026-11-14T09:42:00Z\",\n  \"sharedWith\": [\"ana@example.com\", \"kai@example.com\"]\n}`;\n\n/** Without a header: an example response whose long line scrolls sideways. */\nexport function Plain() {\n  return <CodeBlock code={response} label=\"Example response\" data-testid=\"response\" />;\n}"
+        },
+        {
+          "name": "InSentence",
+          "title": "In a sentence",
+          "source": "import { Code } from '@liulidesign/core/Code';\n\n/** In a sentence: a file name and a value to type exactly. */\nexport function InSentence() {\n  return (\n    <text className=\"text-body text-text\">\n      Set <Code text=\"minRuntime\" data-testid=\"key\" /> in <Code text=\"lxapp.json\" /> to the oldest runtime you test on.\n    </text>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "No syntax colouring and no line numbers.",
+        "Copying is the app's: Liuli has no clipboard."
+      ],
+      "related": [
+        "Markdown",
+        "Kbd"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Code, as written",
+        "order": 14,
+        "page": {
+          "lead": "Use code for text that must be read or typed exactly.",
+          "hero": "Command",
+          "variants": [
+            {
+              "name": "Plain",
+              "title": "No header; long lines scroll sideways"
+            },
+            {
+              "name": "InSentence",
+              "title": "Code, inside a sentence"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Combobox",
       "import": "@liulidesign/core/Combobox",
       "exports": [
