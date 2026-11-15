@@ -6,7 +6,7 @@ use crate::scene::node::NodeSnapshot;
 use serde_json::{Value, json};
 
 /// Selector forms GPU pages answer; anything else is rejected by name.
-pub const SUPPORTED: &str = "tag names (button, a, input, textarea, img, h1-h6, ul, li, dialog, div, span), [data-testid=\"…\"], [data-*] and [data-*=\"…\"] (authored data-* props), [role=\"…\"], [aria-label=\"…\"], [placeholder=\"…\"], [type=\"…\"], [href], descendant chains of these (`A B`), comma lists of those";
+pub const SUPPORTED: &str = "tag names (button, a, input, textarea, img, h1-h6, ul, li, dialog, div, span), [data-testid=\"…\"], [data-*] and [data-*=\"…\"] (authored data-* props), [role=\"…\"], [aria-label=\"…\"], authored ARIA states ([aria-pressed=\"true\"], -selected, -expanded, -busy, -invalid, -required, -checked) and [aria-activedescendant], [placeholder=\"…\"], [type=\"…\"], [href], descendant chains of these (`A B`), comma lists of those";
 
 #[derive(Debug, PartialEq)]
 struct Simple {
@@ -51,6 +51,8 @@ fn simple(source: &str) -> Result<Simple, String> {
             name,
             "role" | "aria-label" | "placeholder" | "type" | "href"
         ) && !data_name(name)
+            && !ARIA_STATES.contains(&name)
+            && name != "aria-activedescendant"
         {
             return Err(unsupported(source));
         }
@@ -245,10 +247,16 @@ fn matches(simple: &Simple, element: &Virtual, node: &NodeSnapshot, name: &str) 
                     .as_ref()
                     .map(|input| input.placeholder.as_str())
                     .filter(|placeholder| !placeholder.is_empty()),
+                "aria-activedescendant" => node.active_descendant.as_deref(),
+                state if state.starts_with("aria-") => ARIA_STATES
+                    .iter()
+                    .position(|name| *name == state)
+                    .and_then(|at| node.states[at])
+                    .map(|state| if state { "true" } else { "false" }),
                 data => node
                     .data
                     .as_ref()
-                    .and_then(|map| map.get(&data[5..]))
+                    .and_then(|map| map.get(data.strip_prefix("data-")?))
                     .map(String::as_str),
             };
             match (actual, value) {
@@ -356,7 +364,18 @@ fn text_content(nodes: &[NodeSnapshot], index: usize) -> String {
     parts.join(" ")
 }
 
-/// The node's `data-testid` and authored `data-*` props, as DOM attributes.
+/// The authored ARIA states, in `NodeSnapshot::states` order.
+const ARIA_STATES: [&str; 7] = [
+    "aria-pressed",
+    "aria-selected",
+    "aria-expanded",
+    "aria-busy",
+    "aria-invalid",
+    "aria-required",
+    "aria-checked",
+];
+
+/// The node's `data-testid` and authored `data-*` and ARIA state props, as DOM attributes.
 fn attributes(node: &NodeSnapshot) -> Value {
     let mut out = serde_json::Map::new();
     if !node.test_id.is_empty() {
@@ -366,14 +385,13 @@ fn attributes(node: &NodeSnapshot) -> Value {
         out.insert(format!("data-{name}"), json!(value));
     }
     // Authored ARIA a WebView would show as attributes, so one assertion reads both renderers.
-    for (name, state) in [
-        ("aria-invalid", node.states[4]),
-        ("aria-checked", node.states[6]),
-        ("aria-required", node.states[5]),
-    ] {
+    for (name, state) in ARIA_STATES.iter().zip(node.states) {
         if let Some(state) = state {
-            out.insert(name.into(), json!(state.to_string()));
+            out.insert((*name).into(), json!(state.to_string()));
         }
+    }
+    if let Some(id) = &node.active_descendant {
+        out.insert("aria-activedescendant".into(), json!(id));
     }
     if !node.described_by.is_empty() {
         out.insert(
@@ -654,7 +672,7 @@ mod tests {
             ".card",
             "#main",
             "li:first-child",
-            "[aria-checked=true]",
+            "[aria-level=2]",
             "[data-State]",
             "*",
         ] {

@@ -548,6 +548,37 @@ fn a_match_reports_the_aria_states_a_screen_reader_announces() {
 }
 
 #[test]
+fn authored_aria_states_read_as_attributes_and_match_in_selectors() {
+    let i = interaction(
+        "h('view',{},h('button',{'data-testid':'bold','aria-pressed':true,'data-pressed':'no',onClick(){}},'B'),h('button',{'data-testid':'menu','aria-expanded':false,onClick(){}},'More'),h('button',{'data-testid':'tab',role:'tab','aria-selected':true,onClick(){}},'Week'),h('button',{'data-testid':'save','aria-busy':true,onClick(){}},'Save'),h('button',{'data-testid':'plain',onClick(){}},'Go'))",
+    );
+    let attribute = |id: &str, name: &str| {
+        i.automation_query(&format!("[data-testid=\"{id}\"]"), None, false, None)
+            .unwrap()["attributes"][name]
+            .as_str()
+            .map(str::to_owned)
+    };
+    assert_eq!(attribute("bold", "aria-pressed").as_deref(), Some("true"));
+    assert_eq!(attribute("menu", "aria-expanded").as_deref(), Some("false"));
+    assert_eq!(attribute("tab", "aria-selected").as_deref(), Some("true"));
+    assert_eq!(attribute("save", "aria-busy").as_deref(), Some("true"));
+    assert_eq!(attribute("plain", "aria-pressed"), None);
+    let found = |selector: &str| {
+        i.automation_query(selector, None, false, None).unwrap()["attributes"]["data-testid"]
+            .as_str()
+            .map(str::to_owned)
+    };
+    assert_eq!(found("[aria-pressed=\"true\"]").as_deref(), Some("bold"));
+    assert_eq!(
+        found("button[aria-expanded=\"false\"]").as_deref(),
+        Some("menu")
+    );
+    assert_eq!(found("[aria-busy]").as_deref(), Some("save"));
+    // An ARIA name never reads a data-* prop.
+    assert_eq!(found("[aria-pressed=\"no\"]"), None);
+}
+
+#[test]
 fn any_drag_element_reads_its_point_as_its_value_whatever_its_role() {
     // Two pages: an open modal sheet takes the rest of its page out of the accessibility tree.
     let panel = interaction(
