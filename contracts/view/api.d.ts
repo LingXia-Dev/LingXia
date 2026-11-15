@@ -167,6 +167,12 @@ export interface Video {
 }
 export declare function useVideo(name: string): Video;
 
+/** An element's laid-out content box, inside its padding and border, in points. */
+export interface BoxSize { readonly width: number; readonly height: number }
+/** The size of the element that takes this handle as `box`; `null` until its first layout, then one render behind a change. */
+export interface Box { readonly value: BoxSize | null }
+export declare function useBox(name: string): Box;
+
 export type LeaveReason = "back" | "home";
 export interface LeaveGuard {
   readonly pending: LeaveReason | null; readonly requests: number; readonly error: ResourceError | null;

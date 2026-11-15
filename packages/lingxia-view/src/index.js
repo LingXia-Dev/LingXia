@@ -9,3 +9,4 @@ export { createContext, useContext } from './runtime/context.js';
 export { measureFrames } from './runtime/frames.js';
 export { cx } from './runtime/cx.js';
 export { useVideo } from './runtime/video.js';
+export { useBox } from './runtime/box.js';

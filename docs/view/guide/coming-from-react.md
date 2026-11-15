@@ -121,6 +121,7 @@ The View has no `window`, `document`, `localStorage`, `fetch`, `XMLHttpRequest`,
 | `matchMedia('(prefers-color-scheme: dark)')` | `env.theme`, `dark:` |
 | `window.innerWidth`, media queries | `env.viewport`, `sm:`/`md:`/… |
 | `navigator.language`, `Intl` | `env.displayLanguage`; format in Logic |
+| an element's size (`getBoundingClientRect`, `ResizeObserver`) | `useBox(name)` and `box={box}`, or `onLayout` |
 | `element.scrollIntoView()` | a `<List>` `anchor` |
 | `user-select: text` by default | text is not selectable until `select-text` |
 | a selection across elements | selection stays within one `<text>` |

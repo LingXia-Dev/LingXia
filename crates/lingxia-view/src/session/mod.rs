@@ -64,6 +64,10 @@ pub struct ViewSession {
     retained: Option<Arc<crate::scene::retained::RetainedLayout>>,
     /// Bumped whenever a frame commits a different retained layout.
     layout_revision: u64,
+    /// The content size last reported to each `onLayout` element, by identity.
+    boxes: HashMap<String, [f32; 2]>,
+    /// Sizes that changed in the committed layout and wait for delivery.
+    boxes_due: Vec<(String, [f32; 2])>,
     /// The first commit of the current layout revision.
     /// The last commit the host presented: the frame the user saw.
     seen_commit: lifecycle::CommitTicket,
@@ -312,6 +316,8 @@ impl ViewSession {
             connected: false,
             retained: None,
             layout_revision: 0,
+            boxes: HashMap::new(),
+            boxes_due: Vec::new(),
             seen_commit: lifecycle::CommitTicket::new(0),
             layout_commit: lifecycle::CommitTicket::new(0),
             clicks: Vec::new(),

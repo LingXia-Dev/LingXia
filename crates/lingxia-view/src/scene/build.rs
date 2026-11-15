@@ -1320,6 +1320,17 @@ impl Renderer {
                         .and_then(|(_, value)| value.as_u64())
                         .filter(|handle| *handle != 0)
                 }),
+                on_layout: record
+                    .fields
+                    .iter()
+                    .find(|(field, _)| *field == field::ON_LAYOUT)
+                    .and_then(|(_, value)| value.as_u64())
+                    .filter(|handle| *handle != 0),
+                content_box: {
+                    let [left, top, width, height] = content_boxes[index];
+                    let (x, y) = origins[index];
+                    [left - x, top - y, width, height]
+                },
                 aria_actions: record
                     .string(field::ARIA_ACTIONS)
                     .map(|ids| ids.split(' ').map(str::to_owned).collect())

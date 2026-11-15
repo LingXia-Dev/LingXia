@@ -17,6 +17,7 @@ import { expand, invokerHandler, interestTrigger, popoverScope, dragClose, scrim
 import { recall, enter, leave, remember } from './memo.js';
 import { isProvider, provide } from './context.js';
 import { playerName, videoStatus, fullscreenHandler } from './video.js';
+import { boxBinding } from './box.js';
 import { shownInDialog } from './fullscreen.js';
 import { fieldText } from './calendar.js';
 
@@ -67,6 +68,7 @@ export const handlesIssued = () => nextHandle;
 /** Marks callbacks as issued without issuing one: a recalled subtree carries its own. */
 export const skipHandle = () => { nextHandle++; };
 const pointerCrossing = ['onPointerEnter', 'onPointerLeave'];
+const boxTags = new Set(['view', 'text', 'vector', 'plot', 'scroll']);
 const callbackOf = (callback, kind = 'void', isolated = false, press = undefined) => ({ callback, kind, isolated, press });
 
 const dataProp = /^data-[a-z][a-z0-9-]*$/;
@@ -436,6 +438,20 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     if (tag !== 'view' && tag !== 'button') throw Error(`UI_PROP: ${key} belongs to a <view> or <button>`);
     if (typeof props[key] !== 'function') throw Error(`UI_PROP: ${key} takes a function`);
     on(key, props[key]);
+  }
+  // The element's content box once laid out, and after each change; an older host never reports one.
+  if (props.onLayout !== undefined || props.box !== undefined) {
+    if (!boxTags.has(tag)) throw Error('UI_PROP: onLayout and box belong to a <view>, <text>, <vector>, <plot> or <scroll>');
+    const { onLayout } = props;
+    if (onLayout !== undefined && typeof onLayout !== 'function') throw Error('UI_PROP: onLayout takes a function');
+    const binding = props.box === undefined ? undefined : boxBinding(props.box);
+    if (props.box !== undefined && !binding) throw Error('UI_PROP: box takes the handle useBox(name) returns');
+    if (!dropped('onLayout')) on('onLayout', payload => {
+      const { width, height } = JSON.parse(payload);
+      const size = { width, height }, held = binding?.value;
+      if (binding && !(held && held.width === width && held.height === height)) binding.set(size);
+      onLayout?.(size);
+    }, 'text');
   }
   if (props['aria-actions'] !== undefined) {
     // The ids of the controls behind a swipe row: assistive tech offers them as the row's own actions.

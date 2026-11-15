@@ -5221,6 +5221,8 @@ fn close_request_case(reduced: bool, blur: bool) {
     }
 }
 
+#[path = "box_reading.rs"]
+mod box_reading;
 #[path = "orphan_overlays.rs"]
 mod orphan_overlays;
 

@@ -182,6 +182,60 @@ impl ViewSession {
         })
     }
 
+    /// Collects the `onLayout` elements whose content size differs from the one last reported.
+    pub(crate) fn note_boxes(&mut self) {
+        let Some(retained) = &self.retained else {
+            return;
+        };
+        // An eighth of a point: a re-render that nudges the size settles.
+        let size = |node: &crate::scene::node::NodeSnapshot| {
+            [node.content_box[2], node.content_box[3]].map(|v| (v * 8.0).round() / 8.0)
+        };
+        let observed: HashMap<&str, [f32; 2]> = retained
+            .nodes
+            .iter()
+            .filter(|node| node.on_layout.is_some())
+            .map(|node| (&*node.identity, size(node)))
+            .collect();
+        self.boxes
+            .retain(|identity, _| observed.contains_key(identity.as_str()));
+        self.boxes_due = observed
+            .into_iter()
+            .filter(|(identity, size)| self.boxes.get(*identity) != Some(size))
+            .map(|(identity, size)| (identity.to_owned(), size))
+            .collect();
+        self.boxes_due.sort_by(|a, b| a.0.cmp(&b.0));
+    }
+
+    pub(crate) fn boxes_due(&self) -> bool {
+        !self.boxes_due.is_empty()
+    }
+
+    /// Calls `onLayout` for each changed box, through the element's current callback; true when
+    /// one ran.
+    pub fn report_boxes(&mut self) -> Result<bool, String> {
+        let mut ran = false;
+        for (identity, size) in std::mem::take(&mut self.boxes_due) {
+            let handle = self
+                .retained
+                .as_ref()
+                .and_then(|retained| {
+                    retained
+                        .nodes
+                        .iter()
+                        .find(|node| *node.identity == *identity)
+                })
+                .and_then(|node| node.on_layout);
+            let Some(handle) = handle else {
+                continue;
+            };
+            self.boxes.insert(identity, size);
+            let payload = format!(r#"{{"width":{},"height":{}}}"#, size[0], size[1]);
+            ran |= self.text_event(self.generation, handle, &payload)?;
+        }
+        Ok(ran)
+    }
+
     /// A `drag` element's event. One a newer render overtook goes to the element's current
     /// handler: a flick released before its start's render lands must still end.
     pub fn drag_event(

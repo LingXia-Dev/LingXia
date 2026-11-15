@@ -53,6 +53,8 @@ export interface Screen {
   image(node: WireNode, outcome: "load" | "error"): void;
   /** A snapping `<scroll>` coming to rest on snap point `index`. */
   snap(node: WireNode, index: number): void;
+  /** Lays the node out at this content size: its `onLayout` and `useBox` handle take it. */
+  layout(node: WireNode, box: { width: number; height: number }): void;
   /** A `drag` element's gesture: `start`, `end` (`index`, `velocity`) or `settle` (`index`, `hidden`). */
   drag(node: WireNode, event: { phase: "start" | "end" | "settle"; index?: number; velocity?: number; hidden?: boolean }): void;
   /** `<video>` events (`{ type: "play" }`, …) with the player's status. */

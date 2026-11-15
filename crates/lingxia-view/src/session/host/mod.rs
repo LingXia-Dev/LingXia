@@ -367,6 +367,8 @@ struct Main<F> {
     chrome_generation: u64,
     /// `measureFrames` windows a View step asked for: `(token, milliseconds)`.
     frame_measures: Vec<(u64, u64)>,
+    /// The frame just prepared changed a box some `onLayout` reads.
+    boxes_due: bool,
     /// Queued activations whose result has not come back; automation waits for them.
     activating: u32,
     /// Automation `action`/`data` calls by id; `Some` once answered.
@@ -591,6 +593,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     hud: false,
                     chrome_generation: 0,
                     frame_measures: Vec::new(),
+                    boxes_due: false,
                     activating: 0,
                     automation_calls: Default::default(),
                     settle_after: Default::default(),

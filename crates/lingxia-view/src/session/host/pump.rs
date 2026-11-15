@@ -313,6 +313,9 @@ impl<A: PlatformAdapter> Inner<A> {
                 {
                     inner.main().frame_measures.extend(measures);
                 }
+                if session.boxes_due() {
+                    inner.main().boxes_due = true;
+                }
                 let prepared = prepared.map(|prepared| {
                     (
                         prepared,
@@ -327,6 +330,10 @@ impl<A: PlatformAdapter> Inner<A> {
                 let measures = std::mem::take(&mut inner.main().frame_measures);
                 for (token, ms) in measures {
                     inner.frame_measure(token, ms);
+                }
+                // After this frame: the page renders again only if a callback changed state.
+                if std::mem::take(&mut inner.main().boxes_due) {
+                    inner.activate(page, false, Box::new(|session| session.report_boxes()));
                 }
                 let (current, missed) = {
                     let mut main = inner.main();

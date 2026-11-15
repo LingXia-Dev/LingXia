@@ -40,6 +40,8 @@ Children: any elements and text. Renders as `column`.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onLayout` | `(box: BoxSize) => void` |  |
+| `box` | `Box` |  |
 | `aria-label` | `string` |  |
 | `popover` | `boolean \| "auto" \| "manual" \| "hint"` |  |
 | `open` | `boolean` |  |
@@ -68,6 +70,8 @@ Children: text, `<span>` and `<link>` runs.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onLayout` | `(box: BoxSize) => void` |  |
+| `box` | `Box` |  |
 | `aria-label` | `string` |  |
 
 ## `<button>`
@@ -96,6 +100,8 @@ Children: any elements and text. Not allowed inside a pressable control (`UI_BUT
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onLayout` | `(box: BoxSize) => void` |  |
+| `box` | `Box` |  |
 | `onReachStart` | `() => void` |  |
 | `onReachEnd` | `() => void` |  |
 | `bind` | `Local<number>` |  |
@@ -248,6 +254,8 @@ Children: none.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onLayout` | `(box: BoxSize) => void` |  |
+| `box` | `Box` |  |
 | `kind` | `"bar" \| "line" \| "pie"` | yes |
 | `values` | `readonly number[]` | yes |
 | `colors` | `readonly string[]` | yes |
@@ -267,6 +275,8 @@ Children: none.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onLayout` | `(box: BoxSize) => void` |  |
+| `box` | `Box` |  |
 | `paths` | `ReadonlyArray<VectorPath>` | yes |
 | `gradients` | `Readonly<Record<string, VectorGradient>>` |  |
 | `viewBox` | `readonly [number, number, number, number]` |  |

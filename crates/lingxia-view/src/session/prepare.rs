@@ -780,6 +780,7 @@ impl ViewSession {
                 }
                 if retained_changed {
                     self.retained_commit = self.generation;
+                    self.note_boxes();
                 }
                 if prepared_js {
                     self.uncollected.set(self.uncollected.get() + 1);

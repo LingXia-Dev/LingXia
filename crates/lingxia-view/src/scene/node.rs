@@ -143,6 +143,12 @@ pub struct NodeSnapshot {
     /// `onPointerEnter` and `onPointerLeave` handles: a fine pointer crossing the box.
     #[serde(skip)]
     pub on_pointer: [Option<u64>; 2],
+    /// `onLayout`'s handle: the element reports its content box.
+    #[serde(skip)]
+    pub on_layout: Option<u64>,
+    /// The content box, inside padding and border: its offset in `bounds`, then its size.
+    #[serde(skip)]
+    pub content_box: [f32; 4],
     /// A slider's `onPressChange` handle.
     #[serde(skip)]
     pub on_press: Option<u64>,

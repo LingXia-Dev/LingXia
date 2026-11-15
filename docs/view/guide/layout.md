@@ -165,3 +165,11 @@ time when its operands share a unit; `w-[calc(100%-2rem)]` mixes units and is re
 `grow`).
 
 Text follows the system font size. Prefer `min-h-*` over fixed heights for boxes that hold text.
+
+## Reading a laid-out size
+
+`const box = useBox('chart')` and `<view box={box}>` give render the element's content size (inside
+its padding and border, in points): `box.value` is `null` until the first layout, then
+`{ width, height }`, one render behind each change. `onLayout={({ width, height }) => …}` is the same
+report as a callback. Both work on `view`, `text`, `vector`, `plot` and `scroll`; in a Node test,
+`screen.layout(node, { width, height })` delivers a size.
