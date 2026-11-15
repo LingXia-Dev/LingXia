@@ -16399,6 +16399,164 @@
       }
     },
     {
+      "name": "Tour",
+      "import": "@liulidesign/core/Tour",
+      "exports": [
+        "Tour"
+      ],
+      "category": "overlays",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A few callouts, one at a time, each pointing at something",
+      "description": "Tour shows one callout at a time beside an element of the page: a title, a sentence or two, where the tour is, and buttons to go on, go back or skip. Each step names its target by `id`; the callout sits under, over or beside it and flips for room. The app holds which step is in view, so it can start, end and remember the tour. The page is not dimmed and stays usable: the callout points, it does not block.",
+      "keywords": [
+        "tour",
+        "onboarding",
+        "walkthrough",
+        "coach mark",
+        "guide",
+        "callout",
+        "spotlight"
+      ],
+      "props": [
+        {
+          "name": "steps",
+          "type": "readonly TourStep[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "step",
+          "type": "number | null",
+          "required": true,
+          "description": "The step in view, from 0, or null while the tour is not running. The app holds it."
+        },
+        {
+          "name": "onStepChange",
+          "type": "(step: number | null) => void",
+          "required": true,
+          "description": "Runs with the next step to show, and with null when the tour ends: finished, or skipped."
+        },
+        {
+          "name": "onFinish",
+          "type": "(() => void)",
+          "required": false,
+          "description": "Runs when the last step\\'s button is pressed, before the tour ends."
+        },
+        {
+          "name": "nextLabel",
+          "type": "string",
+          "required": true,
+          "description": "\"Next\"."
+        },
+        {
+          "name": "backLabel",
+          "type": "string",
+          "required": true,
+          "description": "\"Back\"."
+        },
+        {
+          "name": "skipLabel",
+          "type": "string",
+          "required": true,
+          "description": "\"Skip\": ends the tour from any step but the last."
+        },
+        {
+          "name": "doneLabel",
+          "type": "string",
+          "required": true,
+          "description": "\"Done\": on the last step."
+        },
+        {
+          "name": "stepLabel",
+          "type": "(step: number, count: number) => string",
+          "required": true,
+          "description": "Where the tour is, written by the app: `(step, count) => \\`${step + 1} of ${count}\\``."
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the callout."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "caret": "view",
+        "point": "view",
+        "callout": "view",
+        "title": "text",
+        "text": "text",
+        "footer": "view",
+        "count": "text",
+        "actions": "view",
+        "quiet": "Button"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Through the callout's buttons"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Presses the button"
+          }
+        ],
+        "target": {
+          "sm": 32
+        },
+        "contrast": [
+          {
+            "what": "callout text",
+            "pair": [
+              "surface",
+              "text"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The callout is a group named for what it points at and its title: \"The New note button: Start a note\".",
+          "It has no backdrop, so the page under it keeps its taps and its focus.",
+          "When the tour ends the callout closes and focus stays where the user left it; if it was on a callout button, move it to the control the tour started from."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Welcome",
+          "title": "Three steps",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { Tour, type TourStep } from '@liulidesign/core/Tour';\n\nconst steps: TourStep[] = [\n  { target: 'tour-new', targetLabel: 'The New note button', title: 'Start a note', text: 'A note opens ready to type, and saves as you go.' },\n  { target: 'tour-search', targetLabel: 'The search field', title: 'Find anything', text: 'Search reads every note, list and photo.' },\n  { target: 'tour-share', targetLabel: 'The Share button', title: 'Share what you choose', text: 'A note is private until you invite someone.', placement: 'top' },\n];\n\n/** Three things on a small screen, shown one at a time; the tour can be skipped or stepped back. */\nexport function Welcome() {\n  const step = useLocal<number | null>('step', null);\n  const query = useLocal('query', '');\n  return (\n    <view className=\"gap-4\">\n      <view className=\"flex-row items-center gap-2\">\n        <view id=\"tour-new\"><Button label=\"New note\" variant=\"primary\" startIcon=\"add\" /></view>\n        <view id=\"tour-search\" className=\"grow basis-0 min-w-0\">\n          <SearchField label=\"Search notes\" value={query.value} onChange={query.set} placeholder=\"Search\" clearLabel=\"Clear\" />\n        </view>\n      </view>\n      <view className=\"flex-row items-center justify-between gap-3\">\n        <text className=\"text-body text-text\">Trip to the coast</text>\n        <view id=\"tour-share\"><IconButton label=\"Share\" icon=\"share\" /></view>\n      </view>\n      <Button label=\"Show me around\" width=\"content\" onClick={() => step.set(0)} data-testid=\"tour-start\" />\n      <text role=\"status\" className=\"text-footnote text-muted\">{step.value === null ? 'Tour not running' : `On step ${step.value + 1}`}</text>\n      <Tour\n        steps={steps}\n        step={step.value}\n        onStepChange={next => step.set(next)}\n        nextLabel=\"Next\"\n        backLabel=\"Back\"\n        skipLabel=\"Skip\"\n        doneLabel=\"Done\"\n        stepLabel={(at, count) => `${at + 1} of ${count}`}\n        data-testid=\"tour\"\n      />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "The caret is anchored to the target and the callout hangs from the caret, because the View anchors one popover to an element.",
+        "The View keeps about 8 px between an anchor and its popover whatever the margin, so the caret's point is moved across that gap as a child.",
+        "A transform on a popover itself is ignored; the point inside the caret carries the turn and the move.",
+        "No dimmed backdrop with a cut-out around the target: the View has no mask.",
+        "A step does not wait for the user to do something; it moves on from its buttons.",
+        "Focus is not moved into the callout or back by the component."
+      ],
+      "related": [
+        "Popover",
+        "Tooltip",
+        "Banner"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Point things out",
+        "order": 10,
+        "page": {
+          "lead": "Use a tour to point out a few things the first time someone arrives.",
+          "hero": "Welcome"
+        }
+      }
+    },
+    {
       "name": "TreeList",
       "import": "@liulidesign/core/TreeList",
       "exports": [

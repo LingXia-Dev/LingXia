@@ -68,6 +68,7 @@ import { Content as Drawer } from '../content/drawer';
 import { Content as HoverCard } from '../content/hover-card';
 import { Content as ContextMenu } from '../content/context-menu';
 import { Content as CommandPalette } from '../content/command-palette';
+import { Content as Tour } from '../content/tour';
 import { Content as Card } from '../content/card';
 import { Content as Item } from '../content/item';
 import { Content as Details } from '../content/details';
@@ -173,6 +174,7 @@ export const contents: Record<string, GalleryContent> = {
   "hover-card": HoverCard,
   "context-menu": ContextMenu,
   "command-palette": CommandPalette,
+  "tour": Tour,
   "card": Card,
   "item": Item,
   "details": Details,

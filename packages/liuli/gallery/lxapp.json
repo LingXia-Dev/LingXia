@@ -77,6 +77,7 @@
     { "name": "hover-card", "path": "pages/hover-card/index" },
     { "name": "context-menu", "path": "pages/context-menu/index" },
     { "name": "command-palette", "path": "pages/command-palette/index" },
+    { "name": "tour", "path": "pages/tour/index" },
     { "name": "card", "path": "pages/card/index" },
     { "name": "item", "path": "pages/item/index" },
     { "name": "details", "path": "pages/details/index" },

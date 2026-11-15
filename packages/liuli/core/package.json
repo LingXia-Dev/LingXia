@@ -150,6 +150,8 @@
     "./Composer/recipe": "./src/Composer/Composer.recipe.ts",
     "./CommandPalette": "./src/CommandPalette/CommandPalette.tsx",
     "./CommandPalette/recipe": "./src/CommandPalette/CommandPalette.recipe.ts",
+    "./Tour": "./src/Tour/Tour.tsx",
+    "./Tour/recipe": "./src/Tour/Tour.recipe.ts",
     "./Link": "./src/Link/Link.tsx",
     "./Link/recipe": "./src/Link/Link.recipe.ts",
     "./Kbd": "./src/Kbd/Kbd.tsx",

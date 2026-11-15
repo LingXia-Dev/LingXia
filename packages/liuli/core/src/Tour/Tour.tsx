@@ -1,0 +1,101 @@
+import { cx, reveal, useId } from '@lingxia/view';
+import { Button } from '../Button/Button';
+import { tourRecipe as r } from './Tour.recipe';
+
+export type TourPlacement = 'bottom' | 'top' | 'end' | 'start';
+
+export interface TourStep {
+  /** The `id` of the element this step points at. */
+  target: string;
+  /** What the target is called, for assistive tech: "The New note button". */
+  targetLabel: string;
+  title: string;
+  /** One or two sentences. */
+  text: string;
+  /** Which side of the target the callout sits on; beside it, it flips for room. @default 'bottom' */
+  placement?: TourPlacement;
+}
+
+export interface TourProps {
+  steps: readonly TourStep[];
+  /** The step in view, from 0, or null while the tour is not running. The app holds it. */
+  step: number | null;
+  /** Runs with the next step to show, and with null when the tour ends: finished, or skipped. */
+  onStepChange: (step: number | null) => void;
+  /** Runs when the last step\'s button is pressed, before the tour ends. */
+  onFinish?: () => void;
+  /** "Next". */
+  nextLabel: string;
+  /** "Back". */
+  backLabel: string;
+  /** "Skip": ends the tour from any step but the last. */
+  skipLabel: string;
+  /** "Done": on the last step. */
+  doneLabel: string;
+  /** Where the tour is, written by the app: `(step, count) => \`${step + 1} of ${count}\``. */
+  stepLabel: (step: number, count: number) => string;
+  /** On the callout. */
+  'data-testid'?: string;
+}
+
+const areas = { bottom: 'bottom', top: 'top', end: 'inline-end', start: 'inline-start' } as const satisfies Record<TourPlacement, string>;
+
+/** A few callouts, one at a time, each pointing at something on the page. */
+export function Tour({ steps, step, onStepChange, onFinish, nextLabel, backLabel, skipLabel, doneLabel, stepLabel, 'data-testid': testId }: TourProps) {
+  const id = useId();
+  const at = step === null ? null : Math.min(Math.max(0, step), steps.length - 1);
+  const current = at === null ? undefined : steps[at];
+  const placement = current?.placement ?? 'bottom';
+  // The target is brought into view before its callout is shown beside it.
+  const go = (next: number | null) => { if (next !== null) reveal(steps[next].target); onStepChange(next); };
+  const isLast = at !== null && at === steps.length - 1;
+  return (
+    <>
+    <view
+      id={`${id}-caret`}
+      popover="manual"
+      aria-hidden
+      anchor={current?.target ?? steps[0]?.target}
+      open={current !== undefined}
+      data-testid={testId && `${testId}-caret`}
+      style={{ positionArea: areas[placement] }}
+      className={r.caret.base}
+    >
+      <view className={cx(r.caret.point, r.caret.offset[placement])} />
+    </view>
+    <view
+      id={id}
+      popover="manual"
+      // Anchored to the caret, not the target: an element anchors one popover, and the caret is the one that must stay on the target's centre.
+      anchor={`${id}-caret`}
+      open={current !== undefined}
+      onToggle={isOpen => { if (!isOpen) onStepChange(null); }}
+      role="group"
+      aria-label={current === undefined ? undefined : `${current.targetLabel}: ${current.title}`}
+      data-testid={testId}
+      style={{ positionArea: areas[placement] }}
+      className={cx(r.callout.base, r.callout.offset[placement])}
+    >
+      {current !== undefined && at !== null && (
+        <>
+          <text role="heading" headingLevel={2} className={r.title.base}>{current.title}</text>
+          <text className={r.text.base}>{current.text}</text>
+          <view className={r.footer.base}>
+            <text className={r.count.base}>{stepLabel(at, steps.length)}</text>
+            <view className={r.actions.base}>
+              {!isLast && <Button label={skipLabel} variant="ghost" size="sm" onClick={() => go(null)} className={r.quiet.base} data-testid={testId && `${testId}-skip`} />}
+              {at > 0 && <Button label={backLabel} variant="ghost" size="sm" onClick={() => go(at - 1)} className={r.quiet.base} data-testid={testId && `${testId}-back`} />}
+              <Button
+                label={isLast ? doneLabel : nextLabel}
+                size="sm"
+                onClick={() => { if (isLast) { onFinish?.(); go(null); } else go(at + 1); }}
+                data-testid={testId && `${testId}-next`}
+              />
+            </view>
+          </view>
+        </>
+      )}
+    </view>
+    </>
+  );
+}

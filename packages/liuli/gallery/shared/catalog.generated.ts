@@ -839,6 +839,21 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "Tour",
+    "page": "tour",
+    "category": "overlays",
+    "summary": "A few callouts, one at a time, each pointing at something",
+    "keywords": [
+      "tour",
+      "onboarding",
+      "walkthrough",
+      "coach mark",
+      "guide",
+      "callout",
+      "spotlight"
+    ]
+  },
+  {
     "name": "Card",
     "page": "card",
     "category": "content",
@@ -1350,7 +1365,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "layers",
     "description": "Dialogs, sheets and menus",
     "page": "category-overlays",
-    "count": 9
+    "count": 10
   },
   {
     "id": "content",

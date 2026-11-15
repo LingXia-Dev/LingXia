@@ -8,13 +8,14 @@ import { Specimen as DrawerSpecimen } from '../../core/src/Drawer/Drawer.example
 import { Specimen as HoverCardSpecimen } from '../../core/src/HoverCard/HoverCard.examples';
 import { Specimen as ContextMenuSpecimen } from '../../core/src/ContextMenu/ContextMenu.examples';
 import { Specimen as CommandPaletteSpecimen } from '../../core/src/CommandPalette/CommandPalette.examples';
+import { Specimen as TourSpecimen } from '../../core/src/Tour/Tour.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Surfaces that float over the page: dialogs, sheets, menus and popovers."}</text>
-      <Category title={"9 components"}>
+      <Category title={"10 components"}>
         <Tile
           name={"Dialog"}
           tagline={"A decision, on top"}
@@ -82,11 +83,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"CommandPalette"}
           tagline={"Find and run"}
-          isWide
           onOpen={() => onOpen("command-palette")}
           testId={"open-command-palette"}
         >
           <CommandPaletteSpecimen />
+        </Tile>
+        <Tile
+          name={"Tour"}
+          tagline={"Point things out"}
+          onOpen={() => onOpen("tour")}
+          testId={"open-tour"}
+        >
+          <TourSpecimen />
         </Tile>
       </Category>
     </>
