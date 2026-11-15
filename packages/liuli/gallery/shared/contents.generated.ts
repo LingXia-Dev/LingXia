@@ -33,6 +33,7 @@ import { Content as DateRangeInput } from '../content/date-range-input';
 import { Content as FormLayout } from '../content/form-layout';
 import { Content as DateTimeInput } from '../content/date-time-input';
 import { Content as FileInput } from '../content/file-input';
+import { Content as Composer } from '../content/composer';
 import { Content as CheckboxInput } from '../content/checkbox-input';
 import { Content as RadioGroup } from '../content/radio-group';
 import { Content as Switch } from '../content/switch';
@@ -66,6 +67,7 @@ import { Content as Popover } from '../content/popover';
 import { Content as Drawer } from '../content/drawer';
 import { Content as HoverCard } from '../content/hover-card';
 import { Content as ContextMenu } from '../content/context-menu';
+import { Content as CommandPalette } from '../content/command-palette';
 import { Content as Card } from '../content/card';
 import { Content as Item } from '../content/item';
 import { Content as Details } from '../content/details';
@@ -81,6 +83,7 @@ import { Content as Kbd } from '../content/kbd';
 import { Content as Timer } from '../content/timer';
 import { Content as Code } from '../content/code';
 import { Content as Timestamp } from '../content/timestamp';
+import { Content as MessageBubble } from '../content/message-bubble';
 import { Content as Stat } from '../content/stat';
 import { Content as Sparkline } from '../content/sparkline';
 import { Content as BarChart } from '../content/bar-chart';
@@ -135,6 +138,7 @@ export const contents: Record<string, GalleryContent> = {
   "form-layout": FormLayout,
   "date-time-input": DateTimeInput,
   "file-input": FileInput,
+  "composer": Composer,
   "checkbox-input": CheckboxInput,
   "radio-group": RadioGroup,
   "switch": Switch,
@@ -168,6 +172,7 @@ export const contents: Record<string, GalleryContent> = {
   "drawer": Drawer,
   "hover-card": HoverCard,
   "context-menu": ContextMenu,
+  "command-palette": CommandPalette,
   "card": Card,
   "item": Item,
   "details": Details,
@@ -183,6 +188,7 @@ export const contents: Record<string, GalleryContent> = {
   "timer": Timer,
   "code": Code,
   "timestamp": Timestamp,
+  "message-bubble": MessageBubble,
   "stat": Stat,
   "sparkline": Sparkline,
   "bar-chart": BarChart,

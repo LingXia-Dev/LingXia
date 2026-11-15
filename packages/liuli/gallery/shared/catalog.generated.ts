@@ -305,6 +305,20 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "Composer",
+    "page": "composer",
+    "category": "inputs",
+    "summary": "Where a message is written and sent",
+    "keywords": [
+      "composer",
+      "message input",
+      "chat input",
+      "reply",
+      "send",
+      "comment box"
+    ]
+  },
+  {
     "name": "CheckboxInput",
     "page": "checkbox-input",
     "category": "selection",
@@ -811,6 +825,20 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "CommandPalette",
+    "page": "command-palette",
+    "category": "overlays",
+    "summary": "Type to find a command or a place, and run it",
+    "keywords": [
+      "command palette",
+      "command menu",
+      "quick open",
+      "search",
+      "launcher",
+      "spotlight"
+    ]
+  },
+  {
     "name": "Card",
     "page": "card",
     "category": "content",
@@ -1035,6 +1063,20 @@ export const entries: GalleryEntry[] = [
       "relative time",
       "ago",
       "when"
+    ]
+  },
+  {
+    "name": "MessageBubble",
+    "page": "message-bubble",
+    "category": "content",
+    "summary": "One message of a conversation",
+    "keywords": [
+      "message",
+      "bubble",
+      "chat",
+      "conversation",
+      "comment",
+      "reply"
     ]
   },
   {
@@ -1276,7 +1318,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "text-input",
     "description": "Text, dates and amounts",
     "page": "category-inputs",
-    "count": 13
+    "count": 14
   },
   {
     "id": "selection",
@@ -1308,7 +1350,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "layers",
     "description": "Dialogs, sheets and menus",
     "page": "category-overlays",
-    "count": 8
+    "count": 9
   },
   {
     "id": "content",
@@ -1316,7 +1358,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "rows",
     "description": "Cards, rows and tables",
     "page": "category-content",
-    "count": 15
+    "count": 16
   },
   {
     "id": "charts",

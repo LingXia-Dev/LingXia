@@ -14,13 +14,14 @@ import { Specimen as KbdSpecimen } from '../../core/src/Kbd/Kbd.examples';
 import { Specimen as TimerSpecimen } from '../../core/src/Timer/Timer.examples';
 import { Specimen as CodeSpecimen } from '../../core/src/Code/Code.examples';
 import { Specimen as TimestampSpecimen } from '../../core/src/Timestamp/Timestamp.examples';
+import { Specimen as MessageBubbleSpecimen } from '../../core/src/MessageBubble/MessageBubble.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Containers, rows and tables that hold what the app shows."}</text>
-      <Category title={"15 components"}>
+      <Category title={"16 components"}>
         <Tile
           name={"Card"}
           tagline={"Related content"}
@@ -136,11 +137,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"Timestamp"}
           tagline={"When it happened"}
-          isWide
           onOpen={() => onOpen("timestamp")}
           testId={"open-timestamp"}
         >
           <TimestampSpecimen />
+        </Tile>
+        <Tile
+          name={"MessageBubble"}
+          tagline={"A message"}
+          onOpen={() => onOpen("message-bubble")}
+          testId={"open-message-bubble"}
+        >
+          <MessageBubbleSpecimen />
         </Tile>
       </Category>
     </>

@@ -12,13 +12,14 @@ import { Specimen as DateRangeInputSpecimen } from '../../core/src/DateRangeInpu
 import { Specimen as FormLayoutSpecimen } from '../../core/src/FormLayout/FormLayout.examples';
 import { Specimen as DateTimeInputSpecimen } from '../../core/src/DateTimeInput/DateTimeInput.examples';
 import { Specimen as FileInputSpecimen } from '../../core/src/FileInput/FileInput.examples';
+import { Specimen as ComposerSpecimen } from '../../core/src/Composer/Composer.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Fields a person types into or sets: text, dates, times and amounts."}</text>
-      <Category title={"13 components"}>
+      <Category title={"14 components"}>
         <Tile
           name={"TextInput"}
           tagline={"One line of text"}
@@ -118,11 +119,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"FileInput"}
           tagline={"Choose files"}
-          isWide
           onOpen={() => onOpen("file-input")}
           testId={"open-file-input"}
         >
           <FileInputSpecimen />
+        </Tile>
+        <Tile
+          name={"Composer"}
+          tagline={"Write and send"}
+          onOpen={() => onOpen("composer")}
+          testId={"open-composer"}
+        >
+          <ComposerSpecimen />
         </Tile>
       </Category>
     </>
