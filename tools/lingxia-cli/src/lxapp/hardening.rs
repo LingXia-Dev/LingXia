@@ -77,6 +77,11 @@ fn parse_javascript<'a>(
     Ok(parse_result.program)
 }
 
+/// Compress passes at most. Dead code goes one layer of references per pass, and without a limit
+/// of ours the minifier's debug build asserts past ten, so a deep unused chain in a bundle
+/// would panic a debug CLI. At the limit it stops with what is left, as its release build does.
+const COMPRESS_PASSES: u8 = 64;
+
 fn minify_javascript_with_source_type<'a>(
     allocator: &'a Allocator,
     path: &Path,
@@ -88,6 +93,7 @@ fn minify_javascript_with_source_type<'a>(
         compress: Some(CompressOptions {
             drop_console: true,
             drop_debugger: true,
+            max_iterations: Some(COMPRESS_PASSES),
             ..CompressOptions::smallest()
         }),
         mangle: Some(MangleOptions {
@@ -527,6 +533,26 @@ mod tests {
         assert!(!output.contains("verboseName"));
         assert!(!output.contains("console.log"));
         assert!(!output.contains('\n'));
+    }
+
+    // The View compiler stamps each component (`Name.__lxid = …`), so an unused one stays in the
+    // bundle with all it references, and each compress pass frees one layer of that chain.
+    #[test]
+    fn a_deep_chain_of_unused_stamped_components_is_removed_without_the_minifiers_pass_assertion() {
+        let chain: String = (0..20)
+            .map(|i| {
+                format!(
+                    "function L{i}(p) {{ return h(L{}, {{ a: p.a }}); }}\nL{i}.__lxid = \"m#L{i}\";\n",
+                    i + 1
+                )
+            })
+            .collect();
+        let source = format!(
+            "{chain}function L20() {{ return 'unreachable-marker'; }}\nL20.__lxid = \"m#L20\";\nfunction h(t, p) {{ return [t, p]; }}\nexport function render() {{ return 'kept-marker'; }}\n"
+        );
+        let output = harden_javascript_source(Path::new("page.mjs"), &source).unwrap();
+        assert!(output.contains("kept-marker"), "{output}");
+        assert!(!output.contains("unreachable-marker"), "{output}");
     }
 
     // The spread helper's lazy array initialization was recompressed to ||=,
