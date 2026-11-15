@@ -33,6 +33,11 @@ pub(crate) struct ListState {
     window: Request,
     anchor: Option<String>,
     next_anchor: Option<String>,
+    /// The viewport height and the offset of the end, as last laid out.
+    height: f32,
+    end: f32,
+    /// This frame resized an end-anchored list that rested at its end: it stays there.
+    held_at_end: bool,
 }
 
 pub(crate) type Lists = HashMap<String, ListState>;
@@ -228,6 +233,9 @@ pub(crate) fn reconcile(
                     },
                     anchor: None,
                     next_anchor: None,
+                    height: node.bounds[3],
+                    end: f32::INFINITY,
+                    held_at_end: false,
                 },
             );
         }
@@ -268,6 +276,22 @@ pub(crate) fn reconcile(
                 Some(duration) => glide = Some((encoded.clone(), to, duration as f32)),
                 None => target = to,
             }
+        }
+        // A keyboard, a rotation or a growing neighbour resized it: one that showed its end
+        // still does, and one the reader scrolled away from keeps its place.
+        let end = anchor_target(state, node, &serde_json::Value::from("end"))?;
+        if (state.height - node.bounds[3]).abs() > 0.01
+            && scroll.offset >= state.end - 1.0
+            && next_anchor
+                .as_deref()
+                .is_some_and(|anchor| anchors_end(anchor, count))
+        {
+            state.held_at_end = true;
+        }
+        state.height = node.bounds[3];
+        state.end = end;
+        if state.held_at_end && glide.is_none() {
+            target = end;
         }
         state.next_anchor = next_anchor;
         if let Some((key, to, duration_ms)) = glide {
@@ -323,5 +347,18 @@ pub(crate) fn reconcile(
 pub(crate) fn commit(lists: &mut Lists) {
     for state in lists.values_mut() {
         state.anchor.clone_from(&state.next_anchor);
+        state.held_at_end = false;
     }
+}
+
+/// Whether `anchor` aims at the end of a list of `count` rows: `"end"`, or its last row's bottom.
+fn anchors_end(anchor: &str, count: usize) -> bool {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(anchor) else {
+        return false;
+    };
+    value == "end"
+        || (value["align"] == "end"
+            && value["index"]
+                .as_u64()
+                .is_some_and(|index| index as usize + 1 == count))
 }

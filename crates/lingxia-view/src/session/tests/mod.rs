@@ -3,6 +3,7 @@ mod drag;
 mod flex_direction;
 mod host;
 mod images;
+mod list_end_resize;
 mod lowered;
 #[cfg(feature = "gpu")]
 mod video;

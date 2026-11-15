@@ -120,6 +120,10 @@ To keep a chat at its newest message, anchor the last index with `seq` set to th
 first example: each new message changes `seq` and moves the list once. Jumping far away does not render
 the rows in between.
 
+A list anchored to its end (`anchor="end"`, or its last row with `align: 'end'`) that is showing its end
+keeps showing it when its height changes: the keyboard opening, a rotation, a composer growing under it.
+One the reader has scrolled away from keeps its place.
+
 Automation reaches rows that are not drawn: a `data-testid` query finds an off-screen row of a `<List>` (the
 first 2000 rows) as attached and visible outside the viewport, as a WebView DOM does, and acting on it scrolls the list there from the rows'
 estimated heights. Its text and attributes are readable once it draws.
