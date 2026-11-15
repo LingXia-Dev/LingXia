@@ -157,6 +157,11 @@ export function render() {
 A disabled switch or checkbox that is on keeps its accent at reduced strength. To centre a composed switch's
 or checkbox's content, use `my-auto` or `self-center` on it, not `grow`: `grow` takes the free space first.
 
+A checkbox that stands for a set which is partly chosen takes `indeterminate`: it draws a dash, a
+screen reader hears "mixed", and `indeterminate:` styles it. A press calls `onChange(true)`; clear
+`indeterminate` yourself when the set becomes all or none. A `menuitemcheckbox` item says the same
+with `aria-checked="mixed"`.
+
 ## Radio
 
 `<radio options={[{ value, label, disabled?, 'data-testid'? }]}>` draws a group of 1–64 options. Values are

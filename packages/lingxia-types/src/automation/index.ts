@@ -630,6 +630,8 @@ export interface PageElement {
   rect: ElementRect;
   /** On a GPU page: the part of `rect` a finger reaches, past scroll clips and host bars; null when none. */
   visibleRect?: { left: number; top: number; width: number; height: number } | null;
+  /** On a GPU page: the box a finger reaches when nothing else lies under it. A control smaller than the platform's touch target is grown to it around its centre; the drawn box otherwise, and for a mouse. */
+  targetRect?: { left: number; top: number; width: number; height: number };
 }
 
 /** Returned when no element matches (single-element mode). */

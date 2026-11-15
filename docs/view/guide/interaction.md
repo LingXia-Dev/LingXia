@@ -42,6 +42,12 @@ export function render() {
 }
 ```
 
+A finger does not need to land inside a small control. A press that misses every box goes to the
+nearest control whose box, grown around its centre to the platform's touch target (44 pt on iOS and
+HarmonyOS, 48 dp on Android), reaches the point; a press inside another control's box always belongs
+to that control. A mouse gets no such growth. `touch-target-none` keeps a control to its own box.
+Automation reports the grown box as `targetRect`.
+
 ## Composed controls
 
 `<button>` and `<checkbox>` may contain layout, text, images and vectors. A button stacks its content

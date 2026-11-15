@@ -199,6 +199,9 @@ pub struct NodeSnapshot {
     pub on_click: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub checked: Option<bool>,
+    /// Partly checked (a checkbox's `indeterminate`, `aria-checked="mixed"`): announced as mixed.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub mixed: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub range: Option<crate::SliderSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]

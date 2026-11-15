@@ -39,6 +39,7 @@ function applies(rule, env) {
   if (direction && (env.direction ?? 'ltr') !== direction) return false;
   if (rule.when?.structure && !(env.structure ?? []).includes(rule.when.structure)) return false;
   if (rule.when?.checked && env.checked !== true) return false;
+  if (rule.when?.indeterminate && env.indeterminate !== true) return false;
   if (rule.when?.data) {
     const [name, value] = rule.when.data, own = env.data?.[name];
     if (own === undefined || (value !== undefined && own !== value)) return false;
@@ -152,7 +153,7 @@ export function resolveClasses(className, env = {}) {
   if (className === undefined) return undefined;
   if (typeof className !== 'string') throw Error('UI_CLASS: className must be a string');
   if (className.length > 16384) throw Error('UI_CLASS: className exceeds 16384 characters');
-  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ''}|${env.checked === true}`;
+  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ''}|${env.checked === true}|${env.indeterminate === true}`;
   // Keyed by environment too: sibling structure changes it node to node, so clearing on change thrashed.
   const key = `${environment}\u0000${className}`;
   if (cache.has(key)) return copy(cache.get(key));

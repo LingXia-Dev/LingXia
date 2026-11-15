@@ -297,6 +297,7 @@ fn touch_exploration_reaches_a_small_control_by_the_same_rule() {
         inert: false,
         drags: None,
         obscured: [0.0; 4],
+        touch_target: 44.0,
     };
     assert_eq!(semantics.hit([95.0, 110.0], IOS), ids.id(1), "the band");
     assert_ne!(
@@ -308,5 +309,26 @@ fn touch_exploration_reaches_a_small_control_by_the_same_rule() {
         semantics.hit([20.0, 310.0], IOS),
         ids.id(2),
         "text under the finger"
+    );
+    // Automation reports the box a finger reaches: the small button's grown to the minimum
+    // around its centre, text's its own.
+    let target = |index: usize| {
+        crate::semantics::query::describe(&semantics, index, 0, 1, None)["targetRect"].clone()
+    };
+    assert_eq!(
+        target(1),
+        serde_json::json!({"left": 88.0, "top": 88.0, "width": 44.0, "height": 44.0})
+    );
+    assert_eq!(
+        target(2),
+        serde_json::json!({"left": 16.0, "top": 300.0, "width": 100.0, "height": 20.0})
+    );
+    let mouse = Projection {
+        touch_target: 0.0,
+        ..semantics
+    };
+    assert_eq!(
+        crate::semantics::query::describe(&mouse, 1, 0, 1, None)["targetRect"],
+        serde_json::json!({"left": 100.0, "top": 100.0, "width": 20.0, "height": 20.0})
     );
 }

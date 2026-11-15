@@ -498,6 +498,7 @@ impl ViewInteraction {
                 .frame
                 .as_deref()
                 .map(|frame| self.scroll.obscured(frame))?,
+            touch_target: self.touch_target,
         })
     }
 

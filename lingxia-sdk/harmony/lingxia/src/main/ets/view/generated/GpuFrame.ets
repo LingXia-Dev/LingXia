@@ -205,6 +205,7 @@ export interface GpuFrameNode {
   scroll?: GpuFrameScroll | null;
   on_click?: number | null;
   checked?: boolean | null;
+  mixed?: boolean | null;
   range?: GpuFrameSlider | null;
   plot?: GpuFramePlot | null;
   radio_group?: string | null;
@@ -371,6 +372,7 @@ export interface GpuFrameSemanticNode {
   clickable: boolean;
   focused: boolean;
   checked?: boolean | null;
+  mixed?: boolean | null;
   scrollable: boolean;
   range?: GpuFrameSemanticRange | null;
   text_field?: GpuFrameTextField | null;
@@ -515,6 +517,7 @@ export interface GpuFrameAutomationElement {
   value_truncated?: boolean | null;
   rect?: GpuFrameAutomationRect | null;
   visibleRect?: GpuFrameAutomationArea | null;
+  targetRect?: GpuFrameAutomationArea | null;
   attributes?: Object | null;
 }
 
@@ -660,6 +663,7 @@ export interface GpuFrameAutomationTreeNode {
   focused?: boolean | null;
   offscreen?: boolean | null;
   checked?: boolean | null;
+  mixed?: boolean | null;
   pressed?: boolean | null;
   selected?: boolean | null;
   expanded?: boolean | null;

@@ -196,7 +196,7 @@ function nodeStyle(tag, props, data, extra, inherited, direction, structure, eve
     if (seeded?.env === environment) for (const [key, style] of seeded.entries) lowered.set(key, style);
   }
   // An inherited line height may be a multiplier object; it keys by value, not as "[object Object]".
-  const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${checkedSwitch(tag, props)}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}`;
+  const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${checkedSwitch(tag, props)}\u0000${mixedCheckbox(tag, props)}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}`;
   let style = lowered.get(key);
   if (!style) {
     style = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure);
@@ -225,10 +225,12 @@ const videoBacking = { backgroundColor: '#000000' };
 
 // `checked:` before a switch part follows the switch's own value.
 const checkedSwitch = (tag, props) => tag === 'switch' && props.value === true;
+// `indeterminate:` follows a checkbox's own mixed state.
+const mixedCheckbox = (tag, props) => tag === 'checkbox' && props.indeterminate === true;
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
 function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every) {
-  const env = { ...loweringEnv(envOf(render.view)), direction, structure, data, checked: checkedSwitch(tag, props) };
+  const env = { ...loweringEnv(envOf(render.view)), direction, structure, data, checked: checkedSwitch(tag, props), indeterminate: mixedCheckbox(tag, props) };
   const classes = resolveClasses(props.className, env);
   // A run takes the size of `text-sm` but not the line height paired with it.
   if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
@@ -511,7 +513,12 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (props.value !== undefined && typeof props.value !== 'boolean') throw Error('UI_CHECK: value must be boolean');
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
       wire('checked', +(props.value ?? false));
-      if (props.onChange && !disabled) { const { onChange, value } = props; on('onCheckedChange', () => onChange(!(value ?? false))); }
+      if (props.indeterminate !== undefined) {
+        if (tag !== 'checkbox' || typeof props.indeterminate !== 'boolean') throw Error('UI_CHECK: indeterminate is a boolean on a <checkbox>');
+        if (props.indeterminate) wire('mixed', 1);
+      }
+      // A press on a mixed checkbox checks it, as in the DOM; the page clears `indeterminate`.
+      if (props.onChange && !disabled) { const { onChange, value, indeterminate } = props; on('onCheckedChange', () => onChange(indeterminate === true || !(value ?? false))); }
       break;
     case 'slider':
       check.slider(props);
@@ -853,6 +860,12 @@ function semantics(tag, props, wire) {
     for (const [name, value] of Object.entries(state)) {
       if (!has(semanticStates, name)) throw Error(`UI_PROP: accessibilityState.${name}; known: ${Object.keys(semanticStates).join(', ')}`);
       if (value === undefined) continue;
+      // Partly checked: announced as mixed, on a checkbox item only.
+      if (name === 'checked' && value === 'mixed') {
+        if (role !== 'menuitemcheckbox') throw Error('UI_PROP: aria-checked="mixed" goes on role="menuitemcheckbox"; a <checkbox> takes indeterminate');
+        wire(semanticStates[name], 0); wire('mixed', 1);
+        continue;
+      }
       if (typeof value !== 'boolean') throw Error(`UI_PROP: aria-${name} must be boolean`);
       if (name === 'checked' && !checkedRoles.has(role)) throw Error('UI_PROP: aria-checked goes on role="radio", "menuitemcheckbox" or "menuitemradio"; a checkbox has its own checked');
       wire(semanticStates[name], +value);

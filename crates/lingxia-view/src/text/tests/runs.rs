@@ -105,6 +105,7 @@ fn wrapped_links_hit_only_their_line_pieces_and_project_as_links() {
         inert: false,
         drags: None,
         obscured: [0.0; 4],
+        touch_target: 0.0,
     };
     let index = frame.nodes.iter().position(|n| n.test_id == "l").unwrap();
     let semantic = projection.node(ids.id(index).unwrap()).unwrap();

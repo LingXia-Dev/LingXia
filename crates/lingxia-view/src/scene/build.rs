@@ -927,6 +927,7 @@ impl Renderer {
                 && !(record.tag == tag::CHECKBOX && button_hashes.contains_key(&index))
             {
                 let checked = record.number(field::CHECKED) == Some(1.0);
+                let mixed = record.number(field::MIXED) == Some(1.0);
                 let enabled = record.number(field::ENABLED) != Some(0.0)
                     && record.parent.is_none_or(|p| {
                         records[p].tag != tag::RADIO
@@ -1004,11 +1005,19 @@ impl Renderer {
                     let cx = x + layout.padding.left;
                     commands.push(Paint::Rect {
                         corners: None,
-                        color: if checked { accent } else { neutral },
+                        color: if checked || mixed { accent } else { neutral },
                         bounds: [cx, cy - 12.0, 24.0, 24.0],
                         radius: 5.0,
                     });
-                    if checked {
+                    if mixed {
+                        // Partly checked: a dash in the check mark's ink.
+                        commands.push(Paint::Stroke {
+                            round: true,
+                            color: palette.role(Role::OnAccent),
+                            points: vec![[cx + 7.0, cy], [cx + 17.0, cy]],
+                            width: 2.5,
+                        });
+                    } else if checked {
                         commands.push(Paint::Stroke {
                             round: true,
                             color: palette.role(Role::OnAccent),
@@ -1510,6 +1519,7 @@ impl Renderer {
                 identity: identity.into(),
                 checked: matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION)
                     .then(|| record.number(field::CHECKED) == Some(1.0)),
+                mixed: record.number(field::MIXED) == Some(1.0),
                 range,
                 input: matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH).then(|| {
                     let mut input = InputSnapshot {

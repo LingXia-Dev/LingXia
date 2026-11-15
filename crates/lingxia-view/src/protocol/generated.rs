@@ -287,6 +287,7 @@ pub mod field {
     pub const KEY_MAP: usize = 250;
     pub const ON_KEY_DOWN: usize = 251;
     pub const ARIA_ACTIVE_DESCENDANT: usize = 252;
+    pub const MIXED: usize = 253;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video"];
@@ -546,6 +547,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("keyMap", "key-map"),
     ("onKeyDown", "input-handle"),
     ("ariaActiveDescendant", "element-id"),
+    ("mixed", "flag"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -760,7 +762,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON, tag::LINK]), parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::RADIO_OPTION, tag::SEARCH, tag::SLIDER, tag::SELECT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::RADIO_OPTION, tag::SEARCH, tag::SLIDER, tag::SELECT, tag::LINK]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
     FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
@@ -1004,4 +1006,5 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::BUTTON, tag::COLUMN]), parent: None },
 ];

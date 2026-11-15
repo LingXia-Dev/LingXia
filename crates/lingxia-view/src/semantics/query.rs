@@ -390,6 +390,9 @@ fn attributes(node: &NodeSnapshot) -> Value {
             out.insert((*name).into(), json!(state.to_string()));
         }
     }
+    if node.mixed {
+        out.insert("aria-checked".into(), json!("mixed"));
+    }
     if let Some(id) = &node.active_descendant {
         out.insert("aria-activedescendant".into(), json!(id));
     }
@@ -486,7 +489,11 @@ pub fn describe(
         "editable": input.is_some_and(|i| i.enabled),
         "focused": semantic.as_ref().is_some_and(|s| s.focused),
         // The states `aria-*` sets, as the semantics tree reads them; null where the element has none.
-        "checked": node.checked.or(node.states[6]),
+        "checked": if node.mixed {
+            json!("mixed")
+        } else {
+            json!(node.checked.or(node.states[6]))
+        },
         "pressed": node.states[0],
         "selected": node.states[1],
         "expanded": node.states[2],
@@ -503,7 +510,28 @@ pub fn describe(
             "viewport_width": viewport[0], "viewport_height": viewport[1],
         },
         "visibleRect": visible_rect,
+        "targetRect": target_rect(node, projection.touch_target),
     })
+}
+
+/// The box a finger reaches when nothing else lies under it: a pressable smaller than the
+/// platform's touch target is grown to it around its centre. The drawn box otherwise.
+fn target_rect(node: &NodeSnapshot, minimum: f32) -> Value {
+    let [x, y, width, height] = node.bounds;
+    let grows =
+        minimum > 0.0 && !node.touch_target_none && crate::interaction::frame::hit_target(node);
+    let grow = |start: f32, size: f32| {
+        let to = if grows { size.max(minimum) } else { size };
+        (start - (to - size) / 2.0, to)
+    };
+    // A text run's line pieces keep their own widths.
+    let (left, width) = if node.hit_rects.is_empty() {
+        grow(x, width)
+    } else {
+        (x, width)
+    };
+    let (top, height) = grow(y, height);
+    json!({ "left": left, "top": top, "width": width, "height": height })
 }
 
 /// The accessibility tree a screen reader walks, in reading order: role, name,
@@ -543,6 +571,7 @@ pub fn tree(projection: &Projection) -> Value {
             ("disabled", !node.enabled),
             ("focused", node.focused),
             ("offscreen", !node.visible),
+            ("mixed", node.mixed),
         ] {
             if flag {
                 out.insert(key.into(), json!(true));

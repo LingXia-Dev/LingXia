@@ -29,6 +29,7 @@ fn semantic(frame: &PresentedFrame, test_id: &str) -> Option<SemanticNode> {
         inert: false,
         drags: None,
         obscured: [0.0; 4],
+        touch_target: 0.0,
     }
     .node(ids.id(index)?)
 }

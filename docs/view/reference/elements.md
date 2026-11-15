@@ -31,7 +31,7 @@ Styles each element accepts are in [styles.md](styles.md).
 | `"aria-busy"` | `boolean` |  |
 | `"aria-invalid"` | `boolean` | A field's error and required states; the error text belongs in `aria-describedby`. |
 | `"aria-required"` | `boolean` |  |
-| `"aria-checked"` | `boolean` | Checked state of a `radio`, `menuitemcheckbox` or `menuitemradio` item. |
+| `"aria-checked"` | `boolean \| "mixed"` | Checked state of a `radio`, `menuitemcheckbox` or `menuitemradio` item; `"mixed"` on a `menuitemcheckbox` that is partly checked. |
 | `"aria-level"` | `number` | A `treeitem`'s depth, 1..32; Left and Right walk between levels. |
 | `"aria-describedby"` | `string` | Ids of elements (1..8, space-separated) whose text is read after the name, as a hint or error. |
 
@@ -205,6 +205,7 @@ Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChan
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `indeterminate` | `boolean` |  |
 | `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
 

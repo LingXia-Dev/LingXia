@@ -147,6 +147,7 @@ fn every_kind_and_way_to_act_has_one_decided_answer() {
             inert: false,
             drags: None,
             obscured: [0.0; 4],
+            touch_target: 0.0,
         };
         let semantic = semantics.node(ids.id(0).unwrap()).unwrap();
         let got = (

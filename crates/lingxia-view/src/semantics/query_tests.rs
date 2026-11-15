@@ -579,6 +579,48 @@ fn authored_aria_states_read_as_attributes_and_match_in_selectors() {
 }
 
 #[test]
+fn a_disabled_link_renders_takes_no_press_and_reads_unavailable() {
+    let i = interaction(
+        "h('view',{},h('text',{},'Read the ',h('link',{'data-testid':'off',disabled:true,onClick(){}},'terms'),' and the ',h('link',{'data-testid':'on',onClick(){}},'policy')))",
+    );
+    let read = |id: &str| {
+        i.automation_query(&format!("[data-testid=\"{id}\"]"), None, false, None)
+            .unwrap()
+    };
+    assert_eq!(read("off")["exists"], true);
+    assert_eq!(read("off")["enabled"], false);
+    assert_eq!(read("on")["enabled"], true);
+}
+
+#[test]
+fn a_partly_checked_checkbox_reads_mixed_and_a_press_checks_it() {
+    let mut i = interaction(
+        "h('view',{},h('checkbox',{'data-testid':'all',value:false,indeterminate:true,onChange(){},'aria-label':'All'}),h('checkbox',{'data-testid':'one',value:true,onChange(){},'aria-label':'One'}),h('button',{'data-testid':'item',role:'menuitemcheckbox','aria-checked':'mixed',onClick(){}},'Columns'))",
+    );
+    let read = |i: &ViewInteraction, id: &str| {
+        i.automation_query(&format!("[data-testid=\"{id}\"]"), None, false, None)
+            .unwrap()
+    };
+    assert_eq!(read(&i, "all")["checked"], "mixed");
+    assert_eq!(read(&i, "all")["attributes"]["aria-checked"], "mixed");
+    assert_eq!(read(&i, "one")["checked"], true);
+    assert_eq!(read(&i, "item")["checked"], "mixed");
+    // The tree a screen reader walks says so too.
+    let tree = i.automation_tree().unwrap().to_string();
+    assert_eq!(tree.matches("\"mixed\":true").count(), 2, "{tree}");
+    // A press is a press: the page hears a change and decides what the box becomes.
+    i.automate(
+        "[data-testid=\"all\"]",
+        None,
+        AutomationAct::Click,
+        false,
+        PageTicket::new(1),
+    )
+    .unwrap();
+    assert_eq!(i.take_dispatch().len(), 1);
+}
+
+#[test]
 fn any_drag_element_reads_its_point_as_its_value_whatever_its_role() {
     // Two pages: an open modal sheet takes the rest of its page out of the accessibility tree.
     let panel = interaction(

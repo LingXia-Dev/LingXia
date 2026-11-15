@@ -16,6 +16,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `only:` | any element |
 | `odd:` | any element |
 | `even:` | any element |
+| `indeterminate:` | any element |
 | `empty:` | any element |
 | `focus-within:` | any element; while it or a descendant has focus; paint only |
 | `hover:` | any element, while a mouse, stylus or trackpad is over it; paint only |
@@ -72,7 +73,6 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `open:` | `open:` | selector :is([open], :popover-open, :open) |
 | `default:` | `default:` | selector :default |
 | `checked:` | `checked:` | selector :checked |
-| `indeterminate:` | `indeterminate:` | selector :indeterminate |
 | `placeholder-shown:` | `placeholder-shown:` | selector :placeholder-shown |
 | `autofill:` | `autofill:` | selector :autofill |
 | `optional:` | `optional:` | selector :optional |

@@ -934,7 +934,10 @@ function selectorParts(selector) {
   const structures = { ':first-child': 'first', ':last-child': 'last', ':only-child': 'only', ':nth-child(odd)': 'odd', ':nth-child(even)': 'even', ':empty': 'empty' };
   for (const [pseudo, kind] of Object.entries(structures))
     if (remaining.startsWith(pseudo) && !structure) { structure = kind; remaining = remaining.slice(pseudo.length); }
-  const extra = { ...(structure ? { structure } : {}), ...(data ? { data } : {}) };
+  // `indeterminate:` follows a checkbox's own mixed state, resolved at render.
+  let indeterminate = false;
+  if (remaining.startsWith(':indeterminate')) { indeterminate = true; remaining = remaining.slice(':indeterminate'.length); }
+  const extra = { ...(structure ? { structure } : {}), ...(data ? { data } : {}), ...(indeterminate ? { indeterminate: true } : {}) };
   if (has && remaining) return { name, error: `selector ${rest} (has-* and focus-within: stand alone, without another state variant)` };
   if (has) return { name, state: has, ...extra };
   // `exit:` is LingXia's presence variant: the values a removed element leaves toward.
@@ -1035,7 +1038,7 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
       if (hoverMedia && target.state !== 'hover') unsupported('(hover: hover) outside a hover variant');
       if (target.part && (starting || media.reducedMotion !== undefined)) unsupported(`${target.part}: with starting: or motion-*`);
       const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.part ? { part: target.part } : {}), ...(target.checked ? { checked: true } : {}), ...(target.children ? { children: true } : {}), ...(target.every ? { every: true } : {}),
-        ...(target.direction ? { direction: target.direction } : {}), ...(target.structure ? { structure: target.structure } : {}), ...(target.data ? { data: target.data } : {}) };
+        ...(target.direction ? { direction: target.direction } : {}), ...(target.structure ? { structure: target.structure } : {}), ...(target.data ? { data: target.data } : {}), ...(target.indeterminate ? { indeterminate: true } : {}) };
       const lower = vars => {
         const result = declarations(rule.nodes, vars, root);
         if (!Object.keys(result.style).length && Object.keys(result).length === 1) unsupported(inert(name));

@@ -219,6 +219,7 @@ public struct GpuFrameNode: Decodable, Sendable {
     public let scroll: GpuFrameScroll?
     public let onClick: UInt64?
     public let checked: Bool?
+    public let mixed: Bool?
     public let range: GpuFrameSlider?
     public let plot: GpuFramePlot?
     public let radioGroup: String?
@@ -255,6 +256,7 @@ public struct GpuFrameNode: Decodable, Sendable {
         case scroll = "scroll"
         case onClick = "on_click"
         case checked = "checked"
+        case mixed = "mixed"
         case range = "range"
         case plot = "plot"
         case radioGroup = "radio_group"
@@ -540,6 +542,7 @@ public struct GpuFrameSemanticNode: Decodable, Sendable {
     public let clickable: Bool
     public let focused: Bool
     public let checked: Bool?
+    public let mixed: Bool?
     public let scrollable: Bool
     public let range: GpuFrameSemanticRange?
     public let textField: GpuFrameTextField?
@@ -574,6 +577,7 @@ public struct GpuFrameSemanticNode: Decodable, Sendable {
         case clickable = "clickable"
         case focused = "focused"
         case checked = "checked"
+        case mixed = "mixed"
         case scrollable = "scrollable"
         case range = "range"
         case textField = "text_field"
@@ -803,6 +807,7 @@ public struct GpuFrameAutomationElement: Decodable, Sendable {
     public let valueTruncated: Bool?
     public let rect: GpuFrameAutomationRect?
     public let visibleRect: GpuFrameAutomationArea?
+    public let targetRect: GpuFrameAutomationArea?
     public let attributes: GpuJSON?
 
     enum CodingKeys: String, CodingKey {
@@ -833,6 +838,7 @@ public struct GpuFrameAutomationElement: Decodable, Sendable {
         case valueTruncated = "value_truncated"
         case rect = "rect"
         case visibleRect = "visibleRect"
+        case targetRect = "targetRect"
         case attributes = "attributes"
     }
 }
@@ -1099,6 +1105,7 @@ public struct GpuFrameAutomationTreeNode: Decodable, Sendable {
     public let focused: Bool?
     public let offscreen: Bool?
     public let checked: Bool?
+    public let mixed: Bool?
     public let pressed: Bool?
     public let selected: Bool?
     public let expanded: Bool?
@@ -1120,6 +1127,7 @@ public struct GpuFrameAutomationTreeNode: Decodable, Sendable {
         case focused = "focused"
         case offscreen = "offscreen"
         case checked = "checked"
+        case mixed = "mixed"
         case pressed = "pressed"
         case selected = "selected"
         case expanded = "expanded"

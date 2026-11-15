@@ -294,6 +294,12 @@ export interface Locator {
   getAttribute(name: string): Promise<string | null>;
   /** The single visible match's box in page CSS pixels, as `viewport()` measures; rejects unless exactly one is visible. */
   boundingBox(): Promise<{ x: number; y: number; width: number; height: number }>;
+  /**
+   * The box a finger reaches when nothing else lies under it. On a GPU page a control smaller
+   * than the platform's touch target (44 pt, 48 dp on Android) is grown to it around its
+   * centre; otherwise, with a mouse and on a WebView page, this is `boundingBox()`.
+   */
+  touchTarget(): Promise<{ x: number; y: number; width: number; height: number }>;
 }
 
 /** A value that crosses the eval boundary unchanged. */

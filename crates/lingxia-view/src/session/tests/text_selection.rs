@@ -102,6 +102,7 @@ fn selectable_text_projects_selection_actions() {
         inert: false,
         drags: None,
         obscured: [0.0; 4],
+        touch_target: 0.0,
     }
     .node(ids.id(0).unwrap())
     .unwrap();

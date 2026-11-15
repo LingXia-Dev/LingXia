@@ -138,6 +138,8 @@ pub struct SemanticNode {
     pub clickable: bool,
     pub focused: bool,
     pub checked: Option<bool>,
+    /// Partly checked: assistive tech hears mixed.
+    pub mixed: bool,
     pub scrollable: bool,
     pub range: Option<Range>,
     pub text_field: Option<TextField>,
@@ -232,6 +234,8 @@ pub struct Projection<'a> {
     /// Host chrome, system bars and the keyboard over the root's edges (top, right, bottom,
     /// left): what lies under them is outside the viewport.
     pub obscured: [f32; 4],
+    /// The smallest box a finger press reaches, logical pixels; 0 for a fine pointer.
+    pub touch_target: f32,
 }
 
 impl Projection<'_> {
@@ -753,6 +757,7 @@ impl Projection<'_> {
             clickable,
             focused,
             checked: node.checked.or(node.states[6]),
+            mixed: node.mixed,
             scrollable: node
                 .scroll
                 .as_ref()

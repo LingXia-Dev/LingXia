@@ -236,6 +236,8 @@ public final class GpuFrame {
         public Long onClick() { if (json.isNull("on_click")) return null; return json.optLong("on_click"); }
         /** `checked`: bool? */
         public Boolean checked() { if (json.isNull("checked")) return null; return json.optBoolean("checked"); }
+        /** `mixed`: bool? */
+        public Boolean mixed() { if (json.isNull("mixed")) return null; return json.optBoolean("mixed"); }
         /** `range`: Slider? */
         public Slider range() { JSONObject o = json.optJSONObject("range"); return o == null ? null : new Slider(o); }
         /** `plot`: Plot? */
@@ -532,6 +534,8 @@ public final class GpuFrame {
         public boolean focused() { return json.optBoolean("focused"); }
         /** `checked`: bool? */
         public Boolean checked() { if (json.isNull("checked")) return null; return json.optBoolean("checked"); }
+        /** `mixed`: bool? */
+        public Boolean mixed() { if (json.isNull("mixed")) return null; return json.optBoolean("mixed"); }
         /** `scrollable`: bool */
         public boolean scrollable() { return json.optBoolean("scrollable"); }
         /** `range`: SemanticRange? */
@@ -815,6 +819,8 @@ public final class GpuFrame {
         public AutomationRect rect() { JSONObject o = json.optJSONObject("rect"); return o == null ? null : new AutomationRect(o); }
         /** `visibleRect`: AutomationArea? */
         public AutomationArea visibleRect() { JSONObject o = json.optJSONObject("visibleRect"); return o == null ? null : new AutomationArea(o); }
+        /** `targetRect`: AutomationArea? */
+        public AutomationArea targetRect() { JSONObject o = json.optJSONObject("targetRect"); return o == null ? null : new AutomationArea(o); }
         /** `attributes`: any? */
         public Object attributes() { return json.isNull("attributes") ? null : json.opt("attributes"); }
     }
@@ -1066,6 +1072,8 @@ public final class GpuFrame {
         public Boolean offscreen() { if (json.isNull("offscreen")) return null; return json.optBoolean("offscreen"); }
         /** `checked`: bool? */
         public Boolean checked() { if (json.isNull("checked")) return null; return json.optBoolean("checked"); }
+        /** `mixed`: bool? */
+        public Boolean mixed() { if (json.isNull("mixed")) return null; return json.optBoolean("mixed"); }
         /** `pressed`: bool? */
         public Boolean pressed() { if (json.isNull("pressed")) return null; return json.optBoolean("pressed"); }
         /** `selected`: bool? */

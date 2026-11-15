@@ -39,8 +39,8 @@ export interface Props {
   "aria-pressed"?: boolean; "aria-selected"?: boolean; "aria-expanded"?: boolean; "aria-busy"?: boolean;
   /** A field's error and required states; the error text belongs in `aria-describedby`. */
   "aria-invalid"?: boolean; "aria-required"?: boolean;
-  /** Checked state of a `radio`, `menuitemcheckbox` or `menuitemradio` item. */
-  "aria-checked"?: boolean;
+  /** Checked state of a `radio`, `menuitemcheckbox` or `menuitemradio` item; `"mixed"` on a `menuitemcheckbox` that is partly checked. */
+  "aria-checked"?: boolean | "mixed";
   /** A `treeitem`'s depth, 1..32; Left and Right walk between levels. */
   "aria-level"?: number;
   /** Ids of elements (1..8, space-separated) whose text is read after the name, as a hint or error. */

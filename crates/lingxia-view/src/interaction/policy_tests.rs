@@ -57,6 +57,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         scroll: None,
         on_click: None,
         checked: None,
+        mixed: false,
         range: None,
         plot: None,
         radio_group: None,
@@ -464,6 +465,7 @@ fn radio_groups_take_one_tab_stop_and_arrows_wrap_inside_the_group() {
         inert: false,
         drags: None,
         obscured: [0.0; 4],
+        touch_target: 0.0,
     };
     let group = semantics.node(ids.id(0).unwrap()).unwrap();
     assert_eq!(
@@ -519,6 +521,7 @@ fn projection_exposes_roles_ranges_masked_text_and_only_enabled_actions() {
         inert: false,
         drags: None,
         obscured: [0.0; 4],
+        touch_target: 0.0,
     };
     let seek = semantics.node(ids.id(0).unwrap()).unwrap();
     assert_eq!(
@@ -549,6 +552,7 @@ fn projection_exposes_roles_ranges_masked_text_and_only_enabled_actions() {
         inert: false,
         drags: None,
         obscured: [0.0; 4],
+        touch_target: 0.0,
     };
     let inert = semantics.node(ids.id(0).unwrap()).unwrap();
     assert!(!inert.enabled && !inert.actions.contains(&Action::SetProgress));

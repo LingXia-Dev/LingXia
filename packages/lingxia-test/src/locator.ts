@@ -47,7 +47,8 @@ export interface QueryMatch {
   /** Holds keyboard focus (`document.activeElement` on a WebView page). */
   focused?: boolean;
   /** A checkbox, radio or `aria-checked` state; null when the element has none. */
-  checked?: boolean | null;
+  /** `"mixed"`: partly checked (a GPU page's `indeterminate` checkbox). */
+  checked?: boolean | "mixed" | null;
   /** `aria-pressed`; null when absent. */
   pressed?: boolean | null;
   /** An `<option>`'s or `aria-selected` state; null when the element has none. */
@@ -68,6 +69,8 @@ export interface QueryMatch {
   };
   /** On a GPU page: the part of `rect` a finger reaches, past scroll clips and host bars; null when none. */
   visibleRect?: { left: number; top: number; width: number; height: number } | null;
+  /** On a GPU page: the box a finger reaches when nothing else lies under it. */
+  targetRect?: { left: number; top: number; width: number; height: number };
   items?: QueryMatch[];
 }
 
@@ -121,13 +124,15 @@ export interface LocatorResolve {
   enabled?: boolean;
   editable?: boolean;
   focused?: boolean;
-  checked?: boolean | null;
+  /** `"mixed"`: partly checked (a GPU page's `indeterminate` checkbox). */
+  checked?: boolean | "mixed" | null;
   pressed?: boolean | null;
   selected?: boolean | null;
   expanded?: boolean | null;
   busy?: boolean | null;
   rect?: QueryMatch["rect"];
   visibleRect?: QueryMatch["visibleRect"];
+  targetRect?: QueryMatch["targetRect"];
   renderer?: "gpu";
   /** Attribute values read for the single match, by name (`null`: absent). */
   attributes?: Record<string, string | null>;
@@ -422,6 +427,15 @@ export class PageLocator implements Locator {
     });
   }
 
+  touchTarget(): Promise<{ x: number; y: number; width: number; height: number }> {
+    return this.read("touchTarget", async () => {
+      const resolved = await this.single("touchTarget");
+      const rect = resolved.targetRect ?? resolved.rect;
+      if (!rect) throw new Error(`touchTarget(): ${this.target()} is not visible`);
+      return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+    });
+  }
+
   /** A traced one-shot read. */
   private read<T>(verb: string, op: () => Promise<T>): Promise<T> {
     return this.record(`page.${verb}`, this.target(), op);
@@ -512,6 +526,7 @@ export class PageLocator implements Locator {
         enabled: unique.enabled, editable: unique.editable, focused: unique.focused, rect: unique.rect,
         ...states(unique),
         ...(unique.visibleRect !== undefined ? { visibleRect: unique.visibleRect } : {}),
+        ...(unique.targetRect ? { targetRect: unique.targetRect } : {}),
         ...(unique.renderer ? { renderer: unique.renderer } : {}),
         kind: "unique",
       };
