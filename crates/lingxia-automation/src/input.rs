@@ -412,7 +412,17 @@ impl JSPageKey {
     }
 
     #[js_method]
-    async fn press(&self, ctx: JSContext, o: KeyPress) -> JSResult<JSValue> {
+    async fn press(&self, ctx: JSContext, o: JSValue) -> JSResult<JSValue> {
+        // A bare key name is the options object with only `key`.
+        let o = if o.is_string() {
+            KeyPress {
+                key: o.to_rust::<String>()?,
+                modifiers: None,
+                window: None,
+            }
+        } else {
+            o.to_rust::<KeyPress>()?
+        };
         let modifiers = keyboard_modifiers(&o.modifiers)?;
         if let Some(app) = self.gpu_app() {
             require_host_context(&ctx)?;

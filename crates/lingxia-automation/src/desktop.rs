@@ -759,8 +759,19 @@ impl JSDesktopKey {
 
     /// Press a named key with optional `ctrl | shift | alt | meta` modifiers.
     #[js_method]
-    async fn press(&self, ctx: JSContext, o: DesktopKeyPress) -> JSResult<JSValue> {
+    async fn press(&self, ctx: JSContext, o: JSValue) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
+        // A bare key name is the options object with only `key`.
+        let o = if o.is_string() {
+            DesktopKeyPress {
+                key: o.to_rust::<String>()?,
+                modifiers: None,
+                window: None,
+                pid: None,
+            }
+        } else {
+            o.to_rust::<DesktopKeyPress>()?
+        };
         let mods = modifiers(&o.modifiers)?;
         let ack = blocking(move || {
             let target = input_target(o.pid, o.window)?;

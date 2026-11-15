@@ -2430,7 +2430,8 @@ export interface KeyPressOptions extends WindowRef {
  */
 export interface PageKey {
   type(options: KeyTypeOptions): Promise<InputResult>;
-  press(options: KeyPressOptions): Promise<InputResult>;
+  /** A bare key name is `{ key }`. */
+  press(options: KeyPressOptions | string): Promise<InputResult>;
 }
 
 // ======================= desktop (host) =======================
@@ -2665,7 +2666,8 @@ export interface DesktopKeyNameOptions extends DesktopInputTarget {
 export interface DesktopKey {
   /** Type literal text into the focused control. */
   type(options: DesktopKeyTypeOptions): Promise<DesktopAck>;
-  press(options: DesktopKeyPressOptions): Promise<DesktopAck>;
+  /** A bare key name is `{ key }`. */
+  press(options: DesktopKeyPressOptions | string): Promise<DesktopAck>;
   down(options: DesktopKeyNameOptions): Promise<DesktopAck>;
   up(options: DesktopKeyNameOptions): Promise<DesktopAck>;
 }

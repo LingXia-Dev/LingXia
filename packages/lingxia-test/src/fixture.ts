@@ -86,7 +86,7 @@ import {
   MAX_EVAL_BUDGET_MS,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
-import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, PageDriver, PageInfo, PageTarget } from "@lingxia/types/automation";
+import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, PageDriver, PageInfo, PageKey, PageTarget } from "@lingxia/types/automation";
 
 export { TimeoutError };
 
@@ -1142,7 +1142,15 @@ export class LiveFixture implements Fixture {
       view: this.wrapView(() => driver().page, undefined),
       window: {
         get pointer() { return input.pointer; },
-        get key() { return input.key; },
+        // A bare key name is `{ key }`, also on a host whose binding predates it.
+        get key() {
+          const key = input.key;
+          const wrapped: PageKey = {
+            type: (options) => key.type(options),
+            press: (options) => key.press(typeof options === "string" ? { key: options } : options),
+          };
+          return wrapped;
+        },
         orient: (orientation) => this.act("window.orient", orientation, () =>
           driver().page.gesture.orientWindow({ orientation })),
       },

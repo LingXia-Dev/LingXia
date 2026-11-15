@@ -298,16 +298,21 @@ test("each entry exports only its own job", async () => {
 test("native input belongs to the app window and keeps its receiver", async () => {
   const world = createWorld();
   const input = [];
-  world.app.page.key = { async type(options) { assert.equal(this, world.app.page.key); input.push(options); } };
+  world.app.page.key = {
+    async type(options) { assert.equal(this, world.app.page.key); input.push(options); },
+    async press(options) { assert.equal(this, world.app.page.key); input.push(options); },
+  };
   installFakeHost(world);
   spec("window input", { forensics: false }, async (t) => {
     const key = t.app.window.key;
     assert.equal(t.app.view.page, undefined);
     await t.app.page();
     await key.type({ text: "hello" });
+    await key.press("ArrowDown");
+    await key.press({ key: "Tab", modifiers: ["shift"] });
   });
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
-  assert.deepEqual(input, [{ text: "hello" }]);
+  assert.deepEqual(input, [{ text: "hello" }, { key: "ArrowDown" }, { key: "Tab", modifiers: ["shift"] }]);
   assert.ok(report.cases[0].steps.some((step) => step.name === "window.key.type"));
 });
