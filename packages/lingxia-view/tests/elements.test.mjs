@@ -532,3 +532,10 @@ test('data-testid names a node for automation; the old testId prop is refused', 
 test('page code reaches the list element only through <List>', () => {
   throwsOn(() => h('list', { count: 0, row: () => null }), /UI_TAG: <list> is not an element; use <List> from @lingxia\/view/);
 });
+
+test('a list takes an accessible name', () => {
+  const nodes = decode(prepare(() => h('page', {}, h(listTag, { count: 2, height: () => 40, 'aria-label': 'Messages', 'data-testid': 'thread', row: i => h('text', {}, `row ${i}`) })), { env: {} }));
+  commit();
+  assert.equal(nodes.find(node => node.testId === 'thread').props.accessibilityLabel, 'Messages');
+  throwsOn(() => h('page', {}, h(listTag, { count: 0, row: () => null, 'aria-label': '' })), /UI_PROP/);
+});

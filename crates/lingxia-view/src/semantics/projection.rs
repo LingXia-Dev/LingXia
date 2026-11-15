@@ -499,6 +499,9 @@ impl Projection<'_> {
                 | Role::Slider
                 | Role::RadioGroup
                 | Role::List
+                // A named `<List>` keeps its scrolling role and says its name.
+                | Role::ScrollView
+                | Role::HorizontalScrollView
                 | Role::Dialog
                 | Role::AlertDialog
                 | Role::Group

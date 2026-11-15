@@ -886,7 +886,7 @@ function semantics(tag, props, wire) {
     }
   }
   // Containers and text take a label here; controls wire their own.
-  if (['view', 'page', 'text', 'dialog'].includes(tag) && props.accessibilityLabel !== undefined) {
+  if (['view', 'page', 'text', 'dialog', 'list'].includes(tag) && props.accessibilityLabel !== undefined) {
     check.label(props.accessibilityLabel, 'UI_PROP');
     wire('accessibilityLabel', props.accessibilityLabel);
   }

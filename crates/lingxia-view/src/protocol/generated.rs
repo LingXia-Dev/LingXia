@@ -798,7 +798,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::LINK, tag::COLUMN, tag::PAGE, tag::TEXT, tag::SELECT, tag::VIDEO]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::LINK, tag::COLUMN, tag::PAGE, tag::TEXT, tag::SELECT, tag::VIDEO, tag::LIST]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },

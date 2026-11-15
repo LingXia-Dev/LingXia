@@ -133,6 +133,7 @@ A component from `@lingxia/view`, rendered as the `list` element.
 | `anchor` | `"end" \| { index: number; align: "start" \| "end"; seq?: number; duration?: number }` |  |
 | `onReachStart` | `() => void` |  |
 | `onReachEnd` | `() => void` |  |
+| `aria-label` | `string` |  |
 
 ## `<image>`
 
