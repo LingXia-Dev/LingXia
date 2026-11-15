@@ -367,6 +367,8 @@ struct Main<F> {
     chrome_generation: u64,
     /// `measureFrames` windows a View step asked for: `(token, milliseconds)`.
     frame_measures: Vec<(u64, u64)>,
+    /// Element ids the View asked to reveal, each with the frame that must show first.
+    reveals: Vec<(u64, String)>,
     /// The frame just prepared changed a box some `onLayout` reads.
     boxes_due: bool,
     /// An `onPointer` move or hover is with the View; the newest one after it waits here.
@@ -596,6 +598,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     hud: false,
                     chrome_generation: 0,
                     frame_measures: Vec::new(),
+                    reveals: Vec::new(),
                     boxes_due: false,
                     pointer_busy: false,
                     pointer_held: None,

@@ -66,7 +66,9 @@ export function render() {
   ancestor on the same axis. `overscroll-contain` or `overscroll-none` keeps it in this scroll.
 - `sticky` children stick within the scroll ([Layout](layout.md)).
 
-There is no scroll-to API for `<scroll>`. Use a list `anchor` when you must move the position.
+`reveal(id)`, called in a handler, scrolls the element with that `id` into view inside its
+`<scroll>`s once the handler's render is on screen. It moves no further than needed and does
+nothing for an id no element has. A list moves with its `anchor`.
 
 ### Snapping
 

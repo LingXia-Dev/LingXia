@@ -182,6 +182,12 @@ export interface BoxSize { readonly width: number; readonly height: number }
 /** The size of the element that takes this handle as `box`; `null` until its first layout, then one render behind a change. */
 export interface Box { readonly value: BoxSize | null }
 export declare function useBox(name: string): Box;
+/**
+ * From a handler: scrolls the element with this `id` into view inside its `<scroll>`s, once the
+ * render the handler causes is on screen. A `<List>` row that is not rendered has no element; use
+ * the list's `anchor`.
+ */
+export declare function reveal(id: string): void;
 
 export type LeaveReason = "back" | "home";
 export interface LeaveGuard {

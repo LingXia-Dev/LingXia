@@ -10,3 +10,4 @@ export { measureFrames } from './runtime/frames.js';
 export { cx } from './runtime/cx.js';
 export { useVideo } from './runtime/video.js';
 export { useBox } from './runtime/box.js';
+export { reveal } from './runtime/reveal.js';

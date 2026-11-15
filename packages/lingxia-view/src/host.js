@@ -6,6 +6,7 @@ import { configureActions, takeViewEvents, receiveActionResponse, takeActionErro
 import { viewCall, overlayTimer, takeOverlayTimers, escapeOverlay } from './runtime/overlay.js';
 import { openPicker, pickerKey, closePicker, takePickerResults, pickerIdentity } from './runtime/picker.js';
 import { takeFonts } from './runtime/fonts.js';
+import { takeReveals } from './runtime/reveal.js';
 import { takeFrameMeasures, frameMeasured } from './runtime/frames.js';
 import { wireAck } from './runtime/encode.js';
 import { takeLowered, seedLowered } from './runtime/elements.js';
@@ -29,7 +30,7 @@ export function publishHost(render, catalog) {
     __lingxiaTakePickerResults: takePickerResults, __lingxiaPickerIdentity: pickerIdentity,
     __lingxiaOwnedOverlays: () => JSON.stringify({ picker: pickerIdentity(), popovers: ownedPopovers() }),
     __lingxiaCloseOrphans: (picker, ids) => { if (picker) closePicker(); closeOrphans(ids); },
-    __lingxiaTakeFrameMeasures: takeFrameMeasures, __lingxiaFrameMeasured: frameMeasured, __lingxiaWireAck: wireAck, __lingxiaEvalSpans: takeSpans,
+    __lingxiaTakeFrameMeasures: takeFrameMeasures, __lingxiaFrameMeasured: frameMeasured, __lingxiaWireAck: wireAck, __lingxiaTakeReveals: takeReveals, __lingxiaEvalSpans: takeSpans,
     __lingxiaTakeLowered: takeLowered, __lingxiaSeedLowered: seedLowered,
     // Cleared when a render completes, so it names only a render that never returned.
     __lingxiaSite: () => rendering.site || '',

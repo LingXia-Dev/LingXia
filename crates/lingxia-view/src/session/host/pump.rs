@@ -316,6 +316,15 @@ impl<A: PlatformAdapter> Inner<A> {
                 if session.boxes_due() {
                     inner.main().boxes_due = true;
                 }
+                // A handler's `reveal(id)` waits for this frame: it may be the one that mounts the element.
+                if rebuild
+                    && let Ok(ids) = session.take_reveals()
+                    && !ids.is_empty()
+                {
+                    let mut main = inner.main();
+                    main.reveals
+                        .extend(ids.into_iter().map(|id| (flight.id, id)));
+                }
                 let prepared = prepared.map(|prepared| {
                     (
                         prepared,
@@ -1016,6 +1025,7 @@ impl<A: PlatformAdapter> Inner<A> {
     ) {
         let entered = Instant::now();
         let rebuild = timing.rebuild;
+        let mut revealed = Vec::new();
         let (presented, recovered) = {
             let mut main = self.main();
             main.snapshot = Some(snapshot.clone());
@@ -1028,8 +1038,16 @@ impl<A: PlatformAdapter> Inner<A> {
             let presented =
                 main.interaction
                     .presented(snapshot.frame.clone(), revision, &offsets, page);
+            let (due, later) = std::mem::take(&mut main.reveals)
+                .into_iter()
+                .partition(|(wanted, _)| *wanted <= flight);
+            main.reveals = later;
+            for (_, id) in due {
+                revealed.extend(main.interaction.reveal_element(&id));
+            }
             (presented, recovered)
         };
+        self.deliver(revealed);
         if recovered {
             self.adapter.recovery(None);
         }

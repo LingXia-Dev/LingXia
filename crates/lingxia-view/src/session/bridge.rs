@@ -104,6 +104,18 @@ impl ViewSession {
         serde_json::from_str(&json).map_err(|e| e.to_string())
     }
 
+    /// Element ids the View asked to `reveal` since the last call.
+    pub(crate) fn take_reveals(&self) -> Result<Vec<String>, String> {
+        let json: String = self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    "typeof __lingxiaTakeReveals === 'function' ? __lingxiaTakeReveals() : '[]'",
+                ))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })?;
+        serde_json::from_str(&json).map_err(|e| e.to_string())
+    }
+
     /// `measureFrames` windows the View asked for since the last call: `(token, milliseconds)`.
     pub(crate) fn take_frame_measures(&self) -> Result<Vec<(u64, u64)>, String> {
         let json: String = self.execute(|| {

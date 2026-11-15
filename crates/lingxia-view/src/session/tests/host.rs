@@ -5227,6 +5227,8 @@ mod box_reading;
 mod orphan_overlays;
 #[path = "pointer_events.rs"]
 mod pointer_events;
+#[path = "reveal_element.rs"]
+mod reveal_element;
 
 #[test]
 fn escape_pressed_on_any_match_closes_an_open_light_dismiss_popover() {

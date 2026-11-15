@@ -242,6 +242,22 @@ impl ViewInteraction {
         self.scroll.glide_step(id, now, jump)
     }
 
+    /// The page's `reveal(id)`: the scrolls around that element move until it shows.
+    pub fn reveal_element(&mut self, id: &str) -> Vec<Effect> {
+        let Some(frame) = self.frame.clone() else {
+            return Vec::new();
+        };
+        let node = frame
+            .nodes
+            .iter()
+            .find(|node| node.element_id.as_deref() == Some(id));
+        if node.is_some_and(|node| self.scroll.reveal(&frame, node)) {
+            vec![Effect::StopFling, Effect::Redraw]
+        } else {
+            Vec::new()
+        }
+    }
+
     /// A finger is dragging a scroll region.
     pub fn holding_scroll(&self) -> bool {
         self.gesture.dragging

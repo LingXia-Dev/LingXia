@@ -8,6 +8,7 @@ import { report, resetActions, actionEpochNow, hasActionEpoch } from './actions.
 import { sited } from './errors.js';
 import { overlayNode, decorateOverlay, resetOverlays } from './overlay.js';
 import { resetFrameMeasures } from './frames.js';
+import { resetReveals } from './reveal.js';
 import { pickerNode, pickerAnchor, resetPicker } from './picker.js';
 import { envOf } from './hooks.js';
 import { keysOf } from './keys.js';
@@ -208,7 +209,7 @@ export function reset() {
   for (const resource of page.resources.values()) resource.dispose();
   page.resources.clear();
   resetActions();
-  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures(); resetVideos();
+  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures(); resetReveals(); resetVideos();
   wireReset();
 }
 
