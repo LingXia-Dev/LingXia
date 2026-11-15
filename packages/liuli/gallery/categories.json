@@ -1,13 +1,13 @@
 [
-  { "id": "foundations", "title": "Foundations", "description": "The colour roles, type, shape, elevation and motion every component draws from." },
-  { "id": "actions", "title": "Actions", "description": "Buttons that start something, or turn a setting on and off." },
-  { "id": "inputs", "title": "Inputs", "description": "Fields a person types into or sets: text, dates, times and amounts." },
-  { "id": "selection", "title": "Selection", "description": "Controls for choosing among options: one, several, or on and off." },
-  { "id": "navigation", "title": "Navigation", "description": "Ways to move between views on the same page." },
-  { "id": "feedback", "title": "Feedback", "description": "Status, progress and confirmation, from a badge to a toast." },
-  { "id": "overlays", "title": "Overlays", "description": "Surfaces that float over the page: dialogs, sheets, menus and popovers." },
-  { "id": "content", "title": "Content", "description": "Containers and rows that hold what the app shows." },
-  { "id": "charts", "title": "Charts", "description": "Figures and small charts that show numbers at a glance." },
-  { "id": "media", "title": "Media", "description": "Video and its controls." },
-  { "id": "patterns", "title": "Patterns", "description": "Whole screens built from the components: forms, settings and long-running work." }
+  { "id": "foundations", "title": "Foundations", "icon": "palette", "description": "Colour, type, shape and motion", "lead": "The colour roles, type, shape, elevation and motion every component draws from." },
+  { "id": "actions", "title": "Actions", "icon": "click", "description": "Buttons and toggles", "lead": "Buttons that start something, or turn a setting on and off." },
+  { "id": "inputs", "title": "Inputs", "icon": "text-input", "description": "Text, dates and amounts", "lead": "Fields a person types into or sets: text, dates, times and amounts." },
+  { "id": "selection", "title": "Selection", "icon": "checklist", "description": "One, several, on or off", "lead": "Controls for choosing among options: one, several, or on and off." },
+  { "id": "navigation", "title": "Navigation", "icon": "compass", "description": "Tabs, steps and pages", "lead": "Ways to move between views, through a set, and through the steps of a task." },
+  { "id": "feedback", "title": "Feedback", "icon": "notifications", "description": "Status and progress", "lead": "Status, progress and confirmation, from a badge to a toast." },
+  { "id": "overlays", "title": "Overlays", "icon": "layers", "description": "Dialogs, sheets and menus", "lead": "Surfaces that float over the page: dialogs, sheets, menus and popovers." },
+  { "id": "content", "title": "Content", "icon": "rows", "description": "Cards, rows and tables", "lead": "Containers, rows and tables that hold what the app shows." },
+  { "id": "charts", "title": "Charts", "icon": "chart", "description": "Figures and small charts", "lead": "Figures and small charts that show numbers at a glance." },
+  { "id": "media", "title": "Media", "icon": "play", "description": "Video and its controls", "lead": "Video and its controls." },
+  { "id": "patterns", "title": "Patterns", "icon": "template", "description": "Whole screens, put together", "lead": "Whole screens built from the components: forms, settings, lists with their records, and dashboards." }
 ]

@@ -12,7 +12,7 @@ import { Category, Tile } from '../shared/Layout';
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
-      <text className="text-body text-muted">{"Containers and rows that hold what the app shows."}</text>
+      <text className="text-body text-muted">{"Containers, rows and tables that hold what the app shows."}</text>
       <Category title={"8 components"}>
         <Tile
           name={"Card"}

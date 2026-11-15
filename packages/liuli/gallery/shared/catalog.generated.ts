@@ -1,7 +1,9 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
 
-export interface GalleryEntry { name: string; page: string; category: string; summary: string; keywords: string[]; since: string; status: string }
-export interface GalleryCategory { id: string; title: string; description: string; page: string; count: number }
+import type { IconName } from '@liulidesign/core/Icon';
+
+export interface GalleryEntry { name: string; page: string; category: string; summary: string; keywords: string[] }
+export interface GalleryCategory { id: string; title: string; icon: IconName; description: string; page: string; count: number }
 
 export const entries: GalleryEntry[] = [
   {
@@ -9,45 +11,35 @@ export const entries: GalleryEntry[] = [
     "page": "colour",
     "category": "foundations",
     "summary": "The theme's colour roles and what each is for",
-    "keywords": [],
-    "since": "",
-    "status": "preview"
+    "keywords": []
   },
   {
     "name": "Typography",
     "page": "typography",
     "category": "foundations",
     "summary": "Six type sizes, their line heights and weights",
-    "keywords": [],
-    "since": "",
-    "status": "preview"
+    "keywords": []
   },
   {
     "name": "Shape & spacing",
     "page": "shape-and-spacing",
     "category": "foundations",
     "summary": "Corner radii, control heights, spacing steps and focus shapes",
-    "keywords": [],
-    "since": "",
-    "status": "preview"
+    "keywords": []
   },
   {
     "name": "Elevation",
     "page": "elevation",
     "category": "foundations",
     "summary": "Flat, resting, raised and modal surfaces",
-    "keywords": [],
-    "since": "",
-    "status": "preview"
+    "keywords": []
   },
   {
     "name": "Motion",
     "page": "motion",
     "category": "foundations",
     "summary": "How things enter, move and respond, and reduced motion",
-    "keywords": [],
-    "since": "",
-    "status": "preview"
+    "keywords": []
   },
   {
     "name": "Button",
@@ -64,9 +56,7 @@ export const entries: GalleryEntry[] = [
       "loading",
       "press",
       "tap"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "ToggleButton",
@@ -82,9 +72,7 @@ export const entries: GalleryEntry[] = [
       "on off",
       "option",
       "button"
-    ],
-    "since": "2026-11-13",
-    "status": "preview"
+    ]
   },
   {
     "name": "IconButton",
@@ -98,9 +86,7 @@ export const entries: GalleryEntry[] = [
       "square button",
       "close button",
       "more button"
-    ],
-    "since": "2026-11-14",
-    "status": "preview"
+    ]
   },
   {
     "name": "ButtonGroup",
@@ -114,9 +100,7 @@ export const entries: GalleryEntry[] = [
       "attached buttons",
       "split actions",
       "button bar"
-    ],
-    "since": "2026-11-14",
-    "status": "preview"
+    ]
   },
   {
     "name": "TextInput",
@@ -132,9 +116,7 @@ export const entries: GalleryEntry[] = [
       "password",
       "search",
       "form"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "TextArea",
@@ -152,9 +134,7 @@ export const entries: GalleryEntry[] = [
       "message",
       "description",
       "form"
-    ],
-    "since": "2026-11-13",
-    "status": "preview"
+    ]
   },
   {
     "name": "DateInput",
@@ -170,9 +150,7 @@ export const entries: GalleryEntry[] = [
       "birthday",
       "form",
       "field"
-    ],
-    "since": "2026-11-13",
-    "status": "preview"
+    ]
   },
   {
     "name": "TimeInput",
@@ -189,9 +167,7 @@ export const entries: GalleryEntry[] = [
       "alarm",
       "form",
       "field"
-    ],
-    "since": "2026-11-13",
-    "status": "preview"
+    ]
   },
   {
     "name": "Slider",
@@ -207,9 +183,7 @@ export const entries: GalleryEntry[] = [
       "position",
       "track",
       "thumb"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "Field",
@@ -224,9 +198,7 @@ export const entries: GalleryEntry[] = [
       "error",
       "validation",
       "required"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "SearchField",
@@ -241,9 +213,7 @@ export const entries: GalleryEntry[] = [
       "find",
       "query",
       "magnifier"
-    ],
-    "since": "2026-11-15",
-    "status": "preview"
+    ]
   },
   {
     "name": "NumberInput",
@@ -259,9 +229,7 @@ export const entries: GalleryEntry[] = [
       "spinbutton",
       "amount",
       "numeric"
-    ],
-    "since": "2026-11-15",
-    "status": "preview"
+    ]
   },
   {
     "name": "Calendar",
@@ -276,9 +244,7 @@ export const entries: GalleryEntry[] = [
       "day picker",
       "range picker",
       "schedule"
-    ],
-    "since": "2026-11-15",
-    "status": "preview"
+    ]
   },
   {
     "name": "DateRangeInput",
@@ -293,9 +259,7 @@ export const entries: GalleryEntry[] = [
       "from to",
       "range input",
       "calendar field"
-    ],
-    "since": "2026-11-15",
-    "status": "preview"
+    ]
   },
   {
     "name": "CheckboxInput",
@@ -311,9 +275,7 @@ export const entries: GalleryEntry[] = [
       "terms",
       "toggle",
       "boolean"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "RadioGroup",
@@ -329,9 +291,7 @@ export const entries: GalleryEntry[] = [
       "plan",
       "pick one",
       "single select"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "Switch",
@@ -346,9 +306,7 @@ export const entries: GalleryEntry[] = [
       "preference",
       "enable",
       "disable"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "Select",
@@ -364,9 +322,7 @@ export const entries: GalleryEntry[] = [
       "options",
       "menu",
       "single select"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "SegmentedControl",
@@ -382,9 +338,7 @@ export const entries: GalleryEntry[] = [
       "units",
       "mode",
       "picker"
-    ],
-    "since": "2026-11-13",
-    "status": "preview"
+    ]
   },
   {
     "name": "Combobox",
@@ -400,9 +354,7 @@ export const entries: GalleryEntry[] = [
       "filter",
       "search select",
       "lookup"
-    ],
-    "since": "2026-11-15",
-    "status": "preview"
+    ]
   },
   {
     "name": "CheckboxList",
@@ -416,9 +368,7 @@ export const entries: GalleryEntry[] = [
       "multi select",
       "options",
       "checklist"
-    ],
-    "since": "2026-11-15",
-    "status": "preview"
+    ]
   },
   {
     "name": "Tabs",
@@ -434,9 +384,7 @@ export const entries: GalleryEntry[] = [
       "sections",
       "filter",
       "range"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "NavList",
@@ -453,9 +401,7 @@ export const entries: GalleryEntry[] = [
       "menu",
       "table of contents",
       "tree"
-    ],
-    "since": "2026-11-14",
-    "status": "preview"
+    ]
   },
   {
     "name": "Breadcrumb",
@@ -470,9 +416,7 @@ export const entries: GalleryEntry[] = [
       "hierarchy",
       "location",
       "back"
-    ],
-    "since": "2026-11-15",
-    "status": "preview"
+    ]
   },
   {
     "name": "Pagination",
@@ -487,9 +431,7 @@ export const entries: GalleryEntry[] = [
       "next page",
       "previous page",
       "paging"
-    ],
-    "since": "2026-11-15",
-    "status": "preview"
+    ]
   },
   {
     "name": "Stepper",
@@ -504,9 +446,7 @@ export const entries: GalleryEntry[] = [
       "multi-step",
       "checkout",
       "onboarding"
-    ],
-    "since": "2026-11-15",
-    "status": "preview"
+    ]
   },
   {
     "name": "Badge",
@@ -522,9 +462,7 @@ export const entries: GalleryEntry[] = [
       "status",
       "lozenge",
       "tone"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "ProgressBar",
@@ -541,9 +479,7 @@ export const entries: GalleryEntry[] = [
       "download",
       "meter",
       "indeterminate"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "Banner",
@@ -560,9 +496,7 @@ export const entries: GalleryEntry[] = [
       "warning",
       "error",
       "inline"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "EmptyState",
@@ -578,9 +512,7 @@ export const entries: GalleryEntry[] = [
       "zero state",
       "first run",
       "placeholder"
-    ],
-    "since": "2026-11-13",
-    "status": "preview"
+    ]
   },
   {
     "name": "Skeleton",
@@ -595,9 +527,7 @@ export const entries: GalleryEntry[] = [
       "ghost",
       "content loader",
       "busy"
-    ],
-    "since": "2026-11-13",
-    "status": "preview"
+    ]
   },
   {
     "name": "Toast",
@@ -613,9 +543,7 @@ export const entries: GalleryEntry[] = [
       "confirmation",
       "feedback",
       "status"
-    ],
-    "since": "2026-11-13",
-    "status": "preview"
+    ]
   },
   {
     "name": "Dialog",
@@ -630,9 +558,7 @@ export const entries: GalleryEntry[] = [
       "popup",
       "overlay",
       "prompt"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "DropdownMenu",
@@ -648,9 +574,7 @@ export const entries: GalleryEntry[] = [
       "actions",
       "popover",
       "context"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "Tooltip",
@@ -666,9 +590,7 @@ export const entries: GalleryEntry[] = [
       "explain",
       "popover",
       "note"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "BottomSheet",
@@ -684,9 +606,7 @@ export const entries: GalleryEntry[] = [
       "modal",
       "panel",
       "overlay"
-    ],
-    "since": "2026-11-13",
-    "status": "preview"
+    ]
   },
   {
     "name": "Popover",
@@ -702,9 +622,7 @@ export const entries: GalleryEntry[] = [
       "share",
       "overlay",
       "anchored"
-    ],
-    "since": "2026-11-13",
-    "status": "preview"
+    ]
   },
   {
     "name": "Card",
@@ -721,9 +639,7 @@ export const entries: GalleryEntry[] = [
       "clickable card",
       "option card",
       "choice"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "Item",
@@ -739,9 +655,7 @@ export const entries: GalleryEntry[] = [
       "settings row",
       "table row",
       "navigation row"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "Details",
@@ -757,9 +671,7 @@ export const entries: GalleryEntry[] = [
       "faq",
       "show more",
       "summary"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "Avatar",
@@ -775,9 +687,7 @@ export const entries: GalleryEntry[] = [
       "person",
       "member",
       "facepile"
-    ],
-    "since": "2026-11-12",
-    "status": "preview"
+    ]
   },
   {
     "name": "SplitView",
@@ -792,9 +702,7 @@ export const entries: GalleryEntry[] = [
       "workspace",
       "navigation split",
       "app shell"
-    ],
-    "since": "2026-11-14",
-    "status": "preview"
+    ]
   },
   {
     "name": "Icon",
@@ -809,9 +717,7 @@ export const entries: GalleryEntry[] = [
       "lucide",
       "icon set",
       "vector"
-    ],
-    "since": "2026-11-14",
-    "status": "preview"
+    ]
   },
   {
     "name": "Table",
@@ -827,9 +733,7 @@ export const entries: GalleryEntry[] = [
       "records",
       "spreadsheet",
       "data display"
-    ],
-    "since": "2026-11-15",
-    "status": "preview"
+    ]
   },
   {
     "name": "Markdown",
@@ -845,9 +749,7 @@ export const entries: GalleryEntry[] = [
       "message",
       "article",
       "help text"
-    ],
-    "since": "2026-11-15",
-    "status": "preview"
+    ]
   },
   {
     "name": "Stat",
@@ -866,9 +768,7 @@ export const entries: GalleryEntry[] = [
       "trend",
       "dashboard",
       "tile"
-    ],
-    "since": "2026-11-14",
-    "status": "preview"
+    ]
   },
   {
     "name": "Sparkline",
@@ -885,9 +785,7 @@ export const entries: GalleryEntry[] = [
       "bar",
       "series",
       "history"
-    ],
-    "since": "2026-11-14",
-    "status": "preview"
+    ]
   },
   {
     "name": "BarChart",
@@ -904,9 +802,7 @@ export const entries: GalleryEntry[] = [
       "grouped bars",
       "chart",
       "graph"
-    ],
-    "since": "2026-11-14",
-    "status": "preview"
+    ]
   },
   {
     "name": "LineChart",
@@ -922,9 +818,7 @@ export const entries: GalleryEntry[] = [
       "history",
       "chart",
       "graph"
-    ],
-    "since": "2026-11-14",
-    "status": "preview"
+    ]
   },
   {
     "name": "PieChart",
@@ -941,9 +835,7 @@ export const entries: GalleryEntry[] = [
       "parts of a whole",
       "chart",
       "graph"
-    ],
-    "since": "2026-11-14",
-    "status": "preview"
+    ]
   },
   {
     "name": "Chart",
@@ -960,9 +852,7 @@ export const entries: GalleryEntry[] = [
       "data visualisation",
       "empty",
       "loading"
-    ],
-    "since": "2026-11-14",
-    "status": "preview"
+    ]
   },
   {
     "name": "VideoPlayer",
@@ -978,9 +868,7 @@ export const entries: GalleryEntry[] = [
       "media",
       "playback",
       "fullscreen"
-    ],
-    "since": "2026-11-13",
-    "status": "preview"
+    ]
   },
   {
     "name": "VideoControls",
@@ -996,36 +884,28 @@ export const entries: GalleryEntry[] = [
       "media",
       "playback",
       "fullscreen"
-    ],
-    "since": "2026-11-13",
-    "status": "preview"
+    ]
   },
   {
     "name": "Sign in",
     "page": "sign-in",
     "category": "patterns",
     "summary": "A sign-in form that validates and reports errors",
-    "keywords": [],
-    "since": "",
-    "status": "preview"
+    "keywords": []
   },
   {
     "name": "Settings",
     "page": "settings",
     "category": "patterns",
     "summary": "A settings screen of rows, switches and a confirmation",
-    "keywords": [],
-    "since": "",
-    "status": "preview"
+    "keywords": []
   },
   {
     "name": "Uploads",
     "page": "uploads",
     "category": "patterns",
     "summary": "Long-running work with progress, failure and retry",
-    "keywords": [],
-    "since": "",
-    "status": "preview"
+    "keywords": []
   }
 ];
 
@@ -1033,84 +913,92 @@ export const galleryCategories: GalleryCategory[] = [
   {
     "id": "foundations",
     "title": "Foundations",
-    "description": "The colour roles, type, shape, elevation and motion every component draws from.",
+    "icon": "palette",
+    "description": "Colour, type, shape and motion",
     "page": "category-foundations",
     "count": 5
   },
   {
     "id": "actions",
     "title": "Actions",
-    "description": "Buttons that start something, or turn a setting on and off.",
+    "icon": "click",
+    "description": "Buttons and toggles",
     "page": "category-actions",
     "count": 4
   },
   {
     "id": "inputs",
     "title": "Inputs",
-    "description": "Fields a person types into or sets: text, dates, times and amounts.",
+    "icon": "text-input",
+    "description": "Text, dates and amounts",
     "page": "category-inputs",
     "count": 10
   },
   {
     "id": "selection",
     "title": "Selection",
-    "description": "Controls for choosing among options: one, several, or on and off.",
+    "icon": "checklist",
+    "description": "One, several, on or off",
     "page": "category-selection",
     "count": 7
   },
   {
     "id": "navigation",
     "title": "Navigation",
-    "description": "Ways to move between views on the same page.",
+    "icon": "compass",
+    "description": "Tabs, steps and pages",
     "page": "category-navigation",
     "count": 5
   },
   {
     "id": "feedback",
     "title": "Feedback",
-    "description": "Status, progress and confirmation, from a badge to a toast.",
+    "icon": "notifications",
+    "description": "Status and progress",
     "page": "category-feedback",
     "count": 6
   },
   {
     "id": "overlays",
     "title": "Overlays",
-    "description": "Surfaces that float over the page: dialogs, sheets, menus and popovers.",
+    "icon": "layers",
+    "description": "Dialogs, sheets and menus",
     "page": "category-overlays",
     "count": 5
   },
   {
     "id": "content",
     "title": "Content",
-    "description": "Containers and rows that hold what the app shows.",
+    "icon": "rows",
+    "description": "Cards, rows and tables",
     "page": "category-content",
     "count": 8
   },
   {
     "id": "charts",
     "title": "Charts",
-    "description": "Figures and small charts that show numbers at a glance.",
+    "icon": "chart",
+    "description": "Figures and small charts",
     "page": "category-charts",
     "count": 6
   },
   {
     "id": "media",
     "title": "Media",
-    "description": "Video and its controls.",
+    "icon": "play",
+    "description": "Video and its controls",
     "page": "category-media",
     "count": 2
   },
   {
     "id": "patterns",
     "title": "Patterns",
-    "description": "Whole screens built from the components: forms, settings and long-running work.",
+    "icon": "template",
+    "description": "Whole screens, put together",
     "page": "category-patterns",
     "count": 3
   }
 ];
-
-/** The 6 latest components, newest first. */
-export const newest: string[] = ["Breadcrumb","Calendar","CheckboxList","Combobox","DateRangeInput","Markdown"];
 
 export const version = "0.1.0";
 export const packageStatus = "Preview";

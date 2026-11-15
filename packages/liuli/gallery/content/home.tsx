@@ -1,42 +1,43 @@
-import { useLocal, type Child } from '@lingxia/view';
+import { useLocal } from '@lingxia/view';
 import { EmptyState } from '@liulidesign/core/EmptyState';
 import { Item, ItemList } from '@liulidesign/core/Item';
 import { TextInput } from '@liulidesign/core/TextInput';
-import { entries, galleryCategories, newest, packageStatus, version, type GalleryEntry } from '../shared/catalog.generated';
-import { Category, Masthead, PageSection, Tile } from '../shared/Layout';
-import * as previews from '../shared/Previews';
+import { entries, galleryCategories, packageStatus, version, type GalleryCategory, type GalleryEntry } from '../shared/catalog.generated';
+import { Masthead } from '../shared/Layout';
 
-// An index, not a wall of tiles: search, one card per category, then what is new. Everything it
+// A table of contents: search, then the system in three groups, one row a category. Everything it
 // lists comes from shared/catalog.generated.ts, so a new component needs no edit here.
 
-const titles = new Map(galleryCategories.map(category => [category.id, category.title]));
-const pascal = (id: string) => id.replace(/(^|-)([a-z])/g, (_, __, letter: string) => letter.toUpperCase());
-const preview = (id: string): Child => {
-  const Preview = (previews as Record<string, (() => Child) | undefined>)[`${pascal(id)}Preview`];
-  return Preview ? Preview() : null;
-};
-const countLine = (id: string, count: number) =>
-  id === 'foundations' ? `${count} guides` : id === 'patterns' ? `${count} patterns` : `${count} ${count === 1 ? 'component' : 'components'}`;
+const byId = new Map(galleryCategories.map(category => [category.id, category]));
+const guides = new Set(['foundations', 'patterns']);
+const groups: { title: string; rows: GalleryCategory[] }[] = [
+  { title: 'Foundations', rows: galleryCategories.filter(category => category.id === 'foundations') },
+  { title: 'Components', rows: galleryCategories.filter(category => !guides.has(category.id)) },
+  { title: 'Patterns', rows: galleryCategories.filter(category => category.id === 'patterns') },
+].filter(group => group.rows.length > 0);
+// A group of one is named by its heading, so its row says what the group holds.
+const rowLabel: Record<string, string> = { foundations: 'Guides', patterns: 'Screens' };
 
 /** Whole words of the query, each found in the name, the summary or a keyword. */
 function matches(query: string): GalleryEntry[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return entries.filter(entry => {
-    const haystack = [entry.name, entry.summary, ...entry.keywords, titles.get(entry.category) ?? ''].join(' ').toLowerCase();
+    const haystack = [entry.name, entry.summary, ...entry.keywords, byId.get(entry.category)?.title ?? ''].join(' ').toLowerCase();
     return words.every(word => haystack.includes(word));
   });
 }
 
 /**
- * The index: search, a card per category and what is new. `onOpen` takes a page name. The workspace
- * names Liuli in its sidebar, so it leaves out the masthead.
+ * The index: search and the contents. `onOpen` takes a page name. The workspace names Liuli in
+ * its sidebar, so it leaves out the masthead.
  */
 export function Content({ onOpen, hasMasthead = true }: { onOpen: (page: string) => void; hasMasthead?: boolean }) {
   const query = useLocal('query', '');
   const found = query.value.trim() ? matches(query.value) : null;
   const open = (page: string) => () => onOpen(page);
   return (
-    <>
+    // A column a line of text can be read across, however wide the window.
+    <view className="w-full max-w-[640px] gap-6">
       <view className="gap-4">
         {hasMasthead && <Masthead version={version} status={packageStatus} />}
         <TextInput
@@ -51,48 +52,38 @@ export function Content({ onOpen, hasMasthead = true }: { onOpen: (page: string)
           data-testid="home-search"
         />
       </view>
-      {found === null ? (
-        <>
-          <Category title="Browse">
-            {galleryCategories.map((category, index) => (
-              <Tile
-                key={category.id}
-                name={category.title}
-                tagline={countLine(category.id, category.count)}
-                isWide={galleryCategories.length % 2 === 1 && index === galleryCategories.length - 1}
-                onOpen={open(category.page)}
-                testId={`open-${category.page}`}
-              >
-                {preview(category.id)}
-              </Tile>
-            ))}
-          </Category>
-          <PageSection title="New">
-            <ItemList label="New components">
-              {newest.map(name => entries.find(entry => entry.name === name)!).map(entry => (
-                <Item key={entry.name} label={entry.name} description={entry.summary} hasChevron onClick={open(entry.page)} data-testid={`new-${entry.page}`} />
-              ))}
-            </ItemList>
-          </PageSection>
-        </>
-      ) : found.length ? (
-        <PageSection title={found.length === 1 ? '1 result' : `${found.length} results`}>
-          <ItemList label="Results">
-            {found.map(entry => (
-              <Item
-                key={entry.page}
-                label={entry.name}
-                description={entry.summary}
-                endContent={<text className="text-footnote text-muted">{titles.get(entry.category) ?? ''}</text>}
-                onClick={open(entry.page)}
-                data-testid={`result-${entry.page}`}
-              />
-            ))}
-          </ItemList>
-        </PageSection>
+      {found === null ? groups.map(group => (
+        <ItemList key={group.title} title={group.title}>
+          {group.rows.map(category => (
+            <Item
+              key={category.id}
+              label={rowLabel[category.id] ?? category.title}
+              description={category.description}
+              startIcon={category.icon}
+              endContent={<text className="text-footnote text-muted tabular-nums">{String(category.count)}</text>}
+              hasChevron
+              onClick={open(category.page)}
+              data-testid={`open-${category.page}`}
+            />
+          ))}
+        </ItemList>
+      )) : found.length ? (
+        <ItemList title={found.length === 1 ? '1 result' : `${found.length} results`}>
+          {found.map(entry => (
+            <Item
+              key={entry.page}
+              label={entry.name}
+              description={entry.summary}
+              startIcon={byId.get(entry.category)?.icon}
+              hasChevron
+              onClick={open(entry.page)}
+              data-testid={`result-${entry.page}`}
+            />
+          ))}
+        </ItemList>
       ) : (
         <EmptyState title="Nothing matches" description={`No component, guide or pattern matches “${query.value.trim()}”.`} data-testid="home-no-results" />
       )}
-    </>
+    </view>
   );
 }

@@ -5,7 +5,7 @@ import { Category, Tile } from '../shared/Layout';
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
-      <text className="text-body text-muted">{"Whole screens built from the components: forms, settings and long-running work."}</text>
+      <text className="text-body text-muted">{"Whole screens built from the components: forms, settings, lists with their records, and dashboards."}</text>
       <Category title={"3 patterns"}>
         <Tile
           name={"Sign in"}

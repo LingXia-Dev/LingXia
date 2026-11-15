@@ -9,7 +9,7 @@ import { Category, Tile } from '../shared/Layout';
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
-      <text className="text-body text-muted">{"Ways to move between views on the same page."}</text>
+      <text className="text-body text-muted">{"Ways to move between views, through a set, and through the steps of a task."}</text>
       <Category title={"5 components"}>
         <Tile
           name={"Tabs"}

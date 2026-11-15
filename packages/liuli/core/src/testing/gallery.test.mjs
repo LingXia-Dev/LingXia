@@ -70,41 +70,19 @@ test('gallery home: search lists matches by name, summary or category, and says 
   screen.getByTestId('home-no-results');
 });
 
-// A home preview shows real components, not drawings of them: some JSX tag in it resolves, through
-// specimen functions, to a component of the package. Foundations draws tokens, which are not
-// components, and media is a still frame so the home page loads no video.
-const drawn = new Set(['FoundationsPreview', 'MediaPreview']);
-const packageSources = resolve(gallery, '../core/src');
-function usesComponent(file, name, seen = new Set()) {
-  if (seen.has(`${file}#${name}`)) return false;
-  seen.add(`${file}#${name}`);
-  const source = readFileSync(file, 'utf8');
-  const start = source.indexOf(`export function ${name}(`);
-  if (start < 0) return false;
-  const next = source.indexOf('\nexport function ', start + 1);
-  const body = source.slice(start, next < 0 ? undefined : next);
-  const imports = new Map();
-  for (const [, names, from] of source.matchAll(/import \{([^}]+)\} from '([^']+)'/g))
-    for (const part of names.split(','))
-      if (part.trim()) {
-        const [imported, local = imported] = part.trim().split(/\s+as\s+/);
-        imports.set(local, { imported, from });
-      }
-  for (const [, tag] of body.matchAll(/<([A-Z][A-Za-z]*)/g)) {
-    const origin = imports.get(tag);
-    if (origin?.from.startsWith('@liulidesign/')) return true;
-    // Inside the package's own sources (an examples file imports its siblings relatively).
-    if (origin?.from.startsWith('.') && !origin.from.includes('.examples') && resolve(dirname(file), origin.from).startsWith(packageSources)) return true;
-    const local = origin ? resolve(dirname(file), `${origin.from}.tsx`) : file;
-    if (existsSync(local) && usesComponent(local, origin?.imported ?? tag, seen)) return true;
-  }
-  return false;
-}
-
-test('gallery home: every preview shows at least one real component', () => {
-  const file = resolve(gallery, 'shared/Previews.tsx');
-  const names = [...readFileSync(file, 'utf8').matchAll(/export function ([A-Za-z]+Preview)\(/g)].map(match => match[1]);
-  assert.ok(names.length >= 10);
-  const drawings = names.filter(name => !drawn.has(name) && !usesComponent(file, name));
-  assert.deepEqual(drawings, []);
+test('gallery home: a table of contents in three groups, each row with its icon, line and count; nothing is dated', async () => {
+  const screen = await render(resolve(gallery, 'pages/home/index.tsx'), {}, { root: gallery });
+  const lists = screen.queryAll(node => node.props.role === 'list');
+  assert.deepEqual(lists.map(list => list.props.accessibilityLabel), ['Foundations', 'Components', 'Patterns']);
+  assert.deepEqual(lists.map(list => list.children.length), [1, categoryPages.length - 2, 1]);
+  const row = screen.getByTestId('open-category-inputs');
+  assert.equal(row.tag, 'button');
+  const [icon, text, count, chevron] = row.children;
+  assert.deepEqual([icon.props.width, icon.props.background], [32, 'accent-soft'], 'one tint for every row');
+  assert.equal(text.children[1].text, 'Text, dates and amounts', 'a line short enough to stay on one line of a phone');
+  assert.match(count.children[0].text, /^\d+$/);
+  assert.equal(chevron.tag, 'vector');
+  assert.equal(screen.queryAll(node => /^new-/.test(node.testId ?? '') || node.text === 'New').length, 0);
+  const catalog = readFileSync(resolve(gallery, 'shared/catalog.generated.ts'), 'utf8');
+  assert.equal(/export const newest|"(since|status)":/.test(catalog), false, 'the catalog carries no dates or statuses');
 });

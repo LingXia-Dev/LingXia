@@ -1,5 +1,5 @@
-import { Badge } from '@liulidesign/core/Badge';
-import { useView, type Child } from '@lingxia/view';
+import { cardRecipe } from '@liulidesign/core/Card/recipe';
+import { cx, useView, type Child } from '@lingxia/view';
 
 // The gallery's one page skeleton: every page takes its rhythm from these, never its own classes.
 
@@ -69,7 +69,7 @@ export function Masthead({ version, status }: { version: string; status: string 
   );
 }
 
-/** One category on the home page: its heading and a grid of tiles. */
+/** A category page's members: a heading and a grid of tiles. */
 export function Category({ title, children }: { title: string; children: Child }) {
   return (
     <view className="gap-3">
@@ -83,8 +83,6 @@ export interface TileProps {
   name: string;
   /** One line, never cut. */
   tagline: string;
-  /** Shown only when it differs from the package's status. */
-  status?: string;
   /** The last tile of an odd row spans both columns of the phone grid. */
   isWide?: boolean;
   onOpen: () => void;
@@ -94,20 +92,18 @@ export interface TileProps {
 }
 
 /**
- * A home tile: a specimen on a stage, the name and one line. The press target is a transparent
+ * A tile: a specimen on a stage, the name and one line. The press target is a transparent
  * button laid over the whole tile, since a specimen may hold buttons of its own.
  */
-export function Tile({ name, tagline, status, isWide = false, onOpen, testId, children }: TileProps) {
+export function Tile({ name, tagline, isWide = false, onOpen, testId, children }: TileProps) {
   return (
-    <view className={isWide ? 'relative overflow-hidden rounded-container border border-text/12 bg-surface min-[360px]:col-span-2 md:col-span-1' : 'relative overflow-hidden rounded-container border border-text/12 bg-surface'}>
+    // A tile is a card; taking the card's own frame also brings Liuli's tokens to every page laid out with this file.
+    <view className={cx('relative overflow-hidden', cardRecipe.root.base, cardRecipe.root.variant.outlined, isWide && 'min-[360px]:col-span-2 md:col-span-1')}>
       <view aria-hidden className="h-28 items-center-safe justify-center-safe overflow-hidden p-3 bg-surface-sunken border-b border-text/8">
         {children}
       </view>
       <view className="px-3 pt-2.5 pb-3 gap-0.5">
-        <view className="flex-row items-center gap-1.5">
-          <text className="text-body font-medium text-text">{name}</text>
-          {status !== undefined && <Badge label={status} tone="accent" size="sm" />}
-        </view>
+        <text className="text-body font-medium text-text">{name}</text>
         <text className="text-footnote text-muted">{tagline}</text>
       </view>
       <button

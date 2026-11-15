@@ -263,7 +263,7 @@ function pageWrapper(page, { opens = false } = {}) {
   ].join('\n');
 }
 
-// The package's own status, shown once on the home page; a tile shows only a status that differs.
+// The package's own status, shown once on the home page.
 const packageStatus = 'preview';
 const statusTitles = { preview: 'Preview', stable: 'Stable' };
 // A tagline fits one line of a half-width home tile on a 360 pt screen at footnote size, in the
@@ -274,11 +274,11 @@ const taglineLimit = 19;
 // hold components by their doc's `category`.
 const categoriesPath = join(gallery, 'categories.json');
 const categories = existsSync(categoriesPath) ? JSON.parse(readFileSync(categoriesPath, 'utf8')) : [];
+// The names a category's icon may take: Liuli's own set.
+const iconNames = new Set(Object.keys(JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../icons/icons.json'), 'utf8')).icons));
 const guideCategories = new Set(['foundations', 'patterns']);
 const categoryTitles = Object.fromEntries(categories.filter(category => !guideCategories.has(category.id)).map(category => [category.id, category.title]));
 const categoryPage = id => `category-${id}`;
-// "New" on the home page: the latest by `since`, then by name.
-const newestCount = 6;
 
 // Foundations and Patterns are hand-written gallery pages listed in gallery/guides.json; each has a
 // tile specimen in gallery/shared/Specimens.tsx named after its page.
@@ -287,12 +287,11 @@ const pascal = page => page.replace(/(^|-)([a-z])/g, (_, __, letter) => letter.t
 const guideSpecimen = guide => `${pascal(guide.page)}Specimen`;
 
 /** A tile per member: its specimen, name and line, opening its page. */
-function tileLines({ name, tagline, status, isWide, page, specimen }) {
+function tileLines({ name, tagline, isWide, page, specimen }) {
   return [
     '        <Tile',
     `          name=${jsx(name)}`,
     `          tagline=${jsx(tagline)}`,
-    ...(status ? [`          status=${jsx(status)}`] : []),
     ...(isWide ? ['          isWide'] : []),
     `          onOpen={() => onOpen(${JSON.stringify(page)})}`,
     `          testId=${jsx(`open-${page}`)}`,
@@ -312,7 +311,7 @@ function categoryContent(category, tiles, imports) {
     'export function Content({ onOpen }: { onOpen: (page: string) => void }) {',
     '  return (',
     '    <>',
-    `      <text className="text-body text-muted">${'{'}${JSON.stringify(category.description)}${'}'}</text>`,
+    `      <text className="text-body text-muted">${'{'}${JSON.stringify(category.lead ?? category.description)}${'}'}</text>`,
     `      <Category title=${jsx(`${tiles.length} ${category.id === 'foundations' ? 'guides' : category.id === 'patterns' ? 'patterns' : tiles.length === 1 ? 'component' : 'components'}`)}>`,
     ...tiles.flatMap((tile, index) => tileLines({ ...tile, isWide: tiles.length % 2 === 1 && index === tiles.length - 1 })),
     '      </Category>',
@@ -323,25 +322,23 @@ function categoryContent(category, tiles, imports) {
   ].join('\n');
 }
 
-/** What the home page, its search and its "New" list read: generated, so a new component needs no home edit. */
+/** What the home page and its search read: generated, so a new component needs no home edit. */
 function indexModule(entries, guides) {
-  const component = entry => ({ name: entry.name, page: kebab(entry.name), category: entry.category, summary: entry.summary, keywords: entry.keywords ?? [], since: entry.since, status: entry.status });
-  const guide = (list, category) => list.map(each => ({ name: each.title, page: each.page, category, summary: each.summary ?? each.tagline, keywords: [], since: '', status: packageStatus }));
+  const component = entry => ({ name: entry.name, page: kebab(entry.name), category: entry.category, summary: entry.summary, keywords: entry.keywords ?? [] });
+  const guide = (list, category) => list.map(each => ({ name: each.title, page: each.page, category, summary: each.summary ?? each.tagline, keywords: [] }));
   const all = [...guide(guides.foundations, 'foundations'), ...Object.keys(categoryTitles).flatMap(category => inCategory(entries, category).map(component)), ...guide(guides.patterns, 'patterns')];
-  const counted = categories.map(category => ({ ...category, page: categoryPage(category.id), count: all.filter(entry => entry.category === category.id).length })).filter(category => category.count > 0);
-  const newest = [...entries].sort((a, b) => b.since.localeCompare(a.since) || a.name.localeCompare(b.name)).slice(0, newestCount).map(entry => entry.name);
+  const counted = categories.map(({ lead, ...category }) => ({ ...category, page: categoryPage(category.id), count: all.filter(entry => entry.category === category.id).length })).filter(category => category.count > 0);
   return [
     `// ${generated}`,
     '',
-    'export interface GalleryEntry { name: string; page: string; category: string; summary: string; keywords: string[]; since: string; status: string }',
-    'export interface GalleryCategory { id: string; title: string; description: string; page: string; count: number }',
+    "import type { IconName } from '@liulidesign/core/Icon';",
+    '',
+    'export interface GalleryEntry { name: string; page: string; category: string; summary: string; keywords: string[] }',
+    'export interface GalleryCategory { id: string; title: string; icon: IconName; description: string; page: string; count: number }',
     '',
     `export const entries: GalleryEntry[] = ${JSON.stringify(all, null, 2)};`,
     '',
     `export const galleryCategories: GalleryCategory[] = ${JSON.stringify(counted, null, 2)};`,
-    '',
-    `/** The ${newestCount} latest components, newest first. */`,
-    `export const newest: string[] = ${JSON.stringify(newest)};`,
     '',
     `export const version = ${JSON.stringify(JSON.parse(readFileSync(join(core, 'package.json'), 'utf8')).version)};`,
     `export const packageStatus = ${JSON.stringify(statusTitles[packageStatus])};`,
@@ -448,15 +445,14 @@ if (isCore) {
   }
   outputs.set(join(gallery, 'shared', 'catalog.generated.ts'), indexModule(shown, guides));
   outputs.set(join(gallery, 'shared', 'contents.generated.ts'), contentsModule(shown, guides));
-  const previews = existsSync(join(gallery, 'shared', 'Previews.tsx')) ? readFileSync(join(gallery, 'shared', 'Previews.tsx'), 'utf8') : '';
   for (const category of categories) {
     const isGuide = guideCategories.has(category.id);
     const members = isGuide ? guides[category.id] : inCategory(shown, category.id);
     if (!members.length) continue;
-    if (!new RegExp(`export function ${pascal(category.id)}Preview\\b`).test(previews)) problems.push(`gallery/shared/Previews.tsx does not export ${pascal(category.id)}Preview for the home card`);
+    if (!iconNames.has(category.icon)) problems.push(`gallery/categories.json: ${category.id}: icon ${JSON.stringify(category.icon)} is not in Liuli's icon set`);
     const tiles = isGuide
       ? members.map(guide => ({ name: guide.title, tagline: guide.tagline, page: guide.page, specimen: guideSpecimen(guide) }))
-      : members.map(entry => ({ name: entry.name, tagline: entry.gallery.tagline, status: entry.status === packageStatus ? undefined : statusTitles[entry.status], page: kebab(entry.name), specimen: `${entry.name}Specimen` }));
+      : members.map(entry => ({ name: entry.name, tagline: entry.gallery.tagline, page: kebab(entry.name), specimen: `${entry.name}Specimen` }));
     const imports = isGuide
       ? [`import { ${members.map(guideSpecimen).join(', ')} } from '../shared/Specimens';`]
       : members.map(entry => `import { ${entry.gallery.specimen} as ${entry.name}Specimen } from '../../${folderOf.get(entry)}/src/${entry.name}/${entry.name}.examples';`);
