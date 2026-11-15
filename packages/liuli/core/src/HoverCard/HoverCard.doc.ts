@@ -13,7 +13,7 @@ export const doc: ComponentDoc = {
   propsType: 'HoverCardProps',
   recipe: { map: 'hoverCardRecipe', parts: 'hoverCardParts' },
   anatomy: [
-    { part: 'trigger', required: true, description: 'The words, underlined to say there is more.' },
+    { part: 'trigger', required: true, description: 'The words, under a dotted line that says there is more and is not a link.' },
     { part: 'card', required: true, description: 'A hint popover anchored to the trigger, in the top layer.' },
   ],
   accessibility: {

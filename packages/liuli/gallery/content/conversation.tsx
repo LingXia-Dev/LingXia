@@ -49,6 +49,7 @@ export function Content() {
           <IconButton label="Conversation details" icon="info" size="sm" />
         </view>
         <List
+          aria-label="Messages with Kai Chen"
           items={list}
           getKey={entry => entry.id}
           // The newest message is kept in view, as each one arrives.

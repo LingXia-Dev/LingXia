@@ -38,7 +38,7 @@ export const doc: ComponentDoc = {
       { keys: 'Up, Down', effect: 'moves between items, wrapping' },
       { keys: 'Home, End', effect: 'first and last item' },
       { keys: 'a letter', effect: 'the next item whose name starts with it' },
-      { keys: 'Escape', effect: 'closes and returns focus to the trigger' },
+      { keys: 'Escape', effect: 'closes and returns focus to the trigger; inside a submenu that took the panel, goes back to the menu first' },
     ],
     target: { sm: 32, md: 40, lg: 48 },
     contrast: [
@@ -49,6 +49,7 @@ export const doc: ComponentDoc = {
       'An item is named by its label and then its description, both inside the item.',
       'Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.',
       'A tap outside, Escape and back close the menu; that tap reaches nothing else.',
+      'On a narrow screen the row that opens a submenu and the row that goes back are menu items that keep the menu open, so the arrow keys reach them; Escape and back go up one level before they close the menu.',
       'Checkbox and radio items are read as checked or not, and keep the menu open so the change can be seen.',
     ],
   },
@@ -77,11 +78,6 @@ export const doc: ComponentDoc = {
       missing: 'A submenu inside a submenu, and the menu itself opening at the trigger\'s side.',
       needs: 'nothing from the View',
       today: 'One level of submenu; the menu opens under or over its trigger.',
-    },
-    {
-      missing: 'On a narrow screen, the row that opens a submenu and the row that goes back as menu items, and Left or Escape going back one step.',
-      needs: 'a menu item that does not close its menu when pressed, and a key handler on a menu',
-      today: 'They are plain buttons inside the menu; Escape closes the whole menu.',
     },
     {
       missing: 'Anchoring when opened from code with isOpen.',

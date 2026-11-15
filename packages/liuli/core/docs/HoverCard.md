@@ -72,7 +72,7 @@ export function Term() {
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
-| trigger | `<button>` | yes | The words, underlined to say there is more. |
+| trigger | `<button>` | yes | The words, under a dotted line that says there is more and is not a link. |
 | card | `<view>` | yes | A hint popover anchored to the trigger, in the top layer. |
 
 ## What an app may override
@@ -80,7 +80,7 @@ export function Term() {
 - `className`: Classes for the trigger\'s text, to match the text around it.
 - The recipe, `hoverCardRecipe` from `@liulidesign/core/HoverCard/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--shadow-raised`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `focus`, `surface-overlay`, `text`.
+- Colour roles it paints with, set by the theme pack: `focus`, `line-strong`, `surface-overlay`, `text`.
 
 ## Accessibility
 

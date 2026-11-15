@@ -305,11 +305,12 @@ export function Submenu() {
 - Up, Down: moves between items, wrapping.
 - Home, End: first and last item.
 - A letter: the next item whose name starts with it.
-- Escape: closes and returns focus to the trigger.
+- Escape: closes and returns focus to the trigger; inside a submenu that took the panel, goes back to the menu first.
 - Press target: sm 32 px, md 40 px, lg 48 px.
 - An item is named by its label and then its description, both inside the item.
 - Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.
 - A tap outside, Escape and back close the menu; that tap reaches nothing else.
+- On a narrow screen the row that opens a submenu and the row that goes back are menu items that keep the menu open, so the arrow keys reach them; Escape and back go up one level before they close the menu.
 - Checkbox and radio items are read as checked or not, and keep the menu open so the change can be seen.
 
 | Contrast | Pair | Minimum | Light | Dark |
@@ -332,7 +333,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
 | A submenu inside a submenu, and the menu itself opening at the trigger's side. | nothing from the View | One level of submenu; the menu opens under or over its trigger. |
-| On a narrow screen, the row that opens a submenu and the row that goes back as menu items, and Left or Escape going back one step. | a menu item that does not close its menu when pressed, and a key handler on a menu | They are plain buttons inside the menu; Escape closes the whole menu. |
 | Anchoring when opened from code with isOpen. | a popover anchor that does not depend on which control opened it | Opened from code it is placed by its classes; the trigger is the normal way in. |
 | A destructive item in danger-coloured text. | a text-grade danger role (4.5:1 on surface-overlay) | The icon carries the danger colour; the text stays in the text role. |
 

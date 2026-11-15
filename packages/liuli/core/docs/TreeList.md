@@ -111,6 +111,8 @@ export function Outline() {
 - Description: none.
 - States: undefined (from undefined); undefined (from undefined); undefined (from undefined).
 - Up and Down: Move between the rows in view.
+- Right: Opens a closed branch; on an open one, moves to its first child (Left, right to left).
+- Left: Closes an open branch; on any other row, moves to its parent (Right, right to left).
 - Enter or Space: Selects the row; on a branch it also opens or closes it.
 - Press target: md 36 px.
 - Each row is a tree item that reports its level, whether it is selected, and on a branch whether it is open.
@@ -136,7 +138,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| undefined | undefined | undefined |
 | undefined | undefined | undefined |
 
 Related: NavList, Details, Breadcrumb.

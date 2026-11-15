@@ -27,6 +27,8 @@ export const doc: ComponentDoc = {
     states: ['expanded', 'selected', 'disabled'],
     keyboard: [
       { keys: 'Up and Down', effect: 'Move between the rows in view' },
+      { keys: 'Right', effect: 'Opens a closed branch; on an open one, moves to its first child (Left, right to left)' },
+      { keys: 'Left', effect: 'Closes an open branch; on any other row, moves to its parent (Right, right to left)' },
       { keys: 'Enter or Space', effect: 'Selects the row; on a branch it also opens or closes it' },
     ],
     target: { md: 36 },
@@ -56,7 +58,6 @@ export const doc: ComponentDoc = {
     { name: 'Outline', title: 'An outline, opened from outside' },
   ],
   gaps: [
-    'Left and Right do not close and open a branch: the View steps a tree with Up and Down only.',
     'Rows are not checked, dragged or loaded on demand.',
   ],
   related: ['NavList', 'Details', 'Breadcrumb'],

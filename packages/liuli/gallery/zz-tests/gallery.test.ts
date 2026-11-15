@@ -499,3 +499,27 @@ spec('playground: a changed prop redraws the component and rewrites the code', {
   await expect(stage).toContainText('In review');
   await t.attach('playground-badge.png', await view.screenshot());
 });
+
+spec('dropdown menu: on a narrow screen Escape leaves a submenu before it closes the menu', { id: 'SUBMENU-ESCAPE-001', start: { page: 'dropdown-menu' }, timeout: 90_000 }, async (t) => {
+  const view = t.app.view;
+  // Beside its item at regular width, where there is no level to go back to.
+  if ((await view.viewport()).width >= 600) return;
+  await view.testId('note-menu').click();
+  await view.testId('move').click();
+  const back = view.testId('move-back');
+  await expect(back).toBeVisible();
+  await back.press('Escape');
+  await expect(back).toHaveCount(0);
+  await expect(view.testId('move')).toBeVisible();
+  await view.testId('move').press('Escape');
+  await expect(view.testId('move')).toHaveCount(0);
+});
+
+spec('tree list: Right opens a closed branch and Left closes it', { id: 'TREE-KEYS-001', start: { page: 'tree-list' }, timeout: 60_000 }, async (t) => {
+  const shared = t.app.view.testId('folders-shared');
+  await expect(shared).not.toBeExpanded();
+  await shared.press('ArrowRight');
+  await expect(shared).toBeExpanded();
+  await shared.press('ArrowLeft');
+  await expect(shared).not.toBeExpanded();
+});

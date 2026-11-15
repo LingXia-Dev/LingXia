@@ -172,6 +172,8 @@ export function DropdownMenu({
           open={isOpen}
           // A menu that closes forgets which submenu it was showing.
           onToggle={next => { if (!next) drilled.set(null); onOpenChange?.(next); }}
+          // Escape or back inside a submenu that took the panel goes up one level; from the top it closes the menu.
+          onCloseRequest={() => { if (drilled.value === null) return true; drilled.set(null); return false; }}
           style={{ positionArea: areas[placement][alignment] }}
           className={cx(r.menu.base, r.menu.offset[placement], isCompact && r.menu.drill, menuClassName)}
         >
@@ -333,7 +335,7 @@ export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false,
     if (drill.open === id) {
       return (
         <>
-          <button aria-label={label} aria-expanded onClick={() => drill.set(null)} data-testid={testId && `${testId}-back`} className={cx(r.item.base, r.item.size[size], r.back.base)}>
+          <button role="menuitem" keepOpen aria-label={label} aria-expanded onClick={() => drill.set(null)} data-testid={testId && `${testId}-back`} className={cx(r.item.base, r.item.size[size], r.back.base)}>
             <Glyph name="chevron-start" className={r.submenuChevron.base} />
             <text className={r.back.label}>{label}</text>
           </button>
@@ -345,9 +347,9 @@ export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false,
       );
     }
     if (drill.open !== null) return null;
-    // A plain button: a menu item would close the menu as it is pressed.
+    // A menu item that keeps its menu open, so the arrow keys reach it like any other row.
     return (
-      <button aria-label={label} aria-expanded={false} disabled={isDisabled} onClick={() => drill.set(id)} data-testid={testId} className={cx(r.item.base, r.item.size[size])}>
+      <button role="menuitem" keepOpen aria-label={label} aria-expanded={false} disabled={isDisabled} onClick={() => drill.set(id)} data-testid={testId} className={cx(r.item.base, r.item.size[size])}>
         {row}
       </button>
     );
