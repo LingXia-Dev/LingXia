@@ -606,6 +606,24 @@ export function render() {
   });
 });
 
+test('an element its props make a keyboard stop takes focus-visible:, and a stepped button is not inert', async () => {
+  await project({
+    'page.tsx': `import { useLocal } from '@lingxia/view';
+export function render() {
+  const at = useLocal('at', 2);
+  return <view>
+    <view onPointer={() => {}} aria-label="Month" aria-valuenow={at.value} aria-valuemax={11} className="h-10 focus-visible:bg-danger" />
+    <view drag="x" dragSnapPoints={[0, 40]} aria-label="Card" className="w-10 h-10 focus-visible:bg-danger" />
+    <button onPointer={() => {}} aria-label="Level" aria-valuenow={at.value}>Level</button>
+  </view>;
+}`,
+  }, async (root, build) => {
+    const { warnings } = await build();
+    await load(root);
+    assert.deepEqual(warnings.filter(line => line.includes('UI_INERT')), []);
+  });
+});
+
 test('UI_INERT warns on a control with no handler, bind or disabled; invokers, menu items and spreads stay quiet', async () => {
   await project({
     'page.tsx': `import { useLocal } from '@lingxia/view';

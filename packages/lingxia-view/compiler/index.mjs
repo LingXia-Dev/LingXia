@@ -233,7 +233,7 @@ export function identify(source, filename, label) {
     volatile.map(name => `${name}.__lxVolatile = true;\n`).join('');
 }
 
-function classProblems(rule, name, tag, suggestions, grid) {
+function classProblems(rule, name, tag, suggestions, grid, focusable = false) {
   if (!rule) {
     const nearest = suggestions.get(name);
     return [`UI_CLASS_UNKNOWN: ${name} is not a Tailwind utility${nearest ? `; nearest supported: ${nearest}` : ''}`];
@@ -260,7 +260,7 @@ function classProblems(rule, name, tag, suggestions, grid) {
   const flexOnly = grid && !Object.keys(rule.when ?? {}).length && gridRefuses(props);
   if (flexOnly) problems.push(gridProblem(name, flexOnly));
   if (state === 'focus' && !editors.has(tag) && tag !== 'select') problems.push(`UI_CLASS_ELEMENT: ${name} needs an editor or <select>; <${tag}> never takes focus`);
-  if (state === 'focusVisible' && !focusables.has(tag)) problems.push(`UI_CLASS_ELEMENT: ${name} needs an element that takes focus; <${tag}> never does`);
+  if (state === 'focusVisible' && !focusables.has(tag) && !focusable) problems.push(`UI_CLASS_ELEMENT: ${name} needs an element that takes focus; <${tag}> never does`);
   if (state === 'active' && !controls.has(tag)) problems.push(`UI_CLASS_ELEMENT: ${name} needs a control; <${tag}> is never pressed`);
   const layout = state && state !== 'disabled' ? props.filter(prop => !styleTable[prop]?.paint) : [];
   if (layout.length) problems.push(`UI_CLASS_ELEMENT: ${name}: ${state} styles change paint only, not ${layout.join(', ')}`);
@@ -463,12 +463,12 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const usages = sourceFiles.flatMap(file => collectClassUsage(file, checker));
     const unknown = [...new Set(usages.flatMap(({ value }) => value.split(/\s+/)).filter(name => name && !rulesByName.has(name)))];
     const suggestions = await nearestSupported(unknown, theme);
-    for (const { value, location, tag } of usages) {
+    for (const { value, location, tag, focusable } of usages) {
       const names = value.split(/\s+/).filter(Boolean);
       const grid = names.includes('grid');
       for (const name of names) {
         const found = rulesByName.get(name) ?? [undefined];
-        for (const problem of new Set(found.flatMap(rule => classProblems(rule, name, tag, suggestions, grid)))) problems.push(`${location}: ${problem}`);
+        for (const problem of new Set(found.flatMap(rule => classProblems(rule, name, tag, suggestions, grid, focusable)))) problems.push(`${location}: ${problem}`);
       }
     }
     if (problems.length) {

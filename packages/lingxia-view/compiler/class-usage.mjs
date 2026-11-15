@@ -102,17 +102,23 @@ function isCx(checker, callee) {
 
 export function collectClassUsage(file, checker = sourceChecker(file)) {
   const usages = [];
-  const record = (expression, tag) => {
+  const record = (expression, tag, focusable) => {
     for (const { text, node } of classPieces(checker, expression)) {
       const owner = node.getSourceFile();
       const { line, character } = owner.getLineAndCharacterOfPosition(node.getStart(owner));
-      usages.push({ value: text, tag, location: `${owner.fileName}:${line + 1}:${character + 1}` });
+      usages.push({ value: text, tag, focusable, location: `${owner.fileName}:${line + 1}:${character + 1}` });
     }
+  };
+  // An element its props make a keyboard stop: a drag element, or one that hears the pointer and
+  // reports a value. A spread may carry either.
+  const takesFocus = attributes => {
+    const names = new Set(attributes.properties.filter(ts.isJsxAttribute).map(prop => prop.name.getText(file)));
+    return names.has('drag') || (names.has('onPointer') && names.has('aria-valuenow')) || attributes.properties.some(ts.isJsxSpreadAttribute);
   };
   const visit = node => {
     if (ts.isJsxAttribute(node) && node.name.getText(file) === 'className' && node.initializer) {
       const expression = ts.isJsxExpression(node.initializer) ? node.initializer.expression : node.initializer;
-      record(expression, node.parent.parent.tagName.getText(file));
+      record(expression, node.parent.parent.tagName.getText(file), takesFocus(node.parent));
     }
     if (ts.isJsxSpreadAttribute(node)) {
       const attributes = node.parent.properties;
@@ -122,9 +128,9 @@ export function collectClassUsage(file, checker = sourceChecker(file)) {
         const property = checker.getTypeAtLocation(node.expression).getProperty('className');
         for (const declaration of property?.declarations ?? []) {
           const tag = node.parent.parent.tagName.getText(file);
-          if (ts.isPropertyAssignment(declaration)) record(declaration.initializer, tag);
+          if (ts.isPropertyAssignment(declaration)) record(declaration.initializer, tag, true);
           if (ts.isShorthandPropertyAssignment(declaration))
-            record(checker.getShorthandAssignmentValueSymbol(declaration)?.valueDeclaration?.initializer, tag);
+            record(checker.getShorthandAssignmentValueSymbol(declaration)?.valueDeclaration?.initializer, tag, true);
         }
       }
     }
