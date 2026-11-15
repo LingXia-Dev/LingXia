@@ -9,11 +9,31 @@ pub fn normalize(range: &SliderSnapshot, value: f64) -> f64 {
     let (min, max, step) = (range.min, range.max, range.step);
     let value = value.clamp(min, max);
     let snapped = (min + ((value - min) / step + 0.5).floor() * step).clamp(min, max);
-    if (max - value).abs() < (snapped - value).abs() {
+    let snapped = if (max - value).abs() < (snapped - value).abs() {
         max
     } else {
         snapped
-    }
+    };
+    snapped.clamp(range.limit[0], range.limit[1])
+}
+
+/// Whether a press at logical `x` is this slider's. Two thumbs on one track split it half way
+/// between them, so the nearer thumb takes the press.
+pub fn takes(node: &NodeSnapshot, x: f32) -> bool {
+    let Some((range, (other, upper))) = node
+        .range
+        .as_ref()
+        .and_then(|range| Some((range, range.pair?)))
+    else {
+        return true;
+    };
+    let [left, _, width, _] = track(node);
+    let width = width - range.inset[0] - range.inset[1];
+    let at = |value: f64| {
+        left + range.inset[0] + width * ((value - range.min) / (range.max - range.min)) as f32
+    };
+    let middle = (at(range.value) + at(other)) / 2.0;
+    if upper { x > middle } else { x <= middle }
 }
 
 fn track(node: &NodeSnapshot) -> [f32; 4] {

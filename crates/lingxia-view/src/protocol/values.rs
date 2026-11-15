@@ -344,7 +344,8 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         | field::SLIDER_MIN
         | field::SLIDER_MAX
         | field::SLIDER_STEP
-        | field::SLIDER_SECONDARY => ensure(finite_within(value, 1e9), "UI_SLIDER: invalid number"),
+        | field::SLIDER_SECONDARY
+        | field::SLIDER_OTHER => ensure(finite_within(value, 1e9), "UI_SLIDER: invalid number"),
         field::IMAGE_RETRY_KEY => ensure(
             value
                 .as_str()

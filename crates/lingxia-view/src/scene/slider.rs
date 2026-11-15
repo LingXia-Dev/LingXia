@@ -20,6 +20,12 @@ pub struct SliderSnapshot {
     pub secondary: Option<f64>,
     /// `aria-valuetext`: how the value reads aloud, in place of the number.
     pub text: Option<String>,
+    /// The values this thumb may take: the whole range, or up to the thumb it shares a track with.
+    #[serde(skip)]
+    pub limit: [f64; 2],
+    /// On a shared track: the other thumb's value, and whether this is the upper thumb.
+    #[serde(skip)]
+    pub pair: Option<(f64, bool)>,
 }
 
 impl SliderSnapshot {
@@ -55,6 +61,21 @@ impl SliderSnapshot {
             return Err("UI_SLIDER: accessibilityLabel is required".into());
         }
         let enabled = record.number(field::ENABLED) != Some(0.0);
+        let other = record
+            .fields
+            .iter()
+            .find(|(id, _)| *id == field::SLIDER_OTHER)
+            .and_then(|(_, v)| v.as_f64());
+        let pair = match (other, record.string(field::SLIDER_THUMB)) {
+            (Some(other), Some(thumb)) => Some((other.clamp(min, max), thumb == "upper")),
+            (None, None) => None,
+            _ => return Err("UI_SLIDER: a thumb of a pair needs the other thumb's value".into()),
+        };
+        let limit = match pair {
+            Some((other, true)) => [other, max],
+            Some((other, false)) => [min, other],
+            None => [min, max],
+        };
         let mut result = Self {
             min,
             max,
@@ -78,6 +99,8 @@ impl SliderSnapshot {
                 .and_then(|(_, v)| v.as_f64())
                 .map(|v| v.clamp(min, max)),
             text: record.string(field::ARIA_VALUE_TEXT).map(str::to_owned),
+            limit,
+            pair,
         };
         result.value = result.normalize(value);
         Ok(result)
@@ -87,11 +110,12 @@ impl SliderSnapshot {
         let value = value.clamp(self.min, self.max);
         let snapped = (self.min + ((value - self.min) / self.step + 0.5).floor() * self.step)
             .clamp(self.min, self.max);
-        if (self.max - value).abs() < (snapped - value).abs() {
+        let snapped = if (self.max - value).abs() < (snapped - value).abs() {
             self.max
         } else {
             snapped
-        }
+        };
+        snapped.clamp(self.limit[0], self.limit[1])
     }
 }
 
@@ -344,28 +368,42 @@ pub(crate) fn paint(
     };
     let track = Part::of(record, field::TRACK_STYLE)?;
     let thickness = track.height.unwrap_or(4.0);
-    let mut line = |slot: usize, part: &Part, default: [u8; 4], to: f32| -> Result<(), String> {
-        let height = part.height.unwrap_or(thickness);
-        slots.0[slot] = Some(commands.len());
-        commands.push(Paint::Rect {
-            corners: None,
-            color: fill(part, default)?,
-            bounds: [start, center - height / 2.0, track_width * to, height],
-            radius: part.radius.unwrap_or(height / 2.0).min(height / 2.0),
-        });
-        Ok(())
-    };
-    line(0, &track, palette.role(Role::Line), 1.0)?;
-    if let Some(secondary) = range.secondary {
-        let part = Part::of(record, field::SECONDARY_STYLE)?;
-        line(1, &part, palette.role(Role::TextFaint), share(secondary))?;
+    let mut line =
+        |slot: usize, part: &Part, default: [u8; 4], [from, to]: [f32; 2]| -> Result<(), String> {
+            let height = part.height.unwrap_or(thickness);
+            slots.0[slot] = Some(commands.len());
+            commands.push(Paint::Rect {
+                corners: None,
+                color: fill(part, default)?,
+                bounds: [
+                    start + track_width * from,
+                    center - height / 2.0,
+                    track_width * (to - from).max(0.0),
+                    height,
+                ],
+                radius: part.radius.unwrap_or(height / 2.0).min(height / 2.0),
+            });
+            Ok(())
+        };
+    // Two thumbs share one track: the lower draws it and the range between them, and the
+    // upper, painted above, adds only its thumb.
+    if !matches!(range.pair, Some((_, true))) {
+        line(0, &track, palette.role(Role::Line), [0.0, 1.0])?;
+        if let Some(secondary) = range.secondary {
+            let part = Part::of(record, field::SECONDARY_STYLE)?;
+            line(
+                1,
+                &part,
+                palette.role(Role::TextFaint),
+                [0.0, share(secondary)],
+            )?;
+        }
+        let filled = match range.pair {
+            Some((other, _)) => [share(range.value), share(other)],
+            None => [0.0, share(range.value)],
+        };
+        line(2, &Part::of(record, field::RANGE_STYLE)?, lit, filled)?;
     }
-    line(
-        2,
-        &Part::of(record, field::RANGE_STYLE)?,
-        lit,
-        share(range.value),
-    )?;
     let thumb = Part::of(record, field::THUMB_STYLE)?;
     let [w, h] = [
         thumb.width.unwrap_or(THUMB) * thumb.scale[0],

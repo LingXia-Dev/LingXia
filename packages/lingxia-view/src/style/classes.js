@@ -138,6 +138,14 @@ function cascade(rules, meta) {
   return style;
 }
 
+/** `className` in two: the classes with a rule `pick` holds for, and the rest; both keep their order. */
+export function partitionClasses(className, pick) {
+  const picked = [], rest = [];
+  for (const name of typeof className === 'string' ? className.split(/\s+/).filter(Boolean) : [])
+    (byName.get(name)?.some(pick) ? picked : rest).push(name);
+  return [picked.join(' '), rest.join(' ')];
+}
+
 function changed(full, base) {
   const delta = {};
   for (const [key, value] of Object.entries(full)) if (JSON.stringify(value) !== JSON.stringify(base[key])) delta[key] = value;

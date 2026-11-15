@@ -380,6 +380,8 @@ pub(super) fn slider_node() -> NodeSnapshot {
         text: None,
         enabled: true,
         on_change: Some(7),
+        limit: [0.0, 10.0],
+        pair: None,
     });
     volume
 }

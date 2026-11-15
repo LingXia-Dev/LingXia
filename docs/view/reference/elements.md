@@ -245,6 +245,10 @@ Children: none.
 
 Binding: `bind={local}` with a `useLocal<number>` cell, or `value` plus `onChange(value: number)`; not both.
 
+`onChangeEnd(value)` runs once a change is finished: when the press that made it lifts, or at once for a key or assistive step.
+
+Two values: `values={[lower, upper]}` with `thumbLabels={[name, name]}` makes a control with two thumbs that cannot cross; `onChange` and `onChangeEnd` then take `[lower, upper]`.
+
 | Prop | Type | Required |
 | --- | --- | --- |
 | `min` | `number` |  |

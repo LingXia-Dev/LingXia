@@ -77,7 +77,10 @@ impl PresentedFrame {
             if panel.is_some_and(|panel| !descends(node, panel)) {
                 continue;
             }
-            if hit_target(node) && contains(node, point, false) {
+            if hit_target(node)
+                && contains(node, point, false)
+                && super::slider::takes(node, point[0])
+            {
                 return Some(index);
             }
             if node.panel && panel.is_none() && contains(node, point, false) {

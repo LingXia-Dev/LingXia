@@ -292,6 +292,8 @@ pub mod field {
     pub const ON_PAGE: usize = 255;
     pub const TEXT_DECORATION_STYLE: usize = 256;
     pub const TEXT_DECORATION_COLOR: usize = 257;
+    pub const SLIDER_OTHER: usize = 258;
+    pub const SLIDER_THUMB: usize = 259;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video"];
@@ -556,6 +558,8 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("onPage", "handle"),
     ("textDecorationStyle", "border-style"),
     ("textDecorationColor", "string"),
+    ("sliderOther", "slider-number"),
+    ("sliderThumb", "slider-thumb"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -582,6 +586,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "text-overflow" => Some(&["clip", "ellipsis"]),
         "sizing-keyword" => Some(&["fit-content", "max-content", "min-content"]),
         "border-style" => Some(&["solid", "dashed", "dotted"]),
+        "slider-thumb" => Some(&["lower", "upper"]),
         "overscroll" => Some(&["auto", "contain", "none"]),
         "scroll-snap" => Some(&["none", "x", "y"]),
         "snap-align" => Some(&["none", "start", "center", "end"]),
@@ -1019,4 +1024,6 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::COLUMN]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
+    FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
 ];

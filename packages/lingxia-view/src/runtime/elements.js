@@ -1,4 +1,4 @@
-import { pressChange } from './press.js';
+import { pressChange, changeEnd, pressEnd } from './press.js';
 import { elements, admission, limits, commonProps } from '../generated/contract.js';
 import { resolveClasses, classGeneration } from '../style/classes.js';
 import { classElementProblem, gridProblem, gridRefuses, tagHint } from '../style/hints.js';
@@ -14,6 +14,7 @@ import * as check from './validate.js';
 import { defaultSeries } from '../style/color.js';
 import { keyPositions } from './keys.js';
 import { expand, invokerHandler, interestTrigger, popoverScope, dragClose, scrimMark } from './toplayer.js';
+import { rangeSlider, thumbMark } from './range.js';
 import { recall, enter, leave, remember } from './memo.js';
 import { isProvider, provide } from './context.js';
 import { playerName, videoStatus, fullscreenHandler } from './video.js';
@@ -97,7 +98,7 @@ function admit(tag, element, props) {
       if (++data > 16) throw Error('UI_PROP: more than 16 data-* props');
       continue;
     }
-    if (element.binding && (key === 'bind' || key === 'value' || key === element.binding.event)) continue;
+    if (element.binding && (key === 'bind' || key === 'value' || key === element.binding.event || key === element.binding.end)) continue;
     throw Error(`UI_PROP: ${key} is not a property of <${tag}>`);
   }
   if (props.key !== undefined && typeof props.key !== 'string') throw Error('UI_PROP: key must be a string');
@@ -323,8 +324,9 @@ export function resolveNode(node, identity, depth = 0, parent = {}) {
   }
   try {
     // An open <dialog> or popover becomes a top-layer box; a closed one renders nothing.
-    const expansion = expand(tag, original, children, identity, parent);
+    let expansion = expand(tag, original, children, identity, parent);
     if (expansion === null) return null;
+    if (tag === 'slider' && original.values !== undefined) expansion = rangeSlider(original);
     if (expansion) {
       const result = resolveNode(expansion.node, identity, depth + 1, { ...parent, extra: undefined, every: undefined, sibling: undefined });
       expansion.finish(result);
@@ -534,23 +536,36 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       // A press on a mixed checkbox checks it, as in the DOM; the page clears `indeterminate`.
       if (props.onChange && !disabled) { const { onChange, value, indeterminate } = props; on('onCheckedChange', () => onChange(indeterminate === true || !(value ?? false))); }
       break;
-    case 'slider':
+    case 'slider': {
       check.slider(props);
+      // One thumb of two stops at the other.
+      const thumb = props[thumbMark];
+      const within = value => !thumb ? value : thumb.upper ? Math.max(value, thumb.other) : Math.min(value, thumb.other);
+      props.value = within(props.value);
       for (const [key, name] of [['sliderValue', 'value'], ['sliderMin', 'min'], ['sliderMax', 'max'], ['sliderStep', 'step'], ['accessibilityLabel', 'accessibilityLabel']])
         wire(key, props[name]);
+      if (thumb) { wire('sliderOther', thumb.other); wire('sliderThumb', thumb.upper ? 'upper' : 'lower'); }
       if (props.secondaryValue !== undefined) wire('sliderSecondary', check.sliderSecondary(props));
-      if (props.onChange && !disabled) on('onSliderChange', value => {
-        const next = check.sliderValue(props, value);
-        if (next !== props.value) props.onChange(next);
+      const { onChange, onChangeEnd, onPressChange } = props;
+      if (onChangeEnd !== undefined && typeof onChangeEnd !== 'function') throw Error('UI_SLIDER: onChangeEnd takes a function');
+      if ((onChange || onChangeEnd) && !disabled) on('onSliderChange', value => {
+        const next = within(check.sliderValue(props, value));
+        if (next === props.value) return;
+        onChange?.(next);
+        if (onChangeEnd) changeEnd(identity, next, onChangeEnd);
       }, 'number');
-      if (props.onPressChange !== undefined) {
-        if (typeof props.onPressChange !== 'function') throw Error('UI_SLIDER: onPressChange takes a function');
-        const report = props.onPressChange;
+      if (onPressChange !== undefined || onChangeEnd) {
+        if (onPressChange !== undefined && typeof onPressChange !== 'function') throw Error('UI_SLIDER: onPressChange takes a function');
+        const report = pressed => {
+          if (onChangeEnd) pressEnd(identity, pressed, onChangeEnd);
+          return onPressChange?.(pressed);
+        };
         // Kept while disabled: a press that a disable ends still reaches its current callback.
         if (!dropped('onSliderPress')) result.handlers.push(['onSliderPress', handle(),
           callbackOf(() => pressChange(identity, report), 'void', false, { identity, callback: report })]);
       }
       break;
+    }
     case 'input': case 'textarea':
       check.label(props.accessibilityLabel, 'UI_INPUT');
       if (!validInputText(props.value === undefined ? '' : props.value) || !validInputText(props.placeholder === undefined ? '' : props.placeholder)) throw Error('UI_INPUT: invalid text');

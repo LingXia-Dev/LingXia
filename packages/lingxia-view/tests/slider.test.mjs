@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { h, describe, prepare, discard, dispatch, useLocal, reset } from '../src/internal.js';
-import { tree, rendered } from './support/wire.mjs';
+import { tree, rendered, byTestId } from './support/wire.mjs';
+import { releasePress } from '../src/runtime/press.js';
+import { compileUtilities } from '../compiler/tailwind.mjs';
+import { configureClasses } from '../src/style/classes.js';
+import { field } from '../src/generated/wire.js';
 
 test('slider clamps and snaps numeric proposals including a partial final interval', () => {
   reset(); let calls = 0;
@@ -38,4 +42,74 @@ test('slider validates bounds, finite numeric binding, labels and disabled callb
   const disabled = rendered(() => h('slider', { 'aria-label': 'Range', disabled: true, onChange() {} }));
   assert.equal(disabled.props.onSliderChange, undefined);
   assert.equal(disabled.props.enabled, 0);
+});
+
+test('onChangeEnd hears a change when its press lifts, and at once without a press', () => {
+  reset(); const calls = [];
+  const render = () => {
+    const value = useLocal('value', 0);
+    return h('slider', { 'aria-label': 'Volume', value: value.value, onChange: next => { calls.push(['change', next]); value.set(next); }, onChangeEnd: next => calls.push(['end', next]) });
+  };
+  const step = value => { dispatch(rendered(render).props.onSliderChange, value); };
+  step(10);
+  assert.deepEqual(calls, [['change', 10], ['end', 10]], 'a key or assistive step ends at once');
+  calls.length = 0;
+  dispatch(rendered(render).props.onSliderPress);
+  step(20); step(30);
+  assert.deepEqual(calls, [['change', 20], ['change', 30]], 'a held press keeps it open');
+  assert.equal(releasePress(), true);
+  assert.deepEqual(calls.slice(2), [['end', 30]], 'the release ends it once, with the last value');
+  calls.length = 0;
+  dispatch(rendered(render).props.onSliderPress);
+  releasePress();
+  assert.deepEqual(calls, [], 'a press that changed nothing ends nothing');
+  assert.throws(() => describe(() => h('slider', { 'aria-label': 'x', onChangeEnd: 1 }), {}), /UI_SLIDER: onChangeEnd/);
+});
+
+test('two values make a named group of two sliders over one track that cannot cross', async () => {
+  reset(); const calls = [];
+  configureClasses(await compileUtilities(new Set(['w-64', 'mx-4', 'h-10', 'px-2', 'text-accent', 'thumb:bg-accent', 'bg-surface'])));
+  const render = () => {
+    const range = useLocal('range', [20, 60]);
+    return h('page', {}, h('slider', { 'aria-label': 'Price', thumbLabels: ['From', 'To'], values: range.value, step: 10, 'data-testid': 'price',
+      className: 'w-64 mx-4 h-10 px-2 text-accent thumb:bg-accent bg-surface',
+      onChange: next => { calls.push(['change', next]); range.set(next); }, onChangeEnd: next => calls.push(['end', next]) }));
+  };
+  const parts = () => { const root = rendered(render); return [byTestId(root, 'price'), byTestId(root, 'price-upper'), byTestId(root, 'price-lower')]; };
+  let [group, upper, lower] = parts();
+  assert.deepEqual([group.props.role, group.props.accessibilityLabel], ['group', 'Price']);
+  assert.deepEqual(group.children.map(child => child.testId), ['price-lower', 'price-upper'], 'in reading order; the upper thumb paints above');
+  assert.deepEqual([upper.props.accessibilityLabel, upper.props.sliderValue, upper.props.sliderOther, upper.props.sliderThumb], ['To', 60, 20, 'upper']);
+  assert.deepEqual([lower.props.accessibilityLabel, lower.props.sliderValue, lower.props.sliderOther, lower.props.sliderThumb], ['From', 20, 60, 'lower']);
+  // Placement and the box go to the group; what the control draws with stays on each slider.
+  assert.deepEqual([group.props.width, group.props.height, lower.props.width, lower.props.height, upper.props.width], [256, 40, undefined, 40, undefined]);
+  assert.ok(group.props.background !== undefined && upper.props.background === undefined && lower.props.background === undefined);
+  assert.ok(group.props.thumbStyle === undefined && upper.props.thumbStyle !== undefined && lower.props.thumbStyle !== undefined);
+  assert.deepEqual([upper.props.color, lower.props.color, upper.props.position], ['accent', 'accent', 'absolute']);
+  dispatch(lower.props.onSliderChange, 40);
+  assert.deepEqual(calls, [['change', [40, 60]], ['end', [40, 60]]]);
+  [group, upper, lower] = parts();
+  dispatch(lower.props.onSliderChange, 90);
+  assert.deepEqual(calls[2], ['change', [60, 60]], 'the lower thumb stops at the upper');
+  [group, upper, lower] = parts();
+  dispatch(upper.props.onSliderChange, 10);
+  assert.equal(calls.length, 4, 'and the upper, already there, does not move below it');
+  calls.length = 0;
+  dispatch(upper.props.onSliderPress);
+  dispatch(upper.props.onSliderChange, 80);
+  [group, upper, lower] = parts();
+  dispatch(upper.props.onSliderChange, 100);
+  releasePress();
+  assert.deepEqual(calls, [['change', [60, 80]], ['change', [60, 100]], ['end', [60, 100]]]);
+  configureClasses([]);
+  const bad = props => () => describe(() => h('slider', { 'aria-label': 'Price', thumbLabels: ['From', 'To'], values: [1, 2], ...props }), {});
+  assert.throws(bad({ values: [5, 1] }), /UI_SLIDER: values/);
+  assert.throws(bad({ values: [1] }), /UI_SLIDER: values/);
+  assert.throws(bad({ thumbLabels: ['From'] }), /UI_A11Y/);
+  assert.throws(bad({ thumbLabels: undefined }), /UI_A11Y/);
+  assert.throws(bad({ value: 3 }), /UI_SLIDER: value belongs/);
+  assert.throws(bad({ 'aria-label': undefined }), /UI_A11Y/);
+  const previous = globalThis.__lingxiaViewHost;
+  globalThis.__lingxiaViewHost = { maxField: field.sliderThumb - 1 };
+  try { assert.throws(bad({}), /UI_COMPAT/); } finally { globalThis.__lingxiaViewHost = previous; }
 });

@@ -543,10 +543,10 @@ impl Projection<'_> {
             focusable = true;
             if slider_enabled(node) {
                 actions.push(Action::SetProgress);
-                if range.value < range.max {
+                if range.value < range.limit[1] {
                     actions.push(Action::ScrollForward);
                 }
-                if range.value > range.min {
+                if range.value > range.limit[0] {
                     actions.push(Action::ScrollBackward);
                 }
             }
@@ -768,9 +768,10 @@ impl Projection<'_> {
             range: node
                 .range
                 .as_ref()
+                // A thumb that shares its track reports the values it can reach.
                 .map(|range| Range {
-                    min: range.min,
-                    max: range.max,
+                    min: range.limit[0],
+                    max: range.limit[1],
                     value: range.value,
                 })
                 .or_else(|| progress.as_ref().map(|(range, _)| range.clone()))

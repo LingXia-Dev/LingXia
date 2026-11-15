@@ -5253,6 +5253,8 @@ mod close_request;
 mod failed_first_frame;
 #[path = "tree_keys.rs"]
 mod tree_keys;
+#[path = "range_slider.rs"]
+mod range_slider;
 
 #[test]
 fn escape_pressed_on_any_match_closes_an_open_light_dismiss_popover() {

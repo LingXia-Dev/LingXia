@@ -38,7 +38,7 @@ export function acceptsProp(tag, key) {
   const element = elements[tag];
   // data-* props carry nothing but what `data-*` variants match.
   return common.has(key) || has(element.props, key) || /^data-[a-z][a-z0-9-]*$/.test(key) ||
-    Boolean(element.binding && (key === 'bind' || key === 'value' || key === element.binding.event));
+    Boolean(element.binding && (key === 'bind' || key === 'value' || [element.binding.event, element.binding.end, element.binding.pair?.values, element.binding.pair?.labels].includes(key)));
 }
 
 export function styleProblem(tag, name) {

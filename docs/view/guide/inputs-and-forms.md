@@ -197,6 +197,35 @@ export function render() {
 State changes on parts ease over 150 ms; the thumb follows the value directly. The touch target is the
 slider's own box and never shrinks with the thumb's look, so a `thumb:size-0` scrubber stays fully draggable.
 The track ends sit inside the padding by half the thumb's widest state.
+The thumb's centre therefore travels less than the box is wide: a press at 90 % of the box is past 90 % of the
+range, and may land on the last step.
+
+`onChangeEnd(value)` runs once a change is finished: when the finger or mouse that made it lifts, or at
+once for an arrow key or a screen reader step. Save or fetch there, and keep `onChange` for what follows the thumb.
+
+### Two thumbs
+
+`values={[lower, upper]}` makes a range with two thumbs. A press moves the nearer thumb, the thumbs stop
+at each other, and `onChange` and `onChangeEnd` take `[lower, upper]`:
+
+```tsx
+import { useLocal } from '@lingxia/view';
+
+export function render() {
+  const price = useLocal<readonly [number, number]>('price', [20, 60]);
+  return (
+    <slider values={price.value} onChange={price.set} step={5} aria-label="Price" thumbLabels={['From', 'To']}
+      className="w-full text-accent thumb:size-5" />
+  );
+}
+```
+
+- `aria-label` names the pair and `thumbLabels` each thumb: a screen reader meets two sliders in a group,
+  and Tab stops on each. The arrow keys move the focused thumb.
+- Classes that place and size the control (`w-*`, margins, `h-*`, a background) apply to the pair as one box;
+  parts, states, padding and the accent color apply to both thumbs.
+- It takes `values` and `onChange`, not `bind`, `value`, `secondaryValue` or `aria-valuetext`.
+- It needs a host that knows it; on an older one the page fails with `UI_COMPAT`.
 
 ## Forms
 

@@ -23,4 +23,21 @@ export function refreshPresses(live) {
   if (held && live.has(held.identity)) held.callback = live.get(held.identity);
 }
 
-export const resetPresses = () => { held = null; };
+// Sliders under a press, each with the last value it changed to: `onChangeEnd` waits for the release.
+let waiting = new Map();
+
+/** A slider changed to `value`: its change ends now, or at the release of the press that holds it. */
+export function changeEnd(identity, value, end) {
+  if (waiting.has(identity)) waiting.set(identity, { value });
+  else end(value);
+}
+
+/** A slider's press began or ended; a release ends the change made under it. */
+export function pressEnd(identity, pressed, end) {
+  if (pressed) { waiting.set(identity, null); return; }
+  const last = waiting.get(identity);
+  waiting.delete(identity);
+  if (last) end(last.value);
+}
+
+export const resetPresses = () => { held = null; waiting = new Map(); };

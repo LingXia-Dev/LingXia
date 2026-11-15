@@ -74,6 +74,9 @@ async function elements(schema) {
     if (element.binding) {
       const { type, event } = element.binding;
       out.push(`Binding: \`bind={local}\` with a \`useLocal<${type}>\` cell, or \`value\` plus \`${event}(value: ${type})\`; not both.${event === 'onInput' ? ' `onInput` runs on every value change, a composition included.' : ''}`, '');
+      const { end, pair } = element.binding;
+      if (end) out.push(`\`${end}(value)\` runs once a change is finished: when the press that made it lifts, or at once for a key or assistive step.`, '');
+      if (pair) out.push(`Two values: \`${pair.values}={[lower, upper]}\` with \`${pair.labels}={[name, name]}\` makes a control with two thumbs that cannot cross; \`${event}\`${end ? ` and \`${end}\`` : ''} then take \`[lower, upper]\`.`, '');
     }
     if (element.component) out.push(`A component from \`@lingxia/view\`, rendered as the \`list\` element.`, '');
     const own = Object.entries(element.props).filter(([prop]) => !element.component?.replaces.includes(prop));
