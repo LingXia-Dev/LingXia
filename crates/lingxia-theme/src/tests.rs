@@ -226,6 +226,39 @@ fn a_pack_without_surface_overlay_floats_overlays_on_its_own_surface_raised() {
 }
 
 #[test]
+fn a_pack_without_status_marks_draws_them_in_its_status_colours() {
+    let mut pack = default_pack();
+    let marks = [
+        (Role::SuccessMark, Role::Success),
+        (Role::WarningMark, Role::Warning),
+        (Role::DangerMark, Role::Danger),
+    ];
+    for colors in [&mut pack.appearance.light, &mut pack.appearance.dark] {
+        for (mark, _) in marks {
+            colors.remove(mark.name());
+        }
+    }
+    assert_eq!(
+        check(&pack),
+        Vec::new(),
+        "it is not held to the marks' pairs"
+    );
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        for high_contrast in [false, true] {
+            let prefs = Prefs {
+                appearance,
+                high_contrast,
+                ..Prefs::default()
+            };
+            let theme = resolve(&pack, &prefs).unwrap();
+            for (mark, status) in marks {
+                assert_eq!(theme.color(mark), theme.color(status), "{}", mark.name());
+            }
+        }
+    }
+}
+
+#[test]
 fn a_pack_without_a_knob_keeps_the_white_thumb() {
     let pale: Pack = serde_json::from_str(
         r##"{"name":"pale","version":1,"accent":{"seed":"#365cdd","derive":true},"appearance":{"light":{"on-accent":"#101010"}}}"##,

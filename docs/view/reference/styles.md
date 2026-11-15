@@ -253,3 +253,6 @@ dark, derived accent roles included, for proving contrast in code.
 | `on-media` | 4.5:1 on `media` | Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`). |
 | `surface-overlay` |  | Anything floating over the page: menus, popovers, toasts, dialogs and sheets; a pack without it uses its surface-raised. |
 | `knob` |  | The thumb of a switch or slider, drawn on an accent track; white in both appearances by default. |
+| `success-mark` | 3:1 on `surface`, 3:1 on `surface-sunken` | Success as a dot or shape, never text; a pack without it uses its success. |
+| `warning-mark` | 3:1 on `surface`, 3:1 on `surface-sunken` | Warning as a dot or shape, never text; a pack without it uses its warning. |
+| `danger-mark` | 3:1 on `surface`, 3:1 on `surface-sunken` | Danger as a dot or shape, never text; a pack without it uses its danger. |

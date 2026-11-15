@@ -74,9 +74,15 @@ pub enum Role {
     SurfaceOverlay = 33,
     /// The thumb of a switch or slider, drawn on an accent track; white in both appearances by default.
     Knob = 34,
+    /// Success as a dot or shape, never text; a pack without it uses its success.
+    SuccessMark = 35,
+    /// Warning as a dot or shape, never text; a pack without it uses its warning.
+    WarningMark = 36,
+    /// Danger as a dot or shape, never text; a pack without it uses its danger.
+    DangerMark = 37,
 }
 
-pub const ROLE_COUNT: usize = 35;
+pub const ROLE_COUNT: usize = 38;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -115,6 +121,9 @@ impl Role {
         Role::OnMedia,
         Role::SurfaceOverlay,
         Role::Knob,
+        Role::SuccessMark,
+        Role::WarningMark,
+        Role::DangerMark,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -154,6 +163,9 @@ impl Role {
             Role::OnMedia => "on-media",
             Role::SurfaceOverlay => "surface-overlay",
             Role::Knob => "knob",
+            Role::SuccessMark => "success-mark",
+            Role::WarningMark => "warning-mark",
+            Role::DangerMark => "danger-mark",
         }
     }
 
@@ -204,4 +216,10 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::Selection, Role::Surface, 3.0),
     (Role::Selection, Role::Canvas, 3.0),
     (Role::OnMedia, Role::Media, 4.5),
+    (Role::SuccessMark, Role::Surface, 3.0),
+    (Role::SuccessMark, Role::SurfaceSunken, 3.0),
+    (Role::WarningMark, Role::Surface, 3.0),
+    (Role::WarningMark, Role::SurfaceSunken, 3.0),
+    (Role::DangerMark, Role::Surface, 3.0),
+    (Role::DangerMark, Role::SurfaceSunken, 3.0),
 ];

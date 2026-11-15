@@ -241,11 +241,15 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
         {
             continue;
         }
-        // Roles added after packs shipped: overlays float on `surface-raised`, knobs stay white.
+        // Roles added after packs shipped: overlays float on `surface-raised`, knobs stay white,
+        // and a status mark is drawn in its status colour.
         let missing = !base.contains_key(role.name());
         palette[role as usize] = match role {
             Role::SurfaceOverlay if missing => base.get(Role::SurfaceRaised.name()).copied(),
             Role::Knob if missing => Some(Rgba([255, 255, 255, 255])),
+            Role::SuccessMark | Role::WarningMark | Role::DangerMark if missing => {
+                base.get(status_of(role).name()).copied()
+            }
             _ => base.get(role.name()).copied(),
         }
         .ok_or_else(|| format!("THEME: {} has no {}", pack.name, role.name()))?;
@@ -264,6 +268,7 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
             for &(foreground, background, ratio) in CONTRAST {
                 if involves_selection(foreground, background)
                     || (borrowed_overlay && involves_overlay(foreground, background))
+                    || borrows_mark(base, foreground)
                 {
                     continue;
                 }
@@ -279,6 +284,12 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
     }
     if derive {
         palette[Role::Selection as usize] = derive_selection(&palette);
+    }
+    // A borrowed mark follows its status colour through the high-contrast boost.
+    for mark in [Role::SuccessMark, Role::WarningMark, Role::DangerMark] {
+        if borrows_mark(base, mark) {
+            palette[mark as usize] = palette[status_of(mark) as usize];
+        }
     }
     Ok(ResolvedTheme {
         appearance: prefs.appearance,
@@ -369,6 +380,25 @@ fn derive_accent(palette: &mut [Rgba; ROLE_COUNT], seed: Rgba, appearance: Appea
 /// A pack without `surface-overlay` is held to the pairs it shipped with, not the overlay's.
 fn involves_overlay(foreground: Role, background: Role) -> bool {
     foreground == Role::SurfaceOverlay || background == Role::SurfaceOverlay
+}
+
+/// The status colour a mark stands for.
+fn status_of(mark: Role) -> Role {
+    match mark {
+        Role::SuccessMark => Role::Success,
+        Role::WarningMark => Role::Warning,
+        Role::DangerMark => Role::Danger,
+        other => other,
+    }
+}
+
+/// A pack without a status mark draws it in its status colour, and is held to that colour's
+/// pairs, not the mark's.
+fn borrows_mark(colors: &Colors, foreground: Role) -> bool {
+    matches!(
+        foreground,
+        Role::SuccessMark | Role::WarningMark | Role::DangerMark
+    ) && !colors.contains_key(foreground.name())
 }
 
 /// Selection pairs keep their base ratios under high contrast: text must stay readable on the
@@ -474,7 +504,9 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
         };
         let borrowed_overlay = !colors.contains_key(Role::SurfaceOverlay.name());
         for &(foreground, background, ratio) in CONTRAST {
-            if borrowed_overlay && involves_overlay(foreground, background) {
+            if (borrowed_overlay && involves_overlay(foreground, background))
+                || borrows_mark(colors, foreground)
+            {
                 continue;
             }
             let needed = if high_contrast && !involves_selection(foreground, background) {

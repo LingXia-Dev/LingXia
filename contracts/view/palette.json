@@ -34,7 +34,10 @@
     "media": "#0b0e14b8",
     "on-media": "#ffffffff",
     "surface-overlay": "#ffffffff",
-    "knob": "#ffffffff"
+    "knob": "#ffffffff",
+    "success-mark": "#1a9a57ff",
+    "warning-mark": "#c47204ff",
+    "danger-mark": "#e5484dff"
   },
   "dark": {
     "canvas": "#0f131aff",
@@ -71,6 +74,9 @@
     "media": "#0b0e14b8",
     "on-media": "#ffffffff",
     "surface-overlay": "#2d3546ff",
-    "knob": "#ffffffff"
+    "knob": "#ffffffff",
+    "success-mark": "#3dbb7fff",
+    "warning-mark": "#f2a23aff",
+    "danger-mark": "#ef5f5fff"
   }
 }

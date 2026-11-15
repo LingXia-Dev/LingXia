@@ -31,7 +31,10 @@
       "media": "#0b0e14b8",
       "on-media": "#ffffff",
       "surface-overlay": "#ffffff",
-      "knob": "#ffffff"
+      "knob": "#ffffff",
+      "success-mark": "#1a9a57",
+      "warning-mark": "#c47204",
+      "danger-mark": "#e5484d"
     },
     "dark": {
       "canvas": "#0f131a",
@@ -62,7 +65,10 @@
       "media": "#0b0e14b8",
       "on-media": "#ffffff",
       "surface-overlay": "#2d3546",
-      "knob": "#ffffff"
+      "knob": "#ffffff",
+      "success-mark": "#3dbb7f",
+      "warning-mark": "#f2a23a",
+      "danger-mark": "#ef5f5f"
     }
   },
   "accent": {"seed": "#365cdd", "derive": true},
