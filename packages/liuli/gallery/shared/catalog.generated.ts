@@ -385,6 +385,36 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "Token",
+    "page": "token",
+    "category": "selection",
+    "summary": "One chosen thing as a pill",
+    "keywords": [
+      "token",
+      "chip",
+      "tag",
+      "pill",
+      "filter",
+      "recipient",
+      "removable"
+    ]
+  },
+  {
+    "name": "MultiSelect",
+    "page": "multi-select",
+    "category": "selection",
+    "summary": "Several choices from a list, shown as tokens",
+    "keywords": [
+      "multi select",
+      "multiselect",
+      "tokenizer",
+      "tags",
+      "chips",
+      "multiple",
+      "picker"
+    ]
+  },
+  {
     "name": "Tabs",
     "page": "tabs",
     "category": "navigation",
@@ -1153,7 +1183,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "checklist",
     "description": "One, several, on or off",
     "page": "category-selection",
-    "count": 7
+    "count": 9
   },
   {
     "id": "navigation",

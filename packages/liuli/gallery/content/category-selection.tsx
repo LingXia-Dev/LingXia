@@ -6,13 +6,15 @@ import { Specimen as SelectSpecimen } from '../../core/src/Select/Select.example
 import { Specimen as SegmentedControlSpecimen } from '../../core/src/SegmentedControl/SegmentedControl.examples';
 import { Specimen as ComboboxSpecimen } from '../../core/src/Combobox/Combobox.examples';
 import { Specimen as CheckboxListSpecimen } from '../../core/src/CheckboxList/CheckboxList.examples';
+import { Specimen as TokenSpecimen } from '../../core/src/Token/Token.examples';
+import { Specimen as MultiSelectSpecimen } from '../../core/src/MultiSelect/MultiSelect.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Controls for choosing among options: one, several, or on and off."}</text>
-      <Category title={"7 components"}>
+      <Category title={"9 components"}>
         <Tile
           name={"CheckboxInput"}
           tagline={"One on/off choice"}
@@ -64,11 +66,27 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"CheckboxList"}
           tagline={"Choose any number"}
-          isWide
           onOpen={() => onOpen("checkbox-list")}
           testId={"open-checkbox-list"}
         >
           <CheckboxListSpecimen />
+        </Tile>
+        <Tile
+          name={"Token"}
+          tagline={"A chosen thing"}
+          onOpen={() => onOpen("token")}
+          testId={"open-token"}
+        >
+          <TokenSpecimen />
+        </Tile>
+        <Tile
+          name={"MultiSelect"}
+          tagline={"Several of many"}
+          isWide
+          onOpen={() => onOpen("multi-select")}
+          testId={"open-multi-select"}
+        >
+          <MultiSelectSpecimen />
         </Tile>
       </Category>
     </>

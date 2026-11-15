@@ -47,6 +47,8 @@
     { "name": "segmented-control", "path": "pages/segmented-control/index" },
     { "name": "combobox", "path": "pages/combobox/index" },
     { "name": "checkbox-list", "path": "pages/checkbox-list/index" },
+    { "name": "token", "path": "pages/token/index" },
+    { "name": "multi-select", "path": "pages/multi-select/index" },
     { "name": "tabs", "path": "pages/tabs/index" },
     { "name": "nav-list", "path": "pages/nav-list/index" },
     { "name": "breadcrumb", "path": "pages/breadcrumb/index" },

@@ -1,0 +1,79 @@
+import { cx, type Child } from '@lingxia/view';
+import type { IconName } from '../Icon/Icon';
+import { Glyph } from '../internal/Glyph';
+import { tokenRecipe as r } from './Token.recipe';
+
+export type TokenSize = 'sm' | 'md';
+
+export type TokenRemove =
+  | {
+      /** Takes the token away; the app stops rendering it. */
+      onRemove: () => void;
+      /** The remove button's name, with what it removes: "Remove Ana Lima". */
+      removeLabel: string;
+    }
+  | { onRemove?: never; removeLabel?: never };
+
+export type TokenProps = TokenRemove & {
+  /** What the token stands for: a person, a tag, a filter. */
+  label: string;
+  /** An icon before the label, by name. */
+  startIcon?: IconName;
+  /** Makes the label a button: opens the thing, or toggles a filter. */
+  onClick?: () => void;
+  /** Marks a pressable token as on, for a filter that is applied. @default false */
+  isSelected?: boolean;
+  /** @default 'md' */
+  size?: TokenSize;
+  /** @default false */
+  isDisabled?: boolean;
+  className?: string;
+  /** On the token; the remove button gets `<testid>-remove`. */
+  'data-testid'?: string;
+};
+
+/** One chosen thing as a pill: a recipient, a tag, a filter that can be taken away. */
+export function Token({ label, startIcon, onClick, isSelected = false, size = 'md', isDisabled = false, onRemove, removeLabel, className, 'data-testid': testId }: TokenProps) {
+  const content = (
+    <>
+      {startIcon !== undefined && <Glyph name={startIcon} className={r.icon.size[size]} />}
+      <text className={cx(r.label.base, r.label.size[size])}>{label}</text>
+    </>
+  );
+  const remove = onRemove !== undefined && (
+    <button aria-label={removeLabel} disabled={isDisabled} onClick={onRemove} data-testid={testId && `${testId}-remove`} className={cx(r.remove.base, r.remove.size[size])}>
+      <Glyph name="close" weight={2.5} className={r.removeIcon.size[size]} />
+    </button>
+  );
+  const classes = cx(r.root.base, r.root.size[size], onRemove === undefined && r.root.plain[size], isSelected && r.root.selected, isDisabled && r.root.disabled, className);
+  // A token that both opens and can be removed is two buttons side by side, never one inside the other.
+  if (onClick !== undefined && onRemove === undefined) {
+    return (
+      <button aria-label={label} aria-pressed={isSelected} disabled={isDisabled} onClick={onClick} data-testid={testId} className={cx(classes, r.root.pressable)}>
+        {content}
+      </button>
+    );
+  }
+  return (
+    <view data-testid={testId} className={classes}>
+      {onClick !== undefined
+        ? <button aria-label={label} disabled={isDisabled} onClick={onClick} className={cx(r.open.base, r.open.size[size])}>{content}</button>
+        : content}
+      {remove}
+    </view>
+  );
+}
+
+export interface TokenListProps {
+  /** Names the tokens for assistive tech: "Recipients". */
+  label: string;
+  /** `Token`s, in order. */
+  children: Child;
+  className?: string;
+  'data-testid'?: string;
+}
+
+/** Tokens in a row that wraps, read as a named list. */
+export function TokenList({ label, children, className, 'data-testid': testId }: TokenListProps) {
+  return <view role="group" aria-label={label} data-testid={testId} className={cx(r.list.base, className)}>{children}</view>;
+}

@@ -11,7 +11,7 @@ const categories: Record<string, string[]> = {
   'category-foundations': ['colour', 'typography', 'shape-and-spacing', 'elevation', 'motion'],
   'category-actions': ['button', 'toggle-button', 'icon-button', 'button-group'],
   'category-inputs': ['text-input', 'text-area', 'date-input', 'time-input', 'slider', 'field', 'search-field', 'number-input', 'calendar', 'date-range-input', 'form-layout'],
-  'category-selection': ['checkbox-input', 'radio-group', 'switch', 'select', 'segmented-control', 'combobox', 'checkbox-list'],
+  'category-selection': ['checkbox-input', 'radio-group', 'switch', 'select', 'segmented-control', 'combobox', 'checkbox-list', 'token', 'multi-select'],
   'category-navigation': ['tabs', 'nav-list', 'breadcrumb', 'pagination', 'stepper', 'link', 'page-control'],
   'category-feedback': ['badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast', 'circular-progress'],
   'category-overlays': ['dialog', 'dropdown-menu', 'tooltip', 'bottom-sheet', 'popover', 'drawer'],

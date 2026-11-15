@@ -38,6 +38,8 @@ import { Content as Select } from '../content/select';
 import { Content as SegmentedControl } from '../content/segmented-control';
 import { Content as Combobox } from '../content/combobox';
 import { Content as CheckboxList } from '../content/checkbox-list';
+import { Content as Token } from '../content/token';
+import { Content as MultiSelect } from '../content/multi-select';
 import { Content as Tabs } from '../content/tabs';
 import { Content as NavList } from '../content/nav-list';
 import { Content as Breadcrumb } from '../content/breadcrumb';
@@ -131,6 +133,8 @@ export const contents: Record<string, GalleryContent> = {
   "segmented-control": SegmentedControl,
   "combobox": Combobox,
   "checkbox-list": CheckboxList,
+  "token": Token,
+  "multi-select": MultiSelect,
   "tabs": Tabs,
   "nav-list": NavList,
   "breadcrumb": Breadcrumb,

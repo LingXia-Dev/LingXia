@@ -1,0 +1,47 @@
+import type { TokenSize } from './Token';
+
+export const tokenParts = {
+  root: 'view',
+  label: 'text',
+  icon: 'vector',
+  open: 'button',
+  remove: 'button',
+  removeIcon: 'vector',
+  list: 'view',
+} as const;
+
+/** A pill on a tint of the text colour: one chosen thing, with a small button that takes it away. */
+export const tokenRecipe = {
+  root: {
+    base: 'flex-row items-center shrink-0 max-w-full rounded-full bg-text/8 text-text',
+    size: { sm: 'h-6 ps-2.5 gap-1', md: 'h-8 ps-3 gap-1.5' } satisfies Record<TokenSize, string>,
+    /** Without a remove button the end inset matches the start. */
+    plain: { sm: 'pe-2.5', md: 'pe-3' } satisfies Record<TokenSize, string>,
+    pressable: 'transition-colors duration-150 ease-out hover:bg-text/12 active:bg-text/16 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+    selected: 'bg-accent-soft text-on-accent-soft',
+    disabled: 'opacity-40',
+  },
+  icon: {
+    size: { sm: 'size-3.5 shrink-0', md: 'size-4 shrink-0' } satisfies Record<TokenSize, string>,
+  },
+  label: {
+    base: 'shrink min-w-0 truncate',
+    size: { sm: 'text-caption font-medium', md: 'text-footnote font-medium' } satisfies Record<TokenSize, string>,
+  },
+  /** The label as its own button, beside the remove button. */
+  open: {
+    base: 'flex-row items-center shrink min-w-0 rounded-full focus-visible:ring-2 focus-visible:ring-focus',
+    size: { sm: 'h-6 gap-1', md: 'h-8 gap-1.5' } satisfies Record<TokenSize, string>,
+  },
+  remove: {
+    base: 'items-center justify-center rounded-full text-muted hover:bg-text/10 hover:text-text active:bg-text/16 focus-visible:ring-2 focus-visible:ring-focus',
+    size: { sm: 'size-6', md: 'size-8' } satisfies Record<TokenSize, string>,
+  },
+  removeIcon: {
+    size: { sm: 'size-3', md: 'size-3.5' } satisfies Record<TokenSize, string>,
+  },
+  /** TokenList: tokens in a row that wraps. */
+  list: {
+    base: 'flex-row flex-wrap items-center gap-1.5',
+  },
+} as const;
