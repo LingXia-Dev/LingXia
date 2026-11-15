@@ -5221,6 +5221,9 @@ fn close_request_case(reduced: bool, blur: bool) {
     }
 }
 
+#[path = "orphan_overlays.rs"]
+mod orphan_overlays;
+
 #[test]
 fn escape_pressed_on_any_match_closes_an_open_light_dismiss_popover() {
     let worker = ViewWorker::spawn("test-escape-popover").unwrap();

@@ -572,88 +572,22 @@ impl ViewSession {
         } else if window_only.is_some() {
             format!("__lingxiaPrepareWindows(JSON.parse({encoded_windows}))")
         } else {
-            let width_dp = width as f32 / scale;
-            let height_dp = height as f32 / scale;
-            let data = self.sync_view_data(metrics)?;
-            let mut environment = self.environment.clone();
-            // Platform interpolation samples are an internal layout contract.
-            environment.as_object_mut().unwrap().remove("textScale");
-            environment["viewport"] = serde_json::json!({"width":width_dp,"height":height_dp});
-            if environment.get("sizeClass").is_none() {
-                environment["sizeClass"] = serde_json::json!(if width_dp < 600.0 {
-                    "compact"
-                } else {
-                    "regular"
-                });
-            }
-            let environment =
-                serde_json::to_string(&environment.to_string()).map_err(|e| e.to_string())?;
-            format!(
-                "__lingxiaPrepare(__lingxiaRender, __lingxiaCreateView({data}, JSON.parse({environment}), {revision}), JSON.parse({encoded_windows}), true)",
-                revision = self.state.revision(),
-            )
+            self.render_invoke(width, height, scale, &encoded_windows, metrics)?
         };
         let mut prepared_js = !native_input;
         let candidate = (|| {
             let mut records = if native_input {
                 self.input_records.as_ref().unwrap().clone()
             } else {
-                let started = std::time::Instant::now();
-                let full = window_only.is_none();
-                let (mut records, timings) = self.execute_frame(|| {
-                    decode_buffer(
-                        &self.context,
-                        &invoke,
-                        full,
-                        Some(&mut self.wire.borrow_mut()),
-                    )
-                })?;
-                metrics.add_view(timings);
-                if full && records.is_empty() {
-                    // Anchors moved: encode once, into the windows they land in.
-                    let moved: String = self.execute(|| {
-                        self.context
-                            .eval(Source::from_bytes("__lingxiaTakeMovedAnchors()"))
-                            .map_err(|e| crate::engine::js_error(&self.context, e))
-                    })?;
-                    let moved: HashMap<String, String> =
-                        serde_json::from_str(&moved).map_err(|e| e.to_string())?;
-                    let mut windows = windows.clone();
-                    if let Some(retained) = &self.retained {
-                        crate::layout::list_layout::anchor_windows(
-                            &self.lists,
-                            &retained.nodes,
-                            &moved,
-                            &mut windows,
-                            &mut offsets,
-                        )?;
-                    }
-                    let encoded = serde_json::to_string(
-                        &serde_json::to_string(&windows).map_err(|e| e.to_string())?,
-                    )
-                    .map_err(|e| e.to_string())?;
-                    let (refined, timings) = self.execute_frame(|| {
-                        decode_buffer(
-                            &self.context,
-                            &format!("__lingxiaPrepareWindows(JSON.parse({encoded}))"),
-                            false,
-                            Some(&mut self.wire.borrow_mut()),
-                        )
-                    })?;
-                    metrics.add_view(timings);
-                    records = refined;
-                }
-                metrics.view_us += crate::session::metrics::micros(started);
-                metrics.view_passes += 1;
-                self.reads_host_context = self.execute(|| {
-                    self.context
-                        .eval::<bool>(Source::from_bytes(
-                            "typeof __lingxiaReadsHostContext !== 'function' || __lingxiaReadsHostContext()",
-                        ))
-                        .map_err(|e| crate::engine::js_error(&self.context, e))
-                })?;
-                records
+                self.render_records(
+                    &invoke,
+                    window_only.is_none(),
+                    &windows,
+                    &mut offsets,
+                    metrics,
+                )?
             };
+            let mut orphan_closed = false;
             let mut inputs = self.inputs.clone();
             let mut lists = self.lists.clone();
             for _ in 0..8 {
@@ -694,6 +628,21 @@ impl ViewSession {
                     metrics.layout_passes += 1;
                     display
                 };
+                // An overlay whose editor or invoker unmounted goes with it, in this frame, as
+                // when that control blurs.
+                if !native_input
+                    && !orphan_closed
+                    && let Some(close) = self.orphaned_overlays(&records, &display)?
+                {
+                    orphan_closed = true;
+                    self.eval(&close)?;
+                    let invoke =
+                        self.render_invoke(width, height, scale, &encoded_windows, metrics)?;
+                    records =
+                        self.render_records(&invoke, true, &windows, &mut offsets, metrics)?;
+                    prepared_js = true;
+                    continue;
+                }
                 if reveal_input && let Some(identity) = inputs.focused() {
                     let started = std::time::Instant::now();
                     display = display.reveal(identity, &mut offsets)?;
@@ -857,6 +806,153 @@ impl ViewSession {
                 Err(error)
             }
         }
+    }
+
+    /// The full render call for a frame of `width` x `height` device pixels.
+    fn render_invoke(
+        &mut self,
+        width: u16,
+        height: u16,
+        scale: f32,
+        encoded_windows: &str,
+        metrics: &mut crate::FrameMetrics,
+    ) -> Result<String, String> {
+        let width_dp = width as f32 / scale;
+        let height_dp = height as f32 / scale;
+        let data = self.sync_view_data(metrics)?;
+        let mut environment = self.environment.clone();
+        // Platform interpolation samples are an internal layout contract.
+        environment.as_object_mut().unwrap().remove("textScale");
+        environment["viewport"] = serde_json::json!({"width":width_dp,"height":height_dp});
+        if environment.get("sizeClass").is_none() {
+            environment["sizeClass"] = serde_json::json!(if width_dp < 600.0 {
+                "compact"
+            } else {
+                "regular"
+            });
+        }
+        let environment =
+            serde_json::to_string(&environment.to_string()).map_err(|e| e.to_string())?;
+        Ok(format!(
+            "__lingxiaPrepare(__lingxiaRender, __lingxiaCreateView({data}, JSON.parse({environment}), {revision}), JSON.parse({encoded_windows}), true)",
+            revision = self.state.revision(),
+        ))
+    }
+
+    /// Runs `invoke` and decodes its records; a full render whose anchors moved encodes once
+    /// more, into the windows they land in.
+    fn render_records(
+        &mut self,
+        invoke: &str,
+        full: bool,
+        windows: &crate::layout::list_layout::Windows,
+        offsets: &mut HashMap<String, f32>,
+        metrics: &mut crate::FrameMetrics,
+    ) -> Result<std::sync::Arc<[crate::protocol::Record]>, String> {
+        let started = std::time::Instant::now();
+        let (mut records, timings) = self.execute_frame(|| {
+            decode_buffer(
+                &self.context,
+                invoke,
+                full,
+                Some(&mut self.wire.borrow_mut()),
+            )
+        })?;
+        metrics.add_view(timings);
+        if full && records.is_empty() {
+            let moved: String = self.execute(|| {
+                self.context
+                    .eval(Source::from_bytes("__lingxiaTakeMovedAnchors()"))
+                    .map_err(|e| crate::engine::js_error(&self.context, e))
+            })?;
+            let moved: HashMap<String, String> =
+                serde_json::from_str(&moved).map_err(|e| e.to_string())?;
+            let mut windows = windows.clone();
+            if let Some(retained) = &self.retained {
+                crate::layout::list_layout::anchor_windows(
+                    &self.lists,
+                    &retained.nodes,
+                    &moved,
+                    &mut windows,
+                    offsets,
+                )?;
+            }
+            let encoded =
+                serde_json::to_string(&serde_json::to_string(&windows).map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
+            let (refined, timings) = self.execute_frame(|| {
+                decode_buffer(
+                    &self.context,
+                    &format!("__lingxiaPrepareWindows(JSON.parse({encoded}))"),
+                    false,
+                    Some(&mut self.wire.borrow_mut()),
+                )
+            })?;
+            metrics.add_view(timings);
+            records = refined;
+        }
+        metrics.view_us += crate::session::metrics::micros(started);
+        metrics.view_passes += 1;
+        self.reads_host_context = self.execute(|| {
+            self.context
+                .eval::<bool>(Source::from_bytes(
+                    "typeof __lingxiaReadsHostContext !== 'function' || __lingxiaReadsHostContext()",
+                ))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })?;
+        Ok(records)
+    }
+
+    /// The call closing every open picker whose editor, and popover whose invoker, is not in
+    /// this layout; a popover opened from code has no owner and stays.
+    fn orphaned_overlays(
+        &self,
+        records: &[crate::protocol::Record],
+        display: &DisplayList,
+    ) -> Result<Option<String>, String> {
+        #[derive(serde::Deserialize)]
+        struct Owned {
+            picker: Option<String>,
+            popovers: Vec<String>,
+        }
+        if !display.retained.top_layer.iter().any(|top| *top) {
+            return Ok(None);
+        }
+        // A bundle older than the list still names its picker's editor.
+        let owned: String = self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    "typeof __lingxiaOwnedOverlays === 'function' ? __lingxiaOwnedOverlays() : JSON.stringify({picker: typeof __lingxiaPickerIdentity === 'function' ? __lingxiaPickerIdentity() : null, popovers: []})",
+                ))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })?;
+        let owned: Owned = serde_json::from_str(&owned).map_err(|e| e.to_string())?;
+        let picker = owned.picker.is_some_and(|editor| {
+            !display
+                .retained
+                .nodes
+                .iter()
+                .any(|node| *node.identity == *editor)
+        });
+        // The invoker that opened a popover carries its anchor name while it is mounted.
+        let popovers: Vec<&str> = owned
+            .popovers
+            .iter()
+            .filter(|id| {
+                let name = format!("--lx-popover-{id}");
+                !records.iter().any(|record| {
+                    record.string(crate::protocol::field::ANCHOR_NAME) == Some(name.as_str())
+                })
+            })
+            .map(String::as_str)
+            .collect();
+        if !picker && popovers.is_empty() {
+            return Ok(None);
+        }
+        let ids = serde_json::to_string(&popovers).map_err(|e| e.to_string())?;
+        Ok(Some(format!(
+            "typeof __lingxiaCloseOrphans === 'function' ? __lingxiaCloseOrphans({picker}, {ids}) : __lingxiaClosePicker()"
+        )))
     }
 }
 

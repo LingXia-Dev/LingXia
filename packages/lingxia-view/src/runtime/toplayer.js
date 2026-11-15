@@ -191,6 +191,24 @@ export function closeAfterExpired(id) {
   return entry?.kind === 'manual' && entry.open ? toggle(id, false) : false;
 }
 
+/** The open popovers an invoker or interest trigger opened; one opened from code has no owner. */
+export function ownedPopovers() {
+  const top = render.candidate?.topLayer ?? page.committed?.topLayer;
+  return top ? [...top.popovers].filter(([id, entry]) => entry.open && anchors.get(id)).map(([id]) => id) : [];
+}
+
+/** The controls that opened popovers `ids` left the page: each closes, whatever its kind. */
+export function closeOrphans(ids) {
+  const top = render.candidate?.topLayer ?? page.committed?.topLayer;
+  for (const id of Array.isArray(ids) ? ids : []) {
+    const entry = top?.popovers.get(id);
+    if (!entry?.open) continue;
+    entry.open = false;
+    if (!entry.controlled) { uncontrolled.delete(id); page.invalidated = true; }
+    entry.onToggle?.(false);
+  }
+}
+
 /** A press landed away from the hints in `keep`: every other open hint closes, whatever opened it. */
 export function dismissHints(keep) {
   const top = page.committed?.topLayer;

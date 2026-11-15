@@ -1263,6 +1263,23 @@
     const entry = page.committed?.topLayer?.popovers.get(id);
     return entry?.kind === "manual" && entry.open ? toggle(id, false) : false;
   }
+  function ownedPopovers() {
+    const top = render.candidate?.topLayer ?? page.committed?.topLayer;
+    return top ? [...top.popovers].filter(([id, entry]) => entry.open && anchors.get(id)).map(([id]) => id) : [];
+  }
+  function closeOrphans(ids) {
+    const top = render.candidate?.topLayer ?? page.committed?.topLayer;
+    for (const id of Array.isArray(ids) ? ids : []) {
+      const entry = top?.popovers.get(id);
+      if (!entry?.open) continue;
+      entry.open = false;
+      if (!entry.controlled) {
+        uncontrolled.delete(id);
+        page.invalidated = true;
+      }
+      entry.onToggle?.(false);
+    }
+  }
   function dismissHints(keep2) {
     const top = page.committed?.topLayer;
     if (!top || !Array.isArray(keep2)) return false;
@@ -5628,6 +5645,11 @@
       __lingxiaClosePicker: closePicker,
       __lingxiaTakePickerResults: takePickerResults,
       __lingxiaPickerIdentity: pickerIdentity,
+      __lingxiaOwnedOverlays: () => JSON.stringify({ picker: pickerIdentity(), popovers: ownedPopovers() }),
+      __lingxiaCloseOrphans: (picker2, ids) => {
+        if (picker2) closePicker();
+        closeOrphans(ids);
+      },
       __lingxiaTakeFrameMeasures: takeFrameMeasures,
       __lingxiaFrameMeasured: frameMeasured,
       __lingxiaWireAck: wireAck,

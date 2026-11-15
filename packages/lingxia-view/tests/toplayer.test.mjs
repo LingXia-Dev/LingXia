@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { h, listTag, prepare, commit, dispatch, useLocal, reset } from '../src/internal.js';
 import { escapeOverlay } from '../src/runtime/overlay.js';
-import { interest } from '../src/runtime/toplayer.js';
+import { interest, ownedPopovers, closeOrphans } from '../src/runtime/toplayer.js';
 import { page } from '../src/runtime/state.js';
 import { hasLocalUpdates } from '../src/runtime/hooks.js';
 import { takeActionErrors } from '../src/runtime/actions.js';
@@ -75,6 +75,32 @@ test('popoverTarget toggles an uncontrolled popover anchored to its invoker; lig
   nodes = render(view);
   dispatch(byId(nodes, 'menu-backdrop').props.onClick);
   assert.equal(byId(render(view), 'menu'), undefined, 'a tap outside closes an auto popover');
+});
+
+test('a popover its invoker opened is owned; closing it as an orphan tells the page once', () => {
+  reset();
+  const toggled = [], shown = { value: true };
+  const view = () => h('page', {},
+    shown.value && h('button', { popoverTarget: 'menu', 'data-testid': 'more' }, 'More'),
+    h('view', { id: 'menu', popover: 'manual', onToggle: open => toggled.push(open), 'data-testid': 'menu' }, h('text', {}, 'Menu')),
+    h('view', { id: 'note', popover: 'manual', open: true, 'data-testid': 'note' }, h('text', {}, 'Note')));
+  let nodes = render(view);
+  assert.deepEqual(ownedPopovers(), [], 'one opened from code has no owner');
+  dispatch(byId(nodes, 'more').props.onClick);
+  render(view);
+  assert.deepEqual(ownedPopovers(), ['menu']);
+  // The invoker unmounts: the prepared frame still draws the popover, with no anchor name left.
+  shown.value = false;
+  nodes = decode(prepare(view, { env: {} }));
+  assert.ok(byId(nodes, 'menu'));
+  assert.equal(nodes.some(node => node.props.anchorName === '--lx-popover-menu'), false);
+  assert.deepEqual(ownedPopovers(), ['menu'], 'read from the prepared frame');
+  closeOrphans(['menu']);
+  closeOrphans(['menu']);
+  nodes = render(view);
+  assert.equal(byId(nodes, 'menu'), undefined);
+  assert.ok(byId(nodes, 'note'));
+  assert.deepEqual(toggled, [true, false]);
 });
 
 test('an invoker in a list row anchors the popover it opens and announces it open', () => {

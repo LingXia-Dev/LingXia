@@ -44,6 +44,8 @@ export function render() {
   tap outside (that tap reaches nothing else), on Escape or back, and when another auto popover opens;
   `popover="manual"` closes only from its button or code. Pass `open` and `onToggle(open)` to drive it
   from state instead.
+- A popover closes, with `onToggle(false)`, when the button that opened it unmounts; one opened from
+  state stays. A date, time or select picker closes with its field the same way.
 - Escape and back close only the topmost dialog or popover.
 - **A closed one renders nothing**, so `useLocal` state inside it starts over at the next open. Keep what
   must survive (a draft, a scroll position) in state declared outside it.
