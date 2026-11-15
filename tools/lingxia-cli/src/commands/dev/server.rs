@@ -1214,6 +1214,9 @@ impl DevServerState {
                 manifest.app_id
             ));
         }
+        // The build wrote which linked package files the pages compile from. The watcher may
+        // have read the record before it: a save to one of those files alone would go unheard.
+        self.watch_refresh();
         Ok(())
     }
 
@@ -2525,6 +2528,12 @@ fn validate_attach(
 }
 
 impl DevServerState {
+    fn watch_refresh(&self) {
+        if let Some(sender) = self.watch_sender() {
+            let _ = sender.send(super::lxapp_watch::WatchCmd::Refresh);
+        }
+    }
+
     fn watch_add(&self, root: super::lxapp_watch::WatchRoot) -> Result<()> {
         let sender = self
             .watch_sender()

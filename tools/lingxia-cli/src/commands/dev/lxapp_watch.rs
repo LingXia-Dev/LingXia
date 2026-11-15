@@ -50,6 +50,9 @@ pub(super) enum WatchCmd {
     /// Drops a root this session attached. A yaml bundle with the same id
     /// stays: only an id added through [`WatchCmd::Add`] is removed.
     Remove(String),
+    /// A build outside the watcher rewrote an app's inputs: look again for the linked package
+    /// files its pages compile from.
+    Refresh,
 }
 
 pub(super) struct LxAppWatchOptions {
@@ -287,6 +290,8 @@ fn apply_watch_cmd(
             };
             let _ = ack.send(result);
         }
+        // Every command is followed by a refresh of the linked inputs.
+        WatchCmd::Refresh => {}
         WatchCmd::Remove(app_id) => {
             if !attached.remove(&app_id) {
                 return;
@@ -368,7 +373,7 @@ fn run_watch(
     let mut attached: BTreeSet<String> = BTreeSet::new();
     // Linked packages' files the GPU pages compile from, outside every root: their directories
     // are watched, and a save to one of those files counts as an edit of the app it feeds.
-    let mut external: std::collections::BTreeMap<PathBuf, String> = Default::default();
+    let mut external: std::collections::BTreeMap<PathBuf, Vec<String>> = Default::default();
     let mut external_dirs: BTreeSet<PathBuf> = BTreeSet::new();
     refresh_external(&mut watcher, &roots, &mut external, &mut external_dirs);
     // Saves under `mocks/` reload the mocks only: no rebuild, no restart.
@@ -431,12 +436,17 @@ fn run_watch(
                             }
                         }
                     }
-                    let app_id = root_for_path(&roots, &path)
-                        .map(|root| root.app_id.clone())
-                        .or_else(|| external.get(&super::gpu_swap::canonical(&path)).cloned());
-                    if let Some(root) = app_id
-                        .as_ref()
-                        .and_then(|app_id| roots.iter().find(|root| &root.app_id == app_id))
+                    // A linked package's file is an edit of every app whose pages compile from it.
+                    let app_ids: Vec<String> = match root_for_path(&roots, &path) {
+                        Some(root) => vec![root.app_id.clone()],
+                        None => external
+                            .get(&super::gpu_swap::canonical(&path))
+                            .cloned()
+                            .unwrap_or_default(),
+                    };
+                    for root in app_ids
+                        .iter()
+                        .filter_map(|app_id| roots.iter().find(|root| &root.app_id == app_id))
                     {
                         let path = strip_verbatim_prefix(&path);
                         if super::mocks::is_mocks_path(strip_verbatim_prefix(&root.path), path) {
@@ -709,7 +719,7 @@ fn subtree_change(
 fn refresh_external(
     watcher: &mut RecommendedWatcher,
     roots: &[WatchRoot],
-    external: &mut std::collections::BTreeMap<PathBuf, String>,
+    external: &mut std::collections::BTreeMap<PathBuf, Vec<String>>,
     dirs: &mut BTreeSet<PathBuf>,
 ) {
     *external = external_inputs(roots);
@@ -728,13 +738,17 @@ fn refresh_external(
     *dirs = wanted;
 }
 
-/// Each GPU page input outside every root, with the app it feeds (the first root that lists it).
-fn external_inputs(roots: &[WatchRoot]) -> std::collections::BTreeMap<PathBuf, String> {
-    let mut external = std::collections::BTreeMap::new();
+/// Each GPU page input outside every root, with every app whose pages compile from it: two
+/// apps can share a linked package, and a save to it is an edit of both.
+fn external_inputs(roots: &[WatchRoot]) -> std::collections::BTreeMap<PathBuf, Vec<String>> {
+    let mut external: std::collections::BTreeMap<PathBuf, Vec<String>> = Default::default();
     for root in roots {
         for file in super::gpu_swap::external_inputs(&root.path) {
             if root_for_path(roots, &file).is_none() {
-                external.entry(file).or_insert_with(|| root.app_id.clone());
+                let apps = external.entry(file).or_default();
+                if !apps.contains(&root.app_id) {
+                    apps.push(root.app_id.clone());
+                }
             }
         }
     }
@@ -1053,9 +1067,82 @@ mod tests {
         let external = external_inputs(&[root("app", "app"), root("guest", "guest")]);
         assert_eq!(
             external.into_iter().collect::<Vec<_>>(),
-            vec![(base.join("kit/src/chip.tsx"), "app".to_owned())]
+            vec![(base.join("kit/src/chip.tsx"), vec!["app".to_owned()])]
         );
         assert_eq!(external_inputs(&[root("guest", "guest")]).len(), 0);
+    }
+
+    #[test]
+    fn a_build_that_rewrites_the_inputs_is_followed_into_the_linked_package() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = dunce::canonicalize(temp.path()).unwrap();
+        for file in ["kit/src/new/chip.tsx", "gallery/pages/g/index.tsx"] {
+            write(&base.join(file), "");
+        }
+        // The record an attach finds: written before the page imported the kit.
+        write(
+            &base.join("gallery/.lingxia/gpu-inputs.json"),
+            r#"{"pages/g/index.tsx":["pages/g/index.tsx"]}"#,
+        );
+        let roots = [WatchRoot {
+            app_id: "gallery".into(),
+            path: base.join("gallery"),
+        }];
+        let mut watcher = notify::recommended_watcher(|_| {}).unwrap();
+        let mut external = Default::default();
+        let mut dirs = BTreeSet::new();
+        refresh_external(&mut watcher, &roots, &mut external, &mut dirs);
+        assert!(dirs.is_empty());
+        // The attach's own build writes the record anew; the refresh after it watches the kit.
+        write(
+            &base.join("gallery/.lingxia/gpu-inputs.json"),
+            r#"{"pages/g/index.tsx":["pages/g/index.tsx","../kit/src/new/chip.tsx"]}"#,
+        );
+        refresh_external(&mut watcher, &roots, &mut external, &mut dirs);
+        assert_eq!(
+            dirs.into_iter().collect::<Vec<_>>(),
+            vec![base.join("kit/src/new")]
+        );
+        assert_eq!(
+            external[&base.join("kit/src/new/chip.tsx")],
+            vec!["gallery".to_owned()]
+        );
+    }
+
+    #[test]
+    fn a_linked_package_file_two_apps_compile_from_is_an_edit_of_both() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = dunce::canonicalize(temp.path()).unwrap();
+        for file in [
+            "kit/src/chip.tsx",
+            "kit/src/only-gallery.tsx",
+            "host/pages/a/index.tsx",
+            "gallery/pages/g/index.tsx",
+        ] {
+            write(&base.join(file), "");
+        }
+        write(
+            &base.join("host/.lingxia/gpu-inputs.json"),
+            r#"{"pages/a/index.tsx":["pages/a/index.tsx","../kit/src/chip.tsx"]}"#,
+        );
+        write(
+            &base.join("gallery/.lingxia/gpu-inputs.json"),
+            r#"{"pages/g/index.tsx":["pages/g/index.tsx","../kit/src/chip.tsx","../kit/src/only-gallery.tsx"]}"#,
+        );
+        let root = |app_id: &str, dir: &str| WatchRoot {
+            app_id: app_id.into(),
+            path: base.join(dir),
+        };
+        // The host app was there first; the gallery attached later still hears the shared file.
+        let external = external_inputs(&[root("host", "host"), root("gallery", "gallery")]);
+        assert_eq!(
+            external[&base.join("kit/src/chip.tsx")],
+            vec!["host".to_owned(), "gallery".to_owned()]
+        );
+        assert_eq!(
+            external[&base.join("kit/src/only-gallery.tsx")],
+            vec!["gallery".to_owned()]
+        );
     }
 
     #[test]
