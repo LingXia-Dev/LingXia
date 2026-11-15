@@ -42,7 +42,7 @@ export type PickerFieldProps = FieldOwnProps & PickerBinding & {
 /** A Field around the View's date or time input, which opens the View's own picker. */
 export function PickerField(props: PickerFieldProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, isDisabled = false, disabledMessage, size = 'md',
     type, icon, recipe: r, placeholder, min, max, step, onSubmit, className, controlClassName, 'data-testid': testId,
   } = props;
   const inputClass = cx(r.input.base, r.input.size[size]);
@@ -54,6 +54,7 @@ export function PickerField(props: PickerFieldProps) {
       status={status}
       isRequired={isRequired}
       hasRequiredMark={hasRequiredMark}
+      optionalLabel={optionalLabel}
       isDisabled={isDisabled}
       disabledMessage={disabledMessage}
       size={size}

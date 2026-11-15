@@ -2,8 +2,10 @@ import type { FieldSize, FieldStatusType } from './Field';
 
 export const fieldParts = {
   root: 'view',
+  labelRow: 'view',
   label: 'text',
   required: 'span',
+  optional: 'text',
   description: 'text',
   status: 'view',
   statusIcon: 'vector',
@@ -24,8 +26,15 @@ export const fieldRecipe = {
     size: { sm: 'text-caption', md: 'text-footnote', lg: 'text-body' } satisfies Record<FieldSize, string>,
     disabled: 'text-faint',
   },
+  labelRow: {
+    base: 'flex-row items-baseline gap-1.5',
+  },
   required: {
     base: 'text-danger',
+  },
+  optional: {
+    base: 'pb-0.5 text-muted',
+    size: { sm: 'text-caption', md: 'text-footnote', lg: 'text-footnote' } satisfies Record<FieldSize, string>,
   },
   description: {
     base: 'text-footnote text-muted',

@@ -1,7 +1,7 @@
 import { cx } from '@lingxia/view';
 import { fieldRecipe as r } from '../Field/Field.recipe';
 import type { FieldStatus } from '../Field/Field';
-import { iconGrid, iconPaths, useIcon } from '../Icon/Icon';
+import { Glyph } from './Glyph';
 
 
 /**
@@ -10,12 +10,11 @@ import { iconGrid, iconPaths, useIcon } from '../Icon/Icon';
  */
 export function StatusRegion({ id, status, className }: { id: string; status: FieldStatus | undefined; className?: string }) {
   const message = status?.message;
-  const icon = useIcon(status?.type ?? 'error');
   return (
     <view id={id} role="status" className={cx(status && message ? r.status.shown : r.status.empty, className)}>
       {status && message ? (
         <>
-          <vector aria-hidden paths={iconPaths(icon)} viewBox={iconGrid} className={cx(r.statusIcon.base, r.statusIcon.type[status.type])} />
+          <Glyph name={status.type} className={cx(r.statusIcon.base, r.statusIcon.type[status.type])} />
           <text className={r.statusText.base}>{message}</text>
         </>
       ) : null}

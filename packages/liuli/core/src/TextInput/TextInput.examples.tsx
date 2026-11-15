@@ -81,3 +81,17 @@ export function StateInvalid() {
 export function StateDisabled() {
   return <TextInput value="LX-2041" onChange={() => {}} label="Code" isDisabled />;
 }
+
+/** Fixed text beside the value says its unit or its start, so the person types only what changes. */
+export function Adornments() {
+  const price = useLocal('price', '24.00');
+  const site = useLocal('site', '');
+  const weight = useLocal('weight', '');
+  return (
+    <view className="gap-4">
+      <TextInput label="Price" bind={price} prefix="$" suffix="USD" inputMode="decimal" data-testid="price" />
+      <TextInput label="Website" bind={site} prefix="https://" placeholder="example.com" autoCapitalize="none" data-testid="site" />
+      <TextInput label="Weight" bind={weight} suffix="kg" inputMode="decimal" optionalLabel="optional" data-testid="weight" />
+    </view>
+  );
+}

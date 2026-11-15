@@ -54,6 +54,7 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Bound', title: 'Bound to local state, with validation' },
     { name: 'Search', title: 'Search with a clear button' },
+    { name: 'Adornments', title: 'Fixed text before and after the value, and an optional field' },
     { name: 'Disabled', title: 'Disabled, with the reason' },
   ],
   gaps: [
@@ -84,6 +85,7 @@ export const doc: ComponentDoc = {
       variants: [
         { name: 'Plain', title: 'Label and placeholder' },
         { name: 'Search', title: 'Search, with a clear button' },
+        { name: 'Adornments', title: 'A currency sign, a web address start and a unit; the last field is marked optional' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],
       states: [

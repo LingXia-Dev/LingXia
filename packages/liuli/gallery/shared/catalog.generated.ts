@@ -229,6 +229,24 @@ export const entries: GalleryEntry[] = [
     "status": "preview"
   },
   {
+    "name": "NumberInput",
+    "page": "number-input",
+    "category": "inputs",
+    "summary": "A number typed or nudged by steps, kept between a minimum and a maximum",
+    "keywords": [
+      "number",
+      "number input",
+      "stepper",
+      "quantity",
+      "counter",
+      "spinbutton",
+      "amount",
+      "numeric"
+    ],
+    "since": "2026-11-15",
+    "status": "preview"
+  },
+  {
     "name": "CheckboxInput",
     "page": "checkbox-input",
     "category": "selection",
@@ -315,6 +333,22 @@ export const entries: GalleryEntry[] = [
       "picker"
     ],
     "since": "2026-11-13",
+    "status": "preview"
+  },
+  {
+    "name": "CheckboxList",
+    "page": "checkbox-list",
+    "category": "selection",
+    "summary": "Several on/off choices under one question, any number of which can be chosen",
+    "keywords": [
+      "checkbox list",
+      "checkbox group",
+      "multiple choice",
+      "multi select",
+      "options",
+      "checklist"
+    ],
+    "since": "2026-11-15",
     "status": "preview"
   },
   {
@@ -859,14 +893,14 @@ export const galleryCategories: GalleryCategory[] = [
     "title": "Inputs",
     "description": "Fields a person types into or sets: text, dates, times and amounts.",
     "page": "category-inputs",
-    "count": 6
+    "count": 7
   },
   {
     "id": "selection",
     "title": "Selection",
     "description": "Controls for choosing among options: one, several, or on and off.",
     "page": "category-selection",
-    "count": 5
+    "count": 6
   },
   {
     "id": "navigation",
@@ -920,7 +954,7 @@ export const galleryCategories: GalleryCategory[] = [
 ];
 
 /** The 6 latest components, newest first. */
-export const newest: string[] = ["BarChart","ButtonGroup","Chart","Icon","IconButton","LineChart"];
+export const newest: string[] = ["CheckboxList","NumberInput","BarChart","ButtonGroup","Chart","Icon"];
 
 export const version = "0.1.0";
 export const packageStatus = "Preview";

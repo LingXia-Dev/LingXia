@@ -1,6 +1,6 @@
 import type { FieldSize, FieldStatusType } from '../Field/Field';
 
-export const textInputParts = { box: 'view', icon: 'view', searchIcon: 'vector', input: 'input', clear: 'button', clearIcon: 'vector' } as const;
+export const textInputParts = { box: 'view', icon: 'view', searchIcon: 'vector', adornment: 'text', input: 'input', clear: 'button', clearIcon: 'vector' } as const;
 
 /**
  * An editor keeps a 3:1 boundary (`line-strong`) so it never reads as a button. The box draws the border, so a leading icon and the clear button sit inside it, and takes the
@@ -19,6 +19,10 @@ export const textInputRecipe = {
   },
   searchIcon: {
     base: 'size-4',
+  },
+  /** Fixed text beside the value: quieter than the value, and never cut short. */
+  adornment: {
+    base: 'shrink-0 text-muted tabular-nums whitespace-nowrap',
   },
   input: {
     /**

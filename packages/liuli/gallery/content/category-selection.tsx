@@ -4,13 +4,14 @@ import { Specimen as RadioGroupSpecimen } from '../../core/src/RadioGroup/RadioG
 import { Specimen as SwitchSpecimen } from '../../core/src/Switch/Switch.examples';
 import { Specimen as SelectSpecimen } from '../../core/src/Select/Select.examples';
 import { Specimen as SegmentedControlSpecimen } from '../../core/src/SegmentedControl/SegmentedControl.examples';
+import { Specimen as CheckboxListSpecimen } from '../../core/src/CheckboxList/CheckboxList.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Controls for choosing among options: one, several, or on and off."}</text>
-      <Category title={"5 components"}>
+      <Category title={"6 components"}>
         <Tile
           name={"CheckboxInput"}
           tagline={"One on/off choice"}
@@ -46,11 +47,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"SegmentedControl"}
           tagline={"One of a few"}
-          isWide
           onOpen={() => onOpen("segmented-control")}
           testId={"open-segmented-control"}
         >
           <SegmentedControlSpecimen />
+        </Tile>
+        <Tile
+          name={"CheckboxList"}
+          tagline={"Choose any number"}
+          onOpen={() => onOpen("checkbox-list")}
+          testId={"open-checkbox-list"}
+        >
+          <CheckboxListSpecimen />
         </Tile>
       </Category>
     </>

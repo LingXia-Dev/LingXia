@@ -39,7 +39,7 @@ export type SelectProps = FieldOwnProps & SelectBinding & {
 /** One choice from a list that opens on demand, with Field's label, help text and status. */
 export function Select(props: SelectProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, isDisabled = false, disabledMessage, size = 'md',
     options, placeholder, className, 'data-testid': testId,
   } = props;
   const choices = options.map(option => ({ value: option.value, label: option.label, disabled: option.isDisabled }));
@@ -52,6 +52,7 @@ export function Select(props: SelectProps) {
       status={status}
       isRequired={isRequired}
       hasRequiredMark={hasRequiredMark}
+      optionalLabel={optionalLabel}
       isDisabled={isDisabled}
       disabledMessage={disabledMessage}
       size={size}

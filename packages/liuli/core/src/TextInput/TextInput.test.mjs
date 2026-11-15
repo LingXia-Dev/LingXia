@@ -77,3 +77,20 @@ test('hasRequiredMark={false}: no asterisk is drawn, the editor is still require
   assert.equal(screen.queryAll(node => node.text?.includes('*')).length, 0);
   assert.equal(screen.getByTestId('email').props.stateRequired, 1);
 });
+
+test('Adornments: fixed text sits inside the box around the editor and is read before the help text; an optional field says so', async () => {
+  const screen = await renderExample('TextInput/TextInput', 'Adornments');
+  const price = screen.getByTestId('price');
+  const box = price.parent;
+  assert.deepEqual(box.children.map(child => child.tag === 'input' ? 'input' : textOf(child)), ['$', 'input', 'USD']);
+  assert.deepEqual(box.children.filter(child => child.tag === 'text').map(child => [child.props.color, child.props.shrink, child.props.fontVariantNumeric]), Array(2).fill(['text-muted', 0, 'tabular-nums']));
+  assert.equal(price.props.accessibilityLabel, 'Price', 'the name stays the label alone');
+  assert.deepEqual(described(screen, price), ['$', 'USD']);
+  assert.deepEqual(described(screen, screen.getByTestId('site')), ['https://']);
+  const weight = screen.getByTestId('weight');
+  assert.deepEqual(described(screen, weight), ['kg', 'optional'], 'the unit, then that it may be left empty');
+  assert.equal(weight.props.stateRequired, undefined);
+  const word = screen.getByText('optional');
+  assert.equal(word.props.color, 'text-muted');
+  assert.equal(textOf(word.parent.children[0]), 'Weight');
+});

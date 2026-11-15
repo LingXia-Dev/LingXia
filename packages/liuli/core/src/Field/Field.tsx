@@ -25,6 +25,8 @@ export interface FieldOwnProps {
   isRequired?: boolean;
   /** Draws the asterisk on a required label; turn it off on a form where every field is required. @default true */
   hasRequiredMark?: boolean;
+  /** A word after the label for a field that may be left empty, as the app writes it: "optional". Read before the help text. */
+  optionalLabel?: string;
   /** @default false */
   isDisabled?: boolean;
   /** Shown in place of `description` while disabled. */
@@ -60,6 +62,7 @@ export function Field({
   status,
   isRequired = false,
   hasRequiredMark = true,
+  optionalLabel,
   isDisabled = false,
   disabledMessage,
   size = 'md',
@@ -70,22 +73,31 @@ export function Field({
   const id = useId();
   const helpId = `${id}-help`;
   const statusId = `${id}-status`;
+  const optionalId = `${id}-optional`;
+  const hasOptional = optionalLabel !== undefined && !isRequired && !isLabelHidden;
   const help = isDisabled && disabledMessage ? disabledMessage : description;
   const control: FieldControl = {
     'aria-label': label,
-    'aria-describedby': describedBy(help !== undefined && helpId, hasMessage(status) && statusId),
+    'aria-describedby': describedBy(hasOptional && optionalId, help !== undefined && helpId, hasMessage(status) && statusId),
     'aria-invalid': status?.type === 'error' || undefined,
     'aria-required': isRequired || undefined,
     disabled: isDisabled,
   };
+  // The control carries the same text as its name, so the visible label is not read again.
+  const visibleLabel = (
+    <text aria-hidden className={cx(r.label.base, r.label.size[size], isDisabled && r.label.disabled)}>
+      {label}
+      {isRequired && hasRequiredMark && <span className={r.required.base}>{' *'}</span>}
+    </text>
+  );
   return (
     <view data-testid={testId} className={cx(r.root.base, className)}>
-      {!isLabelHidden && (
-        // The control carries the same text as its name, so the visible label is not read again.
-        <text aria-hidden className={cx(r.label.base, r.label.size[size], isDisabled && r.label.disabled)}>
-          {label}
-          {isRequired && hasRequiredMark && <span className={r.required.base}>{' *'}</span>}
-        </text>
+      {!isLabelHidden && !hasOptional && visibleLabel}
+      {hasOptional && (
+        <view className={r.labelRow.base}>
+          {visibleLabel}
+          <text id={optionalId} className={cx(r.optional.base, r.optional.size[size])}>{optionalLabel}</text>
+        </view>
       )}
       {children(control)}
       {help !== undefined && <text id={helpId} className={r.description.base}>{help}</text>}

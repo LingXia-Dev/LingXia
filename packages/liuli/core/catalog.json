@@ -1669,6 +1669,12 @@
           "default": "true"
         },
         {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -1865,6 +1871,243 @@
       }
     },
     {
+      "name": "CheckboxList",
+      "import": "@liulidesign/core/CheckboxList",
+      "exports": [
+        "CheckboxList"
+      ],
+      "category": "selection",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "Several on/off choices under one question, any number of which can be chosen",
+      "description": "CheckboxList asks one question and offers a short list of answers that can each be on or off: which notifications, which days, which toppings. Its value is the list of chosen values, in the options' order. The question names the group for assistive tech, and help text and a status message speak for the group as a whole, such as \"Choose at least one\".",
+      "keywords": [
+        "checkbox list",
+        "checkbox group",
+        "multiple choice",
+        "multi select",
+        "options",
+        "checklist"
+      ],
+      "props": [
+        {
+          "name": "bind",
+          "type": "Local<readonly string[]>",
+          "required": false,
+          "description": "A View-local cell holding the chosen values; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "readonly string[]",
+          "required": false,
+          "description": "The chosen options' values."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: readonly string[]) => void)",
+          "required": false,
+          "description": "Runs with the chosen values, in the options' order."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The question the options answer, and the group's accessible name: \"Notify me about\"."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the visible question; the group keeps it as its name.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the question, read as the group's description."
+        },
+        {
+          "name": "status",
+          "type": "FieldStatus",
+          "required": false,
+          "description": "A message about the group as a whole: \"Choose at least one\"."
+        },
+        {
+          "name": "isRequired",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks the question with an asterisk. Validation is the app's.",
+          "default": "false"
+        },
+        {
+          "name": "options",
+          "type": "readonly CheckboxListOption[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "Disables every option.",
+          "default": "false"
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the group; an option's checkbox is `<id>-<value>`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "label": "text",
+        "description": "text",
+        "options": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [
+          "description",
+          "status message"
+        ],
+        "states": [
+          {
+            "state": "checked",
+            "from": "value, on each option"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled, or an option's own"
+          },
+          {
+            "state": "invalid",
+            "from": "status.type === \"error\", on the group's message"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Moves from one checkbox to the next; each is its own stop"
+          },
+          {
+            "keys": "Space",
+            "effect": "Turns the focused checkbox on or off"
+          }
+        ],
+        "contrast": [
+          {
+            "what": "question and option labels",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "help text",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "A group named by `label`; each option is a checkbox named by its own label and described by its own help text.",
+          "The group's status message is a live region under the options: it is announced when it appears or changes.",
+          "Checkboxes are separate Tab stops, unlike radio buttons: each is its own answer.",
+          "An option that cannot be chosen stays in the list, dimmed, with its reason as help text."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Notifications",
+          "title": "Any number of options",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { CheckboxList } from '@liulidesign/core/CheckboxList';\n\nconst topics = [\n  { value: 'mentions', label: 'Mentions', description: 'When someone names you in a note.' },\n  { value: 'comments', label: 'Comments', description: 'Replies on notes you wrote.' },\n  { value: 'digest', label: 'Weekly digest' },\n];\n\n/** Any number of the options can be on; the value is the list of those that are. */\nexport function Notifications() {\n  const chosen = useLocal<readonly string[]>('topics', ['mentions']);\n  return (\n    <view className=\"gap-3\">\n      <CheckboxList label=\"Notify me about\" bind={chosen} options={topics} data-testid=\"topics\" />\n      <text role=\"status\" data-testid=\"chosen\" className=\"text-footnote text-muted\">{chosen.value.length === 0 ? 'Nothing chosen' : chosen.value.join(', ')}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "AtLeastOne",
+          "title": "A rule about the group",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { CheckboxList } from '@liulidesign/core/CheckboxList';\n\nconst days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(day => ({ value: day.toLowerCase(), label: day }));\n\n/** A message about the group as a whole, when the choice so far cannot stand. */\nexport function AtLeastOne() {\n  const chosen = useLocal<readonly string[]>('days', []);\n  return (\n    <CheckboxList\n      label=\"Office days\"\n      description=\"We book a desk for each day you choose.\"\n      isRequired\n      bind={chosen}\n      options={days}\n      status={chosen.value.length === 0 ? { type: 'error', message: 'Choose at least one day.' } : undefined}\n      data-testid=\"days\"\n    />\n  );\n}"
+        },
+        {
+          "name": "WithUnavailable",
+          "title": "An option that cannot be chosen",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { CheckboxList } from '@liulidesign/core/CheckboxList';\n\nconst toppings = [\n  { value: 'olives', label: 'Olives' },\n  { value: 'mushrooms', label: 'Mushrooms' },\n  { value: 'anchovies', label: 'Anchovies', description: 'Sold out today.', isDisabled: true },\n];\n\nexport function WithUnavailable() {\n  const chosen = useLocal<readonly string[]>('toppings', ['olives']);\n  return <CheckboxList label=\"Toppings\" bind={chosen} options={toppings} data-testid=\"toppings\" />;\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { CheckboxList } from '@liulidesign/core/CheckboxList';\n\nexport function Sizes() {\n  const chosen = useLocal<readonly string[]>('sized', ['a']);\n  const two = [{ value: 'a', label: 'First' }, { value: 'b', label: 'Second' }];\n  return (\n    <view className=\"grid grid-cols-2 gap-4\">\n      <CheckboxList label=\"Small\" size=\"sm\" bind={chosen} options={two} data-testid=\"small\" />\n      <CheckboxList label=\"Large\" size=\"lg\" bind={chosen} options={two} data-testid=\"large\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "A \"select all\" checkbox that shows a dash while some options are on.",
+          "needs": "a mixed checked state on a checkbox",
+          "today": "An app adds its own button to choose all or none."
+        },
+        {
+          "missing": "Options laid out in a row or in columns.",
+          "needs": "nothing from the View",
+          "today": "One column."
+        }
+      ],
+      "related": [
+        "CheckboxInput",
+        "RadioGroup",
+        "Switch"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Choose any number",
+        "order": 7,
+        "page": {
+          "lead": "Use a checkbox list when a question has a few answers and any number of them can be chosen.",
+          "hero": "Notifications",
+          "variants": [
+            {
+              "name": "AtLeastOne",
+              "title": "A rule about the group, shown while the choice breaks it"
+            },
+            {
+              "name": "WithUnavailable",
+              "title": "An option that cannot be chosen stays in the list, with its reason"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small and large"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "DateInput",
       "import": "@liulidesign/core/DateInput",
       "exports": [
@@ -1924,6 +2167,12 @@
           "required": false,
           "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
           "default": "true"
+        },
+        {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
         },
         {
           "name": "isDisabled",
@@ -3277,6 +3526,12 @@
           "default": "true"
         },
         {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -3300,8 +3555,10 @@
       "otherProps": {},
       "parts": {
         "root": "view",
+        "labelRow": "view",
         "label": "text",
         "required": "span",
+        "optional": "text",
         "description": "text",
         "status": "view",
         "statusIcon": "vector",
@@ -4355,6 +4612,357 @@
       }
     },
     {
+      "name": "NumberInput",
+      "import": "@liulidesign/core/NumberInput",
+      "exports": [
+        "NumberInput"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A number typed or nudged by steps, kept between a minimum and a maximum",
+      "description": "NumberInput holds one number: a count of guests, a weight, a price. People can type it, or nudge it with the two steppers at the end of the box. It carries a number, or `null` while the field is empty, so the app never parses text. A unit or a currency sign can sit inside the box, and it takes Field's label, help text and status.",
+      "keywords": [
+        "number",
+        "number input",
+        "stepper",
+        "quantity",
+        "counter",
+        "spinbutton",
+        "amount",
+        "numeric"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the control's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the visible label; the control keeps it as its name.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the control, read as the control's description."
+        },
+        {
+          "name": "status",
+          "type": "FieldStatus",
+          "required": false,
+          "description": "An `error` status marks the control invalid; its message is read as the control's description."
+        },
+        {
+          "name": "isRequired",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
+          "default": "false"
+        },
+        {
+          "name": "hasRequiredMark",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
+          "default": "true"
+        },
+        {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Shown in place of `description` while disabled."
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "bind",
+          "type": "Local<number | null>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; `null` while the field is empty. Use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "number | null",
+          "required": false,
+          "description": "The number, or `null` while the field is empty."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: number | null) => void)",
+          "required": false,
+          "description": "Runs with the new number, or `null` when the field is emptied."
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "required": false,
+          "description": "The lowest number the steppers reach and the field keeps."
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "required": false,
+          "description": "The highest number the steppers reach and the field keeps."
+        },
+        {
+          "name": "step",
+          "type": "number",
+          "required": false,
+          "description": "How much a stepper adds or takes away; its decimals are the number's.",
+          "default": "1"
+        },
+        {
+          "name": "decrementLabel",
+          "type": "string",
+          "required": true,
+          "description": "The minus stepper's accessible name: \"Fewer guests\"."
+        },
+        {
+          "name": "incrementLabel",
+          "type": "string",
+          "required": true,
+          "description": "The plus stepper's accessible name: \"More guests\"."
+        },
+        {
+          "name": "hasSteppers",
+          "type": "boolean",
+          "required": false,
+          "description": "Leaves the steppers out, for a number people type and never nudge.",
+          "default": "true"
+        },
+        {
+          "name": "prefix",
+          "type": "string",
+          "required": false,
+          "description": "Fixed text before the number: a currency sign. Read with the description."
+        },
+        {
+          "name": "suffix",
+          "type": "string",
+          "required": false,
+          "description": "Fixed text after the number: a unit. Read with the description."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the editor; the steppers are `<id>-decrement` and `<id>-increment`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "box": "view",
+        "adornment": "text",
+        "input": "input",
+        "steppers": "view",
+        "stepper": "button",
+        "stepperIcon": "vector"
+      },
+      "accessibility": {
+        "pattern": "textbox",
+        "name": "label",
+        "description": [
+          "prefix",
+          "suffix",
+          "optionalLabel",
+          "description",
+          "status message"
+        ],
+        "states": [
+          {
+            "state": "invalid",
+            "from": "status.type === \"error\""
+          },
+          {
+            "state": "required",
+            "from": "isRequired"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Moves from the number to the minus stepper, then the plus stepper"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "On a stepper: one step down or up"
+          }
+        ],
+        "target": {
+          "sm": 32,
+          "md": 40,
+          "lg": 48
+        },
+        "contrast": [
+          {
+            "what": "number",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "unit, placeholder and stepper marks",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "field edge",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "error edge",
+            "pair": [
+              "danger",
+              "surface"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "A number editor named by `label`; the unit, then the help text and status, are read as its description.",
+          "Each stepper is a button with its own name from the app, so a screen reader hears what a press changes: \"More guests\".",
+          "A stepper at its end of the range is disabled, and the field keeps typed numbers within `min` and `max` when it loses focus.",
+          "The hairlines beside the steppers are decoration; each stepper is told apart by its mark."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Guests",
+          "title": "A count with steppers",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { NumberInput } from '@liulidesign/core/NumberInput';\n\n/** A count people nudge more often than they type. */\nexport function Guests() {\n  const guests = useLocal<number | null>('guests', 2);\n  return (\n    <NumberInput\n      label=\"Guests\"\n      description=\"Up to 12 at one table.\"\n      bind={guests}\n      min={1}\n      max={12}\n      decrementLabel=\"Fewer guests\"\n      incrementLabel=\"More guests\"\n      data-testid=\"guests\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Weight",
+          "title": "A unit, and steps of a tenth",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { NumberInput } from '@liulidesign/core/NumberInput';\n\n/** A unit after the number, and steps of a tenth. */\nexport function Weight() {\n  const weight = useLocal<number | null>('weight', 71.5);\n  return (\n    <NumberInput label=\"Weight\" bind={weight} min={0} step={0.1} suffix=\"kg\" decrementLabel=\"Lighter\" incrementLabel=\"Heavier\" data-testid=\"weight\" />\n  );\n}"
+        },
+        {
+          "name": "Price",
+          "title": "A typed number, without steppers",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { NumberInput } from '@liulidesign/core/NumberInput';\n\n/** A number people type: a price, with its currency, and no steppers. */\nexport function Price() {\n  const price = useLocal<number | null>('price', null);\n  return (\n    <NumberInput\n      label=\"Price\"\n      bind={price}\n      min={0}\n      step={0.01}\n      prefix=\"$\"\n      placeholder=\"0.00\"\n      hasSteppers={false}\n      optionalLabel=\"optional\"\n      decrementLabel=\"Lower\"\n      incrementLabel=\"Higher\"\n      data-testid=\"price\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { NumberInput } from '@liulidesign/core/NumberInput';\n\nexport function Sizes() {\n  const value = useLocal<number | null>('sized', 4);\n  return (\n    <view className=\"gap-3\">\n      <NumberInput label=\"Small\" size=\"sm\" bind={value} decrementLabel=\"Less\" incrementLabel=\"More\" data-testid=\"small\" />\n      <NumberInput label=\"Medium\" bind={value} decrementLabel=\"Less\" incrementLabel=\"More\" />\n      <NumberInput label=\"Large\" size=\"lg\" bind={value} decrementLabel=\"Less\" incrementLabel=\"More\" data-testid=\"large\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "The number shown formatted (grouped digits, a fixed number of decimals) while the field is not being edited.",
+          "needs": "focus and blur events on an editor",
+          "today": "The field shows the digits as typed; a unit or currency sits beside them."
+        },
+        {
+          "missing": "Up and Down arrow keys stepping the number from the editor, and the spin-button role.",
+          "needs": "key events from an editor and a spinbutton role",
+          "today": "The steppers are two buttons after the editor in the Tab order."
+        },
+        {
+          "missing": "A stepper that repeats while held.",
+          "needs": "a press-and-hold event",
+          "today": "One step per press."
+        }
+      ],
+      "related": [
+        "TextInput",
+        "Slider"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A number, by steps",
+        "order": 8,
+        "page": {
+          "lead": "Use a number input for an amount people type or nudge: a count, a weight, a price.",
+          "hero": "Guests",
+          "variants": [
+            {
+              "name": "Weight",
+              "title": "A unit after the number, and steps of a tenth"
+            },
+            {
+              "name": "Price",
+              "title": "A typed number: a currency sign, no steppers, marked optional"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small, medium and large"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateEmpty",
+              "title": "Empty"
+            },
+            {
+              "name": "StateAtMinimum",
+              "title": "At the minimum"
+            },
+            {
+              "name": "StateInvalid",
+              "title": "Invalid"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ],
+          "statesLayout": "stack"
+        }
+      }
+    },
+    {
       "name": "Popover",
       "import": "@liulidesign/core/Popover",
       "exports": [
@@ -4864,6 +5472,12 @@
           "default": "true"
         },
         {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -5354,6 +5968,12 @@
           "required": false,
           "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
           "default": "true"
+        },
+        {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
         },
         {
           "name": "isDisabled",
@@ -6663,6 +7283,12 @@
           "default": "true"
         },
         {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -7004,6 +7630,12 @@
           "default": "true"
         },
         {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -7117,6 +7749,18 @@
           "description": "An icon inside the box, before the text; drawn 16 px in the muted colour. Replaces the search magnifier."
         },
         {
+          "name": "prefix",
+          "type": "string",
+          "required": false,
+          "description": "Fixed text inside the box before the value, as the app writes it: \"$\", \"https://\". Read with the description."
+        },
+        {
+          "name": "suffix",
+          "type": "string",
+          "required": false,
+          "description": "Fixed text inside the box after the value: a unit such as \"kg\" or \"%\". Read with the description."
+        },
+        {
           "name": "onSubmit",
           "type": "((value: string) => void)",
           "required": false,
@@ -7146,6 +7790,7 @@
         "box": "view",
         "icon": "view",
         "searchIcon": "vector",
+        "adornment": "text",
         "input": "input",
         "clear": "button",
         "clearIcon": "vector"
@@ -7233,6 +7878,11 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\n/** Controlled (`value` + `onChange`), as a search field with a clear button the app names. */\nexport function Search() {\n  const query = useLocal('query', '');\n  return (\n    <TextInput\n      value={query.value}\n      onChange={next => query.set(next)}\n      label=\"Search notes\"\n      isLabelHidden\n      placeholder=\"Search notes\"\n      type=\"search\"\n      hasClear\n      clearLabel=\"Clear search\"\n      data-testid=\"search\"\n    />\n  );\n}"
         },
         {
+          "name": "Adornments",
+          "title": "Fixed text before and after the value, and an optional field",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\n/** Fixed text beside the value says its unit or its start, so the person types only what changes. */\nexport function Adornments() {\n  const price = useLocal('price', '24.00');\n  const site = useLocal('site', '');\n  const weight = useLocal('weight', '');\n  return (\n    <view className=\"gap-4\">\n      <TextInput label=\"Price\" bind={price} prefix=\"$\" suffix=\"USD\" inputMode=\"decimal\" data-testid=\"price\" />\n      <TextInput label=\"Website\" bind={site} prefix=\"https://\" placeholder=\"example.com\" autoCapitalize=\"none\" data-testid=\"site\" />\n      <TextInput label=\"Weight\" bind={weight} suffix=\"kg\" inputMode=\"decimal\" optionalLabel=\"optional\" data-testid=\"weight\" />\n    </view>\n  );\n}"
+        },
+        {
           "name": "Disabled",
           "title": "Disabled, with the reason",
           "source": "import { useLocal } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\nexport function Disabled() {\n  const code = useLocal('code', 'LX-2041');\n  return <TextInput bind={code} label=\"Invite code\" isDisabled disabledMessage=\"Codes are fixed once sent.\" data-testid=\"code\" />;\n}"
@@ -7273,6 +7923,10 @@
             {
               "name": "Search",
               "title": "Search, with a clear button"
+            },
+            {
+              "name": "Adornments",
+              "title": "A currency sign, a web address start and a unit; the last field is marked optional"
             }
           ],
           "sizes": [
@@ -7369,6 +8023,12 @@
           "required": false,
           "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
           "default": "true"
+        },
+        {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
         },
         {
           "name": "isDisabled",

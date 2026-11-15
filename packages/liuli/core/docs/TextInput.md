@@ -65,6 +65,27 @@ export function Search() {
 }
 ```
 
+### Fixed text before and after the value, and an optional field
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { TextInput } from '@liulidesign/core/TextInput';
+
+/** Fixed text beside the value says its unit or its start, so the person types only what changes. */
+export function Adornments() {
+  const price = useLocal('price', '24.00');
+  const site = useLocal('site', '');
+  const weight = useLocal('weight', '');
+  return (
+    <view className="gap-4">
+      <TextInput label="Price" bind={price} prefix="$" suffix="USD" inputMode="decimal" data-testid="price" />
+      <TextInput label="Website" bind={site} prefix="https://" placeholder="example.com" autoCapitalize="none" data-testid="site" />
+      <TextInput label="Weight" bind={weight} suffix="kg" inputMode="decimal" optionalLabel="optional" data-testid="weight" />
+    </view>
+  );
+}
+```
+
 ### Disabled, with the reason
 
 ```tsx
@@ -87,6 +108,7 @@ export function Disabled() {
 | `status` | `FieldStatus` |  | An `error` status marks the control invalid; its message is read as the control's description. |
 | `isRequired` | `boolean` | `false` | Marks the label with an asterisk and the control as required. Validation is the app's. |
 | `hasRequiredMark` | `boolean` | `true` | Draws the asterisk on a required label; turn it off on a form where every field is required. |
+| `optionalLabel` | `string` |  | A word after the label for a field that may be left empty, as the app writes it: "optional". Read before the help text. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
 | `size` | `FieldSize` | `'md'` |  |
@@ -105,6 +127,8 @@ export function Disabled() {
 | `hasAutoFocus` | `boolean` | `false` | Focus it when it first appears. |
 | `maxLength` | `number` |  |  |
 | `startIcon` | `Child` |  | An icon inside the box, before the text; drawn 16 px in the muted colour. Replaces the search magnifier. |
+| `prefix` | `string` |  | Fixed text inside the box before the value, as the app writes it: "$", "https://". Read with the description. |
+| `suffix` | `string` |  | Fixed text inside the box after the value: a unit such as "kg" or "%". Read with the description. |
 | `onSubmit` | `((value: string) => void)` |  | The keyboard's action key, or Enter. |
 | `className` | `string` |  | Classes for the field column. |
 | `controlClassName` | `string` |  | Classes for the bordered box. |

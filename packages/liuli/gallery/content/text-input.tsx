@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Bound, Plain, Search, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Disabled } from '../../core/src/TextInput/TextInput.examples';
+import { Bound, Plain, Search, Adornments, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Disabled } from '../../core/src/TextInput/TextInput.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -14,6 +14,9 @@ export function Content() {
         </Stage>
         <Stage caption={"Search, with a clear button"}>
           <Search />
+        </Stage>
+        <Stage caption={"A currency sign, a web address start and a unit; the last field is marked optional"}>
+          <Adornments />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

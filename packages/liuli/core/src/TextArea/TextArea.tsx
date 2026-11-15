@@ -33,7 +33,7 @@ export type TextAreaProps = FieldOwnProps & TextInputBinding & {
 /** A labelled editor for several lines, growing with its text up to `maxRows`. */
 export function TextArea(props: TextAreaProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, hasRequiredMark, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, isDisabled = false, disabledMessage, size = 'md',
     placeholder, rows = 3, inputMode, autoComplete, enterKeyHint, autoCapitalize, hasSpellCheck,
     hasAutoFocus = false, maxLength, onSubmit, className, controlClassName, 'data-testid': testId,
   } = props;
@@ -48,6 +48,7 @@ export function TextArea(props: TextAreaProps) {
       status={status}
       isRequired={isRequired}
       hasRequiredMark={hasRequiredMark}
+      optionalLabel={optionalLabel}
       isDisabled={isDisabled}
       disabledMessage={disabledMessage}
       size={size}
