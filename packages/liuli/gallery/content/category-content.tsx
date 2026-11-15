@@ -10,13 +10,14 @@ import { Specimen as MarkdownSpecimen } from '../../core/src/Markdown/Markdown.e
 import { Specimen as MetadataListSpecimen } from '../../core/src/MetadataList/MetadataList.examples';
 import { Specimen as SectionSpecimen } from '../../core/src/Section/Section.examples';
 import { Specimen as DividerSpecimen } from '../../core/src/Divider/Divider.examples';
+import { Specimen as KbdSpecimen } from '../../core/src/Kbd/Kbd.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Containers, rows and tables that hold what the app shows."}</text>
-      <Category title={"11 components"}>
+      <Category title={"12 components"}>
         <Tile
           name={"Card"}
           tagline={"Related content"}
@@ -100,11 +101,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"Divider"}
           tagline={"A line between"}
-          isWide
           onOpen={() => onOpen("divider")}
           testId={"open-divider"}
         >
           <DividerSpecimen />
+        </Tile>
+        <Tile
+          name={"Kbd"}
+          tagline={"Keys of a shortcut"}
+          onOpen={() => onOpen("kbd")}
+          testId={"open-kbd"}
+        >
+          <KbdSpecimen />
         </Tile>
       </Category>
     </>

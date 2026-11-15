@@ -4,13 +4,14 @@ import { Specimen as NavListSpecimen } from '../../core/src/NavList/NavList.exam
 import { Specimen as BreadcrumbSpecimen } from '../../core/src/Breadcrumb/Breadcrumb.examples';
 import { Specimen as PaginationSpecimen } from '../../core/src/Pagination/Pagination.examples';
 import { Specimen as StepperSpecimen } from '../../core/src/Stepper/Stepper.examples';
+import { Specimen as LinkSpecimen } from '../../core/src/Link/Link.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Ways to move between views, through a set, and through the steps of a task."}</text>
-      <Category title={"5 components"}>
+      <Category title={"6 components"}>
         <Tile
           name={"Tabs"}
           tagline={"A few peer views"}
@@ -46,11 +47,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"Stepper"}
           tagline={"Steps of a task"}
-          isWide
           onOpen={() => onOpen("stepper")}
           testId={"open-stepper"}
         >
           <StepperSpecimen />
+        </Tile>
+        <Tile
+          name={"Link"}
+          tagline={"Words that lead on"}
+          onOpen={() => onOpen("link")}
+          testId={"open-link"}
+        >
+          <LinkSpecimen />
         </Tile>
       </Category>
     </>

@@ -6181,6 +6181,267 @@
       }
     },
     {
+      "name": "Kbd",
+      "import": "@liulidesign/core/Kbd",
+      "exports": [
+        "Kbd"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A keyboard shortcut, drawn as key caps",
+      "description": "Kbd shows the keys of one shortcut, each as a small key cap, in the order they are held. It only shows them: the app binds the shortcut. It belongs where a pointer and a keyboard are present, at the end of a menu row, in a tooltip or in a list of shortcuts.",
+      "keywords": [
+        "kbd",
+        "keyboard",
+        "shortcut",
+        "key",
+        "hotkey",
+        "accelerator"
+      ],
+      "props": [
+        {
+          "name": "keys",
+          "type": "readonly string[]",
+          "required": true,
+          "description": "The keys of one shortcut, in the order they are held: `['Ctrl', 'K']`. Each is drawn as a key cap."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "required": false,
+          "description": "How the shortcut is read: \"Control K\". Without it the keys are read as written."
+        },
+        {
+          "name": "size",
+          "type": "KbdSize",
+          "required": false,
+          "description": "",
+          "default": "'sm'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "key": "view",
+        "label": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "aria-label",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "target": {},
+        "contrast": [
+          {
+            "what": "key",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "With `aria-label` the shortcut is read once, as the label says: \"Control K\". Give it whenever a key is short for a word.",
+          "Without it each key is read as written, which suits keys that are words: \"Enter\".",
+          "It takes no focus and no press."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Shortcuts",
+          "title": "A list of shortcuts",
+          "source": "import { Kbd } from '@liulidesign/core/Kbd';\n\nconst shortcuts = [\n  { key: 'search', label: 'Search notes', keys: ['Ctrl', 'K'], spoken: 'Control K' },\n  { key: 'new', label: 'New note', keys: ['Ctrl', 'N'], spoken: 'Control N' },\n  { key: 'archive', label: 'Move to archive', keys: ['Ctrl', 'Shift', 'A'], spoken: 'Control Shift A' },\n  { key: 'close', label: 'Close the panel', keys: ['Esc'], spoken: 'Escape' },\n] as const;\n\n/** A list of shortcuts: what each does, and its keys at the end of the row. */\nexport function Shortcuts() {\n  return (\n    <view className=\"gap-3\">\n      {shortcuts.map(shortcut => (\n        <view key={shortcut.key} className=\"flex-row items-center justify-between gap-4\">\n          <text className=\"text-body text-text\">{shortcut.label}</text>\n          <Kbd keys={shortcut.keys} aria-label={shortcut.spoken} data-testid={shortcut.key} />\n        </view>\n      ))}\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Hint",
+          "title": "Beside a hint",
+          "source": "import { Kbd } from '@liulidesign/core/Kbd';\n\n/** In a line of help, at the size of the text it sits with. */\nexport function Hint() {\n  return (\n    <view className=\"gap-2\">\n      <view className=\"flex-row items-center gap-2\">\n        <Kbd keys={['Enter']} size=\"md\" data-testid=\"enter\" />\n        <text className=\"text-body text-muted\">to send</text>\n      </view>\n      <view className=\"flex-row items-center gap-2\">\n        <Kbd keys={['Shift', 'Enter']} size=\"md\" />\n        <text className=\"text-body text-muted\">for a new line</text>\n      </view>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "The keys are whatever the app passes; Liuli does not know the platform's modifier names.",
+        "Key symbols such as ⌘ and ⇧ are missing from some devices' text face and draw as an empty cap there; write the key's name."
+      ],
+      "related": [
+        "Tooltip",
+        "DropdownMenu"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Keys of a shortcut",
+        "order": 12,
+        "page": {
+          "lead": "Use Kbd to show the keys of a shortcut beside the action it runs.",
+          "hero": "Shortcuts",
+          "variants": [
+            {
+              "name": "Hint",
+              "title": "In a line of help, one size up"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Link",
+      "import": "@liulidesign/core/Link",
+      "exports": [
+        "Link"
+      ],
+      "category": "navigation",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A link among the words of a sentence",
+      "description": "Link is a run of text that goes somewhere: it sits inside a `<text>`, takes the size and weight of the words around it, and is told apart by the accent colour and an underline. It calls `onClick`; the app opens the page or the address. A link that stands alone, outside a sentence, is a Button with `variant=\"link\"`.",
+      "keywords": [
+        "link",
+        "anchor",
+        "hyperlink",
+        "inline",
+        "text"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The linked words. They say where the link goes: \"terms of service\", never \"here\"."
+        },
+        {
+          "name": "onClick",
+          "type": "(() => void)",
+          "required": false,
+          "description": "Called when the link is pressed. The app opens the page or the address."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "required": false,
+          "description": "Replaces the label for assistive tech when the words alone are not enough out of their sentence."
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "Takes no press and is drawn faint.",
+          "default": "false"
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "link"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Moves to the link"
+          },
+          {
+            "keys": "Enter",
+            "effect": "Follows it"
+          }
+        ],
+        "target": {},
+        "contrast": [
+          {
+            "what": "link",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "link on the page",
+            "pair": [
+              "accent",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "It is read as a link, by its label. Write the label so it makes sense out of its sentence, or give `aria-label`.",
+          "The underline tells it from the text around it without colour.",
+          "A link in a line of text is as tall as the line; a finger press that misses goes to the nearest link within reach.",
+          "A disabled link takes no press and is faint; it is still read as a link, see the gaps."
+        ]
+      },
+      "examples": [
+        {
+          "name": "InSentence",
+          "title": "In a sentence",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Link } from '@liulidesign/core/Link';\n\n/** In a sentence, under a form. */\nexport function InSentence() {\n  const opened = useLocal('opened', '');\n  return (\n    <view className=\"gap-2\">\n      <text className=\"text-footnote text-muted\">\n        By creating an account you accept the <Link label=\"terms of service\" onClick={() => opened.set('terms')} data-testid=\"terms\" /> and the{' '}\n        <Link label=\"privacy notice\" onClick={() => opened.set('privacy')} data-testid=\"privacy\" />.\n      </text>\n      <text data-testid=\"opened\" className=\"text-caption text-muted\">{opened.value === '' ? 'Nothing opened' : `Opened: ${opened.value}`}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "InBody",
+          "title": "In body text",
+          "source": "import { Link } from '@liulidesign/core/Link';\n\n/** In body text, at its size and weight. */\nexport function InBody() {\n  return (\n    <text className=\"text-body text-text\">\n      Exports are kept for seven days. You can <Link label=\"download the last export\" onClick={() => {}} data-testid=\"download\" /> or start a new one from Settings.\n    </text>\n  );\n}"
+        },
+        {
+          "name": "Disabled",
+          "title": "Not available yet",
+          "source": "import { Link } from '@liulidesign/core/Link';\n\n/** A link that cannot be followed yet. */\nexport function Disabled() {\n  return (\n    <text className=\"text-footnote text-muted\">\n      No code yet? <Link label=\"Send it again\" isDisabled data-testid=\"resend\" /> in 30 seconds.\n    </text>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "A disabled link is not read as unavailable: the View refuses `disabled` on a link today.",
+        "A link has no hover or focus style of its own beyond the system focus ring."
+      ],
+      "related": [
+        "Button",
+        "Breadcrumb",
+        "Markdown"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Words that lead on",
+        "order": 6,
+        "page": {
+          "lead": "Use a link for words in a sentence that lead to another page.",
+          "hero": "InSentence",
+          "variants": [
+            {
+              "name": "InBody",
+              "title": "At the size of the text around it"
+            }
+          ],
+          "states": [
+            {
+              "name": "Disabled",
+              "title": "Disabled"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Markdown",
       "import": "@liulidesign/core/Markdown",
       "exports": [

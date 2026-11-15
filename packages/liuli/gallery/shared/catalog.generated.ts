@@ -463,6 +463,19 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "Link",
+    "page": "link",
+    "category": "navigation",
+    "summary": "A link among the words of a sentence",
+    "keywords": [
+      "link",
+      "anchor",
+      "hyperlink",
+      "inline",
+      "text"
+    ]
+  },
+  {
     "name": "Badge",
     "page": "badge",
     "category": "feedback",
@@ -809,6 +822,20 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "Kbd",
+    "page": "kbd",
+    "category": "content",
+    "summary": "A keyboard shortcut, drawn as key caps",
+    "keywords": [
+      "kbd",
+      "keyboard",
+      "shortcut",
+      "key",
+      "hotkey",
+      "accelerator"
+    ]
+  },
+  {
     "name": "Stat",
     "page": "stat",
     "category": "charts",
@@ -1019,7 +1046,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "compass",
     "description": "Tabs, steps and pages",
     "page": "category-navigation",
-    "count": 5
+    "count": 6
   },
   {
     "id": "feedback",
@@ -1043,7 +1070,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "rows",
     "description": "Cards, rows and tables",
     "page": "category-content",
-    "count": 11
+    "count": 12
   },
   {
     "id": "charts",

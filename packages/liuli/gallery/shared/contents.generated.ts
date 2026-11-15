@@ -43,6 +43,7 @@ import { Content as NavList } from '../content/nav-list';
 import { Content as Breadcrumb } from '../content/breadcrumb';
 import { Content as Pagination } from '../content/pagination';
 import { Content as Stepper } from '../content/stepper';
+import { Content as Link } from '../content/link';
 import { Content as Badge } from '../content/badge';
 import { Content as ProgressBar } from '../content/progress-bar';
 import { Content as Banner } from '../content/banner';
@@ -65,6 +66,7 @@ import { Content as Markdown } from '../content/markdown';
 import { Content as MetadataList } from '../content/metadata-list';
 import { Content as Section } from '../content/section';
 import { Content as Divider } from '../content/divider';
+import { Content as Kbd } from '../content/kbd';
 import { Content as Stat } from '../content/stat';
 import { Content as Sparkline } from '../content/sparkline';
 import { Content as BarChart } from '../content/bar-chart';
@@ -126,6 +128,7 @@ export const contents: Record<string, GalleryContent> = {
   "breadcrumb": Breadcrumb,
   "pagination": Pagination,
   "stepper": Stepper,
+  "link": Link,
   "badge": Badge,
   "progress-bar": ProgressBar,
   "banner": Banner,
@@ -148,6 +151,7 @@ export const contents: Record<string, GalleryContent> = {
   "metadata-list": MetadataList,
   "section": Section,
   "divider": Divider,
+  "kbd": Kbd,
   "stat": Stat,
   "sparkline": Sparkline,
   "bar-chart": BarChart,
