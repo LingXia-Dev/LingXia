@@ -34,11 +34,11 @@ export function Budget() {
       title="Budget"
       description="Third quarter, $10,000"
       summary="62% spent, 23% committed, 15% left."
-      size="xs"
+      size="fit"
       legend={<ChartLegend label="Parts" variant="list" items={budget.map(part => ({ key: part.key, label: part.label, color: part.color, value: dollars(part.amount) }))} />}
       data-testid="budget"
     >
-      <view aria-hidden className="grow flex-row items-center gap-0.5">
+      <view aria-hidden className="flex-row gap-0.5">
         {budget.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', fills[part.color])} style={{ flexGrow: part.amount }} />)}
       </view>
     </Chart>
@@ -99,7 +99,7 @@ export function Readout() {
 | `axis` | `Child` |  | What sits under the plot and belongs to it: the category labels. |
 | `legend` | `Child` |  | A `ChartLegend`. |
 | `legendPosition` | `ChartLegendPosition` | `'bottom'` |  |
-| `size` | `ChartSize` | `'md'` | The plot's height: 64, 112, 176 or 240. `xs` is for a tile or a row, with nothing but the marks. |
+| `size` | `ChartPlotSize` | `'md'` | The plot's height: 64, 112, 176 or 240, or `fit` to take the height of the plot's own content. `xs` is for a tile or a row, with nothing but the marks. |
 | `isLoading` | `boolean` | `false` | Stands a skeleton in for the plot; the chart is reported busy. |
 | `error` | `string` |  | Why the data could not be shown; drawn in place of the plot and announced. |
 | `isEmpty` | `boolean` | `false` | Shows `emptyLabel` in place of the plot. |

@@ -1,5 +1,5 @@
 import type { ChartColor } from '../internal/data';
-import type { ChartLegendVariant, ChartSize } from './Chart';
+import type { ChartLegendVariant, ChartPlotSize } from './Chart';
 
 export const chartParts = {
   root: 'view',
@@ -54,7 +54,7 @@ export const chartRecipe = {
   },
   plot: {
     base: 'self-stretch',
-    size: { xs: 'h-16', sm: 'h-28', md: 'h-44', lg: 'h-60' } satisfies Record<ChartSize, string>,
+    size: { fit: '', xs: 'h-16', sm: 'h-28', md: 'h-44', lg: 'h-60' } satisfies Record<ChartPlotSize, string>,
     // A message taller than a small plot starts at its top; centred, it would be cut at both ends.
     state: 'items-center justify-center-safe',
   },

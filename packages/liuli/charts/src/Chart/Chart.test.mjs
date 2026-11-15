@@ -13,9 +13,9 @@ test('Budget: a group named by its label; the summary is read and not drawn; a c
   const summary = screen.getByText('62% spent, 23% committed, 15% left.');
   assert.equal(summary.props.opacity, 0);
   assert.ok(!hidden(summary));
-  const plot = chart.children.find(node => node.props.height === 64);
-  assert.ok(plot, 'the smallest plot is 64 tall');
-  assert.deepEqual(plot.children[0].children.map(node => node.props.grow), [6200, 2300, 1500]);
+  const bar = screen.queryAll(node => node.props.flexDirection === 'row' && node.children.length === 3 && node.children[0].props.height === 24)[0];
+  assert.deepEqual(bar.children.map(node => node.props.grow), [6200, 2300, 1500]);
+  assert.equal(bar.parent.props.height, undefined, 'a fitted plot is as tall as its content');
   const legend = screen.queryAll(node => node.props.role === 'list')[0];
   assert.equal(legend.props.accessibilityLabel, 'Parts');
   assert.deepEqual(legend.children.map(textOf), ['Spent$6,200', 'Committed$2,300', 'Left$1,500']);

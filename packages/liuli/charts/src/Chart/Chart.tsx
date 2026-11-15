@@ -6,6 +6,8 @@ import { chartRecipe as r } from './Chart.recipe';
 export type { ChartColor, ChartDatum, ChartFacts, ChartPointFact, ChartRow, ChartSeries, ChartSeriesFacts, ChartSummarize } from '../internal/data';
 
 export type ChartSize = 'xs' | 'sm' | 'md' | 'lg';
+/** `fit` is for a plot of your own that has its own height, such as a single bar. */
+export type ChartPlotSize = ChartSize | 'fit';
 export type ChartLegendVariant = 'inline' | 'list';
 export type ChartLegendPosition = 'top' | 'bottom' | 'none';
 
@@ -28,8 +30,8 @@ export interface ChartProps {
   legend?: Child;
   /** @default 'bottom' */
   legendPosition?: ChartLegendPosition;
-  /** The plot's height: 64, 112, 176 or 240. `xs` is for a tile or a row, with nothing but the marks. @default 'md' */
-  size?: ChartSize;
+  /** The plot's height: 64, 112, 176 or 240, or `fit` to take the height of the plot's own content. `xs` is for a tile or a row, with nothing but the marks. @default 'md' */
+  size?: ChartPlotSize;
   /** Stands a skeleton in for the plot; the chart is reported busy. @default false */
   isLoading?: boolean;
   /** Why the data could not be shown; drawn in place of the plot and announced. */

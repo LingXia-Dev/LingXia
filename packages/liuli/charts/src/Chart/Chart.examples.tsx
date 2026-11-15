@@ -17,11 +17,11 @@ export function Budget() {
       title="Budget"
       description="Third quarter, $10,000"
       summary="62% spent, 23% committed, 15% left."
-      size="xs"
+      size="fit"
       legend={<ChartLegend label="Parts" variant="list" items={budget.map(part => ({ key: part.key, label: part.label, color: part.color, value: dollars(part.amount) }))} />}
       data-testid="budget"
     >
-      <view aria-hidden className="grow flex-row items-center gap-0.5">
+      <view aria-hidden className="flex-row gap-0.5">
         {budget.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', fills[part.color])} style={{ flexGrow: part.amount }} />)}
       </view>
     </Chart>
@@ -67,7 +67,19 @@ export function StateError() {
   return <Chart label="Budget for the quarter" title="Budget" size="sm" error="The budget could not be loaded" data-testid="error" />;
 }
 
-/** The home tile. */
+/** The home tile: a heading, a plot and a legend, as small as the frame goes. */
 export function Specimen() {
-  return <ChartLegend label="Plans" items={plans} className="w-28" />;
+  return (
+    <Chart
+      label="Budget"
+      title="Budget"
+      size="fit"
+      legend={<ChartLegend label="Parts" items={[budget[0], budget[2]].map(part => ({ key: part.key, label: part.label, color: part.color }))} />}
+      className="w-32 self-center"
+    >
+      <view aria-hidden className="flex-row gap-0.5">
+        {budget.map(part => <view key={part.key} className={cx('h-2.5 basis-0 rounded-[2px]', fills[part.color])} style={{ flexGrow: part.amount }} />)}
+      </view>
+    </Chart>
+  );
 }

@@ -129,7 +129,8 @@ export function BarChart({
   const isPressable = onSelect !== undefined && data.length <= maxPressable;
   const labels = xLabels ?? (data.length <= maxLabelled ? 'all' : 'ends');
   const chosen = data.findIndex((row, index) => keyOf(row, keyField ?? x, index) === selectedKey);
-  const density = data.length >= denseFrom ? 'dense' : 'regular';
+  // Narrow bars take the small corner: many bars, or the smallest plot, where a slot is a few points wide.
+  const density = data.length >= denseFrom || size === 'xs' ? 'dense' : 'regular';
   // Colours are role names, so the outlines outlive a theme change; they are rebuilt only for new data, encoding or choice.
   const paths = remember(data, 'bars', JSON.stringify([shown.map(series => [series.field, series.color]), high, depth, chosen, density]),
     () => barPaths(data, shown, high, depth, chosen, radius[density]));
