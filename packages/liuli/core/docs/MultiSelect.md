@@ -102,6 +102,13 @@ export function Empty() {
 | placeholder | `<text>` | no | Shown while nothing is chosen. |
 | add | `<DropdownMenu>` | yes | A DropdownMenu at the end of the box, named by `addLabel`, with a checkbox item per option. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `multiSelectRecipe` from `@liulidesign/core/MultiSelect/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--spacing-control-lg`, `--text-body`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `danger`, `line-strong`, `surface`, `text`, `text-muted`, `warning`.
+
 ## Accessibility
 
 - Pattern: none.

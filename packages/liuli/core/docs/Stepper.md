@@ -84,6 +84,13 @@ export function Across() {
 | label | `<text>` | yes | The step's name; heavier on the step in progress. |
 | description | `<text>` | no | A second line under the label; vertical only. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `stepperRecipe` from `@liulidesign/core/Stepper/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `line-strong`, `on-accent`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

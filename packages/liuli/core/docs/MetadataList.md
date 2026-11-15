@@ -89,6 +89,13 @@ export function Stacked() {
 | value | `<text>` | yes | The value; it wraps rather than truncating. |
 | content | `<view>` | no | Drawn in place of the value's text. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `metadataListRecipe` from `@liulidesign/core/MetadataList/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`.
+- Colour roles it paints with, set by the theme pack: `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

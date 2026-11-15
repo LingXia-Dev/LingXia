@@ -142,6 +142,14 @@ export function Counted() {
 | box | `<view>` | yes | The bordered box; it takes the focus colour while the editor has focus and the status colour otherwise. |
 | editor | `<textarea>` | yes | The editor; it fills the box, shows `rows` lines and grows to `maxRows`. |
 
+## What an app may override
+
+- `className`: Classes for the field column.
+- `controlClassName`: Classes for the bordered box.
+- The recipe, `textAreaRecipe` from `@liulidesign/core/TextArea/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `line-strong`, `surface`, `text`, `text-faint`, `text-muted`, `warning`.
+
 ## Accessibility
 
 - Pattern: textbox.

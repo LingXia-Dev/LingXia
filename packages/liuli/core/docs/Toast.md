@@ -103,6 +103,13 @@ export function Faces() {
 | dismiss | `<button>` | yes | A close button named by `dismissLabel`. |
 | announcer | `<text>` | yes | Hidden live texts, polite and assertive pairs, mounted with the region; each new toast takes the one of its pair cleared last, so a repeated message is spoken again. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `toastRecipe` from `@liulidesign/core/Toast/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-body`, `--shadow-raised`, `--radius-container`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `focus`, `success`, `surface-overlay`, `text`, `text-muted`, `warning`.
+
 ## Accessibility
 
 - Pattern: none.

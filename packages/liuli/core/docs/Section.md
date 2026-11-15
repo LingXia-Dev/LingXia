@@ -73,6 +73,13 @@ export function Nested() {
 | description | `<text>` | no | A line under the heading. |
 | action | `<view>` | no | At the end of the heading's line. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `sectionRecipe` from `@liulidesign/core/Section/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--text-callout`.
+- Colour roles it paints with, set by the theme pack: `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

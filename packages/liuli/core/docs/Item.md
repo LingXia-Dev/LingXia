@@ -295,6 +295,14 @@ export function Compact() {
 | actions | `<view>` | no | Behind the row's end: the actions, 72 px each. |
 | action | `<button>` | no | One action: an icon over its label, in its tone. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- `className` on ItemList: classes merged after the recipe's, so they win.
+- The recipe, `itemRecipe` from `@liulidesign/core/Item/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-md`, `--spacing-control-lg`, `--text-caption`, `--text-footnote`, `--text-body`, `--radius-control`, `--radius-container`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `danger`, `focus`, `on-accent`, `on-accent-soft`, `on-danger`, `surface`, `surface-overlay`, `text`, `text-faint`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: button.

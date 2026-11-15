@@ -151,6 +151,14 @@ export function SpinnerTones() {
 | fill | `<view>` | yes | The amount done, as a share of the track width; a sweeping segment while the amount is unknown. |
 | spinner | `<vector>` | no | Spinner's spinning arc. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- `className` on Spinner: classes merged after the recipe's, so they win.
+- The recipe, `progressBarRecipe` from `@liulidesign/core/ProgressBar/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--animate-progress-sweep`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger-mark`, `on-media`, `success-mark`, `text`, `text-muted`, `warning-mark`.
+
 ## Accessibility
 
 - Pattern: none.

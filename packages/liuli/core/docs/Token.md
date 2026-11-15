@@ -96,6 +96,13 @@ export function Sizes() {
 | remove | `<button>` | no | A round button at the end, named by `removeLabel`. |
 | list | `<view>` | no | TokenList: a wrapping row, a group named by `label`. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `tokenRecipe` from `@liulidesign/core/Token/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`.
+- Colour roles it paints with, set by the theme pack: `accent-soft`, `focus`, `on-accent-soft`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

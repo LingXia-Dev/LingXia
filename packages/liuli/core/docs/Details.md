@@ -146,6 +146,13 @@ export function WithForm() {
 | box | `<view>` | yes | The clip around the body: no height while closed, the body's height while open. |
 | body | `<view>` | no | The content; it stays in the page while closed, hidden and out of reach. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `detailsRecipe` from `@liulidesign/core/Details/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-lg`, `--text-footnote`, `--text-body`, `--radius-control`, `--radius-container`.
+- Colour roles it paints with, set by the theme pack: `surface`, `surface-overlay`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: button.

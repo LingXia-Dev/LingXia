@@ -111,6 +111,13 @@ export function Bar() {
 | menu | `<view>` | no | Speed and quality, a row of chips each, in the bar's place while open. |
 | fullscreen | `<dialog>` | no | A dialog showing the player again, full window, with the same controls and a way out. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `videoControlsRecipe` from `@liulidesign/core/VideoControls/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-md`, `--text-body`, `--shadow-contact`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `focus`, `knob`, `line`, `line-strong`, `media`, `on-accent`, `on-media`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

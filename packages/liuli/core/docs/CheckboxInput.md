@@ -109,6 +109,13 @@ export function StateMixed() {
 | label | `<text>` | yes | The choice; visually hidden with `isLabelHidden`. |
 | description | `<text>` | no | Help text, or `disabledMessage` while disabled. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `checkboxInputRecipe` from `@liulidesign/core/CheckboxInput/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--radius-control`, `--radius-checkbox`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `line-strong`, `on-accent`, `surface`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: checkbox.

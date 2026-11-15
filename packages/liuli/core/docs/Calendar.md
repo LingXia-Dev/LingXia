@@ -131,6 +131,13 @@ export function Chinese() {
 | slot | `<view>` | yes | A day's seventh of the row; it carries the band of a span. |
 | day | `<button>` | yes | A day: a 40 px button, named in full, selected when chosen or inside the span. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `calendarRecipe` from `@liulidesign/core/Calendar/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-body`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `focus`, `line-strong`, `on-accent`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

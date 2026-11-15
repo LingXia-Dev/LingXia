@@ -196,6 +196,13 @@ export function Everything() {
 | glyph | `<vector>` | yes | The drawing, on a 24-unit grid, in the current text colour. |
 | box | `<view>` | no | A box around the drawing that carries `label`; present only with a label. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `iconRecipe` from `@liulidesign/core/Icon/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- It reads no Liuli scale token.
+- It paints with no colour role of its own.
+
 ## Accessibility
 
 - Pattern: none.

@@ -86,6 +86,13 @@ export function DotOnly() {
 | dot | `<view>` | yes | A filled dot in the tone's mark colour; a hollow ring for neutral. |
 | label | `<text>` | no | The status in words. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `statusDotRecipe` from `@liulidesign/core/StatusDot/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger-mark`, `line-strong`, `success-mark`, `text`, `warning-mark`.
+
 ## Accessibility
 
 - Pattern: none.

@@ -135,6 +135,13 @@ export function Toolbar() {
 | --- | --- | --- | --- |
 | root | `<view>` | yes | The row, and the toolbar assistive tech names by `label`. In an attached group each Button rounds only the group's two ends. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `buttonGroupRecipe` from `@liulidesign/core/ButtonGroup/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- It reads no Liuli scale token.
+- It paints with no colour role of its own.
+
 ## Accessibility
 
 - Pattern: none.

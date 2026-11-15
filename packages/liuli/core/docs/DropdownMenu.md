@@ -287,6 +287,14 @@ export function Submenu() {
 | submenuChevron | `<vector>` | no | DropdownMenuSubmenu: an item with a chevron that opens a second menu at its side; choosing there closes both. |
 | back | `<button>` | no | On a narrow screen a submenu takes the panel instead: this first row names it and goes back to the menu. |
 
+## What an app may override
+
+- `className`: Classes for the trigger.
+- `menuClassName`: Classes for the menu panel.
+- The recipe, `dropdownMenuRecipe` from `@liulidesign/core/DropdownMenu/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--spacing-control-lg`, `--text-caption`, `--text-footnote`, `--text-body`, `--shadow-raised`, `--radius-control`, `--radius-container`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `surface-overlay`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: menuButton.

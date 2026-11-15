@@ -94,6 +94,13 @@ export function Welcome() {
 | page | `<view>` | yes | One child, as wide as the carousel: a list item. |
 | dots | `<view>` | no | A PageControl bound to the same page. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `carouselRecipe` from `@liulidesign/core/Carousel/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--radius-container`.
+- It paints with no colour role of its own.
+
 ## Accessibility
 
 - Pattern: none.

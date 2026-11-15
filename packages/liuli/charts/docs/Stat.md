@@ -158,6 +158,13 @@ export function Dashboard() {
 | chart | `<view>` | no | The slot under the figure, as wide as the Stat. |
 | skeleton | `<view>` | no | Stands in for the figure while loading. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `statRecipe` from `@liulidesign/charts/Stat/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-title`, `--text-display`.
+- Colour roles it paints with, set by the theme pack: `danger`, `success`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

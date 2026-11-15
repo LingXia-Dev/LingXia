@@ -116,6 +116,13 @@ export function Sizes() {
 | field | `<Field>` | yes | Field: the label, help text and status. |
 | control | `<select>` | yes | The select primitive: the box, the chosen label or placeholder, the chevron, and the list it opens. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `selectRecipe` from `@liulidesign/core/Select/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--spacing-control-lg`, `--text-footnote`, `--text-body`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `danger`, `focus`, `line-strong`, `surface`, `text`, `text-faint`, `text-muted`, `warning`.
+
 ## Accessibility
 
 - Pattern: select.

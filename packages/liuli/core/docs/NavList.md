@@ -90,6 +90,13 @@ export function Closed() {
 | end | `<view>` | no | `endText`: a count or short value, read as part of the row's name. |
 | current | `<view>` | no | An unseen mark, one per current row: its layout is when the row is brought into view. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `navListRecipe` from `@liulidesign/core/NavList/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `focus`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: tree.

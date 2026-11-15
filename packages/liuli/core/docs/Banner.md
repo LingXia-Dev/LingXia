@@ -133,6 +133,13 @@ export function Collapsible() {
 | action | `<Button>` | no | One link button that resolves it. |
 | dismiss | `<button>` | no | A close button named by `dismissLabel`. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `bannerRecipe` from `@liulidesign/core/Banner/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--radius-container`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `danger`, `danger-soft`, `focus`, `success`, `success-soft`, `text`, `text-muted`, `warning`, `warning-soft`.
+
 ## Accessibility
 
 - Pattern: none.

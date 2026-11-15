@@ -146,6 +146,13 @@ export function SelectAll() {
 | description | `<text>` | no | Help text under the question, read as the group's description. |
 | options | `<view>` | yes | The checkboxes, one CheckboxInput each. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `checkboxListRecipe` from `@liulidesign/core/CheckboxList/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`.
+- Colour roles it paints with, set by the theme pack: `text`, `text-faint`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

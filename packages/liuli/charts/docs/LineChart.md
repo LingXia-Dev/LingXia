@@ -196,6 +196,13 @@ export function Gaps() {
 | reading | `<view>` | no | Every row as "category: values", for assistive tech only; present up to 60 rows. |
 | labels | `<view>` | no | Category names under the plot: as many as fit side by side, each under its point. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `lineChartRecipe` from `@liulidesign/charts/LineChart/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`.
+- Colour roles it paints with, set by the theme pack: `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

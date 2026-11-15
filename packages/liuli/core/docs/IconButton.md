@@ -114,6 +114,13 @@ export function InRows() {
 | --- | --- | --- | --- |
 | root | `<button>` | yes | The button: a square of 32, 40 or 48 points with the icon centred, in Button's variant; the spinner takes the icon's place while loading. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `iconButtonRecipe` from `@liulidesign/core/IconButton/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- It reads no Liuli scale token.
+- It paints with no colour role of its own.
+
 ## Accessibility
 
 - Pattern: button.

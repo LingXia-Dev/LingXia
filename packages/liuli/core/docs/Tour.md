@@ -87,6 +87,13 @@ export function Welcome() {
 | count | `<text>` | yes | Where the tour is, from `stepLabel`. |
 | actions | `<view>` | yes | Skip, Back and Next; Done on the last step. |
 
+## What an app may override
+
+- No class props: it takes its look from its props, the tokens and the roles below.
+- The recipe, `tourRecipe` from `@liulidesign/core/Tour/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`, `--shadow-raised`, `--radius-container`.
+- Colour roles it paints with, set by the theme pack: `surface`, `text`.
+
 ## Accessibility
 
 - Pattern: none.

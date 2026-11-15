@@ -143,6 +143,14 @@ export function Readout() {
 | legend | `<view>` | no | The list of series or parts. |
 | legendItem | `<button>` | no | One entry: a swatch of its mark and its name; a button when the legend can be pressed. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- `className` on ChartLegend: classes merged after the recipe's, so they win.
+- The recipe, `chartRecipe` from `@liulidesign/charts/Chart/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `chart-1`, `chart-2`, `chart-3`, `chart-4`, `chart-5`, `line-strong`, `text`, `text-faint`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

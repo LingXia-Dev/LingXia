@@ -79,6 +79,13 @@ export function Disabled() {
 | --- | --- | --- | --- |
 | root | `<link>` | yes | The linked words, underlined in the accent colour. |
 
+## What an app may override
+
+- No class props: it takes its look from its props, the tokens and the roles below.
+- The recipe, `linkRecipe` from `@liulidesign/core/Link/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- It reads no Liuli scale token.
+- Colour roles it paints with, set by the theme pack: `accent`, `text-faint`.
+
 ## Accessibility
 
 - Pattern: none.

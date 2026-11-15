@@ -228,6 +228,32 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--text-callout"
+        ],
+        "roles": [
+          "accent-soft",
+          "danger-mark",
+          "line",
+          "on-accent-soft",
+          "success-mark",
+          "surface",
+          "surface-raised",
+          "surface-sunken",
+          "text",
+          "warning-mark"
+        ]
+      },
       "related": [
         "Item",
         "Badge"
@@ -488,6 +514,35 @@
           "today": "Five tones; use neutral for categories."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote"
+        ],
+        "roles": [
+          "accent",
+          "accent-soft",
+          "danger",
+          "danger-soft",
+          "on-accent",
+          "on-accent-soft",
+          "on-danger",
+          "on-success",
+          "on-warning",
+          "success",
+          "success-soft",
+          "text",
+          "warning",
+          "warning-soft"
+        ]
+      },
       "related": [
         "Item",
         "Card"
@@ -708,6 +763,33 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--text-body",
+          "--radius-container"
+        ],
+        "roles": [
+          "accent",
+          "accent-soft",
+          "danger",
+          "danger-soft",
+          "focus",
+          "success",
+          "success-soft",
+          "text",
+          "text-muted",
+          "warning",
+          "warning-soft"
+        ]
+      },
       "related": [
         "Badge",
         "Dialog",
@@ -931,6 +1013,27 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Classes for the panel."
+          }
+        ],
+        "tokens": [
+          "--text-body",
+          "--text-title",
+          "--shadow-modal",
+          "--radius-dialog"
+        ],
+        "roles": [
+          "focus",
+          "surface-overlay",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Dialog",
         "DropdownMenu"
@@ -1114,6 +1217,25 @@
           "today": "The current page is the last item of the list and not a button."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--radius-control"
+        ],
+        "roles": [
+          "focus",
+          "text",
+          "text-faint",
+          "text-muted"
+        ]
+      },
       "related": [
         "Tabs",
         "NavList",
@@ -1412,6 +1534,34 @@
           "today": "A ring on the fill blends into it, so Button draws no focus style of its own."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Merged last, so its classes win over the recipe's."
+          }
+        ],
+        "tokens": [
+          "--spacing-control-sm",
+          "--spacing-control-md",
+          "--spacing-control-lg",
+          "--text-footnote",
+          "--text-body",
+          "--shadow-raised",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "danger",
+          "focus",
+          "on-accent",
+          "on-danger",
+          "surface",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "IconButton",
         "ButtonGroup",
@@ -1629,6 +1779,17 @@
           "today": "Rows only."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": []
+      },
       "related": [
         "Button",
         "IconButton",
@@ -1971,6 +2132,28 @@
           "today": "The app passes a `locale`."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-body"
+        ],
+        "roles": [
+          "accent",
+          "accent-soft",
+          "focus",
+          "line-strong",
+          "on-accent",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "DateInput",
         "TimeInput",
@@ -2251,6 +2434,38 @@
           "today": "The selected border and the focus ring sit in the same place."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          },
+          {
+            "name": "className",
+            "on": "ClickableCard",
+            "description": ""
+          },
+          {
+            "name": "className",
+            "on": "ClickableCardGroup",
+            "description": "Lays the cards out: a row or a column, and the gap."
+          }
+        ],
+        "tokens": [
+          "--shadow-contact",
+          "--shadow-raised",
+          "--radius-container"
+        ],
+        "roles": [
+          "accent",
+          "focus",
+          "surface",
+          "surface-raised",
+          "surface-sunken",
+          "text"
+        ]
+      },
       "related": [
         "Item",
         "Button"
@@ -2408,6 +2623,19 @@
         "Every page is the full width; a carousel does not show part of the next page.",
         "There are no previous and next arrows; on a desktop the dots page it."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--radius-container"
+        ],
+        "roles": []
+      },
       "related": [
         "PageControl",
         "Lightbox",
@@ -2668,6 +2896,30 @@
           "today": "Two states only."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--text-body",
+          "--radius-control",
+          "--radius-checkbox"
+        ],
+        "roles": [
+          "accent",
+          "danger",
+          "line-strong",
+          "on-accent",
+          "surface",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Field"
       ],
@@ -2927,6 +3179,25 @@
           "today": "One column."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--text-body"
+        ],
+        "roles": [
+          "text",
+          "text-faint",
+          "text-muted"
+        ]
+      },
       "related": [
         "CheckboxInput",
         "RadioGroup",
@@ -3138,6 +3409,26 @@
       "gaps": [
         "The arc jumps to a new value; it does not sweep there."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-callout"
+        ],
+        "roles": [
+          "accent",
+          "danger-mark",
+          "success-mark",
+          "text",
+          "warning-mark"
+        ]
+      },
       "related": [
         "ProgressBar",
         "Stat"
@@ -3299,6 +3590,23 @@
         "No syntax colouring and no line numbers.",
         "Copying is the app's: Liuli has no clipboard."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--radius-control"
+        ],
+        "roles": [
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Markdown",
         "Kbd"
@@ -3691,6 +3999,40 @@
           "today": "One choice. With a keyboard, emptying the field clears it; on touch an app that needs \"none\" adds an option for it."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-sm",
+          "--spacing-control-md",
+          "--spacing-control-lg",
+          "--text-footnote",
+          "--text-body",
+          "--text-title",
+          "--shadow-raised",
+          "--shadow-modal",
+          "--radius-control",
+          "--radius-container",
+          "--radius-dialog"
+        ],
+        "roles": [
+          "accent",
+          "danger",
+          "focus",
+          "line-strong",
+          "surface",
+          "surface-overlay",
+          "text",
+          "text-faint",
+          "text-muted",
+          "warning"
+        ]
+      },
       "related": [
         "Select",
         "TextInput",
@@ -3913,6 +4255,23 @@
         "It binds no shortcut of its own: the app opens it.",
         "A row does not lead to a second page of rows."
       ],
+      "theming": {
+        "classProps": [],
+        "tokens": [
+          "--spacing-control-lg",
+          "--text-caption",
+          "--text-footnote",
+          "--text-body",
+          "--shadow-modal",
+          "--radius-control",
+          "--radius-dialog"
+        ],
+        "roles": [
+          "surface-overlay",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Combobox",
         "SearchField",
@@ -4086,6 +4445,21 @@
       "gaps": [
         "It does not hold attachments itself; show them over it with Thumbnail or FileInput rows."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote"
+        ],
+        "roles": [
+          "text-muted"
+        ]
+      },
       "related": [
         "MessageBubble",
         "TextArea",
@@ -4240,6 +4614,27 @@
         "It holds no submenu: a menu item that opens another menu closes the first.",
         "At a point the menu is placed from the size of the page; a very long menu can still reach past its edge."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Classes for the wrapper around `children`."
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--shadow-raised",
+          "--shadow-modal",
+          "--radius-container",
+          "--radius-dialog"
+        ],
+        "roles": [
+          "surface-overlay",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "DropdownMenu",
         "Item",
@@ -4522,6 +4917,38 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Classes for the field column."
+          },
+          {
+            "name": "controlClassName",
+            "on": "",
+            "description": "Classes for the bordered box."
+          }
+        ],
+        "tokens": [
+          "--spacing-control-sm",
+          "--spacing-control-md",
+          "--spacing-control-lg",
+          "--text-footnote",
+          "--text-body",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "danger",
+          "line-strong",
+          "surface",
+          "text",
+          "text-faint",
+          "text-muted",
+          "warning"
+        ]
+      },
       "related": [
         "TimeInput",
         "TextInput",
@@ -4861,6 +5288,23 @@
           "today": "Every day is its own Tab stop, as in Calendar."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--shadow-raised",
+          "--radius-container"
+        ],
+        "roles": [
+          "surface-overlay",
+          "text"
+        ]
+      },
       "related": [
         "Calendar",
         "DateInput",
@@ -5098,6 +5542,17 @@
       "gaps": [
         "The earliest and latest are days: a time cannot be limited on one particular day."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": []
+      },
       "related": [
         "DateInput",
         "TimeInput",
@@ -5303,6 +5758,28 @@
           "today": "Liuli builds the same button with aria-expanded, so the chevron can sit at the end."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-lg",
+          "--text-footnote",
+          "--text-body",
+          "--radius-control",
+          "--radius-container"
+        ],
+        "roles": [
+          "surface",
+          "surface-overlay",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Item",
         "Card"
@@ -5543,6 +6020,28 @@
           "today": "duration-200 ease-out in the recipe."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Classes for the panel."
+          }
+        ],
+        "tokens": [
+          "--text-body",
+          "--text-title",
+          "--shadow-modal",
+          "--radius-dialog"
+        ],
+        "roles": [
+          "canvas",
+          "focus",
+          "surface-overlay",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Button",
         "DropdownMenu"
@@ -5670,6 +6169,22 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote"
+        ],
+        "roles": [
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Section",
         "Card",
@@ -5862,6 +6377,27 @@
         "It does not follow the finger; it opens and closes as a whole.",
         "It is always modal: a panel that stays open beside the page is SplitView."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Classes for the panel."
+          }
+        ],
+        "tokens": [
+          "--text-body",
+          "--text-title",
+          "--shadow-modal",
+          "--radius-dialog"
+        ],
+        "roles": [
+          "focus",
+          "surface-overlay",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Dialog",
         "BottomSheet",
@@ -6307,6 +6843,38 @@
           "today": "The icon carries the danger colour; the text stays in the text role."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Classes for the trigger."
+          },
+          {
+            "name": "menuClassName",
+            "on": "",
+            "description": "Classes for the menu panel."
+          }
+        ],
+        "tokens": [
+          "--spacing-control-sm",
+          "--spacing-control-md",
+          "--spacing-control-lg",
+          "--text-caption",
+          "--text-footnote",
+          "--text-body",
+          "--shadow-raised",
+          "--radius-control",
+          "--radius-container"
+        ],
+        "roles": [
+          "accent",
+          "danger",
+          "surface-overlay",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Button",
         "ContextMenu"
@@ -6511,6 +7079,25 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--text-body",
+          "--text-callout"
+        ],
+        "roles": [
+          "text",
+          "text-faint",
+          "text-muted"
+        ]
+      },
       "related": [
         "Skeleton",
         "Banner",
@@ -6753,6 +7340,28 @@
           "today": "Validate on change or on submit."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--text-body"
+        ],
+        "roles": [
+          "danger",
+          "success",
+          "text",
+          "text-faint",
+          "text-muted",
+          "warning"
+        ]
+      },
       "related": [
         "TextInput",
         "CheckboxInput"
@@ -7023,6 +7632,31 @@
         "Nothing can be dropped onto it: the View has no drop target.",
         "It shows no previews; pair it with Thumbnail for pictures."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--text-body",
+          "--radius-control"
+        ],
+        "roles": [
+          "danger",
+          "focus",
+          "line-strong",
+          "surface",
+          "surface-sunken",
+          "text",
+          "text-muted",
+          "warning"
+        ]
+      },
       "related": [
         "Field",
         "CircularProgress",
@@ -7165,6 +7799,22 @@
           "today": "One or two columns; a field takes one or the whole line."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          },
+          {
+            "name": "className",
+            "on": "FormSpan",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": []
+      },
       "related": [
         "Field",
         "TextInput",
@@ -7305,6 +7955,24 @@
       "gaps": [
         "The trigger is its own row or wrapped word: it cannot sit inside a sentence as a run of text."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Classes for the trigger\\'s text, to match the text around it."
+          }
+        ],
+        "tokens": [
+          "--shadow-raised",
+          "--radius-container"
+        ],
+        "roles": [
+          "focus",
+          "surface-overlay",
+          "text"
+        ]
+      },
       "related": [
         "Popover",
         "Tooltip",
@@ -7488,6 +8156,17 @@
           "today": "One outline per name; an app passes its own filled icon with `icon`."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": []
+      },
       "related": [
         "Button",
         "Item"
@@ -7728,6 +8407,17 @@
           "today": "The label is read by assistive tech only."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": []
+      },
       "related": [
         "Button",
         "ButtonGroup",
@@ -8169,6 +8859,43 @@
           "today": "The slide and the button inside it are two stops with the same name: the first offers the actions, the second opens the row. Not yet heard on a screen reader."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          },
+          {
+            "name": "className",
+            "on": "ItemList",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-md",
+          "--spacing-control-lg",
+          "--text-caption",
+          "--text-footnote",
+          "--text-body",
+          "--radius-control",
+          "--radius-container"
+        ],
+        "roles": [
+          "accent",
+          "accent-soft",
+          "danger",
+          "focus",
+          "on-accent",
+          "on-accent-soft",
+          "on-danger",
+          "surface",
+          "surface-overlay",
+          "text",
+          "text-faint",
+          "text-muted"
+        ]
+      },
       "related": [
         "DropdownMenu",
         "Card"
@@ -8327,6 +9054,25 @@
         "The keys are whatever the app passes; Liuli does not know the platform's modifier names.",
         "Key symbols such as ⌘ and ⇧ are missing from some devices' text face and draw as an empty cap there; write the key's name."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--radius-segment"
+        ],
+        "roles": [
+          "surface",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Tooltip",
         "DropdownMenu"
@@ -8484,6 +9230,16 @@
         "No pinch to zoom and no pan: the View has no pinch gesture.",
         "No previous and next arrows; on a desktop the dots move between pictures."
       ],
+      "theming": {
+        "classProps": [],
+        "tokens": [
+          "--text-footnote"
+        ],
+        "roles": [
+          "media-canvas",
+          "on-media"
+        ]
+      },
       "related": [
         "Thumbnail",
         "Carousel",
@@ -8623,6 +9379,14 @@
       "gaps": [
         "A link has no hover or focus style of its own beyond the system focus ring."
       ],
+      "theming": {
+        "classProps": [],
+        "tokens": [],
+        "roles": [
+          "accent",
+          "text-faint"
+        ]
+      },
       "related": [
         "Button",
         "Breadcrumb",
@@ -8866,6 +9630,29 @@
           "today": "Not handled; split the paragraph."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--text-body",
+          "--text-callout",
+          "--text-title",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "line-strong",
+          "on-accent",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Table",
         "Item",
@@ -9071,6 +9858,26 @@
         "No reactions, threads or read receipts.",
         "No typing mark."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-body"
+        ],
+        "roles": [
+          "accent-soft",
+          "danger",
+          "on-accent-soft",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Composer",
         "Avatar",
@@ -9241,6 +10048,23 @@
           "today": "The app puts an IconButton in `content`."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--text-body"
+        ],
+        "roles": [
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Table",
         "Item",
@@ -9486,6 +10310,30 @@
         "The list is not searched by typing, and new values cannot be typed in: it chooses from the options given.",
         "The error state colours the boundary but is not reported as invalid on the group."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-sm",
+          "--spacing-control-md",
+          "--spacing-control-lg",
+          "--text-body",
+          "--radius-control"
+        ],
+        "roles": [
+          "danger",
+          "line-strong",
+          "surface",
+          "text",
+          "text-muted",
+          "warning"
+        ]
+      },
       "related": [
         "Token",
         "CheckboxList",
@@ -9691,6 +10539,27 @@
           "today": "Arrows, Home and End"
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--text-body",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "accent-soft",
+          "focus",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Tabs",
         "Item"
@@ -10031,6 +10900,21 @@
           "today": "One step per press."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": [
+          "text",
+          "text-faint",
+          "text-muted"
+        ]
+      },
       "related": [
         "TextInput",
         "Slider"
@@ -10219,6 +11103,22 @@
       "gaps": [
         "Many pages are not folded into a window of dots; the row grows with `count`."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": [
+          "accent",
+          "focus",
+          "on-media",
+          "text"
+        ]
+      },
       "related": [
         "Carousel",
         "Pagination",
@@ -10435,6 +11335,27 @@
           "today": "An app puts a Select or a NumberInput beside it."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-md",
+          "--text-body",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent-soft",
+          "focus",
+          "on-accent-soft",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Table",
         "Tabs",
@@ -10661,6 +11582,29 @@
           "today": "Above or below the trigger, lined up with its start, centre or end."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Classes for the trigger."
+          },
+          {
+            "name": "panelClassName",
+            "on": "",
+            "description": "Classes for the panel."
+          }
+        ],
+        "tokens": [
+          "--text-body",
+          "--shadow-raised",
+          "--radius-container"
+        ],
+        "roles": [
+          "surface-overlay",
+          "text"
+        ]
+      },
       "related": [
         "DropdownMenu",
         "Tooltip",
@@ -10939,6 +11883,33 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          },
+          {
+            "name": "className",
+            "on": "Spinner",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--animate-progress-sweep"
+        ],
+        "roles": [
+          "accent",
+          "danger-mark",
+          "on-media",
+          "success-mark",
+          "text",
+          "text-muted",
+          "warning-mark"
+        ]
+      },
       "related": [
         "Button"
       ],
@@ -11259,6 +12230,31 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--text-body",
+          "--radius-control",
+          "--radius-container"
+        ],
+        "roles": [
+          "accent",
+          "danger",
+          "focus",
+          "line-strong",
+          "on-accent",
+          "surface",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "CheckboxInput",
         "Field",
@@ -11552,6 +12548,21 @@
           "today": "The clear button empties the text; the page decides what an empty search shows."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote"
+        ],
+        "roles": [
+          "text-muted"
+        ]
+      },
       "related": [
         "TextInput",
         "Combobox"
@@ -11717,6 +12728,24 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--text-body",
+          "--text-callout"
+        ],
+        "roles": [
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Card",
         "Item",
@@ -11900,6 +12929,29 @@
           "today": "Segments carry a text label."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--text-body",
+          "--shadow-contact",
+          "--radius-control",
+          "--radius-segment"
+        ],
+        "roles": [
+          "focus",
+          "surface-raised",
+          "surface-sunken",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Tabs",
         "RadioGroup",
@@ -12167,6 +13219,33 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-sm",
+          "--spacing-control-md",
+          "--spacing-control-lg",
+          "--text-footnote",
+          "--text-body",
+          "--radius-control"
+        ],
+        "roles": [
+          "danger",
+          "focus",
+          "line-strong",
+          "surface",
+          "text",
+          "text-faint",
+          "text-muted",
+          "warning"
+        ]
+      },
       "related": [
         "Combobox",
         "RadioGroup",
@@ -12327,6 +13406,27 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Size and placement: `h-32`, `size-10`, `w-2/3`."
+          },
+          {
+            "name": "className",
+            "on": "SkeletonGroup",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--radius-control",
+          "--animate-skeleton-glint"
+        ],
+        "roles": [
+          "text"
+        ]
+      },
       "related": [
         "EmptyState",
         "ProgressBar"
@@ -12627,6 +13727,33 @@
           "today": "VideoControls builds its scrubber on `<slider>` directly."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-sm",
+          "--spacing-control-md",
+          "--text-caption",
+          "--text-footnote",
+          "--text-body",
+          "--shadow-contact"
+        ],
+        "roles": [
+          "accent",
+          "focus",
+          "knob",
+          "line",
+          "line-strong",
+          "text",
+          "text-faint",
+          "text-muted"
+        ]
+      },
       "related": [
         "ProgressBar"
       ],
@@ -12799,6 +13926,20 @@
           "today": "A fixed `sidebarWidth`"
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": [
+          "canvas",
+          "text"
+        ]
+      },
       "related": [
         "NavList"
       ],
@@ -12962,6 +14103,27 @@
       "gaps": [
         "It does not pulse or blink."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--text-body"
+        ],
+        "roles": [
+          "accent",
+          "danger-mark",
+          "line-strong",
+          "success-mark",
+          "text",
+          "warning-mark"
+        ]
+      },
       "related": [
         "Badge",
         "Avatar",
@@ -13178,6 +14340,28 @@
           "today": "Labels are cut short; use `vertical` on a phone."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "focus",
+          "line-strong",
+          "on-accent",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "ProgressBar",
         "Tabs",
@@ -13419,6 +14603,30 @@
           "today": "The built-in ring also draws around the track."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-lg",
+          "--text-footnote",
+          "--text-body",
+          "--shadow-contact"
+        ],
+        "roles": [
+          "accent",
+          "focus",
+          "knob",
+          "line-strong",
+          "text",
+          "text-faint",
+          "text-muted"
+        ]
+      },
       "related": [
         "CheckboxInput",
         "Item"
@@ -13747,6 +14955,30 @@
           "today": "Each cell is named with its heading."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-sm",
+          "--spacing-control-md",
+          "--text-footnote",
+          "--text-body",
+          "--radius-container"
+        ],
+        "roles": [
+          "accent",
+          "accent-soft",
+          "surface",
+          "surface-overlay",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Item",
         "Card",
@@ -13991,6 +15223,25 @@
           "today": "The tabs are drawn and work; the indicator is not shown, and the chosen tab is told by its darker label."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-md",
+          "--text-footnote",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Button",
         "DropdownMenu"
@@ -14357,6 +15608,36 @@
           "today": "Validate as the value changes, or on submit."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Classes for the field column."
+          },
+          {
+            "name": "controlClassName",
+            "on": "",
+            "description": "Classes for the bordered box."
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--text-body",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "danger",
+          "line-strong",
+          "surface",
+          "text",
+          "text-faint",
+          "text-muted",
+          "warning"
+        ]
+      },
       "related": [
         "TextInput",
         "Field"
@@ -14778,6 +16059,40 @@
           "today": "Bound fields chain with enterKeyHint=\"next\" or cell.focus()."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Classes for the field column."
+          },
+          {
+            "name": "controlClassName",
+            "on": "",
+            "description": "Classes for the bordered box."
+          }
+        ],
+        "tokens": [
+          "--spacing-control-sm",
+          "--spacing-control-md",
+          "--spacing-control-lg",
+          "--text-footnote",
+          "--text-body",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "danger",
+          "focus",
+          "line-strong",
+          "surface",
+          "surface-sunken",
+          "text",
+          "text-faint",
+          "text-muted",
+          "warning"
+        ]
+      },
       "related": [
         "Field"
       ],
@@ -14979,6 +16294,23 @@
       "gaps": [
         "A picture that fails to load leaves the tint; there is no broken-image mark."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "focus",
+          "text"
+        ]
+      },
       "related": [
         "Lightbox",
         "Carousel",
@@ -15282,6 +16614,38 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Classes for the field column."
+          },
+          {
+            "name": "controlClassName",
+            "on": "",
+            "description": "Classes for the bordered box."
+          }
+        ],
+        "tokens": [
+          "--spacing-control-sm",
+          "--spacing-control-md",
+          "--spacing-control-lg",
+          "--text-footnote",
+          "--text-body",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "danger",
+          "line-strong",
+          "surface",
+          "text",
+          "text-faint",
+          "text-muted",
+          "warning"
+        ]
+      },
       "related": [
         "DateInput",
         "TextInput",
@@ -15437,6 +16801,24 @@
       "gaps": [
         "Timer has no clock of its own; the app passes the seconds."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--text-body",
+          "--text-display"
+        ],
+        "roles": [
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Timestamp",
         "ProgressBar"
@@ -15563,6 +16945,17 @@
         "There is no clock and no time zone in the View: the app passes `now` and local date-times.",
         "Words come from a locale module, not from the system; two locales ship."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": []
+      },
       "related": [
         "Timer",
         "Calendar",
@@ -15741,6 +17134,30 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-body",
+          "--shadow-raised",
+          "--radius-container"
+        ],
+        "roles": [
+          "accent",
+          "danger",
+          "focus",
+          "success",
+          "surface-overlay",
+          "text",
+          "text-muted",
+          "warning"
+        ]
+      },
       "related": [
         "Banner",
         "Dialog"
@@ -15940,6 +17357,32 @@
           "today": "Toggle buttons carry a text label."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-sm",
+          "--spacing-control-md",
+          "--spacing-control-lg",
+          "--text-footnote",
+          "--text-body",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "accent-soft",
+          "focus",
+          "surface",
+          "text",
+          "text-faint",
+          "text-muted"
+        ]
+      },
       "related": [
         "Button",
         "SegmentedControl",
@@ -16159,6 +17602,26 @@
         "Tokens are not reordered by dragging.",
         "Backspace in a field does not remove the last token; MultiSelect removes by each token's button."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote"
+        ],
+        "roles": [
+          "accent-soft",
+          "focus",
+          "on-accent-soft",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "MultiSelect",
         "Badge",
@@ -16365,6 +17828,26 @@
           "today": "The pressed and open pictures are still drawings."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--shadow-raised",
+          "--radius-control"
+        ],
+        "roles": [
+          "focus",
+          "surface",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "DropdownMenu",
         "Dialog"
@@ -16562,6 +18045,20 @@
         "A step does not wait for the user to do something; it moves on from its buttons.",
         "Focus is not moved into the callout or back by the component."
       ],
+      "theming": {
+        "classProps": [],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--text-body",
+          "--shadow-raised",
+          "--radius-container"
+        ],
+        "roles": [
+          "surface",
+          "text"
+        ]
+      },
       "related": [
         "Popover",
         "Tooltip",
@@ -16728,6 +18225,27 @@
         "Left and Right do not close and open a branch: the View steps a tree with Up and Down only.",
         "Rows are not checked, dragged or loaded on demand."
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--text-body",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "accent-soft",
+          "focus",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "NavList",
         "Details",
@@ -17038,6 +18556,33 @@
           "today": "drag the scrubber."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-md",
+          "--text-body",
+          "--shadow-contact"
+        ],
+        "roles": [
+          "accent",
+          "danger",
+          "focus",
+          "knob",
+          "line",
+          "line-strong",
+          "media",
+          "on-accent",
+          "on-media",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "VideoPlayer",
         "Slider"
@@ -17197,6 +18742,17 @@
         }
       ],
       "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Classes for the frame, such as its aspect ratio or width."
+          }
+        ],
+        "tokens": [],
+        "roles": []
+      },
       "related": [
         "VideoControls"
       ],

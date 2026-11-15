@@ -73,6 +73,13 @@ export function Inline() {
 | --- | --- | --- | --- |
 | root | `<text>` | yes | The digits; muted once the time is zero. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `timerRecipe` from `@liulidesign/core/Timer/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--text-display`.
+- Colour roles it paints with, set by the theme pack: `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

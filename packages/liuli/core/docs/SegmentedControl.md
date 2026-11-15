@@ -107,6 +107,13 @@ export function Sizes() {
 | segment | `<button>` | yes | A radio per option, named by its label. |
 | label | `<text>` | yes | The option's text, cut short if its share of the row is too narrow. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `segmentedControlRecipe` from `@liulidesign/core/SegmentedControl/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--shadow-contact`, `--radius-control`, `--radius-segment`.
+- Colour roles it paints with, set by the theme pack: `focus`, `surface-raised`, `surface-sunken`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: radioGroup.

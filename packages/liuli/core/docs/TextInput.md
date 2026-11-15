@@ -170,6 +170,14 @@ export function ReadOnly() {
 | input | `<input>` | yes | The editor; it fills the box height so taps above and below the text land in it. |
 | clear | `<button>` | no | Empties the text; shown while there is text and `hasClear` is on. |
 
+## What an app may override
+
+- `className`: Classes for the field column.
+- `controlClassName`: Classes for the bordered box.
+- The recipe, `textInputRecipe` from `@liulidesign/core/TextInput/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--spacing-control-lg`, `--text-footnote`, `--text-body`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `focus`, `line-strong`, `surface`, `surface-sunken`, `text`, `text-faint`, `text-muted`, `warning`.
+
 ## Accessibility
 
 - Pattern: textbox.

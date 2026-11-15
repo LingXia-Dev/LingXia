@@ -169,6 +169,13 @@ export function Inline() {
 | label | `<text>` | yes | The option's text and its name. |
 | description | `<text>` | no | A second line, read as the option's description. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `radioGroupRecipe` from `@liulidesign/core/RadioGroup/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--radius-control`, `--radius-container`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `focus`, `line-strong`, `on-accent`, `surface`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: radioGroup.

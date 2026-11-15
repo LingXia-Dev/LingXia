@@ -202,6 +202,13 @@ export function Shipping() {
 | option | `<button>` | yes | One option: its label, an optional second line, and a tick on the chosen one. |
 | note | `<text>` | no | `emptyLabel` when nothing matches, or `moreLabel` under a list cut at fifty. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `comboboxRecipe` from `@liulidesign/core/Combobox/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--spacing-control-lg`, `--text-footnote`, `--text-body`, `--text-title`, `--shadow-raised`, `--shadow-modal`, `--radius-control`, `--radius-container`, `--radius-dialog`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `focus`, `line-strong`, `surface`, `surface-overlay`, `text`, `text-faint`, `text-muted`, `warning`.
+
 ## Accessibility
 
 - Pattern: button.

@@ -103,6 +103,13 @@ export function Info() {
 | description | `<text>` | no | Help text, or `disabledMessage` while disabled. |
 | status | `<view>` | yes | A polite live region, always mounted; it shows an icon and the message when `status` has one. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `fieldRecipe` from `@liulidesign/core/Field/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`.
+- Colour roles it paints with, set by the theme pack: `danger`, `success`, `text`, `text-faint`, `text-muted`, `warning`.
+
 ## Accessibility
 
 - Pattern: none.

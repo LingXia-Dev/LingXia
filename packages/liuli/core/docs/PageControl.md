@@ -79,6 +79,13 @@ export function OnMedia() {
 | dot | `<button>` | yes | One page: a button taller and wider than its mark. |
 | mark | `<view>` | yes | The 6 px dot; the current page's is a pill in the tone. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `pageControlRecipe` from `@liulidesign/core/PageControl/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- It reads no Liuli scale token.
+- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `on-media`, `text`.
+
 ## Accessibility
 
 - Pattern: none.

@@ -92,6 +92,13 @@ export function WithAttach() {
 | field | `<TextArea>` | yes | A TextArea named by `label`, one to five lines. |
 | send | `<IconButton>` | yes | An IconButton named by `sendLabel`; disabled while the draft is empty, loading while sending. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `composerRecipe` from `@liulidesign/core/Composer/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`.
+- Colour roles it paints with, set by the theme pack: `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

@@ -110,6 +110,13 @@ export function Navigation() {
 | body | `<scroll>` | no | `children`, in a scroll that takes the height left. |
 | footer | `<view>` | no | `actions`, end-aligned, wrapping when narrow. |
 
+## What an app may override
+
+- `className`: Classes for the panel.
+- The recipe, `drawerRecipe` from `@liulidesign/core/Drawer/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-body`, `--text-title`, `--shadow-modal`, `--radius-dialog`.
+- Colour roles it paints with, set by the theme pack: `focus`, `surface-overlay`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: dialog.

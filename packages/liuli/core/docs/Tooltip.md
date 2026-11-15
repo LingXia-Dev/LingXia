@@ -118,6 +118,13 @@ export function Beside() {
 | bubble | `<view>` | yes | The note: a tooltip popover beside the button, in the inverse of the page. |
 | text | `<text>` | yes | The note's text; the button is described by it while open. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `tooltipRecipe` from `@liulidesign/core/Tooltip/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--shadow-raised`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `focus`, `surface`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: button.

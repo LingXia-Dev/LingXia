@@ -361,6 +361,23 @@
           "today": "Position within the group, the legend's order, and each bar's spoken name."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote"
+        ],
+        "roles": [
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Chart",
         "LineChart",
@@ -796,6 +813,37 @@
           "today": "Bars change height through layout transitions; lines and slices change at once."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          },
+          {
+            "name": "className",
+            "on": "ChartLegend",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--text-body",
+          "--radius-control"
+        ],
+        "roles": [
+          "chart-1",
+          "chart-2",
+          "chart-3",
+          "chart-4",
+          "chart-5",
+          "line-strong",
+          "text",
+          "text-faint",
+          "text-muted"
+        ]
+      },
       "related": [
         "BarChart",
         "LineChart",
@@ -1218,6 +1266,23 @@
           "today": "Dashes; a shape drawn in a stretched drawing would be distorted."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote"
+        ],
+        "roles": [
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Chart",
         "BarChart",
@@ -1623,6 +1688,23 @@
           "today": "The legend names every part."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-callout"
+        ],
+        "roles": [
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Chart",
         "BarChart"
@@ -1810,7 +1892,7 @@
           {
             "what": "positive line",
             "pair": [
-              "success",
+              "success-mark",
               "surface"
             ],
             "minimum": "3:1"
@@ -1818,7 +1900,7 @@
           {
             "what": "negative line",
             "pair": [
-              "danger",
+              "danger-mark",
               "surface"
             ],
             "minimum": "3:1"
@@ -1881,6 +1963,17 @@
           "today": "New values are drawn at once."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": []
+      },
       "related": [
         "Stat"
       ],
@@ -2189,6 +2282,26 @@
           "today": "`md` is display type, 28 px."
         }
       ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--text-title",
+          "--text-display"
+        ],
+        "roles": [
+          "danger",
+          "success",
+          "text",
+          "text-muted"
+        ]
+      },
       "related": [
         "Sparkline"
       ],

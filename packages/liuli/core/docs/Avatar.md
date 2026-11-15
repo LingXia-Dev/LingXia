@@ -177,6 +177,13 @@ export function Teams() {
 | group | `<view>` | no | AvatarGroup: a named group, each one cut out of the next by a ring in the surface colour. |
 | overflow | `<text>` | no | The "+n" for avatars past `max`, named by `overflowLabel`. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `avatarRecipe` from `@liulidesign/core/Avatar/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-callout`.
+- Colour roles it paints with, set by the theme pack: `accent-soft`, `danger-mark`, `line`, `on-accent-soft`, `success-mark`, `surface`, `surface-raised`, `surface-sunken`, `text`, `warning-mark`.
+
 ## Accessibility
 
 - Pattern: none.

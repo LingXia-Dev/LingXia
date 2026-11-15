@@ -154,6 +154,15 @@ export function Choice() {
 | root | `<view>` | yes | A `view` for Card, a `button` for ClickableCard; fill, border, radius and inset. |
 | group | `<view>` | no | ClickableCardGroup's radio group: one Tab stop, named by its label. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- `className` on ClickableCard: classes merged after the recipe's, so they win.
+- `className` on ClickableCardGroup: Lays the cards out: a row or a column, and the gap.
+- The recipe, `cardRecipe` from `@liulidesign/core/Card/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--shadow-contact`, `--shadow-raised`, `--radius-container`.
+- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `surface`, `surface-raised`, `surface-sunken`, `text`.
+
 ## Accessibility
 
 - Pattern: button.

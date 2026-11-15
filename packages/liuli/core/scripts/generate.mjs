@@ -116,6 +116,32 @@ function exampleSources(name) {
   return sources;
 }
 
+// What an app can change about a component without forking it, read from the recipe so it cannot drift.
+const scaleTokens = [...readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'tokens.css'), 'utf8').matchAll(/^\s*--(spacing|text|shadow|radius|animate)-([a-z0-9-]+):/gm)]
+  .filter(([, , name]) => !name.includes('--'))
+  .map(([, kind, name]) => ({ token: `--${kind}-${name}`, pattern: new RegExp(`(?:^|[\\s:])${{ spacing: '(?:min-h|h|w|size|min-w)', text: 'text', shadow: 'shadow', radius: 'rounded(?:-[a-z]{1,2})?', animate: 'animate' }[kind]}-${name}(?![a-z0-9-])`) }));
+const roleNames = Object.keys((await palette()).roles.light).sort((a, b) => b.length - a.length);
+const rolePattern = new RegExp(`(?:bg|text|border(?:-[a-z])?|ring|inset-ring|divide|decoration|fill|stroke)-(${roleNames.map(name => name.replace(/-/g, '\\-')).join('|')})(?![a-z-])`, 'g');
+
+const textRolePattern = new RegExp(`(?:^|[\\s:])text-(${roleNames.filter(name => name.startsWith('text-')).map(name => name.slice(5)).join('|')})(?![a-z-])`, 'g');
+
+function classesOf(value) {
+  return typeof value === 'string' ? [value] : value && typeof value === 'object' ? Object.values(value).flatMap(classesOf) : [];
+}
+
+function theming(recipeMap, entry) {
+  const classes = classesOf(recipeMap).join(' ');
+  const classProps = [...entry.props.map(prop => ({ ...prop, on: '' })), ...Object.entries(entry.otherProps).flatMap(([component, rows]) => rows.map(prop => ({ ...prop, on: component })))]
+    .filter(prop => /^class(Name)?$|ClassName$/.test(prop.name))
+    .map(prop => ({ name: prop.name, on: prop.on, description: prop.description }));
+  return {
+    classProps,
+    tokens: scaleTokens.filter(each => each.pattern.test(classes)).map(each => each.token),
+    // `text-muted` is the role `text-muted` as a text colour, not the role `muted`.
+    roles: [...new Set([...[...classes.matchAll(rolePattern)].map(match => match[1]), ...[...classes.matchAll(textRolePattern)].map(match => `text-${match[1]}`)])].sort(),
+  };
+}
+
 const kebab = name => name.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
 const cell = text => String(text).replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
@@ -143,6 +169,13 @@ function reference(doc, entry) {
   }
   lines.push('', '## Anatomy', '', '| Part | Element | Required | Description |', '| --- | --- | --- | --- |');
   for (const part of doc.anatomy) lines.push(`| ${part.part} | \`<${entry.parts[part.part] ?? '?'}>\` | ${part.required ? 'yes' : 'no'} | ${cell(part.description)} |`);
+  const t = entry.theming;
+  lines.push('', '## What an app may override', '');
+  if (t.classProps.length) for (const prop of t.classProps) lines.push(`- \`${prop.name}\`${prop.on ? ` on ${prop.on}` : ''}: ${prop.description || 'classes merged after the recipe\'s, so they win.'}`);
+  else lines.push('- No class props: it takes its look from its props, the tokens and the roles below.');
+  lines.push(`- The recipe, \`${doc.recipe.map}\` from \`${entry.import}/recipe\`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.`);
+  lines.push(t.tokens.length ? `- Scale tokens it reads, set in the app's stylesheet under \`@theme\`: ${t.tokens.map(token => `\`${token}\``).join(', ')}.` : '- It reads no Liuli scale token.');
+  lines.push(t.roles.length ? `- Colour roles it paints with, set by the theme pack: ${t.roles.map(role => `\`${role}\``).join(', ')}.` : '- It paints with no colour role of its own.');
   lines.push('', '## Accessibility', '');
   lines.push(`- Pattern: ${a.pattern ?? 'none'}.`, `- Name: ${a.name ?? 'none; its content is read'}.`);
   lines.push(`- Description: ${a.description.length ? a.description.join(', then ') : 'none'}.`);
@@ -397,6 +430,7 @@ for (const name of names) {
     accessibility: doc.accessibility,
     examples: doc.examples.map(example => ({ ...example, source: sources.get(example.name) ?? '' })),
     gaps: doc.gaps,
+    theming: undefined,
     related: doc.related ?? [],
     gallery: doc.gallery,
   };
@@ -408,6 +442,7 @@ for (const name of names) {
   for (const shown of [doc.gallery.specimen, ...galleryNames(doc)])
     if (!sources.has(shown)) problems.push(`src/${name}/${name}.doc.ts: gallery shows ${shown}, which ${name}.examples.tsx does not export`);
   for (const example of entry.examples) if (!example.source) problems.push(`src/${name}/${name}.doc.ts: example ${example.name} has no source`);
+  entry.theming = theming(recipe[doc.recipe.map] ?? {}, entry);
   catalog.push(entry);
   outputs.set(join(core, 'docs', `${name}.md`), reference(doc, entry));
   const page = join(gallery, 'pages', kebab(name));

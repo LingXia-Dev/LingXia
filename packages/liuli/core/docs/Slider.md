@@ -176,6 +176,13 @@ export function Sizes() {
 | control | `<slider>` | yes | The slider primitive: track, range, the optional secondary range, the thumb, and the accessible node. |
 | description | `<text>` | no | Help text, read as the description. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `sliderRecipe` from `@liulidesign/core/Slider/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--text-caption`, `--text-footnote`, `--text-body`, `--shadow-contact`.
+- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `knob`, `line`, `line-strong`, `text`, `text-faint`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: slider.

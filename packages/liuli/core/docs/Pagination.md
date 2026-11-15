@@ -109,6 +109,13 @@ export function Narrow() {
 | gap | `<view>` | no | An ellipsis where pages are left out; not read. |
 | position | `<text>` | no | The position between the arrows, with a finger or `variant="compact"`; announced as it changes. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `paginationRecipe` from `@liulidesign/core/Pagination/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-md`, `--text-body`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `accent-soft`, `focus`, `on-accent-soft`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

@@ -79,6 +79,13 @@ export function Workspace() {
 | sidebarInner | `<view>` | yes | The sidebar's padding. |
 | contentInner | `<view>` | yes | The content's padding and cap, held to the start of its pane. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `splitViewRecipe` from `@liulidesign/core/SplitView/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- It reads no Liuli scale token.
+- Colour roles it paints with, set by the theme pack: `canvas`, `text`.
+
 ## Accessibility
 
 - Pattern: none.

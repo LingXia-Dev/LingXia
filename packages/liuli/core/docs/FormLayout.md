@@ -101,6 +101,14 @@ export function Profile() {
 | span | `<view>` | no | FormSpan: a field that takes the whole line. |
 | actions | `<view>` | no | The form's buttons, at the end edge; they wrap rather than shrink. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- `className` on FormSpan: classes merged after the recipe's, so they win.
+- The recipe, `formLayoutRecipe` from `@liulidesign/core/FormLayout/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- It reads no Liuli scale token.
+- It paints with no colour role of its own.
+
 ## Accessibility
 
 - Pattern: none.

@@ -96,6 +96,13 @@ export function Applying() {
 | label | `<text>` | yes | The visible label, also the name. |
 | description | `<text>` | no | Help text under the label, inside the press target, read as the description. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `switchRecipe` from `@liulidesign/core/Switch/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-lg`, `--text-footnote`, `--text-body`, `--shadow-contact`.
+- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `knob`, `line-strong`, `text`, `text-faint`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: switch.

@@ -108,6 +108,13 @@ export function InARow() {
 | icon | `<view>` | no | `startIcon`, hidden from assistive tech. |
 | label | `<text>` | yes | The text; keep it to a word or two. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `badgeRecipe` from `@liulidesign/core/Badge/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `danger`, `danger-soft`, `on-accent`, `on-accent-soft`, `on-danger`, `on-success`, `on-warning`, `success`, `success-soft`, `text`, `warning`, `warning-soft`.
+
 ## Accessibility
 
 - Pattern: none.

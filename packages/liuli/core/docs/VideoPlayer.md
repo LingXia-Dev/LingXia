@@ -88,6 +88,13 @@ export function UnderThePicture() {
 | video | `<video>` | yes | The picture, backed in black where it leaves room. |
 | controls | `<view>` | yes | VideoControls over the picture, or in a row under it. |
 
+## What an app may override
+
+- `className`: Classes for the frame, such as its aspect ratio or width.
+- The recipe, `videoPlayerRecipe` from `@liulidesign/core/VideoPlayer/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- It reads no Liuli scale token.
+- It paints with no colour role of its own.
+
 ## Accessibility
 
 - Pattern: none.

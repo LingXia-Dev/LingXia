@@ -136,6 +136,13 @@ export function Sizes() {
 | steppers | `<view>` | no | Minus and plus at the end of the box, behind a hairline. |
 | stepper | `<button>` | no | One stepper: a square as tall as the box, named by `decrementLabel` or `incrementLabel`, disabled at its end of the range. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `numberInputRecipe` from `@liulidesign/core/NumberInput/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- It reads no Liuli scale token.
+- Colour roles it paints with, set by the theme pack: `text`, `text-faint`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: textbox.

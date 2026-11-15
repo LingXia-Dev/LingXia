@@ -116,6 +116,13 @@ export function Comment() {
 | code | `<scroll>` | no | A code block in the fixed-width face on a tint; long lines scroll sideways instead of wrapping. |
 | rule | `<view>` | no | A hairline between sections. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `markdownRecipe` from `@liulidesign/core/Markdown/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--text-callout`, `--text-title`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `accent`, `line-strong`, `on-accent`, `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

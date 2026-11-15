@@ -103,6 +103,13 @@ export function Empty() {
 | list | `<view>` | no | The chosen files: a list named by the label. |
 | file | `<view>` | no | One file: its name, a line from the app, a ring while sending, a remove button. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `fileInputRecipe` from `@liulidesign/core/FileInput/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `danger`, `focus`, `line-strong`, `surface`, `surface-sunken`, `text`, `text-muted`, `warning`.
+
 ## Accessibility
 
 - Pattern: none.

@@ -94,6 +94,13 @@ export function Deep() {
 | label | `<text>` | yes | A level's name, cut short past twelve characters' width or so; the current page is heavier and in the text colour. |
 | separator | `<vector>` | no | A chevron between levels; it mirrors for right-to-left text and is not read. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `breadcrumbRecipe` from `@liulidesign/core/Breadcrumb/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `focus`, `text`, `text-faint`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

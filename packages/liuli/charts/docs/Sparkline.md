@@ -175,6 +175,13 @@ export function InRows() {
 | root | `<view>` | yes | The box, sized by `size` and the container, and the image assistive tech reads by `label`. |
 | plot | `<vector>` | no | The drawing, stretched to the box; absent when no value is finite. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `sparklineRecipe` from `@liulidesign/charts/Sparkline/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- It reads no Liuli scale token.
+- It paints with no colour role of its own.
+
 ## Accessibility
 
 - Pattern: none.
@@ -191,8 +198,8 @@ export function InRows() {
 | series line and bars | `chart-1` on `surface` | 3:1 | 5.62:1 | 6.46:1 |
 | series line and bars, straight on the page | `chart-1` on `canvas` | 3:1 | 5.25:1 | 7.13:1 |
 | neutral line | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
-| positive line | `success` on `surface` | 3:1 | 5.31:1 | 7.61:1 |
-| negative line | `danger` on `surface` | 3:1 | 5.21:1 | 5.42:1 |
+| positive line | `success-mark` on `surface` | 3:1 | 3.61:1 | 6.91:1 |
+| negative line | `danger-mark` on `surface` | 3:1 | 3.91:1 | 5.19:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

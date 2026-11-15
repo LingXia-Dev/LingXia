@@ -135,6 +135,13 @@ export function Merged() {
 | drawing | `<vector>` | no | The slices, clockwise from the top with a constant gap between them; hidden from assistive tech. |
 | centre | `<view>` | no | A donut's hole: the total under `totalLabel`, or the chosen part; announced when it changes. |
 
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `pieChartRecipe` from `@liulidesign/charts/PieChart/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-callout`.
+- Colour roles it paints with, set by the theme pack: `text`, `text-muted`.
+
 ## Accessibility
 
 - Pattern: none.

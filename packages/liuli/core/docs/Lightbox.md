@@ -96,6 +96,13 @@ export function Single() {
 | image | `<image>` | yes | A picture, shown whole. |
 | caption | `<text>` | no | The caption of the picture in view. |
 
+## What an app may override
+
+- No class props: it takes its look from its props, the tokens and the roles below.
+- The recipe, `lightboxRecipe` from `@liulidesign/core/Lightbox/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`.
+- Colour roles it paints with, set by the theme pack: `media-canvas`, `on-media`.
+
 ## Accessibility
 
 - Pattern: dialog.
