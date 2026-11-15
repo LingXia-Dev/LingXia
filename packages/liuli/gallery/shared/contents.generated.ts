@@ -29,6 +29,7 @@ import { Content as Field } from '../content/field';
 import { Content as SearchField } from '../content/search-field';
 import { Content as NumberInput } from '../content/number-input';
 import { Content as Calendar } from '../content/calendar';
+import { Content as DateRangeInput } from '../content/date-range-input';
 import { Content as CheckboxInput } from '../content/checkbox-input';
 import { Content as RadioGroup } from '../content/radio-group';
 import { Content as Switch } from '../content/switch';
@@ -102,6 +103,7 @@ export const contents: Record<string, GalleryContent> = {
   "search-field": SearchField,
   "number-input": NumberInput,
   "calendar": Calendar,
+  "date-range-input": DateRangeInput,
   "checkbox-input": CheckboxInput,
   "radio-group": RadioGroup,
   "switch": Switch,

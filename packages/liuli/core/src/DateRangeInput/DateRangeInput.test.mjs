@@ -1,0 +1,64 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { textOf } from '@lingxia/view/testing';
+import { described, renderExample } from '../testing/harness.mjs';
+
+const fine = { env: { pointer: 'fine' } };
+const panel = (screen, id) => screen.queryAll(node => node.testId === `${id}-panel`);
+
+test('Stay: the field is a button named by its label, with the span as the app formats it read after the name', async () => {
+  const screen = await renderExample('DateRangeInput/DateRangeInput', 'Stay');
+  const field = screen.getByTestId('stay');
+  assert.equal(field.tag, 'button');
+  assert.equal(field.props.accessibilityLabel, 'Stay');
+  assert.equal(textOf(field), '18 Nov – 24 Nov');
+  assert.equal(field.children[0].props.fontVariantNumeric, 'tabular-nums');
+  assert.deepEqual(described(screen, field), ['18 Nov – 24 Nov', 'Check-in from 3 pm, check-out by 11 am.']);
+  assert.equal(panel(screen, 'stay').length, 0, 'closed, no calendar is rendered');
+});
+
+test('Stay, on touch: a sheet titled by the label; the first day starts a span and stays open, the second ends it and closes', async () => {
+  const screen = await renderExample('DateRangeInput/DateRangeInput', 'Stay');
+  const field = () => screen.getByTestId('stay');
+  screen.press(field());
+  const [sheet] = panel(screen, 'stay');
+  assert.equal(sheet.props.accessibilityLabel, 'Stay');
+  assert.equal(screen.queryAll(node => node.props.role === 'heading').map(textOf).includes('Stay'), true);
+  const day = date => screen.getByTestId(`stay-calendar-${date}`);
+  assert.equal(day('2026-11-21').props.stateSelected, 1, 'the span is in the calendar');
+  assert.equal(day('2026-11-10').props.onClick, undefined, 'before the minimum');
+  screen.press(day('2026-11-20'));
+  assert.equal(panel(screen, 'stay').length, 1, 'still open after the first day');
+  assert.equal(textOf(field()), '20 Nov – ', 'a span in progress shows an open end');
+  screen.press(day('2026-11-27'));
+  assert.equal(panel(screen, 'stay').length, 0);
+  assert.equal(textOf(field()), '20 Nov – 27 Nov');
+  screen.press(field());
+  screen.press(screen.getByTestId('stay-close'));
+  assert.equal(panel(screen, 'stay').length, 0);
+  assert.equal(textOf(field()), '20 Nov – 27 Nov', 'closing keeps the span');
+});
+
+test('Stay, with a mouse: the calendar is in a panel under the field', async () => {
+  const screen = await renderExample('DateRangeInput/DateRangeInput', 'Stay', fine);
+  screen.press(screen.getByTestId('stay'));
+  const [popover] = panel(screen, 'stay');
+  assert.deepEqual([popover.props.width, popover.props.marginTop, popover.props.background], [312, 4, 'surface-overlay']);
+  assert.equal(screen.queryAll(node => node.props.role === 'heading').length, 0, 'no sheet title');
+  screen.press(screen.getByTestId('stay-calendar-2026-11-19'));
+  screen.press(screen.getByTestId('stay-calendar-2026-11-16'));
+  assert.equal(panel(screen, 'stay').length, 0);
+  assert.equal(textOf(screen.getByTestId('stay')), '16 Nov – 19 Nov', 'the earlier day first');
+});
+
+test('Empty and states: the placeholder is muted; an error marks the edge and is read; disabled takes no press', async () => {
+  const empty = await renderExample('DateRangeInput/DateRangeInput', 'Empty');
+  const field = empty.getByTestId('leave');
+  assert.equal(textOf(field), 'First and last day');
+  assert.equal(field.children[0].props.color, 'text-muted');
+  const invalid = await renderExample('DateRangeInput/DateRangeInput', 'StateInvalid');
+  assert.equal(invalid.getByTestId('invalid').props.borderColor, 'danger');
+  assert.deepEqual(described(invalid, invalid.getByTestId('invalid')), ['1 Dec – 5 Dec', 'These nights are taken.']);
+  const disabled = (await renderExample('DateRangeInput/DateRangeInput', 'StateDisabled')).getByTestId('disabled');
+  assert.equal(disabled.props.onClick, undefined);
+});

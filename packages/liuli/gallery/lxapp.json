@@ -38,6 +38,7 @@
     { "name": "search-field", "path": "pages/search-field/index" },
     { "name": "number-input", "path": "pages/number-input/index" },
     { "name": "calendar", "path": "pages/calendar/index" },
+    { "name": "date-range-input", "path": "pages/date-range-input/index" },
     { "name": "checkbox-input", "path": "pages/checkbox-input/index" },
     { "name": "radio-group", "path": "pages/radio-group/index" },
     { "name": "switch", "path": "pages/switch/index" },
