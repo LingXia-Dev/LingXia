@@ -938,7 +938,7 @@
           "name": "hasScale",
           "type": "boolean",
           "required": false,
-          "description": "Shows the scale: the top and bottom of the value range, as round numbers, at the start edge with a hairline at the top. By default on, except at the `xs` size."
+          "description": "Shows the scale: round numbers at the start edge, each with a hairline across the plot. The range reaches just past the data, so the plot is filled. By default on, except at the `xs` size."
         },
         {
           "name": "hasEndLabel",
@@ -1196,11 +1196,6 @@
           "missing": "A tooltip beside the chosen point.",
           "needs": "nothing from the View",
           "today": "A rule and dots on the chosen row, and its values in the readout line above the plot, where a finger does not cover them."
-        },
-        {
-          "missing": "Ticks between the ends of the scale.",
-          "needs": "nothing from the View",
-          "today": "The top and bottom of the scale and the latest value; category labels are fitted."
         },
         {
           "missing": "Fitted labels and scrubbing on a host built before `useBox` and `onPointer`.",

@@ -14,9 +14,9 @@ export const doc: ComponentDoc = {
   propsType: 'LineChartProps',
   recipe: { map: 'lineChartRecipe', parts: 'lineChartParts' },
   anatomy: [
-    { part: 'scale', required: false, description: 'The top and bottom of the value range, as round numbers, at the start edge; hidden from assistive tech, which reads the values themselves.' },
+    { part: 'scale', required: false, description: 'Round numbers at the start edge, a few to a plot, fewer in a short one; hidden from assistive tech, which reads the values themselves.' },
     { part: 'plot', required: true, description: 'The box the lines fill.' },
-    { part: 'rule', required: true, description: 'Two hairlines: the top of the scale, and the foot the plot stands on.' },
+    { part: 'rule', required: true, description: 'A hairline across the plot on each number of the scale, firmer under the values. The range ends just past the data, so the plot is filled.' },
     { part: 'end', required: false, description: 'The latest value, written at the end of the line, level with it.' },
     { part: 'drawing', required: false, description: 'The lines, the fill, the end dots and the mark on the chosen row, as one drawing; hidden from assistive tech.' },
     { part: 'reading', required: false, description: 'Every row as "category: values", for assistive tech only; present up to 60 rows.' },
@@ -77,7 +77,6 @@ export const doc: ComponentDoc = {
   ],
   gaps: [
     { missing: 'A tooltip beside the chosen point.', needs: 'nothing from the View', today: 'A rule and dots on the chosen row, and its values in the readout line above the plot, where a finger does not cover them.' },
-    { missing: 'Ticks between the ends of the scale.', needs: 'nothing from the View', today: 'The top and bottom of the scale and the latest value; category labels are fitted.' },
     { missing: 'Fitted labels and scrubbing on a host built before `useBox` and `onPointer`.', needs: 'a newer host', today: 'The first and last category; `selectedKey` set by the app.' },
     { missing: 'A window to zoom and pan a long series.', needs: 'pointer coordinates on an element (`onPointer`)', today: 'Pass the rows of the period to show.' },
     { missing: 'Lines that draw in and move between data.', needs: 'animation of vector geometry', today: 'New data is drawn at once.' },

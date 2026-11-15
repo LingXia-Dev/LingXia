@@ -1,8 +1,8 @@
-import { cx, useBox, type PointerEvent, type VectorPath } from '@lingxia/view';
+import { cx, useBox, type Child, type PointerEvent, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
-import { box, closed, domain, dot, indexAt, monotone, polyline, reach, roundRange, runs, scaleY, thin, type Point } from '../internal/geometry';
+import { box, closed, domain, dot, indexAt, monotone, niceTicks, polyline, reach, runs, scaleY, thin, type Point } from '../internal/geometry';
 import { Ticks } from '../internal/Ticks';
 import { remember } from '../internal/memo';
 import { lineChartRecipe as r } from './LineChart.recipe';
@@ -33,8 +33,8 @@ export interface LineChartProps {
   /** Marks each line's latest value with a dot. @default true */
   hasEndDot?: boolean;
   /**
-   * Shows the scale: the top and bottom of the value range, as round numbers, at the start edge
-   * with a hairline at the top. By default on, except at the `xs` size.
+   * Shows the scale: round numbers at the start edge, each with a hairline across the plot. The
+   * range reaches just past the data, so the plot is filled. By default on, except at the `xs` size.
    */
   hasScale?: boolean;
   /** Writes the latest value at the end of the line. One series only. @default false */
@@ -101,12 +101,19 @@ export function LineChart({
   const isArea = hasArea && shown.length === 1;
   const isScaled = hasScale ?? size !== 'xs';
   const fitted = domain(columns.flat(), isArea, domainMin, domainMax);
-  // With the scale written out, the plot's top and bottom are round numbers.
-  const range = isScaled && facts.length ? roundRange(fitted) : fitted;
+  // With the scale written out, the plot's lines sit on round numbers: fewer of them in a short plot.
+  const scaled = isScaled && facts.length ? niceTicks(fitted, size === 'sm' ? 2 : 4) : undefined;
+  const range = scaled?.range ?? fitted;
   const latest = shown.length === 1 && hasEndLabel ? facts[0]?.last : undefined;
   const labels = data.length > 1 ? xLabels ?? (size === 'xs' ? 'none' : 'fit') : 'none';
-  // A scale label that says what the end figure says, on the same line, is left to the end figure.
-  const scale = isScaled && facts.length > 0 && [formatValue(range[1]), formatValue(range[0])].map(text => (text === latest?.text ? '' : text));
+  // The scale from the top down. A label that says what the end figure says, on the same line, is left to the end figure.
+  const scale = scaled && [...scaled.ticks].reverse().map(value => ({ value, text: formatValue(value) === latest?.text ? '' : formatValue(value) }));
+  // Each tick's place: the shares of the plot above the first, between two, and under the last.
+  const gaps = scale ? [range[1] - scale[0].value, ...scale.slice(1).map((tick, index) => scale[index].value - tick.value), scale[scale.length - 1].value - range[0]] : [];
+  const rungs = (mark: (tick: { value: number; text: string }, index: number) => Child) => scale && scale.flatMap((tick, index) => [
+    <view key={`gap-${index}`} className={r.space.base} style={{ flexGrow: gaps[index] }} />,
+    <view key={`tick-${index}`} className={r.tick.base}>{mark(tick, index)}</view>,
+  ]).concat(<view key="foot" className={r.space.base} style={{ flexGrow: gaps[gaps.length - 1] }} />);
   const chosen = data.findIndex((row, index) => keyOf(row, keyField ?? x, index) === selectedKey);
   const picked = chosen >= 0 ? data[chosen] : undefined;
 
@@ -215,7 +222,7 @@ export function LineChart({
       axis={labels !== 'none' ? (
         <view className={r.labels.base}>
           {/* The plot is narrower than the chart by the scale and the end figure; the same text, unseen, insets these labels as much. */}
-          {scale && <view className={cx(r.scale.base, r.ghost.base)}>{scale.map((text, index) => <text key={String(index)} className={r.scaleLabel.base}>{text}</text>)}</view>}
+          {scale && <view className={cx(r.scale.base, r.ghost.base)}>{scale.map((tick, index) => <text key={String(index)} className={r.scaleLabel.base}>{tick.text}</text>)}</view>}
           {labels === 'fit' ? <Ticks texts={data.map(row => textOf(row, x))} layout="points" inset={edge}>{ends(r.labels.cover)}</Ticks> : ends(r.labels.ends)}
           {latest && <view className={cx(r.end.base, r.ghost.base)}><text className={r.endLabel.base}>{latest.text}</text></view>}
         </view>
@@ -224,13 +231,14 @@ export function LineChart({
       <view className={r.frame.base}>
         {scale && (
           <view aria-hidden className={cx(r.scale.base, r.inset.base, !isArea && r.inset.open)}>
-            <text className={cx(r.scaleLabel.base, r.scaleLabel.top)}>{scale[0]}</text>
-            <text className={cx(r.scaleLabel.base, r.scaleLabel.bottom)}>{scale[1]}</text>
+            {rungs(tick => <text className={cx(r.scaleLabel.base, r.scaleLabel.level)}>{tick.text}</text>)}
           </view>
         )}
         <view box={plot} className={r.plot.base}>
-          {scale && <view aria-hidden className={r.rule.top} />}
-          <view aria-hidden className={cx(r.rule.bottom, !isArea && r.rule.open)} />
+          {scale
+            // A hairline on each tick; the one the values stand on is firmer.
+            ? <view aria-hidden className={cx(r.grid.base, r.inset.base, !isArea && r.inset.open)}>{rungs(tick => <view className={tick.value === range[0] ? r.rule.foot : r.rule.line} />)}</view>
+            : <view aria-hidden className={cx(r.rule.bottom, !isArea && r.rule.open)} />}
           {paths.length > 0 && <vector aria-hidden paths={paths} viewBox={frame} className={r.drawing.base} />}
           {marker.length > 0 && <vector aria-hidden paths={marker} viewBox={frame} className={cx(r.drawing.base, r.drawing.over)} />}
           {/* Over the marks: it hears the pointer, and is the stop the arrow keys and a screen reader step. */}

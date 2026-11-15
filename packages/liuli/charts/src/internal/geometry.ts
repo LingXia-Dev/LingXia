@@ -179,12 +179,6 @@ const leading = (value: number, steps: readonly number[]) => {
 /** The next round number at or above a positive value: 187 gives 200, 67 gives 80. */
 export const roundUp = (value: number) => (value > 0 ? leading(value, [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) : 0);
 
-/** The range widened to round numbers about a quarter of its span apart: 70.5 to 72.4 gives 70.5 to 72.5. */
-export function roundRange([low, high]: readonly [number, number]): readonly [number, number] {
-  const span = high - low || Math.abs(high) || 1;
-  const step = leading(span / 4, [1, 2, 2.5, 5, 10]);
-  return [exact(Math.floor(low / step + 1e-9) * step), exact(Math.ceil(high / step - 1e-9) * step)];
-}
 
 /**
  * Which of `count` evenly spaced labels to write when neighbours are `pitch` apart and a label
@@ -221,4 +215,20 @@ export function reach(width: number, height: number, inset: number, foot: number
   const tall = Math.max(1, height - inset - foot);
   const [up, down] = [(inset * box) / tall, (foot * box) / tall];
   return [-across, -up, box + across * 2, box + up + down].map(value => Math.round(value * 1000) / 1000) as [number, number, number, number];
+}
+
+/**
+ * A scale for the values between `low` and `high`: ticks at round numbers about `target` apart
+ * in count, inside a range that reaches a quarter of a step past the data at most, so the
+ * plot is not left half empty under a round top.
+ */
+export function niceTicks([low, high]: readonly [number, number], target: number): { ticks: number[]; range: readonly [number, number] } {
+  const span = high - low || Math.abs(high) || 1;
+  const step = leading(span / Math.max(1, target), [1, 2, 2.5, 5, 10]);
+  const fine = step / 4;
+  const range = [exact(Math.floor(low / fine + 1e-9) * fine), exact(Math.ceil(high / fine - 1e-9) * fine)] as const;
+  const ticks: number[] = [];
+  for (let tick = Math.ceil(range[0] / step - 1e-9) * step; tick <= range[1] + step * 1e-9; tick += step) ticks.push(exact(tick));
+  // Too few round numbers fall inside a narrow range: its two ends are the scale.
+  return { ticks: ticks.length < 2 ? [range[0], range[1]] : ticks, range };
 }

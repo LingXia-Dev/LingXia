@@ -40,18 +40,24 @@ test('Weight: the summary, then every row as a list item with its formatted valu
   assert.ok(unread(screen.getByText('24 Nov')));
 });
 
-test('Weight: the scale is two round numbers at the start edge, level with a hairline at the top and the rule at the foot; the latest value sits at the line\'s end', async () => {
+const ticks = column => column.children.filter(node => node.props.height === 0);
+const shares = column => column.children.filter(node => node.props.height !== 0).map(node => node.props.grow ?? 0);
+
+test('Weight: the scale is round numbers at the start edge, each level with a hairline across the plot; the latest value sits at the line\'s end', async () => {
   const screen = await renderExample('LineChart/LineChart', 'Weight');
   const frame = screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1)[0].parent.parent;
   const [scale, plot, end] = frame.children;
-  assert.deepEqual(scale.children.map(textOf), ['72.5 kg', ''], 'the foot of the scale is 70.5 kg, which the end figure says on the same line');
-  assert.ok(unread(scale.children[0]), 'the same numbers are in the summary and the list');
-  assert.deepEqual(scale.children.map(label => [label.props.fontSize, label.props.color, label.props.fontVariantNumeric]), Array(2).fill([13, 'text-muted', 'tabular-nums']));
-  assert.deepEqual(scale.children.map(label => JSON.parse(label.props.transform).translate[1]), ['-50%', '50%'], 'each label is centred on its line');
-  const rules = plot.children.filter(node => node.props.height === 1 && node.props.background);
-  assert.deepEqual(rules.map(rule => [rule.props.insetTop, rule.props.insetBottom, rule.props.background]), [[4, undefined, 'text/8'], [undefined, 4, 'text/12']]);
-  // Scale, drawing and end figure share the 4 pt inset, so 72.5 is the hairline and 70.5 the rule.
-  assert.deepEqual([scale, end].map(node => [node.props.paddingTop, node.props.paddingBottom]), Array(2).fill([4, 4]));
+  assert.deepEqual(ticks(scale).map(textOf), ['72.5 kg', '72.0 kg', '71.5 kg', '71.0 kg', ''], 'half a kilo apart; the foot is 70.5 kg, which the end figure says on the same line');
+  assert.deepEqual(shares(scale), [0, 0.5, 0.5, 0.5, 0.5, 0], 'each label stands at its value\'s share of the range');
+  assert.ok(unread(scale.children[1]), 'the same numbers are in the summary and the list');
+  const labels = ticks(scale).map(tick => tick.children[0]);
+  assert.deepEqual(labels.map(label => [label.props.fontSize, label.props.color, label.props.fontVariantNumeric]), Array(5).fill([13, 'text-muted', 'tabular-nums']));
+  assert.ok(labels.every(label => JSON.parse(label.props.transform).translate[1] === '-50%'), 'each label is centred on its line');
+  const grid = plot.children.find(node => node.props.position === 'absolute' && ticks(node).length === 5);
+  assert.deepEqual(shares(grid), shares(scale), 'the hairlines stand where the labels do');
+  assert.deepEqual(ticks(grid).map(tick => [tick.children[0].props.height, tick.children[0].props.background]), [...Array(4).fill([1, 'text/8']), [1, 'text/12']], 'quiet lines, a firmer one under the values');
+  // Scale, hairlines and end figure share the drawing's 4 pt inset, so a label is level with its line and its values.
+  assert.deepEqual([scale, grid, end].map(node => [node.props.paddingTop, node.props.paddingBottom]), Array(3).fill([4, 4]));
   // The drawing is cut at its viewBox, which reaches 4 pt past the data on every side, so the end dot is whole.
   const reach = () => { const [x, y, width, height] = drawing(screen).viewBox; return [x, y, width, height].map(value => Math.round(value * 100) / 100); };
   assert.deepEqual(reach(), [-1.37, -2.38, 102.74, 104.76], 'until the plot is measured: 300 pt wide, and 176 pt high at this size');
@@ -60,9 +66,23 @@ test('Weight: the scale is two round numbers at the start edge, level with a hai
   assert.deepEqual(end.children.map(part => part.props.grow ?? textOf(part)), [2, '70.5 kg', 0], 'two kilos of range above the latest value, none below');
   assert.equal(end.children[1].props.height, 0);
   assert.equal(JSON.parse(end.children[1].children[0].props.transform).translate[1], '-50%', 'the figure is centred on the value\'s height');
-  // Under the plot, unseen copies of the scale and the end figure inset the category labels as much.
   const ghosts = screen.getByText('6 Oct').parent.parent.parent.children.filter(node => node.props.height === 0);
-  assert.deepEqual(ghosts.map(textOf), ['72.5 kg', '70.5 kg']);
+  assert.deepEqual(ghosts.map(textOf), ['72.5 kg72.0 kg71.5 kg71.0 kg', '70.5 kg'], 'unseen copies of the scale and the end figure inset the category labels as much');
+});
+
+test('the scale fits the data: an area from zero stops just past its highest value, and a short plot has fewer ticks', async () => {
+  const page = props => `
+    import { LineChart } from '@liulidesign/charts/LineChart';
+    const rows = [4120, 3980, 4460, 4710, 5240, 6130, 5380].map((v, index) => ({ t: 'd' + index, v }));
+    export function render() { return <page><LineChart data={rows} x="t" y="v" label="Chart" hasArea xLabels="none" ${props} /></page>; }
+  `;
+  const scaleOf = screen => screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1)[0].parent.parent.children[0];
+  const medium = scaleOf(await renderPage(page('')));
+  assert.deepEqual(ticks(medium).map(textOf), ['6000', '4000', '2000', '0'], 'two thousand apart');
+  assert.deepEqual(shares(medium), [500, 2000, 2000, 2000, 0], 'the plot ends at 6500, a quarter step past 6130, not at 8000');
+  const small = scaleOf(await renderPage(page('size="sm"')));
+  assert.deepEqual(ticks(small).map(textOf), ['5000', '0'], 'two ticks in 112 pt');
+  assert.deepEqual(shares(small), [1250, 5000, 0]);
 });
 
 test('hasScale off fits the data exactly; the smallest size is bare; several series get the scale but no end figure', async () => {
@@ -77,9 +97,9 @@ test('hasScale off fits the data exactly; the smallest size is bare; several ser
   assert.deepEqual(texts(bare), ['a', 'c']);
   assert.deepEqual(texts(await renderPage(page('y="v" size="xs" hasEndLabel'))).filter(text => /\d/.test(text)), ['5']);
   const two = await renderPage(page('y={[{ field: "v", label: "V" }, { field: "w", label: "W" }]} hasEndLabel legend="none"'));
-  assert.deepEqual(texts(two).filter(text => /\d/.test(text)), ['40', '0', '40', '0'], 'the scale and its unseen copy; no end figure for two lines');
+  assert.deepEqual(texts(two).filter(text => /\d/.test(text)), ['40', '30', '20', '10', '40', '30', '20', '10'], 'the scale and its unseen copy; no end figure for two lines');
   const apart = await renderPage(page('y="w" hasEndLabel'));
-  assert.deepEqual(texts(apart).filter(text => /\d/.test(text)), ['40', '20', '30', '40', '20', '30'], 'an end figure between the ends of the scale leaves both labels');
+  assert.deepEqual(texts(apart).filter(text => /\d/.test(text)), ['40', '35', '', '25', '20', '30', '40', '35', '', '25', '20', '30'].filter(Boolean), 'the tick the end figure stands on is left to the end figure');
 });
 
 test('Area: one series is filled down to the foot and measured from zero', async () => {
@@ -251,7 +271,7 @@ test('isSmooth: between two readings the curve never leaves their heights, howev
 
 test('states: one value is a dot; loading, empty and error replace the plot', async () => {
   const single = drawing(await renderExample('LineChart/LineChart', 'StateSingle')).paths;
-  assert.ok(single.length > 0 && single.every(path => /^M50 38h0\.01$/.test(path.d)), 'one value of 72.4 on a 60 to 80 scale');
+  assert.ok(single.length > 0 && single.every(path => /^M50 20\.8h0\.01$/.test(path.d)), 'one value of 72.4 on a 62.5 to 75 scale');
   assert.equal((await renderExample('LineChart/LineChart', 'StateLoading')).getByTestId('loading').props.stateBusy, 1);
   (await renderExample('LineChart/LineChart', 'StateEmpty')).getByText('No weigh-ins yet');
   const error = await renderExample('LineChart/LineChart', 'StateError');

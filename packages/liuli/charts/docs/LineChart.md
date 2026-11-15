@@ -166,7 +166,7 @@ export function Gaps() {
 | `isSmooth` | `boolean` | `false` | Rounds the line between points without passing above or below them. |
 | `hasArea` | `boolean` | `false` | Fills under the line and measures it from zero. One series only. |
 | `hasEndDot` | `boolean` | `true` | Marks each line's latest value with a dot. |
-| `hasScale` | `boolean` |  | Shows the scale: the top and bottom of the value range, as round numbers, at the start edge with a hairline at the top. By default on, except at the `xs` size. |
+| `hasScale` | `boolean` |  | Shows the scale: round numbers at the start edge, each with a hairline across the plot. The range reaches just past the data, so the plot is filled. By default on, except at the `xs` size. |
 | `hasEndLabel` | `boolean` | `false` | Writes the latest value at the end of the line. One series only. |
 | `xLabels` | `LineChartLabels` |  | Category labels under the plot: `fit` writes as many as fit side by side, each under its point; `ends` the first and last. By default `fit`, except at the `xs` size. |
 | `legend` | `ChartLegendPosition` | `'bottom'` | Shown when there is more than one series. |
@@ -188,9 +188,9 @@ export function Gaps() {
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
-| scale | `<view>` | no | The top and bottom of the value range, as round numbers, at the start edge; hidden from assistive tech, which reads the values themselves. |
+| scale | `<view>` | no | Round numbers at the start edge, a few to a plot, fewer in a short one; hidden from assistive tech, which reads the values themselves. |
 | plot | `<view>` | yes | The box the lines fill. |
-| rule | `<view>` | yes | Two hairlines: the top of the scale, and the foot the plot stands on. |
+| rule | `<view>` | yes | A hairline across the plot on each number of the scale, firmer under the values. The range ends just past the data, so the plot is filled. |
 | end | `<view>` | no | The latest value, written at the end of the line, level with it. |
 | drawing | `<vector>` | no | The lines, the fill, the end dots and the mark on the chosen row, as one drawing; hidden from assistive tech. |
 | reading | `<view>` | no | Every row as "category: values", for assistive tech only; present up to 60 rows. |
@@ -243,7 +243,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
 | A tooltip beside the chosen point. | nothing from the View | A rule and dots on the chosen row, and its values in the readout line above the plot, where a finger does not cover them. |
-| Ticks between the ends of the scale. | nothing from the View | The top and bottom of the scale and the latest value; category labels are fitted. |
 | Fitted labels and scrubbing on a host built before `useBox` and `onPointer`. | a newer host | The first and last category; `selectedKey` set by the app. |
 | A window to zoom and pan a long series. | pointer coordinates on an element (`onPointer`) | Pass the rows of the period to show. |
 | Lines that draw in and move between data. | animation of vector geometry | New data is drawn at once. |

@@ -16,7 +16,7 @@ export const lineChartParts = {
 /**
  * The drawing stretches to the plot and keeps its stroke widths. Its data sits half a marker
  * inside the plot, and the scale and end figure share that inset, so each label sits level with
- * what it names. The rules are two hairlines: the top of the scale and the foot.
+ * what it names. The scale is a hairline on each round number, firmer under the values.
  */
 export const lineChartRecipe = {
   frame: {
@@ -27,12 +27,12 @@ export const lineChartRecipe = {
     open: 'pb-[4px]',
   },
   scale: {
-    base: 'shrink-0 items-end justify-between pe-2',
+    base: 'shrink-0 items-end pe-2',
   },
   scaleLabel: {
     base: 'text-footnote text-muted tabular-nums whitespace-nowrap',
-    top: '-translate-y-1/2',
-    bottom: 'translate-y-1/2',
+    // A box taller than its line is not centred on it by layout; half its own height up is.
+    level: '-translate-y-1/2',
   },
   plot: {
     base: 'relative grow basis-0 min-w-0',
@@ -40,8 +40,17 @@ export const lineChartRecipe = {
   scrubber: {
     base: 'absolute inset-0 rounded-[4px]',
   },
+  // The hairlines of the scale, laid over the plot in the same inset as the drawing.
+  grid: {
+    base: 'absolute inset-0',
+  },
+  // A tick's place between two shares of the plot: no height of its own.
+  tick: {
+    base: 'h-0 self-stretch items-end',
+  },
   rule: {
-    top: 'absolute start-0 end-0 top-[4px] h-px bg-text/8',
+    line: 'self-stretch h-px bg-text/8',
+    foot: 'self-stretch h-px bg-text/12',
     bottom: 'absolute start-0 end-0 bottom-0 h-px bg-text/12',
     open: 'bottom-[4px]',
   },
