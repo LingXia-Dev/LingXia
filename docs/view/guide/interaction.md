@@ -117,6 +117,8 @@ right-to-left layout; `event.width` and `event.height` are that box, so `x / wid
 The handler observes: a button inside still gets its click, and the element still hears that press.
 `pointerAxis="x"` keeps horizontal movement and leaves vertical movement to the page's scroll, as
 `touch-action: pan-y` does; `"y"` is the reverse and `"both"` (the default) keeps the whole gesture.
+On one axis, `down` comes at once and moves wait until the direction is clear: then come the moves,
+or one `cancel`, never moves and then `cancel`.
 Give the element `aria-valuenow` (with `aria-valuemin`, `aria-valuemax` and an `aria-valuetext` that
 reads the point, such as "March: 42") and it becomes a keyboard stop a screen reader can adjust:
 Left and Right (Up and Down with `pointerAxis="y"`) and the reader's increment and decrement call

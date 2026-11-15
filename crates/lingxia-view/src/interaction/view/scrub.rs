@@ -135,6 +135,11 @@ impl ViewInteraction {
             return false;
         };
         let taken = self.gesture.dragging || self.gesture.holding;
+        // On one axis the gesture is undecided until it passes the slop: its moves wait, so the
+        // element hears moves or one `cancel`, never moves and then `cancel`.
+        if event.phase == PointerPhase::Move && !taken && !scrub.owned && scrub.keeps != [true; 2] {
+            return false;
+        }
         let phase = match event.phase {
             PointerPhase::Move if !taken => "move",
             PointerPhase::Up if !taken => "up",

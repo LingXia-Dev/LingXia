@@ -114,6 +114,34 @@ fn an_axis_the_element_keeps_stays_its_own_and_the_other_goes_to_the_scroll_with
         text(&host, "log")
     );
 
+    // Undecided movement is held: a drift under the slop reports nothing, and what follows is
+    // either the element's moves or the scroll's one cancel.
+    let host = page(&platform, &worker, &pad("x", true), false);
+    step(&platform, &host, PointerPhase::Down, 45.0, 55.0);
+    step(&platform, &host, PointerPhase::Move, 46.0, 53.0);
+    step(&platform, &host, PointerPhase::Move, 47.0, 52.0);
+    assert_eq!(
+        text(&host, "log"),
+        "down@30,30 ",
+        "nothing until the axis is decided"
+    );
+    step(&platform, &host, PointerPhase::Move, 60.0, 53.0);
+    step(&platform, &host, PointerPhase::Up, 60.0, 53.0);
+    assert_eq!(
+        text(&host, "log"),
+        "down@30,30 move@45,28 up@45,28 ",
+        "the held drift is not replayed"
+    );
+    step(&platform, &host, PointerPhase::Down, 45.0, 55.0);
+    step(&platform, &host, PointerPhase::Move, 46.0, 53.0);
+    step(&platform, &host, PointerPhase::Move, 47.0, 35.0);
+    step(&platform, &host, PointerPhase::Up, 47.0, 35.0);
+    assert!(
+        text(&host, "log").ends_with("up@45,28 down@30,30 cancel@32,10 "),
+        "no move came before the cancel: {}",
+        text(&host, "log")
+    );
+
     // `both` keeps a vertical drag too: the scroll under it stays put.
     let host = page(&platform, &worker, &pad("both", true), false);
     step(&platform, &host, PointerPhase::Down, 45.0, 55.0);
