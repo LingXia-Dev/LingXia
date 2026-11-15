@@ -1,0 +1,9 @@
+{
+  "navigationBar": {
+    "title": {
+      "default": "Overlays",
+      "zh-CN": "浮层"
+    }
+  },
+  "pageOrientation": "auto"
+}

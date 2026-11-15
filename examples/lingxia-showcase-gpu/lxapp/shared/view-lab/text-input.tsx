@@ -156,6 +156,51 @@ export function Term({ word, meaning }: { word: string; meaning: string }) {
   return <><text className="text-sm font-semibold">{word}</text><text className="text-xs text-muted">{meaning}</text></>;
 }
 
+// A parent box over three: it is checked when all are, mixed when some are.
+export function PartlyDemo() {
+  const picked = useLocal<readonly boolean[]>('lab-partly-picked', [false, false, false]);
+  const t = useSay();
+  const names = t(labels.toppings).split('|');
+  const count = picked.value.filter(Boolean).length;
+  const all = count === names.length;
+  return (
+    <>
+      <view className="flex-row items-center gap-3">
+        <checkbox data-testid="lab-partly-all" value={all} indeterminate={count > 0 && !all} aria-label={t(labels.allToppings)}
+          onChange={next => picked.set(names.map(() => next))} />
+        <text className="text-sm font-medium">{t(labels.allToppings)}</text>
+      </view>
+      <view className="ps-9 gap-2">
+        {names.map((name, index) => (
+          <view key={name} className="flex-row items-center gap-3">
+            <checkbox data-testid={`lab-partly-${index}`} value={picked.value[index]} aria-label={name}
+              onChange={next => picked.set(picked.value.map((was, at) => (at === index ? next : was)))} />
+            <text className="text-sm">{name}</text>
+          </view>
+        ))}
+      </view>
+      <Readout testId="lab-partly-state" state={`checked=${count} of=${names.length}`}>{t(readouts.partly(count, names.length))}</Readout>
+    </>
+  );
+}
+
+// A link that takes no press beside one that does.
+export function LinkOffDemo() {
+  const taps = useLocal('lab-link-taps', 0);
+  const t = useSay();
+  return (
+    <>
+      <text data-testid="lab-link-paragraph" className="text-sm leading-relaxed">
+        {t(labels.linkOffLead)}
+        <link data-testid="lab-link-disabled" disabled onClick={() => taps.set(taps.value + 100)} className="text-faint">{t(labels.linkOffOld)}</link>
+        {t(labels.linkOffMid)}
+        <link data-testid="lab-link-enabled" onClick={() => taps.set(taps.value + 1)}>{t(labels.linkOffNew)}</link>.
+      </text>
+      <Readout testId="lab-link-state" state={`taps=${taps.value}`}>{t(readouts.taps(taps.value))}</Readout>
+    </>
+  );
+}
+
 /** The Text & input group: every demo the text table names, drawn by its body. */
 export const textDemos = {
   paragraphs: TextLayoutDemo,
@@ -163,5 +208,7 @@ export const textDemos = {
   document: DocumentDemo,
   selecting: SelectionDemo,
   suggestions: TypeaheadDemo,
+  partly: PartlyDemo,
+  linkOff: LinkOffDemo,
   form: FormSemanticsDemo,
 };

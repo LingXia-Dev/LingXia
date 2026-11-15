@@ -191,6 +191,21 @@ export function SwipeRow({ item, onOpen, onArchive, onDelete }: { item: string; 
   );
 }
 
+// A 24-point button: a finger that lands just outside it still presses it.
+export function SmallTargetDemo() {
+  const taps = useLocal('lab-small-taps', 0);
+  const t = useSay();
+  return (
+    <>
+      <view className="flex-row items-center gap-3 p-6 rounded-xl bg-surface-sunken">
+        <button data-testid="lab-small-button" aria-label={t(labels.close)} onClick={() => taps.set(taps.value + 1)}
+          className="w-6 h-6 rounded-md bg-accent active:opacity-70" />
+      </view>
+      <Readout testId="lab-small-state" state={`taps=${taps.value}`}>{t(readouts.taps(taps.value))}</Readout>
+    </>
+  );
+}
+
 /** The Gestures & pointer group: every demo the text table names, drawn by its body. */
 export const gestureDemos = {
   pointer: ScrubDemo,
@@ -199,5 +214,6 @@ export const gestureDemos = {
   sheet: DetentsDemo,
   rows: SwipeRowsDemo,
   pages: PagerDemo,
+  small: SmallTargetDemo,
   nested: NestedControlsDemo,
 };

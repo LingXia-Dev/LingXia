@@ -106,6 +106,10 @@
       "path": "pages/view-gestures/index"
     },
     {
+      "name": "view-overlays",
+      "path": "pages/view-overlays/index"
+    },
+    {
       "name": "motion-lab",
       "path": "pages/motion-lab/index"
     },

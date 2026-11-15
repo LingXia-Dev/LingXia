@@ -3,11 +3,12 @@
 import { resolveDisplayLanguage } from '../display-language';
 
 export type Words = { en: string; zh: string };
-export type GroupId = 'text' | 'gestures';
+export type GroupId = 'text' | 'gestures' | 'overlays';
 
 export const groups: readonly { id: GroupId; page: string; title: Words; line: Words }[] = [
   { id: 'text', page: 'view-text', title: { en: 'Text & input', zh: '文字与输入' }, line: { en: 'Paragraphs, fields and keys', zh: '段落、输入框与按键' } },
   { id: 'gestures', page: 'view-gestures', title: { en: 'Gestures & pointer', zh: '手势与指针' }, line: { en: 'Press, drag and swipe', zh: '按压、拖动与滑动' } },
+  { id: 'overlays', page: 'view-overlays', title: { en: 'Overlays', zh: '浮层' }, line: { en: 'Popovers against what opens them', zh: '贴着触发处打开的浮层' } },
 ];
 
 export const demos = {
@@ -17,6 +18,8 @@ export const demos = {
     document: { testId: 'lab-document', title: { en: 'A long document', zh: '长文档' }, try: { en: 'Headings, clamped previews and a two-column list of terms from one set of data.', zh: '同一份数据排出标题、截断的摘要和两列的术语表。' } },
     selecting: { testId: 'lab-selection', title: { en: 'Selecting text', zh: '选择文字' }, try: { en: 'Long-press or double-click a word, then drag to extend and copy.', zh: '长按或双击一个词，再拖动扩展选区并复制。' } },
     suggestions: { testId: 'lab-type', title: { en: 'Suggestions while typing', zh: '输入时的建议' }, try: { en: 'Type to filter. Arrows move, Enter chooses, Escape closes; the list opens against the field.', zh: '输入以筛选。方向键移动，回车选择，Esc 关闭；列表贴着输入框打开。' } },
+    partly: { testId: 'lab-partly', title: { en: 'A box that is partly checked', zh: '部分选中的复选框' }, try: { en: 'Check one topping: "All toppings" shows a dash. Tap it and every topping is checked.', zh: '勾选一种配料，“全部配料”显示一条横线；点它则全部勾选。' } },
+    linkOff: { testId: 'lab-link-off', title: { en: 'A link that is switched off', zh: '已停用的链接' }, try: { en: 'The first link does nothing and reads as unavailable; the second counts its taps.', zh: '第一个链接点了没有反应，读屏软件读作不可用；第二个会计数。' } },
     form: { testId: 'lab-form', title: { en: 'Required, invalid and described fields', zh: '必填、无效与带说明的字段' }, try: { en: 'Each field tells a screen reader its hint and its error.', zh: '每个字段都把提示和错误告诉读屏软件。' } },
   },
   gestures: {
@@ -26,7 +29,11 @@ export const demos = {
     sheet: { testId: 'lab-detents', title: { en: 'A sheet with stops', zh: '带停靠点的面板' }, try: { en: 'Open the sheet, pull it to full height, flick it down to close.', zh: '打开面板，拉到全高，向下轻扫关闭。' } },
     rows: { testId: 'lab-swipe', title: { en: 'Swipe a row for actions', zh: '滑动行显示操作' }, try: { en: 'Swipe a row left for Archive and Delete; a full swipe deletes.', zh: '向左滑动一行显示归档和删除；滑到底即删除。' } },
     pages: { testId: 'lab-pager', title: { en: 'Pages you swipe between', zh: '滑动翻页' }, try: { en: 'Swipe: one page at a time; the buttons do the same.', zh: '滑动一次翻一页；按钮效果相同。' } },
+    small: { testId: 'lab-small', title: { en: 'A small control that is easy to hit', zh: '容易点中的小控件' }, try: { en: 'Tap just outside the small square: it still counts, because a finger gets a full-size target.', zh: '点小方块的外沿也会计数：手指得到的是完整大小的触控区。' } },
     nested: { testId: 'lab-nested', title: { en: 'A control inside a row', zh: '行里的控件' }, try: { en: 'Tap the switch: only the switch changes. Tap the row: the row is pressed.', zh: '点开关只切换开关；点行则按下整行。' } },
+  },
+  overlays: {
+    beside: { testId: 'lab-beside', title: { en: 'A popover beside what opens it', zh: '在触发处旁边打开的浮层' }, try: { en: 'Each button opens the note at its side. With no room there it opens on the other side, and under a wide button.', zh: '每个按钮都在自己旁边打开提示；那一侧放不下就换到另一侧，按钮太宽则在其下方。' } },
   },
 } as const satisfies Record<GroupId, Record<string, { testId: string; title: Words; try: Words }>>;
 
@@ -37,6 +44,12 @@ export const missing: Record<GroupId, readonly Words[]> = {
     { en: 'Password field', zh: '密码输入框' },
     { en: 'Following the system text size', zh: '跟随系统字号' },
     { en: 'Placeholder colour', zh: '占位文字颜色' },
+  ],
+  overlays: [
+    { en: 'Dialog and sheet', zh: '对话框与底部面板' },
+    { en: 'Hint on hover or focus', zh: '悬停或聚焦时的提示' },
+    { en: 'Date and time pickers', zh: '日期与时间选择器' },
+    { en: 'A menu asked for by long press or secondary click', zh: '长按或右键唤出的菜单' },
   ],
   gestures: [
     { en: 'Pull to refresh', zh: '下拉刷新' },
@@ -74,6 +87,12 @@ export const readouts = {
     en: `Row pressed ${opened} times · switch ${wifi ? 'on' : 'off'} · removed ${removed} times`,
     zh: `行已按 ${opened} 次 · 开关${wifi ? '开' : '关'} · 已移除 ${removed} 次`,
   }),
+  partly: (checked: number, total: number): Words => ({ en: `${checked} of ${total} checked`, zh: `已选 ${checked} / ${total}` }),
+  taps: (n: number): Words => ({ en: `Tapped ${n} times`, zh: `已点 ${n} 次` }),
+  beside: (which: 'none' | 'start' | 'end' | 'wide'): Words => {
+    const at = { start: labels.sideStart, end: labels.sideEnd, wide: labels.sideWide };
+    return which === 'none' ? { en: 'Note closed', zh: '提示已关闭' } : { en: `Note open at: ${at[which].en}`, zh: `提示打开于：${at[which].zh}` };
+  },
   presses: (n: number): Words => ({ en: `Link pressed ${n} times`, zh: `链接已点 ${n} 次` }),
   suggestions: (open: boolean, active: number, last: string): Words => ({
     en: `List ${yes(open).en} · option ${active + 1} active · last: ${last}`,
@@ -87,6 +106,17 @@ export const labels = {
   pullUp: { en: 'Pull up, then keep going', zh: '向上拉，然后继续' },
   openSheet: { en: 'Open sheet', zh: '打开面板' },
   next: { en: 'Next', zh: '下一页' },
+  allToppings: { en: 'All toppings', zh: '全部配料' },
+  toppings: { en: 'Cheese|Mushroom|Olives', zh: '芝士|蘑菇|橄榄' },
+  linkOffLead: { en: 'You can read the ', zh: '你可以阅读' },
+  linkOffOld: { en: 'old terms', zh: '旧条款' },
+  linkOffMid: { en: ' (withdrawn) or the ', zh: '（已撤回）或' },
+  linkOffNew: { en: 'current terms', zh: '现行条款' },
+  sideStart: { en: 'At the start', zh: '靠起始侧' },
+  sideEnd: { en: 'At the end', zh: '靠末尾侧' },
+  sideWide: { en: 'A wide button', zh: '一个很宽的按钮' },
+  sideNote: { en: 'A note beside its button.', zh: '按钮旁边的提示。' },
+  close: { en: 'Close', zh: '关闭' },
   fruit: { en: 'Fruit', zh: '水果（英文）' },
   definitions: { en: 'Definitions', zh: '术语' },
   updated: { en: 'Updated', zh: '更新于' },
