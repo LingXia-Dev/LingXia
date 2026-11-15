@@ -5230,6 +5230,7 @@
         "label": "text",
         "description": "text",
         "chevron": "vector",
+        "box": "view",
         "body": "view"
       },
       "accessibility": {
@@ -5262,7 +5263,9 @@
           }
         ],
         "notes": [
-          "Closed content does not exist, so a search or a screen reader reaches it only once it is open.",
+          "Closed content stays in the page but is hidden and clipped to nothing: focus, a press and a screen reader reach it only once it is open.",
+          "What is typed or chosen inside a row is kept while the row is closed.",
+          "The body grows open and shut; under reduced motion it changes at once. In a group the rows below move with it; what follows a row on its own jumps unless it takes `transition-layout`.",
           "In an exclusive group, closing the open row leaves none open."
         ]
       },
@@ -5286,6 +5289,11 @@
           "name": "Sections",
           "title": "Sections with an icon and a second line",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Details, DetailsGroup } from '@liulidesign/core/Details';\n\n/** Sections of a settings page: an icon and a second line say what is inside; one cannot be opened. */\nexport function Sections() {\n  const open = useLocal<string | null>('open', 'notifications');\n  return (\n    <DetailsGroup isExclusive label=\"Settings\" value={open.value} onChange={open.set} data-testid=\"sections\">\n      <Details value=\"notifications\" label=\"Notifications\" description=\"Mentions and the weekly digest\" startIcon=\"notifications\" data-testid=\"section-notifications\">\n        <text className=\"text-body text-muted\">You are told about mentions at once and get a digest on Mondays.</text>\n      </Details>\n      <Details value=\"privacy\" label=\"Privacy\" description=\"Who can see your profile\" startIcon=\"lock\" data-testid=\"section-privacy\">\n        <text className=\"text-body text-muted\">Only members of your workspace can see your profile.</text>\n      </Details>\n      <Details value=\"billing\" label=\"Billing\" description=\"Managed by your workspace owner\" startIcon=\"payment\" isDisabled data-testid=\"section-billing\">\n        <text className=\"text-body text-muted\">Ask the owner for an invoice.</text>\n      </Details>\n    </DetailsGroup>\n  );\n}"
+        },
+        {
+          "name": "WithForm",
+          "title": "A field inside a row",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { Details } from '@liulidesign/core/Details';\n\n/** A row with a field inside: what is typed is kept while the row is closed, and a closed row's field is out of reach. */\nexport function WithForm() {\n  const name = useLocal('name', '');\n  return (\n    <Details label=\"Add a nickname\" description={name.value === '' ? 'None yet' : name.value} data-testid=\"form\">\n      <TextInput bind={name} label=\"Nickname\" placeholder=\"Shown beside your name\" data-testid=\"form-name\" />\n    </Details>\n  );\n}"
         }
       ],
       "gaps": [
@@ -5293,11 +5301,6 @@
           "missing": "Liuli on the Details primitive.",
           "needs": "a `<Summary>` that can drop or move its start marker, and whose inner row stretches to the button's width",
           "today": "Liuli builds the same button with aria-expanded, so the chevron can sit at the end."
-        },
-        {
-          "missing": "A body that grows open instead of appearing.",
-          "needs": "height transitions, or a layout motion that animates size",
-          "today": "The body fades and drops in; the rows below jump."
         }
       ],
       "related": [
@@ -5324,6 +5327,10 @@
             {
               "name": "Sections",
               "title": "An icon and a second line on each row; the app holds which is open; one row is disabled"
+            },
+            {
+              "name": "WithForm",
+              "title": "A field inside: what is typed is kept while the row is closed"
             }
           ],
           "states": [

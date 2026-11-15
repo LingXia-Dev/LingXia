@@ -66,7 +66,10 @@ export function Details({ label, description, startIcon, children, value, isDefa
         </view>
         <Glyph name="chevron-down" className={cx(r.chevron.base, open && r.chevron.open)} />
       </button>
-      {open && <view data-testid={testId && `${testId}-body`} className={cx(r.body.base, inGroup && r.body.inGroup)}>{children}</view>}
+      {/* Kept in the tree so the box can close around it; closed, it is clipped to nothing and hidden, which takes it out of reach of focus, presses and assistive tech. */}
+      <view aria-hidden={!open || undefined} data-testid={testId && `${testId}-body`} className={cx(r.box.base, !open && r.box.closed)}>
+        <view className={cx(r.body.base, inGroup && r.body.inGroup)}>{children}</view>
+      </view>
     </view>
   );
 }

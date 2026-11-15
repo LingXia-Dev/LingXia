@@ -9,6 +9,7 @@ export const detailsParts = {
   label: 'text',
   description: 'text',
   chevron: 'vector',
+  box: 'view',
   body: 'view',
 } as const;
 
@@ -19,8 +20,9 @@ export const detailsRecipe = {
     /** One rung up from what it sits on; inside an overlay it takes the overlay's surface. */
     layer: { page: 'bg-surface', overlay: 'bg-surface-overlay' } satisfies Record<Layer, string>,
   },
+  /** A row moves with the one above it as that one opens or closes. */
   root: {
-    base: '',
+    base: 'transition-layout duration-200 ease-out',
   },
   summary: {
     base: 'flex-row items-center gap-3 min-h-control-lg py-2.5 text-start transition-colors duration-150 ease-out hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7 disabled:opacity-40',
@@ -44,8 +46,13 @@ export const detailsRecipe = {
     base: 'size-5 shrink-0 text-muted transition-transform duration-200 ease-out',
     open: '-rotate-180',
   },
+  /** The body's clip: it grows from nothing to the body's height and back; under reduced motion it changes at once. */
+  box: {
+    base: 'overflow-hidden transition-[height] duration-200 ease-out motion-reduce:transition-none',
+    closed: 'h-0',
+  },
   body: {
-    base: 'pb-4 gap-2 transition duration-200 ease-out starting:opacity-0 motion-safe:starting:-translate-y-1',
+    base: 'pb-4 gap-2',
     inGroup: 'px-4',
   },
 } as const;

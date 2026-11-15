@@ -2,15 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderExample } from '../testing/harness.mjs';
 
-test('Single: the summary is a button named by the label that announces its expanded state; the body exists only while open', async () => {
+test('Single: the summary is a button named by the label that announces its expanded state; the closed body is clipped to nothing and hidden', async () => {
   const screen = await renderExample('Details/Details', 'Single');
   const summary = screen.getByTestId('active-summary');
   assert.equal(summary.tag, 'button');
   assert.equal(summary.props.stateExpanded, 0);
-  assert.equal(screen.queryAll(node => node.testId === 'active-body').length, 0);
+  const body = () => screen.getByTestId('active-body');
+  assert.deepEqual([body().props.height, body().props.overflow, body().props.accessibilityHidden], [0, 'hidden', 1]);
   screen.press(summary);
   assert.equal(screen.getByTestId('active-summary').props.stateExpanded, 1);
-  screen.getByTestId('active-body');
+  assert.deepEqual([body().props.height, body().props.accessibilityHidden], [undefined, undefined], 'open: its own height, and read');
+  assert.ok(String(body().props.transition).includes('height') || String(body().props.transition).includes('size'), 'the box animates its height');
 });
 
 test('Accordion: opening one row closes the open one; closing it leaves none open', async () => {
@@ -43,4 +45,13 @@ test('Sections: a named group the app controls; a row carries an icon and a seco
   screen.press(summary('privacy'));
   assert.equal(summary('privacy').props.stateExpanded, 0, 'the open row closes, and none is open');
   assert.equal(summary('billing').props.onClick, undefined);
+});
+
+test('WithForm: what is typed inside a row is kept while the row is closed', async () => {
+  const screen = await renderExample('Details/Details', 'WithForm');
+  screen.press(screen.getByTestId('form-summary'));
+  screen.type(screen.getByTestId('form-name'), 'Kai');
+  screen.press(screen.getByTestId('form-summary'));
+  assert.equal(screen.getByTestId('form-body').props.accessibilityHidden, 1);
+  assert.equal(screen.getByTestId('form-name').props.inputValue, 'Kai');
 });

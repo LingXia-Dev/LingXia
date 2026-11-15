@@ -18,7 +18,8 @@ export const doc: ComponentDoc = {
     { part: 'icon', required: false, description: '`startIcon`, before the label; not read.' },
     { part: 'description', required: false, description: 'A second line under the label, read with it.' },
     { part: 'chevron', required: true, description: 'Turns over as the row opens.' },
-    { part: 'body', required: false, description: 'The content, which exists only while open.' },
+    { part: 'box', required: true, description: 'The clip around the body: no height while closed, the body\'s height while open.' },
+    { part: 'body', required: false, description: 'The content; it stays in the page while closed, hidden and out of reach.' },
   ],
   accessibility: {
     pattern: 'button',
@@ -29,7 +30,9 @@ export const doc: ComponentDoc = {
     target: { lg: 48 },
     contrast: [{ what: 'summary text', pair: ['text', 'surface'], minimum: '4.5:1' }],
     notes: [
-      'Closed content does not exist, so a search or a screen reader reaches it only once it is open.',
+      'Closed content stays in the page but is hidden and clipped to nothing: focus, a press and a screen reader reach it only once it is open.',
+      'What is typed or chosen inside a row is kept while the row is closed.',
+      'The body grows open and shut; under reduced motion it changes at once. In a group the rows below move with it; what follows a row on its own jumps unless it takes `transition-layout`.',
       'In an exclusive group, closing the open row leaves none open.',
     ],
   },
@@ -48,17 +51,13 @@ export const doc: ComponentDoc = {
     { name: 'Accordion', title: 'An accordion' },
     { name: 'Independent', title: 'Rows that open on their own' },
     { name: 'Sections', title: 'Sections with an icon and a second line' },
+    { name: 'WithForm', title: 'A field inside a row' },
   ],
   gaps: [
     {
       missing: 'Liuli on the Details primitive.',
       needs: 'a `<Summary>` that can drop or move its start marker, and whose inner row stretches to the button\'s width',
       today: 'Liuli builds the same button with aria-expanded, so the chevron can sit at the end.',
-    },
-    {
-      missing: 'A body that grows open instead of appearing.',
-      needs: 'height transitions, or a layout motion that animates size',
-      today: 'The body fades and drops in; the rows below jump.',
     },
   ],
   related: ['Item', 'Card'],
@@ -74,6 +73,7 @@ export const doc: ComponentDoc = {
         { name: 'Accordion', title: 'An accordion: one row open at a time' },
         { name: 'Independent', title: 'A group whose rows open on their own' },
         { name: 'Sections', title: 'An icon and a second line on each row; the app holds which is open; one row is disabled' },
+        { name: 'WithForm', title: 'A field inside: what is typed is kept while the row is closed' },
       ],
       states: [
         { name: 'StateClosed', title: 'Closed' },

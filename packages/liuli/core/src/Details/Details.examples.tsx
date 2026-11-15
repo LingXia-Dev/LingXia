@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { TextInput } from '../TextInput/TextInput';
 import { Details, DetailsGroup } from './Details';
 
 const surface = 'gap-1 rounded-container border border-text/12 bg-surface px-5 pt-4 pb-1';
@@ -79,5 +80,15 @@ export function Specimen() {
       <Details label="Shipping" isDefaultOpen><text className="text-footnote text-muted">Free over €40.</text></Details>
       <Details label="Returns"><text className="text-footnote text-muted">30 days.</text></Details>
     </DetailsGroup>
+  );
+}
+
+/** A row with a field inside: what is typed is kept while the row is closed, and a closed row's field is out of reach. */
+export function WithForm() {
+  const name = useLocal('name', '');
+  return (
+    <Details label="Add a nickname" description={name.value === '' ? 'None yet' : name.value} data-testid="form">
+      <TextInput bind={name} label="Nickname" placeholder="Shown beside your name" data-testid="form-name" />
+    </Details>
   );
 }

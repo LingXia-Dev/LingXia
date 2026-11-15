@@ -100,6 +100,24 @@ export function Sections() {
 }
 ```
 
+### A field inside a row
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { TextInput } from '@liulidesign/core/TextInput';
+import { Details } from '@liulidesign/core/Details';
+
+/** A row with a field inside: what is typed is kept while the row is closed, and a closed row's field is out of reach. */
+export function WithForm() {
+  const name = useLocal('name', '');
+  return (
+    <Details label="Add a nickname" description={name.value === '' ? 'None yet' : name.value} data-testid="form">
+      <TextInput bind={name} label="Nickname" placeholder="Shown beside your name" data-testid="form-name" />
+    </Details>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -125,7 +143,8 @@ export function Sections() {
 | icon | `<vector>` | no | `startIcon`, before the label; not read. |
 | description | `<text>` | no | A second line under the label, read with it. |
 | chevron | `<vector>` | yes | Turns over as the row opens. |
-| body | `<view>` | no | The content, which exists only while open. |
+| box | `<view>` | yes | The clip around the body: no height while closed, the body's height while open. |
+| body | `<view>` | no | The content; it stays in the page while closed, hidden and out of reach. |
 
 ## Accessibility
 
@@ -135,7 +154,9 @@ export function Sections() {
 - States: expanded (from isOpen, isDefaultOpen, or the group's open row).
 - Enter, Space: Opens or closes the row..
 - Press target: lg 48 px.
-- Closed content does not exist, so a search or a screen reader reaches it only once it is open.
+- Closed content stays in the page but is hidden and clipped to nothing: focus, a press and a screen reader reach it only once it is open.
+- What is typed or chosen inside a row is kept while the row is closed.
+- The body grows open and shut; under reduced motion it changes at once. In a group the rows below move with it; what follows a row on its own jumps unless it takes `transition-layout`.
 - In an exclusive group, closing the open row leaves none open.
 
 | Contrast | Pair | Minimum | Light | Dark |
@@ -156,6 +177,5 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
 | Liuli on the Details primitive. | a `<Summary>` that can drop or move its start marker, and whose inner row stretches to the button's width | Liuli builds the same button with aria-expanded, so the chevron can sit at the end. |
-| A body that grows open instead of appearing. | height transitions, or a layout motion that animates size | The body fades and drops in; the rows below jump. |
 
 Related: Item, Card.
