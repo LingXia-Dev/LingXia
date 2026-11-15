@@ -73,8 +73,12 @@ export const barChartRecipe = {
     base: 'text-footnote text-muted tabular-nums whitespace-nowrap',
   },
   labels: {
-    all: 'flex-row pt-3',
-    ends: 'flex-row justify-between pt-3',
+    row: 'pt-3',
+    fit: 'flex-row pt-3',
+    // The labels drawn until the row is measured, over the same line.
+    cover: 'absolute inset-0',
+    all: 'flex-row',
+    ends: 'flex-row justify-between',
   },
   label: {
     base: 'text-caption text-muted tabular-nums',

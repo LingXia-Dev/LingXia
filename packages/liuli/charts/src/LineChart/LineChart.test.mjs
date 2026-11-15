@@ -35,7 +35,7 @@ test('Weight: the summary, then every row as a list item with its formatted valu
   assert.equal(list.children.length, 8);
   assert.ok(list.children.every(item => item.props.role === 'listitem'));
   assert.equal(textOf(list.children[4]), '3 Nov: 71.2 kg');
-  const ends = screen.queryAll(node => node.tag === 'text' && node.props.fontSize === 12).map(node => node.text);
+  const ends = screen.queryAll(node => node.tag === 'text' && node.props.fontSize === 12 && node.props.opacity !== 0).map(node => node.text);
   assert.deepEqual(ends, ['6 Oct', '24 Nov']);
   assert.ok(unread(screen.getByText('24 Nov')));
 });
@@ -56,7 +56,7 @@ test('Weight: the scale is two round numbers at the start edge, level with a hai
   assert.equal(end.children[1].props.height, 0);
   assert.equal(JSON.parse(end.children[1].children[0].props.transform).translate[1], '-50%', 'the figure is centred on the value\'s height');
   // Under the plot, unseen copies of the scale and the end figure inset the category labels as much.
-  const ghosts = screen.getByText('6 Oct').parent.parent.children.filter(node => node.props.height === 0);
+  const ghosts = screen.getByText('6 Oct').parent.parent.parent.children.filter(node => node.props.height === 0);
   assert.deepEqual(ghosts.map(textOf), ['72.5 kg', '70.5 kg']);
 });
 
@@ -66,7 +66,7 @@ test('hasScale off fits the data exactly; the smallest size is bare; several ser
     const rows = [{ t: 'a', v: 3, w: 40 }, { t: 'b', v: 7, w: 20 }, { t: 'c', v: 5, w: 30 }];
     export function render() { return <page><LineChart data={rows} x="t" label="Chart" ${props} /></page>; }
   `;
-  const texts = screen => screen.queryAll(node => node.tag === 'text' && node.props.role !== 'listitem').map(node => node.text);
+  const texts = screen => screen.queryAll(node => node.tag === 'text' && node.props.role !== 'listitem' && node.props.opacity !== 0).map(node => node.text);
   const bare = await renderPage(page('y="v" hasScale={false}'));
   assert.deepEqual(points(drawing(bare).paths[0].d).map(point => point[1]), [100, 0, 50]);
   assert.deepEqual(texts(bare), ['a', 'c']);
@@ -103,20 +103,93 @@ test('Series: lines differ by dash as well as colour, and the legend repeats bot
   assert.equal(screen.getByTestId('plans-legend-free').props.statePressed, 0);
 });
 
-test('Selected: the chosen row gets a rule and a dot on each line, and the readout follows the control beside it', async () => {
+const marker = screen => JSON.parse(screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1)[1].props.vectorSource).paths;
+const readout = screen => textOf(screen.queryAll(node => node.props.role === 'status')[0]);
+const plot = { width: 308, height: 112 };
+const touch = (screen, phase, x) => screen.pointer(screen.getByTestId('picked-plot'), { phase, x, y: 40, ...plot });
+
+test('Selected: the chosen row gets a rule and a dot on each line in a drawing of its own, and the readout names it', async () => {
   const screen = await renderExample('LineChart/LineChart', 'Selected');
-  const marks = () => drawing(screen).paths;
-  assert.equal(marks()[0].d, 'M60 0V100', 'April is the fourth of six');
-  assert.equal(marks()[0].stroke, 'text/20');
-  const dots = () => marks().filter(path => path.strokeWidth === 8);
-  assert.equal(dots().length, 3);
-  assert.ok(dots().every(dot => dot.d.startsWith('M60 ')));
-  const readout = () => textOf(screen.queryAll(node => node.props.role === 'status')[0]);
-  assert.equal(readout(), 'AprFree492Team171Pro88');
-  screen.press(screen.getByTestId('month-Jun'));
-  assert.equal(readout(), 'JunFree561Team236Pro121');
-  assert.equal(marks()[0].d, 'M100 0V100');
+  assert.equal(marker(screen)[0].d, 'M60 0V100', 'April is the fourth of six');
+  assert.equal(marker(screen)[0].stroke, 'text/20');
+  const dots = marker(screen).filter(path => path.strokeWidth === 8);
+  assert.equal(dots.length, 3);
+  assert.ok(dots.every(dot => dot.d.startsWith('M60 ')));
+  assert.equal(readout(screen), 'AprFree492Team171Pro88');
+  assert.equal(drawing(screen).paths.some(path => path.strokeWidth === 8 || path.stroke === 'text/20'), false, 'the lines hold no marker');
   assert.equal(screen.queryAll(node => node.props.role === 'list' && node.props.accessibilityLabel === 'Accounts by plan and month').length, 1, 'no legend: only the reading');
+});
+
+test('Selected: a drag across the plot chooses the nearest row; a touch that only lands chooses nothing, so a scroll can still take it', async () => {
+  const screen = await renderExample('LineChart/LineChart', 'Selected');
+  const lines = drawing(screen).paths;
+  assert.equal(screen.getByTestId('picked-plot').props.pointerAxis, 'x', 'vertical movement stays with the page');
+  touch(screen, 'down', 20);
+  assert.equal(readout(screen), 'AprFree492Team171Pro88', 'landing changes nothing');
+  screen.pointer(screen.getByTestId('picked-plot'), { phase: 'move', x: 24, y: 90, ...plot });
+  assert.equal(readout(screen), 'AprFree492Team171Pro88', 'a drag that runs more down than across is the page\'s scroll');
+  touch(screen, 'move', 70);
+  assert.equal(readout(screen), 'FebFree455Team131Pro71');
+  touch(screen, 'cancel', 70);
+  assert.equal(readout(screen), 'AprFree492Team171Pro88', 'a press the page takes after all puts the choice back');
+  touch(screen, 'down', 20);
+  touch(screen, 'move', 70);
+  assert.equal(readout(screen), 'FebFree455Team131Pro71', 'six points across 300 pt inside the 4 pt inset: 70 is nearest the second');
+  assert.equal(marker(screen)[0].d, 'M20 0V100');
+  touch(screen, 'move', 400);
+  assert.equal(readout(screen), 'JunFree561Team236Pro121', 'past the edge it stays on the last row');
+  touch(screen, 'up', -30);
+  assert.equal(readout(screen), 'JanFree410Team120Pro64');
+  assert.deepEqual(drawing(screen).paths, lines, 'a scrub redraws the marker, never the lines');
+  touch(screen, 'up', 184);
+  assert.equal(readout(screen), 'AprFree492Team171Pro88', 'a tap chooses where it lifts');
+});
+
+test('Selected: a mouse chooses as it moves and clears as it leaves; arrows and a screen reader step from the chosen row', async () => {
+  const screen = await renderExample('LineChart/LineChart', 'Selected');
+  const scrubber = () => screen.getByTestId('picked-plot');
+  assert.equal(scrubber().props.accessibilityLabel, 'Accounts by plan and month');
+  assert.deepEqual([scrubber().props.ariaValueNow, scrubber().props.ariaValueMin, scrubber().props.ariaValueMax, scrubber().props.ariaValueText], [3, 0, 5, 'Apr: Free 492, Team 171, Pro 88']);
+  screen.pointer(scrubber(), { phase: 'hover', x: 4, y: 10, ...plot, pointer: 'mouse' });
+  assert.equal(readout(screen), 'JanFree410Team120Pro64');
+  screen.pointer(scrubber(), { phase: 'leave', x: -5, y: 10, ...plot, pointer: 'mouse' });
+  assert.equal(readout(screen), '', 'the line is kept, empty');
+  assert.equal(screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1).length, 1, 'no marker');
+  const step = phase => screen.pointer(scrubber(), { phase, x: 0, y: 0, width: 0, height: 0, pointer: 'keyboard' });
+  step('decrement');
+  assert.equal(readout(screen), 'MayFree530Team204Pro97', 'with nothing chosen it rests on the latest row, so one step back is May');
+  step('increment');
+  step('increment');
+  assert.equal(readout(screen), 'JunFree561Team236Pro121', 'and stops at the end');
+});
+
+test('category labels: every label that fits is written under its point; a narrow chart thins them evenly and keeps the ends when it can', async () => {
+  const page = (count, props = '') => `
+    import { LineChart } from '@liulidesign/charts/LineChart';
+    const rows = Array.from({ length: ${count} }, (_, index) => ({ t: 'Day ' + (index + 1), v: index }));
+    export function render() { return <page><LineChart data={rows} x="t" y="v" label="Chart" ${props} /></page>; }
+  `;
+  const labels = screen => screen.queryAll(node => node.tag === 'text' && node.props.fontSize === 12 && node.props.opacity !== 0);
+  const measure = (screen, width, tick) => {
+    const ghost = screen.queryAll(node => node.tag === 'text' && node.props.fontSize === 12 && node.props.opacity === 0)[0];
+    screen.layout(ghost.parent, { width, height: 16 });
+    screen.layout(screen.queryAll(node => node.tag === 'text' && node.props.fontSize === 12 && node.props.opacity === 0)[0], { width: tick, height: 16 });
+  };
+  const seven = await renderPage(page(7));
+  assert.deepEqual(labels(seven).map(node => node.text), ['Day 1', 'Day 7'], 'before the row is measured: the ends');
+  measure(seven, 308, 28);
+  assert.deepEqual(labels(seven).map(node => node.text), ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7']);
+  assert.deepEqual(labels(seven).map(node => node.props.insetLeft), [0, 40, 90, 140, 190, 240, 280], 'each centred on its point, 50 pt apart inside the 4 pt inset; the ends held inside the row');
+  assert.deepEqual(labels(seven).map(node => node.props.textAlign), ['start', 'center', 'center', 'center', 'center', 'center', 'end']);
+  assert.ok(labels(seven).every(node => node.props.width === 28));
+  measure(seven, 308, 36);
+  assert.deepEqual(labels(seven).map(node => node.text), ['Day 1', 'Day 3', 'Day 5', 'Day 7'], 'an end label is held half its width nearer its neighbour, so every second: it reaches both ends');
+  const eight = await renderPage(page(8));
+  measure(eight, 308, 40);
+  assert.deepEqual(labels(eight).map(node => node.text), ['Day 2', 'Day 4', 'Day 6', 'Day 8'], 'no step reaches both ends of eight, so the count runs back from the latest');
+  const ends = await renderPage(page(7, 'xLabels="ends"'));
+  assert.equal(ends.queryAll(node => node.tag === 'text' && node.props.opacity === 0 && node.props.fontSize === 12).length, 0, 'nothing is measured');
+  assert.deepEqual(labels(ends).map(node => node.text), ['Day 1', 'Day 7']);
 });
 
 test('Gaps: a row without a number breaks the line and is left out of the reading', async () => {

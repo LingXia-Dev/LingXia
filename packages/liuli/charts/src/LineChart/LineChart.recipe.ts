@@ -3,6 +3,7 @@ export const lineChartParts = {
   scale: 'view',
   scaleLabel: 'text',
   plot: 'view',
+  scrubber: 'view',
   rule: 'view',
   drawing: 'vector',
   reading: 'view',
@@ -36,6 +37,9 @@ export const lineChartRecipe = {
   plot: {
     base: 'relative grow basis-0 min-w-0',
   },
+  scrubber: {
+    base: 'absolute inset-0 rounded-[4px]',
+  },
   rule: {
     top: 'absolute start-0 end-0 top-[4px] h-px bg-text/8',
     bottom: 'absolute start-0 end-0 bottom-0 h-px bg-text/12',
@@ -43,6 +47,7 @@ export const lineChartRecipe = {
   },
   drawing: {
     base: 'w-full grow object-fill px-[4px]',
+    over: 'absolute inset-0 h-full',
   },
   reading: {
     base: 'sr-only',
@@ -67,6 +72,7 @@ export const lineChartRecipe = {
   labels: {
     base: 'flex-row pt-3',
     ends: 'grow basis-0 flex-row justify-between',
+    cover: 'absolute inset-0 flex-row justify-between',
   },
   label: {
     base: 'text-caption text-muted tabular-nums',

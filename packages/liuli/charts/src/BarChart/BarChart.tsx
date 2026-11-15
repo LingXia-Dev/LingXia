@@ -1,11 +1,13 @@
-import { cx, type VectorPath } from '@lingxia/view';
+import { cx, type PointerEvent, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
-import { box, roundUp } from '../internal/geometry';
+import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
+import { box, indexAt, roundUp } from '../internal/geometry';
+import { Ticks } from '../internal/Ticks';
 import { remember } from '../internal/memo';
 import { barChartRecipe as r } from './BarChart.recipe';
 
-export type BarChartLabels = 'all' | 'ends' | 'none';
+export type BarChartLabels = 'fit' | 'all' | 'ends' | 'none';
 export type BarChartValueLabels = 'auto' | 'always' | 'none';
 
 export interface BarChartProps {
@@ -25,7 +27,10 @@ export interface BarChartProps {
   formatValue?: (value: number) => string;
   /** Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. */
   summarize?: ChartSummarize;
-  /** Category labels under the bars: every one, or the first and last. By default every one up to seven bars. */
+  /**
+   * Category labels under the bars: `fit` writes as many as fit side by side, each under its
+   * bar; `all` every one, cut short where it is too long; `ends` the first and last. @default 'fit'
+   */
   xLabels?: BarChartLabels;
   /**
    * How the chart shows its scale. `auto` writes each value over its bar up to eight bars of one
@@ -39,7 +44,10 @@ export interface BarChartProps {
   legendLabel?: string;
   /** The chosen row's key; its bars keep their colour and the rest step back. */
   selectedKey?: string | null;
-  /** Makes each category a button; runs with its key, or `null` when the chosen one is pressed again. Up to 36 categories. */
+  /**
+   * Makes each category a button, up to 36 of them; runs with its key, or `null` when the chosen
+   * one is pressed again. A drag across the bars chooses each it passes.
+   */
   onSelect?: (key: string | null) => void;
   /** Series fields not drawn at present. @default [] */
   hiddenSeries?: readonly string[];
@@ -127,7 +135,7 @@ export function BarChart({
   const [high, depth] = scale === 'ends' ? reach.map(roundUp) : reach;
   const isSigned = depth > 0;
   const isPressable = onSelect !== undefined && data.length <= maxPressable;
-  const labels = xLabels ?? (data.length <= maxLabelled ? 'all' : 'ends');
+  const labels = xLabels ?? 'fit';
   const chosen = data.findIndex((row, index) => keyOf(row, keyField ?? x, index) === selectedKey);
   // Narrow bars take the small corner: many bars, or the smallest plot, where a slot is a few points wide.
   const density = data.length >= denseFrom || size === 'xs' ? 'dense' : 'regular';
@@ -139,6 +147,26 @@ export function BarChart({
     .filter(series => Number.isFinite(numberOf(row, series.field)))
     .map(series => (series.label ? `${series.label} ${formatValue(numberOf(row, series.field))}` : formatValue(numberOf(row, series.field))))
     .join(', ');
+
+  const keyAt = (index: number) => keyOf(data[index], keyField ?? x, index);
+  // With nothing chosen a plot too dense for buttons rests on its last category.
+  const rest = chosen >= 0 ? chosen : data.length - 1;
+  const scrub = onSelect && data.length > 0 ? (event: PointerEvent) => {
+    const { phase } = event;
+    const current = chosen >= 0 ? keyAt(chosen) : null;
+    let index: number;
+    if (phase === 'increment' || phase === 'decrement') index = Math.min(data.length - 1, Math.max(0, rest + (phase === 'increment' ? 1 : -1)));
+    // The page took the press for a scroll: what it chose on the way is put back.
+    else if (phase === 'cancel') return pressedKey() === current ? undefined : onSelect(pressedKey());
+    else {
+      index = indexAt(event.x, event.width, data.length, 'slots');
+      if (phase === 'down') pressed(event, index, current);
+      // A press that stays on its bar is the button's; one that lifts on a plot without buttons chooses there.
+      if (phase === 'move' ? !scrubbing(event) || index === pressedIndex() : !(phase === 'up' && !isPressable)) return undefined;
+      leftPressed();
+    }
+    return index === chosen ? undefined : onSelect(keyAt(index));
+  } : undefined;
 
   // One element per category: its name and values for assistive tech, and its press target.
   // With figures over the bars it also holds the figure, level with its bar's free end.
@@ -174,6 +202,17 @@ export function BarChart({
   );
   const [wrapUp, wrapDown] = [r.wrap.up[density], r.wrap.down[density]];
 
+  const row = (which: 'all' | 'ends', className: string) => (which === 'all' ? (
+    <view className={cx(className, r.labels.all)}>
+      {data.map((each, index) => <text key={keyAt(index)} className={cx(r.label.base, r.label.cell)}>{textOf(each, x)}</text>)}
+    </view>
+  ) : (
+    <view className={cx(className, r.labels.ends)}>
+      <text className={r.label.base}>{textOf(data[0], x)}</text>
+      <text className={r.label.base}>{textOf(data[data.length - 1], x)}</text>
+    </view>
+  ));
+
   const picked = chosen >= 0 ? data[chosen] : undefined;
   return (
     <Chart
@@ -207,16 +246,11 @@ export function BarChart({
           data-testid={testId === undefined ? undefined : `${testId}-legend`}
         />
       )}
-      axis={labels === 'none' || !data.length ? undefined : labels === 'all' ? (
-        <view className={r.labels.all}>
-          {data.map((row, index) => <text key={keyOf(row, keyField ?? x, index)} className={cx(r.label.base, r.label.cell)}>{textOf(row, x)}</text>)}
+      axis={labels === 'none' || !data.length ? undefined : labels === 'fit' ? (
+        <view className={r.labels.fit}>
+          <Ticks texts={data.map(row => textOf(row, x))} layout="slots">{row(data.length <= maxLabelled ? 'all' : 'ends', r.labels.cover)}</Ticks>
         </view>
-      ) : (
-        <view className={r.labels.ends}>
-          <text className={r.label.base}>{textOf(data[0], x)}</text>
-          <text className={r.label.base}>{textOf(data[data.length - 1], x)}</text>
-        </view>
-      )}
+      ) : row(labels, r.labels.row)}
     >
       {scale === 'ends' && <text aria-hidden className={r.scale.base}>{formatValue(high)}</text>}
       <view className={cx(r.plot.base, scale === 'ends' && r.plot.ruled, scale === 'ends' && isSigned && r.plot.floored)}>
@@ -234,7 +268,15 @@ export function BarChart({
             </view>
           )}
         </view>
-        <view role={isPressable ? undefined : 'list'} aria-label={isPressable ? undefined : label} className={r.slots.base}>{slots}</view>
+        <view
+          role={isPressable ? undefined : 'list'}
+          aria-label={isPressable ? undefined : label}
+          className={r.slots.base}
+          {...(scrub ? { onPointer: scrub, pointerAxis: 'x' as const, 'data-testid': testId === undefined ? undefined : `${testId}-plot` } : {})}
+          {...(scrub && !isPressable ? { 'aria-valuenow': rest, 'aria-valuemin': 0, 'aria-valuemax': data.length - 1, 'aria-valuetext': `${textOf(data[rest], x)}: ${reading(data[rest])}` } : {})}
+        >
+          {slots}
+        </view>
       </view>
       {scale === 'ends' && isSigned && <text aria-hidden className={r.scale.base}>{formatValue(-depth)}</text>}
     </Chart>

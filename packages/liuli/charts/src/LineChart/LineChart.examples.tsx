@@ -1,5 +1,4 @@
 import { useLocal } from '@lingxia/view';
-import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
 import { summarize } from '../summary/en';
 import { LineChart } from './LineChart';
 
@@ -70,15 +69,10 @@ export function Series() {
   );
 }
 
-/** The chart cannot be scrubbed yet, so a control beside it chooses the month it reads out. */
+/** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */
 export function Selected() {
-  const month = useLocal('month', 'Apr');
-  return (
-    <view className="gap-4">
-      <LineChart data={plans} x="month" y={series} label="Accounts by plan and month" selectedKey={month.value} legend="none" size="sm" data-testid="picked" />
-      <SegmentedControl label="Month" value={month.value} onChange={month.set} options={plans.map(row => ({ value: row.month, label: row.month }))} size="sm" data-testid="month" />
-    </view>
-  );
+  const month = useLocal<string | null>('month', 'Apr');
+  return <LineChart data={plans} x="month" y={series} label="Accounts by plan and month" selectedKey={month.value} onSelect={month.set} legend="none" size="sm" data-testid="picked" />;
 }
 
 const readings = [

@@ -1,9 +1,13 @@
-import { cx, type VectorPath } from '@lingxia/view';
+import { cx, type PointerEvent, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
-import { box, closed, domain, dot, monotone, polyline, roundRange, runs, scaleY, thin, type Point } from '../internal/geometry';
+import { pressed, pressedKey, scrubbing } from '../internal/gesture';
+import { box, closed, domain, dot, indexAt, monotone, polyline, roundRange, runs, scaleY, thin, type Point } from '../internal/geometry';
+import { Ticks } from '../internal/Ticks';
 import { remember } from '../internal/memo';
 import { lineChartRecipe as r } from './LineChart.recipe';
+
+export type LineChartLabels = 'fit' | 'ends' | 'none';
 
 export interface LineChartProps {
   /** The rows, one per point in time, oldest first. */
@@ -35,14 +39,22 @@ export interface LineChartProps {
   hasScale?: boolean;
   /** Writes the latest value at the end of the line. One series only. @default false */
   hasEndLabel?: boolean;
-  /** The first and last category under the plot, or none. By default `ends`, except at the `xs` size. */
-  xLabels?: 'ends' | 'none';
+  /**
+   * Category labels under the plot: `fit` writes as many as fit side by side, each under its
+   * point; `ends` the first and last. By default `fit`, except at the `xs` size.
+   */
+  xLabels?: LineChartLabels;
   /** Shown when there is more than one series. @default 'bottom' */
   legend?: ChartLegendPosition;
   /** The legend's accessible name; by default the chart's `label`. */
   legendLabel?: string;
   /** The row to mark with a rule and a dot on each line, and to read out above the plot. */
   selectedKey?: string | null;
+  /**
+   * Makes the plot a scrubber: a finger dragged across it, a tap, a mouse moving over it and the
+   * arrow keys choose the nearest row and run this with its key; a mouse leaving runs it with `null`.
+   */
+  onSelect?: (key: string | null) => void;
   /** Series fields not drawn at present. @default [] */
   hiddenSeries?: readonly string[];
   /** Makes each legend entry a button that shows or hides its series. */
@@ -68,13 +80,15 @@ const dashes: readonly (readonly number[])[] = [[], [6, 4], [2, 3], [9, 3, 2, 3]
 const strokeWidth = 2;
 const dotWidth = 6;
 const selectedWidth = 8;
+// Half a marker: the drawing's first and last points sit this far inside the plot.
+const edge = 4;
 // Past this many rows a screen reader gets the summary alone; a longer list is not a reading.
 const maxRead = 60;
 
 /** A number over time, as a line that fits its data, or as an area measured from zero. */
 export function LineChart({
   data, x, y, keyField, label, title, description, formatValue: format, summarize, isSmooth = false, hasArea = false, hasEndDot = true,
-  hasScale, hasEndLabel = false, xLabels, legend = 'bottom', legendLabel, selectedKey, hiddenSeries = [], onHiddenSeriesChange,
+  hasScale, hasEndLabel = false, xLabels, legend = 'bottom', legendLabel, selectedKey, onSelect, hiddenSeries = [], onHiddenSeriesChange,
   domainMin, domainMax, size = 'md', isLoading = false, error, emptyLabel, className, 'data-testid': testId,
 }: LineChartProps) {
   const formatValue = format ?? plain;
@@ -88,18 +102,17 @@ export function LineChart({
   // With the scale written out, the plot's top and bottom are round numbers.
   const range = isScaled && facts.length ? roundRange(fitted) : fitted;
   const latest = shown.length === 1 && hasEndLabel ? facts[0]?.last : undefined;
-  const ends = (xLabels ?? (size === 'xs' ? 'none' : 'ends')) === 'ends' && data.length > 1;
+  const labels = data.length > 1 ? xLabels ?? (size === 'xs' ? 'none' : 'fit') : 'none';
   // A scale label that says what the end figure says, on the same line, is left to the end figure.
   const scale = isScaled && facts.length > 0 && [formatValue(range[1]), formatValue(range[0])].map(text => (text === latest?.text ? '' : text));
   const chosen = data.findIndex((row, index) => keyOf(row, keyField ?? x, index) === selectedKey);
   const picked = chosen >= 0 ? data[chosen] : undefined;
 
-  // The paths depend on the data, the encoding and the chosen row, never on the theme: colours are role names.
-  const paths = remember(data, 'lines', JSON.stringify([shown.map(series => [series.field, series.color, series.dash]), range, isSmooth, isArea, hasEndDot, chosen]), () => {
+  // The lines depend on the data and the encoding, never on the theme or the chosen row, so a scrub redraws only the marker.
+  const paths = remember(data, 'lines', JSON.stringify([shown.map(series => [series.field, series.color, series.dash]), range, isSmooth, isArea, hasEndDot]), () => {
     const paths: VectorPath[] = [];
     const trace = (points: readonly Point[]) => (isSmooth ? monotone(points) : polyline(points));
     const round = { fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } as const;
-    if (picked) paths.push({ d: `M${(chosen / Math.max(1, data.length - 1)) * box} 0V${box}`, stroke: 'text/20', strokeWidth: 1, fill: 'none', vectorEffect: 'non-scaling-stroke' });
     shown.forEach((series, index) => {
       const stroke = roleOf(series.color);
       const lines = runs(thin(columns[index]), range);
@@ -113,17 +126,51 @@ export function LineChart({
       if (alone.length) paths.push({ d: alone.map(points => dot(points[0])).join(''), stroke, strokeWidth: strokeWidth * 2, ...round });
       const latest = lines[lines.length - 1];
       if (hasEndDot && latest) paths.push({ d: dot(latest[latest.length - 1]), stroke, strokeWidth: dotWidth, ...round });
-      const value = picked ? numberOf(picked, series.field) : NaN;
-      if (Number.isFinite(value))
-        paths.push({ d: dot([(chosen / Math.max(1, data.length - 1)) * box, scaleY(value, range)]), stroke, strokeWidth: selectedWidth, ...round });
     });
     return paths;
   });
+
+  // The chosen row: a rule down the plot and a dot on each line.
+  const marker: VectorPath[] = [];
+  if (picked) {
+    const at = (chosen / Math.max(1, data.length - 1)) * box;
+    const round = { fill: 'none', strokeLinecap: 'round', vectorEffect: 'non-scaling-stroke' } as const;
+    marker.push({ d: `M${at} 0V${box}`, stroke: 'text/20', strokeWidth: 1, fill: 'none', vectorEffect: 'non-scaling-stroke' });
+    for (const series of shown) {
+      const value = numberOf(picked, series.field);
+      if (Number.isFinite(value)) marker.push({ d: dot([at, scaleY(value, range)]), stroke: roleOf(series.color), strokeWidth: selectedWidth, ...round });
+    }
+  }
 
   const reading = (row: ChartRow) => shown
     .filter(series => Number.isFinite(numberOf(row, series.field)))
     .map(series => (series.label ? `${series.label} ${formatValue(numberOf(row, series.field))}` : formatValue(numberOf(row, series.field))))
     .join(', ');
+
+  const named = (row: ChartRow) => (reading(row) === '' ? textOf(row, x) : `${textOf(row, x)}: ${reading(row)}`);
+  // With nothing chosen the scrubber rests on the latest row, which is what the line's end shows.
+  const rest = chosen >= 0 ? chosen : data.length - 1;
+  const scrub = onSelect && facts.length > 0 ? (event: PointerEvent) => {
+    const { phase } = event;
+    if (phase === 'leave') return chosen >= 0 ? onSelect(null) : undefined;
+    const current = chosen >= 0 ? keyOf(data[chosen], keyField ?? x, chosen) : null;
+    if (phase === 'down') pressed(event, -1, current);
+    // The page took the press for a scroll: what it chose on the way is put back.
+    if (phase === 'cancel') return pressedKey() === current ? undefined : onSelect(pressedKey());
+    // A finger chooses once it moves sideways or lifts, never as it lands.
+    if ((phase === 'down' && event.pointer === 'touch') || (phase === 'move' && !scrubbing(event))) return undefined;
+    const index = phase === 'increment' ? Math.min(data.length - 1, rest + 1)
+      : phase === 'decrement' ? Math.max(0, rest - 1)
+        : indexAt(event.x, event.width, data.length, 'points', edge);
+    return index === chosen ? undefined : onSelect(keyOf(data[index], keyField ?? x, index));
+  } : undefined;
+
+  const ends = (className: string) => (
+    <view className={className}>
+      <text className={r.label.base}>{textOf(data[0], x)}</text>
+      <text className={r.label.base}>{textOf(data[data.length - 1], x)}</text>
+    </view>
+  );
 
   return (
     <Chart
@@ -138,10 +185,11 @@ export function LineChart({
       emptyLabel={emptyLabel}
       className={className}
       data-testid={testId}
-      readout={picked && (
+      // A chart that can be scrubbed keeps the readout's line, so choosing a row moves nothing.
+      readout={(picked || scrub) && (
         <ChartReadout
-          label={textOf(picked, x)}
-          values={shown.filter(series => Number.isFinite(numberOf(picked, series.field))).map(series => ({
+          label={picked && textOf(picked, x)}
+          values={picked && shown.filter(series => Number.isFinite(numberOf(picked, series.field))).map(series => ({
             text: formatValue(numberOf(picked, series.field)), ...(shown.length > 1 ? { label: series.label, color: series.color } : {}),
           }))}
         />
@@ -157,14 +205,11 @@ export function LineChart({
           data-testid={testId === undefined ? undefined : `${testId}-legend`}
         />
       )}
-      axis={ends ? (
+      axis={labels !== 'none' ? (
         <view className={r.labels.base}>
           {/* The plot is narrower than the chart by the scale and the end figure; the same text, unseen, insets these labels as much. */}
           {scale && <view className={cx(r.scale.base, r.ghost.base)}>{scale.map((text, index) => <text key={String(index)} className={r.scaleLabel.base}>{text}</text>)}</view>}
-          <view className={r.labels.ends}>
-            <text className={r.label.base}>{textOf(data[0], x)}</text>
-            <text className={r.label.base}>{textOf(data[data.length - 1], x)}</text>
-          </view>
+          {labels === 'fit' ? <Ticks texts={data.map(row => textOf(row, x))} layout="points" inset={edge}>{ends(r.labels.cover)}</Ticks> : ends(r.labels.ends)}
           {latest && <view className={cx(r.end.base, r.ghost.base)}><text className={r.endLabel.base}>{latest.text}</text></view>}
         </view>
       ) : undefined}
@@ -180,9 +225,24 @@ export function LineChart({
           {scale && <view aria-hidden className={r.rule.top} />}
           <view aria-hidden className={cx(r.rule.bottom, !isArea && r.rule.open)} />
           {paths.length > 0 && <vector aria-hidden paths={paths} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, r.inset.base, !isArea && r.inset.open)} />}
+          {marker.length > 0 && <vector aria-hidden paths={marker} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, r.drawing.over, r.inset.base, !isArea && r.inset.open)} />}
+          {/* Over the marks: it hears the pointer, and is the stop the arrow keys and a screen reader step. */}
+          {scrub && (
+            <view
+              onPointer={scrub}
+              pointerAxis="x"
+              aria-label={label}
+              aria-valuenow={rest}
+              aria-valuemin={0}
+              aria-valuemax={data.length - 1}
+              aria-valuetext={named(data[rest])}
+              data-testid={testId === undefined ? undefined : `${testId}-plot`}
+              className={r.scrubber.base}
+            />
+          )}
           {data.length <= maxRead && (
             <view role="list" aria-label={label} className={r.reading.base}>
-              {data.map((row, index) => reading(row) !== '' && <text key={keyOf(row, keyField ?? x, index)} role="listitem">{`${textOf(row, x)}: ${reading(row)}`}</text>)}
+              {data.map((row, index) => reading(row) !== '' && <text key={keyOf(row, keyField ?? x, index)} role="listitem">{named(row)}</text>)}
             </view>
           )}
         </view>

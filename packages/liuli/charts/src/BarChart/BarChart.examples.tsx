@@ -7,7 +7,7 @@ const week = [
   { day: 'Fri', orders: 187 }, { day: 'Sat', orders: 96 }, { day: 'Sun', orders: 74 },
 ];
 
-/** Tap a bar to read its value above the plot; tap it again to let go. */
+/** Tap a bar to choose it, or drag across the bars; tap the chosen bar again to let go. */
 export function Orders() {
   const day = useLocal<string | null>('day', null);
   return (

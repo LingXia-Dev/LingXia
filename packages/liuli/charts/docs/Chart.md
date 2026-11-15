@@ -187,8 +187,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Axes with tick labels that fit, and a value scale. | a laid-out box's size, readable in render (`useBox`) | The first and last category under the plot, and each value through selection and the screen-reader list. |
-| A tooltip that follows a finger or a pointer. | pointer coordinates on an element (`onPointer`) | The readout line above the plot. |
+| A value axis with ticks, and fitted labels for a plot of your own. | nothing from the View | BarChart and LineChart fit their category labels and write the ends of their scale; a plot of your own passes its labels as `axis`. |
+| A tooltip that follows a finger or a pointer. | nothing from the View | The readout line above the plot, which BarChart and LineChart fill as they are scrubbed. |
 | Marks that move between two sets of data. | animation of vector geometry | Bars change height through layout transitions; lines and slices change at once. |
 
 Related: BarChart, LineChart, PieChart, Sparkline.

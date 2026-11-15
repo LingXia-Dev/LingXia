@@ -185,3 +185,28 @@ export function roundRange([low, high]: readonly [number, number]): readonly [nu
   const step = leading(span / 4, [1, 2, 2.5, 5, 10]);
   return [exact(Math.floor(low / step + 1e-9) * step), exact(Math.ceil(high / step - 1e-9) * step)];
 }
+
+/**
+ * Which of `count` evenly spaced labels to write when neighbours are `pitch` apart and a label
+ * needs `need`: every one, or every nth counted from the `anchor` end, so a series in time keeps
+ * its latest label. A step that reaches both ends is preferred when it is under twice the
+ * smallest that fits.
+ */
+export function fitTicks(count: number, pitch: number, need: number, anchor: 'start' | 'end' = 'start'): number[] {
+  if (count <= 0) return [];
+  const least = Math.max(1, Math.ceil(need / Math.max(pitch, 1e-6) - 1e-9));
+  const from = anchor === 'end' ? count - 1 : 0;
+  if (least > count - 1) return [from];
+  let step = least;
+  for (let each = least; each <= Math.min(least * 2 - 1, count - 1); each++) if ((count - 1) % each === 0) { step = each; break; }
+  const out: number[] = [];
+  for (let index = from % step; index < count; index += step) out.push(index);
+  return out;
+}
+
+/** The datum under a pointer `x` points into a row of `count` data `width` wide: points run edge to edge inside `inset`, slots share the width. */
+export function indexAt(x: number, width: number, count: number, layout: 'points' | 'slots', inset = 0): number {
+  const span = Math.max(1, width - inset * 2);
+  const index = layout === 'points' ? Math.round(((x - inset) / span) * (count - 1)) : Math.floor((x / Math.max(1, width)) * count);
+  return Math.min(count - 1, Math.max(0, index));
+}

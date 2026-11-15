@@ -15,7 +15,7 @@ export function Content() {
         <Stage caption={"Above and below zero, on one line"}>
           <Signed />
         </Stage>
-        <Stage caption={"Thirty bars: narrower, the first and last labelled"}>
+        <Stage caption={"Thirty bars: narrower, with the labels that fit"}>
           <Month />
         </Stage>
       </PageSection>

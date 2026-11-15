@@ -14,6 +14,8 @@ export const chartParts = {
   message: 'text',
   skeleton: 'view',
   axis: 'view',
+  ticks: 'view',
+  tick: 'text',
   legend: 'view',
   legendItem: 'button',
   legendSwatch: 'view',
@@ -45,6 +47,18 @@ export const chartRecipe = {
   },
   readout: {
     base: 'min-h-[1.125rem] flex-row flex-wrap items-center gap-x-3',
+  },
+  ticks: {
+    base: 'relative grow basis-0 min-w-0',
+    // The labels a chart draws before the row is measured, over the same line.
+    cover: 'absolute inset-0 flex-row',
+  },
+  tick: {
+    base: 'text-caption text-muted tabular-nums whitespace-nowrap',
+    // The longest label, unseen: it gives the row its height and the labels their width.
+    ghost: 'self-start opacity-0',
+    placed: 'absolute top-0',
+    align: { start: 'text-start', center: 'text-center', end: 'text-end' },
   },
   readoutLabel: {
     base: 'text-footnote text-muted',

@@ -113,11 +113,10 @@ export function Series() {
 }
 ```
 
-### A row chosen from outside
+### Scrubbing chooses a row
 
 ```tsx
 import { useLocal } from '@lingxia/view';
-import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
 import { LineChart } from '@liulidesign/charts/LineChart';
 
 const plans = [
@@ -126,15 +125,10 @@ const plans = [
 ];
 const series = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];
 
-/** The chart cannot be scrubbed yet, so a control beside it chooses the month it reads out. */
+/** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */
 export function Selected() {
-  const month = useLocal('month', 'Apr');
-  return (
-    <view className="gap-4">
-      <LineChart data={plans} x="month" y={series} label="Accounts by plan and month" selectedKey={month.value} legend="none" size="sm" data-testid="picked" />
-      <SegmentedControl label="Month" value={month.value} onChange={month.set} options={plans.map(row => ({ value: row.month, label: row.month }))} size="sm" data-testid="month" />
-    </view>
-  );
+  const month = useLocal<string | null>('month', 'Apr');
+  return <LineChart data={plans} x="month" y={series} label="Accounts by plan and month" selectedKey={month.value} onSelect={month.set} legend="none" size="sm" data-testid="picked" />;
 }
 ```
 
@@ -174,10 +168,11 @@ export function Gaps() {
 | `hasEndDot` | `boolean` | `true` | Marks each line's latest value with a dot. |
 | `hasScale` | `boolean` |  | Shows the scale: the top and bottom of the value range, as round numbers, at the start edge with a hairline at the top. By default on, except at the `xs` size. |
 | `hasEndLabel` | `boolean` | `false` | Writes the latest value at the end of the line. One series only. |
-| `xLabels` | `"ends" \| "none"` |  | The first and last category under the plot, or none. By default `ends`, except at the `xs` size. |
+| `xLabels` | `LineChartLabels` |  | Category labels under the plot: `fit` writes as many as fit side by side, each under its point; `ends` the first and last. By default `fit`, except at the `xs` size. |
 | `legend` | `ChartLegendPosition` | `'bottom'` | Shown when there is more than one series. |
 | `legendLabel` | `string` |  | The legend's accessible name; by default the chart's `label`. |
 | `selectedKey` | `string \| null` |  | The row to mark with a rule and a dot on each line, and to read out above the plot. |
+| `onSelect` | `((key: string \| null) => void)` |  | Makes the plot a scrubber: a finger dragged across it, a tap, a mouse moving over it and the arrow keys choose the nearest row and run this with its key; a mouse leaving runs it with `null`. |
 | `hiddenSeries` | `readonly string[]` | `[]` | Series fields not drawn at present. |
 | `onHiddenSeriesChange` | `((fields: readonly string[]) => void)` |  | Makes each legend entry a button that shows or hides its series. |
 | `domainMin` | `number` |  | Widens the value range downward. A line fits its data; an area starts from zero. |
@@ -199,7 +194,7 @@ export function Gaps() {
 | end | `<view>` | no | The latest value, written at the end of the line, level with it. |
 | drawing | `<vector>` | no | The lines, the fill, the end dots and the mark on the chosen row, as one drawing; hidden from assistive tech. |
 | reading | `<view>` | no | Every row as "category: values", for assistive tech only; present up to 60 rows. |
-| labels | `<view>` | no | The first and last category under the plot. |
+| labels | `<view>` | no | Category names under the plot: as many as fit side by side, each under its point. |
 
 ## Accessibility
 
@@ -207,13 +202,16 @@ export function Gaps() {
 - Name: label.
 - Description: none.
 - States: busy (from isLoading).
+- Left and Right: With `onSelect`, on the plot: chooses the previous or next row.
 - With `summarize`, a sentence per series with its range, lowest and highest values and trend is read first.
 - Then every row is read as a list item: "3 Nov: 71.2 kg", or "Apr: Free 492, Team 171, Pro 88". Past 60 rows only the summary is read.
 - The second to fifth lines are dashed, each differently, and the legend draws the same dash, so series survive without colour.
 - The scale and the end figure are hidden from assistive tech: the same numbers are in the summary and the list.
 - The fill under an area, the hairlines and the rule on the chosen row are decoration with no contrast minimum.
-- The lines are one drawing whatever the number of points, rebuilt only for a new `data` array, encoding or chosen row.
-- The chart takes no focus: it cannot yet be pressed or scrubbed. `selectedKey` set by the app is announced through the readout.
+- The lines are one drawing whatever the number of points, rebuilt only for a new `data` array or encoding; the chosen row's rule and dots are a second, small drawing, so a scrub never redraws the lines.
+- With `onSelect` the plot is one keyboard stop named by `label`: Left and Right, and a screen reader's adjust, step through the rows, each read as "Apr: Free 492, Team 171, Pro 88". With nothing chosen it rests on the latest row.
+- A finger chooses once it moves sideways or lifts, never as it lands, so a vertical drag that starts on the chart scrolls the page. A mouse chooses as it moves over the plot and clears as it leaves.
+- The chosen row is shown in the readout line above the plot, which is announced; the line keeps its height when nothing is chosen.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
@@ -244,8 +242,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Choosing a point by pressing or scrubbing, with a crosshair and tooltip. | pointer coordinates on an element (`onPointer`) | `selectedKey` set by the app marks a row and fills the readout; there is no `onSelect`. |
-| Ticks between the ends of the scale, and time labels that fit. | a laid-out box's size, readable in render (`useBox`) | The top and bottom of the scale, the latest value, and the first and last category. |
+| A tooltip beside the chosen point. | nothing from the View | A rule and dots on the chosen row, and its values in the readout line above the plot, where a finger does not cover them. |
+| Ticks between the ends of the scale. | nothing from the View | The top and bottom of the scale and the latest value; category labels are fitted. |
+| Fitted labels and scrubbing on a host built before `useBox` and `onPointer`. | a newer host | The first and last category; `selectedKey` set by the app. |
 | A window to zoom and pan a long series. | pointer coordinates on an element (`onPointer`) | Pass the rows of the period to show. |
 | Lines that draw in and move between data. | animation of vector geometry | New data is drawn at once. |
 | Marker shapes per series. | a laid-out box's size, readable in render (`useBox`) | Dashes; a shape drawn in a stretched drawing would be distorted. |

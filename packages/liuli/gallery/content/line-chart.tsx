@@ -44,7 +44,7 @@ export function Content() {
         </StageGrid>
       </PageSection>
       <PageSection title={"In context"}>
-        <Stage caption={"A control beside the chart chooses the month it reads out"}>
+        <Stage caption={"Drag across the plot, or use the arrow keys, to read a month"}>
           <Selected />
         </Stage>
       </PageSection>

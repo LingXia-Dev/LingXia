@@ -72,8 +72,8 @@ export const doc: ComponentDoc = {
     { name: 'Readout', title: 'The readout line' },
   ],
   gaps: [
-    { missing: 'Axes with tick labels that fit, and a value scale.', needs: 'a laid-out box\'s size, readable in render (`useBox`)', today: 'The first and last category under the plot, and each value through selection and the screen-reader list.' },
-    { missing: 'A tooltip that follows a finger or a pointer.', needs: 'pointer coordinates on an element (`onPointer`)', today: 'The readout line above the plot.' },
+    { missing: 'A value axis with ticks, and fitted labels for a plot of your own.', needs: 'nothing from the View', today: 'BarChart and LineChart fit their category labels and write the ends of their scale; a plot of your own passes its labels as `axis`.' },
+    { missing: 'A tooltip that follows a finger or a pointer.', needs: 'nothing from the View', today: 'The readout line above the plot, which BarChart and LineChart fill as they are scrubbed.' },
     { missing: 'Marks that move between two sets of data.', needs: 'animation of vector geometry', today: 'Bars change height through layout transitions; lines and slices change at once.' },
   ],
   related: ['BarChart', 'LineChart', 'PieChart', 'Sparkline'],

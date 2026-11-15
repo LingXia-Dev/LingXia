@@ -56,7 +56,8 @@ test('Orders: each weekday is a button named by its day and value, carrying its 
   assert.equal(screen.queryAll(node => node.props.role === 'status').length, 0, 'every bar carries its value, so there is no readout line');
   screen.getByText('7 values from Mon to Sun. Lowest 74 at Sun, highest 187 at Fri. Falling: 132 first, 74 last.');
   const labels = screen.queryAll(node => node.tag === 'text' && ['Mon', 'Sun'].includes(node.text));
-  assert.ok(labels.every(label => label.parent.parent.props.accessibilityHidden), 'labels under the bars are not read again');
+  const unread = node => Boolean(node) && (Boolean(node.props.accessibilityHidden) || unread(node.parent));
+  assert.ok(labels.length >= 2 && labels.every(unread), 'labels under the bars are not read again');
 });
 
 test('Orders: pressing a bar chooses it; the others move to a second, fainter drawing', async () => {
@@ -119,7 +120,7 @@ test('Signed: bars below zero hang from the same line in their own drawing, with
   assert.equal(marks.props.insetBottom, 20, 'a figures\' line is kept on both sides');
 });
 
-test('Month: thirty bars are still buttons, with a smaller corner, the top of the scale and only the first and last day labelled', async () => {
+test('Month: thirty bars are still buttons, with a smaller corner, the top of the scale and, until the row is measured, the first and last day labelled', async () => {
   const screen = await renderExample('BarChart/BarChart', 'Month');
   const chart = screen.getByTestId('steps');
   const buttons = slots(chart);
@@ -129,7 +130,7 @@ test('Month: thirty bars are still buttons, with a smaller corner, the top of th
   const [chosen, others] = drawings(chart);
   assert.deepEqual([bars(chosen.paths[0].d).length, bars(others.paths[0].d).length], [1, 29]);
   assert.deepEqual([chosen.paths[0].strokeWidth, chosen.wrap.insetBottom, chosen.wrap.paddingTop], [2, -1, 1]);
-  const labels = screen.queryAll(node => node.tag === 'text' && / Jun$/.test(node.text ?? '') && node.props.fontSize === 12);
+  const labels = screen.queryAll(node => node.tag === 'text' && / Jun$/.test(node.text ?? '') && node.props.fontSize === 12 && node.props.opacity !== 0);
   assert.deepEqual(labels.map(label => label.text), ['1 Jun', '30 Jun']);
   screen.getByText('15000');
 });
@@ -138,12 +139,12 @@ test('a chart costs one element per bar and a fixed handful more, however many b
   const sized = async (length, props = '') => count((await renderPage(page(props, many(length)))).getByTestId('chart'));
   const [ten, sixty] = [await sized(10), await sized(60)];
   assert.equal(sixty - ten, 50, 'fifty more bars, fifty more elements');
-  assert.ok(sixty <= 60 + 16, `${sixty} elements for 60 bars`);
-  assert.ok(await sized(60, 'onSelect={() => {}} selectedKey="7"') <= 60 + 20, 'a choice adds one drawing and the readout');
+  assert.ok(sixty <= 60 + 19, `${sixty} elements for 60 bars`);
+  assert.ok(await sized(60, 'onSelect={() => {}} selectedKey="7"') <= 60 + 23, 'a choice adds one drawing and the readout');
   const eight = await sized(8);
-  assert.ok(eight <= 8 * 5 + 14, `${eight} elements for 8 bars with their figures`);
+  assert.ok(eight <= 8 * 5 + 17, `${eight} elements for 8 bars with their figures`);
   const grouped = count((await renderPage(page('', many(60)).replace('y="v"', 'y={[{ field: "v", label: "V" }, { field: "w", label: "W" }]}'))).getByTestId('chart'));
-  assert.ok(grouped <= 60 + 26, `${grouped} elements for 60 groups of two with a legend`);
+  assert.ok(grouped <= 60 + 29, `${grouped} elements for 60 groups of two with a legend`);
 });
 
 test('a theme change or an unrelated render draws the same outlines', async () => {
@@ -200,6 +201,77 @@ test('the readout stays where values are not on the marks: grouped bars, many ba
   assert.equal(textOf(readout(grouped)[0]), '1V2W8');
   assert.equal(readout(await renderPage(page('selectedKey="4" valueLabels="always"', many(9)))).length, 0, 'figures forced onto nine bars: no readout');
   assert.equal(textOf(readout(await renderExample('LineChart/LineChart', 'Selected'))[0]), 'AprFree492Team171Pro88');
+});
+
+test('Orders: a drag across the bars chooses each it passes; a press that stays on its bar is left to the button', async () => {
+  const screen = await renderExample('BarChart/BarChart', 'Orders');
+  const plot = () => screen.getByTestId('orders-plot');
+  const pressed = () => slots(screen.getByTestId('orders')).filter(slot => slot.props.statePressed === 1).map(slot => slot.props.accessibilityLabel);
+  const touch = (phase, x) => screen.pointer(plot(), { phase, x, y: 60, width: 280, height: 176 });
+  assert.equal(plot().props.pointerAxis, 'x', 'vertical movement stays with the page');
+  assert.equal(plot().props.ariaValueNow, undefined, 'the buttons are the keyboard path; the plot is no extra stop');
+  touch('down', 20);
+  touch('move', 30);
+  touch('up', 30);
+  assert.deepEqual(pressed(), [], 'landing, a small move inside the bar and lifting choose nothing: the button\'s click does');
+  touch('down', 20);
+  touch('move', 100);
+  assert.deepEqual(pressed(), ['Wed: 121'], 'seven slots of 40 pt');
+  touch('move', 900);
+  assert.deepEqual(pressed(), ['Sun: 74'], 'past the edge it stays on the last bar');
+  touch('move', 20);
+  assert.deepEqual(pressed(), ['Mon: 132'], 'back on the bar it started on, once it has left it');
+  touch('up', 20);
+  touch('down', 20);
+  screen.pointer(plot(), { phase: 'move', x: 62, y: 140, width: 280, height: 176 });
+  assert.deepEqual(pressed(), ['Mon: 132'], 'a drag that runs more down than across is the page\'s scroll');
+  touch('move', 150);
+  assert.deepEqual(pressed(), ['Thu: 163']);
+  touch('cancel', 150);
+  assert.deepEqual(pressed(), ['Mon: 132'], 'a press the page takes after all puts the choice back');
+  screen.pointer(plot(), { phase: 'hover', x: 150, y: 60, width: 280, height: 176, pointer: 'mouse' });
+  assert.deepEqual(pressed(), ['Mon: 132'], 'a mouse passing over chooses nothing: a click does');
+});
+
+test('past 36 categories the plot is one stop that a drag, a tap, the arrow keys and a screen reader move through', async () => {
+  const source = page('onSelect={day.set} selectedKey={day.value}', many(40))
+    .replace("import { BarChart }", "import { useLocal } from '@lingxia/view';\n  import { BarChart }")
+    .replace('export function render() {', 'export function render() { const day = useLocal("day", null);');
+  const screen = await renderPage(source);
+  const plot = () => screen.getByTestId('chart-plot');
+  const readout = () => textOf(screen.queryAll(node => node.props.role === 'status')[0]);
+  assert.deepEqual([plot().props.ariaValueNow, plot().props.ariaValueMin, plot().props.ariaValueMax, plot().props.ariaValueText], [39, 0, 39, '39: 40'], 'it rests on the last category');
+  const step = phase => screen.pointer(plot(), { phase, x: 0, y: 0, width: 0, height: 0, pointer: 'keyboard' });
+  step('decrement');
+  assert.equal(readout(), '3839');
+  assert.equal(plot().props.ariaValueText, '38: 39');
+  const touch = (phase, x) => screen.pointer(plot(), { phase, x, y: 60, width: 320, height: 176 });
+  touch('down', 4);
+  assert.equal(readout(), '3839', 'landing chooses nothing');
+  touch('up', 4);
+  assert.equal(readout(), '01', 'a tap chooses the bar it lifts on');
+  touch('down', 4);
+  touch('move', 84);
+  assert.equal(readout(), '1011');
+});
+
+test('category labels: every label once the row shows they fit, each under its bar; otherwise every nth from the first', async () => {
+  const labels = screen => screen.queryAll(node => node.tag === 'text' && node.props.fontSize === 12 && node.props.opacity !== 0);
+  const measure = (screen, width, tick) => {
+    const ghost = () => screen.queryAll(node => node.tag === 'text' && node.props.fontSize === 12 && node.props.opacity === 0)[0];
+    screen.layout(ghost().parent, { width, height: 16 });
+    screen.layout(ghost(), { width: tick, height: 16 });
+  };
+  const ten = await renderPage(page('', many(10)));
+  assert.deepEqual(labels(ten).map(node => node.text), ['0', '9'], 'before the row is measured, past seven bars: the ends');
+  measure(ten, 300, 10);
+  assert.deepEqual(labels(ten).map(node => node.text), ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
+  assert.deepEqual(labels(ten).map(node => node.props.insetLeft), [10, 40, 70, 100, 130, 160, 190, 220, 250, 280], 'centred in slots of 30 pt');
+  measure(ten, 300, 40);
+  assert.deepEqual(labels(ten).map(node => node.text), ['0', '3', '6', '9'], '48 pt a label and 5 more for the one an edge holds in, 30 pt a slot: every third lands on the last');
+  const all = await renderPage(page('xLabels="all"', many(10)));
+  assert.equal(labels(all).length, 10);
+  assert.equal(all.queryAll(node => node.tag === 'text' && node.props.fontSize === 12 && node.props.opacity === 0).length, 0, 'nothing is measured');
 });
 
 test('past 36 categories the bars are a list, not buttons; a row without a number draws no bar', async () => {

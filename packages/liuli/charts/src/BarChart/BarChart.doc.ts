@@ -21,7 +21,7 @@ export const doc: ComponentDoc = {
     { part: 'baseline', required: true, description: 'The zero line, the chart\'s only rule.' },
     { part: 'slots', required: true, description: 'The row of categories over the drawing; a list for assistive tech when the bars cannot be pressed.' },
     { part: 'slot', required: true, description: 'One category at full height: its name and values for assistive tech, its press target, and its figure when bars carry them.' },
-    { part: 'labels', required: false, description: 'Category names under the bars: all of them, or the first and last.' },
+    { part: 'labels', required: false, description: 'Category names under the bars: as many as fit side by side, each under its bar.' },
   ],
   accessibility: {
     pattern: null,
@@ -31,6 +31,7 @@ export const doc: ComponentDoc = {
     keyboard: [
       { keys: 'Tab', effect: 'Moves through the categories when they can be pressed' },
       { keys: 'Enter or Space', effect: 'Chooses the category, or lets it go' },
+      { keys: 'Left and Right', effect: 'Past 36 categories, with `onSelect`, on the plot: chooses the previous or next category' },
     ],
     contrast: [
       { what: 'first series, as a bar', pair: ['chart-1/85', 'surface'], minimum: '3:1' },
@@ -50,6 +51,7 @@ export const doc: ComponentDoc = {
       'Figures over the bars and the scale label are hidden from assistive tech: each category already reads its values.',
       'The chosen category keeps its colour and the others step back to 30%, which is not a contrast claim: the pressed state and the readout say which is chosen.',
       'A category\'s press target is its full-height slot, as wide as the plot divided by the number of categories: 41 px for seven bars at 360 pt, under 10 px for thirty. Past 36 categories the bars are not buttons.',
+      'With `onSelect`, a finger dragged across the bars chooses each it passes, and a vertical drag that starts on the chart still scrolls the page. Past 36 categories the plot is one keyboard stop instead: a tap chooses the bar it lifts on, and Left and Right or a screen reader\'s adjust step through the categories.',
       'The zero line is a quiet rule with no contrast minimum: the bars\' own feet show where zero is.',
       'A chart is one element per category and about a dozen more, whatever the number of bars; the bars themselves are two to four drawings.',
       'Series in a group differ by colour and by position, and the legend lists them in the order drawn.',
@@ -77,8 +79,9 @@ export const doc: ComponentDoc = {
     { name: 'Month', title: 'Thirty bars' },
   ],
   gaps: [
-    { missing: 'Ticks between zero and the top of the scale, and labels for every category that fit.', needs: 'a laid-out box\'s size, readable in render (`useBox`)', today: 'Each value over its bar up to eight bars, the top of the scale beyond; all category labels up to seven bars, the first and last beyond.' },
-    { missing: 'Scrubbing across bars, and a tooltip by the bar.', needs: 'pointer coordinates on an element (`onPointer`)', today: 'A press on a bar; the value is over the bar, or in the readout above the plot.' },
+    { missing: 'Ticks between zero and the top of the scale.', needs: 'nothing from the View', today: 'Each value over its bar up to eight bars, the top of the scale beyond; category labels are fitted.' },
+    { missing: 'A tooltip by the bar.', needs: 'nothing from the View', today: 'The value is over the bar, or in the readout above the plot, where a finger does not cover it.' },
+    { missing: 'Fitted labels and scrubbing on a host built before `useBox` and `onPointer`.', needs: 'a newer host', today: 'All category labels up to seven bars, the first and last beyond; a press on a bar.' },
     { missing: 'Stacked bars and horizontal bars.', needs: 'nothing from the View', today: 'Grouped vertical bars.' },
     { missing: 'Series told apart without colour.', needs: 'pattern fills', today: 'Position within the group, the legend\'s order, and each bar\'s spoken name.' },
   ],
@@ -93,7 +96,7 @@ export const doc: ComponentDoc = {
       variants: [
         { name: 'Grouped', title: 'Two series side by side; the legend shows and hides each' },
         { name: 'Signed', title: 'Above and below zero, on one line' },
-        { name: 'Month', title: 'Thirty bars: narrower, the first and last labelled' },
+        { name: 'Month', title: 'Thirty bars: narrower, with the labels that fit' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small without labels, and large' }],
       states: [
