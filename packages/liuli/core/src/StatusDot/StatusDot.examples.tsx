@@ -20,8 +20,25 @@ export function Tones() {
       <StatusDot label="Published" tone="success" />
       <StatusDot label="Needs review" tone="warning" />
       <StatusDot label="Rejected" tone="danger" />
+      <StatusDot label="Scheduled" tone="info" data-testid="info" />
       <StatusDot label="In progress" tone="accent" />
       <StatusDot label="Draft" />
+    </view>
+  );
+}
+
+/** A hue says which, not how: the calendars an event can be on. */
+export function Hues() {
+  return (
+    <view className="flex-row flex-wrap gap-x-5 gap-y-2">
+      <StatusDot label="Work" hue={1} data-testid="hue-1" />
+      <StatusDot label="Family" hue={2} />
+      <StatusDot label="Travel" hue={3} />
+      <StatusDot label="Garden" hue={4} />
+      <StatusDot label="Birthdays" hue={5} />
+      <StatusDot label="Choir" hue={6} />
+      <StatusDot label="Swimming" hue={7} />
+      <StatusDot label="Holidays" hue={8} />
     </view>
   );
 }

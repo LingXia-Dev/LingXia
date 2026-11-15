@@ -1,3 +1,4 @@
+import type { Hue } from '../hue';
 import type { StatusDotSize, StatusDotTone } from './StatusDot';
 
 export const statusDotParts = {
@@ -19,9 +20,11 @@ export const statusDotRecipe = {
       success: 'bg-success-mark',
       warning: 'bg-warning-mark',
       danger: 'bg-danger-mark',
+      info: 'bg-info-mark',
       accent: 'bg-accent',
       neutral: 'border-2 border-line-strong',
     } satisfies Record<StatusDotTone, string>,
+    hue: { 1: 'bg-hue-1', 2: 'bg-hue-2', 3: 'bg-hue-3', 4: 'bg-hue-4', 5: 'bg-hue-5', 6: 'bg-hue-6', 7: 'bg-hue-7', 8: 'bg-hue-8' } satisfies Record<Hue, string>,
   },
   label: {
     base: 'text-text',

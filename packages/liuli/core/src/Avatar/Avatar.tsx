@@ -1,4 +1,5 @@
 import { childrenToArray, createContext, cx, useContext, useLocal, type Child } from '@lingxia/view';
+import type { Hue } from '../hue';
 import { avatarRecipe as r } from './Avatar.recipe';
 
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg';
@@ -17,6 +18,8 @@ export interface AvatarProps {
   src?: string;
   /** Overrides the initials taken from the first letters of the first two words of `name`. */
   initials?: string;
+  /** The colour behind the initials, one of the theme's eight hues; `hueFor(name)` from `@liulidesign/core/hue` gives each name its own. Without it, the accent's soft step. */
+  hue?: Hue;
   /** @default 'md', or the group's size */
   size?: AvatarSize;
   /** @default 'circle', or the group's shape */
@@ -36,7 +39,7 @@ export interface AvatarProps {
 }
 
 /** A person or team as a circle: their photo, or their initials. */
-export function Avatar({ name, src, initials, size, shape: ownShape, status, statusLabel, badge, surface, isDecorative = false, className, 'data-testid': testId }: AvatarProps) {
+export function Avatar({ name, src, initials, hue, size, shape: ownShape, status, statusLabel, badge, surface, isDecorative = false, className, 'data-testid': testId }: AvatarProps) {
   const group = useContext(InGroup);
   const actual = size ?? group?.size ?? 'md';
   const shape = ownShape ?? group?.shape ?? 'circle';
@@ -48,10 +51,10 @@ export function Avatar({ name, src, initials, size, shape: ownShape, status, sta
     <view
       aria-hidden={isDecorative || undefined}
       data-testid={testId}
-      className={cx(r.root.base, r.root.shape[shape][actual], r.root.size[actual], group && r.root.inGroup[group.surface], className)}
+      className={cx(r.root.base, r.root.shape[shape][actual], r.root.size[actual], hue !== undefined && r.root.hue[hue], group && r.root.inGroup[group.surface], className)}
     >
       {/* The initials stay under the photo, so a slow or failed load never shows an empty circle. */}
-      <text role={showImage ? undefined : 'img'} aria-label={showImage ? undefined : spoken} aria-hidden={showImage || undefined} className={cx(r.initials.base, r.initials.size[actual])}>{letters}</text>
+      <text role={showImage ? undefined : 'img'} aria-label={showImage ? undefined : spoken} aria-hidden={showImage || undefined} className={cx(r.initials.base, r.initials.size[actual], hue !== undefined && r.initials.hue)}>{letters}</text>
       {showImage && <image src={src} alt={spoken} onError={() => failed.set(true)} className={cx(r.image.base, r.root.shape[shape][actual])} />}
       {status !== undefined && <view aria-hidden className={cx(r.status.base, r.status.size[actual], r.status.edge[surface ?? group?.surface ?? 'surface'], r.status.tone[status])} />}
       {badge !== undefined && <view className={r.badge.base}>{badge}</view>}

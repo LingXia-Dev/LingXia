@@ -29,6 +29,31 @@ export function Filters() {
   );
 }
 
+/** Labels keep their hue wherever they appear; removing one takes it off the issue. */
+export function Labels() {
+  const labels = useLocal('labels', [
+    { name: 'bug', hue: 5 as const },
+    { name: 'design', hue: 6 as const },
+    { name: 'needs triage', hue: 4 as const },
+    { name: 'mobile', hue: 2 as const },
+  ]);
+  return (
+    <TokenList label="Labels" data-testid="labels">
+      {labels.value.map(each => (
+        <Token
+          key={each.name}
+          label={each.name}
+          hue={each.hue}
+          size="sm"
+          onRemove={() => labels.set(labels.value.filter(other => other.name !== each.name))}
+          removeLabel={`Remove ${each.name}`}
+          data-testid={`label-${each.name.replace(/ /g, '-')}`}
+        />
+      ))}
+    </TokenList>
+  );
+}
+
 export function Sizes() {
   return (
     <view className="flex-row flex-wrap items-center gap-2">

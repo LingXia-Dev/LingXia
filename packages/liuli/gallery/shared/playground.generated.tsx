@@ -108,6 +108,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "options": [
           "accent",
           "danger",
+          "info",
           "neutral",
           "success",
           "warning"
@@ -429,6 +430,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "options": [
           "accent",
           "danger",
+          "info",
           "neutral",
           "success",
           "warning"

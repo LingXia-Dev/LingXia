@@ -46,6 +46,47 @@ export function Budget() {
 }
 ```
 
+### Eight series colours
+
+```tsx
+import { cx } from '@lingxia/view';
+import { Chart, ChartLegend } from '@liulidesign/charts/Chart';
+
+const dollars = (value: number) => `$${String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+const spending = [
+  { key: 'rent', label: 'Rent', amount: 1400, color: 1 as const },
+  { key: 'food', label: 'Food', amount: 620, color: 2 as const },
+  { key: 'transport', label: 'Transport', amount: 310, color: 3 as const },
+  { key: 'utilities', label: 'Utilities', amount: 240, color: 4 as const },
+  { key: 'health', label: 'Health', amount: 180, color: 5 as const },
+  { key: 'leisure', label: 'Leisure', amount: 160, color: 6 as const },
+  { key: 'clothes', label: 'Clothes', amount: 120, color: 7 as const },
+  { key: 'gifts', label: 'Gifts', amount: 70, color: 8 as const },
+];
+const eight = {
+  1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3', 4: 'bg-chart-4', 5: 'bg-chart-5', 6: 'bg-hue-3', 7: 'bg-hue-5', 8: 'bg-hue-4',
+} as const;
+
+/** Eight series colours: the five chart roles, then three of the theme's hues. Past eight, merge the rest. */
+export function Spending() {
+  return (
+    <Chart
+      label="Spending in May"
+      title="Spending"
+      description="May, $3,100"
+      summary="Rent is 45% of spending; food 20%; the other six kinds share the rest."
+      size="fit"
+      legend={<ChartLegend label="Kinds" variant="list" items={spending.map(part => ({ key: part.key, label: part.label, color: part.color, value: dollars(part.amount) }))} data-testid="spending-legend" />}
+      data-testid="spending"
+    >
+      <view aria-hidden className="flex-row gap-0.5">
+        {spending.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', eight[part.color])} style={{ flexGrow: part.amount }} data-testid={`part-${part.key}`} />)}
+      </view>
+    </Chart>
+  );
+}
+```
+
 ### Legends for bars and for lines
 
 ```tsx
@@ -149,7 +190,7 @@ export function Readout() {
 - `className` on ChartLegend: classes merged after the recipe's, so they win.
 - The recipe, `chartRecipe` from `@liulidesign/charts/Chart/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `chart-1`, `chart-2`, `chart-3`, `chart-4`, `chart-5`, `line-strong`, `text`, `text-faint`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `chart-1`, `chart-2`, `chart-3`, `chart-4`, `chart-5`, `hue-3`, `hue-4`, `hue-5`, `line-strong`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 
@@ -173,6 +214,9 @@ export function Readout() {
 | third mark colour | `chart-3` on `surface` | 3:1 | 4.36:1 | 7.61:1 |
 | fourth mark colour | `chart-4` on `surface` | 3:1 | 5.81:1 | 7.12:1 |
 | fifth mark colour | `chart-5` on `surface` | 3:1 | 5.58:1 | 8.32:1 |
+| sixth mark colour | `hue-3` on `surface` | 3:1 | 7.64:1 | 5.28:1 |
+| seventh mark colour | `hue-5` on `surface` | 3:1 | 8.24:1 | 8.12:1 |
+| eighth mark colour | `hue-4` on `surface` | 3:1 | 4.87:1 | 10.50:1 |
 | second mark colour, straight on the page | `chart-2` on `canvas` | 3:1 | 4.01:1 | 7.96:1 |
 | third mark colour, straight on the page | `chart-3` on `canvas` | 3:1 | 4.08:1 | 8.40:1 |
 | title and figures | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
@@ -189,7 +233,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Give every state its words: `emptyLabel` and `error` come from the app.
 - Don't: Draw a border, a background or grid lines around the plot; the card it sits in is the frame.
 - Don't: Put a legend on a chart with one series.
-- Don't: Use colours outside `chart-1` to `chart-5` for marks.
+- Don't: Use colours outside the eight series colours for marks.
 
 ## Not yet
 

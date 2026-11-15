@@ -161,6 +161,7 @@
     "./Icon/set": "./src/Icon/set.ts",
     "./Icon/icons/*": "./src/Icon/icons/*.ts",
     "./density": "./src/density.tsx",
+    "./hue": "./src/hue.ts",
     "./doc": "./src/doc.ts",
     "./contrast": "./scripts/contrast.mjs",
     "./testing": "./src/testing/harness.mjs",

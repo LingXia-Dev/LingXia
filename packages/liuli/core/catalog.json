@@ -43,6 +43,12 @@
           "description": "Overrides the initials taken from the first letters of the first two words of `name`."
         },
         {
+          "name": "hue",
+          "type": "Hue",
+          "required": false,
+          "description": "The colour behind the initials, one of the theme's eight hues; `hueFor(name)` from `@liulidesign/core/hue` gives each name its own. Without it, the accent's soft step."
+        },
+        {
           "name": "size",
           "type": "AvatarSize",
           "required": false,
@@ -123,6 +129,70 @@
             "pair": [
               "on-accent-soft",
               "accent-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 1, initials on its fill",
+            "pair": [
+              "text",
+              "hue-1-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 2, initials on its fill",
+            "pair": [
+              "text",
+              "hue-2-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 3, initials on its fill",
+            "pair": [
+              "text",
+              "hue-3-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 4, initials on its fill",
+            "pair": [
+              "text",
+              "hue-4-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 5, initials on its fill",
+            "pair": [
+              "text",
+              "hue-5-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 6, initials on its fill",
+            "pair": [
+              "text",
+              "hue-6-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 7, initials on its fill",
+            "pair": [
+              "text",
+              "hue-7-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 8, initials on its fill",
+            "pair": [
+              "text",
+              "hue-8-soft"
             ],
             "minimum": "4.5:1"
           },
@@ -224,7 +294,12 @@
         {
           "name": "Teams",
           "title": "A rounded square for a team",
-          "source": "import { Avatar } from '@liulidesign/core/Avatar';\n\n/** A rounded square for what is not a person: a team, a workspace. */\nexport function Teams() {\n  return (\n    <view className=\"gap-3\">\n      <view className=\"flex-row items-center gap-3\">\n        <Avatar name=\"Design Systems\" shape=\"rounded\" isDecorative data-testid=\"team\" />\n        <view className=\"gap-0.5\">\n          <text className=\"text-body font-medium text-text\">Design Systems</text>\n          <text className=\"text-footnote text-muted\">Team · 12 members</text>\n        </view>\n      </view>\n      <view className=\"flex-row items-center gap-3\">\n        <Avatar name=\"Ana Lima\" isDecorative />\n        <view className=\"gap-0.5\">\n          <text className=\"text-body font-medium text-text\">Ana Lima</text>\n          <text className=\"text-footnote text-muted\">Owner</text>\n        </view>\n      </view>\n    </view>\n  );\n}"
+          "source": "import { Avatar } from '@liulidesign/core/Avatar';\n\nexport function Teams() {\n  return (\n    <view className=\"gap-3\">\n      <view className=\"flex-row items-center gap-3\">\n        <Avatar name=\"Design Systems\" shape=\"rounded\" isDecorative data-testid=\"team\" />\n        <view className=\"gap-0.5\">\n          <text className=\"text-body font-medium text-text\">Design Systems</text>\n          <text className=\"text-footnote text-muted\">Team · 12 members</text>\n        </view>\n      </view>\n      <view className=\"flex-row items-center gap-3\">\n        <Avatar name=\"Ana Lima\" isDecorative />\n        <view className=\"gap-0.5\">\n          <text className=\"text-body font-medium text-text\">Ana Lima</text>\n          <text className=\"text-footnote text-muted\">Owner</text>\n        </view>\n      </view>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Hues",
+          "title": "A hue for each person",
+          "source": "import { hueFor } from '../hue';\nimport { Avatar } from '@liulidesign/core/Avatar';\n\n/** A rounded square for what is not a person: a team, a workspace. */\n/** Each name gets its own hue, the same one every time, so a list of initials is not a column of one colour. */\nexport function Hues() {\n  const people = ['Ana Lima', 'Kai Chen', 'Mira Patel', 'Tomas Reyes', 'Yuki Sato', 'Noor Haddad'];\n  return (\n    <view className=\"flex-row flex-wrap gap-3\">\n      {people.map(name => <Avatar key={name} name={name} hue={hueFor(name)} data-testid={`hue-${name.split(' ')[0].toLowerCase()}`} />)}\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -253,6 +328,14 @@
         "roles": [
           "accent-soft",
           "danger-mark",
+          "hue-1-soft",
+          "hue-2-soft",
+          "hue-3-soft",
+          "hue-4-soft",
+          "hue-5-soft",
+          "hue-6-soft",
+          "hue-7-soft",
+          "hue-8-soft",
           "line",
           "on-accent-soft",
           "success-mark",
@@ -290,6 +373,10 @@
             {
               "name": "Teams",
               "title": "A rounded square for a team or a workspace, a circle for a person"
+            },
+            {
+              "name": "Hues",
+              "title": "A hue from the name, so people without a picture are told apart"
             }
           ],
           "states": [
@@ -335,7 +422,7 @@
       "status": "preview",
       "since": "2026-11-12",
       "summary": "A short status or category label in a tinted pill",
-      "description": "Badge marks the state or kind of the thing next to it: Draft, Paid, Overdue, New. It is text, not a control, and is read as it is shown. Five tones come soft; the four status tones also come solid for the one label that must stand out.",
+      "description": "Badge marks the state or kind of the thing next to it: Draft, Paid, Overdue, New. It is text, not a control, and is read as it is shown. Six tones come soft; the five status tones also come solid for the one label that must stand out. A category (a project, a label, a team) takes one of eight hues in place of a tone.",
       "keywords": [
         "badge",
         "tag",
@@ -344,7 +431,10 @@
         "chip",
         "status",
         "lozenge",
-        "tone"
+        "tone",
+        "hue",
+        "category",
+        "colour"
       ],
       "props": [
         {
@@ -360,6 +450,12 @@
           "required": false,
           "description": "`solid` for a badge that must stand out; at most one per view.",
           "default": "'soft'"
+        },
+        {
+          "name": "hue",
+          "type": "Hue",
+          "required": false,
+          "description": "A category's colour, one of the theme's eight hues: a dot in the hue on its soft fill. For kinds of things (a project, a label), never a status."
         },
         {
           "name": "label",
@@ -397,6 +493,7 @@
       "parts": {
         "root": "view",
         "icon": "view",
+        "dot": "view",
         "label": "text"
       },
       "accessibility": {
@@ -433,6 +530,14 @@
             "minimum": "4.5:1"
           },
           {
+            "what": "soft info",
+            "pair": [
+              "text",
+              "info-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
             "what": "soft success",
             "pair": [
               "text",
@@ -465,6 +570,14 @@
             "minimum": "4.5:1"
           },
           {
+            "what": "solid info",
+            "pair": [
+              "on-info",
+              "info"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
             "what": "solid success",
             "pair": [
               "on-success",
@@ -487,23 +600,157 @@
               "danger"
             ],
             "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 1, text on its fill",
+            "pair": [
+              "text",
+              "hue-1-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 1, the dot on its fill",
+            "pair": [
+              "hue-1",
+              "hue-1-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 2, text on its fill",
+            "pair": [
+              "text",
+              "hue-2-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 2, the dot on its fill",
+            "pair": [
+              "hue-2",
+              "hue-2-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 3, text on its fill",
+            "pair": [
+              "text",
+              "hue-3-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 3, the dot on its fill",
+            "pair": [
+              "hue-3",
+              "hue-3-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 4, text on its fill",
+            "pair": [
+              "text",
+              "hue-4-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 4, the dot on its fill",
+            "pair": [
+              "hue-4",
+              "hue-4-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 5, text on its fill",
+            "pair": [
+              "text",
+              "hue-5-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 5, the dot on its fill",
+            "pair": [
+              "hue-5",
+              "hue-5-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 6, text on its fill",
+            "pair": [
+              "text",
+              "hue-6-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 6, the dot on its fill",
+            "pair": [
+              "hue-6",
+              "hue-6-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 7, text on its fill",
+            "pair": [
+              "text",
+              "hue-7-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 7, the dot on its fill",
+            "pair": [
+              "hue-7",
+              "hue-7-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 8, text on its fill",
+            "pair": [
+              "text",
+              "hue-8-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 8, the dot on its fill",
+            "pair": [
+              "hue-8",
+              "hue-8-soft"
+            ],
+            "minimum": "3:1"
           }
         ],
         "notes": [
           "Not a control and not announced on change. A badge whose change matters sits next to a status region the app keeps.",
-          "The tone is colour only; the label carries the meaning in words."
+          "The tone is colour only; the label carries the meaning in words.",
+          "A hue is colour only too: the label names the category, and the dot is not read."
         ]
       },
       "examples": [
         {
           "name": "Tones",
           "title": "Soft tones",
-          "source": "import { Badge } from '@liulidesign/core/Badge';\n\nexport function Tones() {\n  return (\n    <view className=\"flex-row flex-wrap gap-2\">\n      <Badge label=\"Draft\" data-testid=\"neutral\" />\n      <Badge label=\"New\" tone=\"accent\" data-testid=\"accent\" />\n      <Badge label=\"Paid\" tone=\"success\" />\n      <Badge label=\"Due soon\" tone=\"warning\" />\n      <Badge label=\"Overdue\" tone=\"danger\" data-testid=\"danger\" />\n    </view>\n  );\n}"
+          "source": "import { Badge } from '@liulidesign/core/Badge';\n\nexport function Tones() {\n  return (\n    <view className=\"flex-row flex-wrap gap-2\">\n      <Badge label=\"Draft\" data-testid=\"neutral\" />\n      <Badge label=\"New\" tone=\"accent\" data-testid=\"accent\" />\n      <Badge label=\"Scheduled\" tone=\"info\" data-testid=\"info\" />\n      <Badge label=\"Paid\" tone=\"success\" />\n      <Badge label=\"Due soon\" tone=\"warning\" />\n      <Badge label=\"Overdue\" tone=\"danger\" data-testid=\"danger\" />\n    </view>\n  );\n}"
         },
         {
           "name": "Solid",
           "title": "Solid, to stand out",
-          "source": "import { Badge } from '@liulidesign/core/Badge';\n\n/** Solid fills stand out; keep one per view. */\nexport function Solid() {\n  return (\n    <view className=\"flex-row flex-wrap gap-2\">\n      <Badge label=\"Beta\" tone=\"accent\" emphasis=\"solid\" data-testid=\"solid\" />\n      <Badge label=\"Live\" tone=\"success\" emphasis=\"solid\" />\n      <Badge label=\"Paused\" tone=\"warning\" emphasis=\"solid\" />\n      <Badge label=\"Failed\" tone=\"danger\" emphasis=\"solid\" />\n    </view>\n  );\n}"
+          "source": "import { Badge } from '@liulidesign/core/Badge';\n\n/** Solid fills stand out; keep one per view. */\nexport function Solid() {\n  return (\n    <view className=\"flex-row flex-wrap gap-2\">\n      <Badge label=\"Beta\" tone=\"accent\" emphasis=\"solid\" data-testid=\"solid\" />\n      <Badge label=\"Update\" tone=\"info\" emphasis=\"solid\" />\n      <Badge label=\"Live\" tone=\"success\" emphasis=\"solid\" />\n      <Badge label=\"Paused\" tone=\"warning\" emphasis=\"solid\" />\n      <Badge label=\"Failed\" tone=\"danger\" emphasis=\"solid\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Hues",
+          "title": "Categories in the eight hues",
+          "source": "import { Badge } from '@liulidesign/core/Badge';\n\n/** Kinds of things, not states: each project keeps its hue wherever it is named. */\nexport function Hues() {\n  return (\n    <view className=\"flex-row flex-wrap gap-2\">\n      <Badge label=\"Design\" hue={1} data-testid=\"hue-1\" />\n      <Badge label=\"Research\" hue={2} />\n      <Badge label=\"Hardware\" hue={3} />\n      <Badge label=\"Field trials\" hue={4} />\n      <Badge label=\"Marketing\" hue={5} />\n      <Badge label=\"Legal\" hue={6} />\n      <Badge label=\"Support\" hue={7} />\n      <Badge label=\"Archive\" hue={8} />\n    </view>\n  );\n}"
         },
         {
           "name": "Sizes",
@@ -516,13 +763,7 @@
           "source": "import { Item } from '@liulidesign/core/Item';\nimport { Badge } from '@liulidesign/core/Badge';\n\n/** In a pressable row the end content is not read, so the status is repeated in the description. */\nexport function InARow() {\n  return (\n    <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n      <Item\n        label=\"Invoice 2041\"\n        description=\"Overdue, due 3 May\"\n        endContent={<Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" />}\n        hasChevron\n        onClick={() => {}}\n        data-testid=\"invoice\"\n      />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
-        {
-          "missing": "An info tone and category hues (tags, labels, people).",
-          "needs": "info and categorical hue roles with soft and on- pairs",
-          "today": "Five tones; use neutral for categories."
-        }
-      ],
+      "gaps": [],
       "playground": {
         "props": {
           "label": "In review",
@@ -547,9 +788,28 @@
           "accent-soft",
           "danger",
           "danger-soft",
+          "hue-1",
+          "hue-1-soft",
+          "hue-2",
+          "hue-2-soft",
+          "hue-3",
+          "hue-3-soft",
+          "hue-4",
+          "hue-4-soft",
+          "hue-5",
+          "hue-5-soft",
+          "hue-6",
+          "hue-6-soft",
+          "hue-7",
+          "hue-7-soft",
+          "hue-8",
+          "hue-8-soft",
+          "info",
+          "info-soft",
           "on-accent",
           "on-accent-soft",
           "on-danger",
+          "on-info",
           "on-success",
           "on-warning",
           "success",
@@ -573,11 +833,15 @@
           "variants": [
             {
               "name": "Tones",
-              "title": "Soft, in five tones"
+              "title": "Soft, in six tones"
             },
             {
               "name": "Solid",
               "title": "Solid, for the one label that must stand out"
+            },
+            {
+              "name": "Hues",
+              "title": "A category takes one of eight hues: a dot in the hue on its soft fill"
             }
           ],
           "sizes": [
@@ -721,7 +985,7 @@
             "what": "title and message on info",
             "pair": [
               "text",
-              "accent-soft"
+              "info-soft"
             ],
             "minimum": "4.5:1"
           },
@@ -800,11 +1064,11 @@
           "--radius-container"
         ],
         "roles": [
-          "accent",
-          "accent-soft",
           "danger",
           "danger-soft",
           "focus",
+          "info",
+          "info-soft",
           "success",
           "success-soft",
           "text",
@@ -8109,7 +8373,7 @@
         "IconSetProvider": [
           {
             "name": "icons",
-            "type": "Partial<Readonly<Record<\"success\" | \"warning\" | \"info\" | \"link\" | \"add\" | \"remove\" | \"close\" | \"check\" | \"edit\" | \"delete\" | \"copy\" | \"share\" | \"download\" | \"upload\" | \"refresh\" | \"search\" | \"filter\" | \"sort\" | \"more\" | \"more-vertical\" | \"menu\" | \"settings\" | \"send\" | \"save\" | \"undo\" | \"redo\" | \"external-link\" | \"attach\" | \"print\" | \"sign-in\" | \"sign-out\" | \"chevron-down\" | \"chevron-up\" | \"chevron-start\" | \"chevron-end\" | \"arrow-up\" | \"arrow-down\" | \"arrow-start\" | \"arrow-end\" | \"home\" | \"expand\" | \"collapse\" | \"error\" | \"help\" | \"cancel\" | \"add-circle\" | \"blocked\" | \"lock\" | \"unlock\" | \"visible\" | \"hidden\" | \"user\" | \"users\" | \"calendar\" | \"clock\" | \"mail\" | \"phone\" | \"message\" | \"notifications\" | \"notifications-off\" | \"star\" | \"heart\" | \"like\" | \"bookmark\" | \"tag\" | \"flag\" | \"location\" | \"image\" | \"camera\" | \"file\" | \"document\" | \"folder\" | \"cloud\" | \"globe\" | \"light\" | \"dark\" | \"cart\" | \"payment\" | \"chart\" | \"list\" | \"grid\" | \"play\" | \"pause\" | \"volume\" | \"mute\" | \"microphone\" | \"video\" | \"wifi\" | \"palette\" | \"click\" | \"text-input\" | \"checklist\" | \"compass\" | \"layers\" | \"rows\" | \"template\", IconDefinition>>>",
+            "type": "Partial<Readonly<Record<\"info\" | \"success\" | \"warning\" | \"link\" | \"add\" | \"remove\" | \"close\" | \"check\" | \"edit\" | \"delete\" | \"copy\" | \"share\" | \"download\" | \"upload\" | \"refresh\" | \"search\" | \"filter\" | \"sort\" | \"more\" | \"more-vertical\" | \"menu\" | \"settings\" | \"send\" | \"save\" | \"undo\" | \"redo\" | \"external-link\" | \"attach\" | \"print\" | \"sign-in\" | \"sign-out\" | \"chevron-down\" | \"chevron-up\" | \"chevron-start\" | \"chevron-end\" | \"arrow-up\" | \"arrow-down\" | \"arrow-start\" | \"arrow-end\" | \"home\" | \"expand\" | \"collapse\" | \"error\" | \"help\" | \"cancel\" | \"add-circle\" | \"blocked\" | \"lock\" | \"unlock\" | \"visible\" | \"hidden\" | \"user\" | \"users\" | \"calendar\" | \"clock\" | \"mail\" | \"phone\" | \"message\" | \"notifications\" | \"notifications-off\" | \"star\" | \"heart\" | \"like\" | \"bookmark\" | \"tag\" | \"flag\" | \"location\" | \"image\" | \"camera\" | \"file\" | \"document\" | \"folder\" | \"cloud\" | \"globe\" | \"light\" | \"dark\" | \"cart\" | \"payment\" | \"chart\" | \"list\" | \"grid\" | \"play\" | \"pause\" | \"volume\" | \"mute\" | \"microphone\" | \"video\" | \"wifi\" | \"palette\" | \"click\" | \"text-input\" | \"checklist\" | \"compass\" | \"layers\" | \"rows\" | \"template\", IconDefinition>>>",
             "required": true,
             "description": "The icons to draw for the names they cover; the rest stay as the default set draws them."
           },
@@ -14053,6 +14317,12 @@
           "default": "'neutral'"
         },
         {
+          "name": "hue",
+          "type": "Hue",
+          "required": false,
+          "description": "A category's colour in place of a tone, one of the theme's eight hues: which calendar, which project. Not for a status."
+        },
+        {
           "name": "size",
           "type": "StatusDotSize",
           "required": false,
@@ -14111,9 +14381,81 @@
             "minimum": "3:1"
           },
           {
+            "what": "info dot",
+            "pair": [
+              "info-mark",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
             "what": "accent dot",
             "pair": [
               "accent",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 1 dot",
+            "pair": [
+              "hue-1",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 2 dot",
+            "pair": [
+              "hue-2",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 3 dot",
+            "pair": [
+              "hue-3",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 4 dot",
+            "pair": [
+              "hue-4",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 5 dot",
+            "pair": [
+              "hue-5",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 6 dot",
+            "pair": [
+              "hue-6",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 7 dot",
+            "pair": [
+              "hue-7",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 8 dot",
+            "pair": [
+              "hue-8",
               "surface"
             ],
             "minimum": "3:1"
@@ -14149,8 +14491,13 @@
         },
         {
           "name": "Tones",
-          "title": "The five tones",
-          "source": "import { StatusDot } from '@liulidesign/core/StatusDot';\n\n/** The five tones. */\nexport function Tones() {\n  return (\n    <view className=\"gap-2\">\n      <StatusDot label=\"Published\" tone=\"success\" />\n      <StatusDot label=\"Needs review\" tone=\"warning\" />\n      <StatusDot label=\"Rejected\" tone=\"danger\" />\n      <StatusDot label=\"In progress\" tone=\"accent\" />\n      <StatusDot label=\"Draft\" />\n    </view>\n  );\n}"
+          "title": "The six tones",
+          "source": "import { StatusDot } from '@liulidesign/core/StatusDot';\n\n/** The five tones. */\nexport function Tones() {\n  return (\n    <view className=\"gap-2\">\n      <StatusDot label=\"Published\" tone=\"success\" />\n      <StatusDot label=\"Needs review\" tone=\"warning\" />\n      <StatusDot label=\"Rejected\" tone=\"danger\" />\n      <StatusDot label=\"Scheduled\" tone=\"info\" data-testid=\"info\" />\n      <StatusDot label=\"In progress\" tone=\"accent\" />\n      <StatusDot label=\"Draft\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Hues",
+          "title": "Categories in the eight hues",
+          "source": "import { StatusDot } from '@liulidesign/core/StatusDot';\n\n/** A hue says which, not how: the calendars an event can be on. */\nexport function Hues() {\n  return (\n    <view className=\"flex-row flex-wrap gap-x-5 gap-y-2\">\n      <StatusDot label=\"Work\" hue={1} data-testid=\"hue-1\" />\n      <StatusDot label=\"Family\" hue={2} />\n      <StatusDot label=\"Travel\" hue={3} />\n      <StatusDot label=\"Garden\" hue={4} />\n      <StatusDot label=\"Birthdays\" hue={5} />\n      <StatusDot label=\"Choir\" hue={6} />\n      <StatusDot label=\"Swimming\" hue={7} />\n      <StatusDot label=\"Holidays\" hue={8} />\n    </view>\n  );\n}"
         },
         {
           "name": "DotOnly",
@@ -14184,6 +14531,15 @@
         "roles": [
           "accent",
           "danger-mark",
+          "hue-1",
+          "hue-2",
+          "hue-3",
+          "hue-4",
+          "hue-5",
+          "hue-6",
+          "hue-7",
+          "hue-8",
+          "info-mark",
           "line-strong",
           "success-mark",
           "text",
@@ -14205,7 +14561,11 @@
           "variants": [
             {
               "name": "Tones",
-              "title": "Success, warning, danger, accent, and neutral as a ring"
+              "title": "Success, warning, danger, info, accent, and neutral as a ring"
+            },
+            {
+              "name": "Hues",
+              "title": "A hue for a category: which calendar an event is on"
             },
             {
               "name": "DotOnly",
@@ -17548,6 +17908,12 @@
           "description": "An icon before the label, by name."
         },
         {
+          "name": "hue",
+          "type": "Hue",
+          "required": false,
+          "description": "A category's colour, one of the theme's eight hues: the pill takes the hue's soft fill, with a dot (or the icon) in the hue."
+        },
+        {
           "name": "onClick",
           "type": "(() => void)",
           "required": false,
@@ -17592,6 +17958,7 @@
         "root": "view",
         "label": "text",
         "icon": "vector",
+        "dot": "view",
         "open": "button",
         "remove": "button",
         "removeIcon": "vector",
@@ -17645,6 +18012,134 @@
             ],
             "over": "surface",
             "minimum": "3:1"
+          },
+          {
+            "what": "hue 1, label on its fill",
+            "pair": [
+              "text",
+              "hue-1-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 2, label on its fill",
+            "pair": [
+              "text",
+              "hue-2-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 3, label on its fill",
+            "pair": [
+              "text",
+              "hue-3-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 4, label on its fill",
+            "pair": [
+              "text",
+              "hue-4-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 5, label on its fill",
+            "pair": [
+              "text",
+              "hue-5-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 6, label on its fill",
+            "pair": [
+              "text",
+              "hue-6-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 7, label on its fill",
+            "pair": [
+              "text",
+              "hue-7-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 8, label on its fill",
+            "pair": [
+              "text",
+              "hue-8-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "hue 1, the dot on its fill",
+            "pair": [
+              "hue-1",
+              "hue-1-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 2, the dot on its fill",
+            "pair": [
+              "hue-2",
+              "hue-2-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 3, the dot on its fill",
+            "pair": [
+              "hue-3",
+              "hue-3-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 4, the dot on its fill",
+            "pair": [
+              "hue-4",
+              "hue-4-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 5, the dot on its fill",
+            "pair": [
+              "hue-5",
+              "hue-5-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 6, the dot on its fill",
+            "pair": [
+              "hue-6",
+              "hue-6-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 7, the dot on its fill",
+            "pair": [
+              "hue-7",
+              "hue-7-soft"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "hue 8, the dot on its fill",
+            "pair": [
+              "hue-8",
+              "hue-8-soft"
+            ],
+            "minimum": "3:1"
           }
         ],
         "notes": [
@@ -17664,6 +18159,11 @@
           "name": "Filters",
           "title": "Filters that toggle",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Token, TokenList } from '@liulidesign/core/Token';\n\n/** Filters that toggle: the ones applied are in the accent's soft step and say they are pressed. */\nexport function Filters() {\n  const on = useLocal<readonly string[]>('on', ['Unread']);\n  const toggle = (name: string) => on.set(on.value.includes(name) ? on.value.filter(each => each !== name) : [...on.value, name]);\n  return (\n    <TokenList label=\"Filters\">\n      {['Unread', 'Shared', 'With photos', 'Archived'].map(name => (\n        <Token key={name} label={name} isSelected={on.value.includes(name)} onClick={() => toggle(name)} data-testid={`filter-${name.toLowerCase().replace(' ', '-')}`} />\n      ))}\n    </TokenList>\n  );\n}"
+        },
+        {
+          "name": "Labels",
+          "title": "Labels, each in its hue",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Token, TokenList } from '@liulidesign/core/Token';\n\n/** Labels keep their hue wherever they appear; removing one takes it off the issue. */\nexport function Labels() {\n  const labels = useLocal('labels', [\n    { name: 'bug', hue: 5 as const },\n    { name: 'design', hue: 6 as const },\n    { name: 'needs triage', hue: 4 as const },\n    { name: 'mobile', hue: 2 as const },\n  ]);\n  return (\n    <TokenList label=\"Labels\" data-testid=\"labels\">\n      {labels.value.map(each => (\n        <Token\n          key={each.name}\n          label={each.name}\n          hue={each.hue}\n          size=\"sm\"\n          onRemove={() => labels.set(labels.value.filter(other => other.name !== each.name))}\n          removeLabel={`Remove ${each.name}`}\n          data-testid={`label-${each.name.replace(/ /g, '-')}`}\n        />\n      ))}\n    </TokenList>\n  );\n}"
         },
         {
           "name": "Sizes",
@@ -17698,6 +18198,22 @@
         "roles": [
           "accent-soft",
           "focus",
+          "hue-1",
+          "hue-1-soft",
+          "hue-2",
+          "hue-2-soft",
+          "hue-3",
+          "hue-3-soft",
+          "hue-4",
+          "hue-4-soft",
+          "hue-5",
+          "hue-5-soft",
+          "hue-6",
+          "hue-6-soft",
+          "hue-7",
+          "hue-7-soft",
+          "hue-8",
+          "hue-8-soft",
           "on-accent-soft",
           "text",
           "text-muted"
@@ -17719,6 +18235,10 @@
             {
               "name": "Filters",
               "title": "Pressable, as filters that toggle"
+            },
+            {
+              "name": "Labels",
+              "title": "A hue for a category: the labels on an issue"
             }
           ],
           "sizes": [

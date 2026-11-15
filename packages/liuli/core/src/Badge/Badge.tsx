@@ -1,21 +1,30 @@
 import { cx, type Child } from '@lingxia/view';
+import type { Hue } from '../hue';
 import { badgeRecipe as r } from './Badge.recipe';
 
-export type BadgeStatusTone = 'accent' | 'success' | 'warning' | 'danger';
+export type BadgeStatusTone = 'accent' | 'info' | 'success' | 'warning' | 'danger';
 export type BadgeTone = 'neutral' | BadgeStatusTone;
 export type BadgeSize = 'sm' | 'md';
 
-/** Neutral is soft only; the other tones also come solid. */
+/** Neutral is soft only; the other tones also come solid. A hue is a category, not a status, and takes no tone. */
 export type BadgeLook =
   | {
       /** What the badge marks; `neutral` comes soft only. @default 'neutral' */
       tone?: 'neutral';
       emphasis?: 'soft';
+      hue?: never;
     }
   | {
       tone: BadgeStatusTone;
       /** `solid` for a badge that must stand out; at most one per view. @default 'soft' */
       emphasis?: 'soft' | 'solid';
+      hue?: never;
+    }
+  | {
+      /** A category's colour, one of the theme's eight hues: a dot in the hue on its soft fill. For kinds of things (a project, a label), never a status. */
+      hue: Hue;
+      tone?: never;
+      emphasis?: never;
     };
 
 export type BadgeProps = BadgeLook & {
@@ -32,12 +41,16 @@ export type BadgeProps = BadgeLook & {
 /** A short status or category label. */
 export function Badge(props: BadgeProps) {
   const { label, size = 'md', startIcon, className, 'data-testid': testId } = props;
-  const look = props.tone === undefined || props.tone === 'neutral'
-    ? r.root.soft.neutral
-    : props.emphasis === 'solid' ? r.root.solid[props.tone] : r.root.soft[props.tone];
+  const hue = props.hue;
+  const look = hue !== undefined
+    ? r.root.hue[hue]
+    : props.tone === undefined || props.tone === 'neutral'
+      ? r.root.soft.neutral
+      : props.emphasis === 'solid' ? r.root.solid[props.tone] : r.root.soft[props.tone];
   return (
     <view data-testid={testId} className={cx(r.root.base, r.root.size[size], look, className)}>
-      {startIcon !== undefined && <view aria-hidden className={cx(r.icon.base, r.icon.size[size])}>{startIcon}</view>}
+      {startIcon !== undefined && <view aria-hidden className={cx(r.icon.base, r.icon.size[size], hue !== undefined && r.icon.hue[hue])}>{startIcon}</view>}
+      {startIcon === undefined && hue !== undefined && <view aria-hidden className={cx(r.dot.base, r.dot.size[size], r.dot.hue[hue])} />}
       <text className={cx(r.label.base, r.label.size[size])}>{label}</text>
     </view>
   );

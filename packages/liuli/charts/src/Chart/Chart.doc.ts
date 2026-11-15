@@ -38,6 +38,9 @@ export const doc: ComponentDoc = {
       { what: 'third mark colour', pair: ['chart-3', 'surface'], minimum: '3:1' },
       { what: 'fourth mark colour', pair: ['chart-4', 'surface'], minimum: '3:1' },
       { what: 'fifth mark colour', pair: ['chart-5', 'surface'], minimum: '3:1' },
+      { what: 'sixth mark colour', pair: ['hue-3', 'surface'], minimum: '3:1' },
+      { what: 'seventh mark colour', pair: ['hue-5', 'surface'], minimum: '3:1' },
+      { what: 'eighth mark colour', pair: ['hue-4', 'surface'], minimum: '3:1' },
       { what: 'second mark colour, straight on the page', pair: ['chart-2', 'canvas'], minimum: '3:1' },
       { what: 'third mark colour, straight on the page', pair: ['chart-3', 'canvas'], minimum: '3:1' },
       { what: 'title and figures', pair: ['text', 'surface'], minimum: '4.5:1' },
@@ -63,11 +66,12 @@ export const doc: ComponentDoc = {
     dont: [
       'Draw a border, a background or grid lines around the plot; the card it sits in is the frame.',
       'Put a legend on a chart with one series.',
-      'Use colours outside `chart-1` to `chart-5` for marks.',
+      'Use colours outside the eight series colours for marks.',
     ],
   },
   examples: [
     { name: 'Budget', title: 'A plot of your own in the frame' },
+    { name: 'Spending', title: 'Eight series colours' },
     { name: 'Legends', title: 'Legends for bars and for lines' },
     { name: 'Readout', title: 'The readout line' },
   ],
@@ -85,6 +89,7 @@ export const doc: ComponentDoc = {
       lead: 'Use the chart frame around a plot of your own, so it reads and behaves like Liuli\'s charts.',
       hero: 'Budget',
       variants: [
+        { name: 'Spending', title: 'Eight parts: the five chart colours, then three of the theme\'s hues' },
         { name: 'Legends', title: 'Squares for bars and slices, strokes for lines; the second can hide a series' },
         { name: 'Readout', title: 'The readout: the chosen datum in words and figures' },
       ],

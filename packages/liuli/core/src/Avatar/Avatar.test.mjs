@@ -59,3 +59,14 @@ test('Group: the count takes the group\'s shape, a circle like the avatars besid
   const radii = [group.children[0].children[0], screen.getByTestId('editors-overflow')].map(node => node.props.radius);
   assert.deepEqual(radii, [16384, 16384]);
 });
+
+test('Hues: a name keeps one hue; the initials sit in the text role on its fill', async () => {
+  const { hueFor } = await import('../hue.ts');
+  assert.equal(hueFor('Ana Lima'), hueFor('Ana Lima'));
+  const seen = new Set(['Ana Lima', 'Kai Chen', 'Mira Patel', 'Tomas Reyes', 'Yuki Sato', 'Noor Haddad'].map(hueFor));
+  assert.ok(seen.size >= 4, `six names spread over ${seen.size} hues`);
+  const screen = await renderExample('Avatar/Avatar', 'Hues');
+  const ana = screen.getByTestId('hue-ana');
+  assert.equal(ana.props.background, `hue-${hueFor('Ana Lima')}-soft`);
+  assert.equal(ana.children[0].props.color, 'text');
+});

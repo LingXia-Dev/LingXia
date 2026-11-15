@@ -15,3 +15,11 @@ test('DotOnly: without its words the dot is an image named by them', async () =>
   const dot = (await renderExample('StatusDot/StatusDot', 'DotOnly')).getByTestId('bare');
   assert.deepEqual([dot.props.role, dot.props.accessibilityLabel], ['img', 'Online']);
 });
+
+test('info and hues: the info mark, and a hue\'s mark in place of a tone', async () => {
+  const info = (await renderExample('StatusDot/StatusDot', 'Tones')).getByTestId('info');
+  assert.equal(info.children[0].props.background, 'info-mark');
+  const hue = (await renderExample('StatusDot/StatusDot', 'Hues')).getByTestId('hue-1');
+  assert.equal(hue.children[0].props.background, 'hue-1');
+  assert.ok(hue.children[0].props.accessibilityHidden);
+});

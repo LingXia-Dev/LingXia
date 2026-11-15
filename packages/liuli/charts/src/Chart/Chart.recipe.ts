@@ -94,7 +94,7 @@ export const chartRecipe = {
   },
   legendSwatch: {
     base: 'size-2.5 shrink-0 rounded-[3px]',
-    color: { 1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3', 4: 'bg-chart-4', 5: 'bg-chart-5' } satisfies Record<ChartColor, string>,
+    color: { 1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3', 4: 'bg-chart-4', 5: 'bg-chart-5', 6: 'bg-hue-3', 7: 'bg-hue-5', 8: 'bg-hue-4' } satisfies Record<ChartColor, string>,
     other: 'bg-line-strong',
     off: 'bg-text/12',
   },

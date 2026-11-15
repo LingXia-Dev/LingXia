@@ -8,7 +8,7 @@ A short status or category label in a tinted pill. Status: preview.
 import { Badge } from '@liulidesign/core/Badge';
 ```
 
-Badge marks the state or kind of the thing next to it: Draft, Paid, Overdue, New. It is text, not a control, and is read as it is shown. Five tones come soft; the four status tones also come solid for the one label that must stand out.
+Badge marks the state or kind of the thing next to it: Draft, Paid, Overdue, New. It is text, not a control, and is read as it is shown. Six tones come soft; the five status tones also come solid for the one label that must stand out. A category (a project, a label, a team) takes one of eight hues in place of a tone.
 
 ## Examples
 
@@ -22,6 +22,7 @@ export function Tones() {
     <view className="flex-row flex-wrap gap-2">
       <Badge label="Draft" data-testid="neutral" />
       <Badge label="New" tone="accent" data-testid="accent" />
+      <Badge label="Scheduled" tone="info" data-testid="info" />
       <Badge label="Paid" tone="success" />
       <Badge label="Due soon" tone="warning" />
       <Badge label="Overdue" tone="danger" data-testid="danger" />
@@ -40,9 +41,32 @@ export function Solid() {
   return (
     <view className="flex-row flex-wrap gap-2">
       <Badge label="Beta" tone="accent" emphasis="solid" data-testid="solid" />
+      <Badge label="Update" tone="info" emphasis="solid" />
       <Badge label="Live" tone="success" emphasis="solid" />
       <Badge label="Paused" tone="warning" emphasis="solid" />
       <Badge label="Failed" tone="danger" emphasis="solid" />
+    </view>
+  );
+}
+```
+
+### Categories in the eight hues
+
+```tsx
+import { Badge } from '@liulidesign/core/Badge';
+
+/** Kinds of things, not states: each project keeps its hue wherever it is named. */
+export function Hues() {
+  return (
+    <view className="flex-row flex-wrap gap-2">
+      <Badge label="Design" hue={1} data-testid="hue-1" />
+      <Badge label="Research" hue={2} />
+      <Badge label="Hardware" hue={3} />
+      <Badge label="Field trials" hue={4} />
+      <Badge label="Marketing" hue={5} />
+      <Badge label="Legal" hue={6} />
+      <Badge label="Support" hue={7} />
+      <Badge label="Archive" hue={8} />
     </view>
   );
 }
@@ -94,6 +118,7 @@ export function InARow() {
 | --- | --- | --- | --- |
 | `tone` | `"neutral" \| BadgeStatusTone` | `'neutral'` | What the badge marks; `neutral` comes soft only. |
 | `emphasis` | `"soft" \| "solid"` | `'soft'` | `solid` for a badge that must stand out; at most one per view. |
+| `hue` | `Hue` |  | A category's colour, one of the theme's eight hues: a dot in the hue on its soft fill. For kinds of things (a project, a label), never a status. |
 | `label` (required) | `string` |  | The text, read as it is shown. Say the status in words: "Overdue", not a colour. |
 | `size` | `BadgeSize` | `'md'` |  |
 | `startIcon` | `Child` |  | Drawn before the label and hidden from assistive tech. |
@@ -106,6 +131,7 @@ export function InARow() {
 | --- | --- | --- | --- |
 | root | `<view>` | yes | The pill: tint or fill by tone and emphasis. |
 | icon | `<view>` | no | `startIcon`, hidden from assistive tech. |
+| dot | `<view>` | no | With `hue` and no icon: a dot in the hue, hidden from assistive tech. |
 | label | `<text>` | yes | The text; keep it to a word or two. |
 
 ## What an app may override
@@ -113,7 +139,7 @@ export function InARow() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `badgeRecipe` from `@liulidesign/core/Badge/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `danger`, `danger-soft`, `on-accent`, `on-accent-soft`, `on-danger`, `on-success`, `on-warning`, `success`, `success-soft`, `text`, `warning`, `warning-soft`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `danger`, `danger-soft`, `hue-1`, `hue-1-soft`, `hue-2`, `hue-2-soft`, `hue-3`, `hue-3-soft`, `hue-4`, `hue-4-soft`, `hue-5`, `hue-5-soft`, `hue-6`, `hue-6-soft`, `hue-7`, `hue-7-soft`, `hue-8`, `hue-8-soft`, `info`, `info-soft`, `on-accent`, `on-accent-soft`, `on-danger`, `on-info`, `on-success`, `on-warning`, `success`, `success-soft`, `text`, `warning`, `warning-soft`.
 
 ## Accessibility
 
@@ -122,19 +148,38 @@ export function InARow() {
 - Description: none.
 - Not a control and not announced on change. A badge whose change matters sits next to a status region the app keeps.
 - The tone is colour only; the label carries the meaning in words.
+- A hue is colour only too: the label names the category, and the dot is not read.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | neutral, on a surface | `text` on `text/8` over `surface` | 4.5:1 | 13.91:1 | 11.29:1 |
 | neutral, on a selected row | `text` on `text/8` over `accent-soft` | 4.5:1 | 12.09:1 | 9.07:1 |
 | soft accent | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.44:1 | 9.49:1 |
+| soft info | `text` on `info-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
 | soft success | `text` on `success-soft` | 4.5:1 | 14.34:1 | 11.76:1 |
 | soft warning | `text` on `warning-soft` | 4.5:1 | 14.59:1 | 11.36:1 |
 | soft danger | `text` on `danger-soft` | 4.5:1 | 14.24:1 | 12.84:1 |
 | solid accent | `on-accent` on `accent` | 4.5:1 | 5.62:1 | 7.12:1 |
+| solid info | `on-info` on `info` | 4.5:1 | 5.62:1 | 7.12:1 |
 | solid success | `on-success` on `success` | 4.5:1 | 5.31:1 | 8.54:1 |
 | solid warning | `on-warning` on `warning` | 4.5:1 | 5.40:1 | 8.84:1 |
 | solid danger | `on-danger` on `danger` | 4.5:1 | 5.21:1 | 6.29:1 |
+| hue 1, text on its fill | `text` on `hue-1-soft` | 4.5:1 | 14.23:1 | 11.25:1 |
+| hue 1, the dot on its fill | `hue-1` on `hue-1-soft` | 3:1 | 3.25:1 | 8.04:1 |
+| hue 2, text on its fill | `text` on `hue-2-soft` | 4.5:1 | 14.45:1 | 11.01:1 |
+| hue 2, the dot on its fill | `hue-2` on `hue-2-soft` | 3:1 | 4.66:1 | 9.72:1 |
+| hue 3, text on its fill | `text` on `hue-3-soft` | 4.5:1 | 14.24:1 | 11.37:1 |
+| hue 3, the dot on its fill | `hue-3` on `hue-3-soft` | 3:1 | 6.69:1 | 4.32:1 |
+| hue 4, text on its fill | `text` on `hue-4-soft` | 4.5:1 | 14.32:1 | 11.18:1 |
+| hue 4, the dot on its fill | `hue-4` on `hue-4-soft` | 3:1 | 4.29:1 | 8.46:1 |
+| hue 5, text on its fill | `text` on `hue-5-soft` | 4.5:1 | 14.13:1 | 11.41:1 |
+| hue 5, the dot on its fill | `hue-5` on `hue-5-soft` | 3:1 | 7.15:1 | 6.68:1 |
+| hue 6, text on its fill | `text` on `hue-6-soft` | 4.5:1 | 14.10:1 | 11.41:1 |
+| hue 6, the dot on its fill | `hue-6` on `hue-6-soft` | 3:1 | 5.54:1 | 4.22:1 |
+| hue 7, text on its fill | `text` on `hue-7-soft` | 4.5:1 | 14.32:1 | 11.05:1 |
+| hue 7, the dot on its fill | `hue-7` on `hue-7-soft` | 3:1 | 6.45:1 | 5.87:1 |
+| hue 8, text on its fill | `text` on `hue-8-soft` | 4.5:1 | 14.31:1 | 11.20:1 |
+| hue 8, the dot on its fill | `hue-8` on `hue-8-soft` | 3:1 | 3.25:1 | 4.35:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 
@@ -146,11 +191,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Make a badge pressable; use a Button or a row.
 - Don't: Use a badge for a count on an icon; that needs its own placement and name.
 - Don't: Pick tones for decoration; each tone means the status it is named for.
-
-## Not yet
-
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| An info tone and category hues (tags, labels, people). | info and categorical hue roles with soft and on- pairs | Five tones; use neutral for categories. |
+- Don't: Use a hue for a status, or a tone for a category; hues carry no meaning beyond "the same kind".
 
 Related: Item, Card.

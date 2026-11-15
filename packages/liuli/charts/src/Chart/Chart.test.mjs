@@ -70,3 +70,8 @@ test('states: loading is busy with a hidden skeleton; empty shows its words; an 
   assert.equal(error.getByText('The budget could not be loaded').props.role, 'alert');
   for (const screen of [empty, error]) assert.equal(screen.queryAll(node => node.props.role === 'list').length, 0);
 });
+
+test('Spending: a sixth, seventh and eighth series take hues', async () => {
+  const screen = await renderExample('Chart/Chart', 'Spending');
+  assert.deepEqual(['health', 'leisure', 'clothes', 'gifts'].map(key => screen.getByTestId(`part-${key}`).props.background), ['chart-5', 'hue-3', 'hue-5', 'hue-4']);
+});

@@ -267,6 +267,30 @@
             "minimum": "3:1"
           },
           {
+            "what": "sixth series, as a bar",
+            "pair": [
+              "hue-3/85",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "seventh series, as a bar",
+            "pair": [
+              "hue-5/85",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "eighth series, as a bar",
+            "pair": [
+              "hue-4/85",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
             "what": "second series, straight on the page",
             "pair": [
               "chart-2/85",
@@ -729,6 +753,30 @@
             "minimum": "3:1"
           },
           {
+            "what": "sixth mark colour",
+            "pair": [
+              "hue-3",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "seventh mark colour",
+            "pair": [
+              "hue-5",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "eighth mark colour",
+            "pair": [
+              "hue-4",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
             "what": "second mark colour, straight on the page",
             "pair": [
               "chart-2",
@@ -786,6 +834,11 @@
           "source": "import { cx } from '@lingxia/view';\nimport { Chart, ChartLegend } from '@liulidesign/charts/Chart';\n\nconst budget = [\n  { key: 'spent', label: 'Spent', amount: 6200, color: 1 as const },\n  { key: 'committed', label: 'Committed', amount: 2300, color: 2 as const },\n  { key: 'left', label: 'Left', amount: 1500, color: 3 as const },\n];\nconst fills = { 1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3' } as const;\nconst dollars = (value: number) => `$${String(value).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',')}`;\n\n/** The frame around a plot of your own: here one bar split into parts, built from plain views. */\nexport function Budget() {\n  return (\n    <Chart\n      label=\"Budget for the quarter\"\n      title=\"Budget\"\n      description=\"Third quarter, $10,000\"\n      summary=\"62% spent, 23% committed, 15% left.\"\n      size=\"fit\"\n      legend={<ChartLegend label=\"Parts\" variant=\"list\" items={budget.map(part => ({ key: part.key, label: part.label, color: part.color, value: dollars(part.amount) }))} />}\n      data-testid=\"budget\"\n    >\n      <view aria-hidden className=\"flex-row gap-0.5\">\n        {budget.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', fills[part.color])} style={{ flexGrow: part.amount }} />)}\n      </view>\n    </Chart>\n  );\n}"
         },
         {
+          "name": "Spending",
+          "title": "Eight series colours",
+          "source": "import { cx } from '@lingxia/view';\nimport { Chart, ChartLegend } from '@liulidesign/charts/Chart';\n\nconst dollars = (value: number) => `$${String(value).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',')}`;\nconst spending = [\n  { key: 'rent', label: 'Rent', amount: 1400, color: 1 as const },\n  { key: 'food', label: 'Food', amount: 620, color: 2 as const },\n  { key: 'transport', label: 'Transport', amount: 310, color: 3 as const },\n  { key: 'utilities', label: 'Utilities', amount: 240, color: 4 as const },\n  { key: 'health', label: 'Health', amount: 180, color: 5 as const },\n  { key: 'leisure', label: 'Leisure', amount: 160, color: 6 as const },\n  { key: 'clothes', label: 'Clothes', amount: 120, color: 7 as const },\n  { key: 'gifts', label: 'Gifts', amount: 70, color: 8 as const },\n];\nconst eight = {\n  1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3', 4: 'bg-chart-4', 5: 'bg-chart-5', 6: 'bg-hue-3', 7: 'bg-hue-5', 8: 'bg-hue-4',\n} as const;\n\n/** Eight series colours: the five chart roles, then three of the theme's hues. Past eight, merge the rest. */\nexport function Spending() {\n  return (\n    <Chart\n      label=\"Spending in May\"\n      title=\"Spending\"\n      description=\"May, $3,100\"\n      summary=\"Rent is 45% of spending; food 20%; the other six kinds share the rest.\"\n      size=\"fit\"\n      legend={<ChartLegend label=\"Kinds\" variant=\"list\" items={spending.map(part => ({ key: part.key, label: part.label, color: part.color, value: dollars(part.amount) }))} data-testid=\"spending-legend\" />}\n      data-testid=\"spending\"\n    >\n      <view aria-hidden className=\"flex-row gap-0.5\">\n        {spending.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', eight[part.color])} style={{ flexGrow: part.amount }} data-testid={`part-${part.key}`} />)}\n      </view>\n    </Chart>\n  );\n}"
+        },
+        {
           "name": "Legends",
           "title": "Legends for bars and for lines",
           "source": "import { useLocal } from '@lingxia/view';\nimport { ChartLegend } from '@liulidesign/charts/Chart';\n\nconst plans = [\n  { key: 'free', label: 'Free', color: 1 as const, dash: [] },\n  { key: 'team', label: 'Team', color: 2 as const, dash: [6, 4] },\n  { key: 'pro', label: 'Pro', color: 3 as const, dash: [2, 3] },\n];\n\n/** Squares name bars and slices; strokes name lines and carry each line's dash. */\nexport function Legends() {\n  const hidden = useLocal<readonly string[]>('hidden', ['pro']);\n  const toggle = (key: string) => hidden.set(hidden.value.includes(key) ? hidden.value.filter(each => each !== key) : [...hidden.value, key]);\n  return (\n    <view className=\"gap-5\">\n      <ChartLegend label=\"Plans\" items={plans} data-testid=\"squares\" />\n      <ChartLegend label=\"Plans, as lines\" mark=\"line\" items={plans.map(plan => ({ ...plan, isOff: hidden.value.includes(plan.key) }))} pressedState=\"shown\" onItemPress={toggle} data-testid=\"lines\" />\n    </view>\n  );\n}"
@@ -838,6 +891,9 @@
           "chart-3",
           "chart-4",
           "chart-5",
+          "hue-3",
+          "hue-4",
+          "hue-5",
           "line-strong",
           "text",
           "text-faint",
@@ -858,6 +914,10 @@
           "lead": "Use the chart frame around a plot of your own, so it reads and behaves like Liuli's charts.",
           "hero": "Budget",
           "variants": [
+            {
+              "name": "Spending",
+              "title": "Eight parts: the five chart colours, then three of the theme's hues"
+            },
             {
               "name": "Legends",
               "title": "Squares for bars and slices, strokes for lines; the second can hide a series"

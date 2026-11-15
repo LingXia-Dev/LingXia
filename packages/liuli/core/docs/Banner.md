@@ -138,7 +138,7 @@ export function Collapsible() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `bannerRecipe` from `@liulidesign/core/Banner/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `danger`, `danger-soft`, `focus`, `success`, `success-soft`, `text`, `text-muted`, `warning`, `warning-soft`.
+- Colour roles it paints with, set by the theme pack: `danger`, `danger-soft`, `focus`, `info`, `info-soft`, `success`, `success-soft`, `text`, `text-muted`, `warning`, `warning-soft`.
 
 ## Accessibility
 
@@ -153,7 +153,7 @@ export function Collapsible() {
 | --- | --- | --- | --- | --- |
 | title and message on neutral | `text` on `text/6` over `canvas` | 4.5:1 | 13.54:1 | 13.46:1 |
 | neutral icon | `text-muted` on `text/6` over `canvas` | 3:1 | 4.90:1 | 6.45:1 |
-| title and message on info | `text` on `accent-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
+| title and message on info | `text` on `info-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
 | title and message on success | `text` on `success-soft` | 4.5:1 | 14.34:1 | 11.76:1 |
 | title and message on warning | `text` on `warning-soft` | 4.5:1 | 14.59:1 | 11.36:1 |
 | title and message on danger | `text` on `danger-soft` | 4.5:1 | 14.24:1 | 12.84:1 |

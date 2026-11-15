@@ -54,6 +54,38 @@ export function Filters() {
 }
 ```
 
+### Labels, each in its hue
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Token, TokenList } from '@liulidesign/core/Token';
+
+/** Labels keep their hue wherever they appear; removing one takes it off the issue. */
+export function Labels() {
+  const labels = useLocal('labels', [
+    { name: 'bug', hue: 5 as const },
+    { name: 'design', hue: 6 as const },
+    { name: 'needs triage', hue: 4 as const },
+    { name: 'mobile', hue: 2 as const },
+  ]);
+  return (
+    <TokenList label="Labels" data-testid="labels">
+      {labels.value.map(each => (
+        <Token
+          key={each.name}
+          label={each.name}
+          hue={each.hue}
+          size="sm"
+          onRemove={() => labels.set(labels.value.filter(other => other.name !== each.name))}
+          removeLabel={`Remove ${each.name}`}
+          data-testid={`label-${each.name.replace(/ /g, '-')}`}
+        />
+      ))}
+    </TokenList>
+  );
+}
+```
+
 ### Sizes
 
 ```tsx
@@ -79,6 +111,7 @@ export function Sizes() {
 | `removeLabel` | `string` |  | The remove button's name, with what it removes: "Remove Ana Lima". |
 | `label` (required) | `string` |  | What the token stands for: a person, a tag, a filter. |
 | `startIcon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "checklist" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "click" \| "clock" \| "close" \| "cloud" \| "collapse" \| "compass" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "layers" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "palette" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "rows" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "success" \| "tag" \| "template" \| "text-input" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  | An icon before the label, by name. |
+| `hue` | `Hue` |  | A category's colour, one of the theme's eight hues: the pill takes the hue's soft fill, with a dot (or the icon) in the hue. |
 | `onClick` | `(() => void)` |  | Makes the label a button: opens the thing, or toggles a filter. |
 | `isSelected` | `boolean` | `false` | Marks a pressable token as on, for a filter that is applied. |
 | `size` | `TokenSize` | `'md'` |  |
@@ -92,6 +125,7 @@ export function Sizes() {
 | --- | --- | --- | --- |
 | root | `<view>` | yes | The pill, on a tint of the text colour. |
 | icon | `<vector>` | no | An icon before the label; not read. |
+| dot | `<view>` | no | With `hue` and no icon: a dot in the hue; not read. |
 | label | `<text>` | yes | The name, cut short with an ellipsis when the row is narrow. |
 | remove | `<button>` | no | A round button at the end, named by `removeLabel`. |
 | list | `<view>` | no | TokenList: a wrapping row, a group named by `label`. |
@@ -101,7 +135,7 @@ export function Sizes() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `tokenRecipe` from `@liulidesign/core/Token/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`.
-- Colour roles it paints with, set by the theme pack: `accent-soft`, `focus`, `on-accent-soft`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent-soft`, `focus`, `hue-1`, `hue-1-soft`, `hue-2`, `hue-2-soft`, `hue-3`, `hue-3-soft`, `hue-4`, `hue-4-soft`, `hue-5`, `hue-5-soft`, `hue-6`, `hue-6-soft`, `hue-7`, `hue-7-soft`, `hue-8`, `hue-8-soft`, `on-accent-soft`, `text`, `text-muted`.
 
 ## Accessibility
 
@@ -122,6 +156,22 @@ export function Sizes() {
 | label on the pill | `text` on `text/8` over `surface` | 4.5:1 | 13.91:1 | 11.29:1 |
 | label, selected | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.44:1 | 9.49:1 |
 | remove icon | `text-muted` on `text/8` over `surface` | 3:1 | 5.04:1 | 5.41:1 |
+| hue 1, label on its fill | `text` on `hue-1-soft` | 4.5:1 | 14.23:1 | 11.25:1 |
+| hue 2, label on its fill | `text` on `hue-2-soft` | 4.5:1 | 14.45:1 | 11.01:1 |
+| hue 3, label on its fill | `text` on `hue-3-soft` | 4.5:1 | 14.24:1 | 11.37:1 |
+| hue 4, label on its fill | `text` on `hue-4-soft` | 4.5:1 | 14.32:1 | 11.18:1 |
+| hue 5, label on its fill | `text` on `hue-5-soft` | 4.5:1 | 14.13:1 | 11.41:1 |
+| hue 6, label on its fill | `text` on `hue-6-soft` | 4.5:1 | 14.10:1 | 11.41:1 |
+| hue 7, label on its fill | `text` on `hue-7-soft` | 4.5:1 | 14.32:1 | 11.05:1 |
+| hue 8, label on its fill | `text` on `hue-8-soft` | 4.5:1 | 14.31:1 | 11.20:1 |
+| hue 1, the dot on its fill | `hue-1` on `hue-1-soft` | 3:1 | 3.25:1 | 8.04:1 |
+| hue 2, the dot on its fill | `hue-2` on `hue-2-soft` | 3:1 | 4.66:1 | 9.72:1 |
+| hue 3, the dot on its fill | `hue-3` on `hue-3-soft` | 3:1 | 6.69:1 | 4.32:1 |
+| hue 4, the dot on its fill | `hue-4` on `hue-4-soft` | 3:1 | 4.29:1 | 8.46:1 |
+| hue 5, the dot on its fill | `hue-5` on `hue-5-soft` | 3:1 | 7.15:1 | 6.68:1 |
+| hue 6, the dot on its fill | `hue-6` on `hue-6-soft` | 3:1 | 5.54:1 | 4.22:1 |
+| hue 7, the dot on its fill | `hue-7` on `hue-7-soft` | 3:1 | 6.45:1 | 5.87:1 |
+| hue 8, the dot on its fill | `hue-8` on `hue-8-soft` | 3:1 | 3.25:1 | 4.35:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

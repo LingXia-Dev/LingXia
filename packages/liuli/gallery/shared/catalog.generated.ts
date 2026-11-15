@@ -597,7 +597,10 @@ export const entries: GalleryEntry[] = [
       "chip",
       "status",
       "lozenge",
-      "tone"
+      "tone",
+      "hue",
+      "category",
+      "colour"
     ]
   },
   {

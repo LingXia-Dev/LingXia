@@ -127,7 +127,6 @@ export function Unread() {
 ```tsx
 import { Avatar } from '@liulidesign/core/Avatar';
 
-/** A rounded square for what is not a person: a team, a workspace. */
 export function Teams() {
   return (
     <view className="gap-3">
@@ -150,6 +149,24 @@ export function Teams() {
 }
 ```
 
+### A hue for each person
+
+```tsx
+import { hueFor } from '../hue';
+import { Avatar } from '@liulidesign/core/Avatar';
+
+/** A rounded square for what is not a person: a team, a workspace. */
+/** Each name gets its own hue, the same one every time, so a list of initials is not a column of one colour. */
+export function Hues() {
+  const people = ['Ana Lima', 'Kai Chen', 'Mira Patel', 'Tomas Reyes', 'Yuki Sato', 'Noor Haddad'];
+  return (
+    <view className="flex-row flex-wrap gap-3">
+      {people.map(name => <Avatar key={name} name={name} hue={hueFor(name)} data-testid={`hue-${name.split(' ')[0].toLowerCase()}`} />)}
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -157,6 +174,7 @@ export function Teams() {
 | `name` (required) | `string` |  | Whose avatar: the accessible name, and the source of the initials. |
 | `src` | `string` |  | A photo; initials show until it loads and if it fails. |
 | `initials` | `string` |  | Overrides the initials taken from the first letters of the first two words of `name`. |
+| `hue` | `Hue` |  | The colour behind the initials, one of the theme's eight hues; `hueFor(name)` from `@liulidesign/core/hue` gives each name its own. Without it, the accent's soft step. |
 | `size` | `AvatarSize` | `'md', or the group's size` |  |
 | `shape` | `AvatarShape` | `'circle', or the group's shape` |  |
 | `status` | `AvatarStatus` |  | A dot at the bottom end edge: whether the person is around. Give `statusLabel` with it. |
@@ -182,7 +200,7 @@ export function Teams() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `avatarRecipe` from `@liulidesign/core/Avatar/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-callout`.
-- Colour roles it paints with, set by the theme pack: `accent-soft`, `danger-mark`, `line`, `on-accent-soft`, `success-mark`, `surface`, `surface-raised`, `surface-sunken`, `text`, `warning-mark`.
+- Colour roles it paints with, set by the theme pack: `accent-soft`, `danger-mark`, `hue-1-soft`, `hue-2-soft`, `hue-3-soft`, `hue-4-soft`, `hue-5-soft`, `hue-6-soft`, `hue-7-soft`, `hue-8-soft`, `line`, `on-accent-soft`, `success-mark`, `surface`, `surface-raised`, `surface-sunken`, `text`, `warning-mark`.
 
 ## Accessibility
 
@@ -197,6 +215,14 @@ export function Teams() {
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | initials | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.44:1 | 9.49:1 |
+| hue 1, initials on its fill | `text` on `hue-1-soft` | 4.5:1 | 14.23:1 | 11.25:1 |
+| hue 2, initials on its fill | `text` on `hue-2-soft` | 4.5:1 | 14.45:1 | 11.01:1 |
+| hue 3, initials on its fill | `text` on `hue-3-soft` | 4.5:1 | 14.24:1 | 11.37:1 |
+| hue 4, initials on its fill | `text` on `hue-4-soft` | 4.5:1 | 14.32:1 | 11.18:1 |
+| hue 5, initials on its fill | `text` on `hue-5-soft` | 4.5:1 | 14.13:1 | 11.41:1 |
+| hue 6, initials on its fill | `text` on `hue-6-soft` | 4.5:1 | 14.10:1 | 11.41:1 |
+| hue 7, initials on its fill | `text` on `hue-7-soft` | 4.5:1 | 14.32:1 | 11.05:1 |
+| hue 8, initials on its fill | `text` on `hue-8-soft` | 4.5:1 | 14.31:1 | 11.20:1 |
 | online dot | `success-mark` on `surface` | 3:1 | 3.61:1 | 6.91:1 |
 | away dot | `warning-mark` on `surface` | 3:1 | 3.64:1 | 8.03:1 |
 | busy dot | `danger-mark` on `surface` | 3:1 | 3.91:1 | 5.19:1 |

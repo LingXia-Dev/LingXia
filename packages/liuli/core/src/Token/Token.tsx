@@ -1,4 +1,5 @@
 import { cx, type Child } from '@lingxia/view';
+import type { Hue } from '../hue';
 import type { IconName } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { tokenRecipe as r } from './Token.recipe';
@@ -19,6 +20,8 @@ export type TokenProps = TokenRemove & {
   label: string;
   /** An icon before the label, by name. */
   startIcon?: IconName;
+  /** A category's colour, one of the theme's eight hues: the pill takes the hue's soft fill, with a dot (or the icon) in the hue. */
+  hue?: Hue;
   /** Makes the label a button: opens the thing, or toggles a filter. */
   onClick?: () => void;
   /** Marks a pressable token as on, for a filter that is applied. @default false */
@@ -33,10 +36,11 @@ export type TokenProps = TokenRemove & {
 };
 
 /** One chosen thing as a pill: a recipient, a tag, a filter that can be taken away. */
-export function Token({ label, startIcon, onClick, isSelected = false, size = 'md', isDisabled = false, onRemove, removeLabel, className, 'data-testid': testId }: TokenProps) {
+export function Token({ label, startIcon, hue, onClick, isSelected = false, size = 'md', isDisabled = false, onRemove, removeLabel, className, 'data-testid': testId }: TokenProps) {
   const content = (
     <>
-      {startIcon !== undefined && <Glyph name={startIcon} className={r.icon.size[size]} />}
+      {startIcon !== undefined && <Glyph name={startIcon} className={cx(r.icon.size[size], hue !== undefined && r.icon.hue[hue])} />}
+      {startIcon === undefined && hue !== undefined && <view aria-hidden className={cx(r.dot.base, r.dot.hue[hue])} />}
       <text className={cx(r.label.base, r.label.size[size])}>{label}</text>
     </>
   );
@@ -45,7 +49,7 @@ export function Token({ label, startIcon, onClick, isSelected = false, size = 'm
       <Glyph name="close" weight={2.5} className={r.removeIcon.size[size]} />
     </button>
   );
-  const classes = cx(r.root.base, r.root.size[size], onRemove === undefined && r.root.plain[size], isSelected && r.root.selected, isDisabled && r.root.disabled, className);
+  const classes = cx(r.root.base, r.root.size[size], onRemove === undefined && r.root.plain[size], hue !== undefined && r.root.hue[hue], isSelected && r.root.selected, isDisabled && r.root.disabled, className);
   // A token that both opens and can be removed is two buttons side by side, never one inside the other.
   if (onClick !== undefined && onRemove === undefined) {
     return (

@@ -1,3 +1,4 @@
+import type { Hue } from '../hue';
 import type { AvatarShape, AvatarGroupSurface, AvatarSize, AvatarStatus } from './Avatar';
 
 export const avatarParts = {
@@ -20,6 +21,8 @@ export const avatarRecipe = {
       rounded: { xs: 'rounded-md', sm: 'rounded-lg', md: 'rounded-xl', lg: 'rounded-2xl' },
     } satisfies Record<AvatarShape, Record<AvatarSize, string>>,
     size: { xs: 'size-6', sm: 'size-8', md: 'size-10', lg: 'size-14' } satisfies Record<AvatarSize, string>,
+    /** A hue's soft fill in place of the accent's, so people are told apart at a glance. */
+    hue: { 1: 'bg-hue-1-soft', 2: 'bg-hue-2-soft', 3: 'bg-hue-3-soft', 4: 'bg-hue-4-soft', 5: 'bg-hue-5-soft', 6: 'bg-hue-6-soft', 7: 'bg-hue-7-soft', 8: 'bg-hue-8-soft' } satisfies Record<Hue, string>,
     /** In a group, a 2 px edge in the colour of the surface behind cuts each one out of the next. */
     inGroup: {
       surface: 'border-2 border-surface',
@@ -32,6 +35,8 @@ export const avatarRecipe = {
   },
   initials: {
     base: 'font-semibold text-on-accent-soft',
+    /** On a hue's fill the initials take the text role, which every hue fill is proven against. */
+    hue: 'text-text',
     size: { xs: 'text-caption', sm: 'text-caption', md: 'text-footnote', lg: 'text-callout' } satisfies Record<AvatarSize, string>,
   },
   /** A dot on the circle's bottom end edge, cut out of the avatar by an edge in the surface's colour. */

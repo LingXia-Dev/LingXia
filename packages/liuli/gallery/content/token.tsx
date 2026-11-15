@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Recipients, Filters, Sizes, StateDisabled } from '../../core/src/Token/Token.examples';
+import { Recipients, Filters, Labels, Sizes, StateDisabled } from '../../core/src/Token/Token.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -11,6 +11,9 @@ export function Content() {
       <PageSection title={"Variants"}>
         <Stage caption={"Pressable, as filters that toggle"}>
           <Filters />
+        </Stage>
+        <Stage caption={"A hue for a category: the labels on an issue"}>
+          <Labels />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

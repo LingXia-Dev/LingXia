@@ -32,3 +32,18 @@ test('InARow: the row is read as its label and description; the badge is drawn o
   assert.equal(row.props.accessibilityLabel, 'Invoice 2041');
   assert.deepEqual(described(screen, row), ['Overdue, due 3 May']);
 });
+
+test('Tones: info is its own family, soft and solid', async () => {
+  const soft = (await renderExample('Badge/Badge', 'Tones')).getByTestId('info');
+  assert.deepEqual([soft.props.background, soft.props.color], ['info-soft', 'text']);
+});
+
+test('Hues: the hue\'s soft fill with text in the text role, and a hidden dot in the hue', async () => {
+  const screen = await renderExample('Badge/Badge', 'Hues');
+  const badge = screen.getByTestId('hue-1');
+  assert.deepEqual([badge.props.background, badge.props.color], ['hue-1-soft', 'text']);
+  const [dot] = badge.children;
+  assert.equal(dot.props.background, 'hue-1');
+  assert.ok(dot.props.accessibilityHidden);
+  assert.equal(textOf(badge), 'Design');
+});

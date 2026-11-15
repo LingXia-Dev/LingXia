@@ -31,7 +31,7 @@ export function Services() {
 }
 ```
 
-### The five tones
+### The six tones
 
 ```tsx
 import { StatusDot } from '@liulidesign/core/StatusDot';
@@ -43,8 +43,31 @@ export function Tones() {
       <StatusDot label="Published" tone="success" />
       <StatusDot label="Needs review" tone="warning" />
       <StatusDot label="Rejected" tone="danger" />
+      <StatusDot label="Scheduled" tone="info" data-testid="info" />
       <StatusDot label="In progress" tone="accent" />
       <StatusDot label="Draft" />
+    </view>
+  );
+}
+```
+
+### Categories in the eight hues
+
+```tsx
+import { StatusDot } from '@liulidesign/core/StatusDot';
+
+/** A hue says which, not how: the calendars an event can be on. */
+export function Hues() {
+  return (
+    <view className="flex-row flex-wrap gap-x-5 gap-y-2">
+      <StatusDot label="Work" hue={1} data-testid="hue-1" />
+      <StatusDot label="Family" hue={2} />
+      <StatusDot label="Travel" hue={3} />
+      <StatusDot label="Garden" hue={4} />
+      <StatusDot label="Birthdays" hue={5} />
+      <StatusDot label="Choir" hue={6} />
+      <StatusDot label="Swimming" hue={7} />
+      <StatusDot label="Holidays" hue={8} />
     </view>
   );
 }
@@ -74,6 +97,7 @@ export function DotOnly() {
 | `label` (required) | `string` |  | The status in words: "Online", "Degraded", "Paused". Shown beside the dot, and what is read. |
 | `isLabelHidden` | `boolean` | `false` | Hides the words, keeping them as the dot\'s name: only where the same words are already beside it. |
 | `tone` | `StatusDotTone` | `'neutral'` |  |
+| `hue` | `Hue` |  | A category's colour in place of a tone, one of the theme's eight hues: which calendar, which project. Not for a status. |
 | `size` | `StatusDotSize` | `'md'` |  |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
@@ -91,7 +115,7 @@ export function DotOnly() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `statusDotRecipe` from `@liulidesign/core/StatusDot/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`.
-- Colour roles it paints with, set by the theme pack: `accent`, `danger-mark`, `line-strong`, `success-mark`, `text`, `warning-mark`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger-mark`, `hue-1`, `hue-2`, `hue-3`, `hue-4`, `hue-5`, `hue-6`, `hue-7`, `hue-8`, `info-mark`, `line-strong`, `success-mark`, `text`, `warning-mark`.
 
 ## Accessibility
 
@@ -108,7 +132,16 @@ export function DotOnly() {
 | success dot | `success-mark` on `surface` | 3:1 | 3.61:1 | 6.91:1 |
 | warning dot | `warning-mark` on `surface` | 3:1 | 3.64:1 | 8.03:1 |
 | danger dot | `danger-mark` on `surface` | 3:1 | 3.91:1 | 5.19:1 |
+| info dot | `info-mark` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 | accent dot | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
+| hue 1 dot | `hue-1` on `surface` | 3:1 | 3.72:1 | 9.91:1 |
+| hue 2 dot | `hue-2` on `surface` | 3:1 | 5.25:1 | 12.25:1 |
+| hue 3 dot | `hue-3` on `surface` | 3:1 | 7.64:1 | 5.28:1 |
+| hue 4 dot | `hue-4` on `surface` | 3:1 | 4.87:1 | 10.50:1 |
+| hue 5 dot | `hue-5` on `surface` | 3:1 | 8.24:1 | 8.12:1 |
+| hue 6 dot | `hue-6` on `surface` | 3:1 | 6.39:1 | 5.13:1 |
+| hue 7 dot | `hue-7` on `surface` | 3:1 | 7.33:1 | 7.37:1 |
+| hue 8 dot | `hue-8` on `surface` | 3:1 | 3.69:1 | 5.39:1 |
 | neutral ring | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 

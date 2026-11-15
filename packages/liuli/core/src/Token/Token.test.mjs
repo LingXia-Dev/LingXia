@@ -21,3 +21,12 @@ test('Filters: a pressable token is one button that reports pressed and changes 
   screen.press(token('filter-shared'));
   assert.equal(token('filter-shared').props.background, 'accent-soft');
 });
+
+test('Labels: a hue\'s soft fill with a hidden dot in the hue; the label is still what is read', async () => {
+  const screen = await renderExample('Token/Token', 'Labels');
+  const token = screen.getByTestId('label-bug');
+  assert.equal(token.props.background, 'hue-5-soft');
+  assert.equal(token.children[0].props.background, 'hue-5');
+  assert.ok(token.children[0].props.accessibilityHidden);
+  assert.equal(screen.getByTestId('label-bug-remove').props.accessibilityLabel, 'Remove bug');
+});

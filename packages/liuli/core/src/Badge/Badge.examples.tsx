@@ -6,6 +6,7 @@ export function Tones() {
     <view className="flex-row flex-wrap gap-2">
       <Badge label="Draft" data-testid="neutral" />
       <Badge label="New" tone="accent" data-testid="accent" />
+      <Badge label="Scheduled" tone="info" data-testid="info" />
       <Badge label="Paid" tone="success" />
       <Badge label="Due soon" tone="warning" />
       <Badge label="Overdue" tone="danger" data-testid="danger" />
@@ -18,9 +19,26 @@ export function Solid() {
   return (
     <view className="flex-row flex-wrap gap-2">
       <Badge label="Beta" tone="accent" emphasis="solid" data-testid="solid" />
+      <Badge label="Update" tone="info" emphasis="solid" />
       <Badge label="Live" tone="success" emphasis="solid" />
       <Badge label="Paused" tone="warning" emphasis="solid" />
       <Badge label="Failed" tone="danger" emphasis="solid" />
+    </view>
+  );
+}
+
+/** Kinds of things, not states: each project keeps its hue wherever it is named. */
+export function Hues() {
+  return (
+    <view className="flex-row flex-wrap gap-2">
+      <Badge label="Design" hue={1} data-testid="hue-1" />
+      <Badge label="Research" hue={2} />
+      <Badge label="Hardware" hue={3} />
+      <Badge label="Field trials" hue={4} />
+      <Badge label="Marketing" hue={5} />
+      <Badge label="Legal" hue={6} />
+      <Badge label="Support" hue={7} />
+      <Badge label="Archive" hue={8} />
     </view>
   );
 }

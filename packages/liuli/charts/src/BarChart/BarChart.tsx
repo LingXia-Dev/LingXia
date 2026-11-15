@@ -1,6 +1,6 @@
 import { cx, type PointerEvent, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
-import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
+import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
 import { box, indexAt, roundUp } from '../internal/geometry';
 import { Ticks } from '../internal/Ticks';
@@ -91,7 +91,7 @@ const at = (value: number) => String(Math.round(value * 100) / 100);
  * the plot hides the stroke at the zero line, so only the free end is round.
  */
 function barPaths(
-  rows: readonly ChartRow[], series: readonly { field: string; color: 1 | 2 | 3 | 4 | 5 }[], high: number, depth: number, chosen: number, corner: number,
+  rows: readonly ChartRow[], series: readonly { field: string; color: ChartColor }[], high: number, depth: number, chosen: number, corner: number,
 ): BarPaths {
   const out: BarPaths = { up: [], upDimmed: [], down: [], downDimmed: [] };
   const slot = box / rows.length;

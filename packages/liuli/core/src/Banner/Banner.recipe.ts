@@ -19,7 +19,7 @@ export const bannerRecipe = {
     base: 'flex-row items-start gap-3 rounded-container border ps-4 pe-2 py-3',
     tone: {
       neutral: 'bg-text/6 border-text/12',
-      info: 'bg-accent-soft border-accent/20',
+      info: 'bg-info-soft border-info/20',
       success: 'bg-success-soft border-success/25',
       warning: 'bg-warning-soft border-warning/30',
       danger: 'bg-danger-soft border-danger/25',
@@ -29,7 +29,7 @@ export const bannerRecipe = {
   },
   icon: {
     base: 'size-5 shrink-0 mt-px',
-    tone: { neutral: 'text-muted', info: 'text-accent', success: 'text-success', warning: 'text-warning', danger: 'text-danger' } satisfies Record<BannerTone, string>,
+    tone: { neutral: 'text-muted', info: 'text-info', success: 'text-success', warning: 'text-warning', danger: 'text-danger' } satisfies Record<BannerTone, string>,
   },
   text: {
     base: 'grow shrink basis-0 min-w-0 gap-0.5 items-start',

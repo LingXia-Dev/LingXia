@@ -28,6 +28,39 @@ export function Budget() {
   );
 }
 
+const spending = [
+  { key: 'rent', label: 'Rent', amount: 1400, color: 1 as const },
+  { key: 'food', label: 'Food', amount: 620, color: 2 as const },
+  { key: 'transport', label: 'Transport', amount: 310, color: 3 as const },
+  { key: 'utilities', label: 'Utilities', amount: 240, color: 4 as const },
+  { key: 'health', label: 'Health', amount: 180, color: 5 as const },
+  { key: 'leisure', label: 'Leisure', amount: 160, color: 6 as const },
+  { key: 'clothes', label: 'Clothes', amount: 120, color: 7 as const },
+  { key: 'gifts', label: 'Gifts', amount: 70, color: 8 as const },
+];
+const eight = {
+  1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3', 4: 'bg-chart-4', 5: 'bg-chart-5', 6: 'bg-hue-3', 7: 'bg-hue-5', 8: 'bg-hue-4',
+} as const;
+
+/** Eight series colours: the five chart roles, then three of the theme's hues. Past eight, merge the rest. */
+export function Spending() {
+  return (
+    <Chart
+      label="Spending in May"
+      title="Spending"
+      description="May, $3,100"
+      summary="Rent is 45% of spending; food 20%; the other six kinds share the rest."
+      size="fit"
+      legend={<ChartLegend label="Kinds" variant="list" items={spending.map(part => ({ key: part.key, label: part.label, color: part.color, value: dollars(part.amount) }))} data-testid="spending-legend" />}
+      data-testid="spending"
+    >
+      <view aria-hidden className="flex-row gap-0.5">
+        {spending.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', eight[part.color])} style={{ flexGrow: part.amount }} data-testid={`part-${part.key}`} />)}
+      </view>
+    </Chart>
+  );
+}
+
 const plans = [
   { key: 'free', label: 'Free', color: 1 as const, dash: [] },
   { key: 'team', label: 'Team', color: 2 as const, dash: [6, 4] },

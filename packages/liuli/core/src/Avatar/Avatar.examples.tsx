@@ -1,4 +1,5 @@
 import { Badge } from '../Badge/Badge';
+import { hueFor } from '../hue';
 import { Avatar, AvatarGroup } from './Avatar';
 
 // Pictures in the gallery package; a person's own photo goes here.
@@ -105,6 +106,16 @@ export function Specimen() {
 }
 
 /** A rounded square for what is not a person: a team, a workspace. */
+/** Each name gets its own hue, the same one every time, so a list of initials is not a column of one colour. */
+export function Hues() {
+  const people = ['Ana Lima', 'Kai Chen', 'Mira Patel', 'Tomas Reyes', 'Yuki Sato', 'Noor Haddad'];
+  return (
+    <view className="flex-row flex-wrap gap-3">
+      {people.map(name => <Avatar key={name} name={name} hue={hueFor(name)} data-testid={`hue-${name.split(' ')[0].toLowerCase()}`} />)}
+    </view>
+  );
+}
+
 export function Teams() {
   return (
     <view className="gap-3">
