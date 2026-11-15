@@ -152,6 +152,13 @@ pub enum Dispatch {
         identity: String,
         payload: String,
     },
+    /// PageUp or PageDown in a grid with `onPage`.
+    GridPage {
+        commit: CommitTicket,
+        handle: u64,
+        identity: String,
+        next: bool,
+    },
     /// `onPointer`: where a pointer is over an element.
     PointerEvent {
         commit: CommitTicket,

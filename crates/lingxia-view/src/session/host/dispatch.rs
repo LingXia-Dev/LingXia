@@ -366,6 +366,18 @@ impl<A: PlatformAdapter> Inner<A> {
                         session.context_menu_event(commit, handle, &identity, &payload)
                     }),
                 ),
+                Dispatch::GridPage {
+                    commit,
+                    handle,
+                    identity,
+                    next,
+                } => self.activate(
+                    page,
+                    false,
+                    Box::new(move |session| {
+                        session.grid_page_event(commit, handle, &identity, next)
+                    }),
+                ),
                 Dispatch::BlurEditor { identity } => self.activate(
                     page,
                     false,

@@ -333,6 +333,27 @@ impl ViewSession {
         }
     }
 
+    /// A grid's `onPage` for `identity`, through its current callback.
+    pub fn grid_page_event(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        handle: u64,
+        identity: &str,
+        next: bool,
+    ) -> Result<bool, String> {
+        let direction = if next { "next" } else { "previous" };
+        let current = self
+            .retained
+            .as_ref()
+            .and_then(|retained| retained.nodes.iter().find(|node| node.identity == identity))
+            .map(|node| node.on_page);
+        match current {
+            Some(Some(handle)) => self.text_event(self.generation, handle, direction),
+            Some(None) => Ok(false),
+            None => self.text_event(generation, handle, direction),
+        }
+    }
+
     /// `onContextMenu` for `identity`, through the element's current callback.
     pub fn context_menu_event(
         &mut self,

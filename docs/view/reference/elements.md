@@ -43,6 +43,7 @@ Children: any elements and text. Renders as `column`.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `onPage` | `(direction: "previous" \| "next") => void` |  |
 | `onContextMenu` | `(event: ContextMenuEvent) => void` |  |
 | `anchor` | `string` |  |
 | `onPointer` | `(event: PointerEvent) => void` |  |

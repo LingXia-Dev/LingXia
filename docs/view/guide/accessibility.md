@@ -65,6 +65,7 @@ below (`tab`, `radio`, `option`, `menuitem`, `menuitemcheckbox`, `menuitemradio`
 | `tablist`, `tab`, `tabpanel` | tabs and the content they show: mark the current tab with `aria-selected`; Left and Right select the previous or next tab (swapped in right-to-left layouts) |
 | `radiogroup`, `radio` | buttons where one choice is on: mark it with `aria-checked`; the arrow keys move to the previous or next choice and turn it on |
 | `toolbar` | a row of controls; Left and Right move focus between them without pressing them |
+| `grid`, `row`, `gridcell` | cells in rows, such as a calendar's days: Left and Right move along the row, Up and Down to the same column of the next row, Home and End to the row's ends. A cell that takes no focus is passed over, and focus stays when there is none beyond. PageUp and PageDown call the grid's `onPage("previous" \| "next")` when it has one, else go to the column's first and last cell |
 | `tree`, `treeitem` | nested items, such as folders: give each its depth with `aria-level` (1–32) and its open state with `aria-expanded`; Right moves into an open item, Left moves to the item above it |
 | `menuitemcheckbox`, `menuitemradio` | menu items that are on or off (`aria-checked`); in a `menuitemradio` set only one is on |
 | `progressbar` | an amount done: `aria-valuenow` within `aria-valuemin` (0) and `aria-valuemax` (100), spoken as a percentage unless `aria-valuetext` is set; leave the value out while indeterminate. The kit `<Progress>` draws one as a bar or a ring |
@@ -75,7 +76,7 @@ A modal is the `<dialog>` element, not a role: it keeps focus inside and hides t
 ([Overlays](overlays.md#focus-and-assistive-tech)). `role="menu"` names a popover of actions and
 `role="menuitem"` its buttons.
 
-Tab reaches a `tablist`, `radiogroup`, `toolbar`, `listbox` or `tree` once, on its selected or
+Tab reaches a `tablist`, `radiogroup`, `toolbar`, `listbox`, `tree` or `grid` once, on its selected or
 checked item, else the item focused there last, else its first item; Tab again leaves it. Inside,
 the arrow keys move between items and Home and End go to the first and last (not in a radio group).
 A `menu` takes the same arrow keys.

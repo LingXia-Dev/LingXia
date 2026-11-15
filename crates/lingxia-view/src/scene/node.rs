@@ -152,6 +152,9 @@ pub struct NodeSnapshot {
     /// An editor's `onFocus` and `onBlur` handles.
     #[serde(skip)]
     pub on_focus: [Option<u64>; 2],
+    /// A grid's `onPage` handle: PageUp and PageDown ask the page for the previous or next page.
+    #[serde(skip)]
+    pub on_page: Option<u64>,
     /// `onContextMenu`'s handle: a long press, a secondary click or the Menu key asks for it.
     #[serde(skip)]
     pub on_context_menu: Option<u64>,

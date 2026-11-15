@@ -285,6 +285,84 @@ fn press_submits_editors_and_drives_keyboard_focus() {
     );
 }
 
+/// Three rows of three cells; the middle one takes no focus.
+fn grid(on_page: &str) -> String {
+    let cell = |id: &str, off: bool| {
+        format!(
+            "h('button',{{'data-testid':'{id}',role:'gridcell',disabled:{off},onClick(){{}}}},'{id}')"
+        )
+    };
+    let row = |r: usize| {
+        let cells: Vec<String> = (0..3)
+            .map(|c| cell(&format!("c{r}{c}"), r == 1 && c == 1))
+            .collect();
+        format!(
+            "h('view',{{role:'row',style:{{flexDirection:'row'}}}},{})",
+            cells.join(",")
+        )
+    };
+    format!(
+        "h('view',{{}},h('button',{{'data-testid':'before',onClick(){{}}}},'Before'),h('view',{{role:'grid','aria-label':'Days'{on_page}}},{},{},{}))",
+        row(0),
+        row(1),
+        row(2)
+    )
+}
+
+#[test]
+fn arrows_move_through_a_grid_by_row_and_column_past_cells_that_take_no_focus() {
+    let mut i = interaction(&grid(""));
+    let page = PageTicket::new(1);
+    let focused = |i: &ViewInteraction| {
+        (0..3)
+            .flat_map(|r| (0..3).map(move |c| format!("c{r}{c}")))
+            .find(|id| {
+                i.automation_query(&format!("[data-testid=\"{id}\"]"), None, false, None)
+                    .unwrap()["focused"]
+                    == true
+            })
+            .unwrap_or_default()
+    };
+    let mut press = |i: &mut ViewInteraction, from: &str, key: &str| {
+        let selector = if from.is_empty() {
+            String::new()
+        } else {
+            format!("[data-testid=\"{from}\"]")
+        };
+        let _ = i.automate(
+            &selector,
+            None,
+            AutomationAct::Press(key.into()),
+            false,
+            page,
+        );
+        focused(i)
+    };
+    assert_eq!(press(&mut i, "c00", "ArrowRight"), "c01");
+    // Down from the top middle passes the cell that takes no focus.
+    assert_eq!(press(&mut i, "", "ArrowDown"), "c21");
+    assert_eq!(press(&mut i, "", "ArrowUp"), "c01");
+    // Along the row too.
+    assert_eq!(press(&mut i, "c12", "ArrowLeft"), "c10");
+    assert_eq!(press(&mut i, "", "End"), "c12");
+    assert_eq!(press(&mut i, "", "Home"), "c10");
+    // Nothing beyond the edge: focus stays, in the row and in the column.
+    assert_eq!(press(&mut i, "c22", "ArrowRight"), "c22");
+    assert_eq!(press(&mut i, "", "ArrowDown"), "c22");
+    // Without a page handler, PageUp and PageDown go to the column's ends.
+    assert_eq!(press(&mut i, "", "PageUp"), "c02");
+    assert_eq!(press(&mut i, "", "PageDown"), "c22");
+    i.take_dispatch();
+
+    // A grid that pages hears the key instead, and focus stays where it was.
+    let mut paged = interaction(&grid(",onPage(){}"));
+    assert_eq!(press(&mut paged, "c00", "PageDown"), "c00");
+    assert!(matches!(
+        paged.take_dispatch()[..],
+        [Dispatch::GridPage { next: true, .. }]
+    ));
+}
+
 #[test]
 fn the_tree_nests_named_nodes_in_reading_order_with_their_states() {
     let i = interaction(

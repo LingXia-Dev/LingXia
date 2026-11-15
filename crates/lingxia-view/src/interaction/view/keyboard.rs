@@ -398,6 +398,21 @@ impl ViewInteraction {
         // In a composite (menu, tab list, radio group, toolbar, list box, tree) arrows move between
         // its items, Home and End go to the ends and, where ARIA's pattern has it, a character jumps
         // to the next item whose name starts with it.
+        // A grid that pages (a calendar's months) hears PageUp and PageDown itself.
+        if let Some(index) = origin
+            && matches!(key, Key::PageUp | Key::PageDown)
+            && let Some((container, crate::interaction::composite::Composite::Grid)) =
+                Composites::new(&frame).container_of(index)
+            && let Some(handle) = frame.nodes[container].on_page
+        {
+            self.dispatches.push(super::Dispatch::GridPage {
+                commit: frame.commit,
+                handle,
+                identity: frame.nodes[container].identity.to_string(),
+                next: key == Key::PageDown,
+            });
+            return (true, vec![Effect::Dispatch]);
+        }
         if let Some(index) = origin
             && let Some((target, activate)) = self.composite_key(&frame, index, key)
         {

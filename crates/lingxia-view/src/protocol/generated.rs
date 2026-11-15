@@ -289,6 +289,7 @@ pub mod field {
     pub const ARIA_ACTIVE_DESCENDANT: usize = 252;
     pub const MIXED: usize = 253;
     pub const ON_CONTEXT_MENU: usize = 254;
+    pub const ON_PAGE: usize = 255;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video"];
@@ -550,6 +551,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("ariaActiveDescendant", "element-id"),
     ("mixed", "flag"),
     ("onContextMenu", "handle"),
+    ("onPage", "handle"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -1010,4 +1012,5 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::BUTTON, tag::COLUMN]), parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON, tag::LINK, tag::TEXT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN]), parent: None },
 ];

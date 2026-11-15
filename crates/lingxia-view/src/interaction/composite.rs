@@ -12,6 +12,8 @@ pub enum Composite {
     Toolbar,
     ListBox,
     Tree,
+    /// Rows of cells: arrows move by row and by column.
+    Grid,
 }
 
 /// The direction a key moves focus in, or the end it jumps to.
@@ -25,6 +27,12 @@ pub enum Move {
     Child,
     /// A tree's Left: the item one level up.
     Parent,
+    /// A grid's Up and Down: the same column of the row above or below.
+    Up,
+    Down,
+    /// A grid's PageUp and PageDown without a page handler: the column's first and last cell.
+    Top,
+    Bottom,
 }
 
 impl Composite {
@@ -36,6 +44,7 @@ impl Composite {
             "toolbar" => Self::Toolbar,
             "listbox" => Self::ListBox,
             "tree" => Self::Tree,
+            "grid" => Self::Grid,
             _ => return None,
         })
     }
@@ -51,6 +60,7 @@ impl Composite {
             Self::RadioGroup => role == Some("radio"),
             Self::ListBox => role == Some("option"),
             Self::Tree => role == Some("treeitem"),
+            Self::Grid => role == Some("gridcell"),
             // Any control, except one whose arrows already mean something of its own.
             Self::Toolbar => {
                 hit_target(node)
@@ -68,14 +78,14 @@ impl Composite {
     }
 
     fn wraps(self) -> bool {
-        !matches!(self, Self::ListBox | Self::Tree)
+        !matches!(self, Self::ListBox | Self::Tree | Self::Grid)
     }
 
     /// The state that makes an item the group's Tab stop.
     fn chosen(self, node: &NodeSnapshot) -> bool {
         match self {
             Self::RadioGroup => node.states[6] == Some(true),
-            Self::TabList | Self::ListBox | Self::Tree => node.states[1] == Some(true),
+            Self::TabList | Self::ListBox | Self::Tree | Self::Grid => node.states[1] == Some(true),
             Self::Menu | Self::Toolbar => false,
         }
     }
@@ -97,6 +107,13 @@ impl Composite {
             (Self::TabList | Self::Toolbar | Self::RadioGroup, Key::Right) => right,
             (Self::RadioGroup, Key::Up) => Move::Previous,
             (Self::RadioGroup, Key::Down) => Move::Next,
+            // A grid's Home and End are its row's ends; they matched above.
+            (Self::Grid, Key::Left) => left,
+            (Self::Grid, Key::Right) => right,
+            (Self::Grid, Key::Up) => Move::Up,
+            (Self::Grid, Key::Down) => Move::Down,
+            (Self::Grid, Key::PageUp) => Move::Top,
+            (Self::Grid, Key::PageDown) => Move::Bottom,
             (Self::Tree, Key::Right) => {
                 if rtl {
                     Move::Parent
@@ -219,6 +236,9 @@ impl Composites {
     ) -> Option<usize> {
         let (container, kind) = self.container_of(index)?;
         let items = self.items(frame, container, revealable);
+        if kind == Composite::Grid {
+            return self.grid_step(frame, container, index, movement, &items);
+        }
         let at = items.iter().position(|item| *item == index)?;
         let count = items.len();
         let level = |item: usize| frame.nodes[item].heading_level.unwrap_or(1);
@@ -239,6 +259,77 @@ impl Composites {
                 .rev()
                 .copied()
                 .find(|item| level(*item) < level(index)),
+            Move::Up | Move::Down | Move::Top | Move::Bottom => None,
+        }
+    }
+
+    /// A grid's cells by row, in tree order, disabled ones included: a column is a position in
+    /// its row whatever the cells around it take.
+    fn grid_rows(&self, frame: &PresentedFrame, container: usize) -> Vec<Vec<usize>> {
+        let mut rows: Vec<(Option<usize>, Vec<usize>)> = Vec::new();
+        for index in 0..frame.nodes.len() {
+            if !self
+                .container_of(index)
+                .is_some_and(|(owner, _)| owner == container)
+            {
+                continue;
+            }
+            // The nearest `row` between the cell and its grid; cells outside any row share one.
+            let row = (0..frame.nodes.len())
+                .filter(|row| {
+                    frame.nodes[*row].role.as_deref() == Some("row")
+                        && descends(&frame.nodes[index], &frame.nodes[*row])
+                        && descends(&frame.nodes[*row], &frame.nodes[container])
+                })
+                .max_by_key(|row| frame.nodes[*row].identity.len());
+            match rows.last_mut() {
+                Some((last, cells)) if *last == row => cells.push(index),
+                _ => rows.push((row, vec![index])),
+            }
+        }
+        rows.into_iter().map(|(_, cells)| cells).collect()
+    }
+
+    /// A move in a grid: along the row, or to the same column of another row. A cell that takes
+    /// no focus is passed over in the same direction; with none beyond it, focus stays.
+    fn grid_step(
+        &self,
+        frame: &PresentedFrame,
+        container: usize,
+        index: usize,
+        movement: Move,
+        focusable: &[usize],
+    ) -> Option<usize> {
+        let rows = self.grid_rows(frame, container);
+        let (row, column) = rows.iter().enumerate().find_map(|(row, cells)| {
+            cells
+                .iter()
+                .position(|cell| *cell == index)
+                .map(|column| (row, column))
+        })?;
+        let takes = |cell: &usize| focusable.contains(cell);
+        let in_column = |rows: &mut dyn Iterator<Item = &Vec<usize>>| {
+            rows.filter_map(|cells| cells.get(column))
+                .find(|cell| takes(cell))
+                .copied()
+        };
+        match movement {
+            Move::Next => rows[row][column + 1..]
+                .iter()
+                .find(|cell| takes(cell))
+                .copied(),
+            Move::Previous => rows[row][..column]
+                .iter()
+                .rev()
+                .find(|cell| takes(cell))
+                .copied(),
+            Move::First => rows[row].iter().find(|cell| takes(cell)).copied(),
+            Move::Last => rows[row].iter().rev().find(|cell| takes(cell)).copied(),
+            Move::Down => in_column(&mut rows[row + 1..].iter()),
+            Move::Up => in_column(&mut rows[..row].iter().rev()),
+            Move::Top => in_column(&mut rows[..row].iter()),
+            Move::Bottom => in_column(&mut rows[row + 1..].iter().rev()),
+            Move::Child | Move::Parent => None,
         }
     }
 }

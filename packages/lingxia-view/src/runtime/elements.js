@@ -454,6 +454,13 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (pointerAxis !== 'both') wire('pointerAxis', pointerAxis);
     }
   }
+  // A grid that pages: PageUp and PageDown ask for the previous or next page (a calendar's month).
+  if (props.onPage !== undefined) {
+    if (tag !== 'view' || props.role !== 'grid') throw Error('UI_PROP: onPage belongs to a <view role="grid">');
+    const { onPage } = props;
+    if (typeof onPage !== 'function') throw Error('UI_PROP: onPage takes a function');
+    if (!dropped('onPage')) on('onPage', direction => onPage(direction), 'text');
+  }
   // A request for the element's own menu: a long press, a secondary click, the Menu key.
   if (props.onContextMenu !== undefined) {
     if (!['view', 'button', 'link', 'text'].includes(tag)) throw Error('UI_PROP: onContextMenu belongs to a <view>, <button>, <link> or <text>');
