@@ -4,6 +4,7 @@ import { actionInfo, currentActions, leaveGuards, report } from './actions.js';
 import { streamResource, requestResource } from './resources.js';
 import { channelResource } from './channel-resource.js';
 import { noteRead, noteView } from './memo.js';
+import { classesReadTheme } from '../style/classes.js';
 
 const bindings = new WeakMap();
 
@@ -174,6 +175,9 @@ export function useLeaveGuard(name, options) {
 // The host pushes these when the lxapp's surface changes; it repaints only pages whose View read one.
 const hostContextKeys = new Set(['sizeClass', 'canDock']);
 let hostContextRead = false;
+// Whether page code ever read the appearance; kept across renders, since a recalled component does not read again.
+const appearanceKeys = new Set(['theme', 'highContrast']);
+let appearanceRead = false;
 const rawEnvs = new WeakMap();
 // The data the last view froze: a new one shares its unchanged parts.
 let lastData;
@@ -202,6 +206,7 @@ export function createView(data, env, revision) {
   const watched = frozen && typeof frozen === 'object' ? new Proxy(frozen, {
     get(target, key, receiver) {
       if (hostContextKeys.has(key)) hostContextRead = true;
+      if (appearanceKeys.has(key)) appearanceRead = true;
       return Reflect.get(target, key, receiver);
     },
   }) : frozen;
@@ -216,3 +221,6 @@ export function createView(data, env, revision) {
 export const envOf = view => (view && rawEnvs.get(view)) ?? view?.env;
 /** Whether the View read a host-context key since its view was created. */
 export const readsHostContext = () => hostContextRead;
+/** What of the environment the page depends on, for the host: 1 host context, 2 the appearance (page code read `theme` or `highContrast`, or a class has a theme condition). */
+export const envReads = () => (hostContextRead ? 1 : 0) | (appearanceRead || classesReadTheme() ? 2 : 0);
+export function resetEnvReads() { appearanceRead = false; }

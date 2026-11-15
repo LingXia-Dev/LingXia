@@ -1,7 +1,7 @@
 import { releasePress } from './runtime/press.js';
 import { render as rendering } from './runtime/state.js';
 import { describe, prepare, prepareWindows, takeMovedAnchors, takeThrown, commit, discard, reset, dispatch, probeListRow } from './runtime/tree.js';
-import { createView, syncData, hasLocalUpdates, readsHostContext } from './runtime/hooks.js';
+import { createView, syncData, hasLocalUpdates, readsHostContext, envReads } from './runtime/hooks.js';
 import { configureActions, takeViewEvents, receiveActionResponse, takeActionErrors, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
 import { viewCall, overlayTimer, takeOverlayTimers, escapeOverlay } from './runtime/overlay.js';
 import { openPicker, pickerKey, closePicker, takePickerResults, pickerIdentity } from './runtime/picker.js';
@@ -22,7 +22,7 @@ export function publishHost(render, catalog) {
     __lingxiaConfigureActions: configureActions, __lingxiaTakeViewEvents: takeViewEvents,
     __lingxiaReceiveActionResponse: receiveActionResponse, __lingxiaTakeActionErrors: takeActionErrors,
     __lingxiaHasLocalUpdates: hasLocalUpdates, __lingxiaReleasePress: releasePress, __lingxiaRequestLeave: requestLeave,
-    __lingxiaReadsHostContext: readsHostContext,
+    __lingxiaReadsHostContext: readsHostContext, __lingxiaEnvReads: envReads,
     __lingxiaAutomationAction: automationAction, __lingxiaTakeAutomationResults: takeAutomationResults,
     __lingxiaViewCall: viewCall, __lingxiaOverlayTimer: overlayTimer, __lingxiaTakeOverlayTimers: takeOverlayTimers,
     __lingxiaEscape: escapeOverlay, __lingxiaInterest: interest, __lingxiaDismissHints: dismissHints, __lingxiaCloseAfter: closeAfterExpired, __lingxiaFonts: takeFonts, __lingxiaProbeListRow: probeListRow,

@@ -10,7 +10,7 @@ import { overlayNode, decorateOverlay, resetOverlays } from './overlay.js';
 import { resetFrameMeasures } from './frames.js';
 import { resetReveals } from './reveal.js';
 import { pickerNode, pickerAnchor, resetPicker } from './picker.js';
-import { envOf } from './hooks.js';
+import { envOf, resetEnvReads } from './hooks.js';
 import { keysOf } from './keys.js';
 import { finishTopLayer, resetTopLayer } from './toplayer.js';
 import { fullscreenFallback, fullscreenDrawn, resolveBare } from './fullscreen.js';
@@ -209,7 +209,7 @@ export function reset() {
   for (const resource of page.resources.values()) resource.dispose();
   page.resources.clear();
   resetActions();
-  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures(); resetReveals(); resetVideos();
+  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures(); resetReveals(); resetEnvReads(); resetVideos();
   wireReset();
 }
 

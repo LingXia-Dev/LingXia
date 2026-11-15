@@ -6,6 +6,11 @@ impl ViewSession {
         self.reads_host_context
     }
 
+    /// Whether the View's last run depends on the appearance; true until it has run.
+    pub fn reads_appearance(&self) -> bool {
+        self.reads_appearance
+    }
+
     /// Native measurements are sampled with the frame; viewport stays renderer-owned.
     pub fn set_environment(&mut self, mut value: serde_json::Value) -> Result<(), String> {
         // Hover styles apply only to fine pointers; adapters that cannot tell report touch.
@@ -60,6 +65,9 @@ impl ViewSession {
             self.renderer.dark = dark;
             self.renderer.palette = palette;
             self.retained = None;
+            // Colours are roles the renderer resolves: the committed records repaint in the new
+            // palette without the View.
+            self.input_dirty = true;
         }
         let text_scale = crate::text::scale::TextScale::decode(value.get("textScale"))?;
         if self.renderer.text_scale != text_scale {

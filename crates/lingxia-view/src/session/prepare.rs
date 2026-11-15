@@ -909,13 +909,16 @@ impl ViewSession {
         }
         metrics.view_us += crate::session::metrics::micros(started);
         metrics.view_passes += 1;
-        self.reads_host_context = self.execute(|| {
+        // A bundle older than the appearance bit is taken to read it.
+        let reads = self.execute(|| {
             self.context
-                .eval::<bool>(Source::from_bytes(
-                    "typeof __lingxiaReadsHostContext !== 'function' || __lingxiaReadsHostContext()",
+                .eval::<i32>(Source::from_bytes(
+                    "typeof __lingxiaEnvReads === 'function' ? __lingxiaEnvReads() : (typeof __lingxiaReadsHostContext !== 'function' || __lingxiaReadsHostContext() ? 3 : 2)",
                 ))
                 .map_err(|e| crate::engine::js_error(&self.context, e))
         })?;
+        self.reads_host_context = reads & 1 != 0;
+        self.reads_appearance = reads & 2 != 0;
         Ok(records)
     }
 

@@ -197,13 +197,18 @@ impl<A: PlatformAdapter> Inner<A> {
                 .environment
                 .as_ref()
                 .is_some_and(|held| main.host_environment.same(held, &environment));
+            let repaints_only = main
+                .environment
+                .as_ref()
+                .is_some_and(|held| main.host_environment.repaints_only(held, &environment));
             if same {
                 // Host context only this page's View ignores: keep it for the next run, rebuild nothing.
                 main.environment = Some(environment.clone());
             } else {
                 main.environment = Some(environment.clone());
-                // A frame already being built is judged at its vsync by what its View read.
-                main.dirty = true;
+                // A frame already being built is judged at its vsync by what its View read. An
+                // appearance its View never read repaints the committed records instead.
+                main.dirty |= !repaints_only;
                 // A kept hidden frame no longer matches; catch up so a return can show at once.
                 // A parked page left: it renders nothing until the next connection.
                 if !main.visible
@@ -305,7 +310,12 @@ impl<A: PlatformAdapter> Inner<A> {
                 let rebuild = request.rebuild;
                 let prepared = inner.prepare(session, request, now);
                 let reads = session.reads_host_context();
-                inner.main().host_environment.set_reads_host_context(reads);
+                {
+                    let mut main = inner.main();
+                    main.host_environment.set_reads_host_context(reads);
+                    main.host_environment
+                        .set_reads_appearance(session.reads_appearance());
+                }
                 // Only a View step can ask for a measurement, and every one rebuilds.
                 if rebuild
                     && let Ok(measures) = session.take_frame_measures()
@@ -833,7 +843,13 @@ impl<A: PlatformAdapter> Inner<A> {
             main.release_input(prepared.input());
             main.drop_prepared();
             main.drop_ahead();
-            main.dirty = true;
+            // Built for another appearance only: the next frame repaints, the View need not run.
+            let repaints_only = self.lifecycle.is_current_surface(prepared.surface)
+                && main.environment.as_ref().is_some_and(|now| {
+                    main.host_environment
+                        .repaints_only(&prepared.environment, now)
+                });
+            main.dirty |= !repaints_only;
             main.pending = true;
         }
         let mut retry = false;

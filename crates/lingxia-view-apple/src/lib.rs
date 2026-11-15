@@ -180,7 +180,7 @@ impl Page {
         if resized {
             self.host.surface_changed();
         } else {
-            self.host.request_frame();
+            self.host.environment_changed();
         }
     }
 }

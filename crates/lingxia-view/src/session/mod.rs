@@ -98,6 +98,9 @@ pub struct ViewSession {
     input_dirty: bool,
     /// The View's last run read a host-context key (`env.sizeClass`, `env.canDock`).
     reads_host_context: bool,
+    /// The View depends on the appearance: its code read `env.theme` or `env.highContrast`, or a
+    /// class has a theme condition. True until it has run.
+    reads_appearance: bool,
     input_rebuild: bool,
     reveal_input: bool,
     pending_inputs: Option<crate::interaction::input_state::Inputs>,
@@ -342,6 +345,7 @@ impl ViewSession {
             animation_visible: Default::default(),
             input_dirty: false,
             reads_host_context: true,
+            reads_appearance: true,
             input_rebuild: false,
             reveal_input: false,
             pending_inputs: None,

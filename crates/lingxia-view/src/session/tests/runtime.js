@@ -897,10 +897,13 @@
     return value;
   }
   var classGeneration = 0;
+  var themed = false;
+  var classesReadTheme = () => themed;
   function configureClasses(compiled) {
     classGeneration++;
     byName = /* @__PURE__ */ new Map();
     cache.clear();
+    themed = compiled.some((rule) => rule.when?.theme !== void 0);
     compiled.forEach((rule, order) => {
       if (!byName.has(rule.name)) byName.set(rule.name, []);
       byName.get(rule.name).push({ ...copy(rule), order });
@@ -4833,6 +4836,8 @@
   }
   var hostContextKeys = /* @__PURE__ */ new Set(["sizeClass", "canDock"]);
   var hostContextRead = false;
+  var appearanceKeys = /* @__PURE__ */ new Set(["theme", "highContrast"]);
+  var appearanceRead = false;
   var rawEnvs = /* @__PURE__ */ new WeakMap();
   var lastData;
   var lastRevision = null;
@@ -4854,6 +4859,7 @@
     const watched = frozen && typeof frozen === "object" ? new Proxy(frozen, {
       get(target, key, receiver) {
         if (hostContextKeys.has(key)) hostContextRead = true;
+        if (appearanceKeys.has(key)) appearanceRead = true;
         return Reflect.get(target, key, receiver);
       }
     }) : frozen;
@@ -4865,6 +4871,10 @@
   }
   var envOf = (view) => (view && rawEnvs.get(view)) ?? view?.env;
   var readsHostContext = () => hostContextRead;
+  var envReads = () => (hostContextRead ? 1 : 0) | (appearanceRead || classesReadTheme() ? 2 : 0);
+  function resetEnvReads() {
+    appearanceRead = false;
+  }
 
   // src/runtime/details.js
   function Summary({ children }) {
@@ -5627,6 +5637,7 @@
     resetTopLayer();
     resetFrameMeasures();
     resetReveals();
+    resetEnvReads();
     resetVideos();
     wireReset();
   }
@@ -5694,6 +5705,7 @@
       __lingxiaReleasePress: releasePress,
       __lingxiaRequestLeave: requestLeave,
       __lingxiaReadsHostContext: readsHostContext,
+      __lingxiaEnvReads: envReads,
       __lingxiaAutomationAction: automationAction,
       __lingxiaTakeAutomationResults: takeAutomationResults,
       __lingxiaViewCall: viewCall,

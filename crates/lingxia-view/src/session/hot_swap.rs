@@ -45,6 +45,9 @@ impl ViewSession {
         self.wire.swap(&other.wire);
         // A swapped-in module's first frame warms the engine, as a loaded one's does.
         self.warm.swap(&other.warm);
+        // Until the new module has run, it is taken to read everything.
+        self.reads_host_context = true;
+        self.reads_appearance = true;
         self.overruns.swap(&other.overruns);
         let poisoned = self.poisoned.get();
         self.poisoned.set(other.poisoned.get());

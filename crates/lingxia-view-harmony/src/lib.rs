@@ -323,7 +323,7 @@ impl Page {
                 changed
             };
             if changed {
-                host.request_frame();
+                host.environment_changed();
             }
         });
     }

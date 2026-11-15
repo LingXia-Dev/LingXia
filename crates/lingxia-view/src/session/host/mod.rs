@@ -787,9 +787,16 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// A runtime environment push (`language`, `surface` or `theme` kind, JSON).
     pub fn update_environment(&self, update: &str) -> Result<(), String> {
         if self.inner.main().host_environment.update(update)? {
-            self.request_frame();
+            self.environment_changed();
         }
         Ok(())
+    }
+
+    /// What the platform measures or the runtime pushed changed, at the same size. The next
+    /// frame compares it with the one its View last ran for: the View runs again only for what
+    /// it read, and an appearance it never read repaints the committed frame in the new colours.
+    pub fn environment_changed(&self) {
+        self.inner.schedule();
     }
 
     /// Rebuild the View for the next frame.
@@ -1493,7 +1500,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
             self.inner.blink(timer);
         }
         if changed {
-            self.request_frame();
+            self.environment_changed();
         }
         Ok(self.test_environment_answer())
     }

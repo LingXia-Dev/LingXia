@@ -11,6 +11,8 @@ pub(super) struct HostEnvironment {
     theme: Option<(u64, [serde_json::Value; 4])>,
     /// The View's last run read a host-context key, so a surface push must rebuild it.
     ignores_host_context: bool,
+    /// The View's last run did not depend on the appearance, so a theme change only repaints.
+    ignores_appearance: bool,
     /// A test run's override (`view.environment`); only automation sets it.
     test: Option<TestOverride>,
 }
@@ -22,6 +24,9 @@ pub(super) struct TestOverride {
     pub(super) dark: Option<bool>,
     pub(super) still: bool,
 }
+
+/// Environment keys that only change colours, which the renderer resolves.
+const APPEARANCE: [&str; 3] = ["theme", "highContrast", "palette"];
 
 /// Environment keys a surface push sets that only the View reads.
 const HOST_CONTEXT: [&str; 2] = ["sizeClass", "canDock"];
@@ -131,6 +136,38 @@ impl HostEnvironment {
 
     pub(super) fn set_reads_host_context(&mut self, reads: bool) {
         self.ignores_host_context = !reads;
+    }
+
+    pub(super) fn set_reads_appearance(&mut self, reads: bool) {
+        self.ignores_appearance = !reads;
+    }
+
+    /// `a` and `b` differ only in the appearance and this page's View does not depend on it:
+    /// the page repaints in the new colours without running its View.
+    pub(super) fn repaints_only(
+        &self,
+        a: &crate::platform::FrameEnvironment,
+        b: &crate::platform::FrameEnvironment,
+    ) -> bool {
+        if !self.ignores_appearance || (a.width, a.height, a.scale) != (b.width, b.height, b.scale)
+        {
+            return false;
+        }
+        let strip = |value: &serde_json::Value| {
+            let mut value = value.clone();
+            if let Some(object) = value.as_object_mut() {
+                for key in APPEARANCE {
+                    object.remove(key);
+                }
+                if self.ignores_host_context {
+                    for key in HOST_CONTEXT {
+                        object.remove(key);
+                    }
+                }
+            }
+            value
+        };
+        strip(&a.value) == strip(&b.value)
     }
 
     /// `a` and `b` are the same for this page: host-context keys count only once its View

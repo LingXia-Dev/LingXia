@@ -18,10 +18,15 @@ function copy(value) {
 /** Bumped with each class table: anything lowered under an older one is stale. */
 export let classGeneration = 0;
 
+// A class with a theme condition (`dark:`) lowers differently per appearance.
+let themed = false;
+export const classesReadTheme = () => themed;
+
 export function configureClasses(compiled) {
   classGeneration++;
   byName = new Map();
   cache.clear();
+  themed = compiled.some(rule => rule.when?.theme !== undefined);
   compiled.forEach((rule, order) => {
     if (!byName.has(rule.name)) byName.set(rule.name, []);
     byName.get(rule.name).push({ ...copy(rule), order });
