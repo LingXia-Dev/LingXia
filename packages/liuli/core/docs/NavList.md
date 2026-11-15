@@ -88,6 +88,7 @@ export function Closed() {
 | item | `<button>` | yes | One row per place: a treeitem, on the accent wash when current. |
 | label | `<text>` | yes | The row's text; one line, cut with an ellipsis. |
 | end | `<view>` | no | `endText`: a count or short value, read as part of the row's name. |
+| current | `<view>` | no | An unseen mark, one per current row: its layout is when the row is brought into view. |
 
 ## Accessibility
 
@@ -102,6 +103,7 @@ export function Closed() {
 - The current row is read as selected, the others as not selected; a page that is current is not yet announced as "current page".
 - Rows are 36 px tall; on touch screens the View grows each press target to the platform minimum.
 - A row with `endText` is named "Inbox, 12", so the count is read once.
+- In a sidebar that scrolls, the current row is brought into view when the list first appears and whenever another row becomes current from outside the list; a row in a closed section stays where it is.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |

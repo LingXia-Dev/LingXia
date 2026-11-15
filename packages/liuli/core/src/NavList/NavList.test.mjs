@@ -58,3 +58,19 @@ test('Closed: a section in defaultClosed starts closed and opens on a press', as
   screen.press(screen.getByTestId('library-section-feedback'));
   screen.getByTestId('library-badge');
 });
+
+test('Sidebar: the current row is brought into view by a mark that is new for each current row, and absent when its section is closed', async () => {
+  const screen = await renderExample('NavList/NavList', 'Sidebar');
+  const mark = () => screen.queryAll(node => node.testId === 'workspace-reveal');
+  assert.equal(mark().length, 1);
+  assert.deepEqual([mark()[0].props.accessibilityHidden, mark()[0].props.position, mark()[0].props.width], [1, 'absolute', 1], 'unseen and out of the rows');
+  assert.ok(mark()[0].props.onLayout, 'its layout is the moment to reveal the row');
+  const first = mark()[0].key;
+  assert.equal(screen.getByTestId('workspace').children.at(-1), mark()[0], 'after the rows, so the first row stays the first child');
+  assert.ok(screen.getByTestId('workspace-inbox').props.elementId, 'rows carry an id to be revealed by');
+  screen.layout(mark()[0], { width: 1, height: 1 });
+  screen.press(screen.getByTestId('workspace-launch'));
+  assert.notEqual(mark()[0].key, first, 'another row is current: a new mark, laid out afresh');
+  screen.press(screen.getByTestId('workspace-section-projects'));
+  assert.equal(mark().length, 0, 'the current row is in a closed section');
+});

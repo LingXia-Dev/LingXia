@@ -1,4 +1,4 @@
-import { cx, useLocal } from '@lingxia/view';
+import { cx, reveal, useId, useLocal } from '@lingxia/view';
 import { Glyph } from '../internal/Glyph';
 import { navListRecipe as r } from './NavList.recipe';
 
@@ -44,6 +44,9 @@ export interface NavListProps {
  */
 export function NavList({ label, sections, value, onChange, defaultClosed = [], className, 'data-testid': testId }: NavListProps) {
   const closed = useLocal<readonly string[]>('closed', defaultClosed);
+  const baseId = useId();
+  const rowId = (row: string) => `${baseId}-${row}`;
+  const isShown = value !== null && sections.some(section => (section.title === undefined || !closed.value.includes(section.id)) && section.items.some(item => item.value === value));
   const toggle = (id: string) => closed.set(closed.value.includes(id) ? closed.value.filter(each => each !== id) : [...closed.value, id]);
   return (
     <view role="tree" aria-label={label} data-testid={testId} className={cx(r.root.base, className)}>
@@ -70,6 +73,7 @@ export function NavList({ label, sections, value, onChange, defaultClosed = [], 
             <button
               key={item.value}
               role="treeitem"
+              id={rowId(item.value)}
               aria-level={level}
               aria-selected={isSelected}
               aria-label={item.endText === undefined ? undefined : `${item.label}, ${item.endText}`}
@@ -85,6 +89,9 @@ export function NavList({ label, sections, value, onChange, defaultClosed = [], 
         });
         return [...heading, ...rows];
       })}
+      {/* A new mark for each current row: its first layout is the moment to bring that row into view,
+          at launch and whenever the row is chosen from outside the list. */}
+      {isShown && <view key={`current-${value}`} aria-hidden onLayout={() => reveal(rowId(value))} data-testid={testId && `${testId}-reveal`} className={r.current.base} />}
     </view>
   );
 }

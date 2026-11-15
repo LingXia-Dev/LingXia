@@ -6928,7 +6928,8 @@
         "groupChevron": "vector",
         "item": "button",
         "label": "text",
-        "end": "view"
+        "end": "view",
+        "current": "view"
       },
       "accessibility": {
         "pattern": "tree",
@@ -7003,7 +7004,8 @@
         "notes": [
           "The current row is read as selected, the others as not selected; a page that is current is not yet announced as \"current page\".",
           "Rows are 36 px tall; on touch screens the View grows each press target to the platform minimum.",
-          "A row with `endText` is named \"Inbox, 12\", so the count is read once."
+          "A row with `endText` is named \"Inbox, 12\", so the count is read once.",
+          "In a sidebar that scrolls, the current row is brought into view when the list first appears and whenever another row becomes current from outside the list; a row in a closed section stays where it is."
         ]
       },
       "examples": [

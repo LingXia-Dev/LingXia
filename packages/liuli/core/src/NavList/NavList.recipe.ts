@@ -6,6 +6,7 @@ export const navListParts = {
   item: 'button',
   label: 'text',
   end: 'view',
+  current: 'view',
 } as const;
 
 /**
@@ -15,6 +16,10 @@ export const navListParts = {
 export const navListRecipe = {
   root: {
     base: 'gap-0.5',
+  },
+  /** Out of the rows' flow and unseen: it exists to be laid out. */
+  current: {
+    base: 'absolute top-0 start-0 size-px',
   },
   group: {
     base: 'flex-row items-center gap-2 min-h-8 px-3 mt-3 first:mt-0 rounded-control text-start transition-colors duration-150 ease-out hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',

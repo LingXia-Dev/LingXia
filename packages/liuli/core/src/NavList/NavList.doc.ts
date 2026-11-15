@@ -21,6 +21,7 @@ export const doc: ComponentDoc = {
     { part: 'item', required: true, description: 'One row per place: a treeitem, on the accent wash when current.' },
     { part: 'label', required: true, description: 'The row\'s text; one line, cut with an ellipsis.' },
     { part: 'end', required: false, description: '`endText`: a count or short value, read as part of the row\'s name.' },
+    { part: 'current', required: false, description: 'An unseen mark, one per current row: its layout is when the row is brought into view.' },
   ],
   accessibility: {
     pattern: 'tree',
@@ -47,6 +48,7 @@ export const doc: ComponentDoc = {
       'The current row is read as selected, the others as not selected; a page that is current is not yet announced as "current page".',
       'Rows are 36 px tall; on touch screens the View grows each press target to the platform minimum.',
       'A row with `endText` is named "Inbox, 12", so the count is read once.',
+      'In a sidebar that scrolls, the current row is brought into view when the list first appears and whenever another row becomes current from outside the list; a row in a closed section stays where it is.',
     ],
   },
   guidance: {
