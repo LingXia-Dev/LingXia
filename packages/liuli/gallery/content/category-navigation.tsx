@@ -2,13 +2,14 @@
 import { Specimen as TabsSpecimen } from '../../core/src/Tabs/Tabs.examples';
 import { Specimen as NavListSpecimen } from '../../core/src/NavList/NavList.examples';
 import { Specimen as BreadcrumbSpecimen } from '../../core/src/Breadcrumb/Breadcrumb.examples';
+import { Specimen as PaginationSpecimen } from '../../core/src/Pagination/Pagination.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Ways to move between views on the same page."}</text>
-      <Category title={"3 components"}>
+      <Category title={"4 components"}>
         <Tile
           name={"Tabs"}
           tagline={"A few peer views"}
@@ -28,11 +29,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"Breadcrumb"}
           tagline={"The way back up"}
-          isWide
           onOpen={() => onOpen("breadcrumb")}
           testId={"open-breadcrumb"}
         >
           <BreadcrumbSpecimen />
+        </Tile>
+        <Tile
+          name={"Pagination"}
+          tagline={"A page at a time"}
+          onOpen={() => onOpen("pagination")}
+          testId={"open-pagination"}
+        >
+          <PaginationSpecimen />
         </Tile>
       </Category>
     </>

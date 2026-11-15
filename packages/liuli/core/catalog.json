@@ -6596,6 +6596,230 @@
       }
     },
     {
+      "name": "Pagination",
+      "import": "@liulidesign/core/Pagination",
+      "exports": [
+        "pagesShown",
+        "Pagination"
+      ],
+      "category": "navigation",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "Moves through a long set a page at a time",
+      "description": "Pagination sits under a table or a list that is shown a page at a time. With a mouse it is a row of page numbers between two arrows: the first, the last, the current page and its neighbours. With a finger it is the two arrows around the position, \"3 / 12\", since a row of small numbers is hard to press. The app holds the page and loads its rows.",
+      "keywords": [
+        "pagination",
+        "pager",
+        "pages",
+        "page numbers",
+        "next page",
+        "previous page",
+        "paging"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Names the control for assistive tech: \"Pages\", \"Results pages\"."
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "required": true,
+          "description": "The current page, from 1."
+        },
+        {
+          "name": "pageCount",
+          "type": "number",
+          "required": true,
+          "description": "How many pages there are."
+        },
+        {
+          "name": "onChange",
+          "type": "(page: number) => void",
+          "required": true,
+          "description": "Runs with the page chosen."
+        },
+        {
+          "name": "pageLabel",
+          "type": "(page: number) => string",
+          "required": true,
+          "description": "A page button's accessible name: `page => \\`Page ${page}\\``."
+        },
+        {
+          "name": "previousLabel",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "nextLabel",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "siblings",
+          "type": "number",
+          "required": false,
+          "description": "How many pages to show on each side of the current one.",
+          "default": "1"
+        },
+        {
+          "name": "variant",
+          "type": "\"auto\" | \"compact\" | \"pages\"",
+          "required": false,
+          "description": "`compact` shows the two arrows around \"3 / 12\"; `auto` uses it where the pointer is a finger. Page numbers that do not fit their row give way to it.",
+          "default": "'auto'"
+        },
+        {
+          "name": "positionLabel",
+          "type": "((page: number, pageCount: number) => string)",
+          "required": false,
+          "description": "With `compact`: the text between the arrows, read as the position. By default \"3 / 12\"."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the control; a page is `<id>-<n>`, the arrows `<id>-previous` and `<id>-next`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "pages": "view",
+        "page": "button",
+        "pageLabel": "text",
+        "gap": "text",
+        "position": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "pressed",
+            "from": "page, on the current page's button"
+          },
+          {
+            "state": "disabled",
+            "from": "the first or last page, on its arrow"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Through the arrows and the page numbers"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Goes to the page"
+          }
+        ],
+        "target": {
+          "md": 40
+        },
+        "contrast": [
+          {
+            "what": "page number",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "current page",
+            "pair": [
+              "on-accent-soft",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "ellipsis",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "Each page button is named by `pageLabel`, \"Page 6\", and the current one reports pressed.",
+          "The arrows are named by `previousLabel` and `nextLabel` and are disabled at the ends.",
+          "The compact position is a status: a screen reader hears it when the page changes. Give `positionLabel` words, \"Page 3 of 12\", where \"3 / 12\" would be read badly.",
+          "The current page is marked by its fill and a heavier weight as well as by its state."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Results",
+          "title": "Under a list of results",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** Twelve pages: a finger gets the arrows and the position, a mouse the page numbers. */\nexport function Results() {\n  const page = useLocal('page', 3);\n  return (\n    <view className=\"gap-2\">\n      <Pagination label=\"Results pages\" page={page.value} pageCount={12} onChange={page.set} positionLabel={(at, of) => `Page ${at} of ${of}`} {...words} data-testid=\"results\" />\n      <text role=\"status\" className=\"text-footnote text-muted tabular-nums\">{`Showing ${(page.value - 1) * 20 + 1}–${page.value * 20} of 240`}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Pages",
+          "title": "Page numbers",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** The page numbers, whatever the pointer: first, last, the current page and its neighbours. */\nexport function Pages() {\n  const page = useLocal('page', 6);\n  return <Pagination label=\"Pages\" variant=\"pages\" page={page.value} pageCount={12} onChange={page.set} {...words} data-testid=\"pages\" />;\n}"
+        },
+        {
+          "name": "Compact",
+          "title": "Arrows and the position",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** The arrows and the position, whatever the pointer. */\nexport function Compact() {\n  const page = useLocal('page', 1);\n  return <Pagination label=\"Pages\" variant=\"compact\" page={page.value} pageCount={4} onChange={page.set} {...words} data-testid=\"compact\" />;\n}"
+        },
+        {
+          "name": "Narrow",
+          "title": "Page numbers in a narrow row",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** Page numbers in a row too narrow for them: the neighbours go first, then the numbers give way to the position. */\nexport function Narrow() {\n  const page = useLocal('page', 6);\n  return (\n    <view className=\"gap-3\">\n      <view className=\"w-[280px]\"><Pagination label=\"Pages\" variant=\"pages\" page={page.value} pageCount={12} onChange={page.set} {...words} data-testid=\"narrow\" /></view>\n      <view className=\"w-[232px]\"><Pagination label=\"Pages\" variant=\"pages\" page={page.value} pageCount={12} onChange={page.set} {...words} data-testid=\"narrower\" /></view>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Choosing how many rows a page holds, and jumping to a page by typing it.",
+          "needs": "nothing from the View",
+          "today": "An app puts a Select or a NumberInput beside it."
+        }
+      ],
+      "related": [
+        "Table",
+        "Tabs",
+        "IconButton"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A page at a time",
+        "order": 4,
+        "page": {
+          "lead": "Use pagination under a table or list that is shown a page at a time.",
+          "hero": "Results",
+          "variants": [
+            {
+              "name": "Pages",
+              "title": "Page numbers: first, last, the current page and its neighbours"
+            },
+            {
+              "name": "Compact",
+              "title": "The arrows and the position"
+            },
+            {
+              "name": "Narrow",
+              "title": "Page numbers at 280 and 232 points: fewer neighbours, then the position"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Popover",
       "import": "@liulidesign/core/Popover",
       "exports": [

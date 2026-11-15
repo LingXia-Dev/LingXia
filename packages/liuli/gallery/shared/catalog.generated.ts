@@ -475,6 +475,23 @@ export const entries: GalleryEntry[] = [
     "status": "preview"
   },
   {
+    "name": "Pagination",
+    "page": "pagination",
+    "category": "navigation",
+    "summary": "Moves through a long set a page at a time",
+    "keywords": [
+      "pagination",
+      "pager",
+      "pages",
+      "page numbers",
+      "next page",
+      "previous page",
+      "paging"
+    ],
+    "since": "2026-11-15",
+    "status": "preview"
+  },
+  {
     "name": "Badge",
     "page": "badge",
     "category": "feedback",
@@ -1029,7 +1046,7 @@ export const galleryCategories: GalleryCategory[] = [
     "title": "Navigation",
     "description": "Ways to move between views on the same page.",
     "page": "category-navigation",
-    "count": 3
+    "count": 4
   },
   {
     "id": "feedback",
