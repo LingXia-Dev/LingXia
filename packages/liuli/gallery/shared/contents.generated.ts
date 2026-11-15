@@ -39,6 +39,7 @@ import { Content as Combobox } from '../content/combobox';
 import { Content as CheckboxList } from '../content/checkbox-list';
 import { Content as Tabs } from '../content/tabs';
 import { Content as NavList } from '../content/nav-list';
+import { Content as Breadcrumb } from '../content/breadcrumb';
 import { Content as Badge } from '../content/badge';
 import { Content as ProgressBar } from '../content/progress-bar';
 import { Content as Banner } from '../content/banner';
@@ -113,6 +114,7 @@ export const contents: Record<string, GalleryContent> = {
   "checkbox-list": CheckboxList,
   "tabs": Tabs,
   "nav-list": NavList,
+  "breadcrumb": Breadcrumb,
   "badge": Badge,
   "progress-bar": ProgressBar,
   "banner": Banner,

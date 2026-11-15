@@ -812,6 +812,182 @@
       }
     },
     {
+      "name": "Breadcrumb",
+      "import": "@liulidesign/core/Breadcrumb",
+      "exports": [
+        "Breadcrumb"
+      ],
+      "category": "navigation",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "Where a page sits: the levels above it, each a way back up",
+      "description": "Breadcrumb shows the path to the current page in a hierarchy: a folder in a drive, a record in a section. Each level above is a button that goes back to it; the last item is the current page and is not pressable. A deep trail folds its middle levels into a menu, keeping the first level and the last two.",
+      "keywords": [
+        "breadcrumb",
+        "breadcrumbs",
+        "path",
+        "trail",
+        "hierarchy",
+        "location",
+        "back"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Names the trail for assistive tech: \"Breadcrumb\", \"You are in\"."
+        },
+        {
+          "name": "items",
+          "type": "readonly BreadcrumbItem[]",
+          "required": true,
+          "description": "The levels from the top down; the last is the current page."
+        },
+        {
+          "name": "maxItems",
+          "type": "number",
+          "required": false,
+          "description": "Past this many levels the middle ones fold into a menu; it needs `moreLabel`.",
+          "default": "4"
+        },
+        {
+          "name": "moreLabel",
+          "type": "string",
+          "required": false,
+          "description": "Names the menu that holds the folded levels: \"More levels\". Without it nothing is folded."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {
+        "BreadcrumbItem": [
+          {
+            "name": "key",
+            "type": "string",
+            "required": true,
+            "description": "Identifies the level: its test id is `<id>-<key>`."
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "The level's name."
+          },
+          {
+            "name": "onClick",
+            "type": "(() => void)",
+            "required": false,
+            "description": "Opens the level. The last item is where the person is, and takes none."
+          }
+        ]
+      },
+      "parts": {
+        "root": "view",
+        "item": "view",
+        "link": "button",
+        "label": "text",
+        "separator": "vector"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Through the levels above the current page"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Opens the level"
+          }
+        ],
+        "target": {
+          "sm": 32
+        },
+        "contrast": [
+          {
+            "what": "levels above",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "current page",
+            "pair": [
+              "text",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The trail is a list, so a screen reader says how many levels there are and where each stands.",
+          "The current page is the last item and plain text: it is told apart by not being a button, by its weight and by its colour.",
+          "Folded levels are in a menu named by `moreLabel`; they stay reachable, in order.",
+          "A level is 32 px tall, below the touch minimum: on a phone the page's own back button is the main way up, and the trail is for seeing where one is."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Path",
+          "title": "A path of three levels",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Breadcrumb } from '@liulidesign/core/Breadcrumb';\n\n/** Where a file sits: each level above it is a way back. */\nexport function Path() {\n  const opened = useLocal('opened', '');\n  const go = (name: string) => () => opened.set(name);\n  return (\n    <view className=\"gap-2\">\n      <Breadcrumb\n        label=\"Breadcrumb\"\n        items={[\n          { key: 'home', label: 'Home', onClick: go('Home') },\n          { key: 'projects', label: 'Projects', onClick: go('Projects') },\n          { key: 'plan', label: 'Q3 plan' },\n        ]}\n        data-testid=\"path\"\n      />\n      {opened.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{`Opened ${opened.value}`}</text>}\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Deep",
+          "title": "A deep trail, folded",
+          "source": "import { Breadcrumb } from '@liulidesign/core/Breadcrumb';\n\n/** A deep trail: the middle levels fold into a menu, and the first level and the last two stay. */\nexport function Deep() {\n  const none = () => {};\n  return (\n    <Breadcrumb\n      label=\"Breadcrumb\"\n      moreLabel=\"More levels\"\n      items={[\n        { key: 'drive', label: 'Drive', onClick: none },\n        { key: 'clients', label: 'Clients', onClick: none },\n        { key: 'northwind', label: 'Northwind', onClick: none },\n        { key: '2026', label: '2026', onClick: none },\n        { key: 'invoices', label: 'Invoices', onClick: none },\n        { key: 'inv', label: 'INV-1043.pdf' },\n      ]}\n      data-testid=\"deep\"\n    />\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Folding by the room there is, not by a count.",
+          "needs": "nothing from the View",
+          "today": "Folds past `maxItems`; otherwise the trail wraps."
+        },
+        {
+          "missing": "The current page announced as current.",
+          "needs": "a current-page state for assistive tech",
+          "today": "The current page is the last item of the list and not a button."
+        }
+      ],
+      "related": [
+        "Tabs",
+        "NavList",
+        "DropdownMenu"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "The way back up",
+        "order": 3,
+        "page": {
+          "lead": "Use a breadcrumb to show where a page sits in a hierarchy and to go back up it.",
+          "hero": "Path",
+          "variants": [
+            {
+              "name": "Deep",
+              "title": "Six levels: the middle three fold into a menu"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Button",
       "import": "@liulidesign/core/Button",
       "exports": [

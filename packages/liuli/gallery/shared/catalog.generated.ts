@@ -458,6 +458,23 @@ export const entries: GalleryEntry[] = [
     "status": "preview"
   },
   {
+    "name": "Breadcrumb",
+    "page": "breadcrumb",
+    "category": "navigation",
+    "summary": "Where a page sits: the levels above it, each a way back up",
+    "keywords": [
+      "breadcrumb",
+      "breadcrumbs",
+      "path",
+      "trail",
+      "hierarchy",
+      "location",
+      "back"
+    ],
+    "since": "2026-11-15",
+    "status": "preview"
+  },
+  {
     "name": "Badge",
     "page": "badge",
     "category": "feedback",
@@ -1012,7 +1029,7 @@ export const galleryCategories: GalleryCategory[] = [
     "title": "Navigation",
     "description": "Ways to move between views on the same page.",
     "page": "category-navigation",
-    "count": 2
+    "count": 3
   },
   {
     "id": "feedback",
@@ -1059,7 +1076,7 @@ export const galleryCategories: GalleryCategory[] = [
 ];
 
 /** The 6 latest components, newest first. */
-export const newest: string[] = ["Calendar","CheckboxList","Combobox","DateRangeInput","Markdown","NumberInput"];
+export const newest: string[] = ["Breadcrumb","Calendar","CheckboxList","Combobox","DateRangeInput","Markdown"];
 
 export const version = "0.1.0";
 export const packageStatus = "Preview";

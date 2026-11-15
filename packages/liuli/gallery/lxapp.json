@@ -48,6 +48,7 @@
     { "name": "checkbox-list", "path": "pages/checkbox-list/index" },
     { "name": "tabs", "path": "pages/tabs/index" },
     { "name": "nav-list", "path": "pages/nav-list/index" },
+    { "name": "breadcrumb", "path": "pages/breadcrumb/index" },
     { "name": "badge", "path": "pages/badge/index" },
     { "name": "progress-bar", "path": "pages/progress-bar/index" },
     { "name": "banner", "path": "pages/banner/index" },

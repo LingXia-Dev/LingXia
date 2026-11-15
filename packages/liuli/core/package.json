@@ -94,6 +94,8 @@
     "./Calendar/zh": "./src/Calendar/locale/zh.ts",
     "./DateRangeInput": "./src/DateRangeInput/DateRangeInput.tsx",
     "./DateRangeInput/recipe": "./src/DateRangeInput/DateRangeInput.recipe.ts",
+    "./Breadcrumb": "./src/Breadcrumb/Breadcrumb.tsx",
+    "./Breadcrumb/recipe": "./src/Breadcrumb/Breadcrumb.recipe.ts",
     "./Icon": "./src/Icon/Icon.tsx",
     "./Icon/recipe": "./src/Icon/Icon.recipe.ts",
     "./Icon/set": "./src/Icon/set.ts",
