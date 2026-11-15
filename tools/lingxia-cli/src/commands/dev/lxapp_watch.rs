@@ -412,12 +412,24 @@ fn run_watch(
         } else {
             DEBOUNCE
         };
-        match rx.recv_timeout(timeout) {
-            Ok(Ok(event)) => {
-                if !is_reload_event(event.kind) {
-                    continue;
+        // The whole backlog is taken before the wait is chosen again: choosing it reads every
+        // dirty app's page inputs, and a build or a drop of many files queues hundreds of events.
+        let received = rx.recv_timeout(timeout).map(|first| {
+            std::iter::once(first)
+                .chain(std::iter::from_fn(|| rx.try_recv().ok()))
+                .collect::<Vec<_>>()
+        });
+        match received {
+            Ok(events) => {
+                let mut paths = Vec::new();
+                for event in events {
+                    match event {
+                        Ok(event) if is_reload_event(event.kind) => paths.extend(event.paths),
+                        Ok(_) => {}
+                        Err(err) => eprintln!("⚠ lxapp watch: {err}"),
+                    }
                 }
-                for path in event.paths {
+                for path in paths {
                     if is_output(strip_verbatim_prefix(&path), &outputs) {
                         continue;
                     }
@@ -463,9 +475,6 @@ fn run_watch(
                         }
                     }
                 }
-            }
-            Ok(Err(err)) => {
-                eprintln!("⚠ lxapp watch: {err}");
             }
             Err(RecvTimeoutError::Timeout) => {
                 // An lxapp a test run kept from opening opens when it ends.

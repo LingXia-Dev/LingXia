@@ -7,18 +7,32 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
+
+type Inputs = BTreeMap<PathBuf, BTreeSet<String>>;
 
 /// The files the last dev build's GPU pages compiled from (`.lingxia/gpu-inputs.json`), resolved,
 /// each with the pages it feeds. A linked package's files sit outside `dir` (`../kit/src/x.tsx`).
-fn inputs(dir: &Path) -> Option<BTreeMap<PathBuf, BTreeSet<String>>> {
-    let text = std::fs::read_to_string(dir.join(".lingxia").join("gpu-inputs.json")).ok()?;
-    let inputs: BTreeMap<String, Vec<String>> = serde_json::from_str(&text).ok()?;
-    let mut by_file: BTreeMap<PathBuf, BTreeSet<String>> = BTreeMap::new();
-    for (page, files) in inputs {
-        // A page deleted since its last build: the record outlives it until the next dev build.
-        if !dir.join(&page).is_file() {
-            continue;
-        }
+/// Resolving them costs a file-system call per input of every page, and the watcher asks on
+/// every save: the answer is kept until the build writes the record again.
+fn inputs(dir: &Path) -> Option<Arc<Inputs>> {
+    static READ: Mutex<BTreeMap<PathBuf, (SystemTime, u64, Arc<Inputs>)>> =
+        Mutex::new(BTreeMap::new());
+    let record = dir.join(".lingxia").join("gpu-inputs.json");
+    let written = std::fs::metadata(&record)
+        .and_then(|record| Ok((record.modified()?, record.len())))
+        .ok()?;
+    let mut read = READ.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some((modified, len, inputs)) = read.get(&record)
+        && (*modified, *len) == written
+    {
+        return Some(inputs.clone());
+    }
+    let text = std::fs::read_to_string(&record).ok()?;
+    let pages: BTreeMap<String, Vec<String>> = serde_json::from_str(&text).ok()?;
+    let mut by_file = Inputs::new();
+    for (page, files) in pages {
         for file in files {
             by_file
                 .entry(canonical(&dir.join(file)))
@@ -26,20 +40,33 @@ fn inputs(dir: &Path) -> Option<BTreeMap<PathBuf, BTreeSet<String>>> {
                 .insert(page.clone());
         }
     }
-    Some(by_file)
+    let inputs = Arc::new(by_file);
+    read.insert(record, (written.0, written.1, inputs.clone()));
+    Some(inputs)
+}
+
+/// A page deleted since its last build: the record outlives it until the next dev build.
+fn built(dir: &Path, page: &str) -> bool {
+    dir.join(page).is_file()
 }
 
 /// The inputs of `dir`'s GPU pages that lie outside it: linked packages' sources and token files.
 pub(super) fn external_inputs(dir: &Path) -> BTreeSet<PathBuf> {
     let root = canonical(dir);
-    inputs(dir)
-        .map(|inputs| {
-            inputs
-                .into_keys()
-                .filter(|file| !file.starts_with(&root))
-                .collect()
+    let Some(inputs) = inputs(dir) else {
+        return BTreeSet::new();
+    };
+    let mut pages: BTreeMap<&str, bool> = BTreeMap::new();
+    inputs
+        .iter()
+        .filter(|(file, _)| !file.starts_with(&root))
+        .filter(|(_, feeds)| {
+            feeds
+                .iter()
+                .any(|page| *pages.entry(page).or_insert_with(|| built(dir, page)))
         })
-        .unwrap_or_default()
+        .map(|(file, _)| file.clone())
+        .collect()
 }
 
 /// The GPU pages to recompile for `changed`, or `None` when the edit needs a full rebuild.
@@ -60,7 +87,7 @@ pub(super) fn plan(dir: &Path, changed: &BTreeSet<PathBuf>) -> Option<Vec<String
             return None;
         }
         match inputs.get(&path) {
-            Some(touched) => pages.extend(touched.iter().cloned()),
+            Some(touched) => pages.extend(touched.iter().filter(|page| built(dir, page)).cloned()),
             None if !exists => continue,
             None => return None,
         }
@@ -435,5 +462,47 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn asking_again_for_an_unchanged_record_resolves_no_input_twice() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        // A gallery's worth: a hundred pages that each compile from the same kit files.
+        let kit: Vec<String> = (0..120)
+            .map(|i| format!("../kit/src/part{i}.tsx"))
+            .collect();
+        let mut record = BTreeMap::new();
+        for page in 0..100 {
+            let source = format!("pages/p{page}/index.tsx");
+            std::fs::create_dir_all(root.join(format!("pages/p{page}"))).unwrap();
+            std::fs::write(root.join(&source), "").unwrap();
+            let mut files = kit.clone();
+            files.push(source.clone());
+            record.insert(source, files);
+        }
+        std::fs::create_dir_all(root.join(".lingxia")).unwrap();
+        std::fs::write(
+            root.join(".lingxia/gpu-inputs.json"),
+            serde_json::to_string(&record).unwrap(),
+        )
+        .unwrap();
+        let first = inputs(root).unwrap();
+        let edit = BTreeSet::from([root.join("pages/p7/index.tsx")]);
+        for _ in 0..50 {
+            assert!(Arc::ptr_eq(&first, &inputs(root).unwrap()));
+            assert_eq!(
+                plan(root, &edit),
+                Some(vec!["pages/p7/index.tsx".to_owned()])
+            );
+        }
+        // The next build writes the record again, and the answer follows it.
+        record.remove("pages/p7/index.tsx");
+        std::fs::write(
+            root.join(".lingxia/gpu-inputs.json"),
+            serde_json::to_string(&record).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(plan(root, &edit), None);
     }
 }
