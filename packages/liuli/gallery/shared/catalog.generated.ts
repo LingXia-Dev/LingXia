@@ -1160,6 +1160,21 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "Lightbox",
+    "page": "lightbox",
+    "category": "media",
+    "summary": "Pictures one at a time, over the whole screen",
+    "keywords": [
+      "lightbox",
+      "image viewer",
+      "gallery",
+      "photo",
+      "fullscreen",
+      "zoom",
+      "preview"
+    ]
+  },
+  {
     "name": "Sign in",
     "page": "sign-in",
     "category": "patterns",
@@ -1275,7 +1290,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "play",
     "description": "Video and its controls",
     "page": "category-media",
-    "count": 4
+    "count": 5
   },
   {
     "id": "patterns",

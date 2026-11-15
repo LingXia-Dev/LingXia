@@ -88,6 +88,7 @@ import { Content as VideoPlayer } from '../content/video-player';
 import { Content as VideoControls } from '../content/video-controls';
 import { Content as Carousel } from '../content/carousel';
 import { Content as Thumbnail } from '../content/thumbnail';
+import { Content as Lightbox } from '../content/lightbox';
 import { Content as SignIn } from '../content/sign-in';
 import { Content as Settings } from '../content/settings';
 import { Content as Uploads } from '../content/uploads';
@@ -186,6 +187,7 @@ export const contents: Record<string, GalleryContent> = {
   "video-controls": VideoControls,
   "carousel": Carousel,
   "thumbnail": Thumbnail,
+  "lightbox": Lightbox,
   "sign-in": SignIn,
   "settings": Settings,
   "uploads": Uploads,

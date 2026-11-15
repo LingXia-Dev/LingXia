@@ -97,6 +97,7 @@
     { "name": "video-controls", "path": "pages/video-controls/index" },
     { "name": "carousel", "path": "pages/carousel/index" },
     { "name": "thumbnail", "path": "pages/thumbnail/index" },
+    { "name": "lightbox", "path": "pages/lightbox/index" },
     { "name": "sign-in", "path": "pages/sign-in/index" },
     { "name": "settings", "path": "pages/settings/index" },
     { "name": "uploads", "path": "pages/uploads/index" },

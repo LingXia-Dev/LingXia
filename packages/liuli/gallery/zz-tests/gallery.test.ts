@@ -17,7 +17,7 @@ const categories: Record<string, string[]> = {
   'category-overlays': ['dialog', 'dropdown-menu', 'tooltip', 'bottom-sheet', 'popover', 'drawer'],
   'category-content': ['card', 'item', 'details', 'avatar', 'split-view', 'icon', 'table', 'markdown', 'metadata-list', 'section', 'divider', 'kbd', 'timer', 'code', 'timestamp'],
   'category-charts': ['stat', 'sparkline', 'bar-chart', 'line-chart', 'pie-chart', 'chart'],
-  'category-media': ['video-player', 'video-controls', 'carousel', 'thumbnail'],
+  'category-media': ['video-player', 'video-controls', 'carousel', 'thumbnail', 'lightbox'],
   'category-patterns': ['sign-in', 'settings', 'uploads', 'list-detail', 'dashboard'],
 };
 

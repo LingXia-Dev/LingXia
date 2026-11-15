@@ -7639,6 +7639,164 @@
       }
     },
     {
+      "name": "Lightbox",
+      "import": "@liulidesign/core/Lightbox",
+      "exports": [
+        "Lightbox"
+      ],
+      "category": "media",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "Pictures one at a time, over the whole screen",
+      "description": "Lightbox covers the screen with an opaque dark surface and shows pictures whole, one at a time: a swipe or a dot moves between them, and a line of caption follows the one in view. It opens from a Thumbnail at the picture that was pressed, and closes from its button, Escape or back.",
+      "keywords": [
+        "lightbox",
+        "image viewer",
+        "gallery",
+        "photo",
+        "fullscreen",
+        "zoom",
+        "preview"
+      ],
+      "props": [
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": true,
+          "description": "Whether it is shown. A closed lightbox renders nothing."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "(isOpen: boolean) => void",
+          "required": true,
+          "description": "Called with `false` on a close request: Escape, back, the close button."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The lightbox's accessible name: \"Photos of the house\"."
+        },
+        {
+          "name": "images",
+          "type": "readonly LightboxImage[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "bind",
+          "type": "Local<number>",
+          "required": false,
+          "description": "A View-local cell holding which picture is in view, from 0. Set it before opening to start there."
+        },
+        {
+          "name": "closeLabel",
+          "type": "string",
+          "required": true,
+          "description": "The close button's name: \"Close\"."
+        },
+        {
+          "name": "pageLabel",
+          "type": "(page: number, count: number) => string",
+          "required": true,
+          "description": "Where the viewer is, written by the app: `(page, count) => \\`${page + 1} of ${count}\\``. Shown at the top, and each dot's name."
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "panel": "dialog",
+        "bar": "view",
+        "count": "text",
+        "close": "button",
+        "closeIcon": "vector",
+        "scroll": "scroll",
+        "track": "view",
+        "page": "view",
+        "image": "image",
+        "caption": "text"
+      },
+      "accessibility": {
+        "pattern": "dialog",
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Escape",
+            "effect": "Closes it"
+          },
+          {
+            "keys": "Tab",
+            "effect": "Between the close button and the dots"
+          },
+          {
+            "keys": "Enter or Space on a dot",
+            "effect": "Shows its picture"
+          }
+        ],
+        "target": {
+          "md": 44
+        },
+        "contrast": [
+          {
+            "what": "controls and caption",
+            "pair": [
+              "on-media",
+              "media-canvas"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "A dialog named by `label`; assistive tech reads only the lightbox while it is open, and focus returns to what opened it.",
+          "The pictures are a list read by their `alt`; the place (\"2 of 4\") is a status, said when it changes.",
+          "A tap on the dark surface does not close it: a missed swipe would."
+        ]
+      },
+      "examples": [
+        {
+          "name": "FromGrid",
+          "title": "Opened from a grid of thumbnails",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Thumbnail } from '@liulidesign/core/Thumbnail';\nimport { Lightbox } from '@liulidesign/core/Lightbox';\n\nconst photos = [\n  { src: photo(1), alt: 'The bay at sunrise', caption: 'The bay at sunrise, from the terrace' },\n  { src: photo(2), alt: 'Fields behind the house', caption: 'Fields behind the house' },\n  { src: photo(3), alt: 'Dusk over the ridge', caption: 'Dusk over the ridge' },\n  { src: photo(4), alt: 'Morning fog in the valley' },\n] as const;\n\n/** A grid of thumbnails: pressing one opens the pictures at that one. */\nexport function FromGrid() {\n  const open = useLocal('open', false);\n  const page = useLocal('page', 0);\n  return (\n    <view className=\"gap-2\">\n      <view className=\"grid grid-cols-4 gap-2\">\n        {photos.map((each, index) => (\n          <Thumbnail key={each.alt} src={each.src} alt={each.alt} size=\"fill\" onClick={() => { page.set(index); open.set(true); }} data-testid={`open-${index}`} />\n        ))}\n      </view>\n      <Lightbox\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Photos of the house\"\n        images={photos}\n        bind={page}\n        closeLabel=\"Close\"\n        pageLabel={(at, count) => `${at + 1} of ${count}`}\n        data-testid=\"viewer\"\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Single",
+          "title": "One picture",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Thumbnail } from '@liulidesign/core/Thumbnail';\nimport { Lightbox } from '@liulidesign/core/Lightbox';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\n\n/** One picture: no count and no dots. */\nexport function Single() {\n  const open = useLocal('one', false);\n  return (\n    <view className=\"items-start\">\n      <Thumbnail src={photo(5)} alt=\"Dunes at noon\" size=\"lg\" ratio=\"landscape\" onClick={() => open.set(true)} data-testid=\"one-open\" />\n      <Lightbox isOpen={open.value} onOpenChange={next => open.set(next)} label=\"Dunes at noon\" images={[{ src: photo(5), alt: 'Dunes at noon' }]} closeLabel=\"Close\" pageLabel={() => ''} data-testid=\"one\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "No pinch to zoom and no pan: the View has no pinch gesture.",
+        "No previous and next arrows; on a desktop the dots move between pictures."
+      ],
+      "related": [
+        "Thumbnail",
+        "Carousel",
+        "Dialog"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A picture, whole",
+        "order": 5,
+        "page": {
+          "lead": "Use a lightbox to look at pictures whole.",
+          "hero": "FromGrid",
+          "variants": [
+            {
+              "name": "Single",
+              "title": "One picture: no count and no dots"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Link",
       "import": "@liulidesign/core/Link",
       "exports": [
