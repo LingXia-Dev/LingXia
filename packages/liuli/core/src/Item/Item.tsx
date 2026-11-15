@@ -1,4 +1,5 @@
-import { childrenToArray, cx, useContext, useId, type Child } from '@lingxia/view';
+import { childrenToArray, createContext, cx, useContext, useId, useLocal, type Child } from '@lingxia/view';
+import type { IconName } from '../Icon/names';
 import { describedBy } from '../internal/describedBy';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
@@ -24,6 +25,24 @@ export type ItemAction =
   | { onClick?: never; hasChevron?: never; isDisabled?: never; disabledMessage?: never; isSelected?: never };
 
 export type ItemTone = 'default' | 'danger';
+/** `compact` is for long lists read with a mouse: rows 40 px tall. */
+export type ItemDensity = 'comfortable' | 'compact';
+export type ItemSwipeTone = 'neutral' | 'accent' | 'danger';
+
+export interface ItemSwipeAction {
+  /** Identifies the action: its test id is `<row id>-<key>`. */
+  key: string;
+  /** Drawn under the icon, and what a screen reader offers as the row's action. */
+  label: string;
+  icon?: IconName;
+  /** @default 'neutral' */
+  tone?: ItemSwipeTone;
+  /** Runs after the row has closed. */
+  onClick: () => void;
+}
+
+/** The density an ItemList gives its rows. */
+export const ItemDensityContext = createContext<ItemDensity | undefined>(undefined);
 
 export type ItemProps = ItemAction & {
   /** The row's main text, and its accessible name when it is pressable. */
@@ -36,14 +55,30 @@ export type ItemProps = ItemAction & {
   startContent?: Child;
   /** After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button. */
   endContent?: Child;
+  /** The row's height and padding. By default the ItemList's, else `comfortable`. */
+  density?: ItemDensity;
+  /**
+   * Up to three actions behind the row's end, shown by dragging the row toward its start. A
+   * screen reader offers them as the row's actions; with a keyboard the arrow keys open the row.
+   */
+  swipeActions?: readonly ItemSwipeAction[];
   className?: string;
   'data-testid'?: string;
 };
 
+const maxSwipeActions = 3;
+// Each action's width in points; the row opens by the sum.
+const swipeActionWidth = 72;
+
 /** One row of a list: a label, an optional second line, and content at either end. */
 export function Item(props: ItemProps) {
-  const { label, tone = 'default', description, startContent, endContent, className, 'data-testid': testId } = props;
-  const descriptionId = `${useId()}-description`;
+  const { label, tone = 'default', description, startContent, endContent, swipeActions, className, 'data-testid': testId } = props;
+  const listDensity = useContext(ItemDensityContext);
+  const density = props.density ?? listDensity ?? 'comfortable';
+  const layer = useContext(LayerContext);
+  const baseId = useId();
+  const open = useLocal('open', 0);
+  const descriptionId = `${baseId}-description`;
   const isDisabled = props.isDisabled ?? false;
   const help = isDisabled && props.disabledMessage !== undefined ? props.disabledMessage : description;
   const pressable = props.onClick !== undefined;
@@ -59,8 +94,9 @@ export function Item(props: ItemProps) {
       {props.hasChevron && <Glyph name="chevron-end" className={cx(r.chevron.base, isSelected && r.chevron.selected)} />}
     </>
   );
-  if (!pressable) return <view data-testid={testId} className={cx(r.root.base, className)}>{content}</view>;
-  return (
+  const root = cx(r.root.base, r.root.density[density]);
+  const actions = swipeActions?.slice(0, maxSwipeActions) ?? [];
+  const row = !pressable ? <view data-testid={testId} className={cx(root, actions.length === 0 && className)}>{content}</view> : (
     <button
       aria-label={label}
       aria-describedby={describedBy(help !== undefined && descriptionId)}
@@ -68,29 +104,78 @@ export function Item(props: ItemProps) {
       disabled={isDisabled}
       onClick={props.onClick}
       data-testid={testId}
-      className={cx(r.root.base, r.root.pressable, isSelected ? r.root.selected : r.root.idle, className)}
+      className={cx(root, r.root.pressable, isSelected ? r.root.selected : r.root.idle, actions.length === 0 && className)}
     >
       {content}
     </button>
+  );
+  if (actions.length === 0) return row;
+  const actionId = (action: ItemSwipeAction) => `${baseId}-${action.key}`;
+  return (
+    <view className={cx(r.swipe.base, className)}>
+      <view className={r.actions.base}>
+        {actions.map(action => (
+          <button
+            key={action.key}
+            id={actionId(action)}
+            onClick={() => { open.set(0); action.onClick(); }}
+            data-testid={testId === undefined ? undefined : `${testId}-${action.key}`}
+            className={cx(r.action.base, r.action.tone[action.tone ?? 'neutral'])}
+          >
+            {action.icon !== undefined && <Glyph name={action.icon} className={r.actionIcon.base} />}
+            <text className={r.actionLabel.base}>{action.label}</text>
+          </button>
+        ))}
+      </view>
+      {/* The row slides as a whole over its actions, so it carries the list's surface: a pressed row's wash is see-through. */}
+      <view
+        drag="x"
+        dragSnapPoints={[0, -swipeActionWidth * actions.length]}
+        bind={open}
+        aria-label={label}
+        aria-actions={actions.map(actionId).join(' ')}
+        data-testid={testId === undefined ? undefined : `${testId}-swipe`}
+        className={cx(r.slide.base, r.slide.layer[layer])}
+      >
+        {row}
+      </view>
+    </view>
   );
 }
 
 export interface ItemListProps {
   /** Rows: Items, or row variants of Switch and Slider. */
   children: Child;
-  /** Names the list for assistive input, when the heading above it does not. */
+  /** Names the list for assistive input, when neither `title` nor a heading above it does. */
   label?: string;
+  /** A heading over the list, in the quiet type of a settings group; it names the list. */
+  title?: string;
+  /** A line under the list that explains the group. */
+  description?: string;
+  /** The rows' height and padding; a row's own `density` wins. @default 'comfortable' */
+  density?: ItemDensity;
   className?: string;
   'data-testid'?: string;
 }
 
 /** Rows in one bordered list, read as a list: each row reports its position. */
-export function ItemList({ children, label, className, 'data-testid': testId }: ItemListProps) {
+export function ItemList({ children, label, title, description, density, className, 'data-testid': testId }: ItemListProps) {
   const layer = useContext(LayerContext);
+  const hasFrame = title !== undefined || description !== undefined;
   // A button keeps its own role, so each row sits in a listitem that carries the position.
-  return (
-    <view role="list" aria-label={label} data-testid={testId} className={cx(r.list.base, r.list.layer[layer], className)}>
+  const list = (
+    <view role="list" aria-label={label ?? title} data-testid={testId} className={cx(r.list.base, r.list.layer[layer], !hasFrame && className)}>
       {childrenToArray(children).map((row, index) => <view key={String(index)} role="listitem" className={r.listitem.base}>{row}</view>)}
+    </view>
+  );
+  const rows = density === undefined ? list : <ItemDensityContext.Provider value={density}>{list}</ItemDensityContext.Provider>;
+  if (!hasFrame) return rows;
+  return (
+    <view className={cx(r.group.base, className)}>
+      {/* The list is named by the same words, so the heading is not read twice. */}
+      {title !== undefined && <text aria-hidden={label === undefined || undefined} className={r.title.base}>{title}</text>}
+      {rows}
+      {description !== undefined && <text className={r.note.base}>{description}</text>}
     </view>
   );
 }

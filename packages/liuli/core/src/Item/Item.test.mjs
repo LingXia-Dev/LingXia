@@ -93,3 +93,48 @@ test('a row without isSelected has no selected state', async () => {
   const screen = await renderExample('Item/Item', 'Navigation');
   assert.equal(screen.getByTestId('note-n1').props.stateSelected, undefined);
 });
+
+test('Swipe: a row with actions slides over them; a reader is offered them by name, and running one closes the row first', async () => {
+  const screen = await renderExample('Item/Item', 'Swipe');
+  const slide = () => screen.getByTestId('mail-m2-swipe');
+  assert.deepEqual(JSON.parse(slide().props.drag), { axis: 'x', points: [0, -144], index: 0 }, 'closed, or open by two actions of 72 px');
+  assert.equal(slide().props.accessibilityLabel, 'Ben Okafor');
+  assert.equal(slide().props.background, 'surface', 'the row covers its actions while it rests');
+  const ids = String(slide().props.ariaActions).split(' ');
+  assert.deepEqual(ids.map(id => textOf(screen.queryAll(node => node.props.elementId === id)[0])), ['Flag', 'Delete'], 'offered by their labels');
+  const row = screen.getByTestId('mail-m2');
+  assert.equal(row.tag, 'button');
+  assert.equal(row.parent, slide(), 'the pressable row moves inside the slide');
+  const remove = screen.getByTestId('mail-m2-delete');
+  assert.deepEqual([remove.props.width, remove.props.background, remove.props.color], [72, 'danger', 'on-danger']);
+  assert.equal(remove.children.filter(node => node.tag === 'vector').length, 1, 'an icon over the label');
+  screen.press(screen.getByTestId('mail-m2-flag'));
+  assert.equal(textOf(screen.getByTestId('mail-m2')).includes('Flagged'), true);
+  screen.press(screen.getByTestId('mail-m2-delete'));
+  assert.equal(screen.queryAll(node => node.testId === 'mail-m2').length, 0);
+  assert.equal(screen.queryAll(node => node.props.role === 'listitem').length, 2);
+});
+
+test('ItemList: a title names the list and is drawn once; the line under it follows the rows', async () => {
+  const screen = await renderExample('Item/Item', 'Swipe');
+  const list = screen.getByTestId('inbox');
+  assert.equal(list.props.role, 'list');
+  assert.equal(list.props.accessibilityLabel, 'Inbox');
+  const [title, , note] = list.parent.children;
+  assert.deepEqual([title.text, title.props.accessibilityHidden, title.props.color, title.props.fontSize], ['Inbox', 1, 'text-muted', 13]);
+  assert.equal(note.text, 'Drag a message to the side to flag or delete it.');
+  const plain = await renderExample('Item/Item', 'Navigation');
+  assert.equal(plain.getByTestId('notes').parent.children.length, 1, 'without a title or a description the list stands alone');
+});
+
+test('density: a compact list makes its rows 40 px; a row\'s own density wins', async () => {
+  const screen = await renderExample('Item/Item', 'Compact');
+  assert.equal(screen.getByTestId('file-Notes.md').props.minHeight, 40);
+  const mixed = await renderPage(`
+    import { Item, ItemList } from '@liulidesign/core/Item';
+    export function render() {
+      return <page><ItemList label="L" density="compact"><Item label="A" data-testid="a" /><Item label="B" density="comfortable" data-testid="b" /></ItemList><Item label="C" data-testid="c" /></page>;
+    }
+  `);
+  assert.deepEqual(['a', 'b', 'c'].map(id => mixed.getByTestId(id).props.minHeight), [40, 48, 48]);
+});

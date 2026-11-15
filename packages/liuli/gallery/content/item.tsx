@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Navigation, Selection, Values, WithControl, Destructive, StatePressable, StateSelected, StateDisabled, Disabled } from '../../core/src/Item/Item.examples';
+import { Navigation, Selection, Values, WithControl, Destructive, Swipe, Compact, StatePressable, StateSelected, StateDisabled, Disabled } from '../../core/src/Item/Item.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -20,6 +20,12 @@ export function Content() {
         </Stage>
         <Stage caption={"Danger tone, for a row that deletes"} bare>
           <Destructive />
+        </Stage>
+        <Stage caption={"Drag a row aside for its actions; the list has a heading and a line under it"} bare>
+          <Swipe />
+        </Stage>
+        <Stage caption={"Compact rows under a heading"} bare>
+          <Compact />
         </Stage>
       </PageSection>
       <PageSection title={"States"}>

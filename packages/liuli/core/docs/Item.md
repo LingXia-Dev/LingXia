@@ -8,7 +8,7 @@ One row of a list: a label, a second line, and content at either end. Status: pr
 import { Item, ItemList } from '@liulidesign/core/Item';
 ```
 
-Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that opens or selects something; without it the row is plain content and its `endContent` may hold its own control. Rows carry no border or fill; ItemList, from the same import, groups and divides them and reads them as a list.
+Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that opens or selects something; without it the row is plain content and its `endContent` may hold its own control. Rows carry no border or fill; ItemList, from the same import, groups and divides them, reads them as a list, and can carry a heading and a line of explanation. A row can hide up to three actions behind its end, shown by dragging it aside, and a list can be made compact for a mouse.
 
 ## Examples
 
@@ -45,6 +45,11 @@ const mailboxes = [
   { id: 'inbox', label: 'Inbox', count: '12' },
   { id: 'drafts', label: 'Drafts', count: '3' },
   { id: 'sent', label: 'Sent', count: '' },
+] as const;
+const inbox = [
+  { id: 'm1', from: 'Ana Lee', subject: 'Notes from Tuesday' },
+  { id: 'm2', from: 'Ben Okafor', subject: 'Invoice for October' },
+  { id: 'm3', from: 'Chloé Martin', subject: 'Photos from the coast' },
 ] as const;
 
 /** Rows that choose one of several, as a sidebar does: the chosen row is selected, the others are not. */
@@ -167,6 +172,66 @@ export function Destructive() {
 }
 ```
 
+### Actions behind a row, and a list with a heading
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Item, ItemList } from '@liulidesign/core/Item';
+
+const inbox = [
+  { id: 'm1', from: 'Ana Lee', subject: 'Notes from Tuesday' },
+  { id: 'm2', from: 'Ben Okafor', subject: 'Invoice for October' },
+  { id: 'm3', from: 'Chloé Martin', subject: 'Photos from the coast' },
+] as const;
+
+/** Drag a row toward its start to show its actions; the list has a heading and a line under it. */
+export function Swipe() {
+  const gone = useLocal<readonly string[]>('gone', []);
+  const flagged = useLocal<readonly string[]>('flagged', []);
+  return (
+    <ItemList title="Inbox" description="Drag a message to the side to flag or delete it." data-testid="inbox">
+      {inbox.filter(mail => !gone.value.includes(mail.id)).map(mail => (
+        <Item
+          key={mail.id}
+          label={mail.from}
+          description={mail.subject}
+          endContent={flagged.value.includes(mail.id) ? <text className="text-footnote text-muted">Flagged</text> : undefined}
+          hasChevron
+          onClick={() => {}}
+          swipeActions={[
+            { key: 'flag', label: 'Flag', icon: 'flag', onClick: () => flagged.set(flagged.value.includes(mail.id) ? flagged.value.filter(id => id !== mail.id) : [...flagged.value, mail.id]) },
+            { key: 'delete', label: 'Delete', icon: 'delete', tone: 'danger', onClick: () => gone.set([...gone.value, mail.id]) },
+          ]}
+          data-testid={`mail-${mail.id}`}
+        />
+      ))}
+    </ItemList>
+  );
+}
+```
+
+### A compact list
+
+```tsx
+import { Item, ItemList } from '@liulidesign/core/Item';
+
+const files = [
+  { name: 'Budget.xlsx', size: '48 KB' }, { name: 'Contract.pdf', size: '1.2 MB' }, { name: 'Logo.svg', size: '6 KB' },
+  { name: 'Notes.md', size: '3 KB' }, { name: 'Roadmap.key', size: '14 MB' },
+] as const;
+
+/** Compact rows for a long list read with a mouse. */
+export function Compact() {
+  return (
+    <ItemList title="Files" density="compact" data-testid="files">
+      {files.map(file => (
+        <Item key={file.name} label={file.name} endContent={<text className="text-footnote text-muted tabular-nums">{file.size}</text>} onClick={() => {}} data-testid={`file-${file.name}`} />
+      ))}
+    </ItemList>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -181,6 +246,8 @@ export function Destructive() {
 | `description` | `string` |  | A second line under the label; read as the row's description when it is pressable. |
 | `startContent` | `Child` |  | Before the text: an icon or an avatar. Hidden from assistive tech on a pressable row. |
 | `endContent` | `Child` |  | After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button. |
+| `density` | `ItemDensity` |  | The row's height and padding. By default the ItemList's, else `comfortable`. |
+| `swipeActions` | `readonly ItemSwipeAction[]` |  | Up to three actions behind the row's end, shown by dragging the row toward its start. A screen reader offers them as the row's actions; with a keyboard the arrow keys open the row. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
@@ -189,14 +256,30 @@ export function Destructive() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `children` (required) | `Child` |  | Rows: Items, or row variants of Switch and Slider. |
-| `label` | `string` |  | Names the list for assistive input, when the heading above it does not. |
+| `label` | `string` |  | Names the list for assistive input, when neither `title` nor a heading above it does. |
+| `title` | `string` |  | A heading over the list, in the quiet type of a settings group; it names the list. |
+| `description` | `string` |  | A line under the list that explains the group. |
+| `density` | `ItemDensity` | `'comfortable'` | The rows' height and padding; a row's own `density` wins. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
+
+## ItemSwipeAction props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `key` (required) | `string` |  | Identifies the action: its test id is `<row id>-<key>`. |
+| `label` (required) | `string` |  | Drawn under the icon, and what a screen reader offers as the row's action. |
+| `icon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "clock" \| "close" \| "cloud" \| "collapse" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "success" \| "tag" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  |  |
+| `tone` | `ItemSwipeTone` | `'neutral'` |  |
+| `onClick` (required) | `() => void` |  | Runs after the row has closed. |
 
 ## Anatomy
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
+| group | `<view>` | no | ItemList with a `title` or `description`: the heading, the list and the line under it. |
+| title | `<text>` | no | ItemList's `title`: a quiet heading that names the list. |
+| note | `<text>` | no | ItemList's `description`, under the list. |
 | list | `<view>` | no | ItemList: a bordered, divided list, read as a list. |
 | listitem | `<view>` | no | Around each row in an ItemList, Item or Switch and Slider rows alike; it carries the row's position. |
 | root | `<view>` | yes | A `button` when `onClick` is set, otherwise a `view`; at least the large control height. |
@@ -205,6 +288,10 @@ export function Destructive() {
 | description | `<text>` | no | `description`, or `disabledMessage` while disabled. |
 | end | `<view>` | no | `endContent`: a value, a badge, or a control on a plain row. |
 | chevron | `<vector>` | no | Shown with `hasChevron`; mirrors for right-to-left text. |
+| swipe | `<view>` | no | Around a row with `swipeActions`: it clips the row as it slides. |
+| slide | `<view>` | no | The part that moves: the row on the list's surface, dragged between closed and open. |
+| actions | `<view>` | no | Behind the row's end: the actions, 72 px each. |
+| action | `<button>` | no | One action: an icon over its label, in its tone. |
 
 ## Accessibility
 
@@ -212,11 +299,14 @@ export function Destructive() {
 - Name: label.
 - Description: description, or disabledMessage while disabled.
 - States: disabled (from isDisabled); selected (from isSelected).
-- Press target: lg 48 px.
+- Left and Right: On a row with `swipeActions`: opens and closes the row; Tab then reaches the actions.
+- Press target: md 40 px, lg 48 px.
 - The button pattern applies to a row with `onClick`. A plain row is not a control; its texts are read in order.
 - On a pressable row the start and end content are drawn only, so the row is read as its label and second line.
 - In an ItemList each row is read with its position ("2 of 3"), whether it is a button or plain content.
-- Every row is at least 48 px tall, above the 44 pt touch minimum.
+- Every row is at least 48 px tall, above the 44 pt touch minimum; a `compact` row is 40 px, for lists read with a mouse.
+- A row with `swipeActions` is read as an adjustable named by its label that offers each action by its label; while it is closed the action buttons are out of the reading order. The actions never depend on the drag: a screen reader runs them from the row, and a keyboard opens the row with the arrow keys.
+- An ItemList's `title` names the list and is not read a second time; pass `label` as well to name the list differently.
 - A row with `isSelected` is read as selected, and one with `isSelected={false}` as not selected; a row without the prop has no selected state.
 
 | Contrast | Pair | Minimum | Light | Dark |
@@ -227,6 +317,10 @@ export function Destructive() {
 | label, selected | `text` on `accent-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
 | second line and end values, selected | `text-muted` on `accent-soft` | 4.5:1 | 5.10:1 | 5.39:1 |
 | chevron, selected | `text-muted` on `accent-soft` | 3:1 | 5.10:1 | 5.39:1 |
+| list heading and the line under it | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
+| swipe action, neutral, on its 8% wash | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
+| swipe action, accent | `on-accent` on `accent` | 4.5:1 | 5.62:1 | 7.12:1 |
+| swipe action, danger | `on-danger` on `danger` | 4.5:1 | 5.21:1 | 6.29:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 
@@ -235,9 +329,17 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Use `onClick` with `hasChevron` for a row that opens another page.
 - Do: Keep the label short and put detail in `description`.
 - Do: Group rows in an ItemList, so the rows are divided and read with their position.
+- Do: Keep swipe actions to the two or three a person repeats down a list, the destructive one last; offer the same actions on the page the row opens.
+- Do: Use `compact` where the list is long and read with a mouse; keep `comfortable` on a phone.
 - Do: Mark the current choice with `isSelected` and pass `isSelected={false}` on the other rows of the same list.
 - Don't: Put a button or other control in `endContent` of a row with `onClick`; the View refuses a button inside a button.
 - Don't: Use a row for a single action; that is a Button.
 - Don't: Rely on the end value alone on a pressable row; it is not read, so repeat it in `description` when it matters.
+
+## Not yet
+
+| Missing | Needs | Meanwhile |
+| --- | --- | --- |
+| One stop for a pressable row with swipe actions. | a hover and pressed wash that stays opaque on a dragged `<button>`, or a way to hide the row's slide from assistive tech while keeping its actions | The slide and the button inside it are two stops with the same name: the first offers the actions, the second opens the row. Not yet heard on a screen reader. |
 
 Related: DropdownMenu, Card.

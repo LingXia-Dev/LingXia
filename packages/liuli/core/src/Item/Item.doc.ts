@@ -9,12 +9,16 @@ export const doc: ComponentDoc = {
   description:
     'Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that ' +
     'opens or selects something; without it the row is plain content and its `endContent` may hold its own control. ' +
-    'Rows carry no border or fill; ItemList, from the same import, groups and divides them and reads them as a list.',
+    'Rows carry no border or fill; ItemList, from the same import, groups and divides them, reads them as a list, and can carry a heading and a line of explanation. ' +
+    'A row can hide up to three actions behind its end, shown by dragging it aside, and a list can be made compact for a mouse.',
   keywords: ['item', 'row', 'list', 'cell', 'list item', 'settings row', 'table row', 'navigation row'],
   propsType: 'ItemProps',
-  otherPropsTypes: ['ItemListProps'],
+  otherPropsTypes: ['ItemListProps', 'ItemSwipeAction'],
   recipe: { map: 'itemRecipe', parts: 'itemParts' },
   anatomy: [
+    { part: 'group', required: false, description: 'ItemList with a `title` or `description`: the heading, the list and the line under it.' },
+    { part: 'title', required: false, description: 'ItemList\'s `title`: a quiet heading that names the list.' },
+    { part: 'note', required: false, description: 'ItemList\'s `description`, under the list.' },
     { part: 'list', required: false, description: 'ItemList: a bordered, divided list, read as a list.' },
     { part: 'listitem', required: false, description: 'Around each row in an ItemList, Item or Switch and Slider rows alike; it carries the row\'s position.' },
     { part: 'root', required: true, description: 'A `button` when `onClick` is set, otherwise a `view`; at least the large control height.' },
@@ -23,14 +27,20 @@ export const doc: ComponentDoc = {
     { part: 'description', required: false, description: '`description`, or `disabledMessage` while disabled.' },
     { part: 'end', required: false, description: '`endContent`: a value, a badge, or a control on a plain row.' },
     { part: 'chevron', required: false, description: 'Shown with `hasChevron`; mirrors for right-to-left text.' },
+    { part: 'swipe', required: false, description: 'Around a row with `swipeActions`: it clips the row as it slides.' },
+    { part: 'slide', required: false, description: 'The part that moves: the row on the list\'s surface, dragged between closed and open.' },
+    { part: 'actions', required: false, description: 'Behind the row\'s end: the actions, 72 px each.' },
+    { part: 'action', required: false, description: 'One action: an icon over its label, in its tone.' },
   ],
   accessibility: {
     pattern: 'button',
     name: 'label',
     description: ['description, or disabledMessage while disabled'],
     states: [{ state: 'disabled', from: 'isDisabled' }, { state: 'selected', from: 'isSelected' }],
-    keyboard: [],
-    target: { lg: 48 },
+    keyboard: [
+      { keys: 'Left and Right', effect: 'On a row with `swipeActions`: opens and closes the row; Tab then reaches the actions' },
+    ],
+    target: { md: 40, lg: 48 },
     contrast: [
       { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1' },
       { what: 'second line and end values', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
@@ -38,12 +48,18 @@ export const doc: ComponentDoc = {
       { what: 'label, selected', pair: ['text', 'accent-soft'], minimum: '4.5:1' },
       { what: 'second line and end values, selected', pair: ['text-muted', 'accent-soft'], minimum: '4.5:1' },
       { what: 'chevron, selected', pair: ['text-muted', 'accent-soft'], minimum: '3:1' },
+      { what: 'list heading and the line under it', pair: ['text-muted', 'canvas'], minimum: '4.5:1' },
+      { what: 'swipe action, neutral, on its 8% wash', pair: ['text', 'surface'], minimum: '4.5:1' },
+      { what: 'swipe action, accent', pair: ['on-accent', 'accent'], minimum: '4.5:1' },
+      { what: 'swipe action, danger', pair: ['on-danger', 'danger'], minimum: '4.5:1' },
     ],
     notes: [
       'The button pattern applies to a row with `onClick`. A plain row is not a control; its texts are read in order.',
       'On a pressable row the start and end content are drawn only, so the row is read as its label and second line.',
       'In an ItemList each row is read with its position ("2 of 3"), whether it is a button or plain content.',
-      'Every row is at least 48 px tall, above the 44 pt touch minimum.',
+      'Every row is at least 48 px tall, above the 44 pt touch minimum; a `compact` row is 40 px, for lists read with a mouse.',
+      'A row with `swipeActions` is read as an adjustable named by its label that offers each action by its label; while it is closed the action buttons are out of the reading order. The actions never depend on the drag: a screen reader runs them from the row, and a keyboard opens the row with the arrow keys.',
+      'An ItemList\'s `title` names the list and is not read a second time; pass `label` as well to name the list differently.',
       'A row with `isSelected` is read as selected, and one with `isSelected={false}` as not selected; a row without the prop has no selected state.',
     ],
   },
@@ -52,6 +68,8 @@ export const doc: ComponentDoc = {
       'Use `onClick` with `hasChevron` for a row that opens another page.',
       'Keep the label short and put detail in `description`.',
       'Group rows in an ItemList, so the rows are divided and read with their position.',
+      'Keep swipe actions to the two or three a person repeats down a list, the destructive one last; offer the same actions on the page the row opens.',
+      'Use `compact` where the list is long and read with a mouse; keep `comfortable` on a phone.',
       'Mark the current choice with `isSelected` and pass `isSelected={false}` on the other rows of the same list.',
     ],
     dont: [
@@ -67,8 +85,16 @@ export const doc: ComponentDoc = {
     { name: 'WithControl', title: 'A control at the end' },
     { name: 'Disabled', title: 'Disabled, with the reason' },
     { name: 'Destructive', title: 'A destructive row' },
+    { name: 'Swipe', title: 'Actions behind a row, and a list with a heading' },
+    { name: 'Compact', title: 'A compact list' },
   ],
-  gaps: [],
+  gaps: [
+    {
+      missing: 'One stop for a pressable row with swipe actions.',
+      needs: 'a hover and pressed wash that stays opaque on a dragged `<button>`, or a way to hide the row\'s slide from assistive tech while keeping its actions',
+      today: 'The slide and the button inside it are two stops with the same name: the first offers the actions, the second opens the row. Not yet heard on a screen reader.',
+    },
+  ],
   related: ['DropdownMenu', 'Card'],
   gallery: {
     specimen: 'Specimen',
@@ -83,6 +109,8 @@ export const doc: ComponentDoc = {
         { name: 'Values', title: 'Read-only, with a value at the end' },
         { name: 'WithControl', title: 'Holding its own control' },
         { name: 'Destructive', title: 'Danger tone, for a row that deletes' },
+        { name: 'Swipe', title: 'Drag a row aside for its actions; the list has a heading and a line under it' },
+        { name: 'Compact', title: 'Compact rows under a heading' },
       ],
       states: [
         { name: 'StatePressable', title: 'Pressable' },

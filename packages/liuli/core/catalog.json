@@ -4530,7 +4530,7 @@
       "status": "preview",
       "since": "2026-11-12",
       "summary": "One row of a list: a label, a second line, and content at either end",
-      "description": "Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that opens or selects something; without it the row is plain content and its `endContent` may hold its own control. Rows carry no border or fill; ItemList, from the same import, groups and divides them and reads them as a list.",
+      "description": "Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that opens or selects something; without it the row is plain content and its `endContent` may hold its own control. Rows carry no border or fill; ItemList, from the same import, groups and divides them, reads them as a list, and can carry a heading and a line of explanation. A row can hide up to three actions behind its end, shown by dragging it aside, and a list can be made compact for a mouse.",
       "keywords": [
         "item",
         "row",
@@ -4606,6 +4606,18 @@
           "description": "After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button."
         },
         {
+          "name": "density",
+          "type": "ItemDensity",
+          "required": false,
+          "description": "The row's height and padding. By default the ItemList's, else `comfortable`."
+        },
+        {
+          "name": "swipeActions",
+          "type": "readonly ItemSwipeAction[]",
+          "required": false,
+          "description": "Up to three actions behind the row's end, shown by dragging the row toward its start. A screen reader offers them as the row's actions; with a keyboard the arrow keys open the row."
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -4630,7 +4642,26 @@
             "name": "label",
             "type": "string",
             "required": false,
-            "description": "Names the list for assistive input, when the heading above it does not."
+            "description": "Names the list for assistive input, when neither `title` nor a heading above it does."
+          },
+          {
+            "name": "title",
+            "type": "string",
+            "required": false,
+            "description": "A heading over the list, in the quiet type of a settings group; it names the list."
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "required": false,
+            "description": "A line under the list that explains the group."
+          },
+          {
+            "name": "density",
+            "type": "ItemDensity",
+            "required": false,
+            "description": "The rows' height and padding; a row's own `density` wins.",
+            "default": "'comfortable'"
           },
           {
             "name": "className",
@@ -4644,9 +4675,45 @@
             "required": false,
             "description": ""
           }
+        ],
+        "ItemSwipeAction": [
+          {
+            "name": "key",
+            "type": "string",
+            "required": true,
+            "description": "Identifies the action: its test id is `<row id>-<key>`."
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "Drawn under the icon, and what a screen reader offers as the row's action."
+          },
+          {
+            "name": "icon",
+            "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"success\" | \"tag\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
+            "required": false,
+            "description": ""
+          },
+          {
+            "name": "tone",
+            "type": "ItemSwipeTone",
+            "required": false,
+            "description": "",
+            "default": "'neutral'"
+          },
+          {
+            "name": "onClick",
+            "type": "() => void",
+            "required": true,
+            "description": "Runs after the row has closed."
+          }
         ]
       },
       "parts": {
+        "group": "view",
+        "title": "text",
+        "note": "text",
         "list": "view",
         "listitem": "view",
         "root": "view",
@@ -4655,7 +4722,13 @@
         "label": "text",
         "description": "text",
         "end": "view",
-        "chevron": "vector"
+        "chevron": "vector",
+        "swipe": "view",
+        "slide": "view",
+        "actions": "view",
+        "action": "button",
+        "actionIcon": "vector",
+        "actionLabel": "text"
       },
       "accessibility": {
         "pattern": "button",
@@ -4673,8 +4746,14 @@
             "from": "isSelected"
           }
         ],
-        "keyboard": [],
+        "keyboard": [
+          {
+            "keys": "Left and Right",
+            "effect": "On a row with `swipeActions`: opens and closes the row; Tab then reaches the actions"
+          }
+        ],
         "target": {
+          "md": 40,
           "lg": 48
         },
         "contrast": [
@@ -4725,13 +4804,47 @@
               "accent-soft"
             ],
             "minimum": "3:1"
+          },
+          {
+            "what": "list heading and the line under it",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "swipe action, neutral, on its 8% wash",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "swipe action, accent",
+            "pair": [
+              "on-accent",
+              "accent"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "swipe action, danger",
+            "pair": [
+              "on-danger",
+              "danger"
+            ],
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
           "The button pattern applies to a row with `onClick`. A plain row is not a control; its texts are read in order.",
           "On a pressable row the start and end content are drawn only, so the row is read as its label and second line.",
           "In an ItemList each row is read with its position (\"2 of 3\"), whether it is a button or plain content.",
-          "Every row is at least 48 px tall, above the 44 pt touch minimum.",
+          "Every row is at least 48 px tall, above the 44 pt touch minimum; a `compact` row is 40 px, for lists read with a mouse.",
+          "A row with `swipeActions` is read as an adjustable named by its label that offers each action by its label; while it is closed the action buttons are out of the reading order. The actions never depend on the drag: a screen reader runs them from the row, and a keyboard opens the row with the arrow keys.",
+          "An ItemList's `title` names the list and is not read a second time; pass `label` as well to name the list differently.",
           "A row with `isSelected` is read as selected, and one with `isSelected={false}` as not selected; a row without the prop has no selected state."
         ]
       },
@@ -4744,7 +4857,7 @@
         {
           "name": "Selection",
           "title": "Rows that choose one",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst mailboxes = [\n  { id: 'inbox', label: 'Inbox', count: '12' },\n  { id: 'drafts', label: 'Drafts', count: '3' },\n  { id: 'sent', label: 'Sent', count: '' },\n] as const;\n\n/** Rows that choose one of several, as a sidebar does: the chosen row is selected, the others are not. */\nexport function Selection() {\n  const open = useLocal<string>('open', 'inbox');\n  return (\n    <ItemList label=\"Mailboxes\" data-testid=\"mailboxes\">\n      {mailboxes.map(box => (\n        <Item\n          key={box.id}\n          label={box.label}\n          endContent={box.count ? <text className=\"text-footnote text-muted\">{box.count}</text> : undefined}\n          isSelected={open.value === box.id}\n          onClick={() => open.set(box.id)}\n          data-testid={`mailbox-${box.id}`}\n        />\n      ))}\n    </ItemList>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst mailboxes = [\n  { id: 'inbox', label: 'Inbox', count: '12' },\n  { id: 'drafts', label: 'Drafts', count: '3' },\n  { id: 'sent', label: 'Sent', count: '' },\n] as const;\nconst inbox = [\n  { id: 'm1', from: 'Ana Lee', subject: 'Notes from Tuesday' },\n  { id: 'm2', from: 'Ben Okafor', subject: 'Invoice for October' },\n  { id: 'm3', from: 'Chloé Martin', subject: 'Photos from the coast' },\n] as const;\n\n/** Rows that choose one of several, as a sidebar does: the chosen row is selected, the others are not. */\nexport function Selection() {\n  const open = useLocal<string>('open', 'inbox');\n  return (\n    <ItemList label=\"Mailboxes\" data-testid=\"mailboxes\">\n      {mailboxes.map(box => (\n        <Item\n          key={box.id}\n          label={box.label}\n          endContent={box.count ? <text className=\"text-footnote text-muted\">{box.count}</text> : undefined}\n          isSelected={open.value === box.id}\n          onClick={() => open.set(box.id)}\n          data-testid={`mailbox-${box.id}`}\n        />\n      ))}\n    </ItemList>\n  );\n}"
         },
         {
           "name": "Values",
@@ -4765,9 +4878,25 @@
           "name": "Destructive",
           "title": "A destructive row",
           "source": "import { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** A row that deletes or ends something; the danger tone marks it before it is pressed. */\nexport function Destructive() {\n  return (\n    <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n      <Item label=\"Delete account\" description=\"Removes your notes from every device\" tone=\"danger\" hasChevron onClick={() => {}} data-testid=\"delete-row\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Swipe",
+          "title": "Actions behind a row, and a list with a heading",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst inbox = [\n  { id: 'm1', from: 'Ana Lee', subject: 'Notes from Tuesday' },\n  { id: 'm2', from: 'Ben Okafor', subject: 'Invoice for October' },\n  { id: 'm3', from: 'Chloé Martin', subject: 'Photos from the coast' },\n] as const;\n\n/** Drag a row toward its start to show its actions; the list has a heading and a line under it. */\nexport function Swipe() {\n  const gone = useLocal<readonly string[]>('gone', []);\n  const flagged = useLocal<readonly string[]>('flagged', []);\n  return (\n    <ItemList title=\"Inbox\" description=\"Drag a message to the side to flag or delete it.\" data-testid=\"inbox\">\n      {inbox.filter(mail => !gone.value.includes(mail.id)).map(mail => (\n        <Item\n          key={mail.id}\n          label={mail.from}\n          description={mail.subject}\n          endContent={flagged.value.includes(mail.id) ? <text className=\"text-footnote text-muted\">Flagged</text> : undefined}\n          hasChevron\n          onClick={() => {}}\n          swipeActions={[\n            { key: 'flag', label: 'Flag', icon: 'flag', onClick: () => flagged.set(flagged.value.includes(mail.id) ? flagged.value.filter(id => id !== mail.id) : [...flagged.value, mail.id]) },\n            { key: 'delete', label: 'Delete', icon: 'delete', tone: 'danger', onClick: () => gone.set([...gone.value, mail.id]) },\n          ]}\n          data-testid={`mail-${mail.id}`}\n        />\n      ))}\n    </ItemList>\n  );\n}"
+        },
+        {
+          "name": "Compact",
+          "title": "A compact list",
+          "source": "import { Item, ItemList } from '@liulidesign/core/Item';\n\nconst files = [\n  { name: 'Budget.xlsx', size: '48 KB' }, { name: 'Contract.pdf', size: '1.2 MB' }, { name: 'Logo.svg', size: '6 KB' },\n  { name: 'Notes.md', size: '3 KB' }, { name: 'Roadmap.key', size: '14 MB' },\n] as const;\n\n/** Compact rows for a long list read with a mouse. */\nexport function Compact() {\n  return (\n    <ItemList title=\"Files\" density=\"compact\" data-testid=\"files\">\n      {files.map(file => (\n        <Item key={file.name} label={file.name} endContent={<text className=\"text-footnote text-muted tabular-nums\">{file.size}</text>} onClick={() => {}} data-testid={`file-${file.name}`} />\n      ))}\n    </ItemList>\n  );\n}"
         }
       ],
-      "gaps": [],
+      "gaps": [
+        {
+          "missing": "One stop for a pressable row with swipe actions.",
+          "needs": "a hover and pressed wash that stays opaque on a dragged `<button>`, or a way to hide the row's slide from assistive tech while keeping its actions",
+          "today": "The slide and the button inside it are two stops with the same name: the first offers the actions, the second opens the row. Not yet heard on a screen reader."
+        }
+      ],
       "related": [
         "DropdownMenu",
         "Card"
@@ -4796,6 +4925,14 @@
             {
               "name": "Destructive",
               "title": "Danger tone, for a row that deletes"
+            },
+            {
+              "name": "Swipe",
+              "title": "Drag a row aside for its actions; the list has a heading and a line under it"
+            },
+            {
+              "name": "Compact",
+              "title": "Compact rows under a heading"
             }
           ],
           "states": [

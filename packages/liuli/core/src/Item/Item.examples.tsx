@@ -65,6 +65,53 @@ export function Values() {
   );
 }
 
+const inbox = [
+  { id: 'm1', from: 'Ana Lee', subject: 'Notes from Tuesday' },
+  { id: 'm2', from: 'Ben Okafor', subject: 'Invoice for October' },
+  { id: 'm3', from: 'Chloé Martin', subject: 'Photos from the coast' },
+] as const;
+
+/** Drag a row toward its start to show its actions; the list has a heading and a line under it. */
+export function Swipe() {
+  const gone = useLocal<readonly string[]>('gone', []);
+  const flagged = useLocal<readonly string[]>('flagged', []);
+  return (
+    <ItemList title="Inbox" description="Drag a message to the side to flag or delete it." data-testid="inbox">
+      {inbox.filter(mail => !gone.value.includes(mail.id)).map(mail => (
+        <Item
+          key={mail.id}
+          label={mail.from}
+          description={mail.subject}
+          endContent={flagged.value.includes(mail.id) ? <text className="text-footnote text-muted">Flagged</text> : undefined}
+          hasChevron
+          onClick={() => {}}
+          swipeActions={[
+            { key: 'flag', label: 'Flag', icon: 'flag', onClick: () => flagged.set(flagged.value.includes(mail.id) ? flagged.value.filter(id => id !== mail.id) : [...flagged.value, mail.id]) },
+            { key: 'delete', label: 'Delete', icon: 'delete', tone: 'danger', onClick: () => gone.set([...gone.value, mail.id]) },
+          ]}
+          data-testid={`mail-${mail.id}`}
+        />
+      ))}
+    </ItemList>
+  );
+}
+
+const files = [
+  { name: 'Budget.xlsx', size: '48 KB' }, { name: 'Contract.pdf', size: '1.2 MB' }, { name: 'Logo.svg', size: '6 KB' },
+  { name: 'Notes.md', size: '3 KB' }, { name: 'Roadmap.key', size: '14 MB' },
+] as const;
+
+/** Compact rows for a long list read with a mouse. */
+export function Compact() {
+  return (
+    <ItemList title="Files" density="compact" data-testid="files">
+      {files.map(file => (
+        <Item key={file.name} label={file.name} endContent={<text className="text-footnote text-muted tabular-nums">{file.size}</text>} onClick={() => {}} data-testid={`file-${file.name}`} />
+      ))}
+    </ItemList>
+  );
+}
+
 /** A row without `onClick` can hold its own control at the end. */
 export function WithControl() {
   const signedIn = useLocal('signedIn', true);
