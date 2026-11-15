@@ -57,3 +57,10 @@ test('Tones: the fill takes the tone, and the words say how it stands', async ()
   assert.deepEqual(fills.map(bar => bar.children[0].props.background), ['success-mark', 'warning-mark', 'danger-mark']);
   assert.deepEqual(fills.map(bar => bar.props.ariaValueText), ['Reached', '43 of 50 GB, nearly full', 'Over by 1.2 GB']);
 });
+
+test('SpinnerTones: 48 px in the on-media colour over a picture; 16 px muted beside text', async () => {
+  const screen = await renderExample('ProgressBar/ProgressBar', 'SpinnerTones');
+  const arc = id => screen.getByTestId(id).children[0];
+  assert.deepEqual([arc('on-media').props.width, arc('on-media').props.color], [48, 'on-media']);
+  assert.deepEqual([arc('quiet').props.width, arc('quiet').props.color], [16, 'text-muted']);
+});

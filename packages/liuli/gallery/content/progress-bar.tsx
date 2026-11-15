@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Determinate, Indeterminate, Spinners, Tones, SizesBar, StateStarted, StateHalf, StateDone, StateUnknown, Compact } from '../../core/src/ProgressBar/ProgressBar.examples';
+import { Determinate, Indeterminate, Spinners, Tones, SpinnerTones, SizesBar, StateStarted, StateHalf, StateDone, StateUnknown, Compact } from '../../core/src/ProgressBar/ProgressBar.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -17,6 +17,9 @@ export function Content() {
         </Stage>
         <Stage caption={"A tone for a meter: reached, nearly full, over"}>
           <Tones />
+        </Stage>
+        <Stage caption={"Extra large over media; muted beside quiet text"}>
+          <SpinnerTones />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

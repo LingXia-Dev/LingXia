@@ -50,6 +50,7 @@ import { Content as Banner } from '../content/banner';
 import { Content as EmptyState } from '../content/empty-state';
 import { Content as Skeleton } from '../content/skeleton';
 import { Content as Toast } from '../content/toast';
+import { Content as CircularProgress } from '../content/circular-progress';
 import { Content as Dialog } from '../content/dialog';
 import { Content as DropdownMenu } from '../content/dropdown-menu';
 import { Content as Tooltip } from '../content/tooltip';
@@ -67,6 +68,8 @@ import { Content as MetadataList } from '../content/metadata-list';
 import { Content as Section } from '../content/section';
 import { Content as Divider } from '../content/divider';
 import { Content as Kbd } from '../content/kbd';
+import { Content as Timer } from '../content/timer';
+import { Content as Timestamp } from '../content/timestamp';
 import { Content as Stat } from '../content/stat';
 import { Content as Sparkline } from '../content/sparkline';
 import { Content as BarChart } from '../content/bar-chart';
@@ -135,6 +138,7 @@ export const contents: Record<string, GalleryContent> = {
   "empty-state": EmptyState,
   "skeleton": Skeleton,
   "toast": Toast,
+  "circular-progress": CircularProgress,
   "dialog": Dialog,
   "dropdown-menu": DropdownMenu,
   "tooltip": Tooltip,
@@ -152,6 +156,8 @@ export const contents: Record<string, GalleryContent> = {
   "section": Section,
   "divider": Divider,
   "kbd": Kbd,
+  "timer": Timer,
+  "timestamp": Timestamp,
   "stat": Stat,
   "sparkline": Sparkline,
   "bar-chart": BarChart,

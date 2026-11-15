@@ -2796,6 +2796,208 @@
       }
     },
     {
+      "name": "CircularProgress",
+      "import": "@liulidesign/core/CircularProgress",
+      "exports": [
+        "CircularProgress"
+      ],
+      "category": "feedback",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "How much is done, as a ring",
+      "description": "CircularProgress shows an amount from 0 to `max` as an arc around a ring, with the app's own words in the middle at the larger sizes. Without `value` the arc spins: the task is running and its length is unknown. Use it where a ProgressBar has no room: a tile, the end of a row.",
+      "keywords": [
+        "progress",
+        "ring",
+        "circular",
+        "radial",
+        "meter",
+        "gauge",
+        "donut"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The accessible name: what is in progress (\"Uploading\", \"Daily goal\"). Not drawn."
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "required": false,
+          "description": "The amount done, from 0 to `max`. Leave it out while the amount is unknown."
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "required": false,
+          "description": "",
+          "default": "100"
+        },
+        {
+          "name": "valueLabel",
+          "type": "string",
+          "required": false,
+          "description": "The amount as the app words it (\"72%\", \"3 of 8\"): read in place of a percentage, and drawn in the middle at `md` and `lg`."
+        },
+        {
+          "name": "size",
+          "type": "CircularProgressSize",
+          "required": false,
+          "description": "24, 48 or 80 px. `sm` has no room for words.",
+          "default": "'md'"
+        },
+        {
+          "name": "tone",
+          "type": "ProgressBarTone",
+          "required": false,
+          "description": "The arc's colour, for a ring that is a meter.",
+          "default": "'accent'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "track": "vector",
+        "fill": "vector",
+        "value": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "target": {},
+        "contrast": [
+          {
+            "what": "arc on a card",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "arc against the track",
+            "pair": [
+              "accent",
+              "text/10"
+            ],
+            "over": "surface",
+            "minimum": "3:1"
+          },
+          {
+            "what": "success arc",
+            "pair": [
+              "success-mark",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "warning arc",
+            "pair": [
+              "warning-mark",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "danger arc",
+            "pair": [
+              "danger-mark",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "value",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "Role progressbar, named by `label`. With `value` it reports the value, 0 and `max`; `valueLabel` is read in place of a percentage.",
+          "Without `value` it reports no value, which assistive tech reads as busy.",
+          "The words in the middle are not read twice: the ring already carries them.",
+          "Under reduced motion the unknown arc stands still."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Goal",
+          "title": "A goal on a tile",
+          "source": "import { CircularProgress } from '@liulidesign/core/CircularProgress';\n\n/** A goal on a tile: the ring, and the app's words in its middle. */\nexport function Goal() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <CircularProgress label=\"Steps today\" value={7200} max={10000} valueLabel=\"72%\" size=\"lg\" data-testid=\"steps\" />\n      <view className=\"gap-0.5\">\n        <text className=\"text-body font-medium text-text\">7,200 steps</text>\n        <text className=\"text-footnote text-muted\">2,800 to your goal of 10,000</text>\n      </view>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "InRows",
+          "title": "At the end of a row",
+          "source": "import { Item, ItemList } from '@liulidesign/core/Item';\nimport { CircularProgress } from '@liulidesign/core/CircularProgress';\n\n/** At the end of a row, where a bar has no room. */\nexport function InRows() {\n  return (\n    <ItemList label=\"Uploads\">\n      <Item label=\"Harbour at dawn.jpg\" description=\"4.2 MB\" endContent={<CircularProgress label=\"Uploading Harbour at dawn.jpg\" value={64} valueLabel=\"64%\" size=\"sm\" data-testid=\"row\" />} />\n      <Item label=\"Market stalls.jpg\" description=\"3.1 MB\" endContent={<CircularProgress label=\"Uploading Market stalls.jpg\" size=\"sm\" data-testid=\"waiting\" />} />\n      <Item label=\"Tram 28.jpg\" description=\"5.6 MB\" endContent={<CircularProgress label=\"Uploaded Tram 28.jpg\" value={100} valueLabel=\"Done\" size=\"sm\" tone=\"success\" />} />\n    </ItemList>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { CircularProgress } from '@liulidesign/core/CircularProgress';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row items-center gap-5\">\n      <CircularProgress label=\"Storage used\" value={40} valueLabel=\"40%\" size=\"sm\" />\n      <CircularProgress label=\"Storage used\" value={40} valueLabel=\"40%\" />\n      <CircularProgress label=\"Storage used\" value={40} valueLabel=\"40%\" size=\"lg\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Tones",
+          "title": "Meters in a tone",
+          "source": "import { CircularProgress } from '@liulidesign/core/CircularProgress';\n\n/** A meter in a tone: the words say how it stands too. */\nexport function Tones() {\n  return (\n    <view className=\"flex-row items-center gap-5\">\n      <CircularProgress label=\"Monthly goal\" value={100} valueLabel=\"Done\" tone=\"success\" size=\"lg\" />\n      <CircularProgress label=\"Storage\" value={86} valueLabel=\"86%\" tone=\"warning\" size=\"lg\" />\n      <CircularProgress label=\"Data plan\" value={100} valueLabel=\"Over\" tone=\"danger\" size=\"lg\" data-testid=\"over\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "The arc jumps to a new value; it does not sweep there."
+      ],
+      "related": [
+        "ProgressBar",
+        "Stat"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Progress as a ring",
+        "order": 7,
+        "page": {
+          "lead": "Use a ring for progress where a bar has no room.",
+          "hero": "Goal",
+          "variants": [
+            {
+              "name": "Tones",
+              "title": "A tone for a meter"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small (24), medium (48) and large (80)"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "InRows",
+              "title": "Uploads, each with its ring"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Combobox",
       "import": "@liulidesign/core/Combobox",
       "exports": [
@@ -8129,8 +8331,15 @@
             "name": "size",
             "type": "SpinnerSize",
             "required": false,
-            "description": "",
+            "description": "16, 24, 32 or 48 px; `xl` for a whole page or a media frame that is loading.",
             "default": "'md'"
+          },
+          {
+            "name": "tone",
+            "type": "SpinnerTone",
+            "required": false,
+            "description": "",
+            "default": "'accent'"
           },
           {
             "name": "className",
@@ -8175,6 +8384,22 @@
             "what": "fill and spinner on a card",
             "pair": [
               "accent",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "spinner over media",
+            "pair": [
+              "on-media",
+              "media"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "muted spinner",
+            "pair": [
+              "text-muted",
               "surface"
             ],
             "minimum": "3:1"
@@ -8252,6 +8477,11 @@
           "name": "Tones",
           "title": "Meters in a tone",
           "source": "import { ProgressBar } from '@liulidesign/core/ProgressBar';\n\n/** Meters: the fill says how the amount stands, and the words say it too. */\nexport function Tones() {\n  return (\n    <view className=\"gap-4\">\n      <ProgressBar label=\"Monthly goal\" value={100} valueLabel=\"Reached\" tone=\"success\" data-testid=\"tone-goal\" />\n      <ProgressBar label=\"Storage\" value={86} valueLabel=\"43 of 50 GB, nearly full\" tone=\"warning\" data-testid=\"tone-storage\" />\n      <ProgressBar label=\"Data plan\" value={100} valueLabel=\"Over by 1.2 GB\" tone=\"danger\" data-testid=\"tone-plan\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "SpinnerTones",
+          "title": "A spinner over media, and a quiet one",
+          "source": "import { Spinner } from '@liulidesign/core/ProgressBar';\n\n/** Over a picture that is still loading, and beside quiet text. */\nexport function SpinnerTones() {\n  return (\n    <view className=\"gap-3\">\n      <view className=\"h-36 items-center justify-center rounded-container bg-media\">\n        <Spinner label=\"Loading the video\" size=\"xl\" tone=\"on-media\" data-testid=\"on-media\" />\n      </view>\n      <view className=\"flex-row items-center gap-2\">\n        <Spinner label=\"Checking for updates\" size=\"sm\" tone=\"muted\" data-testid=\"quiet\" />\n        <text className=\"text-footnote text-muted\">Checking for updates</text>\n      </view>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -8277,6 +8507,10 @@
             {
               "name": "Tones",
               "title": "A tone for a meter: reached, nearly full, over"
+            },
+            {
+              "name": "SpinnerTones",
+              "title": "Extra large over media; muted beside quiet text"
             }
           ],
           "sizes": [
@@ -12258,6 +12492,266 @@
             {
               "name": "QuietHours",
               "title": "Quiet hours"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Timer",
+      "import": "@liulidesign/core/Timer",
+      "exports": [
+        "formatTimer",
+        "Timer"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A length of time in steady digits",
+      "description": "Timer draws a number of seconds as `m:ss`, or `h:mm:ss` from an hour on, in digits that keep their width as they change. It does not count: the app passes `seconds` each time it changes, from Logic or from its own tick.",
+      "keywords": [
+        "timer",
+        "countdown",
+        "stopwatch",
+        "duration",
+        "elapsed",
+        "clock"
+      ],
+      "props": [
+        {
+          "name": "seconds",
+          "type": "number",
+          "required": true,
+          "description": "The time to show, in seconds: what is left of a countdown, or what has passed. The app counts; Timer draws."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "required": false,
+          "description": "How it is read: \"2 minutes 5 seconds left\". Without it the digits are read as written."
+        },
+        {
+          "name": "hasHours",
+          "type": "boolean",
+          "required": false,
+          "description": "Always shows hours, as `0:02:05`. Otherwise hours appear from one hour on.",
+          "default": "false"
+        },
+        {
+          "name": "size",
+          "type": "TimerSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "aria-label",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "target": {},
+        "contrast": [
+          {
+            "what": "digits",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "digits at zero",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "Give `aria-label` in words: \"2 minutes 5 seconds left\". Digits alone are read as a time of day by some screen readers.",
+          "It is not a live region: a countdown read every second is noise. Announce what matters, such as the last ten seconds, with a status of your own."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Countdown",
+          "title": "A countdown",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Timer } from '@liulidesign/core/Timer';\n\n/** A countdown the app runs: here each press takes fifteen seconds off. */\nexport function Countdown() {\n  const left = useLocal('left', 125);\n  return (\n    <view className=\"items-start gap-3\">\n      <Timer seconds={left.value} size=\"lg\" aria-label={`${Math.floor(left.value / 60)} minutes ${left.value % 60} seconds left`} data-testid=\"countdown\" />\n      <view className=\"flex-row gap-2\">\n        <Button label=\"Skip 15 seconds\" onClick={() => left.set(Math.max(0, left.value - 15))} data-testid=\"skip\" />\n        <Button label=\"Reset\" variant=\"ghost\" onClick={() => left.set(125)} />\n      </view>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Inline",
+          "title": "In a line of text",
+          "source": "import { Timer } from '@liulidesign/core/Timer';\n\n/** In a line of text: how long a code stays valid, how long a call has run. */\nexport function Inline() {\n  return (\n    <view className=\"gap-2\">\n      <view className=\"flex-row items-baseline gap-1.5\">\n        <text className=\"text-footnote text-muted\">Code expires in</text>\n        <Timer seconds={272} size=\"sm\" data-testid=\"expires\" />\n      </view>\n      <view className=\"flex-row items-baseline gap-1.5\">\n        <text className=\"text-body text-text\">On a call</text>\n        <Timer seconds={4325} data-testid=\"call\" />\n      </view>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "Timer has no clock of its own; the app passes the seconds."
+      ],
+      "related": [
+        "Timestamp",
+        "ProgressBar"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Minutes and seconds",
+        "order": 13,
+        "page": {
+          "lead": "Use a timer to show a length of time that changes: a countdown, a recording.",
+          "hero": "Countdown",
+          "variants": [
+            {
+              "name": "Inline",
+              "title": "Small and medium, in a line of text; hours appear from an hour on"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Timestamp",
+      "import": "@liulidesign/core/Timestamp",
+      "exports": [
+        "formatTimestamp",
+        "Timestamp"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "When something happened, in the words people use",
+      "description": "Timestamp writes a moment as people say it: \"12 minutes ago\" for today, \"Yesterday, 18:30\", then the date, with the year only when it is another year. It takes the moment and the present as local date-times from the app, and its words from a locale: Liuli ships English and Chinese, and an app can pass its own. The time follows the user's 12- or 24-hour clock.",
+      "keywords": [
+        "timestamp",
+        "time",
+        "date",
+        "relative time",
+        "ago",
+        "when"
+      ],
+      "props": [
+        {
+          "name": "value",
+          "type": "string",
+          "required": true,
+          "description": "The moment, in the user's own time."
+        },
+        {
+          "name": "now",
+          "type": "string",
+          "required": true,
+          "description": "The present, in the same form. The app passes it and refreshes it; Liuli has no clock."
+        },
+        {
+          "name": "locale",
+          "type": "TimestampLocale",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "format",
+          "type": "TimestampFormat",
+          "required": false,
+          "description": "`relative` says how long ago for today, \"yesterday\" with the time for yesterday, and the date before that.",
+          "default": "'relative'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "target": {},
+        "contrast": [
+          {
+            "what": "in the muted colour",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "It is read in full, as the date and the time, whatever short form is shown.",
+          "It does not update itself and is not a live region; the app passes a new `now` when it wants the words to move on."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Activity",
+          "title": "An activity list",
+          "source": "import { Avatar } from '@liulidesign/core/Avatar';\nimport { Timestamp } from '@liulidesign/core/Timestamp';\nimport { timestampEn } from './locale/en';\n\nconst now = '2026-11-14T10:05';\nconst activity = [\n  { who: 'Ana Lima', what: 'commented on Trip to the coast', when: '2026-11-14T10:05' },\n  { who: 'Kai Chen', what: 'shared Reading list with you', when: '2026-11-14T09:42' },\n  { who: 'Mira Patel', what: 'edited Ideas for the garden', when: '2026-11-14T07:10' },\n  { who: 'Sam Ortiz', what: 'archived Gift list', when: '2026-11-13T18:30' },\n  { who: 'Tomás Reis', what: 'joined the workspace', when: '2026-11-02T11:15' },\n  { who: 'Ana Lima', what: 'created the workspace', when: '2025-12-19T16:00' },\n] as const;\n\n/** An activity list: how long ago for today, then yesterday, then the date. */\nexport function Activity() {\n  return (\n    <view className=\"gap-3\">\n      {activity.map((entry, index) => (\n        <view key={entry.when + entry.who} className=\"flex-row items-center gap-3\">\n          <Avatar name={entry.who} size=\"sm\" isDecorative />\n          <view className=\"grow basis-0 min-w-0 gap-0.5\">\n            <text className=\"text-body text-text\">{`${entry.who} ${entry.what}`}</text>\n            <Timestamp value={entry.when} now={now} locale={timestampEn} className=\"text-footnote text-muted\" data-testid={`when-${index}`} />\n          </view>\n        </view>\n      ))}\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Formats",
+          "title": "The four forms",
+          "source": "import { Timestamp } from '@liulidesign/core/Timestamp';\nimport { timestampEn } from './locale/en';\n\nconst now = '2026-11-14T10:05';\n\n/** The same moment in each form. */\nexport function Formats() {\n  const value = '2026-11-13T18:30';\n  return (\n    <view className=\"gap-2\">\n      {(['relative', 'date', 'time', 'date-time'] as const).map(format => (\n        <view key={format} className=\"flex-row items-baseline justify-between gap-4\">\n          <text className=\"text-footnote text-muted\">{format}</text>\n          <Timestamp value={value} now={now} locale={timestampEn} format={format} className=\"text-body text-text\" data-testid={`format-${format}`} />\n        </view>\n      ))}\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Chinese",
+          "title": "In Chinese",
+          "source": "import { Timestamp } from '@liulidesign/core/Timestamp';\nimport { timestampZh } from './locale/zh';\n\nconst now = '2026-11-14T10:05';\n\n/** In Chinese, from the locale module Liuli ships. */\nexport function Chinese() {\n  return (\n    <view className=\"gap-2\">\n      <Timestamp value=\"2026-11-14T09:42\" now={now} locale={timestampZh} className=\"text-body text-text\" data-testid=\"zh-today\" />\n      <Timestamp value=\"2026-11-13T18:30\" now={now} locale={timestampZh} className=\"text-body text-text\" />\n      <Timestamp value=\"2025-12-19T16:00\" now={now} locale={timestampZh} className=\"text-body text-text\" data-testid=\"zh-year\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        "There is no clock and no time zone in the View: the app passes `now` and local date-times.",
+        "Words come from a locale module, not from the system; two locales ship."
+      ],
+      "related": [
+        "Timer",
+        "Calendar",
+        "DateInput"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "When it happened",
+        "order": 15,
+        "page": {
+          "lead": "Use a timestamp to say when something happened.",
+          "hero": "Activity",
+          "variants": [
+            {
+              "name": "Formats",
+              "title": "Relative, date, time, and date with time"
+            },
+            {
+              "name": "Chinese",
+              "title": "From the Chinese locale module"
             }
           ]
         }

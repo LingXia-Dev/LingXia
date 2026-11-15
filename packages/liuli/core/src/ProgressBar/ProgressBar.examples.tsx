@@ -89,3 +89,18 @@ export function Tones() {
     </view>
   );
 }
+
+/** Over a picture that is still loading, and beside quiet text. */
+export function SpinnerTones() {
+  return (
+    <view className="gap-3">
+      <view className="h-36 items-center justify-center rounded-container bg-media">
+        <Spinner label="Loading the video" size="xl" tone="on-media" data-testid="on-media" />
+      </view>
+      <view className="flex-row items-center gap-2">
+        <Spinner label="Checking for updates" size="sm" tone="muted" data-testid="quiet" />
+        <text className="text-footnote text-muted">Checking for updates</text>
+      </view>
+    </view>
+  );
+}

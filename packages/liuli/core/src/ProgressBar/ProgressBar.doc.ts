@@ -29,6 +29,8 @@ export const doc: ComponentDoc = {
     contrast: [
       { what: 'fill against the track', pair: ['accent', 'text/10'], over: 'surface', minimum: '3:1' },
       { what: 'fill and spinner on a card', pair: ['accent', 'surface'], minimum: '3:1' },
+      { what: 'spinner over media', pair: ['on-media', 'media'], minimum: '3:1' },
+      { what: 'muted spinner', pair: ['text-muted', 'surface'], minimum: '3:1' },
       { what: 'success fill', pair: ['success-mark', 'surface'], minimum: '3:1' },
       { what: 'warning fill', pair: ['warning-mark', 'surface'], minimum: '3:1' },
       { what: 'danger fill', pair: ['danger-mark', 'surface'], minimum: '3:1' },
@@ -60,6 +62,7 @@ export const doc: ComponentDoc = {
     { name: 'Compact', title: 'Thin, under its own heading' },
     { name: 'Spinners', title: 'Spinner sizes' },
     { name: 'Tones', title: 'Meters in a tone' },
+    { name: 'SpinnerTones', title: 'A spinner over media, and a quiet one' },
   ],
   gaps: [],
   related: ['Button'],
@@ -74,6 +77,7 @@ export const doc: ComponentDoc = {
         { name: 'Indeterminate', title: 'Amount unknown' },
         { name: 'Spinners', title: 'Spinner, for a short wait' },
         { name: 'Tones', title: 'A tone for a meter: reached, nearly full, over' },
+        { name: 'SpinnerTones', title: 'Extra large over media; muted beside quiet text' },
       ],
       sizes: [{ name: 'SizesBar', title: 'Small and medium tracks' }],
       states: [

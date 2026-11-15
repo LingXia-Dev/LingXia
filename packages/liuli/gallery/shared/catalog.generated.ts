@@ -573,6 +573,21 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "CircularProgress",
+    "page": "circular-progress",
+    "category": "feedback",
+    "summary": "How much is done, as a ring",
+    "keywords": [
+      "progress",
+      "ring",
+      "circular",
+      "radial",
+      "meter",
+      "gauge",
+      "donut"
+    ]
+  },
+  {
     "name": "Dialog",
     "page": "dialog",
     "category": "overlays",
@@ -836,6 +851,34 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "Timer",
+    "page": "timer",
+    "category": "content",
+    "summary": "A length of time in steady digits",
+    "keywords": [
+      "timer",
+      "countdown",
+      "stopwatch",
+      "duration",
+      "elapsed",
+      "clock"
+    ]
+  },
+  {
+    "name": "Timestamp",
+    "page": "timestamp",
+    "category": "content",
+    "summary": "When something happened, in the words people use",
+    "keywords": [
+      "timestamp",
+      "time",
+      "date",
+      "relative time",
+      "ago",
+      "when"
+    ]
+  },
+  {
     "name": "Stat",
     "page": "stat",
     "category": "charts",
@@ -1054,7 +1097,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "notifications",
     "description": "Status and progress",
     "page": "category-feedback",
-    "count": 6
+    "count": 7
   },
   {
     "id": "overlays",
@@ -1070,7 +1113,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "rows",
     "description": "Cards, rows and tables",
     "page": "category-content",
-    "count": 12
+    "count": 14
   },
   {
     "id": "charts",

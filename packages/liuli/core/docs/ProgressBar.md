@@ -97,6 +97,27 @@ export function Tones() {
 }
 ```
 
+### A spinner over media, and a quiet one
+
+```tsx
+import { Spinner } from '@liulidesign/core/ProgressBar';
+
+/** Over a picture that is still loading, and beside quiet text. */
+export function SpinnerTones() {
+  return (
+    <view className="gap-3">
+      <view className="h-36 items-center justify-center rounded-container bg-media">
+        <Spinner label="Loading the video" size="xl" tone="on-media" data-testid="on-media" />
+      </view>
+      <view className="flex-row items-center gap-2">
+        <Spinner label="Checking for updates" size="sm" tone="muted" data-testid="quiet" />
+        <text className="text-footnote text-muted">Checking for updates</text>
+      </view>
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -116,7 +137,8 @@ export function Tones() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | The accessible name: what is loading. Not drawn. |
-| `size` | `SpinnerSize` | `'md'` |  |
+| `size` | `SpinnerSize` | `'md'` | 16, 24, 32 or 48 px; `xl` for a whole page or a media frame that is loading. |
+| `tone` | `SpinnerTone` | `'accent'` |  |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
@@ -143,6 +165,8 @@ export function Tones() {
 | --- | --- | --- | --- | --- |
 | fill against the track | `accent` on `text/10` over `surface` | 3:1 | 4.62:1 | 4.75:1 |
 | fill and spinner on a card | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
+| spinner over media | `on-media` on `media` | 3:1 | 7.94:1 | 7.94:1 |
+| muted spinner | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
 | success fill | `success-mark` on `surface` | 3:1 | 3.61:1 | 6.91:1 |
 | warning fill | `warning-mark` on `surface` | 3:1 | 3.64:1 | 8.03:1 |
 | danger fill | `danger-mark` on `surface` | 3:1 | 3.91:1 | 5.19:1 |

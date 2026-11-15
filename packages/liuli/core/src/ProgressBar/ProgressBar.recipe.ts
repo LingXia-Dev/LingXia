@@ -1,4 +1,4 @@
-import type { ProgressBarSize, ProgressBarTone, SpinnerSize } from './ProgressBar';
+import type { ProgressBarSize, ProgressBarTone, SpinnerSize, SpinnerTone } from './ProgressBar';
 
 export const progressBarParts = {
   root: 'view',
@@ -35,7 +35,8 @@ export const progressBarRecipe = {
     indeterminate: 'w-2/5 motion-safe:animate-progress-sweep',
   },
   spinner: {
-    base: 'text-accent motion-safe:animate-spin',
-    size: { sm: 'size-4', md: 'size-6', lg: 'size-8' } satisfies Record<SpinnerSize, string>,
+    base: 'motion-safe:animate-spin',
+    tone: { accent: 'text-accent', muted: 'text-muted', 'on-media': 'text-on-media' } satisfies Record<SpinnerTone, string>,
+    size: { sm: 'size-4', md: 'size-6', lg: 'size-8', xl: 'size-12' } satisfies Record<SpinnerSize, string>,
   },
 } as const;

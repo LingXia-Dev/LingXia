@@ -5,7 +5,9 @@ import { progressBarRecipe as r } from './ProgressBar.recipe';
 export type ProgressBarSize = 'sm' | 'md';
 /** What the progress stands for: `success` for a goal met, `warning` for a limit near, `danger` for a limit passed. */
 export type ProgressBarTone = 'accent' | 'success' | 'warning' | 'danger';
-export type SpinnerSize = 'sm' | 'md' | 'lg';
+export type SpinnerSize = 'sm' | 'md' | 'lg' | 'xl';
+/** `muted` beside quiet text; `on-media` over a picture or a video. */
+export type SpinnerTone = 'accent' | 'muted' | 'on-media';
 
 export interface ProgressBarProps {
   /** The visible label and the accessible name: what is in progress ("Uploading photos"). */
@@ -72,17 +74,19 @@ export function ProgressBar({
 export interface SpinnerProps {
   /** The accessible name: what is loading. Not drawn. */
   label: string;
-  /** @default 'md' */
+  /** 16, 24, 32 or 48 px; `xl` for a whole page or a media frame that is loading. @default 'md' */
   size?: SpinnerSize;
+  /** @default 'accent' */
+  tone?: SpinnerTone;
   className?: string;
   'data-testid'?: string;
 }
 
 /** A spinning arc for a wait whose length is unknown. */
-export function Spinner({ label, size = 'md', className, 'data-testid': testId }: SpinnerProps) {
+export function Spinner({ label, size = 'md', tone = 'accent', className, 'data-testid': testId }: SpinnerProps) {
   return (
     <view role="progressbar" aria-label={label} data-testid={testId} className={className}>
-      <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={cx(r.spinner.base, r.spinner.size[size])} />
+      <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={cx(r.spinner.base, r.spinner.tone[tone], r.spinner.size[size])} />
     </view>
   );
 }
