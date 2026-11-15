@@ -1,0 +1,42 @@
+{
+  "name": "liuli-warm",
+  "version": 1,
+  "appearance": {
+    "light": {
+      "canvas": "#faf6f0",
+      "surface": "#fffdf9",
+      "surface-raised": "#ffffff",
+      "surface-sunken": "#f2ebe1",
+      "line": "#e7ddd0",
+      "line-strong": "#8c7f71",
+      "text": "#2a211b",
+      "text-muted": "#6a5c50",
+      "text-faint": "#978877",
+      "danger": "#c2255a",
+      "success": "#2f7a48",
+      "warning": "#806a00"
+    },
+    "dark": {
+      "canvas": "#161210",
+      "surface": "#201b17",
+      "surface-raised": "#2b2520",
+      "surface-sunken": "#110e0c",
+      "line": "#3a322a",
+      "line-strong": "#7f7366",
+      "text": "#f2ece5",
+      "text-muted": "#b3a79a",
+      "text-faint": "#877b6f",
+      "danger": "#f4728a",
+      "success": "#6fc48c",
+      "warning": "#e6b84a"
+    }
+  },
+  "accent": { "seed": "#c4532a", "derive": true },
+  "type": {
+    "scale": { "xs": 12, "sm": 14, "base": 17, "lg": 19, "xl": 21, "2xl": 26, "3xl": 32, "4xl": 38 },
+    "leading": { "xs": 16, "sm": 20, "base": 26, "lg": 28, "xl": 30, "2xl": 34, "3xl": 40, "4xl": 44 }
+  },
+  "shape": {
+    "radius": { "sm": 6, "DEFAULT": 12, "md": 14, "lg": 16, "xl": 20, "2xl": 24, "3xl": 28, "full": 9999 }
+  }
+}

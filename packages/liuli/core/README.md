@@ -76,6 +76,36 @@ Each also exports its class recipe at `@liulidesign/core/<Name>/recipe`, for sty
 to match. The full reference for each component (props, anatomy, accessibility, examples) is in
 `docs/<Name>.md`; `catalog.json` holds the same for agents.
 
+## Theming
+
+Liuli has no colours of its own. Every class it uses names a role of the app's theme pack
+(`bg-surface`, `text-muted`, `bg-hue-3-soft`), and the host resolves the pack for light, dark and
+high contrast. An lxapp ships one pack, `theme/pack.json`, read by `lingxia build`, which refuses a
+pack that misses a contrast pair. The pack is fixed for the app: there is no switch at run time.
+
+A pack sets as little or as much as it wants; what it leaves out comes from the built-in pack.
+
+- **An accent seed only**: `{ "name": "brand", "version": 1, "accent": { "seed": "#0f9d58", "derive": true } }`.
+  The accent, its soft step, their text colours and the focus ring are derived from the seed in
+  both appearances.
+- **Surfaces, text and status seeds too**: the warm pack in `../themes/warm/pack.json` sets its
+  canvas and surfaces, text, lines, the accent seed, three status colours, a type scale and radii,
+  and nothing else. The roles it leaves out (soft fills, marks, hues, chart colours) are the built-in
+  pack's today.
+- **Every role**: a pack may set any role in `contracts/view/schema.json`; each is then held to that
+  role's contrast pairs.
+
+What a pack does not change yet: Liuli's control heights, type sizes and corner radii, which are
+`tokens.css` in this package. An app retunes those by redefining a token in its own stylesheet.
+
+To see the gallery under a pack, as its own lxapp beside the default one:
+
+```sh
+node ../scripts/gallery-with-pack.mjs warm   # prints the directory it wrote
+```
+
+Each component's doc lists what an app may override under "What an app may override".
+
 ## Conventions
 
 - Every interactive component takes a required `label`, which is also its accessible name; help text,
