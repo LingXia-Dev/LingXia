@@ -225,7 +225,7 @@ dark, derived accent roles included, for proving contrast in code.
 | `surface-raised` |  | Raised cards and panels that stay in the page. |
 | `surface-sunken` |  | Inset fields and grouped backgrounds. |
 | `line` | 1.2:1 on `surface`, 1.1:1 on `canvas` | Decorative separators and card borders; interactive boundaries use line-strong. |
-| `text` | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-raised`, 4.5:1 on `surface-sunken`, 4.5:1 on `selection`, 4.5:1 on `surface-overlay` | Body text. |
+| `text` | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-raised`, 4.5:1 on `surface-sunken`, 4.5:1 on `selection`, 4.5:1 on `surface-overlay`, 4.5:1 on `hue-1-soft`, 4.5:1 on `hue-2-soft`, 4.5:1 on `hue-3-soft`, 4.5:1 on `hue-4-soft`, 4.5:1 on `hue-5-soft`, 4.5:1 on `hue-6-soft`, 4.5:1 on `hue-7-soft`, 4.5:1 on `hue-8-soft` | Body text. |
 | `text-muted` | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-overlay` | Secondary text. |
 | `text-faint` | 3:1 on `surface`, 3:1 on `surface-overlay` | Hints and disabled text. |
 | `accent` | 3:1 on `surface`, 3:1 on `canvas` | Primary actions, selection and links. |
@@ -259,3 +259,23 @@ dark, derived accent roles included, for proving contrast in code.
 | `warning-mark` | 3:1 on `surface`, 3:1 on `surface-sunken` | Warning as a dot or shape, never text; a pack without it uses its warning. |
 | `danger-mark` | 3:1 on `surface`, 3:1 on `surface-sunken` | Danger as a dot or shape, never text; a pack without it uses its danger. |
 | `media-canvas` |  | The whole screen behind a full-screen picture or video: opaque, near-black in both appearances; a pack without it uses the darkest surface it has. |
+| `info` | 3:1 on `surface` | Information that is neither good nor bad: notices and hints; a pack without it uses its accent family for all four info roles. |
+| `on-info` | 4.5:1 on `info` | Text and icons on info. |
+| `info-soft` |  | Information containers; text on it uses text. |
+| `info-mark` | 3:1 on `surface`, 3:1 on `surface-sunken` | Information as a dot or shape, never text; a pack without it uses its info. |
+| `hue-1` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-1-soft` | First categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
+| `hue-2` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-2-soft` | Second categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
+| `hue-3` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-3-soft` | Third categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
+| `hue-4` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-4-soft` | Fourth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
+| `hue-5` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-5-soft` | Fifth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
+| `hue-6` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-6-soft` | Sixth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
+| `hue-7` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-7-soft` | Seventh categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
+| `hue-8` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-8-soft` | Eighth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
+| `hue-1-soft` |  | Fill behind the first hue; text on it uses text; a pack without it uses its surface-sunken. |
+| `hue-2-soft` |  | Fill behind the second hue; text on it uses text; a pack without it uses its surface-sunken. |
+| `hue-3-soft` |  | Fill behind the third hue; text on it uses text; a pack without it uses its surface-sunken. |
+| `hue-4-soft` |  | Fill behind the fourth hue; text on it uses text; a pack without it uses its surface-sunken. |
+| `hue-5-soft` |  | Fill behind the fifth hue; text on it uses text; a pack without it uses its surface-sunken. |
+| `hue-6-soft` |  | Fill behind the sixth hue; text on it uses text; a pack without it uses its surface-sunken. |
+| `hue-7-soft` |  | Fill behind the seventh hue; text on it uses text; a pack without it uses its surface-sunken. |
+| `hue-8-soft` |  | Fill behind the eighth hue; text on it uses text; a pack without it uses its surface-sunken. |

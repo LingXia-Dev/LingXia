@@ -418,3 +418,145 @@ fn the_default_media_canvas_is_opaque_and_carries_on_media_text() {
         assert!(contrast(theme.color(Role::OnMedia), canvas) >= 4.5);
     }
 }
+
+#[test]
+fn a_pack_without_info_uses_its_accent_family() {
+    let pack = default_pack();
+    assert!(!pack.appearance.light.contains_key(Role::Info.name()));
+    let family = [
+        (Role::Info, Role::Accent),
+        (Role::OnInfo, Role::OnAccent),
+        (Role::InfoSoft, Role::AccentSoft),
+        (Role::InfoMark, Role::Accent),
+    ];
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        for high_contrast in [false, true] {
+            for accent in [None, Some(hex("#b4532a"))] {
+                let prefs = Prefs {
+                    appearance,
+                    high_contrast,
+                    accent,
+                    ..Prefs::default()
+                };
+                let theme = resolve(&pack, &prefs).unwrap();
+                for (info, lender) in family {
+                    assert_eq!(theme.color(info), theme.color(lender), "{}", info.name());
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_pack_with_its_own_info_is_held_to_the_info_pairs() {
+    let mut pack = default_pack();
+    for colors in [&mut pack.appearance.light, &mut pack.appearance.dark] {
+        colors.insert(Role::Info.name().into(), hex("#8fb4e8"));
+        colors.insert(Role::OnInfo.name().into(), hex("#ffffff"));
+        colors.insert(Role::InfoSoft.name().into(), hex("#e8f0fb"));
+    }
+    let theme = resolve(&pack, &Prefs::default()).unwrap();
+    assert_eq!(theme.color(Role::Info), hex("#8fb4e8"));
+    assert_eq!(
+        theme.color(Role::InfoMark),
+        hex("#8fb4e8"),
+        "a pack without an info mark draws it in its info"
+    );
+    let problems = check(&pack);
+    assert!(
+        problems
+            .iter()
+            .any(|problem| problem.message.contains("on-info on info")),
+        "{problems:?}"
+    );
+}
+
+#[test]
+fn a_pack_without_hues_cycles_its_chart_colours_and_fills_with_its_sunken_surface() {
+    let mut pack = default_pack();
+    for colors in [&mut pack.appearance.light, &mut pack.appearance.dark] {
+        colors.retain(|name, _| !name.starts_with("hue-"));
+    }
+    assert_eq!(
+        check(&pack),
+        Vec::new(),
+        "it is not held to the hues' pairs"
+    );
+    let hues = [
+        (Role::Hue1, Role::Hue1Soft, Role::Chart1),
+        (Role::Hue2, Role::Hue2Soft, Role::Chart2),
+        (Role::Hue3, Role::Hue3Soft, Role::Chart3),
+        (Role::Hue4, Role::Hue4Soft, Role::Chart4),
+        (Role::Hue5, Role::Hue5Soft, Role::Chart5),
+        (Role::Hue6, Role::Hue6Soft, Role::Chart1),
+        (Role::Hue7, Role::Hue7Soft, Role::Chart2),
+        (Role::Hue8, Role::Hue8Soft, Role::Chart3),
+    ];
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        for high_contrast in [false, true] {
+            let prefs = Prefs {
+                appearance,
+                high_contrast,
+                ..Prefs::default()
+            };
+            let theme = resolve(&pack, &prefs).unwrap();
+            for (hue, soft, chart) in hues {
+                assert_eq!(theme.color(hue), theme.color(chart), "{}", hue.name());
+                assert_eq!(
+                    theme.color(soft),
+                    theme.color(Role::SurfaceSunken),
+                    "{}",
+                    soft.name()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn the_default_hues_stand_off_their_surfaces_and_carry_text_on_their_fills() {
+    let pack = default_pack();
+    let hues = [
+        (Role::Hue1, Role::Hue1Soft),
+        (Role::Hue2, Role::Hue2Soft),
+        (Role::Hue3, Role::Hue3Soft),
+        (Role::Hue4, Role::Hue4Soft),
+        (Role::Hue5, Role::Hue5Soft),
+        (Role::Hue6, Role::Hue6Soft),
+        (Role::Hue7, Role::Hue7Soft),
+        (Role::Hue8, Role::Hue8Soft),
+    ];
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        let prefs = Prefs {
+            appearance,
+            ..Prefs::default()
+        };
+        let theme = resolve(&pack, &prefs).unwrap();
+        for (hue, soft) in hues {
+            for background in [Role::Surface, Role::SurfaceSunken, soft] {
+                let ratio = contrast(theme.color(hue), theme.color(background));
+                assert!(
+                    ratio >= 3.0,
+                    "{} on {}: {ratio:.2}",
+                    hue.name(),
+                    background.name()
+                );
+            }
+            let ratio = contrast(theme.color(Role::Text), theme.color(soft));
+            assert!(ratio >= 4.5, "text on {}: {ratio:.2}", soft.name());
+        }
+        // Neighbours in the series differ in lightness, so they stay apart without hue.
+        for pair in hues.windows(2) {
+            let (a, b) = (
+                theme.color(pair[0].0).oklch(),
+                theme.color(pair[1].0).oklch(),
+            );
+            assert!(
+                (a.l - b.l).abs() >= 0.04,
+                "{} and {}",
+                pair[0].0.name(),
+                pair[1].0.name()
+            );
+        }
+    }
+}

@@ -82,9 +82,49 @@ pub enum Role {
     DangerMark = 37,
     /// The whole screen behind a full-screen picture or video: opaque, near-black in both appearances; a pack without it uses the darkest surface it has.
     MediaCanvas = 38,
+    /// Information that is neither good nor bad: notices and hints; a pack without it uses its accent family for all four info roles.
+    Info = 39,
+    /// Text and icons on info.
+    OnInfo = 40,
+    /// Information containers; text on it uses text.
+    InfoSoft = 41,
+    /// Information as a dot or shape, never text; a pack without it uses its info.
+    InfoMark = 42,
+    /// First categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    Hue1 = 43,
+    /// Second categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    Hue2 = 44,
+    /// Third categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    Hue3 = 45,
+    /// Fourth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    Hue4 = 46,
+    /// Fifth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    Hue5 = 47,
+    /// Sixth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    Hue6 = 48,
+    /// Seventh categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    Hue7 = 49,
+    /// Eighth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    Hue8 = 50,
+    /// Fill behind the first hue; text on it uses text; a pack without it uses its surface-sunken.
+    Hue1Soft = 51,
+    /// Fill behind the second hue; text on it uses text; a pack without it uses its surface-sunken.
+    Hue2Soft = 52,
+    /// Fill behind the third hue; text on it uses text; a pack without it uses its surface-sunken.
+    Hue3Soft = 53,
+    /// Fill behind the fourth hue; text on it uses text; a pack without it uses its surface-sunken.
+    Hue4Soft = 54,
+    /// Fill behind the fifth hue; text on it uses text; a pack without it uses its surface-sunken.
+    Hue5Soft = 55,
+    /// Fill behind the sixth hue; text on it uses text; a pack without it uses its surface-sunken.
+    Hue6Soft = 56,
+    /// Fill behind the seventh hue; text on it uses text; a pack without it uses its surface-sunken.
+    Hue7Soft = 57,
+    /// Fill behind the eighth hue; text on it uses text; a pack without it uses its surface-sunken.
+    Hue8Soft = 58,
 }
 
-pub const ROLE_COUNT: usize = 39;
+pub const ROLE_COUNT: usize = 59;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -127,6 +167,26 @@ impl Role {
         Role::WarningMark,
         Role::DangerMark,
         Role::MediaCanvas,
+        Role::Info,
+        Role::OnInfo,
+        Role::InfoSoft,
+        Role::InfoMark,
+        Role::Hue1,
+        Role::Hue2,
+        Role::Hue3,
+        Role::Hue4,
+        Role::Hue5,
+        Role::Hue6,
+        Role::Hue7,
+        Role::Hue8,
+        Role::Hue1Soft,
+        Role::Hue2Soft,
+        Role::Hue3Soft,
+        Role::Hue4Soft,
+        Role::Hue5Soft,
+        Role::Hue6Soft,
+        Role::Hue7Soft,
+        Role::Hue8Soft,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -170,6 +230,26 @@ impl Role {
             Role::WarningMark => "warning-mark",
             Role::DangerMark => "danger-mark",
             Role::MediaCanvas => "media-canvas",
+            Role::Info => "info",
+            Role::OnInfo => "on-info",
+            Role::InfoSoft => "info-soft",
+            Role::InfoMark => "info-mark",
+            Role::Hue1 => "hue-1",
+            Role::Hue2 => "hue-2",
+            Role::Hue3 => "hue-3",
+            Role::Hue4 => "hue-4",
+            Role::Hue5 => "hue-5",
+            Role::Hue6 => "hue-6",
+            Role::Hue7 => "hue-7",
+            Role::Hue8 => "hue-8",
+            Role::Hue1Soft => "hue-1-soft",
+            Role::Hue2Soft => "hue-2-soft",
+            Role::Hue3Soft => "hue-3-soft",
+            Role::Hue4Soft => "hue-4-soft",
+            Role::Hue5Soft => "hue-5-soft",
+            Role::Hue6Soft => "hue-6-soft",
+            Role::Hue7Soft => "hue-7-soft",
+            Role::Hue8Soft => "hue-8-soft",
         }
     }
 
@@ -188,6 +268,14 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::Text, Role::SurfaceSunken, 4.5),
     (Role::Text, Role::Selection, 4.5),
     (Role::Text, Role::SurfaceOverlay, 4.5),
+    (Role::Text, Role::Hue1Soft, 4.5),
+    (Role::Text, Role::Hue2Soft, 4.5),
+    (Role::Text, Role::Hue3Soft, 4.5),
+    (Role::Text, Role::Hue4Soft, 4.5),
+    (Role::Text, Role::Hue5Soft, 4.5),
+    (Role::Text, Role::Hue6Soft, 4.5),
+    (Role::Text, Role::Hue7Soft, 4.5),
+    (Role::Text, Role::Hue8Soft, 4.5),
     (Role::TextMuted, Role::Canvas, 4.5),
     (Role::TextMuted, Role::Surface, 4.5),
     (Role::TextMuted, Role::SurfaceOverlay, 4.5),
@@ -227,4 +315,32 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::WarningMark, Role::SurfaceSunken, 3.0),
     (Role::DangerMark, Role::Surface, 3.0),
     (Role::DangerMark, Role::SurfaceSunken, 3.0),
+    (Role::Info, Role::Surface, 3.0),
+    (Role::OnInfo, Role::Info, 4.5),
+    (Role::InfoMark, Role::Surface, 3.0),
+    (Role::InfoMark, Role::SurfaceSunken, 3.0),
+    (Role::Hue1, Role::Surface, 3.0),
+    (Role::Hue1, Role::SurfaceSunken, 3.0),
+    (Role::Hue1, Role::Hue1Soft, 3.0),
+    (Role::Hue2, Role::Surface, 3.0),
+    (Role::Hue2, Role::SurfaceSunken, 3.0),
+    (Role::Hue2, Role::Hue2Soft, 3.0),
+    (Role::Hue3, Role::Surface, 3.0),
+    (Role::Hue3, Role::SurfaceSunken, 3.0),
+    (Role::Hue3, Role::Hue3Soft, 3.0),
+    (Role::Hue4, Role::Surface, 3.0),
+    (Role::Hue4, Role::SurfaceSunken, 3.0),
+    (Role::Hue4, Role::Hue4Soft, 3.0),
+    (Role::Hue5, Role::Surface, 3.0),
+    (Role::Hue5, Role::SurfaceSunken, 3.0),
+    (Role::Hue5, Role::Hue5Soft, 3.0),
+    (Role::Hue6, Role::Surface, 3.0),
+    (Role::Hue6, Role::SurfaceSunken, 3.0),
+    (Role::Hue6, Role::Hue6Soft, 3.0),
+    (Role::Hue7, Role::Surface, 3.0),
+    (Role::Hue7, Role::SurfaceSunken, 3.0),
+    (Role::Hue7, Role::Hue7Soft, 3.0),
+    (Role::Hue8, Role::Surface, 3.0),
+    (Role::Hue8, Role::SurfaceSunken, 3.0),
+    (Role::Hue8, Role::Hue8Soft, 3.0),
 ];

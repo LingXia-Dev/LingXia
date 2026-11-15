@@ -238,17 +238,20 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
     for role in Role::ALL {
         if (derived.is_some() && ACCENT_FAMILY.contains(&role))
             || (role == Role::Selection && !base.contains_key(role.name()))
+            || borrows_colour(base, role)
         {
             continue;
         }
         // Roles added after packs shipped: overlays float on `surface-raised`, knobs stay white,
         // a status mark is drawn in its status colour, and full-screen media sits on the darkest
-        // surface.
+        // surface. Info and hue roles are filled in below, once what they borrow is final.
         let missing = !base.contains_key(role.name());
         palette[role as usize] = match role {
             Role::SurfaceOverlay if missing => base.get(Role::SurfaceRaised.name()).copied(),
             Role::Knob if missing => Some(Rgba([255, 255, 255, 255])),
-            Role::SuccessMark | Role::WarningMark | Role::DangerMark if missing => {
+            Role::SuccessMark | Role::WarningMark | Role::DangerMark | Role::InfoMark
+                if missing =>
+            {
                 base.get(status_of(role).name()).copied()
             }
             Role::MediaCanvas if missing => darkest_surface(base),
@@ -272,6 +275,8 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
                     || (borrowed_overlay && involves_overlay(foreground, background))
                     || borrows_mark(base, foreground)
                     || borrows_media_canvas(base, background)
+                    || borrows_colour(base, foreground)
+                    || borrows_colour(base, background)
                 {
                     continue;
                 }
@@ -288,8 +293,19 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
     if derive {
         palette[Role::Selection as usize] = derive_selection(&palette);
     }
-    // A borrowed mark follows its status colour through the high-contrast boost.
-    for mark in [Role::SuccessMark, Role::WarningMark, Role::DangerMark] {
+    // Borrowed colours follow what they borrow through the derived accent and the
+    // high-contrast boost.
+    for role in Role::ALL {
+        if borrows_colour(base, role) {
+            palette[role as usize] = palette[lender_of(role) as usize];
+        }
+    }
+    for mark in [
+        Role::SuccessMark,
+        Role::WarningMark,
+        Role::DangerMark,
+        Role::InfoMark,
+    ] {
         if borrows_mark(base, mark) {
             palette[mark as usize] = palette[status_of(mark) as usize];
         }
@@ -409,6 +425,7 @@ fn status_of(mark: Role) -> Role {
         Role::SuccessMark => Role::Success,
         Role::WarningMark => Role::Warning,
         Role::DangerMark => Role::Danger,
+        Role::InfoMark => Role::Info,
         other => other,
     }
 }
@@ -418,8 +435,55 @@ fn status_of(mark: Role) -> Role {
 fn borrows_mark(colors: &Colors, foreground: Role) -> bool {
     matches!(
         foreground,
-        Role::SuccessMark | Role::WarningMark | Role::DangerMark
+        Role::SuccessMark | Role::WarningMark | Role::DangerMark | Role::InfoMark
     ) && !colors.contains_key(foreground.name())
+}
+
+const INFO_FAMILY: [(Role, Role); 4] = [
+    (Role::Info, Role::Accent),
+    (Role::OnInfo, Role::OnAccent),
+    (Role::InfoSoft, Role::AccentSoft),
+    (Role::InfoMark, Role::Accent),
+];
+
+const HUES: [(Role, Role); 8] = [
+    (Role::Hue1, Role::Hue1Soft),
+    (Role::Hue2, Role::Hue2Soft),
+    (Role::Hue3, Role::Hue3Soft),
+    (Role::Hue4, Role::Hue4Soft),
+    (Role::Hue5, Role::Hue5Soft),
+    (Role::Hue6, Role::Hue6Soft),
+    (Role::Hue7, Role::Hue7Soft),
+    (Role::Hue8, Role::Hue8Soft),
+];
+
+const CHARTS: [Role; 5] = [
+    Role::Chart1,
+    Role::Chart2,
+    Role::Chart3,
+    Role::Chart4,
+    Role::Chart5,
+];
+
+/// Roles added after packs shipped that take another role's colour in a pack without them, and
+/// are then held to that role's pairs, not their own: the four info roles take the accent family
+/// when the pack has no `info`; a hue takes a chart colour, in turn, and its fill the sunken surface.
+fn borrows_colour(colors: &Colors, role: Role) -> bool {
+    if INFO_FAMILY.iter().any(|&(info, _)| info == role) {
+        return !colors.contains_key(Role::Info.name());
+    }
+    HUES.iter().any(|&(hue, soft)| hue == role || soft == role) && !colors.contains_key(role.name())
+}
+
+/// The role a borrowed colour is taken from.
+fn lender_of(role: Role) -> Role {
+    if let Some(&(_, accent)) = INFO_FAMILY.iter().find(|&&(info, _)| info == role) {
+        return accent;
+    }
+    match HUES.iter().position(|&(hue, _)| hue == role) {
+        Some(index) => CHARTS[index % CHARTS.len()],
+        None => Role::SurfaceSunken,
+    }
 }
 
 /// Selection pairs keep their base ratios under high contrast: text must stay readable on the
@@ -528,6 +592,8 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
             if (borrowed_overlay && involves_overlay(foreground, background))
                 || borrows_mark(colors, foreground)
                 || borrows_media_canvas(colors, background)
+                || borrows_colour(colors, foreground)
+                || borrows_colour(colors, background)
             {
                 continue;
             }
