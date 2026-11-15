@@ -101,15 +101,38 @@ export function Filter() {
 }
 ```
 
+### Tabs as wide as their labels, in a row that scrolls
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Tabs } from '@liulidesign/core/Tabs';
+
+const settings = [
+  { value: 'general', label: 'General' }, { value: 'notifications', label: 'Notifications' }, { value: 'privacy', label: 'Privacy and security' },
+  { value: 'billing', label: 'Billing' }, { value: 'integrations', label: 'Integrations' }, { value: 'advanced', label: 'Advanced' },
+];
+
+/** More tabs than a phone has room for: each is as wide as its label and the row scrolls. */
+export function Fitted() {
+  const tab = useLocal('tab', 'general');
+  return (
+    <Tabs label="Settings" items={settings} value={tab.value} onChange={tab.set} tabWidth="content" data-testid="settings">
+      <text className="text-body text-muted">{settings.find(item => item.value === tab.value)?.label}</text>
+    </Tabs>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | Names the tab list for assistive tech: "Range", "Sections". |
-| `items` (required) | `readonly TabItem[]` |  | The tabs, in order; they share the row equally. |
+| `items` (required) | `readonly TabItem[]` |  | The tabs, in order. |
 | `value` (required) | `string` |  | The chosen tab's value. |
 | `onChange` (required) | `(value: string) => void` |  | Runs with the tab chosen by a tap or by arrowing onto it. |
 | `variant` | `TabsVariant` | `'underline'` | `underline` switches between sections of a page; `segmented` switches one view between modes. |
+| `tabWidth` | `TabsWidth` | `'equal'` | How wide a tab is. `content` suits many tabs or long labels; underline tabs only. |
 | `children` | `Child` |  | The chosen tab's panel. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the tab list; each tab gets `<testid>-<value>`, the panel `<testid>-panel`. |
@@ -160,6 +183,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Tabs as wide as their labels, scrolling when they overflow, with the indicator following. | a way to read a laid-out box's position and width from View, or a shared-element layout motion between siblings | Tabs share the row equally, so the indicator moves by a tab's width. |
+| An indicator that changes width as it slides between fitted tabs. | a transition on a box's width | It slides to the chosen tab and takes that tab's width at once. |
+| Fitted tabs on a host built before `useBox`. | a newer host | The tabs are drawn and work; the indicator is not shown, and the chosen tab is told by its darker label. |
 
 Related: Button, DropdownMenu.

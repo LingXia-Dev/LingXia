@@ -61,12 +61,18 @@ export const doc: ComponentDoc = {
     { name: 'Sections', title: 'Sections of a page' },
     { name: 'Segmented', title: 'Modes of one view' },
     { name: 'Filter', title: 'A segmented filter over a list' },
+    { name: 'Fitted', title: 'Tabs as wide as their labels, in a row that scrolls' },
   ],
   gaps: [
     {
-      missing: 'Tabs as wide as their labels, scrolling when they overflow, with the indicator following.',
-      needs: 'a way to read a laid-out box\'s position and width from View, or a shared-element layout motion between siblings',
-      today: 'Tabs share the row equally, so the indicator moves by a tab\'s width.',
+      missing: 'An indicator that changes width as it slides between fitted tabs.',
+      needs: 'a transition on a box\'s width',
+      today: 'It slides to the chosen tab and takes that tab\'s width at once.',
+    },
+    {
+      missing: 'Fitted tabs on a host built before `useBox`.',
+      needs: 'a newer host',
+      today: 'The tabs are drawn and work; the indicator is not shown, and the chosen tab is told by its darker label.',
     },
   ],
   related: ['Button', 'DropdownMenu'],
@@ -77,7 +83,10 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use tabs to switch one area between a few peers. Each tab is a place, not an action.',
       hero: 'Sections',
-      variants: [{ name: 'Segmented', title: 'Segmented: modes of one view' }],
+      variants: [
+        { name: 'Segmented', title: 'Segmented: modes of one view' },
+        { name: 'Fitted', title: 'Six tabs as wide as their labels; the row scrolls and the chosen tab is brought into view' },
+      ],
       states: [
         { name: 'StateUnderline', title: 'Underline' },
         { name: 'StateSegmented', title: 'Segmented' },

@@ -34,3 +34,19 @@ test('StateDisabled: a disabled tab stays in the row but cannot be chosen', asyn
   assert.equal(billing.props.enabled, 0);
   assert.equal(billing.props.onClick, undefined);
 });
+
+test('Fitted: tabs keep their labels whole in a row that scrolls; the indicator sits under the chosen tab once the labels before it are measured', async () => {
+  const screen = await renderExample('Tabs/Tabs', 'Fitted');
+  const list = () => screen.getByTestId('settings');
+  assert.equal(list().parent.tag, 'scroll');
+  const tab = value => screen.getByTestId(`settings-${value}`);
+  assert.deepEqual([tab('privacy').props.shrink, tab('privacy').children[0].props.whiteSpace, tab('privacy').props.height], [0, 'nowrap', 40]);
+  const bar = () => screen.queryAll(node => node.props.background === 'accent' && node.props.height === 2)[0];
+  assert.equal(bar(), undefined, 'before any label is measured there is no indicator');
+  const labels = { general: 50, notifications: 84, privacy: 126, billing: 40, integrations: 78, advanced: 62 };
+  for (const [value, width] of Object.entries(labels)) screen.layout(tab(value).children[0], { width, height: 18 });
+  assert.deepEqual([bar().props.width, JSON.parse(bar().props.transform).translate], [74, [0, 0]], 'the label and 12 pt each side');
+  screen.press(tab('privacy'));
+  assert.equal(tab('privacy').props.stateSelected, 1);
+  assert.deepEqual([bar().props.width, JSON.parse(bar().props.transform).translate], [150, [182, 0]], 'after General (74) and Notifications (108)');
+});

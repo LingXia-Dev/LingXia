@@ -53,7 +53,13 @@ export const doc: ComponentDoc = {
     { name: 'ViewOptions', title: 'View options under the trigger' },
     { name: 'Share', title: 'A share link above the trigger' },
   ],
-  gaps: [],
+  gaps: [
+    {
+      missing: 'A panel beside its trigger, at the start or end side.',
+      needs: 'side values for a popover\'s `positionArea` (`inline-end`, `inline-start`), flipping to the other side where there is no room',
+      today: 'Above or below the trigger, lined up with its start, centre or end.',
+    },
+  ],
   related: ['DropdownMenu', 'Tooltip', 'Dialog'],
   gallery: {
     specimen: 'Specimen',

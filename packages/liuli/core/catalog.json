@@ -5727,7 +5727,13 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Popover } from '@liulidesign/core/Popover';\n\n/** Sharing a note: the link and one action, opening above a trigger that sits low on the page. */\nexport function Share() {\n  const copied = useLocal('copied', false);\n  return (\n    <view className=\"items-end\">\n      <Popover label=\"Share\" title=\"Anyone with the link can view\" placement=\"top\" alignment=\"end\" variant=\"primary\" data-testid=\"share\">\n        <text className=\"text-footnote text-muted select-text\">notes.example.com/s/q3-plan</text>\n        <Button label={copied.value ? 'Copied' : 'Copy link'} size=\"sm\" width=\"content\" onClick={() => copied.set(true)} data-testid=\"copy\" />\n      </Popover>\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [],
+      "gaps": [
+        {
+          "missing": "A panel beside its trigger, at the start or end side.",
+          "needs": "side values for a popover's `positionArea` (`inline-end`, `inline-start`), flipping to the other side where there is no room",
+          "today": "Above or below the trigger, lined up with its start, centre or end."
+        }
+      ],
       "related": [
         "DropdownMenu",
         "Tooltip",
@@ -8205,7 +8211,7 @@
           "name": "items",
           "type": "readonly TabItem[]",
           "required": true,
-          "description": "The tabs, in order; they share the row equally."
+          "description": "The tabs, in order."
         },
         {
           "name": "value",
@@ -8225,6 +8231,13 @@
           "required": false,
           "description": "`underline` switches between sections of a page; `segmented` switches one view between modes.",
           "default": "'underline'"
+        },
+        {
+          "name": "tabWidth",
+          "type": "TabsWidth",
+          "required": false,
+          "description": "How wide a tab is. `content` suits many tabs or long labels; underline tabs only.",
+          "default": "'equal'"
         },
         {
           "name": "children",
@@ -8249,6 +8262,7 @@
       "parts": {
         "root": "view",
         "frame": "view",
+        "scroller": "scroll",
         "list": "view",
         "track": "view",
         "indicator": "view",
@@ -8350,13 +8364,23 @@
           "name": "Filter",
           "title": "A segmented filter over a list",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst notes = {\n  all: ['Q3 plan', 'Reading list', 'Interview notes'],\n  pinned: ['Q3 plan'],\n  shared: ['Interview notes'],\n};\n\n/** A list filtered by a segmented control above it. */\nexport function Filter() {\n  const filter = useLocal('filter', 'all');\n  return (\n    <Tabs\n      label=\"Show\"\n      items={[{ value: 'all', label: 'All' }, { value: 'pinned', label: 'Pinned' }, { value: 'shared', label: 'Shared' }]}\n      value={filter.value}\n      onChange={next => filter.set(next)}\n      variant=\"segmented\"\n      className=\"gap-3\"\n      data-testid=\"filter\"\n    >\n      <view className=\"-mx-5 -mb-5 divide-y divide-text/8 border-t border-text/8\">\n        {notes[filter.value as keyof typeof notes].map(note => <Item key={note} label={note} />)}\n      </view>\n    </Tabs>\n  );\n}"
+        },
+        {
+          "name": "Fitted",
+          "title": "Tabs as wide as their labels, in a row that scrolls",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst settings = [\n  { value: 'general', label: 'General' }, { value: 'notifications', label: 'Notifications' }, { value: 'privacy', label: 'Privacy and security' },\n  { value: 'billing', label: 'Billing' }, { value: 'integrations', label: 'Integrations' }, { value: 'advanced', label: 'Advanced' },\n];\n\n/** More tabs than a phone has room for: each is as wide as its label and the row scrolls. */\nexport function Fitted() {\n  const tab = useLocal('tab', 'general');\n  return (\n    <Tabs label=\"Settings\" items={settings} value={tab.value} onChange={tab.set} tabWidth=\"content\" data-testid=\"settings\">\n      <text className=\"text-body text-muted\">{settings.find(item => item.value === tab.value)?.label}</text>\n    </Tabs>\n  );\n}"
         }
       ],
       "gaps": [
         {
-          "missing": "Tabs as wide as their labels, scrolling when they overflow, with the indicator following.",
-          "needs": "a way to read a laid-out box's position and width from View, or a shared-element layout motion between siblings",
-          "today": "Tabs share the row equally, so the indicator moves by a tab's width."
+          "missing": "An indicator that changes width as it slides between fitted tabs.",
+          "needs": "a transition on a box's width",
+          "today": "It slides to the chosen tab and takes that tab's width at once."
+        },
+        {
+          "missing": "Fitted tabs on a host built before `useBox`.",
+          "needs": "a newer host",
+          "today": "The tabs are drawn and work; the indicator is not shown, and the chosen tab is told by its darker label."
         }
       ],
       "related": [
@@ -8374,6 +8398,10 @@
             {
               "name": "Segmented",
               "title": "Segmented: modes of one view"
+            },
+            {
+              "name": "Fitted",
+              "title": "Six tabs as wide as their labels; the row scrolls and the chosen tab is brought into view"
             }
           ],
           "states": [
@@ -10005,6 +10033,11 @@
         }
       ],
       "gaps": [
+        {
+          "missing": "A note beside its button, at the start or end side.",
+          "needs": "side values for a popover's `positionArea` (`inline-end`, `inline-start`)",
+          "today": "Above or below the button."
+        },
         {
           "missing": "Opening on hover with a mouse, after a short delay, and on keyboard focus.",
           "needs": "a hint popover that a tap elsewhere closes, as a light-dismiss popover does",

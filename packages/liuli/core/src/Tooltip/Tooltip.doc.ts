@@ -55,6 +55,11 @@ export const doc: ComponentDoc = {
   ],
   gaps: [
     {
+      missing: 'A note beside its button, at the start or end side.',
+      needs: 'side values for a popover\'s `positionArea` (`inline-end`, `inline-start`)',
+      today: 'Above or below the button.',
+    },
+    {
       missing: 'Opening on hover with a mouse, after a short delay, and on keyboard focus.',
       needs: 'a hint popover that a tap elsewhere closes, as a light-dismiss popover does',
       today: 'The note opens on a press only.',

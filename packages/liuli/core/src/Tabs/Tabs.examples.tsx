@@ -24,6 +24,21 @@ export function Sections() {
   );
 }
 
+const settings = [
+  { value: 'general', label: 'General' }, { value: 'notifications', label: 'Notifications' }, { value: 'privacy', label: 'Privacy and security' },
+  { value: 'billing', label: 'Billing' }, { value: 'integrations', label: 'Integrations' }, { value: 'advanced', label: 'Advanced' },
+];
+
+/** More tabs than a phone has room for: each is as wide as its label and the row scrolls. */
+export function Fitted() {
+  const tab = useLocal('tab', 'general');
+  return (
+    <Tabs label="Settings" items={settings} value={tab.value} onChange={tab.set} tabWidth="content" data-testid="settings">
+      <text className="text-body text-muted">{settings.find(item => item.value === tab.value)?.label}</text>
+    </Tabs>
+  );
+}
+
 const ranges = [
   { value: 'day', label: 'Day' },
   { value: 'week', label: 'Week' },

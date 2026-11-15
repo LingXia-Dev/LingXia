@@ -114,4 +114,10 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use it for a list of actions; that is a DropdownMenu.
 - Don't: Open a popover from a popover.
 
+## Not yet
+
+| Missing | Needs | Meanwhile |
+| --- | --- | --- |
+| A panel beside its trigger, at the start or end side. | side values for a popover's `positionArea` (`inline-end`, `inline-start`), flipping to the other side where there is no room | Above or below the trigger, lined up with its start, centre or end. |
+
 Related: DropdownMenu, Tooltip, Dialog.
