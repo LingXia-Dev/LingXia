@@ -442,3 +442,47 @@ fn a_stale_frame_keeps_the_platform_reporting_until_the_current_view_presents() 
 
 #[path = "leak_tests.rs"]
 mod leak;
+
+/// A screenshot of `results`' page, on a clock that only virtual sleeps advance.
+#[cfg(feature = "automation")]
+fn shoot(results: fn(AutomationReply)) -> Result<Vec<u8>, String> {
+    use lingxia_automation::gpu::GpuPageAutomation;
+    let native: Arc<dyn NativePage> = Arc::new(Acting { results });
+    let automation = automation::GpuAutomation {
+        native: Arc::downgrade(&native),
+    };
+    tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .unwrap()
+        .block_on(automation.screenshot())
+}
+
+#[cfg(feature = "automation")]
+#[test]
+fn a_screenshot_waits_for_a_revealed_pages_first_frame_and_gives_up_with_the_same_error() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static ASKED: AtomicUsize = AtomicUsize::new(0);
+    // Trimmed while hidden: nothing to read for the first three asks, then its new frame.
+    let png = shoot(|reply| {
+        reply(if ASKED.fetch_add(1, Ordering::SeqCst) < 3 {
+            Err("E_PAGE_NOT_READY: no presented frame".into())
+        } else {
+            Ok(serde_json::json!({"png": "AQID"}))
+        })
+    })
+    .unwrap();
+    assert_eq!(png, [1, 2, 3]);
+    assert_eq!(ASKED.load(Ordering::SeqCst), 4);
+    // A page that never presents: the same error, after the wait and not before.
+    let started = std::time::Instant::now();
+    let error =
+        shoot(|reply| reply(Err("E_PAGE_NOT_READY: no presented frame".into()))).unwrap_err();
+    assert_eq!(error, "E_PAGE_NOT_READY: no presented frame");
+    assert!(started.elapsed() >= std::time::Duration::from_millis(900));
+    // Any other error is not waited on.
+    let started = std::time::Instant::now();
+    let error = shoot(|reply| reply(Err("page is not active".into()))).unwrap_err();
+    assert_eq!(error, "page is not active");
+    assert!(started.elapsed() < std::time::Duration::from_millis(500));
+}

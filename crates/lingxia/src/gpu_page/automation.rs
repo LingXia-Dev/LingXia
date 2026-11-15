@@ -12,6 +12,10 @@ const INACTIVE: &str = "page is not active: the GPU page was disposed";
 /// inside the 5 s locator action budget, so a stuck act reports itself.
 const ACT_POLL: std::time::Duration = std::time::Duration::from_millis(16);
 const ACT_SETTLE: std::time::Duration = std::time::Duration::from_secs(4);
+const NO_FRAME: &str = "E_PAGE_NOT_READY: no presented frame";
+/// How long a screenshot waits for a page's next frame: a tab revealed after its surface was
+/// trimmed has nothing to read until it presents again.
+const FRAME_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
 
 pub(super) struct GpuAutomation {
     pub native: Weak<dyn NativePage>,
@@ -149,12 +153,19 @@ impl GpuPageAutomation for GpuAutomation {
     }
 
     fn screenshot(&self) -> GpuFuture<Vec<u8>> {
-        let reply = self.request(json!({"op": "screenshot"}));
+        let native = self.native.clone();
         Box::pin(async move {
-            let value = reply.await?;
-            let png = value["png"]
-                .as_str()
-                .ok_or("E_PAGE_NOT_READY: no presented frame")?;
+            let ask = GpuAutomation { native };
+            let until = tokio::time::Instant::now() + FRAME_WAIT;
+            let value = loop {
+                match ask.request(json!({"op": "screenshot"})).await {
+                    Err(error) if error == NO_FRAME && tokio::time::Instant::now() < until => {
+                        tokio::time::sleep(ACT_POLL).await;
+                    }
+                    reply => break reply?,
+                }
+            };
+            let png = value["png"].as_str().ok_or(NO_FRAME)?;
             base64::engine::general_purpose::STANDARD
                 .decode(png)
                 .map_err(|e| format!("GPU screenshot: {e}"))
