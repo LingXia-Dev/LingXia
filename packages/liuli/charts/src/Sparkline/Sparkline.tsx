@@ -1,5 +1,6 @@
 import { cx, type VectorPath } from '@lingxia/view';
 import { bars, box, closed, domain, dot, monotone, polyline, runs, thin, type Point } from '../internal/geometry';
+import { remember } from '../internal/memo';
 import { sparklineRecipe as r } from './Sparkline.recipe';
 
 export type SparklineVariant = 'line' | 'area' | 'bar';
@@ -7,7 +8,7 @@ export type SparklineSize = 'sm' | 'md' | 'lg';
 export type SparklineTone = 'series' | 'neutral' | 'positive' | 'negative';
 
 export interface SparklineProps {
-  /** The numbers, oldest first. A value that is not finite (`NaN`) is a gap. Past 240 values it keeps the 240 that hold the shape, peaks and dips included. */
+  /** The numbers, oldest first; a new array when they change. A value that is not finite (`NaN`) is a gap. Past 240 values it keeps the 240 that hold the shape, peaks and dips included. */
   values: readonly number[];
   /** What the chart shows, in words; it is all a screen reader gets: "Revenue, last 7 days: up from 12k to 24k". */
   label: string;
@@ -50,28 +51,32 @@ export function Sparkline({
   className,
   'data-testid': testId,
 }: SparklineProps) {
-  const role = toneRole[tone];
-  const drawn = thin(values);
-  const range = domain(drawn, variant !== 'line', domainMin, domainMax);
-  const paths: VectorPath[] = [];
-  if (variant === 'bar') {
-    const d = bars(drawn, range, barShare);
-    if (d) paths.push({ d, fill: role });
-  } else {
-    const stroke = { fill: 'none', stroke: role, strokeLinecap: 'round', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } as const;
-    const lines = runs(drawn, range);
-    const trace = (points: readonly Point[]) => (isSmooth ? monotone(points) : polyline(points));
-    const joined = lines.filter(points => points.length > 1);
-    if (variant === 'area' && joined.length)
-      paths.push({ d: joined.map(points => closed(trace(points), points, box)).join(''), fill: `${role}/16` });
-    if (joined.length) paths.push({ d: joined.map(trace).join(''), strokeWidth, ...stroke });
-    // A value with a gap on both sides has no segment, so it is drawn as a dot of the line's width.
-    const alone = lines.filter(points => points.length === 1);
-    if (alone.length) paths.push({ d: alone.map(points => dot(points[0])).join(''), strokeWidth: strokeWidth * 2, ...stroke });
-    const latest = lines[lines.length - 1];
-    if (hasEndDot && latest) paths.push({ d: dot(latest[latest.length - 1]), strokeWidth: dotWidth, ...stroke });
-  }
-  // A vector needs a path; with nothing to draw, the box keeps its place and its name.
+  // The paths depend on the values and the encoding, never on the theme: colours are role names.
+  const paths = remember(values, 'sparkline', JSON.stringify([variant, isSmooth, hasEndDot, tone, domainMin, domainMax]), () => {
+    const role = toneRole[tone];
+    const drawn = thin(values);
+    const range = domain(drawn, variant !== 'line', domainMin, domainMax);
+    const paths: VectorPath[] = [];
+    if (variant === 'bar') {
+      const d = bars(drawn, range, barShare);
+      if (d) paths.push({ d, fill: role });
+    } else {
+      const stroke = { fill: 'none', stroke: role, strokeLinecap: 'round', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } as const;
+      const lines = runs(drawn, range);
+      const trace = (points: readonly Point[]) => (isSmooth ? monotone(points) : polyline(points));
+      const joined = lines.filter(points => points.length > 1);
+      if (variant === 'area' && joined.length)
+        paths.push({ d: joined.map(points => closed(trace(points), points, box)).join(''), fill: `${role}/16` });
+      if (joined.length) paths.push({ d: joined.map(trace).join(''), strokeWidth, ...stroke });
+      // A value with a gap on both sides has no segment, so it is drawn as a dot of the line's width.
+      const alone = lines.filter(points => points.length === 1);
+      if (alone.length) paths.push({ d: alone.map(points => dot(points[0])).join(''), strokeWidth: strokeWidth * 2, ...stroke });
+      const latest = lines[lines.length - 1];
+      if (hasEndDot && latest) paths.push({ d: dot(latest[latest.length - 1]), strokeWidth: dotWidth, ...stroke });
+    }
+    // A vector needs a path; with nothing to draw, the box keeps its place and its name.
+    return paths;
+  });
   return (
     <view role="img" aria-label={label} data-testid={testId} className={cx(r.root.base, r.root.size[size], className)}>
       {/* A vector needs a path; with nothing to draw, the box keeps its place and its name. */}

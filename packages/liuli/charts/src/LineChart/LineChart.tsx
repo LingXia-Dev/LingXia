@@ -2,6 +2,7 @@ import { cx, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
 import { box, closed, domain, dot, monotone, polyline, roundRange, runs, scaleY, thin, type Point } from '../internal/geometry';
+import { remember } from '../internal/memo';
 import { lineChartRecipe as r } from './LineChart.recipe';
 
 export interface LineChartProps {
@@ -93,26 +94,30 @@ export function LineChart({
   const chosen = data.findIndex((row, index) => keyOf(row, keyField ?? x, index) === selectedKey);
   const picked = chosen >= 0 ? data[chosen] : undefined;
 
-  const paths: VectorPath[] = [];
-  const trace = (points: readonly Point[]) => (isSmooth ? monotone(points) : polyline(points));
-  const round = { fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } as const;
-  if (picked) paths.push({ d: `M${(chosen / Math.max(1, data.length - 1)) * box} 0V${box}`, stroke: 'text/20', strokeWidth: 1, fill: 'none', vectorEffect: 'non-scaling-stroke' });
-  shown.forEach((series, index) => {
-    const stroke = roleOf(series.color);
-    const lines = runs(thin(columns[index]), range);
-    const joined = lines.filter(points => points.length > 1);
-    if (isArea && joined.length) paths.push({ d: joined.map(points => closed(trace(points), points, box)).join(''), fill: `${stroke}/16` });
-    if (joined.length) paths.push({
-      d: joined.map(trace).join(''), stroke, strokeWidth, ...round,
-      ...(series.dash.length ? { strokeDasharray: series.dash, strokeLinecap: 'butt' } : {}),
+  // The paths depend on the data, the encoding and the chosen row, never on the theme: colours are role names.
+  const paths = remember(data, 'lines', JSON.stringify([shown.map(series => [series.field, series.color, series.dash]), range, isSmooth, isArea, hasEndDot, chosen]), () => {
+    const paths: VectorPath[] = [];
+    const trace = (points: readonly Point[]) => (isSmooth ? monotone(points) : polyline(points));
+    const round = { fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } as const;
+    if (picked) paths.push({ d: `M${(chosen / Math.max(1, data.length - 1)) * box} 0V${box}`, stroke: 'text/20', strokeWidth: 1, fill: 'none', vectorEffect: 'non-scaling-stroke' });
+    shown.forEach((series, index) => {
+      const stroke = roleOf(series.color);
+      const lines = runs(thin(columns[index]), range);
+      const joined = lines.filter(points => points.length > 1);
+      if (isArea && joined.length) paths.push({ d: joined.map(points => closed(trace(points), points, box)).join(''), fill: `${stroke}/16` });
+      if (joined.length) paths.push({
+        d: joined.map(trace).join(''), stroke, strokeWidth, ...round,
+        ...(series.dash.length ? { strokeDasharray: series.dash, strokeLinecap: 'butt' } : {}),
+      });
+      const alone = lines.filter(points => points.length === 1);
+      if (alone.length) paths.push({ d: alone.map(points => dot(points[0])).join(''), stroke, strokeWidth: strokeWidth * 2, ...round });
+      const latest = lines[lines.length - 1];
+      if (hasEndDot && latest) paths.push({ d: dot(latest[latest.length - 1]), stroke, strokeWidth: dotWidth, ...round });
+      const value = picked ? numberOf(picked, series.field) : NaN;
+      if (Number.isFinite(value))
+        paths.push({ d: dot([(chosen / Math.max(1, data.length - 1)) * box, scaleY(value, range)]), stroke, strokeWidth: selectedWidth, ...round });
     });
-    const alone = lines.filter(points => points.length === 1);
-    if (alone.length) paths.push({ d: alone.map(points => dot(points[0])).join(''), stroke, strokeWidth: strokeWidth * 2, ...round });
-    const latest = lines[lines.length - 1];
-    if (hasEndDot && latest) paths.push({ d: dot(latest[latest.length - 1]), stroke, strokeWidth: dotWidth, ...round });
-    const value = picked ? numberOf(picked, series.field) : NaN;
-    if (Number.isFinite(value))
-      paths.push({ d: dot([(chosen / Math.max(1, data.length - 1)) * box, scaleY(value, range)]), stroke, strokeWidth: selectedWidth, ...round });
+    return paths;
   });
 
   const reading = (row: ChartRow) => shown

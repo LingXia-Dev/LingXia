@@ -184,13 +184,15 @@
       "parts": {
         "scale": "text",
         "plot": "view",
+        "marks": "view",
+        "region": "view",
+        "wrap": "view",
+        "drawing": "vector",
+        "baseline": "view",
+        "slots": "view",
         "slot": "button",
-        "column": "view",
-        "space": "view",
         "valueSlot": "view",
         "value": "text",
-        "bar": "view",
-        "baseline": "view",
         "labels": "view",
         "label": "text"
       },
@@ -300,6 +302,7 @@
           "The chosen category keeps its colour and the others step back to 30%, which is not a contrast claim: the pressed state and the readout say which is chosen.",
           "A category's press target is its full-height slot, as wide as the plot divided by the number of categories: 41 px for seven bars at 360 pt, under 10 px for thirty. Past 36 categories the bars are not buttons.",
           "The zero line is a quiet rule with no contrast minimum: the bars' own feet show where zero is.",
+          "A chart is one element per category and about a dozen more, whatever the number of bars; the bars themselves are two to four drawings.",
           "Series in a group differ by colour and by position, and the legend lists them in the order drawn."
         ]
       },
@@ -1125,6 +1128,7 @@
           "The second to fifth lines are dashed, each differently, and the legend draws the same dash, so series survive without colour.",
           "The scale and the end figure are hidden from assistive tech: the same numbers are in the summary and the list.",
           "The fill under an area, the hairlines and the rule on the chosen row are decoration with no contrast minimum.",
+          "The lines are one drawing whatever the number of points, rebuilt only for a new `data` array, encoding or chosen row.",
           "The chart takes no focus: it cannot yet be pressed or scrubbed. `selectedKey` set by the app is announced through the readout."
         ]
       },
@@ -1554,7 +1558,8 @@
           "With `summarize`, a sentence with the number of parts, the total, and the largest and smallest part is read first.",
           "The hole is a status region: choosing a part announces its name and amount.",
           "Slices are told apart by colour and by their order, which the legend repeats from the top clockwise; the gap between slices keeps neighbours apart without relying on hue.",
-          "A legend row is 36 px tall and as wide as the chart."
+          "A legend row is 36 px tall and as wide as the chart.",
+          "The ring is one drawing, rebuilt only for a new `data` array, encoding or chosen part; the legend is five elements per part."
         ]
       },
       "examples": [
@@ -1671,7 +1676,7 @@
           "name": "values",
           "type": "readonly number[]",
           "required": true,
-          "description": "The numbers, oldest first. A value that is not finite (`NaN`) is a gap. Past 240 values it keeps the 240 that hold the shape, peaks and dips included."
+          "description": "The numbers, oldest first; a new array when they change. A value that is not finite (`NaN`) is a gap. Past 240 values it keeps the 240 that hold the shape, peaks and dips included."
         },
         {
           "name": "label",
@@ -1795,6 +1800,7 @@
         "notes": [
           "One image named by `label`; the drawing itself is hidden. A screen reader gets nothing but the label, so it carries the finding: the direction, and the first and last values.",
           "It takes no focus and has no actions.",
+          "It is two elements however many values it draws, and its paths are rebuilt only for a new `values` array or encoding.",
           "The fill under an area is decoration and has no contrast minimum: the line above it carries the values.",
           "Positive and negative tones differ by colour alone, so the label, or the figure beside it, must say which it is."
         ]

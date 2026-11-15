@@ -2,6 +2,7 @@ import { cx, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, type ChartColor, type ChartLegendPosition, type ChartRow, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, textOf } from '../internal/data';
 import { box, circle, sector } from '../internal/geometry';
+import { remember } from '../internal/memo';
 import { pieChartRecipe as r } from './PieChart.recipe';
 
 export type PieChartVariant = 'donut' | 'pie';
@@ -83,15 +84,18 @@ export function PieChart({
   const chosen = parts.find(part => part.key === selectedKey);
   const inner = variant === 'donut' ? hole : 0;
 
-  let turned = 0;
-  const paths: VectorPath[] = parts.map(part => {
-    const [from, to] = [turned, turned + (part.amount / total) * 2 * Math.PI];
-    turned = to;
-    const role = part.color ? roleOf(part.color) : 'line-strong';
-    const fill = chosen && chosen !== part ? `${role}/35` : role;
-    const rim = chosen === part ? grown : outer;
-    if (parts.length > 1) return { d: sector(inner, rim, from, to, gap), fill };
-    return inner ? { d: circle((rim + inner) / 2), fill: 'none', stroke: fill, strokeWidth: rim - inner } : { d: circle(rim), fill };
+  // The slices depend on the data, the encoding and the chosen part, never on the theme: colours are role names.
+  const paths = remember(data, 'slices', JSON.stringify([name, value, keyField, variant, otherLabel, maxParts, selectedKey]), () => {
+    let turned = 0;
+    return parts.map((part): VectorPath => {
+      const [from, to] = [turned, turned + (part.amount / total) * 2 * Math.PI];
+      turned = to;
+      const role = part.color ? roleOf(part.color) : 'line-strong';
+      const fill = chosen && chosen !== part ? `${role}/35` : role;
+      const rim = chosen === part ? grown : outer;
+      if (parts.length > 1) return { d: sector(inner, rim, from, to, gap), fill };
+      return inner ? { d: circle((rim + inner) / 2), fill: 'none', stroke: fill, strokeWidth: rim - inner } : { d: circle(rim), fill };
+    });
   });
 
   const facts = seriesFacts(parts.map(part => ({ name: part.name, amount: part.amount })), 'name', { field: 'amount', label: '' }, formatValue, true);

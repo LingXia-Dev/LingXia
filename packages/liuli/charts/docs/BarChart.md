@@ -146,11 +146,11 @@ export function Month() {
 | --- | --- | --- | --- |
 | scale | `<text>` | no | The top of the scale, a round number, above a hairline; shown when the bars carry no figures. |
 | value | `<text>` | no | A bar's value, written over it (under it, below zero). |
-| plot | `<view>` | yes | The row of categories; a list for assistive tech when the bars cannot be pressed. |
-| slot | `<button>` | yes | One category at full height: its bars, its name and values for assistive tech, and its press target. |
-| column | `<view>` | yes | One series within a category. |
-| bar | `<view>` | yes | The amount, from the zero line; rounded on its free end. |
+| plot | `<view>` | yes | The box the marks and the slots share. |
+| drawing | `<vector>` | yes | The bars: every bar of a series is one outline, rounded on its free end; one drawing above zero and one below, and a fainter pair for bars that stepped back. Hidden from assistive tech. |
 | baseline | `<view>` | yes | The zero line, the chart's only rule. |
+| slots | `<view>` | yes | The row of categories over the drawing; a list for assistive tech when the bars cannot be pressed. |
+| slot | `<button>` | yes | One category at full height: its name and values for assistive tech, its press target, and its figure when bars carry them. |
 | labels | `<view>` | no | Category names under the bars: all of them, or the first and last. |
 
 ## Accessibility
@@ -168,6 +168,7 @@ export function Month() {
 - The chosen category keeps its colour and the others step back to 30%, which is not a contrast claim: the pressed state and the readout say which is chosen.
 - A category's press target is its full-height slot, as wide as the plot divided by the number of categories: 41 px for seven bars at 360 pt, under 10 px for thirty. Past 36 categories the bars are not buttons.
 - The zero line is a quiet rule with no contrast minimum: the bars' own feet show where zero is.
+- A chart is one element per category and about a dozen more, whatever the number of bars; the bars themselves are two to four drawings.
 - Series in a group differ by colour and by position, and the legend lists them in the order drawn.
 
 | Contrast | Pair | Minimum | Light | Dark |
@@ -186,7 +187,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
-- Do: Pass rows as they are and name the fields: `x="day" y="orders"`.
+- Do: Pass rows as they are and name the fields: `x="day" y="orders"`. Pass a new array when the data changes; the bars are rebuilt only then.
 - Do: Format values with `formatValue`, in the person's locale and units, and keep them short: a figure over a bar has the bar's width.
 - Do: Pass `summarize` so a screen reader gets the finding first.
 - Do: Keep to about twelve categories on a phone when each should be pressed.

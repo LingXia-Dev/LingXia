@@ -45,6 +45,7 @@ export const doc: ComponentDoc = {
       'The second to fifth lines are dashed, each differently, and the legend draws the same dash, so series survive without colour.',
       'The scale and the end figure are hidden from assistive tech: the same numbers are in the summary and the list.',
       'The fill under an area, the hairlines and the rule on the chosen row are decoration with no contrast minimum.',
+      'The lines are one drawing whatever the number of points, rebuilt only for a new `data` array, encoding or chosen row.',
       'The chart takes no focus: it cannot yet be pressed or scrubbed. `selectedKey` set by the app is announced through the readout.',
     ],
   },

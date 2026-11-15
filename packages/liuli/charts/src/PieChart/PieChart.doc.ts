@@ -47,6 +47,7 @@ export const doc: ComponentDoc = {
       'The hole is a status region: choosing a part announces its name and amount.',
       'Slices are told apart by colour and by their order, which the legend repeats from the top clockwise; the gap between slices keeps neighbours apart without relying on hue.',
       'A legend row is 36 px tall and as wide as the chart.',
+      'The ring is one drawing, rebuilt only for a new `data` array, encoding or chosen part; the legend is five elements per part.',
     ],
   },
   guidance: {

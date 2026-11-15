@@ -33,6 +33,7 @@ export const doc: ComponentDoc = {
     notes: [
       'One image named by `label`; the drawing itself is hidden. A screen reader gets nothing but the label, so it carries the finding: the direction, and the first and last values.',
       'It takes no focus and has no actions.',
+      'It is two elements however many values it draws, and its paths are rebuilt only for a new `values` array or encoding.',
       'The fill under an area is decoration and has no contrast minimum: the line above it carries the values.',
       'Positive and negative tones differ by colour alone, so the label, or the figure beside it, must say which it is.',
     ],
