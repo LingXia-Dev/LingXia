@@ -3,11 +3,14 @@ import { Avatar } from '@liulidesign/core/Avatar';
 import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
 import { ButtonGroup } from '@liulidesign/core/ButtonGroup';
+import { Divider } from '@liulidesign/core/Divider';
 import { EmptyState } from '@liulidesign/core/EmptyState';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { Item, ItemList } from '@liulidesign/core/Item';
 import { Markdown } from '@liulidesign/core/Markdown';
+import { MetadataList } from '@liulidesign/core/MetadataList';
 import { SearchField } from '@liulidesign/core/SearchField';
+import { Section } from '@liulidesign/core/Section';
 import { SplitView } from '@liulidesign/core/SplitView';
 
 interface Request {
@@ -17,28 +20,30 @@ interface Request {
   subject: string;
   when: string;
   status: 'Submitted' | 'In review' | 'Approved';
+  amount: string;
+  neededBy: string;
   body: string;
 }
 
 const requests: Request[] = [
   {
-    id: 'r-218', from: 'Ana Lima', team: 'Design', subject: 'Two more seats for the research tool', when: '09:42', status: 'Submitted',
+    id: 'r-218', from: 'Ana Lima', team: 'Design', subject: 'Two more seats for the research tool', when: '09:42', status: 'Submitted', amount: '€16 a month', neededBy: '28 November',
     body: 'We have **two researchers** starting on the 1st and the current plan has no seats left.\n\n- Plan: Team, billed yearly\n- Cost: €16 a month more\n- Needed by: 28 November\n\nI can cover it from the tools budget if that is easier.',
   },
   {
-    id: 'r-217', from: 'Kai Chen', team: 'Engineering', subject: 'Conference travel, Lisbon', when: 'Yesterday', status: 'In review',
+    id: 'r-217', from: 'Kai Chen', team: 'Engineering', subject: 'Conference travel, Lisbon', when: 'Yesterday', status: 'In review', amount: '€1,180', neededBy: '15 December',
     body: 'Three days at the systems conference in March. Flights and hotel come to about **€1,180**.\n\n1. Flights booked by 15 December are a third cheaper\n2. The talk I submitted was accepted\n\n> Finance asked for the agenda; it is attached to the ticket.',
   },
   {
-    id: 'r-214', from: 'Mira Patel', team: 'Support', subject: 'Replace the shared headset', when: 'Mon', status: 'Approved',
+    id: 'r-214', from: 'Mira Patel', team: 'Support', subject: 'Replace the shared headset', when: 'Mon', status: 'Approved', amount: '€89', neededBy: '20 November',
     body: 'The headset at the support desk drops calls. A wired replacement is **€89**.\n\n- [x] Checked the warranty: expired in May\n- [x] Tried another cable\n- [ ] Order placed',
   },
   {
-    id: 'r-209', from: 'Sam Ortiz', team: 'Sales', subject: 'Customer dinner, 4 December', when: '8 Nov', status: 'Approved',
+    id: 'r-209', from: 'Sam Ortiz', team: 'Sales', subject: 'Customer dinner, 4 December', when: '8 Nov', status: 'Approved', amount: '€420', neededBy: '4 December',
     body: 'Dinner for six with the Northwind team after the renewal call. Budget asked: **€420**.',
   },
   {
-    id: 'r-204', from: 'Tomás Reis', team: 'Engineering', subject: 'Second monitor', when: '5 Nov', status: 'In review',
+    id: 'r-204', from: 'Tomás Reis', team: 'Engineering', subject: 'Second monitor', when: '5 Nov', status: 'In review', amount: '€310', neededBy: '30 November',
     body: 'A 27-inch monitor for the build station, **€310**. The current one flickers on wake.',
   },
 ];
@@ -73,7 +78,7 @@ function Detail({ request, onDecide }: { request: Request; onDecide: (status: Re
       <view className="gap-3">
         <view className="flex-row items-center gap-2">
           <Badge label={request.status} tone={tone[request.status]} />
-          <text className="grow text-footnote text-muted tabular-nums">{`${request.id.toUpperCase()} · ${request.when}`}</text>
+          <view className="grow" />
           <ButtonGroup label="More actions">
             <IconButton label="Share" icon="share" size="sm" />
             <IconButton label="Print" icon="print" size="sm" />
@@ -89,6 +94,19 @@ function Detail({ request, onDecide }: { request: Request; onDecide: (status: Re
         </view>
       </view>
       <Markdown source={request.body} topHeadingLevel={3} taskLabels={{ done: 'Done', open: 'Not done' }} />
+      <Divider />
+      <Section title="Details" headingLevel={3}>
+        <MetadataList
+          label="Request details"
+          items={[
+            { key: 'reference', label: 'Reference', value: request.id.toUpperCase() },
+            { key: 'received', label: 'Received', value: request.when },
+            { key: 'amount', label: 'Amount', value: request.amount },
+            { key: 'needed', label: 'Needed by', value: request.neededBy },
+          ]}
+          data-testid="details"
+        />
+      </Section>
       <view className="flex-row items-center gap-2 pt-1">
         <Button label="Approve" variant="primary" isDisabled={request.status === 'Approved'} onClick={() => onDecide('Approved')} data-testid="approve" />
         <Button label="Ask a question" onClick={() => onDecide('In review')} data-testid="ask" />

@@ -3,6 +3,8 @@ import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
 import { Card } from '@liulidesign/core/Card';
 import { CheckboxInput } from '@liulidesign/core/CheckboxInput';
+import { FormLayout } from '@liulidesign/core/FormLayout';
+import { Link } from '@liulidesign/core/Link';
 import { TextInput } from '@liulidesign/core/TextInput';
 
 type Actions = { signIn(): Promise<void> };
@@ -65,7 +67,7 @@ export function Content() {
         <text role="heading" headingLevel={1} className="text-display font-semibold tracking-tight text-text">Welcome back</text>
         <text className="text-body text-muted">Sign in to sync your notes across devices.</text>
       </view>
-      <view className="gap-5">
+      <FormLayout>
         <TextInput
           bind={email}
           label="Email"
@@ -95,11 +97,14 @@ export function Content() {
           description="On this device only."
           data-testid="remember"
         />
-      </view>
+      </FormLayout>
       <view className="gap-2">
         <Button label="Sign in" variant="primary" size="lg" width="fill" clickAction={submit} data-testid="submit" />
         <Button label="Forgot password?" variant="link" width="content" className="self-center" data-testid="forgot" />
       </view>
+      <text className="text-center text-footnote text-muted">
+        New to Notes? <Link label="Create an account" onClick={() => {}} data-testid="create" />
+      </text>
     </>
   );
 }
