@@ -1,6 +1,8 @@
 // Text & input demos of the View catalogue: each is the body of one demo.
 import { Fragment, useId, useLocal, useView } from '@lingxia/view';
 import { Button } from '../ui';
+import { Readout, useSay } from './demo';
+import { labels, readouts } from './text';
 import type { LabPageData } from '../lab-types';
 
 export function TextLayoutDemo() {
@@ -20,15 +22,24 @@ export function TextLayoutDemo() {
 
 export function RichTextDemo() {
   const presses = useLocal('presses', 0);
+  const t = useSay();
   return (
     <>
-      <text data-testid="lab-rich-paragraph" className="text-sm leading-relaxed">
-        Plans renew <span className="font-semibold text-text">monthly</span> unless you{' '}
-        <span className="bg-surface-sunken font-mono">cancel</span> first. Read the{' '}
-        <link data-testid="lab-rich-link" onClick={() => presses.set(presses.value + 1)} className="active:text-text">terms of service and <span className="font-semibold">privacy policy</span></link>
-        {' '}before you <span className="italic line-through text-muted">sign</span> agree.
-      </text>
-      <text data-testid="lab-rich-presses" className="text-xs text-muted tabular-nums">Link pressed {presses.value} times</text>
+      {t({ en: '', zh: 'zh' }) ? (
+        <text data-testid="lab-rich-paragraph" className="text-sm leading-relaxed">
+          套餐<span className="font-semibold text-text">按月</span>续订，除非你先<span className="bg-surface-sunken font-mono">取消</span>。请在
+          <span className="italic line-through text-muted">签署</span>同意之前阅读
+          <link data-testid="lab-rich-link" onClick={() => presses.set(presses.value + 1)} className="active:text-text">服务条款与<span className="font-semibold">隐私政策</span></link>。
+        </text>
+      ) : (
+        <text data-testid="lab-rich-paragraph" className="text-sm leading-relaxed">
+          Plans renew <span className="font-semibold text-text">monthly</span> unless you{' '}
+          <span className="bg-surface-sunken font-mono">cancel</span> first. Read the{' '}
+          <link data-testid="lab-rich-link" onClick={() => presses.set(presses.value + 1)} className="active:text-text">terms of service and <span className="font-semibold">privacy policy</span></link>
+          {' '}before you <span className="italic line-through text-muted">sign</span> agree.
+        </text>
+      )}
+      <Readout testId="lab-rich-presses" state={`Link pressed ${presses.value} times`}>{t(readouts.presses(presses.value))}</Readout>
     </>
   );
 }
@@ -36,10 +47,11 @@ export function RichTextDemo() {
 // A long document: numbered clauses from Logic, inline runs, a clamped preview and a definitions grid.
 export function DocumentDemo() {
   const { terms } = useView().data as unknown as LabPageData;
+  const t = useSay();
   return (
     <>
       <view className="gap-4 max-w-[68ch]">
-        <text className="text-xs text-muted tabular-nums">{`Updated ${terms.updated}`}</text>
+        <text className="text-xs text-muted tabular-nums">{`${t(labels.updated)} ${terms.updated}`}</text>
         {terms.clauses.map((clause, index) => (
           <view key={clause.heading} className="gap-2">
             <text role="heading" headingLevel={3} className="text-base font-semibold">{`${index + 1}. ${clause.heading}`}</text>
@@ -50,7 +62,7 @@ export function DocumentDemo() {
             <text className="text-xs text-faint line-clamp-2">{clause.body.repeat(3)}</text>
           </view>
         ))}
-        <text role="heading" headingLevel={3} className="text-base font-semibold">Definitions</text>
+        <text role="heading" headingLevel={3} className="text-base font-semibold">{t(labels.definitions)}</text>
         <view data-testid="lab-document-terms" className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
           {terms.clauses.map(clause => <Fragment key={clause.term}><Term word={clause.term} meaning={clause.heading} /></Fragment>)}
         </view>
@@ -80,10 +92,11 @@ export function TypeaheadDemo() {
   const matches = fruits.filter(name => name.toLowerCase().startsWith(query.value.toLowerCase()));
   const shown = open.value && matches.length > 0;
   const take = (name: string) => { query.set(name); open.set(false); last.set(`picked ${name}`); };
+  const t = useSay();
   return (
     <>
       <view id="lab-type-field" data-testid="lab-type-field" className="rounded-lg border border-line-strong bg-surface">
-        <input data-testid="lab-type-input" value={query.value} aria-label="Fruit" placeholder="Fruit" className="px-3 py-2 text-sm"
+        <input data-testid="lab-type-input" value={query.value} aria-label="Fruit" placeholder={t(labels.fruit)} className="px-3 py-2 text-sm"
           role="combobox" aria-expanded={shown} aria-controls="lab-type-list" aria-autocomplete="list"
           aria-activedescendant={shown ? `lab-type-option-${active.value}` : undefined}
           onInput={text => { query.set(text); open.set(true); active.set(0); }}
@@ -105,7 +118,7 @@ export function TypeaheadDemo() {
             className={`px-3 py-2 rounded-md text-sm ${index === active.value ? 'bg-surface-sunken' : ''}`}>{name}</button>
         ))}
       </view>
-      <text data-testid="lab-type-state" className="text-xs text-muted tabular-nums">{`open=${shown} active=${active.value} last=${last.value}`}</text>
+      <Readout testId="lab-type-state" state={`open=${shown} active=${active.value} last=${last.value}`}>{t(readouts.suggestions(shown, active.value, last.value))}</Readout>
       <input data-testid="lab-type-readonly" value="Read only" readOnly aria-label="Reference"
         className="px-3 py-2 rounded-lg border border-line-strong bg-surface-sunken text-sm" />
     </>

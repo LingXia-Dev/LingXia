@@ -1,6 +1,6 @@
 import type { LabPageData } from '../../shared/lab-types';
 
-const body = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.';
+const body = 'This section says what the service does for you and what it asks of you in return. It applies from the day you create an account until the day you close it.';
 const data: LabPageData = {
   plots: {
     hourly: Array.from({ length: 24 }, (_, hour) => Math.round(38 + 18 * Math.sin((hour - 6) / 3.8))),
@@ -13,4 +13,10 @@ const data: LabPageData = {
   },
 };
 
-Page({ data });
+Page({
+  data,
+  // Specs pin the page's language with `lang`, whatever the device is set to.
+  onLoad(options: { lang?: string } = {}) {
+    if (options.lang) this.setData({ lang: options.lang });
+  },
+});

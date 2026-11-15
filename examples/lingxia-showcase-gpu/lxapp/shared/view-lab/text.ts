@@ -48,7 +48,48 @@ export const missing: Record<GroupId, readonly Words[]> = {
 export const chrome = {
   index: { en: 'What a page is built from.', zh: '页面由这些构成。' },
   missing: { en: 'Not shown yet', zh: '尚未展示' },
-  demos: { en: 'demos', zh: '项' },
+} as const;
+
+/** How many demos a group holds, as the index says it. */
+export const count = (n: number): Words => ({ en: n === 1 ? '1 demo' : `${n} demos`, zh: `${n} 个示例` });
+
+const none = (value: string) => (value === 'none' ? '无' : value);
+const yes = (value: boolean): Words => (value ? { en: 'open', zh: '已打开' } : { en: 'closed', zh: '已关闭' });
+
+/** Each demo's state in words; the same values a spec reads from the readout's `data-state`. */
+export const readouts = {
+  scrub: (box: string | null, at: number, last: string): Words => ({
+    en: `${box ? `Box ${box} · marker` : 'Marker'} at ${at} · last: ${last}`,
+    zh: `${box ? `方块 ${box} · ` : ''}标记在 ${at} · 上次：${none(last)}`,
+  }),
+  drag: (at: number, last: string): Words => ({ en: `Stop ${at} · last: ${last}`, zh: `停靠点 ${at} · 上次：${none(last)}` }),
+  chain: (at: number): Words => ({ en: `Panel at stop ${at}`, zh: `面板在停靠点 ${at}` }),
+  sheet: (open: boolean, at: number, closed: number): Words => ({
+    en: `Sheet ${yes(open).en} · stop ${at} · closed ${closed} times`,
+    zh: `面板${yes(open).zh} · 停靠点 ${at} · 已关闭 ${closed} 次`,
+  }),
+  rows: (rows: number, last: string): Words => ({ en: `${rows} rows · last: ${last}`, zh: `${rows} 行 · 上次：${none(last)}` }),
+  pages: (page: number): Words => ({ en: `Page ${page + 1}`, zh: `第 ${page + 1} 页` }),
+  nested: (opened: number, wifi: boolean, removed: number): Words => ({
+    en: `Row pressed ${opened} times · switch ${wifi ? 'on' : 'off'} · removed ${removed} times`,
+    zh: `行已按 ${opened} 次 · 开关${wifi ? '开' : '关'} · 已移除 ${removed} 次`,
+  }),
+  presses: (n: number): Words => ({ en: `Link pressed ${n} times`, zh: `链接已点 ${n} 次` }),
+  suggestions: (open: boolean, active: number, last: string): Words => ({
+    en: `List ${yes(open).en} · option ${active + 1} active · last: ${last}`,
+    zh: `列表${yes(open).zh} · 第 ${active + 1} 项高亮 · 上次：${none(last)}`,
+  }),
+} as const;
+
+/** Labels inside the demos that no spec matches by their text. */
+export const labels = {
+  backToStart: { en: 'Back to start', zh: '回到起点' },
+  pullUp: { en: 'Pull up, then keep going', zh: '向上拉，然后继续' },
+  openSheet: { en: 'Open sheet', zh: '打开面板' },
+  next: { en: 'Next', zh: '下一页' },
+  fruit: { en: 'Fruit', zh: '水果（英文）' },
+  definitions: { en: 'Definitions', zh: '术语' },
+  updated: { en: 'Updated', zh: '更新于' },
 } as const;
 
 /** Picks the side of `words` for the display language the page is in. */

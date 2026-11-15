@@ -1,6 +1,8 @@
 // Gestures & pointer demos of the View catalogue: each is the body of one demo.
 import { Fragment, useBox, useLocal, useView } from '@lingxia/view';
 import { Button } from '../ui';
+import { Readout, useSay } from './demo';
+import { labels, readouts } from './text';
 
 // A card the finger moves along its track: it springs to the nearest of three points, a flick
 // carries it one on; arrows and assistive tech step it, and `bind` follows where it lands.
@@ -12,6 +14,8 @@ export function ScrubDemo() {
   const at = useLocal('lab-scrub-at', 3);
   const last = useLocal('lab-scrub-last', 'none');
   const width = box.value?.width ?? 0;
+  const size = box.value ? `${box.value.width}x${box.value.height}` : null;
+  const t = useSay();
   return (
     <>
       <view box={box} data-testid="lab-scrub-plot" pointerAxis="x" aria-label="Month" aria-valuenow={at.value} aria-valuemin={0} aria-valuemax={count - 1}
@@ -27,9 +31,9 @@ export function ScrubDemo() {
         <view style={{ width: width ? (at.value + 0.5) * width / count : 0 }} />
         <view data-testid="lab-scrub-marker" className="w-0.5 self-stretch bg-accent" />
       </view>
-      <text data-testid="lab-scrub-state" className="text-xs text-muted tabular-nums">
-        {`box=${box.value ? `${box.value.width}x${box.value.height}` : 'none'} at=${at.value} last=${last.value}`}
-      </text>
+      <Readout testId="lab-scrub-state" state={`box=${size ?? 'none'} at=${at.value} last=${last.value}`}>
+        {t(readouts.scrub(size, at.value, last.value))}
+      </Readout>
     </>
   );
 }
@@ -37,6 +41,7 @@ export function ScrubDemo() {
 export function DragDemo() {
   const at = useLocal('drag-at', 0);
   const last = useLocal('drag-last', 'none');
+  const t = useSay();
   return (
     <>
       <view className="h-20 rounded-xl bg-surface-sunken p-2">
@@ -46,8 +51,8 @@ export function DragDemo() {
           <text className="text-sm text-on-accent">Drag</text>
         </view>
       </view>
-      <text data-testid="lab-drag-state" className="text-xs text-muted tabular-nums">{`at=${at.value} last=${last.value}`}</text>
-      <Button testId="lab-drag-reset" size="sm" variant="secondary" onClick={() => at.set(0)}>Back to start</Button>
+      <Readout testId="lab-drag-state" state={`at=${at.value} last=${last.value}`}>{t(readouts.drag(at.value, last.value))}</Readout>
+      <Button testId="lab-drag-reset" size="sm" variant="secondary" onClick={() => at.set(0)}>{t(labels.backToStart)}</Button>
     </>
   );
 }
@@ -56,12 +61,13 @@ export function DragDemo() {
 // the list returns to its top before the panel closes, all in one gesture.
 export function DragChainDemo() {
   const at = useLocal('chain-at', 1);
+  const t = useSay();
   return (
     <>
       <view className="h-56 rounded-xl bg-surface-sunken overflow-hidden">
         <view drag="y" dragSnapPoints={[0, 96]} bind={at} aria-label="Panel" data-testid="lab-chain-panel"
           className="h-56 rounded-t-xl bg-surface-raised">
-          <text data-testid="lab-chain-title" className="p-3 text-sm font-semibold">Pull up, then keep going</text>
+          <text data-testid="lab-chain-title" className="p-3 text-sm font-semibold">{t(labels.pullUp)}</text>
           <scroll data-testid="lab-chain-list" className="grow basis-0">
             {Array.from({ length: 20 }, (_, i) => (
               <text key={`c${i}`} data-testid={`lab-chain-row-${i + 1}`} className="px-3 py-2 text-sm border-b border-line">{`Item ${i + 1}`}</text>
@@ -69,7 +75,7 @@ export function DragChainDemo() {
           </scroll>
         </view>
       </view>
-      <text data-testid="lab-chain-state" className="text-xs text-muted tabular-nums">{`at=${at.value}`}</text>
+      <Readout testId="lab-chain-state" state={`at=${at.value}`}>{t(readouts.chain(at.value))}</Readout>
     </>
   );
 }
@@ -81,11 +87,12 @@ export function DetentsDemo() {
   const detent = useLocal('detents-at', 1);
   const closed = useLocal('detents-closed', 0);
   const safeBottom = useView().env.safeArea?.bottom ?? 0;
+  const t = useSay();
   return (
     <>
       <view className="flex-row gap-2 items-center">
-        <Button testId="lab-detents-open" onClick={() => { detent.set(1); open.set(true); }}>Open sheet</Button>
-        <text data-testid="lab-detents-state" className="text-xs text-muted tabular-nums">{`open=${open.value} at=${detent.value} closed=${closed.value}`}</text>
+        <Button testId="lab-detents-open" onClick={() => { detent.set(1); open.set(true); }}>{t(labels.openSheet)}</Button>
+        <Readout testId="lab-detents-state" state={`open=${open.value} at=${detent.value} closed=${closed.value}`}>{t(readouts.sheet(open.value, detent.value, closed.value))}</Readout>
       </view>
       <dialog open={open.value} onClose={() => { closed.set(closed.value + 1); open.set(false); }} closedby="any" aria-label="Places"
         drag="y" dragSnapPoints={[0, '45%', '100%']} bind={detent} data-testid="lab-detents-sheet"
@@ -105,6 +112,7 @@ export function SwipeRowsDemo() {
   const items = useLocal('swipe-items', ['Groceries', 'Dentist', 'Rent']);
   const last = useLocal('swipe-last', 'none');
   const remove = (item: string) => { items.set(items.value.filter(other => other !== item)); last.set(`deleted ${item}`); };
+  const t = useSay();
   return (
     <>
       <view className="overflow-hidden bg-surface">
@@ -115,7 +123,7 @@ export function SwipeRowsDemo() {
           </Fragment>
         ))}
       </view>
-      <text data-testid="lab-swipe-state" className="text-xs text-muted">{`rows=${items.value.length} last=${last.value}`}</text>
+      <Readout testId="lab-swipe-state" state={`rows=${items.value.length} last=${last.value}`}>{t(readouts.rows(items.value.length, last.value))}</Readout>
     </>
   );
 }
@@ -124,6 +132,7 @@ export function SwipeRowsDemo() {
 export function PagerDemo() {
   const page = useLocal('pager-page', 0);
   const pages = ['Morning', 'Noon', 'Evening'];
+  const t = useSay();
   return (
     <>
       <scroll data-testid="lab-pager-scroll" bind={page} className="w-72 overflow-x-auto snap-x snap-always rounded-xl bg-surface-sunken">
@@ -136,8 +145,8 @@ export function PagerDemo() {
         </view>
       </scroll>
       <view className="flex-row gap-2 items-center">
-        <text data-testid="lab-pager-state" className="grow text-xs text-muted tabular-nums">{`page=${page.value}`}</text>
-        <Button testId="lab-pager-next" size="sm" variant="secondary" onClick={() => page.set((page.value + 1) % pages.length)}>Next</Button>
+        <view className="grow"><Readout testId="lab-pager-state" state={`page=${page.value}`}>{t(readouts.pages(page.value))}</Readout></view>
+        <Button testId="lab-pager-next" size="sm" variant="secondary" onClick={() => page.set((page.value + 1) % pages.length)}>{t(labels.next)}</Button>
       </view>
     </>
   );
@@ -148,6 +157,7 @@ export function NestedControlsDemo() {
   const opened = useLocal('opened', 0);
   const wifi = useLocal('wifi', true);
   const removed = useLocal('removed', 0);
+  const t = useSay();
   return (
     <>
       <button data-testid="lab-nested-row" onClick={() => opened.set(opened.value + 1)} className="rounded-xl bg-surface-sunken px-4 py-3">
@@ -157,7 +167,7 @@ export function NestedControlsDemo() {
           <button data-testid="lab-nested-remove" onClick={() => removed.set(removed.value + 1)} className="rounded-lg px-2 py-1 text-sm text-danger">Remove</button>
         </view>
       </button>
-      <text data-testid="lab-nested-state" className="text-xs text-muted tabular-nums">{`opened=${opened.value} wifi=${wifi.value} removed=${removed.value}`}</text>
+      <Readout testId="lab-nested-state" state={`opened=${opened.value} wifi=${wifi.value} removed=${removed.value}`}>{t(readouts.nested(opened.value, wifi.value, removed.value))}</Readout>
     </>
   );
 }

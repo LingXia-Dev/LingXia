@@ -27,15 +27,15 @@ spec('a tap on a nested switch, a row button and a rich-text link reaches only t
   const view = t.app.view;
   await view.testId('lab-tab-input').click();
   const state = view.testId('lab-nested-state');
-  await expect(state).toHaveText('opened=0 wifi=true removed=0');
+  await expect(state).toHaveAttribute('data-state', 'opened=0 wifi=true removed=0');
   await view.testId('lab-nested-switch').click();
-  await expect(state).toHaveText('opened=0 wifi=false removed=0');
+  await expect(state).toHaveAttribute('data-state', 'opened=0 wifi=false removed=0');
   await view.testId('lab-nested-remove').click();
-  await expect(state).toHaveText('opened=0 wifi=false removed=1');
+  await expect(state).toHaveAttribute('data-state', 'opened=0 wifi=false removed=1');
 
   await view.testId('lab-tab-text').click();
   await view.testId('lab-rich-link').click();
-  await expect(view.testId('lab-rich-presses')).toHaveText('Link pressed 1 times');
+  await expect(view.testId('lab-rich-presses')).toHaveAttribute('data-state', 'Link pressed 1 times');
 });
 
 spec('the controls take a tap, a drag, typing and a fling as a user gives them', { covers: ['view:radio', 'view:slider', 'view:textarea', 'view:input', 'view:list'], start: { page: 'view-lab' } }, async (t) => {
