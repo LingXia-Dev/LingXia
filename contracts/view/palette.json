@@ -37,7 +37,8 @@
     "knob": "#ffffffff",
     "success-mark": "#1a9a57ff",
     "warning-mark": "#c47204ff",
-    "danger-mark": "#e5484dff"
+    "danger-mark": "#e5484dff",
+    "media-canvas": "#0a0c11ff"
   },
   "dark": {
     "canvas": "#0f131aff",
@@ -77,6 +78,7 @@
     "knob": "#ffffffff",
     "success-mark": "#3dbb7fff",
     "warning-mark": "#f2a23aff",
-    "danger-mark": "#ef5f5fff"
+    "danger-mark": "#ef5f5fff",
+    "media-canvas": "#0a0c11ff"
   }
 }

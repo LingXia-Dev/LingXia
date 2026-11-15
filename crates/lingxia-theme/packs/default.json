@@ -34,7 +34,8 @@
       "knob": "#ffffff",
       "success-mark": "#1a9a57",
       "warning-mark": "#c47204",
-      "danger-mark": "#e5484d"
+      "danger-mark": "#e5484d",
+      "media-canvas": "#0a0c11"
     },
     "dark": {
       "canvas": "#0f131a",
@@ -68,7 +69,8 @@
       "knob": "#ffffff",
       "success-mark": "#3dbb7f",
       "warning-mark": "#f2a23a",
-      "danger-mark": "#ef5f5f"
+      "danger-mark": "#ef5f5f",
+      "media-canvas": "#0a0c11"
     }
   },
   "accent": {"seed": "#365cdd", "derive": true},

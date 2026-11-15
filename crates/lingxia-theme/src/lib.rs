@@ -242,7 +242,8 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
             continue;
         }
         // Roles added after packs shipped: overlays float on `surface-raised`, knobs stay white,
-        // and a status mark is drawn in its status colour.
+        // a status mark is drawn in its status colour, and full-screen media sits on the darkest
+        // surface.
         let missing = !base.contains_key(role.name());
         palette[role as usize] = match role {
             Role::SurfaceOverlay if missing => base.get(Role::SurfaceRaised.name()).copied(),
@@ -250,6 +251,7 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
             Role::SuccessMark | Role::WarningMark | Role::DangerMark if missing => {
                 base.get(status_of(role).name()).copied()
             }
+            Role::MediaCanvas if missing => darkest_surface(base),
             _ => base.get(role.name()).copied(),
         }
         .ok_or_else(|| format!("THEME: {} has no {}", pack.name, role.name()))?;
@@ -269,6 +271,7 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
                 if involves_selection(foreground, background)
                     || (borrowed_overlay && involves_overlay(foreground, background))
                     || borrows_mark(base, foreground)
+                    || borrows_media_canvas(base, background)
                 {
                     continue;
                 }
@@ -380,6 +383,24 @@ fn derive_accent(palette: &mut [Rgba; ROLE_COUNT], seed: Rgba, appearance: Appea
 /// A pack without `surface-overlay` is held to the pairs it shipped with, not the overlay's.
 fn involves_overlay(foreground: Role, background: Role) -> bool {
     foreground == Role::SurfaceOverlay || background == Role::SurfaceOverlay
+}
+
+/// The darkest of a pack's surfaces: where full-screen media sits in a pack without a canvas for it.
+fn darkest_surface(colors: &Colors) -> Option<Rgba> {
+    [
+        Role::Canvas,
+        Role::Surface,
+        Role::SurfaceRaised,
+        Role::SurfaceSunken,
+    ]
+    .into_iter()
+    .filter_map(|role| colors.get(role.name()).copied())
+    .min_by(|a, b| a.luminance().total_cmp(&b.luminance()))
+}
+
+/// A pack without a media canvas borrows a surface for it, and is not held to the media pairs on it.
+fn borrows_media_canvas(colors: &Colors, background: Role) -> bool {
+    background == Role::MediaCanvas && !colors.contains_key(background.name())
 }
 
 /// The status colour a mark stands for.
@@ -506,6 +527,7 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
         for &(foreground, background, ratio) in CONTRAST {
             if (borrowed_overlay && involves_overlay(foreground, background))
                 || borrows_mark(colors, foreground)
+                || borrows_media_canvas(colors, background)
             {
                 continue;
             }

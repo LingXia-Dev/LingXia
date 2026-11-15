@@ -80,9 +80,11 @@ pub enum Role {
     WarningMark = 36,
     /// Danger as a dot or shape, never text; a pack without it uses its danger.
     DangerMark = 37,
+    /// The whole screen behind a full-screen picture or video: opaque, near-black in both appearances; a pack without it uses the darkest surface it has.
+    MediaCanvas = 38,
 }
 
-pub const ROLE_COUNT: usize = 38;
+pub const ROLE_COUNT: usize = 39;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -124,6 +126,7 @@ impl Role {
         Role::SuccessMark,
         Role::WarningMark,
         Role::DangerMark,
+        Role::MediaCanvas,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -166,6 +169,7 @@ impl Role {
             Role::SuccessMark => "success-mark",
             Role::WarningMark => "warning-mark",
             Role::DangerMark => "danger-mark",
+            Role::MediaCanvas => "media-canvas",
         }
     }
 
@@ -216,6 +220,7 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::Selection, Role::Surface, 3.0),
     (Role::Selection, Role::Canvas, 3.0),
     (Role::OnMedia, Role::Media, 4.5),
+    (Role::OnMedia, Role::MediaCanvas, 4.5),
     (Role::SuccessMark, Role::Surface, 3.0),
     (Role::SuccessMark, Role::SurfaceSunken, 3.0),
     (Role::WarningMark, Role::Surface, 3.0),

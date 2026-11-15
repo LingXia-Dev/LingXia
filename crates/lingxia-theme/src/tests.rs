@@ -373,3 +373,48 @@ fn the_resolved_default_palette_is_recorded_for_javascript() {
         "contracts/view/palette.json is stale; re-record with LINGXIA_UPDATE_PALETTE=1 cargo test -p lingxia-theme, then run node contracts/view/generate.mjs"
     );
 }
+
+#[test]
+fn a_pack_without_a_media_canvas_uses_its_darkest_surface() {
+    let mut pack = default_pack();
+    for colors in [&mut pack.appearance.light, &mut pack.appearance.dark] {
+        colors.remove(Role::MediaCanvas.name());
+    }
+    assert_eq!(
+        check(&pack),
+        Vec::new(),
+        "it is not held to the media pairs on a borrowed surface"
+    );
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        let prefs = Prefs {
+            appearance,
+            ..Prefs::default()
+        };
+        let theme = resolve(&pack, &prefs).unwrap();
+        let darkest = [
+            Role::Canvas,
+            Role::Surface,
+            Role::SurfaceRaised,
+            Role::SurfaceSunken,
+        ]
+        .into_iter()
+        .map(|role| theme.color(role))
+        .min_by(|a, b| a.luminance().total_cmp(&b.luminance()))
+        .unwrap();
+        assert_eq!(theme.color(Role::MediaCanvas), darkest);
+    }
+}
+
+#[test]
+fn the_default_media_canvas_is_opaque_and_carries_on_media_text() {
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        let prefs = Prefs {
+            appearance,
+            ..Prefs::default()
+        };
+        let theme = resolve(&default_pack(), &prefs).unwrap();
+        let canvas = theme.color(Role::MediaCanvas);
+        assert_eq!(canvas.0[3], 255, "opaque");
+        assert!(contrast(theme.color(Role::OnMedia), canvas) >= 4.5);
+    }
+}

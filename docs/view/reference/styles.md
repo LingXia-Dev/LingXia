@@ -250,9 +250,10 @@ dark, derived accent roles included, for proving contrast in code.
 | `selection` | 3:1 on `surface`, 3:1 on `canvas` | Selected-text background; derived from the accent when a pack omits it. |
 | `shadow` |  | Elevation shadow ink; `shadow-*` layers take it at their alpha. |
 | `media` |  | Translucent dock over video and images; the same in both appearances. |
-| `on-media` | 4.5:1 on `media` | Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`). |
+| `on-media` | 4.5:1 on `media`, 4.5:1 on `media-canvas` | Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`). |
 | `surface-overlay` |  | Anything floating over the page: menus, popovers, toasts, dialogs and sheets; a pack without it uses its surface-raised. |
 | `knob` |  | The thumb of a switch or slider, drawn on an accent track; white in both appearances by default. |
 | `success-mark` | 3:1 on `surface`, 3:1 on `surface-sunken` | Success as a dot or shape, never text; a pack without it uses its success. |
 | `warning-mark` | 3:1 on `surface`, 3:1 on `surface-sunken` | Warning as a dot or shape, never text; a pack without it uses its warning. |
 | `danger-mark` | 3:1 on `surface`, 3:1 on `surface-sunken` | Danger as a dot or shape, never text; a pack without it uses its danger. |
+| `media-canvas` |  | The whole screen behind a full-screen picture or video: opaque, near-black in both appearances; a pack without it uses the darkest surface it has. |

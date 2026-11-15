@@ -369,12 +369,13 @@
     {"name": "selection", "on": {"surface": 3, "canvas": 3}, "doc": "Selected-text background; derived from the accent when a pack omits it."},
     {"name": "shadow", "doc": "Elevation shadow ink; `shadow-*` layers take it at their alpha."},
     {"name": "media", "doc": "Translucent dock over video and images; the same in both appearances."},
-    {"name": "on-media", "on": {"media": 4.5}, "doc": "Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`)."},
+    {"name": "on-media", "on": {"media": 4.5, "media-canvas": 4.5}, "doc": "Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`)."},
     {"name": "surface-overlay", "doc": "Anything floating over the page: menus, popovers, toasts, dialogs and sheets; a pack without it uses its surface-raised."},
     {"name": "knob", "doc": "The thumb of a switch or slider, drawn on an accent track; white in both appearances by default."},
     {"name": "success-mark", "on": {"surface": 3, "surface-sunken": 3}, "doc": "Success as a dot or shape, never text; a pack without it uses its success."},
     {"name": "warning-mark", "on": {"surface": 3, "surface-sunken": 3}, "doc": "Warning as a dot or shape, never text; a pack without it uses its warning."},
-    {"name": "danger-mark", "on": {"surface": 3, "surface-sunken": 3}, "doc": "Danger as a dot or shape, never text; a pack without it uses its danger."}
+    {"name": "danger-mark", "on": {"surface": 3, "surface-sunken": 3}, "doc": "Danger as a dot or shape, never text; a pack without it uses its danger."},
+    {"name": "media-canvas", "doc": "The whole screen behind a full-screen picture or video: opaque, near-black in both appearances; a pack without it uses the darkest surface it has."}
   ],
   "frame": {
     "doc": "Every message the core hands a platform adapter: the presented frame snapshot, semantic nodes, automation exchanges, input-protocol replies and the text menu. Type grammar: string, bool, u8, u32, u64, i64, usize, f32, f64, any; T? may be absent or null; T[] is a list; T[n] a fixed list; other names refer to types below.",
