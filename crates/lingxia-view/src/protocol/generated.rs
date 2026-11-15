@@ -579,7 +579,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "align-content" => Some(&["start", "center", "end", "between", "around", "evenly", "stretch"]),
         "direction" => Some(&["ltr", "rtl", "auto"]),
         "role" => Some(&["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip", "tablist", "tab", "tabpanel", "radiogroup", "radio", "toolbar", "tree", "treeitem", "row", "menuitemcheckbox", "menuitemradio", "img", "combobox", "spinbutton"]),
-        "anchor-area" => Some(&["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top"]),
+        "anchor-area" => Some(&["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top", "inline-end span-block-end", "inline-end span-block-start", "inline-end", "inline-start span-block-end", "inline-start span-block-start", "inline-start"]),
         "live-region" => Some(&["off", "polite", "assertive"]),
         "input-keyboard" => Some(&["text", "number", "email", "phone", "search", "date", "time"]),
         "auto-complete" => Some(&["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"]),

@@ -32,6 +32,10 @@ export function render() {
   `env.safeArea` (the system bars alone), not `env.insets`, or it leaves a gap where the bars were.
 - **A popover stays under the bars.** One that opens near the tab bar is drawn beneath it: open it
   upward with `style={{ positionArea: 'top' }}` (or `top span-inline-start`, …) or use a sheet (a dialog) there.
+- **Beside the anchor.** `positionArea: 'inline-end'` (or `inline-start`) puts an anchored popover at the anchor's
+  side, centred on it; add `span-block-end` or `span-block-start` to line up its top or bottom with the
+  anchor's (a submenu). With no room it flips to the other side, and with room on neither it opens below
+  or above the anchor rather than over it.
 - Opening either never shows or hides the tab bar.
 
 ## Opening and closing

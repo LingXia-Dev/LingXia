@@ -342,7 +342,7 @@ export interface Style {
   insetInlineStart?: number | `${number}%`;
   insetInlineEnd?: number | `${number}%`;
   zIndex?: number;
-  positionArea?: "bottom span-inline-end" | "bottom span-inline-start" | "bottom" | "top span-inline-end" | "top span-inline-start" | "top";
+  positionArea?: "bottom span-inline-end" | "bottom span-inline-start" | "bottom" | "top span-inline-end" | "top span-inline-start" | "top" | "inline-end span-block-end" | "inline-end span-block-start" | "inline-end" | "inline-start span-block-end" | "inline-start span-block-start" | "inline-start";
   flexGrow?: number;
   flexShrink?: number;
   flexBasis?: number | `${number}%` | "auto";

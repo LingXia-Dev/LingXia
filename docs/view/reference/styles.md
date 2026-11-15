@@ -31,7 +31,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `insetInlineStart` | `` number \| `${number}%` `` | `inset-inline-start` |  | all but `<span>` `<link>` |
 | `insetInlineEnd` | `` number \| `${number}%` `` | `inset-inline-end` |  | all but `<span>` `<link>` |
 | `zIndex` | `number` | `z-index` |  | all but `<span>` `<link>` |
-| `positionArea` | `"bottom span-inline-end" \| "bottom span-inline-start" \| "bottom" \| "top span-inline-end" \| "top span-inline-start" \| "top"` | `position-area` |  | all but `<span>` `<link>` |
+| `positionArea` | `"bottom span-inline-end" \| "bottom span-inline-start" \| "bottom" \| "top span-inline-end" \| "top span-inline-start" \| "top" \| "inline-end span-block-end" \| "inline-end span-block-start" \| "inline-end" \| "inline-start span-block-end" \| "inline-start span-block-start" \| "inline-start"` | `position-area` |  | all but `<span>` `<link>` |
 | `flexGrow` | `number` | `flex-grow` |  | all but `<span>` `<link>` |
 | `flexShrink` | `number` | `flex-shrink` |  | all but `<span>` `<link>` |
 | `flexBasis` | `` number \| `${number}%` \| "auto" `` | `flex-basis` |  | all but `<span>` `<link>` |
