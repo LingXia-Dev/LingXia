@@ -1,4 +1,4 @@
-import { createContext, Details, Fragment, List, Pager as KitPagerView, Progress, Summary, useContext, useId, useLocal, useVideo, useView, type Local, type VectorPath } from '@lingxia/view';
+import { createContext, Details, Fragment, List, Pager as KitPagerView, Progress, reveal, Summary, useBox, useContext, useId, useLocal, useVideo, useView, type Local, type VectorPath } from '@lingxia/view';
 import { VideoControls } from '@liulidesign/core/VideoControls';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
@@ -18,6 +18,7 @@ const groups = {
   data: { label: 'Data', sections: [Plots] },
   gesture: { label: 'Gesture', sections: [Drag, DragChain, Detents] },
   swipe: { label: 'Swipe', sections: [SwipeRows, Pager, KitPager] },
+  engine: { label: 'Engine', sections: [Scrub, Orphan, Reveal] },
 };
 type Group = keyof typeof groups;
 
@@ -702,6 +703,70 @@ function Overlays() {
 
 // A card the finger moves along its track: it springs to the nearest of three points, a flick
 // carries it one on; arrows and assistive tech step it, and `bind` follows where it lands.
+// A box read in render and a pointer scrubbed over it: the marker follows x, arrows and a
+// screen reader step it, and a vertical drag still scrolls the page.
+function Scrub() {
+  const count = 12;
+  const box = useBox('lab-scrub');
+  const at = useLocal('lab-scrub-at', 3);
+  const last = useLocal('lab-scrub-last', 'none');
+  const width = box.value?.width ?? 0;
+  return (
+    <Section title="Scrub" testId="lab-scrub">
+      <view box={box} data-testid="lab-scrub-plot" pointerAxis="x" aria-label="Month" aria-valuenow={at.value} aria-valuemin={0} aria-valuemax={count - 1}
+        aria-valuetext={`Month ${at.value + 1}`}
+        onPointer={event => {
+          if (event.phase === 'increment') at.set(Math.min(count - 1, at.value + 1));
+          else if (event.phase === 'decrement') at.set(Math.max(0, at.value - 1));
+          else if (event.phase !== 'leave' && event.phase !== 'cancel' && event.width > 0)
+            at.set(Math.max(0, Math.min(count - 1, Math.floor(event.x / event.width * count))));
+          last.set(`${event.phase} ${event.pointer}`);
+        }}
+        className="flex-row h-24 rounded-xl bg-surface-sunken">
+        <view style={{ width: width ? (at.value + 0.5) * width / count : 0 }} />
+        <view data-testid="lab-scrub-marker" className="w-0.5 self-stretch bg-accent" />
+      </view>
+      <text data-testid="lab-scrub-state" className="text-xs text-muted tabular-nums">
+        {`box=${box.value ? `${box.value.width}x${box.value.height}` : 'none'} at=${at.value} last=${last.value}`}
+      </text>
+    </Section>
+  );
+}
+
+// A date field that leaves the page while its picker is open: the picker goes with it.
+function Orphan() {
+  const shown = useLocal('lab-orphan-shown', true);
+  const day = useLocal('lab-orphan-day', '2026-10-21');
+  return (
+    <Section title="Orphan overlay" testId="lab-orphan">
+      {shown.value
+        ? <input data-testid="lab-orphan-date" bind={day} aria-label="Day" type="date" className="px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm" />
+        : <text data-testid="lab-orphan-gone" className="text-sm text-muted">The field is gone.</text>}
+      <Button testId="lab-orphan-toggle" size="sm" variant="secondary" onClick={() => shown.set(!shown.value)}>
+        {shown.value ? 'Remove the field' : 'Bring it back'}
+      </Button>
+    </Section>
+  );
+}
+
+function Reveal() {
+  return (
+    <Section title="Reveal" testId="lab-reveal">
+      <view className="flex-row gap-2">
+        <Button testId="lab-reveal-far" size="sm" variant="secondary" onClick={() => reveal('lab-reveal-row-25')}>Row 25</Button>
+        <Button testId="lab-reveal-first" size="sm" variant="secondary" onClick={() => reveal('lab-reveal-row-0')}>Row 0</Button>
+      </view>
+      <scroll data-testid="lab-reveal-scroll" className="h-32 rounded-xl bg-surface-sunken">
+        {Array.from({ length: 30 }, (_, i) => (
+          <text key={`row-${i}`} id={`lab-reveal-row-${i}`} data-testid={`lab-reveal-row-${i}`} className="h-8 px-3 text-sm text-text">{`Row ${i}`}</text>
+        ))}
+      </scroll>
+      {/* Room for the page to scroll under a vertical drag that starts on the scrub plot. */}
+      <view className="h-96" />
+    </Section>
+  );
+}
+
 function Drag() {
   const at = useLocal('drag-at', 0);
   const last = useLocal('drag-last', 'none');
