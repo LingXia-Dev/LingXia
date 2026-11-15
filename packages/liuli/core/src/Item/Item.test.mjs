@@ -138,3 +138,13 @@ test('density: a compact list makes its rows 40 px; a row\'s own density wins', 
   `);
   assert.deepEqual(['a', 'b', 'c'].map(id => mixed.getByTestId(id).props.minHeight), [40, 48, 48]);
 });
+
+test('startIcon: an icon by name in a 32 px tinted square before the text, not read', async () => {
+  const screen = await renderPage(`
+    import { Item } from '@liulidesign/core/Item';
+    export function render() { return <page><Item label="Inputs" description="Fields to type in" startIcon="text-input" hasChevron onClick={() => {}} data-testid="row" /></page>; }
+  `);
+  const tile = screen.getByTestId('row').children[0];
+  assert.deepEqual([tile.props.width, tile.props.height, tile.props.background, tile.props.accessibilityHidden], [32, 32, 'accent-soft', 1]);
+  assert.equal(tile.children[0].tag, 'vector');
+});

@@ -245,6 +245,7 @@ export function Compact() {
 | `tone` | `ItemTone` | `'default'` | `danger` draws the label in the danger role, for a row that deletes or ends something. |
 | `description` | `string` |  | A second line under the label; read as the row's description when it is pressable. |
 | `startContent` | `Child` |  | Before the text: an icon or an avatar. Hidden from assistive tech on a pressable row. |
+| `startIcon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "checklist" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "click" \| "clock" \| "close" \| "cloud" \| "collapse" \| "compass" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "layers" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "palette" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "rows" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "success" \| "tag" \| "template" \| "text-input" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  | An icon before the text, by name, in a quiet tinted square: for rows that name a place or a kind. Not read. |
 | `endContent` | `Child` |  | After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button. |
 | `density` | `ItemDensity` |  | The row's height and padding. By default the ItemList's, else `comfortable`. |
 | `swipeActions` | `readonly ItemSwipeAction[]` |  | Up to three actions behind the row's end, shown by dragging the row toward its start. A screen reader offers them as the row's actions; with a keyboard the arrow keys open the row. |
@@ -269,7 +270,7 @@ export function Compact() {
 | --- | --- | --- | --- |
 | `key` (required) | `string` |  | Identifies the action: its test id is `<row id>-<key>`. |
 | `label` (required) | `string` |  | Drawn under the icon, and what a screen reader offers as the row's action. |
-| `icon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "clock" \| "close" \| "cloud" \| "collapse" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "success" \| "tag" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  |  |
+| `icon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "checklist" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "click" \| "clock" \| "close" \| "cloud" \| "collapse" \| "compass" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "layers" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "palette" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "rows" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "success" \| "tag" \| "template" \| "text-input" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  |  |
 | `tone` | `ItemSwipeTone` | `'neutral'` |  |
 | `onClick` (required) | `() => void` |  | Runs after the row has closed. |
 
@@ -283,6 +284,7 @@ export function Compact() {
 | list | `<view>` | no | ItemList: a bordered, divided list, read as a list. |
 | listitem | `<view>` | no | Around each row in an ItemList, Item or Switch and Slider rows alike; it carries the row's position. |
 | root | `<view>` | yes | A `button` when `onClick` is set, otherwise a `view`; at least the large control height. |
+| iconTile | `<view>` | no | `startIcon`: an icon by name in a 32 px tinted square; not read. |
 | start | `<view>` | no | `startContent`: an icon or avatar. |
 | label | `<text>` | yes | The main text; it wraps rather than truncating. |
 | description | `<text>` | no | `description`, or `disabledMessage` while disabled. |
@@ -314,6 +316,7 @@ export function Compact() {
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | second line and end values | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 | chevron | `text-faint` on `surface` | 3:1 | 3.09:1 | 4.42:1 |
+| icon in its tinted square | `on-accent-soft` on `accent-soft` | 3:1 | 8.44:1 | 9.49:1 |
 | label, selected | `text` on `accent-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
 | second line and end values, selected | `text-muted` on `accent-soft` | 4.5:1 | 5.10:1 | 5.39:1 |
 | chevron, selected | `text-muted` on `accent-soft` | 3:1 | 5.10:1 | 5.39:1 |

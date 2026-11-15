@@ -90,6 +90,14 @@ export const iconNames = [
   'microphone',
   'video',
   'wifi',
+  'palette',
+  'click',
+  'text-input',
+  'checklist',
+  'compass',
+  'layers',
+  'rows',
+  'template',
 ] as const;
 
 export type IconName = (typeof iconNames)[number];

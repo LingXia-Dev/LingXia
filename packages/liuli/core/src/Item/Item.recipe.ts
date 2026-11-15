@@ -8,6 +8,7 @@ export const itemParts = {
   list: 'view',
   listitem: 'view',
   root: 'view',
+  iconTile: 'view',
   start: 'view',
   text: 'view',
   label: 'text',
@@ -48,6 +49,11 @@ export const itemRecipe = {
     idle: 'hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7',
     /** The current choice: ToggleButton's on wash, deepening on hover, press and focus. */
     selected: 'bg-accent-soft hover:bg-accent/16 active:bg-accent/20 focus-visible:bg-accent/20',
+  },
+  /** One tint for every row, so a list of them reads as a set and the icons carry the difference. */
+  iconTile: {
+    base: 'size-8 shrink-0 items-center justify-center rounded-control bg-accent-soft text-on-accent-soft',
+    icon: 'size-[18px]',
   },
   start: {
     base: 'shrink-0 items-center justify-center text-muted',

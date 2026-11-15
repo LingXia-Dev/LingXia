@@ -88,8 +88,16 @@ import { muteIcon } from './icons/mute';
 import { microphoneIcon } from './icons/microphone';
 import { videoIcon } from './icons/video';
 import { wifiIcon } from './icons/wifi';
+import { paletteIcon } from './icons/palette';
+import { clickIcon } from './icons/click';
+import { textInputIcon } from './icons/text-input';
+import { checklistIcon } from './icons/checklist';
+import { compassIcon } from './icons/compass';
+import { layersIcon } from './icons/layers';
+import { rowsIcon } from './icons/rows';
+import { templateIcon } from './icons/template';
 
-/** The default set: 88 icons from Lucide. */
+/** The default set: 96 icons from Lucide. */
 export const lucide: IconSet = {
   'add': addIcon,
   'remove': removeIcon,
@@ -179,4 +187,12 @@ export const lucide: IconSet = {
   'microphone': microphoneIcon,
   'video': videoIcon,
   'wifi': wifiIcon,
+  'palette': paletteIcon,
+  'click': clickIcon,
+  'text-input': textInputIcon,
+  'checklist': checklistIcon,
+  'compass': compassIcon,
+  'layers': layersIcon,
+  'rows': rowsIcon,
+  'template': templateIcon,
 };

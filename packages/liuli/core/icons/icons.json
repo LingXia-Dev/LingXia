@@ -90,6 +90,14 @@
     "mute": { "lucide": "volume-x" },
     "microphone": { "lucide": "mic" },
     "video": { "lucide": "video" },
-    "wifi": { "lucide": "wifi" }
+    "wifi": { "lucide": "wifi" },
+    "palette": { "lucide": "palette" },
+    "click": { "lucide": "mouse-pointer-click" },
+    "text-input": { "lucide": "text-cursor-input" },
+    "checklist": { "lucide": "list-checks", "isMirrored": true },
+    "compass": { "lucide": "compass" },
+    "layers": { "lucide": "layers" },
+    "rows": { "lucide": "layout-list", "isMirrored": true },
+    "template": { "lucide": "layout-template" }
   }
 }

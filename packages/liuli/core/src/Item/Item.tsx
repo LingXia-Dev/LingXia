@@ -53,6 +53,8 @@ export type ItemProps = ItemAction & {
   description?: string;
   /** Before the text: an icon or an avatar. Hidden from assistive tech on a pressable row. */
   startContent?: Child;
+  /** An icon before the text, by name, in a quiet tinted square: for rows that name a place or a kind. Not read. */
+  startIcon?: IconName;
   /** After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button. */
   endContent?: Child;
   /** The row's height and padding. By default the ItemList's, else `comfortable`. */
@@ -72,7 +74,7 @@ const swipeActionWidth = 72;
 
 /** One row of a list: a label, an optional second line, and content at either end. */
 export function Item(props: ItemProps) {
-  const { label, tone = 'default', description, startContent, endContent, swipeActions, className, 'data-testid': testId } = props;
+  const { label, tone = 'default', description, startContent, startIcon, endContent, swipeActions, className, 'data-testid': testId } = props;
   const listDensity = useContext(ItemDensityContext);
   const density = props.density ?? listDensity ?? 'comfortable';
   const layer = useContext(LayerContext);
@@ -85,6 +87,7 @@ export function Item(props: ItemProps) {
   const isSelected = props.isSelected ?? false;
   const content = (
     <>
+      {startIcon !== undefined && <view aria-hidden className={r.iconTile.base}><Glyph name={startIcon} className={r.iconTile.icon} /></view>}
       {startContent !== undefined && <view aria-hidden={pressable || undefined} className={r.start.base}>{startContent}</view>}
       <view className={r.text.base}>
         <text className={cx(r.label.base, r.label.tone[tone], isSelected && r.label.selected)}>{label}</text>
