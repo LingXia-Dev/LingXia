@@ -47,6 +47,8 @@ pub(crate) struct RenderSurface<'s> {
     pub dev_id: usize,
     /// `None` while trimmed; drawing creates them again.
     targets: Option<[wgpu::TextureView; 2]>,
+    /// The real size while configured at 1x1 to free wgpu's GLES renderbuffer.
+    parked: Option<(u32, u32)>,
     pub blitter: TextureBlitter,
 }
 
@@ -63,6 +65,10 @@ impl RenderSurface<'_> {
 
     pub fn drop_targets(&mut self) {
         self.targets = None;
+    }
+
+    pub fn parked(&self) -> Option<(u32, u32)> {
+        self.parked
     }
 }
 
@@ -111,6 +117,7 @@ impl Devices {
         configure(&surface, &handle.device, &config)?;
         Ok(RenderSurface {
             targets: Some(new_targets(&handle.device, width, height)),
+            parked: None,
             blitter: TextureBlitter::new(&handle.device, format),
             surface,
             config,
@@ -128,7 +135,32 @@ impl Devices {
         surface.config.width = width;
         surface.config.height = height;
         surface.targets = Some(new_targets(device, width, height));
+        surface.parked = None;
         configure(&surface.surface, device, &surface.config)
+    }
+
+    /// Configures a hidden surface at 1x1 until it draws again. On GLES wgpu frees its
+    /// full-size renderbuffer and keeps the EGL window surface, which still shows the last frame.
+    pub fn park_surface(&self, surface: &mut RenderSurface<'_>) -> Result<(), String> {
+        if surface.parked.is_some() {
+            return Ok(());
+        }
+        let size = (surface.config.width, surface.config.height);
+        surface.config.width = 1;
+        surface.config.height = 1;
+        surface.parked = Some(size);
+        configure(
+            &surface.surface,
+            &self.devices[surface.dev_id].device,
+            &surface.config,
+        )
+    }
+
+    pub fn unpark_surface(&self, surface: &mut RenderSurface<'_>) -> Result<(), String> {
+        match surface.parked {
+            Some((width, height)) => self.resize_surface(surface, width, height),
+            None => Ok(()),
+        }
     }
 
     /// A device whose adapter supports `compatible`, created on first need.

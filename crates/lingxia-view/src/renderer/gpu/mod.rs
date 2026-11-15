@@ -21,7 +21,10 @@ pub use device::SURFACE_REFUSED;
 use device::{Devices, RenderSurface};
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{
+        Arc, Mutex, MutexGuard,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Instant,
 };
 
@@ -560,6 +563,10 @@ impl SurfaceSource {
     }
 }
 
+/// Parks a trimmed surface whatever its backend, so a desktop test covers the GLES path.
+#[doc(hidden)]
+pub static PARK_EVERY_BACKEND: AtomicBool = AtomicBool::new(false);
+
 impl Presenter {
     pub fn context(&self) -> Context {
         self.context.clone()
@@ -799,6 +806,11 @@ impl Presenter {
         if u32::from(display.width) != width || u32::from(display.height) != height {
             return Err("UI_SURFACE: display dimensions mismatch".into());
         }
+        if let Some(surface) = &mut self.surface
+            && surface.parked() == Some((width, height))
+        {
+            self.context.lock()?.unpark_surface(surface)?;
+        }
         let resized = self
             .surface
             .as_ref()
@@ -935,6 +947,13 @@ impl Presenter {
         self.depth = None;
         if let Some(surface) = &mut self.surface {
             surface.drop_targets();
+            // Only GLES holds a renderbuffer of the surface's size behind the window's.
+            if (self.backend == "vello-gles" || PARK_EVERY_BACKEND.load(Ordering::Relaxed))
+                && let Ok(context) = self.context.lock()
+                && let Err(error) = context.park_surface(surface)
+            {
+                log::warn!(target: "lingxia_view", "GPU surface park failed: {error}");
+            }
         }
         self.composed = [None, None];
         self.prepared = [None; 2];
