@@ -91,7 +91,7 @@ export function OnMedia() {
 - Pattern: none.
 - Name: label.
 - Description: none.
-- States: undefined (from undefined).
+- States: selected (from page, on the dot of the page in view).
 - Tab: Moves to a dot.
 - Enter or Space: Goes to its page.
 - Press target: .
@@ -113,10 +113,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use dots to move through pages of results; that is Pagination.
 - Don't: Use it as the only way to page; the content itself swipes.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
+- Many pages are not folded into a window of dots; the row grows with `count`.
 
 Related: Carousel, Pagination, Tabs.

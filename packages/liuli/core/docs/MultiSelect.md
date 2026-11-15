@@ -114,7 +114,7 @@ export function Empty() {
 - Pattern: none.
 - Name: label.
 - Description: description, then status.
-- States: undefined (from undefined).
+- States: disabled (from isDisabled, or isDisabled on an option).
 - Tab: To each token's remove button, then to the add button.
 - Enter or Space on the add button: Opens the list.
 - Enter or Space on an option: Checks or unchecks it; the list stays open.
@@ -138,11 +138,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use it for two to six options that fit; a CheckboxList shows them all.
 - Don't: Use it for one choice; that is a Select or a Combobox.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
+- The list is not searched by typing, and new values cannot be typed in: it chooses from the options given.
+- The error state colours the boundary but is not reported as invalid on the group.
 
 Related: Token, CheckboxList, Combobox, Select.

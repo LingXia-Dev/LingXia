@@ -2916,7 +2916,8 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Carousel } from '@liulidesign/core/Carousel';\n\nconst steps = [\n  ['Write anywhere', 'Notes open in a tap and save as you type.'],\n  ['Find it again', 'Search reads every note, list and photo.'],\n  ['Share what you choose', 'Each note is private until you invite someone.'],\n] as const;\n\n/** Pages of content, with the page held outside so a button can move it. */\nexport function Welcome() {\n  const page = useLocal('step', 0);\n  const isLast = Math.round(page.value) === steps.length - 1;\n  return (\n    <view className=\"gap-3\">\n      <Carousel label=\"Welcome\" bind={page} pageLabel={(at, count) => `Step ${at + 1} of ${count}`} data-testid=\"welcome\">\n        {steps.map(([title, body]) => (\n          <view key={title} className=\"gap-1 bg-surface-sunken p-5 min-h-28\">\n            <text className=\"text-callout font-semibold text-text\">{title}</text>\n            <text className=\"text-footnote text-muted\">{body}</text>\n          </view>\n        ))}\n      </Carousel>\n      <Button label={isLast ? 'Get started' : 'Next'} variant=\"primary\" width=\"fill\" onClick={() => { if (!isLast) page.set(Math.round(page.value) + 1); }} data-testid=\"next\" />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "Every page is the full width; a carousel does not show part of the next page.",
         "There are no previous and next arrows; on a desktop the dots page it."
       ],
@@ -3703,7 +3704,8 @@
           "source": "import { CircularProgress } from '@liulidesign/core/CircularProgress';\n\n/** A meter in a tone: the words say how it stands too. */\nexport function Tones() {\n  return (\n    <view className=\"flex-row items-center gap-5\">\n      <CircularProgress label=\"Monthly goal\" value={100} valueLabel=\"Done\" tone=\"success\" size=\"lg\" />\n      <CircularProgress label=\"Storage\" value={86} valueLabel=\"86%\" tone=\"warning\" size=\"lg\" />\n      <CircularProgress label=\"Data plan\" value={100} valueLabel=\"Over\" tone=\"danger\" size=\"lg\" data-testid=\"over\" />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "The arc jumps to a new value; it does not sweep there."
       ],
       "playground": {
@@ -3892,7 +3894,8 @@
           "source": "import { Code } from '@liulidesign/core/Code';\n\n/** In a sentence: a file name and a value to type exactly. */\nexport function InSentence() {\n  return (\n    <text className=\"text-body text-text\">\n      Set <Code text=\"minRuntime\" data-testid=\"key\" /> in <Code text=\"lxapp.json\" /> to the oldest runtime you test on.\n    </text>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "No syntax colouring and no line numbers.",
         "Copying is the app's: Liuli has no clipboard."
       ],
@@ -4500,8 +4503,14 @@
         "name": "label",
         "description": [],
         "states": [
-          "selected",
-          "disabled"
+          {
+            "state": "selected",
+            "from": "the command the arrow keys are on"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled on a command"
+          }
         ],
         "keyboard": [
           {
@@ -4557,7 +4566,8 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { CommandPalette, type CommandGroup } from '@liulidesign/core/CommandPalette';\n\nconst groups: CommandGroup[] = [\n  { label: 'Go to', items: [\n    { id: 'all', label: 'All notes', icon: 'file', endText: 'G then A' },\n    { id: 'shared', label: 'Shared with me', icon: 'users', endText: 'G then S' },\n    { id: 'archive', label: 'Archive', icon: 'folder' },\n    { id: 'settings', label: 'Settings', icon: 'settings', description: 'Account, appearance, sync' },\n  ] },\n  { label: 'Actions', items: [\n    { id: 'new', label: 'New note', icon: 'add', endText: 'Ctrl N' },\n    { id: 'share', label: 'Share this note', icon: 'share' },\n    { id: 'export', label: 'Export as PDF', icon: 'upload', isDisabled: true },\n  ] },\n];\n\n/** Opened from a button here; an app also opens it from its own shortcut. Type to narrow, arrows to move, Return to run. */\nexport function Commands() {\n  const open = useLocal('open', false);\n  const ran = useLocal('ran', 'Nothing yet');\n  return (\n    <view className=\"items-start gap-2\">\n      <Button label=\"Search commands\" startIcon=\"search\" onClick={() => open.set(true)} data-testid=\"palette-open\" />\n      <text role=\"status\" className=\"text-footnote text-muted\">{`Last run: ${ran.value}`}</text>\n      <CommandPalette\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Search commands\"\n        placeholder=\"Type a command or a place\"\n        groups={groups}\n        onSelect={id => ran.set(id)}\n        emptyText=\"No commands match\"\n        data-testid=\"palette\"\n      />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "It binds no shortcut of its own: the app opens it.",
         "A row does not lead to a second page of rows."
       ],
@@ -4709,8 +4719,14 @@
         "name": "label",
         "description": [],
         "states": [
-          "disabled",
-          "busy"
+          {
+            "state": "disabled",
+            "from": "isDisabled; the send button also while the draft is empty"
+          },
+          {
+            "state": "busy",
+            "from": "isSending, on the send button"
+          }
         ],
         "keyboard": [
           {
@@ -4748,7 +4764,8 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { Composer } from '@liulidesign/core/Composer';\n\n/** With a way to attach, and a long draft: the field grows to five lines, then scrolls. */\nexport function WithAttach() {\n  const draft = useLocal('long', 'Leaving at eight from the east gate.\\nBring the tent and the stove.\\nI have the maps and water for two days.\\nKai has the first-aid kit.\\nBack on Sunday before dark.\\nCall if the road is closed.');\n  return (\n    <Composer\n      bind={draft}\n      label=\"Message\"\n      sendLabel=\"Send\"\n      onSubmit={() => {}}\n      startContent={<IconButton label=\"Attach a file\" icon=\"attach\" />}\n      data-testid=\"long\"\n    />\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "It does not hold attachments itself; show them over it with Thumbnail or FileInput rows."
       ],
       "theming": {
@@ -4916,7 +4933,8 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ContextMenu } from '@liulidesign/core/ContextMenu';\n\nconst notes = [\n  ['coast', 'Trip to the coast', 'Edited yesterday'],\n  ['reading', 'Reading list', 'Edited on Monday'],\n  ['garden', 'Ideas for the garden', 'Edited last week'],\n] as const;\n\n/** Rows with a menu each: hold a row, or click it with the secondary button. The row itself still opens. */\nexport function Rows() {\n  const last = useLocal('last', 'Nothing yet');\n  return (\n    <view className=\"gap-2\">\n      <ItemList label=\"Notes\">\n        {notes.map(([id, title, edited]) => (\n          <ContextMenu\n            key={id}\n            label={title}\n            data-testid={`note-${id}`}\n            menu={\n              <>\n                <DropdownMenuItem label=\"Pin to top\" onClick={() => last.set(`Pinned ${title}`)} data-testid={`pin-${id}`} />\n                <DropdownMenuItem label=\"Share\" onClick={() => last.set(`Shared ${title}`)} />\n                <DropdownMenuDivider />\n                <DropdownMenuItem label=\"Delete\" variant=\"destructive\" onClick={() => last.set(`Deleted ${title}`)} />\n              </>\n            }\n          >\n            <Item label={title} description={edited} hasChevron onClick={() => last.set(`Opened ${title}`)} />\n          </ContextMenu>\n        ))}\n      </ItemList>\n      <text role=\"status\" className=\"text-footnote text-muted\">{last.value}</text>\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "It holds no submenu: a menu item that opens another menu closes the first.",
         "At a point the menu is placed from the size of the page; a very long menu can still reach past its edge."
       ],
@@ -5809,7 +5827,10 @@
           "status"
         ],
         "states": [
-          "disabled"
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          }
         ],
         "keyboard": [
           {
@@ -5845,7 +5866,8 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { DateTimeInput } from '@liulidesign/core/DateTimeInput';\n\n/** In a narrow place, such as a side panel, the time goes under the date and both fill the width. */\nexport function Narrow() {\n  const when = useLocal('due', '2026-12-01T17:30');\n  return (\n    <view className=\"w-56\">\n      <DateTimeInput bind={when} label=\"Due\" dateLabel=\"Due date\" timeLabel=\"Due time\" data-testid=\"due\" />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "The earliest and latest are days: a time cannot be limited on one particular day."
       ],
       "theming": {
@@ -6679,7 +6701,8 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { Drawer } from '@liulidesign/core/Drawer';\n\n/** From the start edge, for the places of an app. */\nexport function Navigation() {\n  const open = useLocal('nav', false);\n  return (\n    <view className=\"items-start\">\n      <Button label=\"Menu\" startIcon=\"menu\" onClick={() => open.set(true)} data-testid=\"nav-open\" />\n      <Drawer isOpen={open.value} onOpenChange={next => open.set(next)} label=\"Notes\" description=\"ana@example.com\" side=\"start\" size=\"sm\" data-testid=\"nav\">\n        <ItemList label=\"Places\">\n          <Item label=\"All notes\" startIcon=\"file\" onClick={() => open.set(false)} data-testid=\"nav-all\" />\n          <Item label=\"Shared with me\" startIcon=\"users\" onClick={() => open.set(false)} />\n          <Item label=\"Archive\" startIcon=\"folder\" onClick={() => open.set(false)} />\n          <Item label=\"Settings\" startIcon=\"settings\" onClick={() => open.set(false)} />\n        </ItemList>\n      </Drawer>\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "It does not follow the finger; it opens and closes as a whole.",
         "It is always modal: a panel that stays open beside the page is SplitView."
       ],
@@ -7878,7 +7901,10 @@
           "status"
         ],
         "states": [
-          "disabled"
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          }
         ],
         "keyboard": [
           {
@@ -7937,7 +7963,8 @@
           "source": "import { FileInput } from '@liulidesign/core/FileInput';\n\n/** Nothing chosen, on a required field after a failed send. */\nexport function Empty() {\n  return (\n    <FileInput\n      label=\"Proof of address\"\n      isRequired\n      status={{ type: 'error', message: 'Add one document.' }}\n      files={[]}\n      onPick={() => {}}\n      pickLabel=\"Add a document\"\n      onRemove={() => {}}\n      removeLabel={name => `Remove ${name}`}\n      progressLabel={name => `Uploading ${name}`}\n      data-testid=\"proof\"\n    />\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "Nothing can be dropped onto it: the View has no drop target.",
         "It shows no previews; pair it with Thumbnail for pictures."
       ],
@@ -8261,7 +8288,8 @@
           "source": "import { HoverCard } from '@liulidesign/core/HoverCard';\n\n/** A term explained where it is used, opening beside it. */\nexport function Term() {\n  return (\n    <view className=\"flex-row flex-wrap items-baseline gap-1\">\n      <text className=\"text-footnote text-muted\">Billed per</text>\n      <HoverCard label=\"seat\" placement=\"end\" className=\"text-footnote\" data-testid=\"seat\">\n        <text className=\"text-footnote text-text\">A seat is one person who can edit. People who only read are free.</text>\n      </HoverCard>\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "The trigger is its own row or wrapped word: it cannot sit inside a sentence as a run of text."
       ],
       "theming": {
@@ -9360,7 +9388,8 @@
           "source": "import { Kbd } from '@liulidesign/core/Kbd';\n\n/** In a line of help, at the size of the text it sits with. */\nexport function Hint() {\n  return (\n    <view className=\"gap-2\">\n      <view className=\"flex-row items-center gap-2\">\n        <Kbd keys={['Enter']} size=\"md\" data-testid=\"enter\" />\n        <text className=\"text-body text-muted\">to send</text>\n      </view>\n      <view className=\"flex-row items-center gap-2\">\n        <Kbd keys={['Shift', 'Enter']} size=\"md\" />\n        <text className=\"text-body text-muted\">for a new line</text>\n      </view>\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "The keys are whatever the app passes; Liuli does not know the platform's modifier names.",
         "Key symbols such as ⌘ and ⇧ are missing from some devices' text face and draw as an empty cap there; write the key's name."
       ],
@@ -9536,7 +9565,8 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Thumbnail } from '@liulidesign/core/Thumbnail';\nimport { Lightbox } from '@liulidesign/core/Lightbox';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\n\n/** One picture: no count and no dots. */\nexport function Single() {\n  const open = useLocal('one', false);\n  return (\n    <view className=\"items-start\">\n      <Thumbnail src={photo(5)} alt=\"Dunes at noon\" size=\"lg\" ratio=\"landscape\" onClick={() => open.set(true)} data-testid=\"one-open\" />\n      <Lightbox isOpen={open.value} onOpenChange={next => open.set(next)} label=\"Dunes at noon\" images={[{ src: photo(5), alt: 'Dunes at noon' }]} closeLabel=\"Close\" pageLabel={() => ''} data-testid=\"one\" />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "No pinch to zoom and no pan: the View has no pinch gesture.",
         "No previous and next arrows; on a desktop the dots move between pictures."
       ],
@@ -9631,7 +9661,10 @@
         "name": "label",
         "description": [],
         "states": [
-          "disabled"
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          }
         ],
         "keyboard": [
           {
@@ -9686,7 +9719,8 @@
           "source": "import { Link } from '@liulidesign/core/Link';\n\n/** A link that cannot be followed yet. */\nexport function Disabled() {\n  return (\n    <text className=\"text-footnote text-muted\">\n      No code yet? <Link label=\"Send it again\" isDisabled data-testid=\"resend\" /> in 30 seconds.\n    </text>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "A link has no hover or focus style of its own beyond the system focus ring."
       ],
       "theming": {
@@ -10164,7 +10198,8 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { MessageBubble } from '@liulidesign/core/MessageBubble';\n\n/** How a message of mine stands: on its way, sent, and not sent, with a way to try again. */\nexport function States() {\n  const tries = useLocal('tries', 0);\n  return (\n    <view className=\"gap-3\">\n      <MessageBubble side=\"end\" text=\"On my way.\" status=\"sending\" meta=\"Sending\" data-testid=\"sending\" />\n      <MessageBubble side=\"end\" text=\"Parked by the gate.\" status=\"sent\" meta=\"Sent · 10:02\" />\n      <MessageBubble\n        side=\"end\"\n        text=\"Can you see the car?\"\n        status=\"failed\"\n        meta={tries.value === 0 ? 'Not sent' : `Not sent, tried ${tries.value + 1} times`}\n        action={<Button label=\"Try again\" variant=\"link\" size=\"sm\" onClick={() => tries.set(tries.value + 1)} data-testid=\"retry\" />}\n        data-testid=\"failed\"\n      />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "No reactions, threads or read receipts.",
         "No typing mark."
       ],
@@ -10557,7 +10592,10 @@
           "status"
         ],
         "states": [
-          "disabled"
+          {
+            "state": "disabled",
+            "from": "isDisabled, or isDisabled on an option"
+          }
         ],
         "keyboard": [
           {
@@ -10616,7 +10654,8 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { MultiSelect } from '@liulidesign/core/MultiSelect';\n\n/** Nothing chosen yet, on a required field after a failed send. */\nexport function Empty() {\n  const chosen = useLocal<readonly string[]>('none', []);\n  return (\n    <MultiSelect\n      bind={chosen}\n      label=\"Share with teams\"\n      options={[{ value: 'design', label: 'Design' }, { value: 'eng', label: 'Engineering' }, { value: 'support', label: 'Support' }]}\n      placeholder=\"No teams yet\"\n      addLabel=\"Add a team\"\n      removeLabel={name => `Remove ${name}`}\n      isRequired\n      status={chosen.value.length === 0 ? { type: 'error', message: 'Choose at least one team.' } : undefined}\n      data-testid=\"teams\"\n    />\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "The list is not searched by typing, and new values cannot be typed in: it chooses from the options given.",
         "The error state colours the boundary but is not reported as invalid on the group."
       ],
@@ -11361,7 +11400,10 @@
         "name": "label",
         "description": [],
         "states": [
-          "selected"
+          {
+            "state": "selected",
+            "from": "page, on the dot of the page in view"
+          }
         ],
         "keyboard": [
           {
@@ -11410,7 +11452,8 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { PageControl } from '@liulidesign/core/PageControl';\n\n/** Over a picture, in the colour that reads on media. */\nexport function OnMedia() {\n  const page = useLocal('photo', 1);\n  return (\n    <view className=\"h-40 justify-end rounded-container bg-media pb-1\">\n      <PageControl label=\"Photos\" count={5} bind={page} tone=\"on-media\" pageLabel={at => `Photo ${at + 1} of 5`} data-testid=\"photos\" />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "Many pages are not folded into a window of dots; the row grows with `count`."
       ],
       "theming": {
@@ -14502,7 +14545,8 @@
           "source": "import { StatusDot } from '@liulidesign/core/StatusDot';\n\n/** Without its words, where they are already beside it. */\nexport function DotOnly() {\n  return (\n    <view className=\"flex-row items-center gap-2\">\n      <StatusDot label=\"Online\" tone=\"success\" isLabelHidden data-testid=\"bare\" />\n      <text className=\"text-body font-medium text-text\">Ana Lima</text>\n      <text className=\"text-footnote text-muted\">Online</text>\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "It does not pulse or blink."
       ],
       "playground": {
@@ -16714,7 +16758,8 @@
           "source": "import { Thumbnail } from '@liulidesign/core/Thumbnail';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\nconst photos = [\n  [1, 'The bay at sunrise'],\n  [2, 'Fields behind the house'],\n  [3, 'Dusk over the ridge'],\n  [4, 'Morning fog in the valley'],\n  [5, 'Dunes at noon'],\n  [1, 'The bay, a minute later'],\n] as const;\n\n/** A strip under a picture: the one in view is ringed. */\nexport function Strip() {\n  return (\n    <view className=\"flex-row gap-3 p-1\">\n      {photos.slice(0, 4).map(([n, alt], index) => <Thumbnail key={alt} src={photo(n)} alt={alt} size=\"sm\" isSelected={index === 1} onClick={() => {}} data-testid={`strip-${index}`} />)}\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "A picture that fails to load leaves the tint; there is no broken-image mark."
       ],
       "theming": {
@@ -17221,7 +17266,8 @@
           "source": "import { Timer } from '@liulidesign/core/Timer';\n\n/** In a line of text: how long a code stays valid, how long a call has run. */\nexport function Inline() {\n  return (\n    <view className=\"gap-2\">\n      <view className=\"flex-row items-baseline gap-1.5\">\n        <text className=\"text-footnote text-muted\">Code expires in</text>\n        <Timer seconds={272} size=\"sm\" data-testid=\"expires\" />\n      </view>\n      <view className=\"flex-row items-baseline gap-1.5\">\n        <text className=\"text-body text-text\">On a call</text>\n        <Timer seconds={4325} data-testid=\"call\" />\n      </view>\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "Timer has no clock of its own; the app passes the seconds."
       ],
       "playground": {
@@ -17371,7 +17417,8 @@
           "source": "import { Timestamp } from '@liulidesign/core/Timestamp';\nimport { timestampZh } from './locale/zh';\n\nconst now = '2026-11-14T10:05';\n\n/** In Chinese, from the locale module Liuli ships. */\nexport function Chinese() {\n  return (\n    <view className=\"gap-2\">\n      <Timestamp value=\"2026-11-14T09:42\" now={now} locale={timestampZh} className=\"text-body text-text\" data-testid=\"zh-today\" />\n      <Timestamp value=\"2026-11-13T18:30\" now={now} locale={timestampZh} className=\"text-body text-text\" />\n      <Timestamp value=\"2025-12-19T16:00\" now={now} locale={timestampZh} className=\"text-body text-text\" data-testid=\"zh-year\" />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "There is no clock and no time zone in the View: the app passes `now` and local date-times.",
         "Words come from a locale module, not from the system; two locales ship."
       ],
@@ -17966,8 +18013,14 @@
         "name": "label",
         "description": [],
         "states": [
-          "pressed",
-          "disabled"
+          {
+            "state": "pressed",
+            "from": "isSelected, on a pressable token"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          }
         ],
         "keyboard": [
           {
@@ -18168,7 +18221,8 @@
           "source": "import { Token } from '@liulidesign/core/Token';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row flex-wrap items-center gap-2\">\n      <Token label=\"Design\" size=\"sm\" />\n      <Token label=\"Design\" />\n      <Token label=\"Design\" size=\"sm\" removeLabel=\"Remove Design\" onRemove={() => {}} />\n      <Token label=\"Design\" removeLabel=\"Remove Design\" onRemove={() => {}} />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "Tokens are not reordered by dragging.",
         "Backspace in a field does not remove the last token; MultiSelect removes by each token's button."
       ],
@@ -18635,7 +18689,8 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { Tour, type TourStep } from '@liulidesign/core/Tour';\n\nconst steps: TourStep[] = [\n  { target: 'tour-new', targetLabel: 'The New note button', title: 'Start a note', text: 'A note opens ready to type, and saves as you go.' },\n  { target: 'tour-search', targetLabel: 'The search field', title: 'Find anything', text: 'Search reads every note, list and photo.' },\n  { target: 'tour-share', targetLabel: 'The Share button', title: 'Share what you choose', text: 'A note is private until you invite someone.', placement: 'top' },\n];\n\n/** Three things on a small screen, shown one at a time; the tour can be skipped or stepped back. */\nexport function Welcome() {\n  const step = useLocal<number | null>('step', null);\n  const query = useLocal('query', '');\n  return (\n    <view className=\"gap-4\">\n      <view className=\"flex-row items-center gap-2\">\n        <view id=\"tour-new\"><Button label=\"New note\" variant=\"primary\" startIcon=\"add\" /></view>\n        <view id=\"tour-search\" className=\"grow basis-0 min-w-0\">\n          <SearchField label=\"Search notes\" value={query.value} onChange={query.set} placeholder=\"Search\" clearLabel=\"Clear\" />\n        </view>\n      </view>\n      <view className=\"flex-row items-center justify-between gap-3\">\n        <text className=\"text-body text-text\">Trip to the coast</text>\n        <view id=\"tour-share\"><IconButton label=\"Share\" icon=\"share\" /></view>\n      </view>\n      <Button label=\"Show me around\" width=\"content\" onClick={() => step.set(0)} data-testid=\"tour-start\" />\n      <text role=\"status\" className=\"text-footnote text-muted\">{step.value === null ? 'Tour not running' : `On step ${step.value + 1}`}</text>\n      <Tour\n        steps={steps}\n        step={step.value}\n        onStepChange={next => step.set(next)}\n        nextLabel=\"Next\"\n        backLabel=\"Back\"\n        skipLabel=\"Skip\"\n        doneLabel=\"Done\"\n        stepLabel={(at, count) => `${at + 1} of ${count}`}\n        data-testid=\"tour\"\n      />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "The caret is anchored to the target and the callout hangs from the caret, because the View anchors one popover to an element.",
         "The View keeps about 8 px between an anchor and its popover whatever the margin, so the caret's point is moved across that gap as a child.",
         "A transform on a popover itself is ignored; the point inside the caret carries the turn and the move.",
@@ -18758,9 +18813,18 @@
         "name": "label",
         "description": [],
         "states": [
-          "expanded",
-          "selected",
-          "disabled"
+          {
+            "state": "expanded",
+            "from": "expanded, or defaultExpanded and the rows opened since"
+          },
+          {
+            "state": "selected",
+            "from": "value"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled on a node"
+          }
         ],
         "keyboard": [
           {
@@ -18827,7 +18891,8 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { TreeList, type TreeNode } from '@liulidesign/core/TreeList';\n\nconst outline: TreeNode[] = [\n  { id: 'intro', label: 'Introduction' },\n  { id: 'setup', label: 'Setting up', children: [\n    { id: 'install', label: 'Install' },\n    { id: 'first', label: 'Your first page', children: [{ id: 'layout', label: 'Layout' }, { id: 'state', label: 'State' }] },\n  ] },\n  { id: 'publish', label: 'Publishing' },\n];\n\n/** An outline without icons, opened from outside. */\nexport function Outline() {\n  const current = useLocal<string | null>('section', 'layout');\n  const open = useLocal<readonly string[]>('open', ['setup', 'first']);\n  return <TreeList label=\"Contents\" nodes={outline} value={current.value} onChange={id => current.set(id)} expanded={open} data-testid=\"outline\" />;\n}"
         }
       ],
-      "gaps": [
+      "gaps": [],
+      "limits": [
         "Rows are not checked, dragged or loaded on demand."
       ],
       "theming": {

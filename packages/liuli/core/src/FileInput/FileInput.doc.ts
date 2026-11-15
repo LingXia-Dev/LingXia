@@ -22,7 +22,7 @@ export const doc: ComponentDoc = {
     pattern: null,
     name: 'label',
     description: ['description', 'status'],
-    states: ['disabled'],
+    states: [{ state: 'disabled', from: 'isDisabled' }],
     keyboard: [
       { keys: 'Tab', effect: 'To the button, then to each file\'s remove button' },
       { keys: 'Enter or Space', effect: 'Opens the picker, or removes the file' },
@@ -53,7 +53,8 @@ export const doc: ComponentDoc = {
     { name: 'Documents', title: 'Documents for a request' },
     { name: 'Empty', title: 'Nothing chosen, with an error' },
   ],
-  gaps: [
+  gaps: [],
+  limits: [
     'Nothing can be dropped onto it: the View has no drop target.',
     'It shows no previews; pair it with Thumbnail for pictures.',
   ],

@@ -127,11 +127,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Put prose in a block to set it apart; that is a Card or a Banner.
 - Don't: Break a long line by hand to make it fit; it scrolls.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
+- No syntax colouring and no line numbers.
+- Copying is the app's: Liuli has no clipboard.
 
 Related: Markdown, Kbd.

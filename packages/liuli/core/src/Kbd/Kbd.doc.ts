@@ -47,7 +47,8 @@ export const doc: ComponentDoc = {
     { name: 'Shortcuts', title: 'A list of shortcuts' },
     { name: 'Hint', title: 'Beside a hint' },
   ],
-  gaps: [
+  gaps: [],
+  limits: [
     'The keys are whatever the app passes; Liuli does not know the platform\'s modifier names.',
     'Key symbols such as ⌘ and ⇧ are missing from some devices\' text face and draw as an empty cap there; write the key\'s name.',
   ],

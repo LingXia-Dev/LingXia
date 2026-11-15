@@ -21,7 +21,7 @@ export const doc: ComponentDoc = {
     pattern: null,
     name: 'label',
     description: ['description', 'status'],
-    states: ['disabled'],
+    states: [{ state: 'disabled', from: 'isDisabled' }],
     keyboard: [
       { keys: 'Tab', effect: 'To the date, then to the time' },
       { keys: 'Enter or Space', effect: 'Opens the part\'s picker' },
@@ -48,7 +48,10 @@ export const doc: ComponentDoc = {
     { name: 'Required', title: 'Required, with an error' },
     { name: 'Narrow', title: 'In a narrow place' },
   ],
-  gaps: ['The earliest and latest are days: a time cannot be limited on one particular day.'],
+  gaps: [],
+  limits: [
+    'The earliest and latest are days: a time cannot be limited on one particular day.',
+  ],
   related: ['DateInput', 'TimeInput', 'DateRangeInput', 'Timestamp'],
   gallery: {
     specimen: 'Specimen',

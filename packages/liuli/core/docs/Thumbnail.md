@@ -160,10 +160,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use a thumbnail for a person; that is an Avatar.
 - Don't: Go below the small size for one that opens; it is the smallest a finger finds.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
+- A picture that fails to load leaves the tint; there is no broken-image mark.
 
 Related: Lightbox, Carousel, Avatar.

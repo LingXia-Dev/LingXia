@@ -24,7 +24,10 @@ export const doc: ComponentDoc = {
     pattern: null,
     name: 'label',
     description: [],
-    states: ['pressed', 'disabled'],
+    states: [
+      { state: 'pressed', from: 'isSelected, on a pressable token' },
+      { state: 'disabled', from: 'isDisabled' },
+    ],
     keyboard: [
       { keys: 'Tab', effect: 'To a pressable token, and to each remove button' },
       { keys: 'Enter or Space', effect: 'Presses the token, or removes it' },
@@ -74,7 +77,11 @@ export const doc: ComponentDoc = {
     { name: 'Labels', title: 'Labels, each in its hue' },
     { name: 'Sizes', title: 'Sizes' },
   ],
-  gaps: ['Tokens are not reordered by dragging.', 'Backspace in a field does not remove the last token; MultiSelect removes by each token\'s button.'],
+  gaps: [],
+  limits: [
+    'Tokens are not reordered by dragging.',
+    'Backspace in a field does not remove the last token; MultiSelect removes by each token\'s button.',
+  ],
   related: ['MultiSelect', 'Badge', 'ToggleButton'],
   playground: { props: { label: 'Travel', size: 'md', isSelected: false, isDisabled: false } },
   gallery: {

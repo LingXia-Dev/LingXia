@@ -108,10 +108,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Put buttons, links or fields in the card; it goes away when the pointer leaves.
 - Don't: Use it for help about a control; that is a Tooltip.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
+- The trigger is its own row or wrapped word: it cannot sit inside a sentence as a run of text.
 
 Related: Popover, Tooltip, Link.

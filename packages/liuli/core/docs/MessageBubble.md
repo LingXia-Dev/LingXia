@@ -120,11 +120,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Colour bubbles per person; side and name tell them apart.
 - Don't: Put a whole form in a bubble; a bubble holds a message, a picture or a file.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
+- No reactions, threads or read receipts.
+- No typing mark.
 
 Related: Composer, Avatar, Markdown.

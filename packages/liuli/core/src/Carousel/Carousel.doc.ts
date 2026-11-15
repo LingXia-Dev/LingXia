@@ -51,7 +51,11 @@ export const doc: ComponentDoc = {
     { name: 'Photos', title: 'Photos, with the dots over them' },
     { name: 'Welcome', title: 'Pages moved by a button too' },
   ],
-  gaps: ['Every page is the full width; a carousel does not show part of the next page.', 'There are no previous and next arrows; on a desktop the dots page it.'],
+  gaps: [],
+  limits: [
+    'Every page is the full width; a carousel does not show part of the next page.',
+    'There are no previous and next arrows; on a desktop the dots page it.',
+  ],
   related: ['PageControl', 'Lightbox', 'Thumbnail'],
   gallery: {
     specimen: 'Specimen',

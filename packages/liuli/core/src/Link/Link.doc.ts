@@ -17,7 +17,7 @@ export const doc: ComponentDoc = {
     pattern: null,
     name: 'label',
     description: [],
-    states: ['disabled'],
+    states: [{ state: 'disabled', from: 'isDisabled' }],
     keyboard: [
       { keys: 'Tab', effect: 'Moves to the link' },
       { keys: 'Enter', effect: 'Follows it' },
@@ -50,7 +50,8 @@ export const doc: ComponentDoc = {
     { name: 'InBody', title: 'In body text' },
     { name: 'Disabled', title: 'Not available yet' },
   ],
-  gaps: [
+  gaps: [],
+  limits: [
     'A link has no hover or focus style of its own beyond the system focus ring.',
   ],
   related: ['Button', 'Breadcrumb', 'Markdown'],

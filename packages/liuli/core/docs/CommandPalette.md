@@ -94,7 +94,7 @@ export function Commands() {
 - Pattern: dialog.
 - Name: label.
 - Description: none.
-- States: undefined (from undefined); undefined (from undefined).
+- States: selected (from the command the arrow keys are on); disabled (from isDisabled on a command).
 - Up and Down: Move the highlight; rows that cannot be chosen are passed over.
 - Home and End: To the first and the last row.
 - Return: Runs the highlighted row and closes.
@@ -120,11 +120,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use it to choose a value in a form; that is a Combobox.
 - Don't: Put more than a few dozen rows in it unfiltered; hand filtering to the app and fetch.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
+- It binds no shortcut of its own: the app opens it.
+- A row does not lead to a second page of rows.
 
 Related: Combobox, SearchField, DropdownMenu, Kbd.

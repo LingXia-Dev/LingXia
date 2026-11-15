@@ -104,7 +104,7 @@ export function WithAttach() {
 - Pattern: none.
 - Name: label.
 - Description: none.
-- States: undefined (from undefined); undefined (from undefined).
+- States: disabled (from isDisabled; the send button also while the draft is empty); busy (from isSending, on the send button).
 - Return: Sends, with a hardware keyboard.
 - Shift and Return: Adds a line.
 - Tab: From the field to the send button.
@@ -125,10 +125,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use it for a long text with a title; that is a form with a TextArea.
 - Don't: Disable it without saying why; give `disabledMessage`.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
+- It does not hold attachments itself; show them over it with Thumbnail or FileInput rows.
 
 Related: MessageBubble, TextArea, IconButton.

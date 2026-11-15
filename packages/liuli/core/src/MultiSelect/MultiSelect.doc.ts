@@ -22,7 +22,7 @@ export const doc: ComponentDoc = {
     pattern: null,
     name: 'label',
     description: ['description', 'status'],
-    states: ['disabled'],
+    states: [{ state: 'disabled', from: 'isDisabled, or isDisabled on an option' }],
     keyboard: [
       { keys: 'Tab', effect: 'To each token\'s remove button, then to the add button' },
       { keys: 'Enter or Space on the add button', effect: 'Opens the list' },
@@ -54,7 +54,8 @@ export const doc: ComponentDoc = {
     { name: 'Labels', title: 'Labels for a note' },
     { name: 'Empty', title: 'Nothing chosen, with an error' },
   ],
-  gaps: [
+  gaps: [],
+  limits: [
     'The list is not searched by typing, and new values cannot be typed in: it chooses from the options given.',
     'The error state colours the boundary but is not reported as invalid on the group.',
   ],

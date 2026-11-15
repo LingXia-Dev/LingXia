@@ -110,11 +110,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Put an action only in a context menu; many people never find it.
 - Don't: Wrap something that already uses a long press, such as selectable text.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
+- It holds no submenu: a menu item that opens another menu closes the first.
+- At a point the menu is placed from the size of the page; a very long menu can still reach past its edge.
 
 Related: DropdownMenu, Item, BottomSheet.

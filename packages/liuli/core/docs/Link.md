@@ -91,7 +91,7 @@ export function Disabled() {
 - Pattern: none.
 - Name: label.
 - Description: none.
-- States: undefined (from undefined).
+- States: disabled (from isDisabled).
 - Tab: Moves to the link.
 - Enter: Follows it.
 - Press target: .
@@ -115,10 +115,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use a link for an action that changes something; that is a Button.
 - Don't: Set a link apart on its own line; use Button with `variant="link"`.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
+- A link has no hover or focus style of its own beyond the system focus ring.
 
 Related: Button, Breadcrumb, Markdown.

@@ -49,7 +49,10 @@ export const doc: ComponentDoc = {
     { name: 'Sizes', title: 'Sizes and ratios' },
     { name: 'Strip', title: 'A strip with one selected' },
   ],
-  gaps: ['A picture that fails to load leaves the tint; there is no broken-image mark.'],
+  gaps: [],
+  limits: [
+    'A picture that fails to load leaves the tint; there is no broken-image mark.',
+  ],
   related: ['Lightbox', 'Carousel', 'Avatar'],
   gallery: {
     specimen: 'Specimen',

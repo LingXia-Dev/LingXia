@@ -143,11 +143,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use a drawer to confirm something; that is a Dialog.
 - Don't: Open a drawer from a drawer.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
+- It does not follow the finger; it opens and closes as a whole.
+- It is always modal: a panel that stays open beside the page is SplitView.
 
 Related: Dialog, BottomSheet, SplitView.

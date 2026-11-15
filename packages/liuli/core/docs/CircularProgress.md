@@ -140,10 +140,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use a ring where a bar fits; a bar is easier to compare and to read.
 - Don't: Rely on the tone alone; say "nearly full" or "over" in words.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
+- The arc jumps to a new value; it does not sweep there.
 
 Related: ProgressBar, Stat.

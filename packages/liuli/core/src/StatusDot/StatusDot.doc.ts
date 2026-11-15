@@ -63,7 +63,10 @@ export const doc: ComponentDoc = {
     { name: 'Hues', title: 'Categories in the eight hues' },
     { name: 'DotOnly', title: 'Without its words' },
   ],
-  gaps: ['It does not pulse or blink.'],
+  gaps: [],
+  limits: [
+    'It does not pulse or blink.',
+  ],
   related: ['Badge', 'Avatar', 'Banner'],
   playground: { props: { label: 'Running', tone: 'success', size: 'md', isLabelHidden: false } },
   gallery: {

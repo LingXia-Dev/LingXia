@@ -50,7 +50,10 @@ export const doc: ComponentDoc = {
     { name: 'Person', title: 'A person, from their name' },
     { name: 'Term', title: 'A term, opening beside it' },
   ],
-  gaps: ['The trigger is its own row or wrapped word: it cannot sit inside a sentence as a run of text.'],
+  gaps: [],
+  limits: [
+    'The trigger is its own row or wrapped word: it cannot sit inside a sentence as a run of text.',
+  ],
   related: ['Popover', 'Tooltip', 'Link'],
   gallery: {
     specimen: 'Specimen',

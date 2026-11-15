@@ -37,7 +37,10 @@ export const doc: ComponentDoc = {
     { name: 'Countdown', title: 'A countdown' },
     { name: 'Inline', title: 'In a line of text' },
   ],
-  gaps: ['Timer has no clock of its own; the app passes the seconds.'],
+  gaps: [],
+  limits: [
+    'Timer has no clock of its own; the app passes the seconds.',
+  ],
   related: ['Timestamp', 'ProgressBar'],
   playground: { props: { seconds: 125, size: 'lg', hasHours: false } },
   gallery: {

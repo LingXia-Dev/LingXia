@@ -55,7 +55,8 @@ export const doc: ComponentDoc = {
     { name: 'Filters', title: 'Filters, from the end edge' },
     { name: 'Navigation', title: 'Navigation, from the start edge' },
   ],
-  gaps: [
+  gaps: [],
+  limits: [
     'It does not follow the finger; it opens and closes as a whole.',
     'It is always modal: a panel that stays open beside the page is SplitView.',
   ],

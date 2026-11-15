@@ -51,7 +51,8 @@ export const doc: ComponentDoc = {
     ],
   },
   examples: [{ name: 'Welcome', title: 'Three steps' }],
-  gaps: [
+  gaps: [],
+  limits: [
     'The caret is anchored to the target and the callout hangs from the caret, because the View anchors one popover to an element.',
     'The View keeps about 8 px between an anchor and its popover whatever the margin, so the caret\'s point is moved across that gap as a child.',
     'A transform on a popover itself is ignored; the point inside the caret carries the turn and the move.',

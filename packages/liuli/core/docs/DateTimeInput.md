@@ -117,7 +117,7 @@ export function Narrow() {
 - Pattern: none.
 - Name: label.
 - Description: description, then status.
-- States: undefined (from undefined).
+- States: disabled (from isDisabled).
 - Tab: To the date, then to the time.
 - Enter or Space: Opens the part's picker.
 - Press target: .
@@ -136,10 +136,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use it when only the day matters; that is a DateInput.
 - Don't: Show a time zone inside it; say which zone in the help text.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
+- The earliest and latest are days: a time cannot be limited on one particular day.
 
 Related: DateInput, TimeInput, DateRangeInput, Timestamp.

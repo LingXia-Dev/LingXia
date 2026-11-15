@@ -103,10 +103,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use it for a time of day or a date; that is Timestamp.
 - Don't: Hide the only way to tell time is running out in the digits; change the screen when it is up.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
+- Timer has no clock of its own; the app passes the seconds.
 
 Related: Timestamp, ProgressBar.

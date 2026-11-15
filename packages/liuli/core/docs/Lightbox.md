@@ -129,11 +129,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use it for a document or a video; it shows pictures.
 - Don't: Put actions that change the picture inside it; it is for looking.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
+- No pinch to zoom and no pan: the View has no pinch gesture.
+- No previous and next arrows; on a desktop the dots move between pictures.
 
 Related: Thumbnail, Carousel, Dialog.

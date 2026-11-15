@@ -137,11 +137,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use it for a length of time; that is Timer.
 - Don't: Pass a time in another zone; convert it to the user's own time first.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
+- There is no clock and no time zone in the View: the app passes `now` and local date-times.
+- Words come from a locale module, not from the system; two locales ship.
 
 Related: Timer, Calendar, DateInput.

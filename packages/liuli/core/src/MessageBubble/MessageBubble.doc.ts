@@ -53,7 +53,11 @@ export const doc: ComponentDoc = {
     { name: 'Exchange', title: 'A short exchange' },
     { name: 'States', title: 'Sending, sent and not sent' },
   ],
-  gaps: ['No reactions, threads or read receipts.', 'No typing mark.'],
+  gaps: [],
+  limits: [
+    'No reactions, threads or read receipts.',
+    'No typing mark.',
+  ],
   related: ['Composer', 'Avatar', 'Markdown'],
   gallery: {
     specimen: 'Specimen',

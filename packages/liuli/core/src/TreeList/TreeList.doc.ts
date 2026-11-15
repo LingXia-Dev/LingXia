@@ -24,7 +24,11 @@ export const doc: ComponentDoc = {
     pattern: 'tree',
     name: 'label',
     description: [],
-    states: ['expanded', 'selected', 'disabled'],
+    states: [
+      { state: 'expanded', from: 'expanded, or defaultExpanded and the rows opened since' },
+      { state: 'selected', from: 'value' },
+      { state: 'disabled', from: 'isDisabled on a node' },
+    ],
     keyboard: [
       { keys: 'Up and Down', effect: 'Move between the rows in view' },
       { keys: 'Right', effect: 'Opens a closed branch; on an open one, moves to its first child (Left, right to left)' },
@@ -57,7 +61,8 @@ export const doc: ComponentDoc = {
     { name: 'Folders', title: 'Folders and notes' },
     { name: 'Outline', title: 'An outline, opened from outside' },
   ],
-  gaps: [
+  gaps: [],
+  limits: [
     'Rows are not checked, dragged or loaded on demand.',
   ],
   related: ['NavList', 'Details', 'Breadcrumb'],

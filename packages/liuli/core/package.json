@@ -172,7 +172,7 @@
   },
   "scripts": {
     "test": "node --test \"src/**/*.test.mjs\"",
-    "check": "node scripts/icons.mjs --check && node scripts/check.mjs && node scripts/generate.mjs --check",
+    "check": "node scripts/icons.mjs --check && node scripts/check.mjs && node scripts/generate.mjs --check && tsc --noEmit -p tsconfig.json",
     "generate": "node scripts/icons.mjs && node scripts/generate.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

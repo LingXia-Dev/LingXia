@@ -154,10 +154,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Hide the word unless the same word is already beside the dot.
 - Don't: Use a dot for a count or an unread mark; that is a Badge.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
+- It does not pulse or blink.
 
 Related: Badge, Avatar, Banner.

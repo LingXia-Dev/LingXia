@@ -115,7 +115,7 @@ export function Empty() {
 - Pattern: none.
 - Name: label.
 - Description: description, then status.
-- States: undefined (from undefined).
+- States: disabled (from isDisabled).
 - Tab: To the button, then to each file's remove button.
 - Enter or Space: Opens the picker, or removes the file.
 - Press target: md 32 px.
@@ -138,11 +138,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Check kinds and sizes only after sending; say the limits first.
 - Don't: Use it to show files that are already stored; that is an ItemList.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
+- Nothing can be dropped onto it: the View has no drop target.
+- It shows no previews; pair it with Thumbnail for pictures.
 
 Related: Field, CircularProgress, Thumbnail.

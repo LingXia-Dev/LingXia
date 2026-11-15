@@ -53,7 +53,8 @@ export const doc: ComponentDoc = {
     { name: 'Plain', title: 'A block without a header' },
     { name: 'InSentence', title: 'In a sentence' },
   ],
-  gaps: [
+  gaps: [],
+  limits: [
     'No syntax colouring and no line numbers.',
     'Copying is the app\'s: Liuli has no clipboard.',
   ],

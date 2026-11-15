@@ -109,7 +109,7 @@ export function Outline() {
 - Pattern: tree.
 - Name: label.
 - Description: none.
-- States: undefined (from undefined); undefined (from undefined); undefined (from undefined).
+- States: expanded (from expanded, or defaultExpanded and the rows opened since); selected (from value); disabled (from isDisabled on a node).
 - Up and Down: Move between the rows in view.
 - Right: Opens a closed branch; on an open one, moves to its first child (Left, right to left).
 - Left: Closes an open branch; on any other row, moves to its parent (Right, right to left).
@@ -134,10 +134,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use a tree for a flat list in groups; that is NavList.
 - Don't: Put actions in the rows; a row selects, and a branch also opens.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
+- Rows are not checked, dragged or loaded on demand.
 
 Related: NavList, Details, Breadcrumb.

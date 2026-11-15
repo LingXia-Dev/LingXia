@@ -42,7 +42,8 @@ export const doc: ComponentDoc = {
     { name: 'Formats', title: 'The four forms' },
     { name: 'Chinese', title: 'In Chinese' },
   ],
-  gaps: [
+  gaps: [],
+  limits: [
     'There is no clock and no time zone in the View: the app passes `now` and local date-times.',
     'Words come from a locale module, not from the system; two locales ship.',
   ],

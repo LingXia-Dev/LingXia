@@ -142,7 +142,7 @@ export function Sizes() {
 - Pattern: none.
 - Name: label.
 - Description: none.
-- States: undefined (from undefined); undefined (from undefined).
+- States: pressed (from isSelected, on a pressable token); disabled (from isDisabled).
 - Tab: To a pressable token, and to each remove button.
 - Enter or Space: Presses the token, or removes it.
 - Press target: sm 24 px, md 32 px.
@@ -182,11 +182,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use a token for a status; that is a Badge.
 - Don't: Use one for an action; that is a Button.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
+- Tokens are not reordered by dragging.
+- Backspace in a field does not remove the last token; MultiSelect removes by each token's button.
 
 Related: MultiSelect, Badge, ToggleButton.

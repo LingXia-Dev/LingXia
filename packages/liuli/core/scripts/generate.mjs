@@ -257,6 +257,7 @@ function reference(doc, entry) {
     lines.push('', '## Not yet', '', '| Missing | Needs | Meanwhile |', '| --- | --- | --- |');
     for (const gap of doc.gaps) lines.push(`| ${cell(gap.missing)} | ${cell(gap.needs)} | ${cell(gap.today)} |`);
   }
+  if (doc.limits?.length) lines.push('', '## Limits', '', ...doc.limits.map(limit => `- ${limit}`));
   if (doc.related?.length) lines.push('', `Related: ${doc.related.join(', ')}.`);
   return `${lines.join('\n')}\n`;
 }
@@ -467,6 +468,14 @@ const outputs = new Map();
 const catalog = [];
 for (const name of names) {
   const doc = await loadDoc(name);
+  // The doc files are loaded as plain modules here, so their shape is checked here as well as by tsc.
+  const docPath = `src/${name}/${name}.doc.ts`;
+  for (const state of doc.accessibility.states)
+    if (typeof state !== 'object' || !state.state || !state.from) problems.push(`${docPath}: each state names the state and the prop it comes from`);
+  for (const gap of doc.gaps)
+    if (typeof gap !== 'object' || !gap.missing || !gap.needs || !gap.today) problems.push(`${docPath}: a gap says what is missing, what it needs and what ships today; a plain limitation goes in limits`);
+  for (const limit of doc.limits ?? [])
+    if (typeof limit !== 'string' || !limit.trim()) problems.push(`${docPath}: a limit is one sentence`);
   const recipe = await import(`data:text/javascript;base64,${Buffer.from((await transform(readFileSync(join(src, name, `${name}.recipe.ts`), 'utf8'), { loader: 'ts', format: 'esm' })).code).toString('base64')}`);
   const parts = recipe[doc.recipe.parts] ?? {};
   const component = program.getSourceFile(join(src, name, `${name}.tsx`));
@@ -488,12 +497,15 @@ for (const name of names) {
     accessibility: doc.accessibility,
     examples: doc.examples.map(example => ({ ...example, source: sources.get(example.name) ?? '' })),
     gaps: doc.gaps,
+    limits: doc.limits,
     playground: doc.playground,
     theming: undefined,
     related: doc.related ?? [],
     gallery: doc.gallery,
   };
   if (!(doc.category in categoryTitles)) problems.push(`src/${name}/${name}.doc.ts: category ${doc.category} is not in gallery/categories.json`);
+  const named = doc.accessibility.name;
+  if (named !== null && ![entry.props, ...Object.values(entry.otherProps)].flat().some(prop => prop.name === named)) problems.push(`${docPath}: accessibility.name is ${JSON.stringify(named)}, which is not a prop of ${doc.propsType} or of the components beside it`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(doc.since ?? '')) problems.push(`src/${name}/${name}.doc.ts: since must be YYYY-MM-DD`);
   const tagline = doc.gallery.tagline ?? '';
   if (!tagline || tagline.length > taglineLimit || tagline.endsWith('.')) problems.push(`src/${name}/${name}.doc.ts: gallery.tagline must be 1 to ${taglineLimit} characters without a trailing period`);

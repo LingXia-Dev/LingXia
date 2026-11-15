@@ -56,7 +56,10 @@ export const doc: ComponentDoc = {
     { name: 'Sizes', title: 'Sizes' },
     { name: 'Tones', title: 'Meters in a tone' },
   ],
-  gaps: ['The arc jumps to a new value; it does not sweep there.'],
+  gaps: [],
+  limits: [
+    'The arc jumps to a new value; it does not sweep there.',
+  ],
   related: ['ProgressBar', 'Stat'],
   playground: { props: { label: 'Steps today', value: 72, valueLabel: '72%', size: 'lg', tone: 'accent' } },
   gallery: {

@@ -24,7 +24,10 @@ export const doc: ComponentDoc = {
     pattern: null,
     name: 'label',
     description: [],
-    states: ['disabled', 'busy'],
+    states: [
+      { state: 'disabled', from: 'isDisabled; the send button also while the draft is empty' },
+      { state: 'busy', from: 'isSending, on the send button' },
+    ],
     keyboard: [
       { keys: 'Return', effect: 'Sends, with a hardware keyboard' },
       { keys: 'Shift and Return', effect: 'Adds a line' },
@@ -52,7 +55,10 @@ export const doc: ComponentDoc = {
     { name: 'Reply', title: 'Write and send' },
     { name: 'WithAttach', title: 'With a way to attach, and a long draft' },
   ],
-  gaps: ['It does not hold attachments itself; show them over it with Thumbnail or FileInput rows.'],
+  gaps: [],
+  limits: [
+    'It does not hold attachments itself; show them over it with Thumbnail or FileInput rows.',
+  ],
   related: ['MessageBubble', 'TextArea', 'IconButton'],
   gallery: {
     specimen: 'Specimen',

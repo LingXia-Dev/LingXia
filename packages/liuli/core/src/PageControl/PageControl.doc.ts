@@ -21,7 +21,7 @@ export const doc: ComponentDoc = {
     pattern: null,
     name: 'label',
     description: [],
-    states: ['selected'],
+    states: [{ state: 'selected', from: 'page, on the dot of the page in view' }],
     keyboard: [
       { keys: 'Tab', effect: 'Moves to a dot' },
       { keys: 'Enter or Space', effect: 'Goes to its page' },
@@ -51,7 +51,10 @@ export const doc: ComponentDoc = {
     { name: 'Welcome', title: 'Under what it pages' },
     { name: 'OnMedia', title: 'Over a picture' },
   ],
-  gaps: ['Many pages are not folded into a window of dots; the row grows with `count`.'],
+  gaps: [],
+  limits: [
+    'Many pages are not folded into a window of dots; the row grows with `count`.',
+  ],
   related: ['Carousel', 'Pagination', 'Tabs'],
   gallery: {
     specimen: 'Specimen',

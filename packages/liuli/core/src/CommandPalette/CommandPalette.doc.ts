@@ -24,7 +24,10 @@ export const doc: ComponentDoc = {
     pattern: 'dialog',
     name: 'label',
     description: [],
-    states: ['selected', 'disabled'],
+    states: [
+      { state: 'selected', from: 'the command the arrow keys are on' },
+      { state: 'disabled', from: 'isDisabled on a command' },
+    ],
     keyboard: [
       { keys: 'Up and Down', effect: 'Move the highlight; rows that cannot be chosen are passed over' },
       { keys: 'Home and End', effect: 'To the first and the last row' },
@@ -55,7 +58,8 @@ export const doc: ComponentDoc = {
     ],
   },
   examples: [{ name: 'Commands', title: 'Commands and places' }],
-  gaps: [
+  gaps: [],
+  limits: [
     'It binds no shortcut of its own: the app opens it.',
     'A row does not lead to a second page of rows.',
   ],

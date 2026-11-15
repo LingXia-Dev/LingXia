@@ -109,11 +109,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Show shortcuts on a phone; there is no keyboard to press.
 - Don't: Put several shortcuts in one Kbd; use one for each.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
+- The keys are whatever the app passes; Liuli does not know the platform's modifier names.
+- Key symbols such as ⌘ and ⇧ are missing from some devices' text face and draw as an empty cap there; write the key's name.
 
 Related: Tooltip, DropdownMenu.

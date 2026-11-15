@@ -126,11 +126,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Put a carousel inside another sideways scroll.
 - Don't: Move it on a timer.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
+- Every page is the full width; a carousel does not show part of the next page.
+- There are no previous and next arrows; on a desktop the dots page it.
 
 Related: PageControl, Lightbox, Thumbnail.

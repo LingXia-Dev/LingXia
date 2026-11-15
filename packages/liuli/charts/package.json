@@ -27,7 +27,7 @@
   },
   "scripts": {
     "test": "node --test \"src/**/*.test.mjs\"",
-    "check": "node ../core/scripts/check.mjs . && node ../core/scripts/generate.mjs . --check",
+    "check": "node ../core/scripts/check.mjs . && node ../core/scripts/generate.mjs . --check && tsc --noEmit -p tsconfig.json",
     "generate": "node ../core/scripts/generate.mjs .",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

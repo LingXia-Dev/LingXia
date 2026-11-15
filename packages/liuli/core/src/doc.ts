@@ -34,6 +34,8 @@ export interface ComponentDoc {
   readonly examples: readonly ExampleRef[];
   /** What the component cannot do yet, the primitive capability that unblocks it, and today's form. */
   readonly gaps: readonly Gap[];
+  /** What it does not do and is not waiting on anything for: a decision, or work nobody has asked for. One sentence each. */
+  readonly limits?: readonly string[];
   readonly related?: readonly string[];
   /** What the gallery shows, by example export name. */
   readonly gallery: GalleryDoc;
@@ -54,8 +56,8 @@ export interface AccessibilityContract {
   /** The pattern this component binds to; its checks run in the gallery specs. `null` for layout
    * that holds a control but is not one (Field), or content that is not a control (Avatar). */
   readonly pattern: PatternName | null;
-  /** The prop the accessible name comes from; `null` for a live region read by its content (Banner). */
-  readonly name: 'label' | 'name' | null;
+  /** The prop the accessible name comes from, one of the component's own (`label`, `name`, `alt`, `aria-label`); `null` for a live region read by its content (Banner). */
+  readonly name: string | null;
   /** What is read after the name, through `aria-describedby`, in order; `[]` when nothing is. */
   readonly description: readonly string[];
   /** States the component exposes and the props that drive them. */

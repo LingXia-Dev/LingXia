@@ -51,7 +51,8 @@ export const doc: ComponentDoc = {
     ],
   },
   examples: [{ name: 'Rows', title: 'A menu on each row' }],
-  gaps: [
+  gaps: [],
+  limits: [
     'It holds no submenu: a menu item that opens another menu closes the first.',
     'At a point the menu is placed from the size of the page; a very long menu can still reach past its edge.',
   ],

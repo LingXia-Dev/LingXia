@@ -119,15 +119,13 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use a tour to explain a screen that needs explaining; fix the screen.
 - Don't: Start it over something the user is in the middle of.
 
-## Not yet
+## Limits
 
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
-| undefined | undefined | undefined |
+- The caret is anchored to the target and the callout hangs from the caret, because the View anchors one popover to an element.
+- The View keeps about 8 px between an anchor and its popover whatever the margin, so the caret's point is moved across that gap as a child.
+- A transform on a popover itself is ignored; the point inside the caret carries the turn and the move.
+- No dimmed backdrop with a cut-out around the target: the View has no mask.
+- A step does not wait for the user to do something; it moves on from its buttons.
+- Focus is not moved into the callout or back by the component.
 
 Related: Popover, Tooltip, Banner.

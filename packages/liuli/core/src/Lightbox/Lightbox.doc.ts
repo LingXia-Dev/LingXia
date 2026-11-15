@@ -53,7 +53,8 @@ export const doc: ComponentDoc = {
     { name: 'FromGrid', title: 'Opened from a grid of thumbnails' },
     { name: 'Single', title: 'One picture' },
   ],
-  gaps: [
+  gaps: [],
+  limits: [
     'No pinch to zoom and no pan: the View has no pinch gesture.',
     'No previous and next arrows; on a desktop the dots move between pictures.',
   ],
