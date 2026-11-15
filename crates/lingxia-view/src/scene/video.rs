@@ -211,6 +211,19 @@ impl Default for Status {
     }
 }
 
+/// Where a player is, in ms, for a player that reopens or seeks asynchronously: before it is
+/// prepared, the seek parked for its prepare (`-1` none); while a seek is in flight, that seek's
+/// target, since the player's clock still reads the old place; otherwise its clock.
+pub fn resume_ms(prepared: bool, seeking: bool, target: i64, parked: i64, current: i64) -> i64 {
+    if !prepared {
+        parked.max(0)
+    } else if seeking && target >= 0 {
+        target
+    } else {
+        current.max(0)
+    }
+}
+
 /// The window orientation a full-screen video asks for: the shape of its picture.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -325,4 +338,26 @@ impl Drop for Sources {
 
 pub(crate) fn key(scope: u64, player: &str) -> String {
     format!("{scope}/{player}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resume_ms;
+
+    #[test]
+    fn a_pin_parked_behind_a_reopen_resumes_at_the_restore_seek() {
+        // 480p pinned at 3.7 s: its reopen parks the position until prepared.
+        assert_eq!(resume_ms(false, false, -1, 3711, 0), 3711);
+        // 480p prepared: the restore seek is in flight and the clock still reads 0. The 288p pin
+        // parked meanwhile reopens now, from the seek's target, not from 0.
+        assert_eq!(resume_ms(true, true, 3711, -1, 0), 3711);
+        // The seek landed: the clock is right again.
+        assert_eq!(resume_ms(true, false, -1, -1, 3790), 3790);
+    }
+
+    #[test]
+    fn a_fresh_player_starts_at_zero() {
+        assert_eq!(resume_ms(false, false, -1, -1, 0), 0);
+        assert_eq!(resume_ms(true, true, -1, -1, 1200), 1200);
+    }
 }

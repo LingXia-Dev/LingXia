@@ -5,7 +5,7 @@ use lingxia_view::renderer::gpu::video::gles::{self, Frames};
 use lingxia_view::renderer::gpu::video::{Player, install as install_opener};
 use lingxia_view::renderer::gpu::wgpu;
 use lingxia_view::renderer::render_thread;
-use lingxia_view::scene::video::{Settings, Status, VideoError, VideoOp};
+use lingxia_view::scene::video::{Settings, Status, VideoError, VideoOp, resume_ms};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::fs::File;
@@ -57,6 +57,8 @@ struct Shared {
     wants: AtomicBool,
     /// A seek in ms asked before the player was prepared; -1 for none.
     seek: AtomicI64,
+    /// The target in ms of the seek in flight, -1 for none: the clock trails it until it lands.
+    target: AtomicI64,
     /// Surface and prepare wait for the initialized state when the source set them back.
     window: *mut c_void,
     deferred: AtomicBool,
@@ -68,6 +70,8 @@ struct Shared {
     /// A rendition URL asked while the player still prepares: a reset then loses the prepare in
     /// flight and the player never plays, so it reopens once prepared.
     pending: Mutex<Option<String>>,
+    /// The URL the player was last opened on.
+    opened: Mutex<Option<String>>,
 }
 
 // The raw handles are thread-safe NDK objects; the rest is atomics.
@@ -79,6 +83,29 @@ impl Shared {
         matches!(
             self.state.load(Ordering::Acquire),
             STATE_PREPARED | STATE_PLAYING | STATE_PAUSED | STATE_COMPLETED
+        )
+    }
+
+    /// Issues a seek and records its target until it lands.
+    unsafe fn seek_to(&self, ms: i64) {
+        self.target.store(ms, Ordering::Release);
+        self.seeking.store(true, Ordering::Release);
+        unsafe { OH_AVPlayer_Seek(self.player, ms as i32, SEEK_CLOSEST) };
+    }
+
+    /// Where the player is, without side effects: an in-flight seek counts as landed.
+    fn position_ms(&self) -> i64 {
+        let prepared = self.prepared();
+        let mut current = 0;
+        if prepared {
+            unsafe { OH_AVPlayer_GetCurrentTime(self.player, &mut current) };
+        }
+        resume_ms(
+            prepared,
+            self.seeking.load(Ordering::Acquire),
+            self.target.load(Ordering::Acquire),
+            self.seek.load(Ordering::Acquire),
+            i64::from(current),
         )
     }
 
@@ -124,12 +151,14 @@ fn open(source: &str) -> Result<Box<dyn Player>, String> {
             play: AtomicBool::new(false),
             wants: AtomicBool::new(false),
             seek: AtomicI64::new(-1),
+            target: AtomicI64::new(-1),
             window,
             deferred: AtomicBool::new(false),
             error: Mutex::new(None),
             url: url.as_ref().map(|_| source.to_owned()),
             rendition: Mutex::new(None),
             pending: Mutex::new(None),
+            opened: Mutex::new(url.as_ref().map(|_| source.to_owned())),
         }));
         let context = shared.cast::<c_void>();
         OH_NativeImage_SetOnFrameAvailableListener(
@@ -205,7 +234,10 @@ extern "C" fn on_info(_: *mut c_void, kind: i32, body: *mut c_void, context: *mu
         found.then_some(value)
     };
     match kind {
-        INFO_SEEK_DONE => shared.seeking.store(false, Ordering::Release),
+        INFO_SEEK_DONE => {
+            shared.target.store(-1, Ordering::Release);
+            shared.seeking.store(false, Ordering::Release);
+        }
         INFO_BUFFERING => {
             let kind = int(unsafe { OH_PLAYER_BUFFERING_TYPE });
             let value = int(unsafe { OH_PLAYER_BUFFERING_VALUE });
@@ -229,8 +261,7 @@ extern "C" fn on_info(_: *mut c_void, kind: i32, body: *mut c_void, context: *mu
                 STATE_PREPARED => {
                     let seek = shared.seek.swap(-1, Ordering::AcqRel);
                     if seek >= 0 {
-                        shared.seeking.store(true, Ordering::Release);
-                        unsafe { OH_AVPlayer_Seek(shared.player, seek as i32, SEEK_CLOSEST) };
+                        unsafe { shared.seek_to(seek) };
                     }
                     if shared.play.swap(false, Ordering::AcqRel) {
                         unsafe { OH_AVPlayer_Play(shared.player) };
@@ -292,11 +323,12 @@ impl Video {
     /// seeks and plays.
     fn reopen(&self, target: String) -> Result<(), String> {
         let shared = self.shared();
-        let url = CString::new(target).map_err(|_| "VIDEO_SOURCE: invalid URL".to_owned())?;
-        let at = self.status().current_time;
-        shared
-            .seek
-            .store((at * 1000.0).round() as i64, Ordering::Release);
+        let url =
+            CString::new(target.as_str()).map_err(|_| "VIDEO_SOURCE: invalid URL".to_owned())?;
+        shared.seek.store(shared.position_ms(), Ordering::Release);
+        shared.target.store(-1, Ordering::Release);
+        shared.seeking.store(false, Ordering::Release);
+        *lock(&shared.opened) = Some(target);
         shared
             .play
             .store(shared.wants.load(Ordering::Acquire), Ordering::Release);
@@ -343,8 +375,7 @@ impl Video {
         let ms = (seconds.max(0.0) * 1000.0).round() as i64;
         shared.ended.store(false, Ordering::Release);
         if shared.prepared() {
-            shared.seeking.store(true, Ordering::Release);
-            unsafe { OH_AVPlayer_Seek(self.player(), ms as i32, SEEK_CLOSEST) };
+            unsafe { shared.seek_to(ms) };
         } else {
             shared.seek.store(ms, Ordering::Release);
         }
@@ -479,7 +510,9 @@ impl Player for Video {
         };
         *lock(&shared.rendition) = label.map(str::to_owned);
         if !shared.prepared() {
-            *lock(&shared.pending) = Some(target);
+            // Back to the URL already opening: nothing more to reopen.
+            let opening = lock(&shared.opened).as_deref() == Some(target.as_str());
+            *lock(&shared.pending) = (!opening).then_some(target);
             return Ok(());
         }
         self.reopen(target)
@@ -491,6 +524,7 @@ impl Player for Video {
         if shared.prepared() {
             let pending = lock(&shared.pending).take();
             if let Some(target) = pending
+                && lock(&shared.opened).as_deref() != Some(target.as_str())
                 && let Err(message) = self.reopen(target)
             {
                 shared.fail(message);
@@ -502,20 +536,16 @@ impl Player for Video {
             .unwrap_or_else(|p| p.into_inner())
             .as_deref()
             .map(VideoError::from_message);
-        let (mut time, mut duration) = (0, 0);
+        // Reopening on another rendition or seeking: the position it resumes at.
+        let time = shared.position_ms();
+        let mut duration = 0;
         if shared.prepared() {
-            unsafe {
-                OH_AVPlayer_GetCurrentTime(self.player(), &mut time);
-                OH_AVPlayer_GetDuration(self.player(), &mut duration);
-            }
-        } else {
-            // Reopening on another rendition: the position it resumes at.
-            time = shared.seek.load(Ordering::Acquire).max(0) as i32;
+            unsafe { OH_AVPlayer_GetDuration(self.player(), &mut duration) };
         }
         let duration = (duration > 0).then(|| f64::from(duration) / 1000.0);
         let playing = shared.wants.load(Ordering::Acquire);
         Status {
-            current_time: f64::from(time.max(0)) / 1000.0,
+            current_time: time as f64 / 1000.0,
             duration,
             paused: !playing,
             ended: shared.ended.load(Ordering::Acquire),
