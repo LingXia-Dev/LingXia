@@ -24,8 +24,8 @@ for (const group of groups) {
 const zhNames: Record<string, string[]> = {
   'view-text': ['段落', '输入时的建议', '尚未展示'],
   'view-gestures': ['指针的位置', '滑动行显示操作', '尚未展示'],
-  'view-overlays': ['按需唤出的菜单', '菜单里的菜单', '在触发处旁边打开的浮层', '尚未展示'],
-  'view-accessibility': ['日期网格', '尚未展示'],
+  'view-overlays': ['按需唤出的菜单', '菜单里的菜单', '保持打开的菜单', '关闭前先询问的浮层', '在触发处旁边打开的浮层', '尚未展示'],
+  'view-accessibility': ['文件夹树', '有名称的列表', '日期网格', '尚未展示'],
   'view-motion': ['展开与收起的面板', '尚未展示'],
 };
 for (const group of groups) {

@@ -50,6 +50,48 @@ export function MenuDemo() {
   );
 }
 
+// A menu whose zoom items act and leave it open; "Reset" is an ordinary item.
+export function StayDemo() {
+  const zoom = useLocal('lab-stay-zoom', 100);
+  const open = useLocal('lab-stay-open', false);
+  const t = useSay();
+  const item = 'px-3 py-2 rounded-md text-sm text-start active:bg-surface-sunken focus-visible:bg-surface-sunken';
+  return (
+    <>
+      <button popoverTarget="lab-stay-menu" data-testid="lab-stay-open"
+        className="self-start px-3 py-2 rounded-lg border border-line text-sm active:bg-surface-sunken">{t(labels.stayOpen)}</button>
+      <view id="lab-stay-menu" popover="auto" role="menu" aria-label={t(labels.stayOpen)} data-testid="lab-stay-menu" onToggle={next => open.set(next)}
+        className="w-40 rounded-lg border border-line-strong bg-surface p-1">
+        <button role="menuitem" keepOpen data-testid="lab-stay-in" onClick={() => zoom.set(Math.min(200, zoom.value + 10))} className={item}>{t(labels.stayIn)}</button>
+        <button role="menuitem" keepOpen data-testid="lab-stay-out" onClick={() => zoom.set(Math.max(50, zoom.value - 10))} className={item}>{t(labels.stayOut)}</button>
+        <button role="menuitem" data-testid="lab-stay-reset" onClick={() => zoom.set(100)} className={item}>{t(labels.stayReset)}</button>
+      </view>
+      <Readout testId="lab-stay-state" state={`open=${open.value} zoom=${zoom.value}`}>{t(readouts.stay(open.value, zoom.value))}</Readout>
+    </>
+  );
+}
+
+// A popover that hears Escape and Back first, and keeps itself open while its draft is kept.
+export function RefuseDemo() {
+  const open = useLocal('lab-refuse-open', false);
+  const keep = useLocal('lab-refuse-keep', true);
+  const asked = useLocal('lab-refuse-asked', 0);
+  const t = useSay();
+  return (
+    <>
+      <button popoverTarget="lab-refuse-note" data-testid="lab-refuse-open"
+        className="self-start px-3 py-2 rounded-lg border border-line text-sm active:bg-surface-sunken">{t(labels.refuseOpen)}</button>
+      <view id="lab-refuse-note" popover="auto" role="group" aria-label={t(labels.refuseTitle)} data-testid="lab-refuse-note" onToggle={next => open.set(next)}
+        onCloseRequest={() => { asked.set(asked.value + 1); return !keep.value; }}
+        className="w-56 gap-2 rounded-lg border border-line-strong bg-surface p-3">
+        <text className="text-sm font-semibold">{t(labels.refuseTitle)}</text>
+        <switch data-testid="lab-refuse-keep" bind={keep} className="text-sm">{t(labels.refuseKeep)}</switch>
+      </view>
+      <Readout testId="lab-refuse-state" state={`open=${open.value} asked=${asked.value}`}>{t(readouts.refuse(open.value, asked.value))}</Readout>
+    </>
+  );
+}
+
 // A menu whose "Move to" item opens a second menu at its side; a choice there closes both.
 export function SubmenuDemo() {
   const last = useLocal('lab-submenu-last', 'none');
@@ -80,5 +122,7 @@ export function SubmenuDemo() {
 export const overlayDemos = {
   menu: MenuDemo,
   submenu: SubmenuDemo,
+  stay: StayDemo,
+  refuse: RefuseDemo,
   beside: BesideDemo,
 };

@@ -1,7 +1,45 @@
 // Accessibility demos of the View catalogue: each is the body of one demo.
-import { useLocal } from '@lingxia/view';
+import { List, useLocal } from '@lingxia/view';
 import { Readout, useSay } from './demo';
 import { labels, readouts } from './text';
+
+// Two folders, each holding two files; a folder's press opens and closes it.
+export function TreeDemo() {
+  const open = useLocal<readonly string[]>('lab-tree-open', []);
+  const t = useSay();
+  const [documents, invoices, letters, pictures, holidays] = t(labels.treeItems).split('|');
+  const toggle = (name: string) => () => open.set(open.value.includes(name) ? open.value.filter(other => other !== name) : [...open.value, name]);
+  const row = 'px-3 py-2 rounded-md text-sm text-start active:bg-surface-sunken focus-visible:ring-2 focus-visible:ring-focus';
+  const folder = (id: string, name: string, files: readonly [string, string][]) => (
+    <>
+      <button role="treeitem" aria-level={1} aria-expanded={open.value.includes(id)} data-testid={`lab-tree-${id}`} onClick={toggle(id)} className={row}>
+        {`${open.value.includes(id) ? '▾' : '▸'} ${name}`}
+      </button>
+      {open.value.includes(id) ? files.map(([file, label]) => (
+        <button key={file} role="treeitem" aria-level={2} data-testid={`lab-tree-${file}`} onClick={() => {}} className={`${row} ps-8`}>{label}</button>
+      )) : null}
+    </>
+  );
+  return (
+    <>
+      <view role="tree" aria-label={t(labels.treeName)} data-testid="lab-tree-list" className="gap-0.5">
+        {folder('documents', documents, [['invoices', invoices], ['letters', letters]])}
+        {folder('pictures', pictures, [['holidays', holidays]])}
+      </view>
+      <Readout testId="lab-tree-state" state={`open=${open.value.join(',') || 'none'}`}>{t(readouts.tree(open.value.join(', ') || 'none'))}</Readout>
+    </>
+  );
+}
+
+// A short list of messages that a screen reader meets by name.
+export function NamedListDemo() {
+  const t = useSay();
+  const rows = t(labels.namedRows).split('|');
+  return (
+    <List aria-label={t(labels.namedList)} data-testid="lab-named-list" className="h-28 rounded-lg border border-line" items={rows} getKey={row => row}
+      renderItem={row => <text className="px-3 py-2 text-sm">{row}</text>} />
+  );
+}
 
 // Five weeks of one month: days of the neighbouring months take no focus, PageUp and PageDown
 // turn the month.
@@ -42,5 +80,7 @@ export function DaysDemo() {
 
 /** The Accessibility group: every demo the text table names, drawn by its body. */
 export const accessibilityDemos = {
+  tree: TreeDemo,
+  named: NamedListDemo,
   days: DaysDemo,
 };

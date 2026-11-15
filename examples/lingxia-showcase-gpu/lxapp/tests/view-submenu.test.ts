@@ -34,3 +34,16 @@ spec('a second menu opens beside the first, arrows open and close it, and a choi
   await expect(folders).toBeHidden();
   await expect(menu).toBeHidden();
 });
+
+// Opened by a press on its item, the second menu hands focus back to that item too.
+spec('a second menu a press opened returns focus to its item when the back arrow closes it', { covers: ['view:submenu'], start: openDemo('submenu') }, async (t) => {
+  const view = t.app.view;
+  const move = view.testId('lab-submenu-move');
+  await view.testId('lab-submenu-open').click();
+  await move.click();
+  await expect(view.testId('lab-submenu-folders')).toBeVisible();
+  await view.testId('lab-submenu-inbox').press('ArrowLeft');
+  await expect(view.testId('lab-submenu-folders')).toBeHidden();
+  await expect(view.testId('lab-submenu-menu')).toBeVisible();
+  await expect(move).toBeFocused();
+});

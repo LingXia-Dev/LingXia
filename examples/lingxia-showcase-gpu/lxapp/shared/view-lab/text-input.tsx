@@ -202,6 +202,18 @@ export function LinkOffDemo() {
 }
 
 /** The Text & input group: every demo the text table names, drawn by its body. */
+// Decoration lines in their own style and colour: on a term, on a link and through a struck word.
+export function UnderlinesDemo() {
+  const t = useSay();
+  return (
+    <text data-testid="lab-underlines-text" className="text-base leading-relaxed">
+      {t(labels.underLead)}<span data-testid="lab-underlines-term" className="underline decoration-dotted decoration-accent/60">{t(labels.underTerm)}</span>
+      {t(labels.underMid)}<link data-testid="lab-underlines-link" onClick={() => {}} className="decoration-dashed decoration-danger">{t(labels.underLink)}</link>
+      {t(labels.underEnd)}<span className="line-through decoration-muted">{t(labels.underStruck)}</span>.
+    </text>
+  );
+}
+
 export const textDemos = {
   paragraphs: TextLayoutDemo,
   runs: RichTextDemo,
@@ -209,6 +221,7 @@ export const textDemos = {
   selecting: SelectionDemo,
   suggestions: TypeaheadDemo,
   partly: PartlyDemo,
+  underlines: UnderlinesDemo,
   linkOff: LinkOffDemo,
   form: FormSemanticsDemo,
 };
