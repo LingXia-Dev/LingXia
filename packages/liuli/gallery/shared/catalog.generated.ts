@@ -729,6 +729,24 @@ export const entries: GalleryEntry[] = [
     "status": "preview"
   },
   {
+    "name": "Table",
+    "page": "table",
+    "category": "content",
+    "summary": "Records in rows and fields in columns, under headings that stay in view",
+    "keywords": [
+      "table",
+      "data table",
+      "grid",
+      "rows",
+      "columns",
+      "records",
+      "spreadsheet",
+      "data display"
+    ],
+    "since": "2026-11-15",
+    "status": "preview"
+  },
+  {
     "name": "Stat",
     "page": "stat",
     "category": "charts",
@@ -963,7 +981,7 @@ export const galleryCategories: GalleryCategory[] = [
     "title": "Content",
     "description": "Containers and rows that hold what the app shows.",
     "page": "category-content",
-    "count": 6
+    "count": 7
   },
   {
     "id": "charts",
@@ -989,7 +1007,7 @@ export const galleryCategories: GalleryCategory[] = [
 ];
 
 /** The 6 latest components, newest first. */
-export const newest: string[] = ["CheckboxList","Combobox","NumberInput","SearchField","BarChart","ButtonGroup"];
+export const newest: string[] = ["CheckboxList","Combobox","NumberInput","SearchField","Table","BarChart"];
 
 export const version = "0.1.0";
 export const packageStatus = "Preview";

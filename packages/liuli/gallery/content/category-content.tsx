@@ -5,13 +5,14 @@ import { Specimen as DetailsSpecimen } from '../../core/src/Details/Details.exam
 import { Specimen as AvatarSpecimen } from '../../core/src/Avatar/Avatar.examples';
 import { Specimen as SplitViewSpecimen } from '../../core/src/SplitView/SplitView.examples';
 import { Specimen as IconSpecimen } from '../../core/src/Icon/Icon.examples';
+import { Specimen as TableSpecimen } from '../../core/src/Table/Table.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Containers and rows that hold what the app shows."}</text>
-      <Category title={"6 components"}>
+      <Category title={"7 components"}>
         <Tile
           name={"Card"}
           tagline={"Related content"}
@@ -59,6 +60,15 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           testId={"open-icon"}
         >
           <IconSpecimen />
+        </Tile>
+        <Tile
+          name={"Table"}
+          tagline={"Rows and columns"}
+          isWide
+          onOpen={() => onOpen("table")}
+          testId={"open-table"}
+        >
+          <TableSpecimen />
         </Tile>
       </Category>
     </>

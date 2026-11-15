@@ -7817,6 +7817,326 @@
       }
     },
     {
+      "name": "Table",
+      "import": "@liulidesign/core/Table",
+      "exports": [
+        "Table"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "Records in rows and fields in columns, under headings that stay in view",
+      "description": "Table shows a set of records that share the same fields: invoices, members, files. Pass the records as `rows` and say which fields to show as `columns`; a column formats its value, sets its width and aligns numbers to the end edge so their digits line up. With `onRowClick` each row is one button that opens its record. With `maxHeight` the rows scroll under the headings. Where the columns would be too narrow to read, as with four of them on a phone, the table stacks: each record becomes a block with its first field and its number on one line and the other fields, each beside its heading, under them.",
+      "keywords": [
+        "table",
+        "data table",
+        "grid",
+        "rows",
+        "columns",
+        "records",
+        "spreadsheet",
+        "data display"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The table's accessible name: \"Invoices\"."
+        },
+        {
+          "name": "columns",
+          "type": "readonly TableColumn[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "rows",
+          "type": "readonly Readonly<Record<string, TableValue>>[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "keyField",
+          "type": "string",
+          "required": false,
+          "description": "The field that identifies a row across updates, in `selectedKey` and in `onRowClick`. By default the first column's."
+        },
+        {
+          "name": "layout",
+          "type": "TableLayout",
+          "required": false,
+          "description": "",
+          "default": "'auto'"
+        },
+        {
+          "name": "density",
+          "type": "TableDensity",
+          "required": false,
+          "description": "",
+          "default": "'comfortable'"
+        },
+        {
+          "name": "maxHeight",
+          "type": "number",
+          "required": false,
+          "description": "Caps the rows' height in points: the rows scroll under a heading that stays."
+        },
+        {
+          "name": "isHeaderSticky",
+          "type": "boolean",
+          "required": false,
+          "description": "Holds the heading at the top of the scroll the table sits in while its rows pass under it. The table must be inside a `<scroll>`; without `maxHeight`.",
+          "default": "false"
+        },
+        {
+          "name": "onRowClick",
+          "type": "((key: string) => void)",
+          "required": false,
+          "description": "Makes each row one button; runs with its key."
+        },
+        {
+          "name": "selectedKey",
+          "type": "string | null",
+          "required": false,
+          "description": "The row drawn and read as selected."
+        },
+        {
+          "name": "emptyLabel",
+          "type": "string",
+          "required": false,
+          "description": "Shown in place of the rows when there are none: \"No invoices yet\"."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the table; a row is `<id>-<key>`."
+        }
+      ],
+      "otherProps": {
+        "TableColumn": [
+          {
+            "name": "field",
+            "type": "string",
+            "required": true,
+            "description": "The row field this column shows."
+          },
+          {
+            "name": "header",
+            "type": "string",
+            "required": true,
+            "description": "The column's heading, and what each of its cells is read with: \"Amount\"."
+          },
+          {
+            "name": "align",
+            "type": "TableAlign",
+            "required": false,
+            "description": "`end` for numbers, so their digits line up.",
+            "default": "'start'"
+          },
+          {
+            "name": "width",
+            "type": "number | `${number}fr`",
+            "required": false,
+            "description": "The column's width in points, or its share of what is left: `'2fr'`.",
+            "default": "'1fr'"
+          },
+          {
+            "name": "format",
+            "type": "((value: TableValue, row: Readonly<Record<string, TableValue>>) => string)",
+            "required": false,
+            "description": "Turns the field's value into the text shown and read. By default the value as written."
+          },
+          {
+            "name": "cell",
+            "type": "((row: Readonly<Record<string, TableValue>>) => Child)",
+            "required": false,
+            "description": "Draws the cell in place of its text: a Badge, an Avatar. The text is still what is read."
+          }
+        ]
+      },
+      "parts": {
+        "root": "view",
+        "header": "view",
+        "heading": "text",
+        "body": "view",
+        "rowgroup": "view",
+        "row": "view",
+        "cell": "view",
+        "text": "text",
+        "custom": "view",
+        "empty": "text",
+        "block": "view",
+        "lead": "view",
+        "leadCell": "view",
+        "figure": "view",
+        "pairs": "view",
+        "pair": "view",
+        "pairHeading": "text",
+        "pairValue": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "selected",
+            "from": "selectedKey, on a pressable row"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "With `onRowClick`: moves through the rows"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "With `onRowClick`: opens the row"
+          }
+        ],
+        "target": {
+          "sm": 36,
+          "md": 44
+        },
+        "contrast": [
+          {
+            "what": "cell text",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "headings and the empty line",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "cell text, selected row",
+            "pair": [
+              "text",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The table is a grid named by `label`. Each cell is read with its column's heading, \"Amount: $420.50\", so the row of headings is not read on its own.",
+          "With `onRowClick` a row is one button read as all its cells in order, and reports selected when its key is `selectedKey`.",
+          "A cell drawn by `cell` is still read as its text, so a badge's meaning must be in the field's value or `format`.",
+          "Stacked or in columns, a record is read the same way: each field with its heading. Stacked, the heading row is not drawn, since every field is beside its own heading or leads the record.",
+          "`auto` stacks when a text column would be narrower than 88 points, or narrower than its longest value where that is shorter; the value's width is an estimate from its length, since text cannot be measured before layout.",
+          "A comfortable row is at least 44 px tall; a `compact` row is 36 px, for tables read with a mouse.",
+          "The hairlines between rows are decoration with no contrast minimum."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Invoices",
+          "title": "Records with a number column",
+          "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst invoices = [\n  { id: 'INV-1042', customer: 'Northwind', due: '3 Nov', amount: 1280, status: 'Paid' },\n  { id: 'INV-1043', customer: 'Blue Harbor', due: '9 Nov', amount: 420.5, status: 'Due' },\n  { id: 'INV-1044', customer: 'Kestrel & Co', due: '12 Nov', amount: 96, status: 'Overdue' },\n  { id: 'INV-1045', customer: 'Lumen Studio', due: '20 Nov', amount: 3150, status: 'Due' },\n];\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\n\n/** Records in rows, with the number column at the end edge so its digits line up. */\nexport function Invoices() {\n  return <Table label=\"Invoices\" columns={columns} rows={invoices} keyField=\"id\" data-testid=\"invoices\" />;\n}"
+        },
+        {
+          "name": "Pressable",
+          "title": "Rows that open a record",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Table, type TableColumn, type TableRow } from '@liulidesign/core/Table';\n\nconst invoices = [\n  { id: 'INV-1042', customer: 'Northwind', due: '3 Nov', amount: 1280, status: 'Paid' },\n  { id: 'INV-1043', customer: 'Blue Harbor', due: '9 Nov', amount: 420.5, status: 'Due' },\n  { id: 'INV-1044', customer: 'Kestrel & Co', due: '12 Nov', amount: 96, status: 'Overdue' },\n  { id: 'INV-1045', customer: 'Lumen Studio', due: '20 Nov', amount: 3150, status: 'Due' },\n];\nconst money = (value: unknown) => `$${grouped(value, 2)}`;\nconst status = (row: TableRow) => (row.status === 'Paid' ? <Badge label=\"Paid\" tone=\"success\" size=\"sm\" />\n  : row.status === 'Overdue' ? <Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" /> : <Badge label={String(row.status)} size=\"sm\" />);\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\n\n/** Each row is one button that opens its record; the open one is selected. A cell can draw a badge. */\nexport function Pressable() {\n  const open = useLocal<string | null>('open', 'INV-1043');\n  return (\n    <Table\n      label=\"Invoices\"\n      columns={[{ field: 'customer', header: 'Customer', width: '2fr' }, { field: 'status', header: 'Status', cell: status }, { field: 'amount', header: 'Amount', align: 'end', format: money }]}\n      rows={invoices}\n      keyField=\"id\"\n      selectedKey={open.value}\n      onRowClick={open.set}\n      data-testid=\"pressable\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Scrolling",
+          "title": "Compact rows under a heading that stays",
+          "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst cities = [\n  ['Lagos', 'Nigeria', 15.4], ['Cairo', 'Egypt', 10.0], ['Kinshasa', 'DR Congo', 9.5], ['Johannesburg', 'South Africa', 5.6], ['Nairobi', 'Kenya', 4.4],\n  ['Addis Ababa', 'Ethiopia', 3.9], ['Casablanca', 'Morocco', 3.7], ['Accra', 'Ghana', 2.6], ['Dakar', 'Senegal', 1.3], ['Kigali', 'Rwanda', 1.2],\n].map(([city, country, people]) => ({ city, country, people }));\n\n/** Compact rows that scroll under a heading that stays. */\nexport function Scrolling() {\n  return (\n    <Table\n      label=\"Cities by population\"\n      columns={[{ field: 'city', header: 'City' }, { field: 'country', header: 'Country' }, { field: 'people', header: 'Millions', align: 'end', width: 72, format: value => Number(value).toFixed(1) }]}\n      rows={cities}\n      density=\"compact\"\n      maxHeight={216}\n      data-testid=\"cities\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Members",
+          "title": "Four columns, stacked where they do not fit",
+          "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst members = [\n  { name: 'Alexandra Papadopoulou-Vandersteen', role: 'Engineering manager', joined: '12 Jan 2021', hours: 1642.5 },\n  { name: 'Ben Okafor', role: 'Designer', joined: '3 Mar 2023', hours: 918 },\n  { name: 'Chloé Martin', role: 'Support', joined: '28 Oct 2024', hours: 86.25 },\n];\nconst memberColumns: TableColumn[] = [\n  { field: 'name', header: 'Name', width: '2fr' },\n  { field: 'role', header: 'Role', width: '1.5fr' },\n  { field: 'joined', header: 'Joined', width: 84 },\n  { field: 'hours', header: 'Hours', align: 'end', width: 64, format: value => grouped(value, 1) },\n];\n\n/** Four columns do not fit a phone, so each record is stacked: its name and number on one line, the rest under them. */\nexport function Members() {\n  return <Table label=\"Members\" columns={memberColumns} rows={members} data-testid=\"members\" />;\n}"
+        },
+        {
+          "name": "MembersColumns",
+          "title": "The same table held in columns",
+          "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst members = [\n  { name: 'Alexandra Papadopoulou-Vandersteen', role: 'Engineering manager', joined: '12 Jan 2021', hours: 1642.5 },\n  { name: 'Ben Okafor', role: 'Designer', joined: '3 Mar 2023', hours: 918 },\n  { name: 'Chloé Martin', role: 'Support', joined: '28 Oct 2024', hours: 86.25 },\n];\nconst memberColumns: TableColumn[] = [\n  { field: 'name', header: 'Name', width: '2fr' },\n  { field: 'role', header: 'Role', width: '1.5fr' },\n  { field: 'joined', header: 'Joined', width: 84 },\n  { field: 'hours', header: 'Hours', align: 'end', width: 64, format: value => grouped(value, 1) },\n];\n\n/** The same table held in columns, as a wide screen shows it. */\nexport function MembersColumns() {\n  return <Table label=\"Members\" columns={memberColumns} rows={members} layout=\"columns\" data-testid=\"members-columns\" />;\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Columns as wide as their content.",
+          "needs": "text measurement before layout",
+          "today": "A width in points or a share of the table; rows are separate grids, so a track sized by content would not line up."
+        },
+        {
+          "missing": "Sorting by a column, and choosing several rows.",
+          "needs": "nothing from the View",
+          "today": "The app sorts `rows`; one row can be selected."
+        },
+        {
+          "missing": "Sideways scrolling with the first column held.",
+          "needs": "a sticky box on the horizontal axis",
+          "today": "Columns share the table's width, and the table stacks its records where they would be too narrow."
+        },
+        {
+          "missing": "Rows drawn only while in view.",
+          "needs": "grid rows inside a `<List>`",
+          "today": "Every row is laid out; page a long set."
+        },
+        {
+          "missing": "Column headings read as headers by a screen reader.",
+          "needs": "a column header role",
+          "today": "Each cell is named with its heading."
+        }
+      ],
+      "related": [
+        "Item",
+        "Card",
+        "Badge"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Rows and columns",
+        "order": 7,
+        "page": {
+          "stage": "bare",
+          "lead": "Use a table for records that share the same fields, when people compare them across rows.",
+          "hero": "Invoices",
+          "variants": [
+            {
+              "name": "Pressable",
+              "title": "Rows that open a record, the open one selected; a cell drawn as a badge"
+            },
+            {
+              "name": "Scrolling",
+              "title": "Compact rows that scroll under the headings"
+            },
+            {
+              "name": "Members",
+              "title": "Four columns: stacked where they do not fit, in columns where they do"
+            },
+            {
+              "name": "MembersColumns",
+              "title": "The same table held in columns; on a phone its text columns are too narrow"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateEmpty",
+              "title": "Empty"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Tabs",
       "import": "@liulidesign/core/Tabs",
       "exports": [
