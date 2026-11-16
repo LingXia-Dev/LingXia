@@ -122,23 +122,30 @@ fn keyword(record: &Record, field: usize) -> Option<Dimension> {
     }
 }
 
-/// The box each record is laid out, clipped and painted in: fixed boxes and
-/// the top layer escape to the root, every other record keeps its tree parent.
+/// The box each record is laid out, clipped and painted in: the top layer escapes to the root,
+/// a fixed box to the top-layer box it sits in (so it paints and takes presses above that
+/// layer's backdrop), else to the root; every other record keeps its tree parent.
 pub(crate) fn layout_parents(records: &[Record]) -> Vec<Option<usize>> {
     records
         .iter()
         .map(|record| {
             record.parent.map(|parent| {
-                if record.string(field::POSITION) == Some("fixed")
-                    || record.number(field::TOP_LAYER).is_some()
-                {
+                if record.number(field::TOP_LAYER).is_some() {
                     0
+                } else if record.string(field::POSITION) == Some("fixed") {
+                    top_layer_of(records, parent).unwrap_or(0)
                 } else {
                     parent
                 }
             })
         })
         .collect()
+}
+
+/// The top-layer box holding record `index`, itself included.
+fn top_layer_of(records: &[Record], index: usize) -> Option<usize> {
+    std::iter::successors(Some(index), |&at| records[at].parent)
+        .find(|&at| records[at].number(field::TOP_LAYER).is_some())
 }
 
 /// Whether each record lays out right to left: its own `direction`, else its
@@ -279,10 +286,16 @@ pub(crate) fn node_style(
     // inside the system insets and above the keyboard.
     let [safe_top, safe_right, safe_bottom, safe_left] =
         if records[0].tag == tag::PAGE && record.string(field::POSITION) == Some("fixed") {
+            // A top-layer box already ends above the keyboard by its own bottom inset.
+            let lifted = record
+                .parent
+                .and_then(|parent| top_layer_of(records, parent))
+                .and_then(|layer| records[layer].number(field::INSET_BOTTOM))
+                .unwrap_or(0.0);
             [
                 safe.insets[0],
                 safe.insets[1],
-                safe.insets[2].max(safe.keyboard),
+                (safe.insets[2].max(safe.keyboard) - lifted).max(0.0),
                 safe.insets[3],
             ]
         } else {

@@ -5239,6 +5239,8 @@ mod orphan_overlays;
 mod pointer_events;
 #[path = "popover_anchor.rs"]
 mod popover_anchor;
+#[path = "fixed_in_popover.rs"]
+mod fixed_in_popover;
 #[path = "reveal_element.rs"]
 mod reveal_element;
 #[path = "clipped_focus.rs"]
