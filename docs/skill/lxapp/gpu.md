@@ -39,6 +39,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `chart-1`..`chart-5`; controls over video `bg-media text-on-media` (tracks `on-media/25`). Roles follow appearance, so `dark:` on a colour fails (`UI_COLOR`).
 - `lingxia gen tokens` writes the theme pack's type, radius and spacing scales to `theme/tokens.css`.
   It also writes the pack's `motion` block: use `duration-fast|base|slow` and `ease-standard|enter|exit|spring`, not milliseconds.
+  Liuli's names come from the same ramps: `text-caption|footnote|body|callout|title|display`, `rounded-checkbox|segment|control|container|dialog`, `*-control-sm|md|lg`.
 - `theme/pack.json` gives the lxapp its own palette; it may set only `accent` (`{"seed":"#…","derive":true}`),
   or its surfaces, text and status colours too; every other role is derived from those. A palette the host pushes wins. `env.highContrast` picks the
   pack's high-contrast palette; `shadow-*` layers use the `shadow` role.

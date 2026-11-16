@@ -80,6 +80,26 @@ fn px(value: f32) -> String {
     format!("{}px", value)
 }
 
+/// Liuli's names for type steps: a role in the text, not a size.
+const TYPE_NAMES: [(&str, &str); 6] = [
+    ("caption", "xs"),
+    ("footnote", "sm"),
+    ("body", "base"),
+    ("callout", "lg"),
+    ("title", "xl"),
+    ("display", "3xl"),
+];
+/// Liuli's names for corner radii: what the shape is, not how big.
+const RADIUS_NAMES: [(&str, &str); 5] = [
+    ("checkbox", "sm"),
+    ("segment", "md"),
+    ("control", "lg"),
+    ("container", "xl"),
+    ("dialog", "2xl"),
+];
+/// Control heights in spacing units.
+const CONTROL_HEIGHTS: [(&str, f32); 3] = [("sm", 8.0), ("md", 10.0), ("lg", 12.0)];
+
 pub fn stylesheet(pack: &Pack) -> String {
     let mut lines = vec![
         format!(
@@ -102,6 +122,27 @@ pub fn stylesheet(pack: &Pack) -> String {
             "DEFAULT" => lines.push(format!("  --radius: {};", px(*radius))),
             _ => lines.push(format!("  --radius-{step}: {};", px(*radius))),
         }
+    }
+    // The design system's names, so a pack reshapes its components with the same ramps.
+    for (name, step) in TYPE_NAMES {
+        let Some(size) = pack.typography.scale.get(step) else {
+            continue;
+        };
+        lines.push(format!("  --text-{name}: {};", px(*size)));
+        if let Some(leading) = pack.typography.leading.get(step) {
+            lines.push(format!("  --text-{name}--line-height: {};", px(*leading)));
+        }
+    }
+    for (name, step) in RADIUS_NAMES {
+        if let Some(radius) = pack.shape.radius.get(step) {
+            lines.push(format!("  --radius-{name}: {};", px(*radius)));
+        }
+    }
+    for (size, units) in CONTROL_HEIGHTS {
+        lines.push(format!(
+            "  --spacing-control-{size}: {};",
+            px(units * pack.space.unit)
+        ));
     }
     // `duration-fast`, `ease-enter` and `ease-spring` in a page are these.
     let motion = &pack.motion;
@@ -131,12 +172,40 @@ mod tests {
     #[test]
     fn the_default_pack_writes_scales_and_no_colours() {
         let css = stylesheet(&load(None).unwrap());
-        assert!(css.contains("  --text-sm: 14px;\n  --text-sm--line-height: 20px;"));
-        assert!(css.contains("  --radius: 8px;") && css.contains("  --radius-lg: 12px;"));
+        assert!(css.contains("  --text-sm: 13px;\n  --text-sm--line-height: 18px;"));
+        assert!(css.contains("  --radius: 8px;") && css.contains("  --radius-lg: 10px;"));
         assert!(!css.contains("--color") && !css.contains("--radius-full"));
         assert!(css.contains(
             "  --transition-duration-fast: 150ms;\n  --transition-duration-base: 200ms;\n  --transition-duration-slow: 300ms;\n  --ease-standard: cubic-bezier(0, 0, 0.2, 1);\n  --ease-enter: cubic-bezier(0, 0, 0.2, 1);\n  --ease-exit: cubic-bezier(0.4, 0, 1, 1);\n  --ease-spring: spring(0);\n}"
         ));
+    }
+
+    #[test]
+    fn the_design_systems_names_follow_the_packs_ramps() {
+        let mut pack = lingxia_theme::default_pack();
+        pack.typography.scale.insert("sm".into(), 13.0);
+        pack.typography.leading.insert("sm".into(), 18.0);
+        pack.typography.scale.insert("3xl".into(), 28.0);
+        pack.shape.radius.insert("lg".into(), 10.0);
+        pack.shape.radius.insert("2xl".into(), 20.0);
+        pack.space.unit = 5.0;
+        let css = stylesheet(&pack);
+        for line in [
+            "  --text-footnote: 13px;\n  --text-footnote--line-height: 18px;",
+            "  --text-display: 28px;",
+            "  --radius-control: 10px;",
+            "  --radius-dialog: 20px;",
+            "  --spacing-control-sm: 40px;",
+            "  --spacing-control-md: 50px;",
+            "  --spacing-control-lg: 60px;",
+        ] {
+            assert!(css.contains(line), "{line} in\n{css}");
+        }
+        // A pack without a step leaves its name to the design system's own default.
+        pack.typography.scale.remove("xs");
+        pack.shape.radius.remove("md");
+        let css = stylesheet(&pack);
+        assert!(!css.contains("--text-caption") && !css.contains("--radius-segment"));
     }
 
     #[test]
