@@ -103,6 +103,23 @@ pub fn stylesheet(pack: &Pack) -> String {
             _ => lines.push(format!("  --radius-{step}: {};", px(*radius))),
         }
     }
+    // `duration-fast`, `ease-enter` and `ease-spring` in a page are these.
+    let motion = &pack.motion;
+    for (step, duration) in [
+        ("fast", motion.fast),
+        ("base", motion.base),
+        ("slow", motion.slow),
+    ] {
+        lines.push(format!("  --transition-duration-{step}: {duration}ms;"));
+    }
+    for (name, easing) in [
+        ("standard", &motion.easing),
+        ("enter", &motion.enter),
+        ("exit", &motion.exit),
+    ] {
+        lines.push(format!("  --ease-{name}: {easing};"));
+    }
+    lines.push(format!("  --ease-spring: spring({});", motion.spring));
     lines.push("}".into());
     lines.join("\n") + "\n"
 }
@@ -117,6 +134,9 @@ mod tests {
         assert!(css.contains("  --text-sm: 14px;\n  --text-sm--line-height: 20px;"));
         assert!(css.contains("  --radius: 8px;") && css.contains("  --radius-lg: 12px;"));
         assert!(!css.contains("--color") && !css.contains("--radius-full"));
+        assert!(css.contains(
+            "  --transition-duration-fast: 150ms;\n  --transition-duration-base: 200ms;\n  --transition-duration-slow: 300ms;\n  --ease-standard: cubic-bezier(0, 0, 0.2, 1);\n  --ease-enter: cubic-bezier(0, 0, 0.2, 1);\n  --ease-exit: cubic-bezier(0.4, 0, 1, 1);\n  --ease-spring: spring(0);\n}"
+        ));
     }
 
     #[test]

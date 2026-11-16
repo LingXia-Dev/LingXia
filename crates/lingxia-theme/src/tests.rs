@@ -1033,3 +1033,50 @@ fn advice_names_a_status_colour_that_reads_as_a_hue() {
     );
     assert_eq!(check(&warm_pack()), Vec::new(), "advice is not a failure");
 }
+
+#[test]
+fn motion_defaults_are_the_default_packs_and_bad_values_are_named() {
+    let base = default_pack();
+    assert_eq!(base.motion, Motion::default());
+    assert_eq!(
+        (base.motion.fast, base.motion.base, base.motion.slow),
+        (150, 200, 300)
+    );
+    let partial: Pack =
+        serde_json::from_str(r##"{"name":"quick","version":1,"motion":{"fast":90,"spring":0.3}}"##)
+            .unwrap();
+    assert_eq!(
+        partial.motion,
+        Motion {
+            fast: 90,
+            spring: 0.3,
+            ..Motion::default()
+        }
+    );
+    for easing in [
+        "linear",
+        "ease-out",
+        "cubic-bezier(0.2, 0, 0, 1)",
+        "cubic-bezier(.3,-0.4,1,1.6)",
+    ] {
+        assert!(is_easing(easing), "{easing}");
+    }
+    let mut pack = base;
+    pack.motion.easing = "standard".into();
+    pack.motion.exit = "cubic-bezier(1.2, 0, 1, 1)".into();
+    pack.motion.spring = 1.5;
+    pack.motion.slow = 60_000;
+    let problems: Vec<String> = check(&pack).iter().map(ToString::to_string).collect();
+    for start in [
+        "pack: motion.easing must be",
+        "pack: motion.exit must be",
+        "pack: motion.spring is",
+        "pack: motion.slow must be",
+    ] {
+        assert!(
+            problems.iter().any(|p| p.starts_with(start)),
+            "{start}: {problems:?}"
+        );
+    }
+    assert_eq!(problems.len(), 4, "{problems:?}");
+}

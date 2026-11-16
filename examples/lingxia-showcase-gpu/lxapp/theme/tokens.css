@@ -24,4 +24,11 @@
   --radius-md: 10px;
   --radius-sm: 4px;
   --radius-xl: 16px;
+  --transition-duration-fast: 150ms;
+  --transition-duration-base: 200ms;
+  --transition-duration-slow: 300ms;
+  --ease-standard: cubic-bezier(0, 0, 0.2, 1);
+  --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: spring(0);
 }

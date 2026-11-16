@@ -999,7 +999,7 @@ function compilerFor(theme) {
   let compiler = compilers.get(theme);
   if (!compiler) {
     compiler = readFile(new URL(import.meta.resolve('tailwindcss/theme.css')), 'utf8')
-      .then(defaults => compile(`${defaults}\n${theme}\n${roleTheme}\n${viewExtensions}\n@tailwind utilities;`));
+      .then(defaults => compile(`${defaults}\n${viewExtensions}\n${theme}\n${roleTheme}\n@tailwind utilities;`));
     compiler.catch(() => compilers.delete(theme));
     if (compilers.size >= 8) compilers.delete(compilers.keys().next().value);
     compilers.set(theme, compiler);

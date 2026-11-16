@@ -200,6 +200,24 @@ test('transition utilities lower to one bounded transition of painted properties
   assert.deepEqual(JSON.parse(records[7]), { properties: ['opacity'], durationMs: 200, delayMs: 0, easing: [0.4, 0, 0.2, 1] });
 });
 
+test('a pack names durations and easings, and its spring replaces the built-in one', async () => {
+  // The shape `lingxia gen tokens` writes from a pack's motion block.
+  const tokens = '@theme {\n  --transition-duration-fast: 150ms;\n  --transition-duration-base: 200ms;\n  --transition-duration-slow: 300ms;\n'
+    + '  --ease-standard: cubic-bezier(0.2, 0, 0, 1);\n  --ease-enter: cubic-bezier(0, 0, 0, 1);\n  --ease-exit: cubic-bezier(0.3, 0, 1, 1);\n  --ease-spring: spring(0.3);\n}\n';
+  const names = ['duration-fast', 'duration-base', 'duration-slow', 'ease-standard', 'ease-enter', 'ease-exit', 'ease-spring', 'ease-spring-bouncy'];
+  const rules = await compileUtilities(new Set(['transition-transform', ...names]), tokens);
+  const motion = name => rules.find(rule => rule.name === name && !rule.error)?.motion;
+  assert.deepEqual(['fast', 'base', 'slow'].map(step => motion(`duration-${step}`)?.duration), [150, 200, 300]);
+  assert.deepEqual(motion('ease-standard')?.easing, [0.2, 0, 0, 1]);
+  assert.deepEqual(motion('ease-enter')?.easing, [0, 0, 0, 1]);
+  assert.deepEqual(motion('ease-exit')?.easing, [0.3, 0, 1, 1]);
+  assert.deepEqual(motion('ease-spring')?.easing, { spring: 0.3 });
+  assert.deepEqual(motion('ease-spring-bouncy')?.easing, { spring: 0.25 }, 'the built-in bouncy spring stays');
+  // Without the tokens the names are unknown classes, not silent defaults.
+  const bare = await compileUtilities(new Set(['duration-fast', 'ease-enter']));
+  assert.ok(!bare.find(rule => rule.name === 'duration-fast' && !rule.error)?.motion);
+});
+
 test('ease-spring times a transition by a spring; keyframes refuse one', async () => {
   const rules = await compileUtilities(new Set(['transition-transform', 'ease-spring', 'ease-spring-bouncy', 'ease-[spring(0.4)]', 'ease-[spring(2)]']));
   const easing = name => rules.find(rule => rule.name === name && !rule.error)?.motion?.easing;

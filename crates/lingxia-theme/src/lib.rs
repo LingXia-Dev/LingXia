@@ -161,6 +161,9 @@ impl Default for Space {
     }
 }
 
+/// Durations in milliseconds, three easings as CSS timing functions (`easing` is the
+/// standard one, for a change in place; `enter` and `exit` for what arrives and leaves) and
+/// the bounce of the pack's spring. Pages name them: `duration-fast`, `ease-enter`.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields, default)]
 pub struct Motion {
@@ -168,17 +171,46 @@ pub struct Motion {
     pub base: u32,
     pub slow: u32,
     pub easing: String,
+    pub enter: String,
+    pub exit: String,
+    pub spring: f32,
 }
 
 impl Default for Motion {
     fn default() -> Self {
         Motion {
-            fast: 120,
+            fast: 150,
             base: 200,
-            slow: 320,
-            easing: "standard".into(),
+            slow: 300,
+            easing: "cubic-bezier(0, 0, 0.2, 1)".into(),
+            enter: "cubic-bezier(0, 0, 0.2, 1)".into(),
+            exit: "cubic-bezier(0.4, 0, 1, 1)".into(),
+            spring: 0.0,
         }
     }
+}
+
+/// Whether `value` is a timing function a transition takes: a keyword, or a cubic bezier
+/// whose two x coordinates lie in 0–1.
+fn is_easing(value: &str) -> bool {
+    if matches!(
+        value,
+        "linear" | "ease" | "ease-in" | "ease-out" | "ease-in-out"
+    ) {
+        return true;
+    }
+    let Some(points) = value
+        .strip_prefix("cubic-bezier(")
+        .and_then(|rest| rest.strip_suffix(')'))
+    else {
+        return false;
+    };
+    let points: Vec<Option<f64>> = points
+        .split(',')
+        .map(|point| point.trim().parse().ok().filter(|n: &f64| n.is_finite()))
+        .collect();
+    matches!(points[..], [Some(x1), Some(_), Some(x2), Some(_)]
+        if (0.0..=1.0).contains(&x1) && (0.0..=1.0).contains(&x2))
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -505,6 +537,33 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
     }
     if !(pack.space.unit.is_finite() && pack.space.unit > 0.0 && pack.space.unit <= 64.0) {
         problem("pack", "space.unit must be in (0, 64]".into());
+    }
+    let motion = &pack.motion;
+    for (key, duration) in [
+        ("fast", motion.fast),
+        ("base", motion.base),
+        ("slow", motion.slow),
+    ] {
+        if duration > 10_000 {
+            problem("pack", format!("motion.{key} must be 0-10000 ms"));
+        }
+    }
+    for (key, easing) in [
+        ("easing", &motion.easing),
+        ("enter", &motion.enter),
+        ("exit", &motion.exit),
+    ] {
+        if !is_easing(easing) {
+            problem(
+                "pack",
+                format!(
+                    "motion.{key} must be linear, ease, ease-in, ease-out, ease-in-out or cubic-bezier(x1, y1, x2, y2) with x in 0-1"
+                ),
+            );
+        }
+    }
+    if !(0.0..=0.9).contains(&motion.spring) {
+        problem("pack", "motion.spring is a bounce of 0-0.9".into());
     }
     problems
 }

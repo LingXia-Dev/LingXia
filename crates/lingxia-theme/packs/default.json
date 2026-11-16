@@ -51,5 +51,9 @@
   },
   "shape": {"radius": {"sm": 4, "DEFAULT": 8, "md": 10, "lg": 12, "xl": 16, "2xl": 20, "3xl": 24, "full": 9999}},
   "space": {"unit": 4},
-  "motion": {"fast": 120, "base": 200, "slow": 320, "easing": "standard"}
+  "motion": {
+    "fast": 150, "base": 200, "slow": 300,
+    "easing": "cubic-bezier(0, 0, 0.2, 1)", "enter": "cubic-bezier(0, 0, 0.2, 1)", "exit": "cubic-bezier(0.4, 0, 1, 1)",
+    "spring": 0
+  }
 }

@@ -32,6 +32,12 @@ continues from the value on screen.
 
 `ease-spring*` times a transition by a spring instead of a curve ([Springs](#springs)).
 
+The theme pack names the timings a design system should use instead of milliseconds: `duration-fast`,
+`duration-base` and `duration-slow` (150, 200 and 300 ms in the default pack), `ease-standard` for a
+change in place, `ease-enter` for what arrives and `ease-exit` for what leaves. They come from the pack's
+`motion` block through `lingxia gen tokens`, so a pack changes them for every component at once. The
+pack's `spring` sets the bounce of `ease-spring`.
+
 Some changes land at once instead of animating:
 
 - an element seen for the first time, unless it has `starting:` values (see below);
