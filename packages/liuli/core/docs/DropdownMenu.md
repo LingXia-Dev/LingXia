@@ -242,7 +242,7 @@ export function Submenu() {
 | `icon` | `Child` |  | Drawn before the label; hidden from assistive tech. |
 | `onClick` (required) | `() => void` |  | Runs on choice; the menu then closes. |
 | `isDisabled` | `boolean` | `false` |  |
-| `variant` | `DropdownMenuItemVariant` | `'default'` | `destructive` tints the icon with the danger role; the text stays readable. |
+| `variant` | `DropdownMenuItemVariant` | `'default'` | `destructive` draws the label and the icon in the danger role. |
 | `data-testid` | `string` |  |  |
 
 ## DropdownMenuCheckboxItem props

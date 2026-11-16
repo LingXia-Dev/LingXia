@@ -59,7 +59,7 @@ export interface DropdownMenuItemProps {
   onClick: () => void;
   /** @default false */
   isDisabled?: boolean;
-  /** `destructive` tints the icon with the danger role; the text stays readable. @default 'default' */
+  /** `destructive` draws the label and the icon in the danger role. @default 'default' */
   variant?: DropdownMenuItemVariant;
   'data-testid'?: string;
 }
@@ -214,7 +214,7 @@ export function DropdownMenuItem({
     >
       {icon !== undefined && <view aria-hidden className={cx(r.itemIcon.base, r.itemIcon.variant[variant])}>{icon}</view>}
       <view className={r.itemText.base}>
-        <text className={r.itemLabel.base}>{label}</text>
+        <text className={cx(r.itemLabel.base, r.itemLabel.variant[variant])}>{label}</text>
         {description !== undefined && <text id={descriptionId} className={r.itemDescription.base}>{description}</text>}
       </view>
     </button>

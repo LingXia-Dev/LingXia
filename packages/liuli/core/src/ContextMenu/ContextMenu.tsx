@@ -23,19 +23,21 @@ type Ask = { x: number; y: number; pointer: 'touch' | 'mouse' | 'keyboard' };
 export function ContextMenu({ label, children, menu, isDisabled = false, className, 'data-testid': testId }: ContextMenuProps) {
   const id = useId();
   const ask = useLocal<Ask | null>('ask', null);
+  // The last ask outlives the menu: while it closes it keeps its form and its place.
+  const shown = useLocal<Ask | null>('shown', null);
   const { env } = useView();
-  const at = ask.value;
+  const at = ask.value ?? shown.value;
   const isDocked = at?.pointer === 'touch';
   // At a point: kept inside the page, and opening upward in the lower part of it.
   const place = at === null || isDocked
-    ? { bottom: env.safeArea.bottom + 8 }
+    ? undefined
     : {
         left: Math.max(8, Math.min(at.x, env.viewport.width - 200)),
         ...(at.y > env.viewport.height * 0.6 ? { bottom: env.viewport.height - at.y } : { top: at.y }),
       };
   return (
     <>
-      <view onContextMenu={isDisabled ? undefined : event => ask.set({ x: event.x, y: event.y, pointer: event.pointer })} data-testid={testId} className={cx(r.target.base, className)}>
+      <view onContextMenu={isDisabled ? undefined : event => { const next = { x: event.x, y: event.y, pointer: event.pointer }; shown.set(next); ask.set(next); }} data-testid={testId} className={cx(r.target.base, className)}>
         {children}
       </view>
       <MenuSize.Provider value={isDocked ? 'lg' : 'md'}>
@@ -44,14 +46,22 @@ export function ContextMenu({ label, children, menu, isDisabled = false, classNa
           popover
           role="menu"
           aria-label={label}
-          open={at !== null}
+          open={ask.value !== null}
           onToggle={isOpen => { if (!isOpen) ask.set(null); }}
-          data-testid={testId && `${testId}-menu`}
+          data-testid={isDocked ? undefined : testId && `${testId}-menu`}
           style={place}
           className={cx(r.menu.base, isDocked ? r.menu.docked : r.menu.point)}
         >
-          {isDocked && <text aria-hidden className={r.title.base}>{label}</text>}
-          {menu}
+          {/* Hidden from assistive tech, which closes the menu with Escape or back; the name only satisfies the button. */}
+          {isDocked && <button aria-hidden aria-label={label} onClick={() => ask.set(null)} data-testid={testId && `${testId}-scrim`} className={r.scrim.base} />}
+          {isDocked
+            ? (
+              <view data-testid={testId && `${testId}-menu`} className={r.sheet.base} style={{ marginBottom: env.safeArea.bottom + 8 }}>
+                <text aria-hidden className={r.title.base}>{label}</text>
+                {menu}
+              </view>
+            )
+            : menu}
         </view>
       </MenuSize.Provider>
     </>

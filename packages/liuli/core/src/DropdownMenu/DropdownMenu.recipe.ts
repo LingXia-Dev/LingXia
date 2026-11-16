@@ -51,6 +51,8 @@ export const dropdownMenuRecipe = {
   },
   itemLabel: {
     base: 'text-body',
+    /** A destructive item is red in word and icon, as menus are on every platform. */
+    variant: { default: '', destructive: 'text-danger' } satisfies Record<DropdownMenuItemVariant, string>,
   },
   itemDescription: {
     base: 'text-footnote text-muted',

@@ -1,4 +1,5 @@
 import { expect, spec } from '@lingxia/test';
+import { tap, touchMinimum, type Box } from './finger.js';
 
 // Liuli's gallery on a device: every page opens, and each control answers taps and keys as its
 // accessibility pattern says. States are asserted as a screen reader hears them: checked, selected, expanded.
@@ -534,4 +535,29 @@ spec('dashboard: every period draws its charts', { id: 'DASHBOARD-PERIODS-001', 
     await expect(view.testId('products')).toBeAttached();
   }
   await t.attach('dashboard-year.png', await view.screenshot());
+});
+
+spec('context menu (touch): a long press docks the menu level between the edges, and an item runs its action', { id: 'CONTEXT-MENU-TOUCH-001', start: { page: 'context-menu' }, timeout: 60_000 }, async (t) => {
+  // A desktop asks with a secondary click, which no spec can send; there a held touch is a press.
+  await touchMinimum(t);
+  const view = t.app.view;
+  const centre = (box: Box): [number, number] => [box.x + box.width / 2, box.y + box.height / 2];
+  const status = view.getByRole('status').first();
+  // A plain tap opens the note, never the menu.
+  await tap(view, centre(await view.testId('note-coast').boundingBox()));
+  await expect(status).toHaveText('Opened Trip to the coast');
+  await expect(view.testId('note-coast-menu')).toHaveCount(0);
+  const finger = await view.touch(centre(await view.testId('note-reading').boundingBox()));
+  await pause(900);
+  await finger.up();
+  await pause(600);
+  const sheet = await view.testId('note-reading-menu').boundingBox();
+  const page = await view.testId('note-reading-scrim').boundingBox();
+  const [before, after] = [sheet.x - page.x, page.x + page.width - (sheet.x + sheet.width)];
+  if (Math.abs(before - after) > 1) throw Error(`the docked menu is ${before} from one edge and ${after} from the other`);
+  await t.attach('context-menu-docked.png', await view.screenshot());
+  // A real tap on an item: it must reach the item, not the layer under the menu.
+  await tap(view, centre(await view.testId('pin-reading').boundingBox()));
+  await expect(status).toHaveText('Pinned Reading list');
+  await expect(view.testId('note-reading-menu')).toHaveCount(0);
 });

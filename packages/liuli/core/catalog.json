@@ -4877,6 +4877,8 @@
       "parts": {
         "target": "view",
         "menu": "view",
+        "scrim": "button",
+        "sheet": "view",
         "title": "text"
       },
       "accessibility": {
@@ -4957,6 +4959,7 @@
           "--radius-dialog"
         ],
         "roles": [
+          "scrim",
           "surface-overlay",
           "text",
           "text-muted"
@@ -6948,7 +6951,7 @@
             "name": "variant",
             "type": "DropdownMenuItemVariant",
             "required": false,
-            "description": "`destructive` tints the icon with the danger role; the text stays readable.",
+            "description": "`destructive` draws the label and the icon in the danger role.",
             "default": "'default'"
           },
           {
