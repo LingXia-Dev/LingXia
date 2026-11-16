@@ -226,7 +226,7 @@ final class LxMediaPlayer: NSObject {
 
     // State
     private var shouldShowControlsOnFirstPlay = false // Show controls on first play (for preview mode)
-    private var currentLoadingURL: URL? // Track currently loading URL to avoid duplicate loads
+    private var currentLoadingURL: URL? // Loading or loaded; nil after a failure so the same URL loads again
     private var loadingSequence: UInt64 = 0 // Sequence number to identify stale callbacks
 
     // Quality and Speed
@@ -476,16 +476,14 @@ final class LxMediaPlayer: NSObject {
             let nextItems = nextPlaylist.map { LxMediaPlaylistItem(url: $0) }
             applyPlaylist(nextItems)
         } else if let source = config.source {
-            self.playlist = []
             switch source {
             case .url(let url):
-                beginSingleSourceColdStart(url: url)
+                applySingleSource(url: url)
             case .file(let path):
-                beginSingleSourceColdStart(url: URL(fileURLWithPath: path))
+                applySingleSource(url: URL(fileURLWithPath: path))
             }
         } else if let src = config.src {
-            self.playlist = []
-            beginSingleSourceColdStart(url: src)
+            applySingleSource(url: src)
         }
 
         // Always use .pause to receive end notification, handle loop in videoDidEnd
@@ -827,6 +825,19 @@ final class LxMediaPlayer: NSObject {
     private func applyItemDisplay(_ item: LxMediaPlaylistItem) {
         if let fit = item.objectFit { applyObjectFit(fit) }
         if let degrees = item.rotateDegrees { setDisplayRotationDegrees(degrees) }
+    }
+
+    /// A props update re-sends the source it already carries; loading it again
+    /// would restart the clip and drop a pending play().
+    @MainActor
+    private func applySingleSource(url: URL) {
+        let alreadyCurrent = playlist.isEmpty
+            && !streamDecoderActive
+            && url == currentLoadingURL
+            && player?.currentItem != nil
+        playlist = []
+        if alreadyCurrent { return }
+        beginSingleSourceColdStart(url: url)
     }
 
     /// Single-source cold start. Mirrors the playlist transition path so any
@@ -1217,6 +1228,7 @@ final class LxMediaPlayer: NSObject {
                 case .failed:
                     let msg = item.error?.localizedDescription ?? "unknown error"
                     LXLog.error("MediaPlayer item failed seq=\(currentSequence) error=\(msg)", category: "Media")
+                    self.currentLoadingURL = nil
                     self.send(.error(code: "load_failed", message: msg))
                     self.stopDisplayLink()
                     self.revealVideoWorkItem?.cancel()
@@ -1282,6 +1294,7 @@ final class LxMediaPlayer: NSObject {
             guard currentSequence == self.loadingSequence else { return }
             let error = (notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError)?.localizedDescription ?? "unknown error"
             LXLog.error("MediaPlayer item failed to play to end seq=\(currentSequence) error=\(error)", category: "Media")
+            self.currentLoadingURL = nil
             self.send(.error(code: "play_failed", message: error))
             self.stopDisplayLink()
             self.revealVideoWorkItem?.cancel()
