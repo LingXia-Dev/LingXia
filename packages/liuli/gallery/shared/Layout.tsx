@@ -18,6 +18,8 @@ export function GalleryPage({ children, isFilled = false }: { children: Child; i
       )}
       {/* Test probe: specs read the bottom inset from its height (inset + 1); no handlers, so taps pass through. */}
       <view aria-hidden data-testid="safe-area-bottom" className="absolute start-0 bottom-0 w-px" style={{ height: env.insets.bottom + 1 }} />
+      {/* Test probe: which form the page has taken, so a capture can refuse the wrong one. */}
+      <view aria-hidden data-testid={env.sizeClass === 'regular' ? 'form-regular' : 'form-compact'} className="absolute start-0 top-0 size-px" />
     </page>
   );
 }

@@ -41,6 +41,8 @@ export function Workspace({ page, onSelect }: WorkspaceProps) {
   const title = titles.get(current) ?? 'Overview';
   return (
     <page className="bg-canvas">
+      {/* Test probe: the workspace is the regular form; see GalleryPage. */}
+      <view aria-hidden data-testid="form-regular" className="absolute start-0 top-0 size-px" />
       <SplitView
         sidebarLabel="Gallery"
         contentLabel={title}

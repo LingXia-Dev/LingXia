@@ -23,7 +23,7 @@ const pack = JSON.parse(readFileSync(join(packs, name, 'pack.json'), 'utf8'));
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 // The gallery's own files are copied; build output, sessions and device specs stay behind.
-const skipped = new Set(['dist', 'node_modules', '.lingxia', 'test-results', 'zz-tests']);
+const skipped = new Set(['dist', 'node_modules', '.lingxia', '.baseline', 'test-results', 'zz-tests']);
 cpSync(join(liuli, 'gallery'), join(out, 'gallery'), {
   recursive: true,
   filter: source => !skipped.has(source.slice(join(liuli, 'gallery').length + 1).split('/')[0]) && !/\/\.dist[^/]*$/.test(source),
