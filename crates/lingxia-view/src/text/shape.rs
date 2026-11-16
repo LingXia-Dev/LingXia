@@ -68,7 +68,14 @@ pub(crate) fn glyph_ink(
     let metrics = font.glyph_metrics(Size::new(size), coordinates.as_slice());
     let mut bounds: Option<[f32; 4]> = None;
     for glyph in glyphs {
-        let ink = metrics.bounds(GlyphId::new(glyph.id))?;
+        let id = GlyphId::new(glyph.id);
+        let ink = match metrics.bounds(id) {
+            Some(ink) => ink,
+            // A variable or CFF face is measured from the drawn outline, and a blank glyph
+            // (a space) draws none: no ink, not an unknown one.
+            None if blank(&font, id, &coordinates) => continue,
+            None => return None,
+        };
         if ink.x_min == ink.x_max || ink.y_min == ink.y_max {
             continue;
         }
@@ -101,6 +108,29 @@ pub(crate) fn glyph_ink(
             })
             .unwrap_or([0.0; 4]),
     )
+}
+
+/// Whether `glyph` has an outline that draws nothing.
+fn blank(
+    font: &skrifa::FontRef,
+    glyph: skrifa::GlyphId,
+    coordinates: &[skrifa::instance::NormalizedCoord],
+) -> bool {
+    use skrifa::{
+        MetadataProvider,
+        instance::Size,
+        outline::{DrawSettings, pen::ControlBoundsPen},
+    };
+    font.outline_glyphs().get(glyph).is_some_and(|outline| {
+        let mut pen = ControlBoundsPen::default();
+        outline
+            .draw(
+                DrawSettings::unhinted(Size::unscaled(), coordinates),
+                &mut pen,
+            )
+            .is_ok()
+            && pen.bounding_box().is_none()
+    })
 }
 
 impl Renderer {

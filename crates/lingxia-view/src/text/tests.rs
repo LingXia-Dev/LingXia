@@ -293,6 +293,35 @@ fn synthetic_italic_leans_right_and_ink_bounds_contain_pixels() {
     );
 }
 
+/// A variable face measures ink from drawn outlines, where a space draws nothing.
+#[test]
+fn a_space_in_a_variable_face_does_not_void_the_runs_ink() {
+    use skrifa::MetadataProvider;
+    let Ok(data) = std::fs::read("/System/Library/Fonts/SFNS.ttf") else {
+        eprintln!("skipped: host fonts unavailable");
+        return;
+    };
+    let font = parley::FontData::new(parley::fontique::Blob::new(std::sync::Arc::new(data)), 0);
+    let face = skrifa::FontRef::from_index(font.data.as_ref(), 0).unwrap();
+    let map = face.charmap();
+    let glyphs: Vec<vello_cpu::Glyph> = "A B"
+        .chars()
+        .enumerate()
+        .map(|(at, c)| vello_cpu::Glyph {
+            id: map.map(c).unwrap().to_u32(),
+            x: 20.0 * at as f32,
+            y: 40.0,
+        })
+        .collect();
+    let [x, y, w, h] = glyph_ink(&font, 32.0, &[], &glyphs, 0.0, 1.0).expect("known ink");
+    assert!(
+        x < 5.0 && x + w > 45.0 && y < 30.0 && h > 15.0,
+        "{x} {y} {w} {h}"
+    );
+    let blank = glyph_ink(&font, 32.0, &[], &glyphs[1..2], 0.0, 1.0);
+    assert_eq!(blank, Some([0.0; 4]));
+}
+
 #[test]
 fn italic_inherits_resets_and_does_not_reuse_upright_shaping() {
     let module = crate::session::tests::source(
