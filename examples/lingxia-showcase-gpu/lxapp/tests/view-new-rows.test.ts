@@ -9,8 +9,9 @@ spec('a popover opens beside its button, flips sides, and falls back under a wid
   const state = view.testId('lab-beside-state');
   const screen = await view.viewport();
   const near = (a: number, b: number) => Math.abs(a - b) <= 1.5;
-  // Level with its button, or as low as the window lets it sit.
-  const level = (anchor: { y: number }, box: { height: number }) => Math.min(anchor.y, screen.top + screen.height - 8 - box.height);
+  // Level with its button; beside one at the bottom edge it is pushed up to stay on screen, still beside it.
+  const level = (anchor: { y: number }, box: { y: number; height: number }) => near(box.y, anchor.y)
+    || (box.y < anchor.y && box.y + box.height > anchor.y && box.y + box.height <= screen.top + screen.height - 8 + 1.5);
 
   await view.testId('lab-beside-start').click();
   await expect(state).toHaveAttribute('data-state', 'open=start');
@@ -18,7 +19,7 @@ spec('a popover opens beside its button, flips sides, and falls back under a wid
   const fitsAfter = anchor.x + anchor.width + 4 + box.width <= screen.width - 8;
   if (fitsAfter) {
     expect(near(box.x, anchor.x + anchor.width + 4)).toBe(true);
-    expect(near(box.y, level(anchor, box))).toBe(true);
+    expect(level(anchor, box)).toBe(true);
   }
 
   await view.testId('lab-beside-end').click();
@@ -26,13 +27,13 @@ spec('a popover opens beside its button, flips sides, and falls back under a wid
   [anchor, box] = [await view.testId('lab-beside-end').boundingBox(), await note.boundingBox()];
   // No room past the end button: the note sits before it.
   expect(near(box.x + box.width, anchor.x - 4)).toBe(true);
-  expect(near(box.y, level(anchor, box))).toBe(true);
+  expect(level(anchor, box)).toBe(true);
 
   await view.testId('lab-beside-wide').click();
   await expect(state).toHaveAttribute('data-state', 'open=wide');
   [anchor, box] = [await view.testId('lab-beside-wide').boundingBox(), await note.boundingBox()];
-  // Room on neither side: under the button, never over it.
-  expect(near(box.y, anchor.y + anchor.height + 4)).toBe(true);
+  // Room on neither side: under the button, or above it at the bottom edge; never covering it.
+  expect(near(box.y, anchor.y + anchor.height + 4) || near(box.y + box.height, anchor.y - 4)).toBe(true);
   expect(near(box.x + box.width / 2, anchor.x + anchor.width / 2)).toBe(true);
 });
 

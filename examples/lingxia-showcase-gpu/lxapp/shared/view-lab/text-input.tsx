@@ -214,6 +214,20 @@ export function UnderlinesDemo() {
   );
 }
 
+// Two thumbs on one track: the pair while it moves, and the pair where the press ended.
+export function RangeDemo() {
+  const range = useLocal<readonly [number, number]>('lab-range-values', [20, 60]);
+  const done = useLocal('lab-range-done', 'none');
+  const t = useSay();
+  return (
+    <>
+      <slider data-testid="lab-range-price" aria-label={t(labels.rangeName)} thumbLabels={[t(labels.rangeLow), t(labels.rangeHigh)]} min={0} max={100} step={10}
+        values={range.value} onChange={next => range.set(next)} onChangeEnd={next => done.set(`${next[0]}-${next[1]}`)} className="text-accent" />
+      <Readout testId="lab-range-state" state={`low=${range.value[0]} high=${range.value[1]} done=${done.value}`}>{t(readouts.range(range.value[0], range.value[1], done.value))}</Readout>
+    </>
+  );
+}
+
 export const textDemos = {
   paragraphs: TextLayoutDemo,
   runs: RichTextDemo,
@@ -222,6 +236,7 @@ export const textDemos = {
   suggestions: TypeaheadDemo,
   partly: PartlyDemo,
   underlines: UnderlinesDemo,
+  range: RangeDemo,
   linkOff: LinkOffDemo,
   form: FormSemanticsDemo,
 };

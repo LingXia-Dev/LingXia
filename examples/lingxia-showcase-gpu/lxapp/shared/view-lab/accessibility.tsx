@@ -12,8 +12,9 @@ export function TreeDemo() {
   const row = 'px-3 py-2 rounded-md text-sm text-start active:bg-surface-sunken focus-visible:ring-2 focus-visible:ring-focus';
   const folder = (id: string, name: string, files: readonly [string, string][]) => (
     <>
-      <button role="treeitem" aria-level={1} aria-expanded={open.value.includes(id)} data-testid={`lab-tree-${id}`} onClick={toggle(id)} className={row}>
-        {`${open.value.includes(id) ? '▾' : '▸'} ${name}`}
+      <button role="treeitem" aria-level={1} aria-expanded={open.value.includes(id)} data-testid={`lab-tree-${id}`} onClick={toggle(id)} className={`${row} flex-row gap-2`}>
+        <text aria-hidden>{open.value.includes(id) ? '▾' : '▸'}</text>
+        <text>{name}</text>
       </button>
       {open.value.includes(id) ? files.map(([file, label]) => (
         <button key={file} role="treeitem" aria-level={2} data-testid={`lab-tree-${file}`} onClick={() => {}} className={`${row} ps-8`}>{label}</button>

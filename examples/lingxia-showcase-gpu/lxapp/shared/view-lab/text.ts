@@ -22,6 +22,7 @@ export const demos = {
     suggestions: { testId: 'lab-type', title: { en: 'Suggestions while typing', zh: '输入时的建议' }, try: { en: 'Type to filter. Arrows move, Enter chooses, Escape closes; the list opens against the field.', zh: '输入以筛选。方向键移动，回车选择，Esc 关闭；列表贴着输入框打开。' } },
     partly: { testId: 'lab-partly', title: { en: 'A box that is partly checked', zh: '部分选中的复选框' }, try: { en: 'Check one topping: "All toppings" shows a dash. Tap it and every topping is checked.', zh: '勾选一种配料，“全部配料”显示一条横线；点它则全部勾选。' } },
     underlines: { testId: 'lab-underlines', title: { en: 'Underlines in other styles', zh: '其他样式的下划线' }, try: { en: 'A dotted line under a term, a dashed one under a link, and a strike, each in a colour of its own.', zh: '术语下的点线、链接下的虚线和删除线，各用自己的颜色。' } },
+    range: { testId: 'lab-range', title: { en: 'A slider with two thumbs', zh: '双滑块' }, try: { en: 'Drag either thumb, or press the track: the nearer thumb moves, and the two never cross.', zh: '拖动任一滑块，或点按轨道：较近的滑块移动，两者不会交叉。' } },
     linkOff: { testId: 'lab-link-off', title: { en: 'A link that is switched off', zh: '已停用的链接' }, try: { en: 'The first link does nothing and reads as unavailable; the second counts its taps.', zh: '第一个链接点了没有反应，读屏软件读作不可用；第二个会计数。' } },
     form: { testId: 'lab-form', title: { en: 'Required, invalid and described fields', zh: '必填、无效与带说明的字段' }, try: { en: 'Each field tells a screen reader its hint and its error.', zh: '每个字段都把提示和错误告诉读屏软件。' } },
   },
@@ -113,6 +114,7 @@ export const readouts = {
     zh: `行已按 ${opened} 次 · 开关${wifi ? '开' : '关'} · 已移除 ${removed} 次`,
   }),
   partly: (checked: number, total: number): Words => ({ en: `${checked} of ${total} checked`, zh: `已选 ${checked} / ${total}` }),
+  range: (low: number, high: number, done: string): Words => ({ en: `From ${low} to ${high} · released at ${done}`, zh: `从 ${low} 到 ${high} · 松开于 ${done}` }),
   taps: (n: number): Words => ({ en: `Tapped ${n} times`, zh: `已点 ${n} 次` }),
   beside: (which: 'none' | 'start' | 'end' | 'wide'): Words => {
     const at = { start: labels.sideStart, end: labels.sideEnd, wide: labels.sideWide };
@@ -175,6 +177,9 @@ export const labels = {
   treeItems: { en: 'Documents|Invoices|Letters|Pictures|Holidays', zh: '文档|发票|信件|图片|假期' },
   namedList: { en: 'Messages', zh: '消息' },
   namedRows: { en: 'See you at six|Running late|On my way|Parked outside|Here', zh: '六点见|我晚点到|在路上了|停在外面|到了' },
+  rangeName: { en: 'Price', zh: '价格' },
+  rangeLow: { en: 'Lowest price', zh: '最低价' },
+  rangeHigh: { en: 'Highest price', zh: '最高价' },
   underLead: { en: 'An ', zh: '一个' },
   underTerm: { en: 'API key', zh: 'API 密钥' },
   underMid: { en: ' is a secret. Read the ', zh: '是机密。请阅读' },

@@ -8,6 +8,8 @@ spec('arrows open a folder, move into it, move out and close it', { covers: ['vi
   const documents = view.testId('lab-tree-documents');
   const invoices = view.testId('lab-tree-invoices');
   await expect(state).toHaveAttribute('data-state', 'open=none');
+  // The arrow beside the name is decoration: the folder is found by its name alone.
+  await expect(view.getByRole('treeitem', { name: 'Documents' })).toHaveCount(1);
   await documents.press('ArrowLeft');
   await expect(state).toHaveAttribute('data-state', 'open=none');
   await documents.press('ArrowRight');

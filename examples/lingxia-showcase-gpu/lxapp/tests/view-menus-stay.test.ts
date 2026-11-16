@@ -33,7 +33,8 @@ spec('a popover refuses Escape while its draft is kept, and closes once it is no
   await expect(note).toBeVisible();
   await keep.press('Escape');
   await expect(state).toHaveAttribute('data-state', 'open=true asked=1');
-  await keep.press('Escape');
+  // Assistive tech's dismiss asks the same question as Escape.
+  await note.performAction('dismiss');
   await expect(state).toHaveAttribute('data-state', 'open=true asked=2');
   await expect(note).toBeVisible();
   await keep.click();
