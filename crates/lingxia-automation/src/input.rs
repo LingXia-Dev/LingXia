@@ -4,7 +4,7 @@
 //! coordinates, buttons, and the modifier vocabulary can never drift.
 
 use crate::resolve::json_to_js;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::resolve::resolve_lxapp_by_id;
 use crate::{auto_err, require_host_context};
 use lingxia_platform::traits::{keyboard, mouse};
@@ -102,7 +102,8 @@ impl JSPagePointer {
         Self { appid }
     }
 
-    fn page_point(
+    /// A page point as a point of the window that hosts the page.
+    async fn page_point(
         &self,
         at: &[f64],
         flag: &str,
@@ -131,7 +132,29 @@ impl JSPagePointer {
             ))
         }
 
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
+        {
+            use lingxia_platform::traits::gesture::AppGesture;
+            let app = resolve_lxapp_by_id(self.appid.as_ref())?;
+            let target = lxapp::automation::gesture_target(&app, None).map_err(auto_err)?;
+            let frame = lxapp::get_platform()
+                .ok_or_else(|| auto_err("platform is not initialized"))?
+                .gesture_window_frame(target)
+                .await
+                .map_err(|err| auto_err(err.to_string()))?;
+            if let Some(requested) = window.as_deref()
+                && requested.trim() != frame.window_id
+            {
+                return Err(auto_err(format!(
+                    "window {requested} does not host the current page (expected {})",
+                    frame.window_id
+                )));
+            }
+            let (x, y) = frame.window_point(x, y);
+            Ok((x, y, Some(frame.window_id)))
+        }
+
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             let _ = &self.appid;
             Ok((x, y, window))
@@ -199,27 +222,27 @@ impl JSPagePointer {
 
     #[js_method(rename = "move")]
     async fn pointer_move(&self, ctx: JSContext, o: PointerAt) -> JSResult<JSValue> {
-        let (x, y, window) = self.page_point(&o.at, "at", o.window)?;
+        let (x, y, window) = self.page_point(&o.at, "at", o.window).await?;
         app_mouse(&ctx, window, mouse::AppMouseAction::Move { x, y }).await
     }
 
     #[js_method]
     async fn down(&self, ctx: JSContext, o: PointerButtonAt) -> JSResult<JSValue> {
-        let (x, y, window) = self.page_point(&o.at, "at", o.window)?;
+        let (x, y, window) = self.page_point(&o.at, "at", o.window).await?;
         let button = mouse_button(&o.button)?;
         app_mouse(&ctx, window, mouse::AppMouseAction::Down { x, y, button }).await
     }
 
     #[js_method]
     async fn up(&self, ctx: JSContext, o: PointerButtonAt) -> JSResult<JSValue> {
-        let (x, y, window) = self.page_point(&o.at, "at", o.window)?;
+        let (x, y, window) = self.page_point(&o.at, "at", o.window).await?;
         let button = mouse_button(&o.button)?;
         app_mouse(&ctx, window, mouse::AppMouseAction::Up { x, y, button }).await
     }
 
     #[js_method]
     async fn click(&self, ctx: JSContext, o: PointerClick) -> JSResult<JSValue> {
-        let (x, y, window) = self.page_point(&o.at, "at", o.window)?;
+        let (x, y, window) = self.page_point(&o.at, "at", o.window).await?;
         let button = mouse_button(&o.button)?;
         let click_count = o.count.unwrap_or(1);
         if click_count == 0 {
@@ -240,8 +263,8 @@ impl JSPagePointer {
 
     #[js_method]
     async fn drag(&self, ctx: JSContext, o: PointerDrag) -> JSResult<JSValue> {
-        let (from_x, from_y, window) = self.page_point(&o.from, "from", o.window)?;
-        let (to_x, to_y, _) = self.page_point(&o.to, "to", window.clone())?;
+        let (from_x, from_y, window) = self.page_point(&o.from, "from", o.window).await?;
+        let (to_x, to_y, _) = self.page_point(&o.to, "to", window.clone()).await?;
         let button = mouse_button(&o.button)?;
         app_mouse(
             &ctx,
@@ -259,7 +282,7 @@ impl JSPagePointer {
 
     #[js_method]
     async fn scroll(&self, ctx: JSContext, o: PointerScroll) -> JSResult<JSValue> {
-        let (x, y, window) = self.page_point(&o.at, "at", o.window)?;
+        let (x, y, window) = self.page_point(&o.at, "at", o.window).await?;
         app_mouse(
             &ctx,
             window,

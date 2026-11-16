@@ -69,6 +69,14 @@ impl AppGesture for Platform {
         mac::viewport(target).await
     }
 
+    #[cfg(target_os = "macos")]
+    async fn gesture_window_frame(
+        &self,
+        target: crate::traits::gesture::GestureTarget,
+    ) -> Result<crate::traits::gesture::WindowFrame, PlatformError> {
+        mac::window_frame(target).await
+    }
+
     #[cfg(target_os = "ios")]
     async fn gesture_viewport(
         &self,
@@ -125,6 +133,7 @@ mod mac {
         input: GestureInput,
         window: i64,
         origin: (f64, f64),
+        scale: (f64, f64),
         last: (f64, f64),
         cursor: Option<(f64, f64)>,
         scrolled: bool,
@@ -192,18 +201,34 @@ mod mac {
 
     pub(super) async fn viewport(target: GestureTarget) -> Result<[f64; 4], PlatformError> {
         on_main(move || {
-            let (_, _, size) = resolve(&target)?;
+            let (_, _, size, _) = resolve(&target)?;
             Ok([0.0, 0.0, size.0, size.1])
         })
         .await
     }
 
-    fn resolve_target(target: &GestureTarget) -> Result<(i64, (f64, f64)), String> {
-        resolve(target).map(|(window, origin, _)| (window, origin))
+    pub(super) async fn window_frame(
+        target: GestureTarget,
+    ) -> Result<crate::traits::gesture::WindowFrame, PlatformError> {
+        on_main(move || {
+            let (window, origin, _, scale) = resolve(&target)?;
+            Ok(crate::traits::gesture::WindowFrame {
+                window_id: window.to_string(),
+                origin: [origin.0, origin.1],
+                scale: [scale.0, scale.1],
+            })
+        })
+        .await
     }
 
-    /// Window number, the content-view (top-left) origin and the size of the target.
-    fn resolve(target: &GestureTarget) -> Result<(i64, Point, Point), String> {
+    fn resolve_target(target: &GestureTarget) -> Result<(i64, Point, Point), String> {
+        resolve(target).map(|(window, origin, _, scale)| (window, origin, scale))
+    }
+
+    /// Window number, the target's (top-left) origin in the content view, its size in its own
+    /// points and the content points each of those covers: a simulated device's page is
+    /// shown smaller than the viewport it lays out in.
+    fn resolve(target: &GestureTarget) -> Result<(i64, Point, Point, Point), String> {
         use objc2_foundation::NSRect;
         unsafe {
             let app: *mut AnyObject = msg_send![objc2::class!(NSApplication), sharedApplication];
@@ -240,8 +265,8 @@ mod mac {
                 let bounds: NSRect = msg_send![content, bounds];
                 (bounds.size.width, bounds.size.height)
             };
-            let (origin, size) = match view {
-                None => ((0.0, 0.0), content_size),
+            let (origin, size, scale) = match view {
+                None => ((0.0, 0.0), content_size, (1.0, 1.0)),
                 Some(view) => {
                     let bounds: NSRect = msg_send![view, bounds];
                     let rect: NSRect = msg_send![view, convertRect: bounds, toView: content];
@@ -252,10 +277,25 @@ mod mac {
                     } else {
                         content_bounds.size.height - (rect.origin.y + rect.size.height)
                     };
-                    ((rect.origin.x, top), (rect.size.width, rect.size.height))
+                    let scale = if bounds.size.width > 0.0 && bounds.size.height > 0.0 {
+                        (
+                            rect.size.width / bounds.size.width,
+                            rect.size.height / bounds.size.height,
+                        )
+                    } else {
+                        (1.0, 1.0)
+                    };
+                    // AppKit derives a scaled view's bounds from its frame: a simulated
+                    // 414 pt viewport reads 413.99999999999994.
+                    let whole = |points: f64| (points * 1024.0).round() / 1024.0;
+                    (
+                        (rect.origin.x, top),
+                        (whole(bounds.size.width), whole(bounds.size.height)),
+                        scale,
+                    )
                 }
             };
-            Ok((number as i64, origin, size))
+            Ok((number as i64, origin, size, scale))
         }
     }
 
@@ -449,8 +489,8 @@ mod mac {
                 "a mouse gesture cannot be cancelled; end it with up".into(),
             ));
         }
-        let (window, origin) = match continued {
-            Some(held) => (held.window, held.origin),
+        let (window, origin, scale) = match continued {
+            Some(held) => (held.window, held.origin, held.scale),
             None => {
                 let target = request.target.clone();
                 on_main(move || resolve_target(&target)).await?
@@ -466,7 +506,7 @@ mod mac {
         for GesturePoint { x, y, at_ms } in points {
             let due = started + Duration::from_secs_f64(at_ms / 1000.0);
             tokio::time::sleep_until(due.into()).await;
-            let (x, y) = (origin.0 + x, origin.1 + y);
+            let (x, y) = (origin.0 + x * scale.0, origin.1 + y * scale.1);
             let previous = last.replace((x, y));
             let (cx, cy) = *cursor.get_or_insert((x, y));
             let sent = on_main(move || match (input, previous) {
@@ -501,6 +541,7 @@ mod mac {
                         input,
                         window,
                         origin,
+                        scale,
                         last: (x, y),
                         cursor,
                         scrolled: continued.is_some_and(|held| held.scrolled) || events > 0,

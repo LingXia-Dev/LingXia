@@ -144,9 +144,6 @@ spec('a tap on a nested switch, a row button and a rich-text link reaches only t
 spec('a mouse crossing nested boxes calls enter outermost first and leave innermost first', { start: openDemo('hover') }, async (t) => {
   const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
   if (os !== 'macos' && os !== 'windows') t.skip('needs a mouse: desktop pointer input');
-  // Window input takes page points on Windows only; on macOS it takes window points, and the
-  // page's place in its window is not exposed to a spec.
-  if (os === 'macos') t.skip('window pointer input does not take page coordinates on macOS yet');
   const view = t.app.view;
   const log = view.testId('lab-crossing-log');
   // Mouse events go to the host window inside the app: the system pointer stays where it is and

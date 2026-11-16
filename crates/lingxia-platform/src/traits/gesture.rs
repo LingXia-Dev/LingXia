@@ -271,6 +271,26 @@ fn push_hold(out: &mut Vec<GesturePoint>, at: [f64; 2], start: f64, hold: f64) {
     }
 }
 
+/// A gesture target inside its window: the window, the target's top-left in the window's
+/// content points, and the content points one point of the target covers (below 1 for a
+/// simulated device shown smaller than it is).
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowFrame {
+    pub window_id: String,
+    pub origin: [f64; 2],
+    pub scale: [f64; 2],
+}
+
+impl WindowFrame {
+    /// The window point of the target's point `(x, y)`.
+    pub fn window_point(&self, x: f64, y: f64) -> (f64, f64) {
+        (
+            self.origin[0] + x * self.scale[0],
+            self.origin[1] + y * self.scale[1],
+        )
+    }
+}
+
 /// Real gesture injection into the host window.
 #[async_trait]
 pub trait AppGesture: Send + Sync {
@@ -305,6 +325,18 @@ pub trait AppGesture: Send + Sync {
         let _ = target;
         Err(PlatformError::NotSupported(
             "gestures are not implemented for this platform".to_string(),
+        ))
+    }
+
+    /// Where the target sits in its window, so a point of the target can be sent as window
+    /// input.
+    async fn gesture_window_frame(
+        &self,
+        target: GestureTarget,
+    ) -> Result<WindowFrame, PlatformError> {
+        let _ = target;
+        Err(PlatformError::NotSupported(
+            "this platform does not map page points into a window".to_string(),
         ))
     }
 

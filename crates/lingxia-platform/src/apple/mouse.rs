@@ -442,9 +442,86 @@ fn post_mouse(
 ) -> Result<(), String> {
     let event = make_mouse_event(window, content_view, x, y, phase)?;
     unsafe {
+        if matches!(phase, MousePhase::Move) {
+            // A move reaches a view through its tracking area, which is live only in the
+            // key window under the real pointer: hand it to the page itself, and tell every
+            // other page the pointer is not over it.
+            use objc2::msg_send;
+            use objc2_app_kit::NSEvent;
+            let event_ptr = event.as_ref() as *const NSEvent as *mut objc2::runtime::AnyObject;
+            let hit = gpu_page_at(content_view, event.as_ref());
+            let mut pages = Vec::new();
+            gpu_pages_under(content_view, &mut pages);
+            for page in pages {
+                if Some(page) != hit {
+                    let _: () = msg_send![page, mouseExited: event_ptr];
+                }
+            }
+            if let Some(page) = hit {
+                let _: () = msg_send![page, mouseMoved: event_ptr];
+                return Ok(());
+            }
+        }
         send_event_to_window(window, event.as_ref());
     }
     Ok(())
+}
+
+/// The GPU page view under the event's location, if that is what it hits.
+#[cfg(target_os = "macos")]
+unsafe fn gpu_page_at(
+    content_view: *mut objc2::runtime::AnyObject,
+    event: &objc2_app_kit::NSEvent,
+) -> Option<*mut objc2::runtime::AnyObject> {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::NSPoint;
+    unsafe {
+        let location: NSPoint = event.locationInWindow();
+        // `hitTest:` takes a point in the superview's coordinates.
+        let superview: *mut AnyObject = msg_send![content_view, superview];
+        let point: NSPoint = if superview.is_null() {
+            location
+        } else {
+            msg_send![superview, convertPoint: location, fromView: std::ptr::null::<AnyObject>()]
+        };
+        let hit: *mut AnyObject = msg_send![content_view, hitTest: point];
+        (!hit.is_null() && is_gpu_page(hit)).then_some(hit)
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn is_gpu_page(view: *mut objc2::runtime::AnyObject) -> bool {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    unsafe {
+        let class: *const AnyObject = msg_send![view, className];
+        let name: *const std::ffi::c_char = msg_send![class, UTF8String];
+        !name.is_null()
+            && std::ffi::CStr::from_ptr(name)
+                .to_bytes()
+                .ends_with(b"GpuPageView")
+    }
+}
+
+/// Every GPU page view in `view`'s tree.
+#[cfg(target_os = "macos")]
+unsafe fn gpu_pages_under(
+    view: *mut objc2::runtime::AnyObject,
+    found: &mut Vec<*mut objc2::runtime::AnyObject>,
+) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    unsafe {
+        if is_gpu_page(view) {
+            return found.push(view);
+        }
+        let subviews: *mut AnyObject = msg_send![view, subviews];
+        let count: usize = msg_send![subviews, count];
+        for index in 0..count {
+            gpu_pages_under(msg_send![subviews, objectAtIndex: index], found);
+        }
+    }
 }
 
 /// Enqueue the event in the app event queue (`postEvent:atStart:NO`) instead
