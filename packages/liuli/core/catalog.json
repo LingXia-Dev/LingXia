@@ -1894,7 +1894,7 @@
           "sizes": [
             {
               "name": "Sizes",
-              "title": "Small, medium and large; prefer large on touch layouts"
+              "title": "Small, medium and large"
             }
           ],
           "states": [
@@ -1904,7 +1904,7 @@
             },
             {
               "name": "StateBusy",
-              "title": "Busy"
+              "title": "While busy"
             },
             {
               "name": "StateDisabled",
@@ -7753,7 +7753,7 @@
             },
             {
               "name": "StateError",
-              "title": "Error"
+              "title": "With an error"
             },
             {
               "name": "StateDisabled",
@@ -8818,7 +8818,7 @@
             },
             {
               "name": "StateBusy",
-              "title": "Busy"
+              "title": "While busy"
             },
             {
               "name": "StateDisabled",
@@ -15032,7 +15032,7 @@
           "variants": [
             {
               "name": "Tones",
-              "title": "Success, warning, danger, info and accent (one colour until a pack sets its own info), and neutral as a ring"
+              "title": "Success, warning, danger, info and accent (one colour where the accent is already a blue), and neutral as a ring"
             },
             {
               "name": "Hues",
@@ -15542,7 +15542,7 @@
             },
             {
               "name": "Applying",
-              "title": "Loading: waiting for the app to apply the change"
+              "title": "While the app applies the change"
             }
           ],
           "sizes": [
@@ -15910,7 +15910,7 @@
           "states": [
             {
               "name": "StateEmpty",
-              "title": "Empty"
+              "title": "With no rows"
             }
           ]
         }
@@ -17041,7 +17041,7 @@
             },
             {
               "name": "Checking",
-              "title": "Loading"
+              "title": "While checking"
             },
             {
               "name": "ReadOnly",

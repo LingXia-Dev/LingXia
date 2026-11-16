@@ -98,10 +98,10 @@ export const doc: ComponentDoc = {
         { name: 'VariantLink', title: 'Link, a quiet way out beside a form' },
         { name: 'WithIcons', title: 'An icon before the label for the kind of action, after it for where it leads' },
       ],
-      sizes: [{ name: 'Sizes', title: 'Small, medium and large; prefer large on touch layouts' }],
+      sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],
       states: [
         { name: 'StateDefault', title: 'Default' },
-        { name: 'StateBusy', title: 'Busy' },
+        { name: 'StateBusy', title: 'While busy' },
         { name: 'StateDisabled', title: 'Disabled' },
         { name: 'StateSecondaryDisabled', title: 'Disabled, secondary' },
       ],

@@ -16,7 +16,7 @@ export function Content() {
           <Collapsible />
         </Stage>
       </PageSection>
-      <PageSection title={"States"}>
+      <PageSection title={"States"} note={"Each state is set by its props so you can see it. Nothing here is waiting, missing or broken."}>
         <StageGrid stack>
           <Stage caption={"A title only"}>
             <StateTitleOnly />

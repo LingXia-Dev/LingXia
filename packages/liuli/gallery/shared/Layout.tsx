@@ -22,25 +22,29 @@ export function GalleryPage({ children, isFilled = false }: { children: Child; i
   );
 }
 
-/** One section of a page: a small heading, its content 12 below, blocks 24 apart. */
-export function PageSection({ title, children }: { title: string; children: Child }) {
+/** One section of a page: a small heading, an optional sentence about it, its content 12 below, blocks 24 apart. */
+export function PageSection({ title, note, children }: { title: string; note?: string; children: Child }) {
   return (
     <view className="gap-3">
-      <text role="heading" headingLevel={2} className="text-footnote font-medium text-muted">{title}</text>
+      <view className="gap-1">
+        <text role="heading" headingLevel={2} className="text-footnote font-medium text-muted">{title}</text>
+        {note !== undefined && <text className="text-footnote text-muted">{note}</text>}
+      </view>
       <view className="gap-6">{children}</view>
     </view>
   );
 }
 
 /**
- * The quiet surface a specimen sits on, one step off the page, with an optional caption below.
+ * The quiet surface a specimen sits on, one step off the page, under a caption that says what it shows.
+ * The caption comes first, so a specimen is read as an example before it is seen.
  * `bare` drops the surface for containers (cards, lists) that would otherwise sit in a second frame.
  */
 export function Stage({ caption, bare = false, children }: { caption?: string; bare?: boolean; children: Child }) {
   return (
     <view className="gap-2">
+      {caption !== undefined && <text className="text-footnote text-text">{caption}</text>}
       <view className={bare ? 'grow gap-3' : 'grow gap-3 overflow-hidden rounded-container border border-text/12 bg-surface p-5'}>{children}</view>
-      {caption !== undefined && <text className="text-footnote text-muted">{caption}</text>}
     </view>
   );
 }

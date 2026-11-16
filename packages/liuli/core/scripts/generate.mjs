@@ -296,7 +296,9 @@ function galleryContent(doc) {
     for (const [key, title] of sections) {
       const refs = page[key];
       if (!refs?.length) continue;
-      lines.push(`      <PageSection title=${jsx(title)}>`);
+      // A staged state can pass for a fault, so its section says first that it is staged.
+      const note = key === 'states' ? page.statesNote ?? 'Each state is set by its props so you can see it. Nothing here is waiting, missing or broken.' : undefined;
+      lines.push(`      <PageSection title=${jsx(key === 'states' ? page.statesTitle ?? title : title)}${note ? ` note=${jsx(note)}` : ''}>`);
       if (key === 'states') lines.push(page.statesLayout === 'stack' ? '        <StageGrid stack>' : '        <StageGrid>', ...refs.flatMap(ref => stage(ref, '          ')), '        </StageGrid>');
       else lines.push(...refs.flatMap(ref => stage(ref, '        ')));
       lines.push('      </PageSection>');

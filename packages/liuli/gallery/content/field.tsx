@@ -13,7 +13,7 @@ export function Content() {
           <Info />
         </Stage>
       </PageSection>
-      <PageSection title={"States"}>
+      <PageSection title={"States"} note={"Each state is set by its props so you can see it. Nothing here is waiting, missing or broken."}>
         <StageGrid>
           <Stage caption={"With help"}>
             <StateHelp />
@@ -21,7 +21,7 @@ export function Content() {
           <Stage caption={"Warning"}>
             <StateWarning />
           </Stage>
-          <Stage caption={"Error"}>
+          <Stage caption={"With an error"}>
             <StateError />
           </Stage>
           <Stage caption={"Disabled"}>

@@ -21,7 +21,7 @@ export function Content() {
           <Sizes />
         </Stage>
       </PageSection>
-      <PageSection title={"States"}>
+      <PageSection title={"Selected, loading, empty and error"} note={"What the chart shows in each state. These are staged examples: nothing here is waiting or broken."}>
         <StageGrid stack>
           <Stage caption={"One chosen"}>
             <StateSelected />
@@ -29,13 +29,13 @@ export function Content() {
           <Stage caption={"One part"}>
             <StateWhole />
           </Stage>
-          <Stage caption={"Loading"}>
+          <Stage caption={"While loading"}>
             <StateLoading />
           </Stage>
-          <Stage caption={"Empty"}>
+          <Stage caption={"With no data"}>
             <StateEmpty />
           </Stage>
-          <Stage caption={"Error"}>
+          <Stage caption={"After a failure"}>
             <StateError />
           </Stage>
         </StageGrid>

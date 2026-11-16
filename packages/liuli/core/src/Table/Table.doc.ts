@@ -96,7 +96,7 @@ export const doc: ComponentDoc = {
         { name: 'Members', title: 'Four columns: stacked where they do not fit, in columns where they do' },
         { name: 'MembersColumns', title: 'The same table held in columns; on a phone its text columns are too narrow' },
       ],
-      states: [{ name: 'StateEmpty', title: 'Empty' }],
+      states: [{ name: 'StateEmpty', title: 'With no rows' }],
     },
   },
 };

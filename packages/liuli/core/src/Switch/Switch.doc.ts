@@ -77,7 +77,7 @@ export const doc: ComponentDoc = {
       hero: 'Basic',
       variants: [
         { name: 'InList', title: 'As rows in a list, beside an Item' },
-        { name: 'Applying', title: 'Loading: waiting for the app to apply the change' },
+        { name: 'Applying', title: 'While the app applies the change' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small (36 by 20) for dense rows, medium (44 by 26) by default' }],
       states: [

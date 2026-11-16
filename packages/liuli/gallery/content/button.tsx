@@ -23,16 +23,16 @@ export function Content() {
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>
-        <Stage caption={"Small, medium and large; prefer large on touch layouts"}>
+        <Stage caption={"Small, medium and large"}>
           <Sizes />
         </Stage>
       </PageSection>
-      <PageSection title={"States"}>
+      <PageSection title={"States"} note={"Each state is set by its props so you can see it. Nothing here is waiting, missing or broken."}>
         <StageGrid>
           <Stage caption={"Default"}>
             <StateDefault />
           </Stage>
-          <Stage caption={"Busy"}>
+          <Stage caption={"While busy"}>
             <StateBusy />
           </Stage>
           <Stage caption={"Disabled"}>

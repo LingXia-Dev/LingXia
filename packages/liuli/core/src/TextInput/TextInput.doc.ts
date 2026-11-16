@@ -95,7 +95,7 @@ export const doc: ComponentDoc = {
         { name: 'StateFilled', title: 'Filled' },
         { name: 'StateInvalid', title: 'Invalid' },
         { name: 'StateDisabled', title: 'Disabled' },
-        { name: 'Checking', title: 'Loading' },
+        { name: 'Checking', title: 'While checking' },
         { name: 'ReadOnly', title: 'Read-only' },
       ],
       inContext: [{ name: 'Disabled', title: 'A fixed value, with the reason' }],

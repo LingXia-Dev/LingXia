@@ -74,7 +74,7 @@ export const doc: ComponentDoc = {
       sizes: [{ name: 'Sizes', title: '32, 40 and 48 points square' }],
       states: [
         { name: 'StateDefault', title: 'Default' },
-        { name: 'StateBusy', title: 'Busy' },
+        { name: 'StateBusy', title: 'While busy' },
         { name: 'StateDisabled', title: 'Disabled' },
       ],
       inContext: [{ name: 'InRows', title: 'At the end of a row, named with the row it acts on' }],

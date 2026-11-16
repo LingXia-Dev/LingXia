@@ -99,7 +99,7 @@ export const doc: ComponentDoc = {
         { name: 'StateUp', title: 'Up' },
         { name: 'StateDown', title: 'Down' },
         { name: 'StateFlat', title: 'No change' },
-        { name: 'StateLoading', title: 'Loading' },
+        { name: 'StateLoading', title: 'While loading' },
       ],
       inContext: [{ name: 'Dashboard', title: 'Four figures on a phone, two to a row' }],
     },

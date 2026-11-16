@@ -453,6 +453,8 @@
               "title": "Small without labels, and large"
             }
           ],
+          "statesTitle": "Selected, loading, empty and error",
+          "statesNote": "What the chart shows in each state. These are staged examples: nothing here is waiting or broken.",
           "states": [
             {
               "name": "StateSelected",
@@ -460,15 +462,15 @@
             },
             {
               "name": "StateLoading",
-              "title": "Loading"
+              "title": "While loading"
             },
             {
               "name": "StateEmpty",
-              "title": "Empty"
+              "title": "With no data"
             },
             {
               "name": "StateError",
-              "title": "Error"
+              "title": "After a failure"
             }
           ],
           "statesLayout": "stack"
@@ -979,18 +981,20 @@
               "title": "The readout: the chosen datum in words and figures"
             }
           ],
+          "statesTitle": "Loading, empty and error",
+          "statesNote": "What the chart shows in place of its plot. These are staged examples: nothing here is waiting or broken.",
           "states": [
             {
               "name": "StateLoading",
-              "title": "Loading"
+              "title": "While loading"
             },
             {
               "name": "StateEmpty",
-              "title": "Empty"
+              "title": "With no data"
             },
             {
               "name": "StateError",
-              "title": "Error"
+              "title": "After a failure"
             }
           ],
           "statesLayout": "stack"
@@ -1449,22 +1453,24 @@
               "title": "Small without labels, and large"
             }
           ],
+          "statesTitle": "Selected, loading, empty and error",
+          "statesNote": "What the chart shows in each state. These are staged examples: nothing here is waiting or broken.",
           "states": [
             {
               "name": "StateSingle",
-              "title": "One value"
+              "title": "With one value: a dot, since one point makes no line"
             },
             {
               "name": "StateLoading",
-              "title": "Loading"
+              "title": "While loading"
             },
             {
               "name": "StateEmpty",
-              "title": "Empty"
+              "title": "With no data"
             },
             {
               "name": "StateError",
-              "title": "Error"
+              "title": "After a failure"
             }
           ],
           "statesLayout": "stack",
@@ -1880,6 +1886,8 @@
               "title": "Small and large, the legend left out"
             }
           ],
+          "statesTitle": "Selected, loading, empty and error",
+          "statesNote": "What the chart shows in each state. These are staged examples: nothing here is waiting or broken.",
           "states": [
             {
               "name": "StateSelected",
@@ -1891,15 +1899,15 @@
             },
             {
               "name": "StateLoading",
-              "title": "Loading"
+              "title": "While loading"
             },
             {
               "name": "StateEmpty",
-              "title": "Empty"
+              "title": "With no data"
             },
             {
               "name": "StateError",
-              "title": "Error"
+              "title": "After a failure"
             }
           ],
           "statesLayout": "stack"
@@ -2491,7 +2499,7 @@
             },
             {
               "name": "StateLoading",
-              "title": "Loading"
+              "title": "While loading"
             }
           ],
           "inContext": [

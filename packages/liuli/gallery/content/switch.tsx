@@ -12,7 +12,7 @@ export function Content() {
         <Stage caption={"As rows in a list, beside an Item"}>
           <InList />
         </Stage>
-        <Stage caption={"Loading: waiting for the app to apply the change"}>
+        <Stage caption={"While the app applies the change"}>
           <Applying />
         </Stage>
       </PageSection>
@@ -21,7 +21,7 @@ export function Content() {
           <Sizes />
         </Stage>
       </PageSection>
-      <PageSection title={"States"}>
+      <PageSection title={"States"} note={"Each state is set by its props so you can see it. Nothing here is waiting, missing or broken."}>
         <StageGrid>
           <Stage caption={"Off"}>
             <StateOff />

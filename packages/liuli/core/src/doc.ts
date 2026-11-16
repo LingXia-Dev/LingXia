@@ -111,6 +111,10 @@ export interface GalleryDoc {
     readonly sizes?: readonly ExampleRef[];
     /** Each state drawn on its own stage, forced by props rather than by interaction. */
     readonly states?: readonly ExampleRef[];
+    /** The states section's heading, when the states are of one kind: "Loading, empty and error". @default 'States' */
+    readonly statesTitle?: string;
+    /** One sentence under that heading; by default it says the states are staged. */
+    readonly statesNote?: string;
     /** `stack` gives each state the full width on a phone, for a field whose value has a fixed length. @default 'grid' */
     readonly statesLayout?: 'grid' | 'stack';
     readonly inContext?: readonly ExampleRef[];

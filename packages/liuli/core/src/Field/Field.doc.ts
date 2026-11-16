@@ -69,7 +69,7 @@ export const doc: ComponentDoc = {
       states: [
         { name: 'StateHelp', title: 'With help' },
         { name: 'StateWarning', title: 'Warning' },
-        { name: 'StateError', title: 'Error' },
+        { name: 'StateError', title: 'With an error' },
         { name: 'StateDisabled', title: 'Disabled' },
       ],
     },

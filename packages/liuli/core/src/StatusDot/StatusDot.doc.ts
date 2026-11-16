@@ -77,7 +77,7 @@ export const doc: ComponentDoc = {
       lead: 'Use a status dot to say how something stands, in a row or a column of like things.',
       hero: 'Services',
       variants: [
-        { name: 'Tones', title: 'Success, warning, danger, info and accent (one colour until a pack sets its own info), and neutral as a ring' },
+        { name: 'Tones', title: 'Success, warning, danger, info and accent (one colour where the accent is already a blue), and neutral as a ring' },
         { name: 'Hues', title: 'A hue for a category: which calendar an event is on' },
         { name: 'DotOnly', title: 'The dot alone, named by its word' },
       ],
