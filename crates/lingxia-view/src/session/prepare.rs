@@ -428,6 +428,7 @@ impl ViewSession {
         if generation.get() > self.seen_commit.get() {
             self.seen_commit = generation;
         }
+        crate::layout::list_layout::presented(&mut self.lists, generation.get());
         let matches = |candidate: &Option<(
             lifecycle::CommitTicket,
             lifecycle::SurfaceTicket,
@@ -486,6 +487,13 @@ impl ViewSession {
             && self.input_records.is_some()
             && self.viewport == Some((width, height, scale));
         let mut offsets = offsets.unwrap_or(&self.scroll_offsets).clone();
+        // The host's offsets predate an anchor it has not shown a frame for: there the list is
+        // where this session last put it.
+        for id in crate::layout::list_layout::unsettled(&self.lists) {
+            if let Some(offset) = self.scroll_offsets.get(id) {
+                offsets.insert(id.clone(), *offset);
+            }
+        }
         if offsets.len() > 4096 || offsets.values().any(|offset| !offset.is_finite()) {
             return Err("UI_SCROLL: invalid offsets".into());
         }
@@ -694,7 +702,7 @@ impl ViewSession {
                     if redecorate {
                         inputs.decorate(&mut display, &mut self.renderer)?;
                     }
-                    crate::layout::list_layout::commit(&mut lists);
+                    crate::layout::list_layout::commit(&mut lists, self.generation.get() + 1);
                     let wanted = display.image_sources().map(str::to_owned).collect();
                     display.bind_images(&self.images)?;
                     let input_dirty = inputs.needs_layout(&display);

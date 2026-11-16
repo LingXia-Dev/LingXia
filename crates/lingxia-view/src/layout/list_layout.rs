@@ -31,8 +31,12 @@ pub(crate) struct ListState {
     measurement_dirty: bool,
     padding: f32,
     window: Request,
+    /// The anchor the host has shown a frame for.
     anchor: Option<String>,
     next_anchor: Option<String>,
+    /// An anchor a committed frame moved to and the first such frame, until one presents: a
+    /// frame the host drops must not use the anchor up.
+    applied: Option<(u64, Option<String>)>,
     /// The viewport height and the offset of the end, as last laid out.
     height: f32,
     end: f32,
@@ -233,6 +237,7 @@ pub(crate) fn reconcile(
                     },
                     anchor: None,
                     next_anchor: None,
+                    applied: None,
                     height: node.bounds[3],
                     end: f32::INFINITY,
                     held_at_end: false,
@@ -299,7 +304,10 @@ pub(crate) fn reconcile(
                 index,
                 crate::scene::node::Glide {
                     key,
-                    start: changed_anchor,
+                    // Frames built before the first one presents continue its glide.
+                    start: changed_anchor
+                        && state.applied.as_ref().map(|(_, anchor)| anchor)
+                            != Some(&state.next_anchor),
                     to,
                     duration_ms,
                 },
@@ -344,10 +352,34 @@ pub(crate) fn reconcile(
     Ok(changed.then_some(windows))
 }
 
-pub(crate) fn commit(lists: &mut Lists) {
+/// A frame of `generation` was committed. Its anchors stay unsettled until it, or a later
+/// frame, presents: see [`presented`].
+pub(crate) fn commit(lists: &mut Lists, generation: u64) {
     for state in lists.values_mut() {
-        state.anchor.clone_from(&state.next_anchor);
+        if state.next_anchor == state.anchor {
+            state.applied = None;
+        } else if state.applied.as_ref().map(|(_, anchor)| anchor) != Some(&state.next_anchor) {
+            state.applied = Some((generation, state.next_anchor.clone()));
+        }
         state.held_at_end = false;
+    }
+}
+
+/// Lists moved to an anchor by a frame the host has not shown yet.
+pub(crate) fn unsettled(lists: &Lists) -> impl Iterator<Item = &String> {
+    lists
+        .iter()
+        .filter(|(_, state)| state.applied.is_some())
+        .map(|(id, _)| id)
+}
+
+/// The host showed the frame of `generation`: the anchors it and earlier frames moved to are
+/// where the host's lists now are.
+pub(crate) fn presented(lists: &mut Lists, generation: u64) {
+    for state in lists.values_mut() {
+        if let Some((_, anchor)) = state.applied.take_if(|(first, _)| *first <= generation) {
+            state.anchor = anchor;
+        }
     }
 }
 

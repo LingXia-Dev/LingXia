@@ -69,6 +69,7 @@ fn a_list_resting_at_its_end_stays_there_through_every_resize() {
 fn a_list_the_reader_scrolled_away_from_keeps_its_place() {
     let mut page = conversation(LAST_ROW);
     let first = page.layout(200, 400, 1.0).unwrap();
+    shown(&mut page);
     let (id, _, end, _) = list(&first);
     let away = end - 600.0;
     page.prepare_native(
@@ -106,4 +107,60 @@ fn a_list_with_no_end_anchor_keeps_its_offset_when_it_shrinks() {
     let (_, offset, shorter_end, _) = list(&shorter);
     assert_eq!(offset, end);
     assert!(shorter_end > end);
+}
+
+fn shown(page: &mut ViewSession) {
+    page.animation_presented(
+        crate::session::lifecycle::SurfaceTicket::new(1),
+        page.generation(),
+        std::time::Duration::ZERO,
+    )
+    .unwrap();
+}
+
+/// The frame that moves a list to its anchor may never reach the screen (the surface changed
+/// under it, newer input replaced it), and frames built before it shows carry the host's
+/// offsets, where the list is still at its start.
+#[test]
+fn an_end_anchor_outlives_frames_the_host_never_showed() {
+    for anchor in [LAST_ROW, "'end'"] {
+        for unseen in 0..5 {
+            let mut page = conversation(anchor);
+            let mut frame = page.layout(200, 400, 1.0).unwrap();
+            let (id, ..) = list(&frame);
+            let stale = HashMap::from([(id.clone(), 0.0)]);
+            for step in 0..unseen {
+                // Repaints, rebuilds and a resize, each from offsets that never saw the anchor.
+                let (height, rebuild) = match step % 3 {
+                    0 => (400, false),
+                    1 => (400, true),
+                    _ => (340, true),
+                };
+                frame = page
+                    .prepare_native(200, height, 1.0, rebuild, Some(&stale), Ok)
+                    .unwrap();
+                assert!(shows_last_row(&frame), "{anchor}: unseen frame {step}");
+            }
+            // Once a frame showed, the list is the reader's again.
+            shown(&mut page);
+            let (_, _, end, _) = list(&frame);
+            let away = end - 600.0;
+            let height = frame.height;
+            let moved = page
+                .prepare_native(
+                    200,
+                    height,
+                    1.0,
+                    false,
+                    Some(&HashMap::from([(id.clone(), away)])),
+                    Ok,
+                )
+                .unwrap();
+            assert_eq!(
+                list(&moved).1,
+                away,
+                "{anchor}: after {unseen} unseen frames"
+            );
+        }
+    }
 }

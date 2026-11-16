@@ -318,6 +318,13 @@ fn measured_list_anchors_padding_and_failed_windows_are_transactional() {
     );
     let id = frame.nodes[0].scroll.as_ref().unwrap().id.clone();
     let generation = page.generation();
+    // The host showed the anchored frame; from here the offsets are the reader's.
+    page.animation_presented(
+        crate::session::lifecycle::SurfaceTicket::new(1),
+        generation,
+        std::time::Duration::ZERO,
+    )
+    .unwrap();
     let old_offset = frame.nodes[0].scroll.as_ref().unwrap().offset;
     let old_handle = row.on_click.unwrap();
     let failed = page.prepare_native(
