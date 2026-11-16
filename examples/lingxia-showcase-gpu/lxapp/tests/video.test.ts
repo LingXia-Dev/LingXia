@@ -200,10 +200,9 @@ spec('an HLS quality pinned before the first frame plays that rendition', { star
 
 // HarmonyOS's player opens this stream slowly (about 12 s on a nova 13): from the tap until a frame
 // or the 15 s error, the box shows the ring, never a blank picture.
-spec('an HLS start shows the ring from the tap until a frame or the error with Retry', { start: { page: 'view-lab' }, tags: ['network'], timeout: 90_000 }, async (t) => {
-  await skipWhenCovered(t, 'view-lab');
+spec('an HLS start shows the ring from the tap until a frame or the error with Retry', { start: { page: 'spec-video' }, tags: ['network'], timeout: 90_000 }, async (t) => {
+  await skipWhenCovered(t, 'spec-video');
   const view = t.app.view;
-  await view.testId('lab-tab-media').click();
   const c = (part: string) => view.testId(`lab-stream-controls-${part}`);
   // The stream sits below the clip: scroll until its large play is on screen (aria-hidden, so the
   // tap is by point, and no locator scrolls to it).

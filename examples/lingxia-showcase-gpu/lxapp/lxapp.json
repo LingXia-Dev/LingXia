@@ -164,6 +164,14 @@
     {
       "name": "perf-target",
       "path": "pages/perf-target/index"
+    },
+    {
+      "name": "spec-orphan",
+      "path": "pages/spec-orphan/index"
+    },
+    {
+      "name": "spec-video",
+      "path": "pages/spec-video/index"
     }
   ],
   "tabBar": {

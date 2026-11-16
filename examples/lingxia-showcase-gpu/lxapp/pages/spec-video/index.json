@@ -1,0 +1,9 @@
+{
+  "navigationBar": {
+    "title": {
+      "default": "Video fixtures",
+      "zh-CN": "视频测试页"
+    }
+  },
+  "pageOrientation": "auto"
+}
