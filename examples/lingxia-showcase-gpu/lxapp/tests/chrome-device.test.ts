@@ -21,11 +21,11 @@ spec('the nav bar takes the GPU page palette in light and in dark', {
   const colours = async () => {
     const layout = await device.nodes();
     const title = layout.filter(node => ['View lab', '视图实验'].includes(node.text)).sort((a, b) => a.bounds[1] - b.bounds[1])[0];
-    // The Overlays card's heading: its row past the word is the card's own surface.
-    const card = layout.find(node => node.text === 'Overlays');
-    if (!title || !card) throw new Error('no nav title or overlays card on screen');
+    // The Dialog card's status line: its row just past the words is the card's own surface.
+    const card = layout.find(node => node.text === 'Last: none');
+    if (!title || !card) throw new Error('no nav title or dialog card on screen');
     const width = Math.max(...layout.map(node => node.bounds[2]));
-    const [nav, surface] = await device.pixels([[Math.round(width * 0.1), centre(title)[1]], [card.bounds[2] - 20, centre(card)[1]]]);
+    const [nav, surface] = await device.pixels([[Math.round(width * 0.1), centre(title)[1]], [card.bounds[2] + 40, centre(card)[1]]]);
     return { nav, surface };
   };
   try {

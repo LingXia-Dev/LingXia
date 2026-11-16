@@ -43,8 +43,10 @@ spec('a long press selects a word, and the host menu selects all and copies it',
   const page = await surface(t);
   const half = (await view.viewport()).height / 2;
   // The sentence sits below the fold; a finger scrolls it to mid-screen, clear of the gesture bar.
+  // It swipes in the page's left margin: a card under it may be a scroller that takes the swipe.
+  const margin = Math.round(page.left + 8 * page.scale);
   for (let i = 0; i < 6 && (await text.boundingBox()).y > half; i++)
-    await device.swipe({ x1: 900, y1: 1800, x2: 900, y2: 1100, velocity: 2000 });
+    await device.swipe({ x1: margin, y1: 1800, x2: margin, y2: 1100, velocity: 2000 });
   // A swipe flings: wait for the scroll to come to rest before aiming.
   let box = await text.boundingBox();
   for (let last = NaN; box.y !== last; box = await text.boundingBox()) {
