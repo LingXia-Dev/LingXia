@@ -668,7 +668,10 @@ public enum GpuPages {
 
     static func dispose(token: Int64) {
         MainActor.assumeIsolated {
-            views.removeValue(forKey: token)?.removeFromSuperview()
+            guard let view = views.removeValue(forKey: token) else { return }
+            view.removeFromSuperview()
+            // Whatever still references the view must not keep its drawables alive with it.
+            view.releaseSurface()
         }
     }
 

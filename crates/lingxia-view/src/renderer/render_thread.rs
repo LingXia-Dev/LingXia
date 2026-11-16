@@ -75,7 +75,7 @@ static QUEUE: LazyLock<Arc<(Mutex<VecDeque<Job>>, Condvar)>> = LazyLock::new(|| 
                         jobs = wake.wait(jobs).unwrap_or_else(|p| p.into_inner());
                     }
                 };
-                match job {
+                pooled(|| match job {
                     Job::Draw {
                         surface,
                         revision,
@@ -109,7 +109,7 @@ static QUEUE: LazyLock<Arc<(Mutex<VecDeque<Job>>, Condvar)>> = LazyLock::new(|| 
                             log::error!(target: "lingxia_view", "GPU task panicked: {}", message(&*panic));
                         }
                     }
-                }
+                });
             }
         });
     if let Err(error) = spawned {
@@ -117,6 +117,19 @@ static QUEUE: LazyLock<Arc<(Mutex<VecDeque<Job>>, Condvar)>> = LazyLock::new(|| 
     }
     queue
 });
+
+/// One job's Objective-C temporaries end with it. This thread has no run loop to drain them,
+/// and Metal hands some out autoreleased (a layer's delegate is its view): without a pool
+/// every page view this thread touched would live, with its drawable, until the process ends.
+#[cfg(target_vendor = "apple")]
+fn pooled<T>(job: impl FnOnce() -> T) -> T {
+    objc2::rc::autoreleasepool(|_| job())
+}
+
+#[cfg(not(target_vendor = "apple"))]
+fn pooled<T>(job: impl FnOnce() -> T) -> T {
+    job()
+}
 
 /// Device losses this process has recovered from.
 static LOSSES: AtomicU32 = AtomicU32::new(0);
@@ -385,6 +398,31 @@ mod tests {
     }
 
     static RESETS: AtomicU32 = AtomicU32::new(0);
+
+    /// An object a job autoreleases is gone when the job is: the render thread drains per job.
+    #[cfg(target_vendor = "apple")]
+    #[test]
+    fn a_jobs_autoreleased_objects_end_with_the_job() {
+        use objc2::rc::{Retained, Weak};
+        use objc2::runtime::NSObject;
+        // Loaded only on the render thread, where the object lived.
+        struct Held(Weak<NSObject>);
+        unsafe impl Send for Held {}
+        let held = run_now(|| {
+            let object = NSObject::new();
+            let held = Held(Weak::from_retained(&object));
+            let _ = Retained::autorelease_ptr(object);
+            held
+        })
+        .unwrap();
+        assert!(
+            run_now(move || {
+                let held = held;
+                held.0.load().is_none()
+            })
+            .unwrap()
+        );
+    }
 
     fn panicking_prepare(
         _: u64,
