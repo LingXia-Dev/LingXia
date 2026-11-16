@@ -160,45 +160,43 @@ public class LingXiaWebView extends WebView {
             return options;
         }
 
+        // An unknown value must never resolve to a known profile: strict is
+        // the most privileged one, so a fallback would grant, not restrict.
         static CreateOptions fromProfile(String profile) {
+            if ("strict_default".equals(profile)) {
+                return strictDefault();
+            }
             if ("browser_relaxed".equals(profile)) {
                 return browserRelaxed();
             }
-            return strictDefault();
+            throw new IllegalArgumentException("unknown security profile in create options: " + profile);
         }
 
         static CreateOptions fromToken(String optionsToken) {
             if (optionsToken == null || optionsToken.isEmpty()) {
-                return strictDefault();
+                throw new IllegalArgumentException("create options token is missing");
             }
 
+            JSONObject obj;
             try {
                 byte[] decoded = Base64.decode(
                         optionsToken,
                         Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING
                 );
-                String json = new String(decoded, java.nio.charset.StandardCharsets.UTF_8);
-                JSONObject obj = new JSONObject(json);
-                String profile = obj.optString("profile", "strict_default");
-                if (!"strict_default".equals(profile) && !"browser_relaxed".equals(profile)) {
-                    Log.w(TAG, "Invalid profile in options token: " + profile + ", fallback to strict_default");
-                    profile = "strict_default";
-                }
-                CreateOptions options = fromProfile(profile);
-                String dataMode = obj.optString("data_mode", "profile_default");
-                if (!"profile_default".equals(dataMode) && !"ephemeral".equals(dataMode)) {
-                    Log.w(TAG, "Invalid data mode in options token: " + dataMode + ", fallback to profile_default");
-                    dataMode = "profile_default";
-                }
-                options.dataMode = dataMode;
-                options.hasNewWindowHandler = obj.optBoolean("has_new_window_handler", false);
-                options.hasDownloadHandler = obj.optBoolean("has_download_handler", false);
-                options.hasFileChooserHandler = obj.optBoolean("has_file_chooser_handler", false);
-                return options;
+                obj = new JSONObject(new String(decoded, java.nio.charset.StandardCharsets.UTF_8));
             } catch (Throwable e) {
-                Log.w(TAG, "Failed to decode create options token, fallback to strict default", e);
-                return strictDefault();
+                throw new IllegalArgumentException("create options token is not decodable", e);
             }
+            CreateOptions options = fromProfile(obj.optString("profile", null));
+            String dataMode = obj.optString("data_mode", "profile_default");
+            if (!"profile_default".equals(dataMode) && !"ephemeral".equals(dataMode)) {
+                throw new IllegalArgumentException("unknown data mode in create options: " + dataMode);
+            }
+            options.dataMode = dataMode;
+            options.hasNewWindowHandler = obj.optBoolean("has_new_window_handler", false);
+            options.hasDownloadHandler = obj.optBoolean("has_download_handler", false);
+            options.hasFileChooserHandler = obj.optBoolean("has_file_chooser_handler", false);
+            return options;
         }
     }
 
@@ -241,6 +239,8 @@ public class LingXiaWebView extends WebView {
                         throw new RuntimeException("Application context not set. Call LingXiaWebView.setApplicationContext() first.");
                     }
 
+                    // Decoded before any view exists: a rejected token creates nothing.
+                    final CreateOptions createOptions = CreateOptions.fromToken(optionsToken);
                     LingXiaWebView webView;
                     android.content.Context creationContext = creationContextFor(appId);
 
@@ -257,7 +257,7 @@ public class LingXiaWebView extends WebView {
                     }
 
                     final LingXiaWebView createdWebView = webView;
-                    createdWebView.applyCreateOptionsToken(optionsToken);
+                    createdWebView.applyCreateOptions(createOptions);
                     createdWebView.prepareDataMode(() -> {
                         try {
                             createdWebView.initializeWebView(appId, path, sessionId);
@@ -487,8 +487,8 @@ public class LingXiaWebView extends WebView {
         });
     }
 
-    private void applyCreateOptionsToken(String optionsToken) {
-        this.createOptions = CreateOptions.fromToken(optionsToken);
+    private void applyCreateOptions(CreateOptions options) {
+        this.createOptions = options;
         Log.i(
             TAG,
             "Apply create options: profile=" + this.createOptions.profile

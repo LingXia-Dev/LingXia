@@ -218,26 +218,28 @@ function decodeBase64Url(token: string): string {
   return output;
 }
 
-function normalizeDecodedOptions(raw: Object): EffectiveWebViewCreateOptions {
+// An unknown value must never resolve to a known profile: strict is the most
+// privileged one, so a fallback would grant, not restrict.
+function normalizeDecodedOptions(raw: Object): EffectiveWebViewCreateOptions | undefined {
   const data = raw as RawOptionsToken;
   const normalized: EffectiveWebViewCreateOptions = strictDefaultOptions();
 
-  if (typeof data.profile === 'string') {
-    const profile = data.profile.toLowerCase();
-    if (profile === PROFILE_STRICT_DEFAULT || profile === PROFILE_BROWSER_RELAXED) {
-      normalized.profile = profile;
-    } else {
-      hilog.warn(DOMAIN, TAG, `Invalid profile=${profile}, fallback to strict_default`);
-    }
+  const profile = data.profile;
+  if (typeof profile !== 'string'
+    || (profile !== PROFILE_STRICT_DEFAULT && profile !== PROFILE_BROWSER_RELAXED)) {
+    hilog.error(DOMAIN, TAG, `Unknown security profile in create options: ${profile}`);
+    return undefined;
   }
+  normalized.profile = profile;
 
-  if (typeof data.data_mode === 'string') {
-    const dataMode = data.data_mode.toLowerCase();
-    if (dataMode === DATA_MODE_PROFILE_DEFAULT || dataMode === DATA_MODE_EPHEMERAL) {
-      normalized.dataMode = dataMode;
-    } else {
-      hilog.warn(DOMAIN, TAG, `Invalid data mode=${dataMode}, fallback to profile_default`);
+  const dataMode = data.data_mode;
+  if (dataMode !== undefined) {
+    if (typeof dataMode !== 'string'
+      || (dataMode !== DATA_MODE_PROFILE_DEFAULT && dataMode !== DATA_MODE_EPHEMERAL)) {
+      hilog.error(DOMAIN, TAG, `Unknown data mode in create options: ${dataMode}`);
+      return undefined;
     }
+    normalized.dataMode = dataMode;
   }
 
   normalized.hasDownloadHandler = data.has_download_handler === true;
@@ -247,9 +249,10 @@ function normalizeDecodedOptions(raw: Object): EffectiveWebViewCreateOptions {
   return normalized;
 }
 
-function decodeOptionsToken(optionsToken?: string): EffectiveWebViewCreateOptions {
+function decodeOptionsToken(optionsToken?: string): EffectiveWebViewCreateOptions | undefined {
   if (!optionsToken || optionsToken.trim().length === 0) {
-    return strictDefaultOptions();
+    hilog.error(DOMAIN, TAG, 'Create options token is missing');
+    return undefined;
   }
 
   try {
@@ -257,8 +260,8 @@ function decodeOptionsToken(optionsToken?: string): EffectiveWebViewCreateOption
     const parsed = JSON.parse(json) as Object;
     return normalizeDecodedOptions(parsed);
   } catch (error) {
-    hilog.warn(DOMAIN, TAG, `Failed to decode options token, fallback strict: ${error}`);
-    return strictDefaultOptions();
+    hilog.error(DOMAIN, TAG, `Create options token is not decodable: ${error}`);
+    return undefined;
   }
 }
 
@@ -364,6 +367,10 @@ export class WebViewManager {
   static createWebview(webtag: string, optionsToken?: string, generation?: string): boolean {
     const logicalTag = webtag;
     const effectiveOptions = decodeOptionsToken(optionsToken);
+    if (!effectiveOptions) {
+      hilog.error(DOMAIN, TAG, `Rejecting WebView ${webtag}: invalid create options`);
+      return false;
+    }
 
     // Check if already exists for this logical page
     if (WebViewManager.controllers.has(logicalTag)) {

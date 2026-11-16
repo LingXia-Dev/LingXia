@@ -3605,6 +3605,28 @@ mod tests {
         );
     }
 
+    // The Java and ArkTS decoders reject any other spelling.
+    #[test]
+    fn profile_and_data_mode_token_names_are_stable() {
+        let name = |value: serde_json::Value| value.as_str().map(str::to_owned);
+        assert_eq!(
+            name(serde_json::to_value(SecurityProfile::StrictDefault).unwrap()).as_deref(),
+            Some("strict_default")
+        );
+        assert_eq!(
+            name(serde_json::to_value(SecurityProfile::BrowserRelaxed).unwrap()).as_deref(),
+            Some("browser_relaxed")
+        );
+        assert_eq!(
+            name(serde_json::to_value(super::WebViewDataMode::ProfileDefault).unwrap()).as_deref(),
+            Some("profile_default")
+        );
+        assert_eq!(
+            name(serde_json::to_value(super::WebViewDataMode::Ephemeral).unwrap()).as_deref(),
+            Some("ephemeral")
+        );
+    }
+
     #[test]
     fn apple_browser_console_requires_v3_envelope() {
         assert_browser_console_is_bound(PlatformConsoleBackend::Apple);
