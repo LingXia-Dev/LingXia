@@ -189,10 +189,10 @@ export default [
   },
   {
     id: "PEND-SWIPER-001",
-    title: "LxMediaSwiper index change and add from chooseMedia",
+    title: "LxMediaSwiper add from chooseMedia",
     mode: "planned",
     covers: ["lx.chooseMedia"],
-    reason: "add path is OS picker; index events have no contract",
+    reason: "MEDIA-SWIPER-001 to -003 check paging, index events and a video page; the add path is the OS picker",
   },
   {
     id: "PEND-BROWSER-DRV-001",
