@@ -144,27 +144,24 @@ spec('a tap on a nested switch, a row button and a rich-text link reaches only t
 spec('a mouse crossing nested boxes calls enter outermost first and leave innermost first', { start: openDemo('hover') }, async (t) => {
   const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
   if (os !== 'macos' && os !== 'windows') t.skip('needs a mouse: desktop pointer input');
+  // Window input takes page points on Windows only; on macOS it takes window points, and the
+  // page's place in its window is not exposed to a spec.
+  if (os === 'macos') t.skip('window pointer input does not take page coordinates on macOS yet');
   const view = t.app.view;
-  const desktop = t.automation.desktop;
   const log = view.testId('lab-crossing-log');
-  // The pointer goes to the host window as background input; the window is never focused.
-  const host = (await desktop.windows()).find(w => w.visible && /gpu/i.test(`${w.title} ${w.process}`));
-  expect(host, 'the host window').toBeTruthy();
-  const snap = await desktop.snapshot({ window: host!.id });
-  const find = (node: typeof snap.ax, name: string): typeof snap.ax | undefined =>
-    !node ? undefined : node.name === name ? node : (node.children ?? []).map(child => find(child, name)).find(Boolean);
-  const clear = find(snap.ax, 'Clear');
-  expect(clear, 'the Clear button in the AX tree').toBeTruthy();
-  const at = (dx: number): [number, number] => [Math.round(clear!.rect.x + clear!.rect.w / 2 + dx), Math.round(clear!.rect.y + clear!.rect.h / 2)];
-  const away: [number, number] = [host!.bounds.x + 8, host!.bounds.y + host!.bounds.h - 8];
-  const move = (point: [number, number]) => desktop.pointer.move({ at: point, window: host!.id });
+  // Mouse events go to the host window inside the app: the system pointer stays where it is and
+  // the window is never focused.
+  const clear = (await view.getByRole('button', { name: 'Clear' }).boundingBox())!;
+  const at = (dx: number): [number, number] => [Math.round(clear.x + clear.width / 2 + dx), Math.round(clear.y + clear.height / 2)];
+  const away: [number, number] = [4, 4];
+  const move = (point: [number, number]) => t.app.window.pointer.move({ at: point });
   await move(away);
   await expect(log).toHaveAttribute('data-state', 'none');
   // Onto the inner button: the outer box enters first.
   await move(at(0));
   await expect(log).toHaveAttribute('data-state', 'O+I+');
   // Off the button but inside the box (the gap before the log text): only the button leaves.
-  await move(at(clear!.rect.w / 2 + 6));
+  await move(at(clear.width / 2 + 6));
   await expect(log).toHaveAttribute('data-state', 'O+I+I-');
   await move(at(0));
   await move(away);

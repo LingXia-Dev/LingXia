@@ -164,14 +164,23 @@ spec('a relaunch onto a page outside the tab bar hides the bar and keeps no room
 });
 
 // Every tab page: at scroll end its last control rests above the bar; content passes under only while scrolling.
-spec('every tab page ends its content above the tab bar', { covers: ['view:scroll'], start: { page: 'view' } }, async (t) => {
+// A fling takes about 3 s on the macOS Runner (under 0.1 s on a phone), two or more a tab.
+spec('every tab page ends its content above the tab bar', { covers: ['view:scroll'], start: { page: 'view' }, timeout: 90_000 }, async (t) => {
   const view = t.app.view;
   const { inset } = await bars(t);
   const controls = 'button, input, select, textarea, checkbox, switch, slider, [role="button"], [role="link"]';
-  for (const [name, root] of [
-    ['home', 'home-page'], ['api', 'api-page'], ['view', 'view-index'], ['perf-lab', 'perf-lab'],
-    ['todo', 'todo-page'], ['surface', 'surface-page'],
-  ]) {
+  // The bar this platform shows: Surface is a desktop tab. Tabs are told apart by icon, whatever the language.
+  const known: Record<string, [string, string]> = {
+    home: ['home', 'home-page'], api: ['api', 'api-page'], lab: ['view', 'view-index'], perf: ['perf-lab', 'perf-lab'],
+    todo: ['todo', 'todo-page'], surface: ['surface', 'surface-page'],
+  };
+  const shown = ((await t.app.info()).tabBar?.items ?? []).map((item) => {
+    const icon = /tab-([a-z]+)\.svg$/.exec(item.iconPath ?? '')?.[1] ?? '';
+    if (!known[icon]) throw new Error(`a tab this spec does not know: ${item.text} (${item.iconPath})`);
+    return known[icon];
+  });
+  expect(shown.length, 'the tab bar lists its tabs').toBeGreaterThanOrEqual(5);
+  for (const [name, root] of shown) {
     await t.app.nav.switchTab({ page: name });
     const page = view.testId(root);
     await expect(page).toBeVisible();
