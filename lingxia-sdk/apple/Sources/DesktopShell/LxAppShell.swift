@@ -307,6 +307,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     var onManagedWindowCloseRequested: (() -> Void)?
     private(set) var contentPanelView: NSView?
 
+    /// Report `appId`'s page viewport to the core now; false while its view is not on screen.
+    /// For a host that swaps skins: the outgoing skin's last report can land after this
+    /// shell's own.
+    public func reportSurfaceViewport(appId: String) -> Bool {
+        getViewController(for: appId)?.reportSurfaceViewport() ?? false
+    }
+
     func getViewController(for appId: String) -> macOSLxAppViewController? {
         // An lxapp occupies one region; when it is an aside its controller
         // is the panel's, never a main.

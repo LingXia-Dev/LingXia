@@ -497,6 +497,9 @@ final class LxAppViewController: UIViewController, ObservableObject {
         if let outgoingWebView, outgoingWebView !== getCurrentWebView() {
             parkInactiveWebView(outgoingWebView)
         }
+        // The core keeps a viewport per session, and a new session in the
+        // same view lays nothing out again.
+        if isViewLoaded { reportSurfaceWidth() }
 
         // Use unified navigation entry point
         navigate(appId: appId, to: path, pageInstanceId: pageInstanceId, with: .none)

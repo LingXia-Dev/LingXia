@@ -134,10 +134,18 @@ final class RunnerSurfaceShellHost {
     private func reportSurfaceMetricsWhenReady(attempt: Int = 0) {
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.isHiddenForHostSwitch else { return }
-            guard RunnerSupport.Runtime.currentAppId() == self.appId,
-                  let webView = RunnerSupport.WebView.page(appId: self.appId),
-                  webView.window != nil
-            else {
+            guard RunnerSupport.Runtime.currentAppId() == self.appId else {
+                self.retrySurfaceMetricsReport(after: attempt)
+                return
+            }
+            // A GPU page has no webview to measure: its view controller reports.
+            guard let webView = RunnerSupport.WebView.page(appId: self.appId) else {
+                if !self.shell.reportSurfaceViewport(appId: self.appId) {
+                    self.retrySurfaceMetricsReport(after: attempt)
+                }
+                return
+            }
+            guard webView.window != nil else {
                 self.retrySurfaceMetricsReport(after: attempt)
                 return
             }

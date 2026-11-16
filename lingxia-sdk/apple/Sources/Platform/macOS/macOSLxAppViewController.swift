@@ -78,11 +78,23 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        // The page's viewport: in an aside the view also holds the
-        // navigation bar and tabBar above the page.
+        reportSurfaceViewport()
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        reportSurfaceViewport()
+    }
+
+    /// The page's viewport: in an aside the view also holds the navigation
+    /// bar and tabBar above the page.
+    @discardableResult
+    func reportSurfaceViewport() -> Bool {
+        guard isViewLoaded, view.window != nil else { return false }
         let size = (webViewContainer ?? view).bounds.size
-        guard size.width > 0, size.height > 0 else { return }
+        guard size.width > 0, size.height > 0 else { return false }
         _ = setSurfaceViewport(appId, Double(size.width), Double(size.height))
+        return true
     }
 
     // MARK: - UI Setup
@@ -566,6 +578,11 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         if value > 0 {
             sessionId = value
         }
+        // The shell calls this each time it shows the lxapp in this view. The
+        // core keeps one viewport per lxapp session, another skin (a phone
+        // frame) may have reported its own since, and a view shown again at
+        // its old size lays nothing out.
+        reportSurfaceViewport()
     }
 
     /// Escape the page did not use: an aside that is maximized goes back to
