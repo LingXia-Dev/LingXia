@@ -1,5 +1,5 @@
 import { expect, spec } from '@lingxia/test';
-import { demos, groups } from '../shared/view-lab/text';
+import { demos, groups, missing } from '../shared/view-lab/text';
 
 // The catalogue of View: an index of groups, each a pushed page of demos in one shape.
 spec('the index lists each group with its count and opens it', { covers: ['view:catalogue'], start: { page: 'view' } }, async (t) => {
@@ -16,30 +16,50 @@ for (const group of groups) {
   spec(`${group.page} shows every demo of its group and says what is missing`, { covers: ['view:catalogue'], start: { page: group.page } }, async (t) => {
     const view = t.app.view;
     for (const demo of Object.values(demos[group.id])) expect(await view.testId(demo.testId).count()).toBe(1);
-    expect(await view.testId('view-group-missing').count()).toBe(1);
+    expect(await view.testId('view-group-missing').count()).toBe(missing[group.id].length ? 1 : 0);
   });
 }
 
 // The Chinese text of each group, whatever language the device is in.
 const zhNames: Record<string, string[]> = {
-  'view-text': ['段落', '输入时的建议', '尚未展示'],
-  'view-gestures': ['指针的位置', '滑动行显示操作', '尚未展示'],
-  'view-overlays': ['按需唤出的菜单', '菜单里的菜单', '保持打开的菜单', '关闭前先询问的浮层', '在触发处旁边打开的浮层', '尚未展示'],
-  'view-accessibility': ['文件夹树', '有名称的列表', '日期网格', '尚未展示'],
-  'view-motion': ['展开与收起的面板', '尚未展示'],
+  'view-drawing': ['渐变填充', '边框与圆角'],
+  'view-media': ['视频', '图表', '进度'],
+  'view-controls': ['下拉选择', '传给所有子元素的值'],
+  'view-layout': ['网格', '报告自身尺寸的方块'],
+  'view-text': ['段落', '选择文字', '已停用的链接'],
+  'view-input': ['输入时的建议', '输入框', '双滑块'],
+  'view-gestures': ['在停靠点之间拖动', '滑动行显示操作', '下拉刷新'],
+  'view-pointer': ['指针的位置', '行里的控件'],
+  'view-overlays': ['对话框', '底部面板', '按需唤出的菜单', '菜单里的菜单', '保持打开的菜单', '关闭前先询问的浮层', '在触发处旁边打开的浮层'],
+  'view-scrolling': ['跳到某一行', '吸顶的标题', '带圆点的翻页'],
+  'view-motion': ['按压反馈', '重新排序', '展开与收起的面板'],
+  'view-appearance': ['浅色与深色', '安全区与键盘'],
+  'view-accessibility': ['名称与角色', '文件夹树', '有名称的列表', '日期网格'],
 };
 for (const group of groups) {
   spec(`${group.page} reads in Chinese when asked`, { covers: ['view:catalogue'], start: { page: group.page, query: { lang: 'zh' } } }, async (t) => {
     const view = t.app.view;
-    const names = zhNames[group.page];
-    const missing = names[names.length - 1];
-    for (const title of names.slice(0, -1)) expect(await view.getByRole('heading', { name: title }).count()).toBe(1);
-    await expect(view.testId('view-group-missing')).toContainText(missing);
+    for (const title of zhNames[group.page]) expect(await view.getByRole('heading', { name: title }).count()).toBe(1);
+    if (missing[group.id].length) await expect(view.testId('view-group-missing')).toContainText('尚未展示');
   });
 }
 
-spec('a group page reads in English when asked', { covers: ['view:catalogue'], start: { page: 'view-text', query: { lang: 'en' } } }, async (t) => {
+spec('a group page reads in English when asked', { covers: ['view:catalogue'], start: { page: 'view-input', query: { lang: 'en' } } }, async (t) => {
   const view = t.app.view;
   expect(await view.getByRole('heading', { name: 'Suggestions while typing' }).count()).toBe(1);
   await expect(view.testId('view-group-missing')).toContainText('Not shown yet');
+});
+
+spec('a finger on an index row opens its group', { covers: ['view:catalogue'], start: { page: 'view' } }, async (t) => {
+  const view = t.app.view;
+  // A real touch at each row's centre, not a dispatch to the element: the hit test decides.
+  // The first rows: on screen on any phone without scrolling.
+  for (const id of ['drawing', 'media', 'controls'] as const) {
+    const box = await view.testId(`view-index-${id}`).boundingBox();
+    const at = [box.x + box.width / 2, box.y + box.height / 2] as const;
+    await view.swipe({ from: at, to: at, durationMs: 60, hold: 0 });
+    await expect(view.testId(`view-group-${id}`)).toBeVisible({ timeout: 3_000 });
+    await t.app.nav.back();
+    await expect(view.testId('view-index')).toBeVisible();
+  }
 });

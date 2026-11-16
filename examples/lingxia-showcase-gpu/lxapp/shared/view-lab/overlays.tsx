@@ -1,5 +1,5 @@
 // Overlays demos of the View catalogue: each is the body of one demo.
-import { useLocal } from '@lingxia/view';
+import { useLocal, useView } from '@lingxia/view';
 import { Button } from '../ui';
 import { Readout, useSay } from './demo';
 import { labels, readouts } from './text';
@@ -118,8 +118,97 @@ export function SubmenuDemo() {
   );
 }
 
+// Dialogs and popovers draw in the top layer: above the page and unclipped by their demo's card.
+const useLast = () => useLocal('overlay-last', 'none');
+
+export function DialogDemo() {
+  const open = useLocal('overlay-confirm', false);
+  const last = useLast();
+  const t = useSay();
+  const close = (value: string) => { last.set(value); open.set(false); };
+  return (
+    <>
+      <view className="flex-row"><Button testId="lab-overlay-confirm" size="sm" onClick={() => open.set(true)}>{t(labels.dialog)}</Button></view>
+      <Readout testId="lab-dialog-last" state={`last=${last.value}`}>{t(readouts.last(last.value))}</Readout>
+      <dialog open={open.value} onClose={() => open.set(false)} aria-label={t(labels.deleteNote)} data-testid="lab-dialog"
+        className="w-72 p-4 gap-3 rounded-2xl bg-surface-raised transition duration-200 starting:opacity-0 starting:scale-95 exit:opacity-0 exit:scale-95">
+        <text role="heading" headingLevel={3} className="text-base font-semibold">{t(labels.deleteNote)}</text>
+        <text className="text-sm text-muted">{t(labels.deleteHelp)}</text>
+        <view className="flex-row gap-2 justify-end">
+          <Button testId="lab-dialog-cancel" variant="secondary" onClick={() => close('cancel')}>{t(labels.cancel)}</Button>
+          <Button testId="lab-dialog-delete" onClick={() => close('delete')}>{t(labels.delete)}</Button>
+        </view>
+      </dialog>
+    </>
+  );
+}
+
+export function SheetDemo() {
+  const open = useLocal('overlay-sheet', false);
+  const last = useLast();
+  const t = useSay();
+  // The sheet covers the bars; its content clears the home indicator or gesture bar.
+  const safeBottom = useView().env.safeArea?.bottom ?? 0;
+  return (
+    <>
+      <view className="flex-row"><Button testId="lab-overlay-sheet" size="sm" variant="secondary" onClick={() => open.set(true)}>{t(labels.sheet)}</Button></view>
+      <Readout testId="lab-sheet-last" state={`last=${last.value}`}>{t(readouts.last(last.value))}</Readout>
+      <dialog open={open.value} onClose={() => open.set(false)} closedby="any" aria-label={t(labels.filters)} data-testid="lab-sheet"
+        style={{ paddingBottom: 16 + safeBottom }}
+        className="mt-auto mb-0 w-full p-4 gap-3 rounded-t-3xl bg-surface-raised transition-transform duration-300 ease-out starting:translate-y-full exit:translate-y-full">
+        <view className="self-center w-10 h-1 rounded-full bg-line-strong" />
+        <text role="heading" headingLevel={3} className="text-base font-semibold">{t(labels.filters)}</text>
+        <scroll data-testid="lab-sheet-scroll" className="max-h-48">
+          {Array.from({ length: 12 }, (_, i) => <text key={`f${i}`} className="py-2 text-sm">{`${t(labels.filterRow)} ${i + 1}`}</text>)}
+        </scroll>
+        <Button testId="lab-sheet-apply" onClick={() => { last.set('apply'); open.set(false); }}>{t(labels.apply)}</Button>
+      </dialog>
+    </>
+  );
+}
+
+export function MoreDemo() {
+  const last = useLast();
+  const t = useSay();
+  return (
+    <>
+      <view className="flex-row items-center gap-3">
+        <view className="grow"><Readout testId="lab-more-last" state={`last=${last.value}`}>{t(readouts.last(last.value))}</Readout></view>
+        <button popoverTarget="lab-more-menu" data-testid="lab-overlay-more" aria-label="More" className="rounded-full px-3 py-1.5 bg-surface-sunken text-text">···</button>
+      </view>
+      <view id="lab-more-menu" popover role="menu" aria-label="Note actions" data-testid="lab-more-menu"
+        style={{ positionArea: 'bottom span-inline-start' }} className="w-44 p-1 rounded-xl bg-surface-raised shadow-lg border border-line">
+        {['Rename', 'Share', 'Delete'].map(item => (
+          <button key={item} role="menuitem" data-testid={`lab-more-${item.toLowerCase()}`} onClick={() => last.set(item)}
+            className="px-3 py-2 rounded-lg text-start text-text active:bg-surface-sunken">{item}</button>
+        ))}
+      </view>
+    </>
+  );
+}
+
+export function PickersDemo() {
+  const day = useLocal('lab-picker-day', '');
+  const time = useLocal('lab-picker-time', '');
+  const t = useSay();
+  const field = 'grow basis-0 px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm';
+  return (
+    <>
+      <view className="flex-row gap-2">
+        <input data-testid="lab-picker-date" bind={day} aria-label="Date" type="date" placeholder={t(labels.pickDate)} className={field} />
+        <input data-testid="lab-picker-time" bind={time} aria-label="Time" type="time" placeholder={t(labels.pickTime)} className={field} />
+      </view>
+      <Readout testId="lab-picker-values" state={`date=${day.value} time=${time.value}`}>{t(readouts.pickers(day.value, time.value))}</Readout>
+    </>
+  );
+}
+
 /** The Overlays group: every demo the text table names, drawn by its body. */
 export const overlayDemos = {
+  dialog: DialogDemo,
+  bottomSheet: SheetDemo,
+  more: MoreDemo,
+  pickers: PickersDemo,
   menu: MenuDemo,
   submenu: SubmenuDemo,
   stay: StayDemo,

@@ -1,5 +1,6 @@
 // Accessibility demos of the View catalogue: each is the body of one demo.
 import { List, useLocal } from '@lingxia/view';
+import { Button } from '../ui';
 import { Readout, useSay } from './demo';
 import { labels, readouts } from './text';
 
@@ -79,8 +80,99 @@ export function DaysDemo() {
   );
 }
 
+export function NamesDemo() {
+  const saves = useLocal('saves', 0);
+  const t = useSay();
+  return (
+    <>
+      <text data-testid="lab-a11y-heading" role="heading" headingLevel={3} className="text-base font-semibold">{t(labels.bills)}</text>
+      <view data-testid="lab-a11y-list" role="list" aria-label="Bills" className="gap-1">
+        {t(labels.billRows).split('|').map(bill => (
+          <view key={bill} role="listitem" className="flex-row justify-between">
+            <text className="text-sm">{bill}</text>
+            <vector aria-hidden className="w-4 h-4 text-muted" paths={[{ d: 'M9 18l6-6-6-6', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }]} />
+          </view>
+        ))}
+      </view>
+      <view className="flex-row items-center gap-3">
+        <Button testId="lab-a11y-save" size="sm" onClick={() => saves.set(saves.value + 1)}>{t(labels.save)}</Button>
+        <text data-testid="lab-a11y-status" role="status" className="text-sm text-muted">{t(readouts.saved(saves.value))}</text>
+      </view>
+    </>
+  );
+}
+
+// Tabs, a toolbar and a tree: one Tab stop each, arrows move between items, tabs activate on arrival.
+export function GroupsDemo() {
+  const range = useLocal('composite-range', 'week');
+  const bold = useLocal('composite-bold', false);
+  const open = useLocal('composite-open', true);
+  const t = useSay();
+  const names = t(labels.ranges).split('|');
+  const values = ['day', 'week', 'month'];
+  const chip = 'px-3 py-1 rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-focus';
+  const node = (label: string, level: number, testId: string, expanded?: boolean) => (
+    <button role="treeitem" aria-level={level} aria-expanded={expanded} data-testid={testId}
+      onClick={expanded === undefined ? () => {} : () => open.set(!open.value)} className="text-sm text-start py-1 focus-visible:ring-2 focus-visible:ring-focus" style={{ paddingLeft: level * 12 }}>{label}</button>
+  );
+  return (
+    <>
+      <view role="tablist" aria-label="Range" className="flex-row gap-2">
+        {values.map((value, index) => (
+          <button key={value} role="tab" aria-selected={range.value === value} data-testid={`lab-range-${value}`} onClick={() => range.set(value)}
+            className={`${chip} ${range.value === value ? 'bg-accent text-on-accent' : 'bg-surface-sunken'}`}>{names[index]}</button>
+        ))}
+      </view>
+      <view role="tabpanel" aria-label="Range view" data-testid="lab-range-panel">
+        <text className="text-sm">{t({ en: `Showing the ${range.value}`, zh: `显示：${names[values.indexOf(range.value)]}` })}</text>
+      </view>
+      <view role="toolbar" aria-label="Format" className="flex-row gap-2">
+        <button data-testid="lab-tool-bold" aria-pressed={bold.value} onClick={() => bold.set(!bold.value)} className={`${chip} ${bold.value ? 'bg-accent-soft' : 'bg-surface-sunken'}`}>{t(labels.bold)}</button>
+        <button data-testid="lab-tool-copy" onClick={() => {}} className={`${chip} bg-surface-sunken`}>{t(labels.copy)}</button>
+      </view>
+      <view role="tree" aria-label="Files" className="gap-0">
+        {node('src', 1, 'lab-tree-src', open.value)}
+        {open.value ? node('main.ts', 2, 'lab-tree-main') : null}
+        {node('docs', 1, 'lab-tree-docs')}
+      </view>
+    </>
+  );
+}
+
+// A dialog that keeps focus inside it, a button that shows focus only from a key, and a hint
+// that opens while a key or a resting pointer is on its trigger.
+export function FocusDemo() {
+  const open = useLocal('dialog-open', false);
+  const choice = useLocal('dialog-choice', 'none');
+  const t = useSay();
+  const close = (value: string) => { choice.set(value); open.set(false); };
+  return (
+    <>
+      <view className="flex-row flex-wrap gap-2 items-center">
+        <Button testId="lab-focus-open" size="sm" onClick={() => open.set(true)}>{t(labels.openDialog)}</Button>
+        <button data-testid="lab-focus-visible" onClick={() => {}} className="rounded-xl px-4 py-2 text-sm bg-surface-sunken focus-visible:bg-accent focus-visible:text-on-accent">{t(labels.ringByKey)}</button>
+        <button data-testid="lab-interest" interestFor="lab-interest-hint" aria-label="About focus" className="rounded-full w-8 h-8 items-center justify-center bg-surface-sunken focus-visible:bg-accent focus-visible:text-on-accent"><text className="text-sm">?</text></button>
+      </view>
+      <Readout testId="lab-focus-choice" state={`chosen=${choice.value}`}>{t(readouts.chosen(choice.value))}</Readout>
+      <view id="lab-interest-hint" popover="hint" role="tooltip" data-testid="lab-interest-hint" className="max-w-56 px-3 py-2 rounded-lg border border-line bg-surface-raised">
+        <text className="text-xs text-text">{t(labels.focusHint)}</text>
+      </view>
+      <dialog open={open.value} onClose={() => close('escape')} data-testid="lab-focus-dialog" aria-label={t(labels.confirmPayment)} className="w-72 gap-3 p-4 rounded-xl border border-line bg-surface">
+        <text role="heading" headingLevel={3} className="text-sm font-semibold">{t(labels.confirmPayment)}</text>
+        <view className="flex-row gap-2">
+          <Button testId="lab-focus-confirm" onClick={() => close('confirm')}>{t(labels.confirm)}</Button>
+          <Button testId="lab-focus-cancel" variant="secondary" onClick={() => close('cancel')}>{t(labels.cancel)}</Button>
+        </view>
+      </dialog>
+    </>
+  );
+}
+
 /** The Accessibility group: every demo the text table names, drawn by its body. */
 export const accessibilityDemos = {
+  names: NamesDemo,
+  groups: GroupsDemo,
+  focus: FocusDemo,
   tree: TreeDemo,
   named: NamedListDemo,
   days: DaysDemo,

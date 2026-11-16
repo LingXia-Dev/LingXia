@@ -1,0 +1,9 @@
+{
+  "navigationBar": {
+    "title": {
+      "default": "Scrolling",
+      "zh-CN": "滚动"
+    }
+  },
+  "pageOrientation": "auto"
+}

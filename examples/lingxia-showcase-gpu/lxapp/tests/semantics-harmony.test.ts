@@ -1,4 +1,5 @@
 import { expect, spec } from '@lingxia/test';
+import { openDemo } from './open-demo';
 import { harmonyDevice } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
 spec.configure({ requires: { args: ['harmonyDevice'] } });
@@ -8,11 +9,10 @@ spec.configure({ requires: { args: ['harmonyDevice'] } });
 spec('ArkUI reads a field description from aria-describedby and an alertdialog as a dialog', {
   id: 'A11Y-HARMONY-001', covers: ['view:a11y'],
   reason: 'reads the ArkUI layout through the Harmony device fixture',
-  start: { page: 'view-lab' },
+  start: openDemo('form'),
 }, async (t) => {
   const view = t.app.view;
   const device = harmonyDevice(t);
-  await view.testId('lab-tab-input').click();
   // ArkUI exposes only on-screen nodes, and each layout dump takes over a second.
   const node = async (id: string) => (await device.nodes()).find(n => n.id === id);
   const poll = (id: string, key: 'type' | 'description') =>

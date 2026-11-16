@@ -1,8 +1,8 @@
 {
   "navigationBar": {
     "title": {
-      "default": "Motion target",
-      "zh-CN": "动效目标"
+      "default": "A pushed page",
+      "zh-CN": "推入的页面"
     }
   },
   "pageOrientation": "auto"

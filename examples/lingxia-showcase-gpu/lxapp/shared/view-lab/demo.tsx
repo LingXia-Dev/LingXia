@@ -6,7 +6,13 @@ import { chrome, count, demos, groups, missing, say, type GroupId, type Words } 
 /** The words of the page's language: its `lang` page option when given, else the display language. */
 export function useSay() {
   const { data, env } = useView();
-  return say((data as { lang?: string }).lang ?? env.displayLanguage);
+  return say((data as { lang?: string }).lang || env.displayLanguage);
+}
+
+/** What the page is given for bars and keyboard, as attributes specs measure against. */
+function useInsets() {
+  const { insets, safeArea, keyboard } = useView().env;
+  return { 'data-inset-bottom': String(insets.bottom), 'data-safe-bottom': String(safeArea.bottom), 'data-keyboard': String(keyboard.height) } as const;
 }
 
 /** A demo's state in words; `state` is the same state as stable text for specs. */
@@ -34,7 +40,7 @@ export function GroupPage<G extends GroupId>({ id, bodies }: { id: G; bodies: Re
   const words = demos[id] as Record<string, { testId: string; title: Words; try: Words }>;
   const drawn = bodies as Record<string, Component>;
   return (
-    <Page testId={`view-group-${id}`}>
+    <Page testId={`view-group-${id}`} data={useInsets()}>
       {Object.keys(words).map(key => {
         const Body = drawn[key];
         return <Demo key={key} title={t(words[key].title)} sentence={t(words[key].try)} testId={words[key].testId}><Body /></Demo>;
@@ -53,7 +59,7 @@ export function GroupPage<G extends GroupId>({ id, bodies }: { id: G; bodies: Re
 export function Index({ onOpen }: { onOpen: (page: string) => void }) {
   const t = useSay();
   return (
-    <Page testId="view-index">
+    <Page testId="view-index" data={useInsets()}>
       <text className="px-4 text-sm text-muted">{t(chrome.index)}</text>
       <view role="list" className="rounded-2xl border border-line bg-surface divide-y divide-line">
         {groups.map(group => (

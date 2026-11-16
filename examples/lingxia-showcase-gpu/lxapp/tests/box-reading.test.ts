@@ -1,9 +1,9 @@
 import { expect, spec } from '@lingxia/test';
+import { openDemo } from './open-demo';
 
 // `useBox`: an element's laid-out size, read in render.
-spec('a box reads the size its element was laid out at', { covers: ['view:layout'], start: { page: 'view-lab' } }, async (t) => {
+spec('a box reads the size its element was laid out at', { covers: ['view:layout'], start: openDemo('pointer') }, async (t) => {
   const view = t.app.view;
-  await view.testId('lab-tab-engine').click();
   const state = view.testId('lab-scrub-state');
   const text = await t.waitFor(() => state.getAttribute('data-state').then(value => value ?? ''), { until: value => /box=[\d.]+x[\d.]+/.test(value) });
   const [, width, height] = /box=([\d.]+)x([\d.]+)/.exec(text)!.map(Number);

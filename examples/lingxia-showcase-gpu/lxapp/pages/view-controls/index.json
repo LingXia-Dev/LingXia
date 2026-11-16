@@ -1,0 +1,9 @@
+{
+  "navigationBar": {
+    "title": {
+      "default": "Controls & composition",
+      "zh-CN": "控件与组合"
+    }
+  },
+  "pageOrientation": "auto"
+}

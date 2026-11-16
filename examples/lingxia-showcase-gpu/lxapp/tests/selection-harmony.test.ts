@@ -1,4 +1,5 @@
 import { expect, spec, type Fixture } from '@lingxia/test';
+import { openDemo } from './open-demo';
 import { harmonyDevice, type HarmonyNode } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
 spec.configure({ requires: { args: ['harmonyDevice'] } });
@@ -34,11 +35,10 @@ async function waitForText(t: Fixture, labels: string[], timeout = 3000): Promis
 spec('a long press selects a word, and the host menu selects all and copies it', {
   id: 'SELECT-HARMONY-001', covers: ['view:text'],
   reason: 'long-presses through the Harmony device fixture and reads the host menu from the layout',
-  start: { page: 'view-lab' },
+  start: openDemo('selecting'),
 }, async (t) => {
   const view = t.app.view;
   const device = harmonyDevice(t);
-  await view.testId('lab-tab-text').click();
   const text = view.testId('lab-select-text');
   const page = await surface(t);
   const half = (await view.viewport()).height / 2;
@@ -79,12 +79,12 @@ spec('a long press selects a word, and the host menu selects all and copies it',
 spec('a finger held on a control shows the press overlay until it lifts', {
   id: 'PRESS-HARMONY-001', covers: ['view:button'],
   reason: 'holds a finger through the Harmony device fixture and reads composited pixels',
-  start: { page: 'view-lab' },
+  start: openDemo('jump'),
 }, async (t) => {
   const view = t.app.view;
   const device = harmonyDevice(t);
-  // The current tab's chip: its click changes nothing, so the pixels can settle back.
-  const chip = view.testId('lab-tab-paint');
+  // A button whose click changes nothing here, so the pixels can settle back.
+  const chip = view.testId('lab-reveal-first');
   await chip.click();
   const page = await surface(t);
   const box = await chip.boundingBox();

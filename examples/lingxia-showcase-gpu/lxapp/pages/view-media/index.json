@@ -1,0 +1,9 @@
+{
+  "navigationBar": {
+    "title": {
+      "default": "Media & data",
+      "zh-CN": "媒体与数据"
+    }
+  },
+  "pageOrientation": "auto"
+}

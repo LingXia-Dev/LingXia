@@ -1,0 +1,9 @@
+{
+  "navigationBar": {
+    "title": {
+      "default": "Appearance & environment",
+      "zh-CN": "外观与环境"
+    }
+  },
+  "pageOrientation": "auto"
+}

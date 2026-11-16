@@ -1,0 +1,9 @@
+{
+  "navigationBar": {
+    "title": {
+      "default": "Pointer & touch",
+      "zh-CN": "指针与触控"
+    }
+  },
+  "pageOrientation": "auto"
+}

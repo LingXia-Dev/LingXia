@@ -1,0 +1,9 @@
+{
+  "navigationBar": {
+    "title": {
+      "default": "Layout",
+      "zh-CN": "布局"
+    }
+  },
+  "pageOrientation": "auto"
+}

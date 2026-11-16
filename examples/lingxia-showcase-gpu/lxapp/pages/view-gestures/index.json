@@ -1,8 +1,8 @@
 {
   "navigationBar": {
     "title": {
-      "default": "Gestures & pointer",
-      "zh-CN": "手势与指针"
+      "default": "Gestures",
+      "zh-CN": "手势"
     }
   },
   "pageOrientation": "auto"

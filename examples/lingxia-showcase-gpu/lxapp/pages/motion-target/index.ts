@@ -1,8 +1,7 @@
-// A Page registers under the file that calls it, so this copy of motion-lab declares its own.
 Page({
-  data: { dipped: false },
-  interrupt() {
-    this.setData({ dipped: true });
-    setTimeout(() => this.setData({ dipped: false }), 100);
+  data: { lang: '' },
+  // Specs pin the page's language with `lang`, whatever the device is set to.
+  onLoad(options: { lang?: string } = {}) {
+    if (options.lang) this.setData({ lang: options.lang });
   },
 });

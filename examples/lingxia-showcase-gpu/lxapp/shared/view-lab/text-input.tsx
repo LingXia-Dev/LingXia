@@ -49,8 +49,8 @@ export function DocumentDemo() {
   const { terms } = useView().data as unknown as LabPageData;
   const t = useSay();
   return (
-    <>
-      <view className="gap-4 max-w-[68ch]">
+    <scroll data-testid="lab-document-scroll" className="h-80 rounded-lg border border-line overscroll-contain">
+      <view className="gap-4 p-3 max-w-[68ch]">
         <text className="text-xs text-muted tabular-nums">{`${t(labels.updated)} ${terms.updated}`}</text>
         {terms.clauses.map((clause, index) => (
           <view key={clause.heading} className="gap-2">
@@ -67,7 +67,7 @@ export function DocumentDemo() {
           {terms.clauses.map(clause => <Fragment key={clause.term}><Term word={clause.term} meaning={clause.heading} /></Fragment>)}
         </view>
       </view>
-    </>
+    </scroll>
   );
 }
 
@@ -228,15 +228,49 @@ export function RangeDemo() {
   );
 }
 
+// Fields by type: each asks the system for its own keyboard or picker. The two narrow ones truncate:
+// the placeholder and the resting value end in an ellipsis; focused, the value scrolls.
+export function FieldsDemo() {
+  const code = useLocal('code', '');
+  const amount = useLocal('amount', '');
+  const day = useLocal('day', '');
+  const time = useLocal('time', '');
+  const email = useLocal('email', 'accounts.payable.northwest@example-company-domain.com');
+  const t = useSay();
+  const field = 'px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm';
+  return (
+    <>
+      <input data-testid="lab-input-otp" bind={code} aria-label="One-time code" type="number" maxLength={6} autoComplete="one-time-code" enterKeyHint="done" placeholder="6-digit code" className={field} />
+      <input data-testid="lab-input-amount" bind={amount} aria-label="Amount" type="number" min={1} max={500} step={0.5} enterKeyHint="next" placeholder="1 to 500, steps of 0.5" className={field} />
+      <view className="flex-row gap-2">
+        <input data-testid="lab-input-date" bind={day} aria-label="Billing date" type="date" min="2024-01-01" placeholder={t(labels.pickDate)} className={`grow basis-0 ${field}`} />
+        <input data-testid="lab-input-time" bind={time} aria-label="Reminder time" type="time" placeholder={t(labels.pickTime)} className={`grow basis-0 ${field}`} />
+      </view>
+      <input data-testid="lab-input-name" aria-label="Name" autoComplete="name" autoCapitalize="words" spellCheck={false} placeholder="Full name" className={field} />
+      <view className="flex-row gap-2">
+        <input data-testid="lab-input-truncate-empty" aria-label="Invoice email" type="email" placeholder="The address your team uses for invoices and receipts" className={`w-40 truncate ${field}`} />
+        <input data-testid="lab-input-truncate" bind={email} aria-label="Billing email" type="email" placeholder="Billing email" className={`grow basis-0 min-w-0 truncate ${field}`} />
+      </view>
+      <Readout testId="lab-input-values" state={`code=${code.value} amount=${amount.value} date=${day.value} time=${time.value}`}>
+        {t(readouts.fields(code.value, amount.value, day.value, time.value))}
+      </Readout>
+    </>
+  );
+}
+
+/** The Text and the Input groups: every demo the text table names, drawn by its body. */
 export const textDemos = {
   paragraphs: TextLayoutDemo,
   runs: RichTextDemo,
   document: DocumentDemo,
   selecting: SelectionDemo,
+  underlines: UnderlinesDemo,
+  linkOff: LinkOffDemo,
+};
+export const inputDemos = {
   suggestions: TypeaheadDemo,
   partly: PartlyDemo,
-  underlines: UnderlinesDemo,
   range: RangeDemo,
-  linkOff: LinkOffDemo,
+  fields: FieldsDemo,
   form: FormSemanticsDemo,
 };

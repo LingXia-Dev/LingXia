@@ -206,14 +206,43 @@ export function SmallTargetDemo() {
   );
 }
 
-/** The Gestures & pointer group: every demo the text table names, drawn by its body. */
+// Pointer crossings on nested boxes, as a sequence: O is the outer box, I the button inside it.
+export function HoverDemo() {
+  const crossings = useLocal('lab-crossings', '');
+  const cross = (mark: string) => () => crossings.set(crossings.value + mark);
+  const t = useSay();
+  return (
+    <view data-testid="lab-crossing" onPointerEnter={cross('O+')} onPointerLeave={cross('O-')} className="flex-row items-center gap-3 p-3 rounded-xl border border-line">
+      <button data-testid="lab-crossing-inner" aria-label="Clear" onPointerEnter={cross('I+')} onPointerLeave={cross('I-')} onClick={() => crossings.set('')}
+        className="rounded-lg px-3 py-1.5 bg-surface-sunken hover:bg-accent-soft text-sm">{t(labels.clear)}</button>
+      <Readout testId="lab-crossing-log" state={crossings.value || 'none'}>{t(readouts.crossings(crossings.value))}</Readout>
+    </view>
+  );
+}
+
+// Pull to refresh belongs to a whole page, so the demo is a page of its own.
+export function PullDemo() {
+  const { actions } = useView();
+  const t = useSay();
+  return (
+    <view className="flex-row">
+      <Button testId="lab-pull-open" size="sm" variant="secondary" onClick={() => actions.open({ page: 'pullToRefresh' })}>{t(labels.openPull)}</Button>
+    </view>
+  );
+}
+
+/** The Gestures and the Pointer & touch groups: every demo the text table names, drawn by its body. */
 export const gestureDemos = {
-  pointer: ScrubDemo,
   stops: DragDemo,
   chain: DragChainDemo,
   sheet: DetentsDemo,
   rows: SwipeRowsDemo,
   pages: PagerDemo,
+  pull: PullDemo,
+};
+export const pointerDemos = {
+  pointer: ScrubDemo,
   small: SmallTargetDemo,
+  hover: HoverDemo,
   nested: NestedControlsDemo,
 };

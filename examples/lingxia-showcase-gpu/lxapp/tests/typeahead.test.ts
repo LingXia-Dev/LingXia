@@ -1,10 +1,10 @@
 import { expect, spec } from '@lingxia/test';
+import { openDemo } from './open-demo';
 
 // An editor that owns a list: focus and blur events, a popover anchored to the field box, keys
 // taken from the editor while the caret stays in it, and a read-only editor.
-spec('a field opens its suggestions against itself on focus and takes a tapped one without blurring first', { covers: ['view:input', 'view:popover'], start: { page: 'view-lab' } }, async (t) => {
+spec('a field opens its suggestions against itself on focus and takes a tapped one without blurring first', { covers: ['view:input', 'view:popover'], start: openDemo('suggestions') }, async (t) => {
   const view = t.app.view;
-  await view.testId('lab-tab-engine').click();
   const input = view.testId('lab-type-input');
   const state = view.testId('lab-type-state');
   await expect(state).toHaveAttribute('data-state', 'open=false active=0 last=none');
@@ -16,7 +16,7 @@ spec('a field opens its suggestions against itself on focus and takes a tapped o
   await expect(list).toBeVisible();
   let gap = Infinity;
   for (let attempt = 0; attempt < 20 && gap > 1; attempt++) {
-    if (attempt) await new Promise((resolve) => setTimeout(resolve, 100));
+    if (attempt) await new Promise<void>((resolve) => setTimeout(resolve, 100));
     const [field, panel] = [await view.testId('lab-type-field').boundingBox(), await list.boundingBox()];
     const under = Math.abs(panel.y - (field.y + field.height + 4));
     const over = Math.abs(panel.y + panel.height - (field.y - 4));
@@ -31,9 +31,8 @@ spec('a field opens its suggestions against itself on focus and takes a tapped o
   await expect(input).toHaveValue('Cherry');
 });
 
-spec('an editor gives the page the keys it lists and keeps the caret', { covers: ['view:input', 'view:keys'], start: { page: 'view-lab' } }, async (t) => {
+spec('an editor gives the page the keys it lists and keeps the caret', { covers: ['view:input', 'view:keys'], start: openDemo('suggestions') }, async (t) => {
   const view = t.app.view;
-  await view.testId('lab-tab-engine').click();
   const input = view.testId('lab-type-input');
   const state = view.testId('lab-type-state');
   await input.click();
@@ -51,9 +50,8 @@ spec('an editor gives the page the keys it lists and keeps the caret', { covers:
   await expect(state).toHaveAttribute('data-state', 'open=false active=0 last=escape');
 });
 
-spec('moving to another editor blurs the first, and a read-only editor keeps its text', { covers: ['view:input'], start: { page: 'view-lab' } }, async (t) => {
+spec('moving to another editor blurs the first, and a read-only editor keeps its text', { covers: ['view:input'], start: openDemo('suggestions') }, async (t) => {
   const view = t.app.view;
-  await view.testId('lab-tab-engine').click();
   const state = view.testId('lab-type-state');
   await view.testId('lab-type-input').click();
   await expect(state).toHaveAttribute('data-state', /last=focus/);

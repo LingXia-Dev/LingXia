@@ -1,8 +1,8 @@
 {
   "navigationBar": {
     "title": {
-      "default": "Text & input",
-      "zh-CN": "文字与输入"
+      "default": "Text",
+      "zh-CN": "文字"
     }
   },
   "pageOrientation": "auto"

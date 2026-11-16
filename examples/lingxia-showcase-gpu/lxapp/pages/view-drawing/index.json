@@ -1,0 +1,9 @@
+{
+  "navigationBar": {
+    "title": {
+      "default": "Drawing",
+      "zh-CN": "绘制"
+    }
+  },
+  "pageOrientation": "auto"
+}

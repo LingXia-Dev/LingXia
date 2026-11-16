@@ -98,16 +98,44 @@
       "path": "pages/view/index"
     },
     {
+      "name": "view-drawing",
+      "path": "pages/view-drawing/index"
+    },
+    {
+      "name": "view-media",
+      "path": "pages/view-media/index"
+    },
+    {
+      "name": "view-controls",
+      "path": "pages/view-controls/index"
+    },
+    {
+      "name": "view-layout",
+      "path": "pages/view-layout/index"
+    },
+    {
       "name": "view-text",
       "path": "pages/view-text/index"
+    },
+    {
+      "name": "view-input",
+      "path": "pages/view-input/index"
     },
     {
       "name": "view-gestures",
       "path": "pages/view-gestures/index"
     },
     {
+      "name": "view-pointer",
+      "path": "pages/view-pointer/index"
+    },
+    {
       "name": "view-overlays",
       "path": "pages/view-overlays/index"
+    },
+    {
+      "name": "view-scrolling",
+      "path": "pages/view-scrolling/index"
     },
     {
       "name": "view-accessibility",
@@ -116,6 +144,10 @@
     {
       "name": "view-motion",
       "path": "pages/view-motion/index"
+    },
+    {
+      "name": "view-appearance",
+      "path": "pages/view-appearance/index"
     },
     {
       "name": "motion-lab",

@@ -1,4 +1,5 @@
 import { expect, spec } from '@lingxia/test';
+import { openDemo, rootOf } from './open-demo';
 import { harmonyDevice } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
 spec.configure({ requires: { args: ['harmonyDevice'] } });
@@ -8,16 +9,15 @@ spec.configure({ requires: { args: ['harmonyDevice'] } });
 spec('hardware keys move a menu focus and choose an item', {
   id: 'KEY-HARMONY-001', covers: ['view:popover', 'view:a11y'],
   reason: 'presses keys through the Harmony device fixture',
-  start: { page: 'view-lab' },
+  start: openDemo('more'),
 }, async (t) => {
   const view = t.app.view;
   const device = harmonyDevice(t);
-  await view.testId('lab-tab-feedback').click();
   // A finger on the page gives it ArkUI focus, which keys need; automation clicks do not move it.
   const surface = (await device.nodes()).filter(node => node.type === 'XComponent')
     .reduce((a, b) => ((b.bounds[2] - b.bounds[0]) * (b.bounds[3] - b.bounds[1]) > (a.bounds[2] - a.bounds[0]) * (a.bounds[3] - a.bounds[1]) ? b : a));
   const scale = (surface.bounds[2] - surface.bounds[0]) / (await view.viewport()).width;
-  const last = await view.testId('lab-overlay-last').boundingBox();
+  const last = await view.testId('lab-more-last').boundingBox();
   await device.click(Math.round(surface.bounds[0] + (last.x + last.width / 2) * scale),
     Math.round(surface.bounds[1] + (last.y + last.height / 2) * scale));
   // Keyboard only from here: Tab to the menu button; Enter opens the menu on its first item.
@@ -42,18 +42,17 @@ spec('hardware keys move a menu focus and choose an item', {
   await device.key('home');
   await expect(item('Rename')).toBeFocused();
   await device.key('enter');
-  await expect(view.testId('lab-overlay-last')).toHaveText('last: Rename');
+  await expect(view.testId('lab-more-last')).toHaveAttribute('data-state', 'last=Rename');
   await expect(more).toBeFocused();
 });
 
 spec('a focused editor scrolled off screen keeps focus and the keyboard, and typing brings it back', {
   id: 'KEY-HARMONY-002', covers: ['view:textarea'],
   reason: 'taps the Huawei system keyboard through the Harmony device fixture',
-  start: { page: 'view-lab' },
+  start: openDemo('controls'),
 }, async (t) => {
   const view = t.app.view;
   const device = harmonyDevice(t);
-  await view.testId('lab-tab-input').click();
   const notes = view.testId('lab-controls-notes');
   await notes.fill('');
   const surface = (await device.nodes()).filter(node => node.type === 'XComponent')
@@ -72,7 +71,7 @@ spec('a focused editor scrolled off screen keeps focus and the keyboard, and typ
   const box = await notes.boundingBox();
   await device.click(...screen(box.x + box.width / 2, box.y + box.height / 2));
   await expect(notes).toBeFocused();
-  const page = view.testId('view-lab');
+  const page = view.testId(rootOf('controls'));
   await expect.poll(async () => Number(await page.getAttribute('data-keyboard'))).toBeGreaterThan(0);
   // Finger swipes up until the editor leaves the top of the screen.
   for (let swipe = 0; swipe < 6; swipe++) {
@@ -90,6 +89,6 @@ spec('a focused editor scrolled off screen keeps focus and the keyboard, and typ
   const keyboard = Number(await page.getAttribute('data-keyboard'));
   const bottom = Math.max(...(await device.nodes()).map(node => node.bounds[3]));
   await device.click(Math.round(surface.bounds[0] + (surface.bounds[2] - surface.bounds[0]) * 0.06), Math.round(bottom - keyboard * scale * 0.75));
-  await expect(view.testId('lab-controls-values')).toContainText('notes=1');
+  await expect(view.testId('lab-controls-values')).toHaveAttribute('data-state', /notes=1$/);
   await expect(notes).toBeInViewport({ timeout: 3_000 });
 });
