@@ -27,6 +27,15 @@
   --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.10);
   --shadow-modal: 0 2px 6px rgb(0 0 0 / 0.08), 0 24px 64px rgb(0 0 0 / 0.18);
 
+  /* Motion by name, as the default theme pack has it. An app's generated theme tokens carry its
+     pack's values under the same names and win; these keep the names known without them. */
+  --transition-duration-fast: 150ms;
+  --transition-duration-base: 200ms;
+  --transition-duration-slow: 300ms;
+  --ease-standard: cubic-bezier(0, 0, 0.2, 1);
+  --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
   /* Corner radius by what the shape is, not by size. */
   --radius-control: 0.625rem;
   --radius-container: 0.875rem;
@@ -50,13 +59,3 @@
     100% { transform: translateX(100%); }
   }
 }
-
-/* Motion by name. Recipes use only these; the values are what Liuli was reviewed with. They become
-   the app's theme pack's once the View resolves duration and easing utilities from it, and this
-   block goes. */
-@utility duration-fast { transition-duration: 150ms; }
-@utility duration-base { transition-duration: 200ms; }
-@utility duration-slow { transition-duration: 300ms; }
-@utility ease-standard { transition-timing-function: cubic-bezier(0, 0, 0.2, 1); }
-@utility ease-enter { transition-timing-function: cubic-bezier(0, 0, 0.2, 1); }
-@utility ease-exit { transition-timing-function: cubic-bezier(0.4, 0, 1, 1); }
