@@ -25,3 +25,26 @@ spec('a page that starts reading the theme runs again on the next theme change',
     await view.environment(null);
   }
 });
+
+// A pinned text scale is the system text size the page sees: text lays out again at it, and
+// clearing the pin gives the device's own size back.
+spec('a pinned text scale lays the text out at that size until the pin is cleared', {
+  id: 'TEXT-SCALE-001', covers: ['view:environment'], start: { page: 'view-text', query: { lang: 'en' } },
+}, async (t) => {
+  const view = t.app.view;
+  // A short single line: its height is its line height at any of these sizes.
+  const line = view.testId('lab-select-inherited');
+  const height = async () => (await line.boundingBox()).height;
+  const system = await height();
+  // To a tenth: line heights round to whole pixels.
+  const ratio = async () => Math.round((await height()) / system * 10) / 10;
+  try {
+    await view.environment({ textScale: 2 });
+    await expect.poll(ratio).toBe(2);
+    await view.environment({ textScale: 1.3 });
+    await expect.poll(ratio).toBe(1.3);
+  } finally {
+    await view.environment(null);
+  }
+  await expect.poll(ratio).toBe(1);
+});

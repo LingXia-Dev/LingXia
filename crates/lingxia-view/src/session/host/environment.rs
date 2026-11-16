@@ -17,13 +17,20 @@ pub(super) struct HostEnvironment {
     test: Option<TestOverride>,
 }
 
-/// What a test run pins for a page: its theme, and stillness (no motion, a steady caret).
+/// What a test run pins for a page: its theme, stillness (no motion, a steady caret), the
+/// system text size and the contrast setting. `None` leaves a fact as measured.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(super) struct TestOverride {
-    /// `Some(true)` dark, `Some(false)` light, `None` as measured.
+    /// `Some(true)` dark, `Some(false)` light.
     pub(super) dark: Option<bool>,
     pub(super) still: bool,
+    /// Every text size multiplied by this.
+    pub(super) text_scale: Option<f32>,
+    pub(super) high_contrast: Option<bool>,
 }
+
+/// The text sizes a test may pin, as factors of the default.
+pub(super) const TEXT_SCALES: std::ops::RangeInclusive<f64> = 0.5..=3.0;
 
 /// Environment keys that only change colours, which the renderer resolves.
 const APPEARANCE: [&str; 3] = ["theme", "highContrast", "palette"];
@@ -230,6 +237,17 @@ impl HostEnvironment {
                     object.remove("palette");
                 }
             }
+            if let Some(high) = test.high_contrast
+                && (env["highContrast"] == true) != high
+            {
+                env["highContrast"] = high.into();
+                if let Some(object) = env.as_object_mut() {
+                    object.remove("palette");
+                }
+            }
+            if let Some(scale) = test.text_scale {
+                env["textScale"] = serde_json::json!([[0.0, 0.0], [16384.0, 16384.0 * scale]]);
+            }
             if test.still {
                 env["reducedMotion"] = true.into();
             }
@@ -308,6 +326,7 @@ mod tests {
         let dark = TestOverride {
             dark: Some(true),
             still: true,
+            ..Default::default()
         };
         assert!(host.set_test(Some(dark)));
         assert!(!host.set_test(Some(dark)));
@@ -322,7 +341,7 @@ mod tests {
         // Pinning the measured theme keeps its palette.
         host.set_test(Some(TestOverride {
             dark: Some(false),
-            still: false,
+            ..Default::default()
         }));
         let env = applied(&host);
         assert_eq!(

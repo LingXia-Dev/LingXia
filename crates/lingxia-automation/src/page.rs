@@ -288,6 +288,11 @@ struct JSEnvironmentOptions {
     #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
     still: Option<bool>,
     #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
+    #[js_name = "textScale"]
+    text_scale: Option<f64>,
+    #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
+    contrast: Option<String>,
+    #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
     clear: Option<bool>,
     read: Option<bool>,
 }
@@ -310,6 +315,8 @@ async fn set_environment(
         Some(crate::view_env::parse_pin(
             options.theme.as_deref(),
             options.still,
+            options.text_scale,
+            options.contrast.as_deref(),
         )?)
     };
     let (instance, page) = auto::page_gpu(app, options.page.as_deref())?;

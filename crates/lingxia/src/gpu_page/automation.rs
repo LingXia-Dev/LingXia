@@ -144,6 +144,10 @@ impl GpuPageAutomation for GpuAutomation {
                 "op": "environment",
                 "theme": pin.dark.map(|dark| if dark { "dark" } else { "light" }),
                 "still": pin.still,
+                "textScale": pin.text_scale,
+                "contrast": pin
+                    .high_contrast
+                    .map(|high| if high { "high" } else { "standard" }),
             }),
             None => json!({"op": "environment", "clear": true}),
         })

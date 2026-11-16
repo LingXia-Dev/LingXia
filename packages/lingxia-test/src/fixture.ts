@@ -731,7 +731,8 @@ export class LiveFixture implements Fixture {
       at: here,
       // A reviewer must see an unsettled shot.
       settled: settle,
-      environment: { pinned: this.viewPin !== null && this.viewPin.theme != null, theme: this.viewPin?.theme ?? null, still: this.viewPin?.still ?? false },
+      environment: { pinned: this.viewPin !== null && this.viewPin.theme != null, theme: this.viewPin?.theme ?? null, still: this.viewPin?.still ?? false,
+        ...(this.viewPin?.contrast ? { contrast: this.viewPin.contrast } : {}) },
       masks: regions,
     }));
     return { key, attachment: ref.path, width, height };
@@ -1519,12 +1520,15 @@ export class LiveFixture implements Fixture {
       environment: (pin: ViewEnvironment | null) => this.act("page.environment", summarise(pin), async () => {
         if (pin !== null && (typeof pin !== "object"
           || (pin.theme !== undefined && pin.theme !== null && pin.theme !== "light" && pin.theme !== "dark")
-          || (pin.still !== undefined && typeof pin.still !== "boolean"))) {
-          throw new TypeError("view.environment() takes { theme?: 'light' | 'dark' | null, still?: boolean } or null");
+          || (pin.still !== undefined && typeof pin.still !== "boolean")
+          || (pin.textScale !== undefined && pin.textScale !== null && !(typeof pin.textScale === "number" && pin.textScale >= 0.5 && pin.textScale <= 3))
+          || (pin.contrast !== undefined && pin.contrast !== null && pin.contrast !== "standard" && pin.contrast !== "high"))) {
+          throw new TypeError("view.environment() takes { theme?: 'light' | 'dark' | null, still?: boolean, textScale?: number (0.5 to 3) | null, contrast?: 'standard' | 'high' | null } or null");
         }
-        // The host binding's fields are optional but not nullable: the device theme is an absent one.
+        // The host binding's fields are optional but not nullable: a device fact is an absent one.
         const options = pin === null ? { clear: true as const }
-          : { ...(pin.theme ? { theme: pin.theme } : {}), still: pin.still ?? false };
+          : { ...(pin.theme ? { theme: pin.theme } : {}), still: pin.still ?? false,
+            ...(pin.textScale != null ? { textScale: pin.textScale } : {}), ...(pin.contrast ? { contrast: pin.contrast } : {}) };
         await page().environment({ ...options, ...target });
         this.viewPin = pin;
       }),

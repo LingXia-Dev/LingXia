@@ -28,11 +28,24 @@ fn with_leases<T>(f: impl FnOnce(&mut HashMap<String, Lease>) -> T) -> T {
     f(&mut leases)
 }
 
-/// Parse `{ theme?: 'light' | 'dark' | null, still?: boolean }`.
+/// Parse `{ theme?: 'light' | 'dark' | null, still?: boolean, textScale?: number | null,
+/// contrast?: 'standard' | 'high' | null }`. The page checks the scale's range.
 pub(crate) fn parse_pin(
     theme: Option<&str>,
     still: Option<bool>,
+    text_scale: Option<f64>,
+    contrast: Option<&str>,
 ) -> Result<TestEnvironment, String> {
+    let high_contrast = match contrast {
+        None => None,
+        Some("standard") => Some(false),
+        Some("high") => Some(true),
+        Some(other) => {
+            return Err(format!(
+                "E_INVALID_ARG: contrast must be 'standard', 'high' or null, not '{other}'"
+            ));
+        }
+    };
     let dark = match theme {
         None => None,
         Some("light") => Some(false),
@@ -46,6 +59,8 @@ pub(crate) fn parse_pin(
     Ok(TestEnvironment {
         dark,
         still: still.unwrap_or(false),
+        text_scale: text_scale.map(|scale| scale as f32),
+        high_contrast,
     })
 }
 
@@ -223,6 +238,8 @@ pub(crate) mod tests {
     pub(crate) const DARK: TestEnvironment = TestEnvironment {
         dark: Some(true),
         still: true,
+        text_scale: None,
+        high_contrast: None,
     };
 
     pub(crate) fn pin(run_id: &str, attempt: Option<u64>, instance: &str) -> Arc<FakePage> {
@@ -234,19 +251,22 @@ pub(crate) mod tests {
 
     #[test]
     fn pins_parse_strictly() {
-        assert_eq!(parse_pin(Some("dark"), Some(true)), Ok(DARK));
+        assert_eq!(parse_pin(Some("dark"), Some(true), None, None), Ok(DARK));
         assert_eq!(
-            parse_pin(None, None),
+            parse_pin(None, None, Some(1.3), Some("high")),
             Ok(TestEnvironment {
                 dark: None,
-                still: false
+                still: false,
+                text_scale: Some(1.3),
+                high_contrast: Some(true),
             })
         );
-        assert!(
-            parse_pin(Some("sepia"), None)
-                .unwrap_err()
-                .starts_with("E_INVALID_ARG")
-        );
+        for bad in [
+            parse_pin(Some("sepia"), None, None, None),
+            parse_pin(None, None, None, Some("more")),
+        ] {
+            assert!(bad.unwrap_err().starts_with("E_INVALID_ARG"));
+        }
     }
 
     #[test]

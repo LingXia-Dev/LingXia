@@ -663,10 +663,11 @@ export interface Screenshot {
   height: number;
 }
 
-/** `page.environment()`: the pin in force and what a visual baseline records but a test cannot set. */
+/** `page.environment()`: the pin in force and what a visual baseline records. */
 export interface PageTestEnvironment {
   theme: "light" | "dark" | null;
   still: boolean;
+  contrast: "standard" | "high" | null;
   /** The platform's text-size curve, `[authored, rendered]` rows; `null` at the default size. */
   textScale: Array<[number, number]> | null;
   displayLanguage: string | null;
@@ -722,7 +723,7 @@ export interface PageDriver {
    * for this test run, or `clear`; device settings are untouched. The attempt's
    * end and the run's end clear it. Only inside a host automation run, except `{ read: true }`.
    */
-  environment(options: PageTarget & ({ theme?: "light" | "dark"; still?: boolean } | { clear: true } | { read: true })): Promise<PageTestEnvironment>;
+  environment(options: PageTarget & ({ theme?: "light" | "dark"; still?: boolean; textScale?: number; contrast?: "standard" | "high" } | { clear: true } | { read: true })): Promise<PageTestEnvironment>;
   /** App-window pointer input at page coordinates (`lxdev lxapp page pointer`). */
   readonly pointer: PagePointer;
   /** App-window keyboard input (`lxdev lxapp page key`). */

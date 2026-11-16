@@ -1529,7 +1529,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
         }
     }
 
-    /// `{op: "environment", theme?: "light"|"dark", still?: bool}` pins the page for a test run;
+    /// `{op: "environment", theme?: "light"|"dark", still?: bool, textScale?: number,
+    /// contrast?: "standard"|"high"}` pins the page for a test run;
     /// `{op: "environment", clear: true}` restores it. Answers the override in force.
     fn set_test_environment(
         &self,
@@ -1553,7 +1554,37 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     .as_bool()
                     .ok_or("E_INVALID_ARG: environment still is a boolean")?,
             };
-            Some(environment::TestOverride { dark, still })
+            let text_scale = match &request["textScale"] {
+                serde_json::Value::Null => None,
+                scale => Some(
+                    scale
+                        .as_f64()
+                        .filter(|scale| environment::TEXT_SCALES.contains(scale))
+                        .ok_or_else(|| {
+                            format!(
+                                "E_INVALID_ARG: environment textScale is a number from {} to {}",
+                                environment::TEXT_SCALES.start(),
+                                environment::TEXT_SCALES.end()
+                            )
+                        })? as f32,
+                ),
+            };
+            let high_contrast = match &request["contrast"] {
+                serde_json::Value::Null => None,
+                contrast if contrast == "high" => Some(true),
+                contrast if contrast == "standard" => Some(false),
+                _ => {
+                    return Err(
+                        "E_INVALID_ARG: environment contrast is \"standard\" or \"high\"".into(),
+                    );
+                }
+            };
+            Some(environment::TestOverride {
+                dark,
+                still,
+                text_scale,
+                high_contrast,
+            })
         };
         let (changed, restart) = {
             let mut main = self.inner.main();
@@ -1580,8 +1611,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
         Ok(self.test_environment_answer())
     }
 
-    /// The pin in force, with the presented frame's text scale and language,
-    /// which a visual baseline records but no test may set.
+    /// The pin in force, with the presented frame's text scale table and language, which a
+    /// visual baseline records.
     fn test_environment_answer(&self) -> serde_json::Value {
         let main = self.inner.main();
         let test = main.host_environment.test();
@@ -1591,6 +1622,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
         serde_json::json!({
             "theme": test.and_then(|test| test.dark).map(theme),
             "still": test.is_some_and(|test| test.still),
+            "contrast": test
+                .and_then(|test| test.high_contrast)
+                .map(|high| if high { "high" } else { "standard" }),
             "textScale": fact("textScale"),
             "displayLanguage": fact("displayLanguage"),
         })

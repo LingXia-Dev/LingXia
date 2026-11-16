@@ -493,6 +493,10 @@ export interface TestVisual {
 export interface ViewEnvironment {
   theme?: "light" | "dark" | null;
   still?: boolean;
+  /** The system text size as a factor of the default, 0.5 to 3 (`1.3`, `2`); `null`: the device's. */
+  textScale?: number | null;
+  /** The system contrast setting; `null`: the device's. */
+  contrast?: "standard" | "high" | null;
 }
 
 export interface TestView {
@@ -519,8 +523,9 @@ export interface TestView {
    */
   settled(options?: ViewSettledOptions): Promise<void>;
   /**
-   * Show the GPU page in `theme` (`null`: the device's) and, with `still`, with
-   * reduced motion and a steady caret, for this spec only; `null` clears it.
+   * Show the GPU page in `theme` (`null`: the device's), at `textScale` times the
+   * system text size, under `contrast` and, with `still`, with reduced motion
+   * and a steady caret, for this spec only; `null` clears it.
    * Device and app settings are untouched; the spec's end clears it.
    */
   environment(pin: ViewEnvironment | null): Promise<void>;

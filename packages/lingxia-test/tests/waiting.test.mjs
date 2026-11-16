@@ -912,14 +912,19 @@ test("view.environment pins a GPU page's theme and stillness or clears it", asyn
     await t.app.view.environment({ theme: "dark", still: true });
     await t.app.view.environment({ still: true });
     await t.app.view.environment(null);
+    await t.app.view.environment({ textScale: 1.3, contrast: "high" });
+    await t.app.view.environment({ textScale: null, contrast: null });
     await assert.rejects(t.app.view.environment({ theme: "sepia" }), TypeError);
+    await assert.rejects(t.app.view.environment({ textScale: 9 }), TypeError);
+    await assert.rejects(t.app.view.environment({ contrast: "more" }), TypeError);
     await assert.rejects(t.app.view.environment(), TypeError);
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
   const sent = world.environments.map(({ page, ...rest }) => rest);
-  assert.deepEqual(sent, [{ theme: "dark", still: true }, { still: true }, { clear: true }]);
+  assert.deepEqual(sent, [{ theme: "dark", still: true }, { still: true }, { clear: true },
+    { still: false, textScale: 1.3, contrast: "high" }, { still: false }]);
 });
 
 test("t.visual.shot attaches the png with a sidecar naming masks, theme and settling", async () => {

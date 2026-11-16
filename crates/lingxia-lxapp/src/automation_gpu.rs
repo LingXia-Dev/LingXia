@@ -99,12 +99,16 @@ pub trait GpuPageAutomation: Send + Sync {
 }
 
 /// A test run's override of a GPU page's environment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TestEnvironment {
     /// `Some(true)` dark, `Some(false)` light, `None` the device's theme.
     pub dark: Option<bool>,
     /// Reduced motion on and the caret held steady.
     pub still: bool,
+    /// The system text size as a factor of the default; `None` the device's.
+    pub text_scale: Option<f32>,
+    /// `Some(true)` increased contrast, `Some(false)` standard, `None` the device's.
+    pub high_contrast: Option<bool>,
 }
 
 type Registry = Mutex<HashMap<String, Weak<dyn GpuPageAutomation>>>;

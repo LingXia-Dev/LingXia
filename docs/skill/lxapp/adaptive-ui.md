@@ -119,5 +119,6 @@ spec('switches Compact and Workspace views', async (t) => {
 - Switching form factor re-serves the page; a tablet or fold frame is still
   mobile, so expect CompactView there.
 - `device.set` is partial; `appearance: "light" | "dark" | "system"` pins the
-  simulated scheme.
+  simulated scheme, `textScale` (0.5 to 3) and `contrast: "standard" | "high"` the
+  system text size and contrast.
 - Assert the old View is gone and Logic-owned state survived.
