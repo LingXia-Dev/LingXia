@@ -46,10 +46,10 @@
   "accent": {"seed": "#365cdd", "derive": true},
   "type": {
     "family": ["system-ui"],
-    "scale": {"xs": 12, "sm": 14, "base": 16, "lg": 18, "xl": 20, "2xl": 24, "3xl": 30, "4xl": 36},
-    "leading": {"xs": 16, "sm": 20, "base": 24, "lg": 28, "xl": 28, "2xl": 32, "3xl": 36, "4xl": 40}
+    "scale": {"xs": 12, "sm": 13, "base": 15, "lg": 17, "xl": 20, "2xl": 24, "3xl": 28, "4xl": 34},
+    "leading": {"xs": 16, "sm": 18, "base": 22, "lg": 24, "xl": 28, "2xl": 32, "3xl": 34, "4xl": 40}
   },
-  "shape": {"radius": {"sm": 4, "DEFAULT": 8, "md": 10, "lg": 12, "xl": 16, "2xl": 20, "3xl": 24, "full": 9999}},
+  "shape": {"radius": {"sm": 6, "DEFAULT": 8, "md": 8, "lg": 10, "xl": 14, "2xl": 20, "3xl": 28, "full": 9999}},
   "space": {"unit": 4},
   "motion": {
     "fast": 150, "base": 200, "slow": 300,

@@ -6,26 +6,46 @@
   --spacing-control-md: 2.5rem;
   --spacing-control-lg: 3rem;
 
-  /* Type scale, size then line height: text-caption, text-footnote, text-body, text-callout, text-title, text-display. */
-  --text-caption: 0.75rem;
-  --text-caption--line-height: 1rem;
-  --text-footnote: 0.8125rem;
-  --text-footnote--line-height: 1.125rem;
-  --text-body: 0.9375rem;
-  --text-body--line-height: 1.375rem;
-  --text-callout: 1.0625rem;
-  --text-callout--line-height: 1.5rem;
-  --text-title: 1.25rem;
-  --text-title--line-height: 1.75rem;
-  --text-display: 1.75rem;
-  --text-display--line-height: 2.125rem;
+  /* The default theme pack's type ramp, size then line height. It mirrors the pack and a test
+     checks it; an app's generated theme tokens carry its own pack's ramp under these names. */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.125rem;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.375rem;
+  --text-lg: 1.0625rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl: 1.75rem;
+  --text-3xl--line-height: 2.125rem;
+  --text-4xl: 2.125rem;
+  --text-4xl--line-height: 2.5rem;
 
+  /* Liuli's type names, each a step of that ramp: text-caption, text-footnote, text-body, text-callout, text-title, text-display. */
+  --text-caption: var(--text-xs);
+  --text-caption--line-height: var(--text-xs--line-height);
+  --text-footnote: var(--text-sm);
+  --text-footnote--line-height: var(--text-sm--line-height);
+  --text-body: var(--text-base);
+  --text-body--line-height: var(--text-base--line-height);
+  --text-callout: var(--text-lg);
+  --text-callout--line-height: var(--text-lg--line-height);
+  --text-title: var(--text-xl);
+  --text-title--line-height: var(--text-xl--line-height);
+  --text-display: var(--text-3xl);
+  --text-display--line-height: var(--text-3xl--line-height);
+
+  /* Every layer is the theme's shadow role at an alpha, so a pack's shadow colour reaches each elevation. */
   /* A thumb resting on its track: the contact shadow alone. */
-  --shadow-contact: 0 1px 2px rgb(0 0 0 / 0.10), 0 0 1px rgb(0 0 0 / 0.06);
+  --shadow-contact: 0 1px 2px --alpha(var(--color-shadow) / 10%), 0 0 1px --alpha(var(--color-shadow) / 6%);
 
   /* Two elevations, each a tight contact shadow under a wide soft one. */
-  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.10);
-  --shadow-modal: 0 2px 6px rgb(0 0 0 / 0.08), 0 24px 64px rgb(0 0 0 / 0.18);
+  --shadow-raised: 0 1px 2px --alpha(var(--color-shadow) / 6%), 0 8px 24px --alpha(var(--color-shadow) / 10%);
+  --shadow-modal: 0 2px 6px --alpha(var(--color-shadow) / 8%), 0 24px 64px --alpha(var(--color-shadow) / 18%);
 
   /* Motion by name, as the default theme pack has it. An app's generated theme tokens carry its
      pack's values under the same names and win; these keep the names known without them. */
@@ -36,13 +56,21 @@
   --ease-enter: cubic-bezier(0, 0, 0.2, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 
-  /* Corner radius by what the shape is, not by size. */
-  --radius-control: 0.625rem;
-  --radius-container: 0.875rem;
-  --radius-dialog: 1.25rem;
-  --radius-checkbox: 0.375rem;
-  /* A segment inside a control: the control's corner less its 2 px inset. */
-  --radius-segment: 0.5rem;
+  /* The default theme pack's radius ramp, mirrored and checked as the type ramp is. */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.75rem;
+
+  /* Corner radius by what the shape is, not by size: each a step of that ramp. A segment sits
+     inside a control, one step under it. */
+  --radius-control: var(--radius-lg);
+  --radius-container: var(--radius-xl);
+  --radius-dialog: var(--radius-2xl);
+  --radius-checkbox: var(--radius-sm);
+  --radius-segment: var(--radius-md);
 
   /* An indeterminate ProgressBar: a fill two-fifths of the track wide sweeps it end to end. */
   --animate-progress-sweep: progress-sweep 1.2s ease-in-out infinite;
