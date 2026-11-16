@@ -1,4 +1,4 @@
-import { useLocal, type Child, type VectorPath } from '@lingxia/view';
+import { useLocal, useView, type Child, type VectorPath } from '@lingxia/view';
 import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
 import { Card } from '@liulidesign/core/Card';
@@ -37,13 +37,15 @@ export function Content() {
   const paused = useLocal('paused', false);
   const retried = useLocal('retried', false);
 
+  const isWide = useView().env.sizeClass === 'regular';
   const photosDone = sent.value >= 182;
   const active = (photosDone || paused.value ? 0 : 1) + (retried.value ? 1 : 0);
 
   return (
     <>
       <view className="flex-row items-center justify-between gap-3">
-        <text role="heading" headingLevel={1} className="text-title font-semibold tracking-tight text-text">Uploads</text>
+        {/* Beside the sidebar the workspace already shows the page's title. */}
+        {isWide ? <view /> : <text role="heading" headingLevel={1} className="text-title font-semibold tracking-tight text-text">Uploads</text>}
         <Badge label={active === 0 ? 'Idle' : `${active} active`} tone={active === 0 ? 'neutral' : 'accent'} data-testid="active" />
       </view>
 

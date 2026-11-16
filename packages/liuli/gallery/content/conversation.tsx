@@ -38,7 +38,8 @@ export function Content() {
   const retry = (id: string) => entries.set(list.map(entry => (entry.id === id && entry.kind === 'message' ? { ...entry, failed: false, time: '09:00' } : entry)));
   return (
     <view className={isWide ? 'h-[640px] gap-4' : 'grow basis-0 min-h-0 gap-4'}>
-      <text role="heading" headingLevel={1} className="text-title font-semibold tracking-tight text-text">Conversation</text>
+      {/* Beside the sidebar the workspace already shows the page's title. */}
+      {!isWide && <text role="heading" headingLevel={1} className="text-title font-semibold tracking-tight text-text">Conversation</text>}
       <view className="grow basis-0 min-h-0 overflow-hidden rounded-container border border-text/12 bg-canvas">
         <view className="flex-row items-center gap-3 px-4 py-3 border-b border-text/8 bg-surface">
           <Avatar name="Kai Chen" size="sm" isDecorative />
