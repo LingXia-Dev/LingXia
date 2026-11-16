@@ -311,6 +311,61 @@ fn a_generic_family_by_file_is_the_default_face() {
     assert!(glyphs.iter().all(|id| *id != 0), "no notdef glyphs");
 }
 
+/// A symbols face the configuration tags `und-Zsym` draws a symbol the text face lacks, inside
+/// Latin text: the symbol is Common, never script `Zsym`.
+#[test]
+fn a_symbols_fallback_serves_symbols_inside_text_of_another_script() {
+    let text_face = Path::new("/System/Library/Fonts/Supplemental/Courier New.ttf");
+    let symbols = Path::new("/System/Library/Fonts/Apple Symbols.ttf");
+    let name = |path: &Path| postscript_name(&std::fs::read(path).ok()?, 0);
+    let (Some(text_name), Some(symbols_name)) = (name(text_face), name(symbols)) else {
+        eprintln!("skipped: host fonts unavailable");
+        return;
+    };
+    let shaped = |tag: &str| {
+        let mut fonts = FontContext {
+            collection: Collection::new(CollectionOptions {
+                shared: false,
+                system_fonts: false,
+            }),
+            source_cache: Default::default(),
+        };
+        SystemFonts::from_files(vec![(
+            tag.into(),
+            symbols.to_path_buf(),
+            symbols_name.clone(),
+        )])
+        .with_generic(
+            GenericFamily::SansSerif,
+            text_face.to_path_buf(),
+            text_name.clone(),
+        )
+        .apply(&mut fonts.collection);
+        let mut layouts = LayoutContext::<()>::new();
+        let text = "a \u{2318} b";
+        let mut builder = layouts.ranged_builder(&mut fonts, text, 1.0, true);
+        builder.push_default(Generic::SansSerif);
+        let mut layout = builder.build(text);
+        layout.break_all_lines(None);
+        layout
+            .lines()
+            .flat_map(|line| line.items().collect::<Vec<_>>())
+            .filter_map(|item| match item {
+                parley::PositionedLayoutItem::GlyphRun(run) => {
+                    Some(run.glyphs().map(|g| g.id).collect::<Vec<_>>())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect::<Vec<u32>>()
+    };
+    let glyphs = shaped("und-Zsym");
+    assert_eq!(glyphs.len(), 5);
+    assert!(glyphs.iter().all(|id| *id != 0), "no notdef: {glyphs:?}");
+    // The same face under a script the text is not in does not serve it.
+    assert!(shaped("und-Thai").contains(&0));
+}
+
 /// Families named by a configuration resolve to the faces in a font directory, whatever the
 /// configuration's spelling.
 #[test]

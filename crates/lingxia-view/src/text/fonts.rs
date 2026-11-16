@@ -218,13 +218,28 @@ impl SystemFonts {
                 .collect();
             collection.set_generic_families(family, ids.into_iter().chain(rest));
         }
-        for (lang, id) in chain {
+        // Symbols, maths and the default face serve no script of their own: their characters
+        // are Common and shape in the script around them, so they end every script's chain.
+        let (any, scripted): (Vec<_>, Vec<_>) =
+            chain.into_iter().partition(|(lang, _)| any_script(lang));
+        let mut served: Vec<(Script, Option<Language>)> = ["Zyyy", "Zinh", "Latn", "Grek", "Cyrl"]
+            .iter()
+            .filter_map(|script| keys(&format!("und-{script}")).pop())
+            .collect();
+        for (lang, id) in scripted {
             for (script, locale) in keys(&lang) {
                 collection.append_fallbacks(
                     FallbackKey::new(script, locale.as_ref()),
                     std::iter::once(id),
                 );
+                served.push((script, locale));
             }
+        }
+        for (script, locale) in served {
+            collection.append_fallbacks(
+                FallbackKey::new(script, locale.as_ref()),
+                any.iter().map(|(_, id)| *id),
+            );
         }
         if collection
             .generic_families(GenericFamily::Monospace)
@@ -239,6 +254,12 @@ impl SystemFonts {
             collection.set_generic_families(GenericFamily::Monospace, std::iter::once(id));
         }
     }
+}
+
+/// A configuration entry for no one script: an untagged default face, symbols or maths (OHOS
+/// spells the last `und-Math`).
+fn any_script(lang: &str) -> bool {
+    matches!(lang, "" | "und" | "und-Zsym" | "und-Zmth" | "und-Math")
 }
 
 /// Han text shapes as `Hani` whatever its locale, so locale-scripted tags also key `Hani`.
