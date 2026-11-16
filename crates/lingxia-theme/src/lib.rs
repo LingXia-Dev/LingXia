@@ -336,6 +336,7 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
         surface: side(Role::Surface),
         canvas: side(Role::Canvas),
         muted: side(Role::TextMuted),
+        statuses: [Role::Danger, Role::Success, Role::Warning].map(side),
     };
     derive::Build {
         palette: &mut palette,
@@ -569,7 +570,7 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
 }
 
 /// Under this distance two colours read as one.
-const ALIKE: f64 = 5.0;
+pub(crate) const ALIKE: f64 = 5.0;
 
 /// Colours that pass every pair yet read alike: a status colour beside a hue or the accent.
 /// Advice for the pack's author, not a failure.

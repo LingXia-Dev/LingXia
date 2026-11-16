@@ -506,6 +506,53 @@ fn warm_pack() -> Pack {
     complete(pack)
 }
 
+/// The default pack with its success written on the colour its teal hue would take.
+fn status_on_a_hue_pack() -> Pack {
+    let mut pack = default_pack();
+    pack.name = "status-on-hue".into();
+    for (appearance, colors) in [
+        (Appearance::Light, &mut pack.appearance.light),
+        (Appearance::Dark, &mut pack.appearance.dark),
+    ] {
+        let prefs = Prefs {
+            appearance,
+            ..Prefs::default()
+        };
+        let teal = resolve(&default_pack(), &prefs).unwrap().color(Role::Hue6);
+        colors.insert("success".into(), teal);
+    }
+    pack
+}
+
+#[test]
+fn a_derived_hue_gives_way_to_a_status_it_reads_as() {
+    let pack = status_on_a_hue_pack();
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        let prefs = Prefs {
+            appearance,
+            ..Prefs::default()
+        };
+        let (theme, default) = (
+            resolve(&pack, &prefs).unwrap(),
+            resolve(&default_pack(), &prefs).unwrap(),
+        );
+        assert_eq!(theme.color(Role::Success), default.color(Role::Hue6));
+        let apart = distance(theme.color(Role::Hue6), theme.color(Role::Success));
+        assert!(
+            apart >= 5.0,
+            "{appearance:?}: hue-6 is {apart:.1} from success"
+        );
+        // Nothing else moves, the series least of all: a chart is its own context.
+        for role in [Role::Hue2, Role::Hue3, Role::Hue4, Role::Hue5, Role::Hue7] {
+            assert_eq!(theme.color(role), default.color(role), "{}", role.name());
+        }
+        for role in [Role::Chart2, Role::Chart3, Role::Chart4, Role::Chart5] {
+            assert_eq!(theme.color(role), default.color(role), "{}", role.name());
+        }
+    }
+    assert_eq!(advise(&pack), Vec::new());
+}
+
 fn every(mut visit: impl FnMut(Prefs, &str)) {
     for (appearance, name) in [(Appearance::Light, "light"), (Appearance::Dark, "dark")] {
         for high_contrast in [false, true] {
@@ -770,7 +817,7 @@ fn hues_and_series_stand_apart_under_any_accent() {
         Role::Chart7,
         Role::Chart8,
     ];
-    for pack in [default_pack(), warm_pack()] {
+    for pack in [default_pack(), warm_pack(), status_on_a_hue_pack()] {
         for (l, c) in [(0.6, 0.17), (0.75, 0.2), (0.5, 0.12)] {
             for step in 0..72 {
                 let h = f64::from(step * 5);

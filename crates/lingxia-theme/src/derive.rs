@@ -1,6 +1,7 @@
 //! Derived roles: computed from a pack's authored roles, so a seed and a few surfaces give a
 //! whole theme. A role the pack wrote is never replaced.
 
+use crate::ALIKE;
 use crate::color::{Oklch, Rgba, contrast, distance, ensure_contrast};
 use crate::generated::{ROLE_COUNT, Role};
 
@@ -175,6 +176,8 @@ pub(crate) struct Sides {
     pub surface: [Rgba; 2],
     pub canvas: [Rgba; 2],
     pub muted: [Rgba; 2],
+    /// Danger, success and warning.
+    pub statuses: [[Rgba; 2]; 3],
 }
 
 /// A swatch on each appearance's surface.
@@ -218,35 +221,62 @@ fn clearance(color: [Rgba; 2], others: &[[Rgba; 2]]) -> f64 {
 /// each other; what a pack brings is `fixed`: the accent's colour, the neutral. A swatch one of
 /// those crowds in either appearance gives way, in both, to the first spare that stands clear of
 /// the rest of the family, or to the one that stands farthest when none does. Clear is a
-/// [`gap`], so neither a crowded swatch nor a spare is saved by lightness alone.
+/// [`gap`], so neither a crowded swatch nor a spare is saved by lightness alone. A swatch that
+/// reads as one of `statuses` in either appearance gives way too, after the crowded ones have
+/// chosen, to the first clear spare that reads as none of them, and stays when there is none: a
+/// category should not look like danger, success or warning, but must not crowd its family.
 fn spread(
     family: &[Swatch],
     spares: &[Swatch],
     fixed: &[[Rgba; 2]],
+    statuses: &[[Rgba; 2]],
     surface: [Rgba; 2],
     crowded: f64,
 ) -> Vec<Swatch> {
+    let alike = |color: [Rgba; 2]| {
+        statuses.iter().any(|status| {
+            [0, 1]
+                .iter()
+                .any(|&side| distance(color[side], status[side]) < ALIKE)
+        })
+    };
     let mut chosen = family.to_vec();
     let mut colors = fixed.to_vec();
     colors.extend(family.iter().map(|swatch| tones(swatch, surface)));
-    for (index, choice) in chosen.iter_mut().enumerate() {
-        let slot = fixed.len() + index;
-        if clearance(colors[slot], fixed) >= crowded {
-            continue;
-        }
-        let home = colors.remove(slot);
-        let (mut best, mut placed) = (clearance(home, &colors), home);
-        for spare in spares {
-            let color = tones(spare, surface);
-            let clear = clearance(color, &colors);
-            if clear > best {
-                (best, placed, *choice) = (clear, color, *spare);
+    for for_status in [false, true] {
+        for (index, choice) in chosen.iter_mut().enumerate() {
+            let slot = fixed.len() + index;
+            let gives_way = if for_status {
+                alike(colors[slot])
+            } else {
+                clearance(colors[slot], fixed) < crowded
+            };
+            if !gives_way {
+                continue;
             }
-            if clear >= crowded {
-                break;
+            let home = colors.remove(slot);
+            // Leaving a status must not crowd the family: only a clear spare is worth the move.
+            let stay = if for_status {
+                crowded
+            } else {
+                clearance(home, &colors)
+            };
+            let (mut best, mut placed) = (stay, home);
+            for spare in spares {
+                let color = tones(spare, surface);
+                if alike(color) {
+                    continue;
+                }
+                let clear = clearance(color, &colors);
+                if clear > best || (for_status && clear >= crowded) {
+                    (best, placed, *choice) = (clear, color, *spare);
+                }
+                if clear >= crowded {
+                    break;
+                }
             }
+            colors.insert(slot, placed);
         }
-        colors.insert(slot, placed);
     }
     chosen
 }
@@ -571,10 +601,18 @@ impl Build<'_> {
             HUE_NEUTRAL.ratio,
         );
         let fixed = [&first, &neutral].map(|swatch| tones(swatch, sides.surface));
-        let hues = spread(&HUES, &HUE_SPARES, &fixed, sides.surface, CROWDED[0]);
+        let hues = spread(
+            &HUES,
+            &HUE_SPARES,
+            &fixed,
+            &sides.statuses,
+            sides.surface,
+            CROWDED[0],
+        );
         let mut spares = SERIES_SPARES;
         (spares[1].angle, spares[3].angle) = (neutral.angle, neutral.angle);
-        let series = spread(&SERIES, &spares, &[accents], sides.surface, CROWDED[1]);
+        // Series do not give way to a status: a chart is its own context.
+        let series = spread(&SERIES, &spares, &[accents], &[], sides.surface, CROWDED[1]);
         let muted = self.get(Role::TextMuted).oklch().h;
         for (index, (hue, soft)) in HUE_ROLES.into_iter().enumerate() {
             let (angle, swatch, tint) = match index {
