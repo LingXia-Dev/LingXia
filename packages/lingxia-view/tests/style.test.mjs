@@ -8,6 +8,13 @@ afterEach(() => configureClasses([]));
 const style = (value, tag = 'view') => rendered(() => h(tag, { style: value })).props;
 const rejects = (value, pattern, tag = 'view') => assert.throws(() => describe(() => h(tag, { style: value }), {}), pattern);
 
+test('a number out of range fails naming the property, the value and the range', () => {
+  rejects({ flexGrow: 20000 }, /^Error: UI_STYLE_VALUE: flexGrow takes a number from 0 to 16384; got 20000$/m);
+  rejects({ width: -1 }, /UI_STYLE_VALUE: width takes a number from 0 to 16384; got -1$/m);
+  rejects({ flexGrow: 'big' }, /UI_STYLE_VALUE: flexGrow takes a number from 0 to 16384; got "big"$/m);
+  rejects({ width: NaN }, /UI_STYLE_VALUE: width takes a number from 0 to 16384; got NaN$/m);
+});
+
 test('dimensions lower lengths, percentages, viewport units and sizing keywords', () => {
   assert.equal(style({ width: 100 }).width, 100);
   for (const name of ['width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight']) {

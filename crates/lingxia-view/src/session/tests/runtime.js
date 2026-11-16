@@ -530,7 +530,11 @@
     throw Error(`UI_STYLE_VALUE: ${name}`);
   }
   function length(name, value, { signed = false, max = 16384 } = {}) {
-    if (!finite(value) || value > max || value < (signed ? -max : 0)) invalid(name);
+    const min = signed ? -max : 0;
+    if (!finite(value) || value > max || value < min) {
+      const got = typeof value === "number" ? String(value) : (JSON.stringify(value) ?? typeof value).slice(0, 40);
+      throw Error(`UI_STYLE_VALUE: ${name} takes a number from ${min} to ${max}; got ${got}`);
+    }
     return value;
   }
   function dimension(name, value, env, out, key) {

@@ -72,8 +72,13 @@ export function admitStyle(tag, style) {
 
 function invalid(name) { throw Error(`UI_STYLE_VALUE: ${name}`); }
 
+// Names the value and the range: a number out of range usually comes from data, far from the style.
 function length(name, value, { signed = false, max = 16384 } = {}) {
-  if (!finite(value) || value > max || value < (signed ? -max : 0)) invalid(name);
+  const min = signed ? -max : 0;
+  if (!finite(value) || value > max || value < min) {
+    const got = typeof value === 'number' ? String(value) : (JSON.stringify(value) ?? typeof value).slice(0, 40);
+    throw Error(`UI_STYLE_VALUE: ${name} takes a number from ${min} to ${max}; got ${got}`);
+  }
   return value;
 }
 
