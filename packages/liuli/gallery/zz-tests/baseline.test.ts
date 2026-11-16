@@ -7,10 +7,11 @@ import manifest from '../lxapp.json';
 spec.configure({ tags: ['baseline'] });
 
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
-// Pages that move by themselves are left out: a video poster loads in its own time.
-const moving = new Set(['video-player', 'video-controls', 'carousel', 'motion', 'skeleton']);
+// Pages that move by themselves are left out: a video's poster and first frame come from the network
+// in their own time, on its page and on its tile in the Media category.
+const moving = new Set(['video-player', 'video-controls', 'category-media', 'carousel', 'motion', 'skeleton']);
 // Left out until it opens the same way twice: on every other open its list rests at its start, not its end.
-const unsteady = new Set(['conversation']);
+const unsteady = new Set<string>([]);
 const pages = manifest.pages.map(page => page.name).filter(page => !moving.has(page) && !unsteady.has(page));
 // Pages whose list opens at its end, and a row that is drawn only once it has.
 const atEnd: Record<string, string | undefined> = { conversation: 'retry-m8' };

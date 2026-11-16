@@ -49,16 +49,23 @@ function capture() {
   const [, previous] = /\(([\w-]+)\)/.exec(before) ?? [];
   const wasLandscape = /landscape/.test(before);
   rmSync(join(root, into), { recursive: true, force: true });
+  const started = Date.now();
+  // A host that has lost its GPU draws on the CPU renderer, whose pictures are not the device's: none of them is kept.
+  const onGpu = () => {
+    const fallen = run(['logs', '--grep', 'CPU renderer', '--limit', '20', '--jsonl']).split('\n').filter(Boolean).some(line => JSON.parse(line).timestamp_ms >= started);
+    if (fallen) { rmSync(join(root, into), { recursive: true, force: true }); throw Error('the host fell back to the CPU renderer during the capture; nothing was captured'); }
+  };
   try {
     for (const preset of presets) {
       run(['runner', 'set', '--id', preset, preset.startsWith('desktop') ? '--landscape' : '--portrait']);
+      const out = join(root, into, preset);
+      mkdirSync(out, { recursive: true });
       // Fresh pages: one left scrolled by an earlier run or by a person would be shot where it was left.
       run(['lxapp', 'restart', '--app', appId]);
       // A run that did not start or did not pass leaves the last run's pictures behind: copy nothing from it.
-      try { run(['test', 'zz-tests/baseline.test.ts'], { stdio: 'inherit' }); } catch { throw Error(`${preset}: the capture spec did not run or did not pass; nothing was captured`); }
+      try { run(['test', 'zz-tests/baseline.test.ts'], { stdio: 'inherit' }); } catch { onGpu(); throw Error(`${preset}: the capture spec did not run or did not pass; nothing was captured`); }
+      onGpu();
       const attachments = join(gallery, 'test-results', 'latest', 'attachments');
-      const out = join(root, into, preset);
-      mkdirSync(out, { recursive: true });
       for (const file of walk(attachments)) if (file.endsWith('.png') && !file.endsWith('failure.png')) cpSync(file, join(out, file.slice(file.lastIndexOf('/') + 1)));
       console.log(`${preset}: ${readdirSync(out).length} pictures`);
     }
