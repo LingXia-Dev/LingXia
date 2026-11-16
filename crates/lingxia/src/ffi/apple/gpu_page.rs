@@ -816,7 +816,14 @@ fn gpu_page_window_visible(token: i64, visible: bool) {
     log::debug!(target: "lingxia_view", "window token={token} visible={visible}");
     // AppKit reports occlusion: a covered window's surface stays live (minimized and hidden
     // windows suspend their presenter separately).
-    with_page(token, |page| page.host().window_covered(!visible));
+    with_page(token, |page| {
+        // A dev session drives and captures the page whatever is in front of its window.
+        #[cfg(feature = "devtool")]
+        if crate::devtool::lxapp_dev_config().is_some() {
+            return page.host().window_covered_watched(!visible);
+        }
+        page.host().window_covered(!visible)
+    });
 }
 
 pub(super) use live::{install, token_of};

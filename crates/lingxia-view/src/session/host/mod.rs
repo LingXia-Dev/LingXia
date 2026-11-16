@@ -767,7 +767,14 @@ impl<A: PlatformAdapter> ViewHost<A> {
 
     /// Other windows cover this one completely, or no longer do; its surface stays live.
     pub fn window_covered(&self, covered: bool) {
-        self.inner.window_covered(covered);
+        self.inner.window_covered(covered, false);
+        self.inner.sync_autoclose();
+    }
+
+    /// [`Self::window_covered`] for a window something still reads while covered (a dev
+    /// session's specs and screenshots): frames tick the same, and looping animations run on.
+    pub fn window_covered_watched(&self, covered: bool) {
+        self.inner.window_covered(covered, true);
         self.inner.sync_autoclose();
     }
 

@@ -2192,6 +2192,56 @@ fn a_covered_window_completes_frames_on_the_refresh_tick_and_counts_them() {
 }
 
 #[test]
+fn a_covered_window_parks_a_looping_animation_unless_it_is_watched() {
+    let worker = ViewWorker::spawn("test-window-watched").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(&format!(
+            "function render(){{return h('view',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}})}}"
+        )),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let frames = || {
+        host.automation_request(&serde_json::json!({"op": "frame"}))
+            .unwrap()["pacing"]["frames"]
+            .as_u64()
+            .unwrap()
+    };
+    let ticks = |count: usize| {
+        for _ in 0..count {
+            platform.advance(Duration::from_millis(17));
+            platform.settle(&[&host]);
+        }
+    };
+    host.window_covered(true);
+    platform.settle(&[&host]);
+    // Frames already on their way still complete.
+    ticks(10);
+    let parked = frames();
+    ticks(10);
+    assert_eq!(frames(), parked, "nobody sees the spinner turn");
+    host.window_covered(false);
+    platform.settle(&[&host]);
+    host.window_covered_watched(true);
+    platform.settle(&[&host]);
+    let watched = frames();
+    ticks(10);
+    assert!(
+        frames() >= watched + 2,
+        "a watched page keeps turning on the refresh tick: {} then {}",
+        watched,
+        frames()
+    );
+    assert!(
+        !host.adapter().log.lock().unwrap().vsync,
+        "still no display link to ask"
+    );
+}
+
+#[test]
 fn a_stopped_window_ticks_no_frames_of_its_own_and_counts_none() {
     let worker = ViewWorker::spawn("test-window-stopped").unwrap();
     let platform = Platform::new(&[&worker]);

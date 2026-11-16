@@ -56,7 +56,7 @@ impl<A: PlatformAdapter> Inner<A> {
     /// Start, pause or resume every countdown against the presented frame and what holds it.
     pub(super) fn sync_autoclose(self: &Arc<Self>) {
         let now = self.adapter.now();
-        let stopped = self.window_hidden();
+        let stopped = self.window_unwatched();
         let mut wake = Vec::new();
         {
             let mut main = self.main();

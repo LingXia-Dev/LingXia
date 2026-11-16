@@ -24,6 +24,8 @@ pub(super) struct Reveal {
     window_hidden: bool,
     /// Hidden only by other windows: the surface stays live, so frames keep their pace.
     window_covered: bool,
+    /// Covered, yet something still reads the page: looping animations run on.
+    window_watched: bool,
     deadlines: u64,
     watchdogs: u64,
     /// Why and when (since the platform clock's origin) the page was last revealed.
@@ -132,19 +134,20 @@ impl<A: PlatformAdapter> Inner<A> {
 
     /// A window other windows cover still has a live surface: its frames tick at the refresh
     /// interval and count, finite animations run to completion and looping keyframe ones park.
-    pub(super) fn window_covered(self: &Arc<Self>, covered: bool) {
+    pub(super) fn window_covered(self: &Arc<Self>, covered: bool, watched: bool) {
+        self.main().reveal.window_watched = watched;
         self.set_window(covered, covered);
     }
 
     fn set_window(self: &Arc<Self>, hidden: bool, covered: bool) {
-        let (changed, was_covered) = {
+        let (changed, was_covered, parks) = {
             let mut main = self.main();
             let reveal = &mut main.reveal;
             let changed = reveal.window_hidden != hidden || reveal.window_covered != covered;
             let was_covered = reveal.window_covered;
             reveal.window_hidden = hidden;
             reveal.window_covered = covered;
-            (changed, was_covered)
+            (changed, was_covered, covered && !reveal.window_watched)
         };
         if !changed {
             return;
@@ -153,7 +156,7 @@ impl<A: PlatformAdapter> Inner<A> {
             self.work(
                 Guard::Page(self.lifecycle.page()),
                 move |_, session| {
-                    session.set_animation_covered(covered);
+                    session.set_animation_covered(parks);
                     Ok(())
                 },
                 |_, _| {},
@@ -178,6 +181,12 @@ impl<A: PlatformAdapter> Inner<A> {
 
     pub(super) fn window_hidden(&self) -> bool {
         self.main().reveal.window_hidden
+    }
+
+    /// Nobody sees or reads the page: its countdowns hold.
+    pub(super) fn window_unwatched(&self) -> bool {
+        let reveal = &self.main().reveal;
+        reveal.window_hidden && !(reveal.window_covered && reveal.window_watched)
     }
 
     /// Stopped, not merely covered: a covered window's videos keep playing.
