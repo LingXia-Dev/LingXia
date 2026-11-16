@@ -18,6 +18,20 @@ pub struct AppContext<'a> {
     pub session: Option<String>,
 }
 
+/// The platform a session's host runs on. A Runner session's target names the Runner, not a
+/// platform, so the host is asked; any other target is the platform already.
+pub fn host_platform(transport: &dyn Transport, target: &str) -> String {
+    if target != "runner" {
+        return target.to_owned();
+    }
+    transport
+        .request(methods::app::DOCTOR, None)
+        .ok()
+        .flatten()
+        .and_then(|data| data.get("platform")?.as_str().map(str::to_owned))
+        .unwrap_or_else(|| target.to_owned())
+}
+
 #[derive(Args, Clone)]
 pub struct AppOptions {
     #[command(subcommand)]
@@ -894,6 +908,31 @@ mod tests {
     struct TestCli {
         #[command(flatten)]
         app: AppOptions,
+    }
+
+    struct Doctor(Option<&'static str>);
+
+    impl Transport for Doctor {
+        fn request(&self, method: &str, _: Option<Value>) -> Result<Option<Value>> {
+            assert_eq!(method, methods::app::DOCTOR);
+            Ok(self.0.map(|platform| json!({ "platform": platform })))
+        }
+    }
+
+    #[test]
+    fn a_runner_session_takes_desktop_input_on_the_platform_its_host_reports() {
+        let context = |transport: &'static Doctor, target: &str| AppContext {
+            transport,
+            target: host_platform(transport, target),
+            session: None,
+        };
+        static MAC: Doctor = Doctor(Some("macos"));
+        static SILENT: Doctor = Doctor(None);
+        assert!(require_desktop_input(&context(&MAC, "runner"), "mouse").is_ok());
+        // A host that does not answer stays refused, by its session's name.
+        let refused = require_desktop_input(&context(&SILENT, "runner"), "mouse").unwrap_err();
+        assert!(refused.to_string().contains("on runner"), "{refused}");
+        assert_eq!(host_platform(&MAC, "android"), "android");
     }
 
     #[test]
