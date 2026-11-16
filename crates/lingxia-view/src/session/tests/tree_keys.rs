@@ -72,3 +72,38 @@ fn arrows_open_enter_leave_and_close_a_branch_and_swap_right_to_left() {
         assert!(focused(&host, "fruit"), "{dir}");
     }
 }
+
+#[test]
+fn a_control_is_named_by_its_content_less_what_is_hidden_from_assistive_tech() {
+    let worker = ViewWorker::spawn("test-tree-names").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){return h('page',{},h('view',{role:'tree','aria-label':'Files'},h('button',{role:'treeitem','aria-level':1,'aria-expanded':false,'data-testid':'docs',onClick(){}},h('text',{'aria-hidden':true},'>'),h('view',{'aria-hidden':true},h('text',{},'folder')),h('text',{},'Documents')),h('button',{role:'treeitem','aria-level':1,'data-testid':'notes','aria-label':'Notes, 3',onClick(){}},h('text',{},'Notes'),h('text',{},'3'))),h('button',{'data-testid':'save',onClick(){}},h('view',{style:{width:8,height:8}}),h('text',{},'Save')))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let named = |css: &str| {
+        host.automation_request(&serde_json::json!({"op": "query", "css": css}))
+            .unwrap()["attributes"]["data-testid"]
+            .as_str()
+            .map(str::to_owned)
+    };
+    assert_eq!(
+        named("button[aria-label=\"Save\"]").as_deref(),
+        Some("save")
+    );
+    assert_eq!(
+        named("[role=\"treeitem\"][aria-label=\"Documents\"]").as_deref(),
+        Some("docs"),
+        "its content names it"
+    );
+    assert_eq!(
+        named("[role=\"treeitem\"][aria-label=\"Notes, 3\"]").as_deref(),
+        Some("notes"),
+        "a label of its own wins"
+    );
+}

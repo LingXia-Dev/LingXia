@@ -35,7 +35,13 @@ pub(crate) fn control_groups(records: &[Record]) -> Result<ControlGroups, String
     let mut button_owners: Vec<Option<usize>> = Vec::with_capacity(records.len());
     let mut button_hashes: HashMap<usize, DefaultHasher> = HashMap::new();
     let mut names: HashMap<usize, String> = HashMap::new();
+    // Hidden from assistive tech, by itself or by an ancestor: decoration that names nothing.
+    let mut hidden: Vec<bool> = Vec::with_capacity(records.len());
     for record in records {
+        hidden.push(
+            record.number(crate::protocol::field::ACCESSIBILITY_HIDDEN) == Some(1.0)
+                || record.parent.is_some_and(|parent| hidden[parent]),
+        );
         // A control nested in a composed one is its own target and semantic node; the
         // outer control's name and content digest leave it out.
         let owner = record
@@ -60,7 +66,7 @@ pub(crate) fn control_groups(records: &[Record]) -> Result<ControlGroups, String
             } else {
                 record.text.as_str()
             };
-            if !part.trim().is_empty() {
+            if !part.trim().is_empty() && !hidden[hidden.len() - 1] {
                 let name = names.entry(owner).or_default();
                 if !name.is_empty() {
                     name.push(' ');
