@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { Item, ItemList } from '../Item/Item';
 import { SearchField } from './SearchField';
 
@@ -28,7 +29,7 @@ export function Notes() {
 
 /** While a search runs elsewhere, the magnifier gives way to a spinner. */
 export function Loading() {
-  return <SearchField label="Search the catalogue" placeholder="Search the catalogue" clearLabel="Clear search" value="lamp" onChange={() => {}} isLoading resultsLabel="Searching" data-testid="catalogue" />;
+  return <Held value="lamp">{(query, set) => <SearchField label="Search the catalogue" placeholder="Search the catalogue" clearLabel="Clear search" value={query} onChange={set} isLoading resultsLabel="Searching" data-testid="catalogue" />}</Held>;
 }
 
 /** With a label above, where the field is one of several on a form. */
@@ -49,22 +50,22 @@ export function Sizes() {
 }
 
 export function StateEmpty() {
-  return <SearchField label="Search notes" placeholder="Search notes" clearLabel="Clear search" value="" onChange={() => {}} />;
+  return <Held value="">{(query, set) => <SearchField label="Search notes" placeholder="Search notes" clearLabel="Clear search" value={query} onChange={set} />}</Held>;
 }
 
 export function StateFilled() {
-  return <SearchField label="Search notes" placeholder="Search notes" clearLabel="Clear search" value="lisbon" onChange={() => {}} resultsLabel="1 of 6 notes" data-testid="filled" />;
+  return <Held value="lisbon">{(query, set) => <SearchField label="Search notes" placeholder="Search notes" clearLabel="Clear search" value={query} onChange={set} resultsLabel={query === 'lisbon' ? '1 of 6 notes' : undefined} data-testid="filled" />}</Held>;
 }
 
 export function StateNothing() {
-  return <SearchField label="Search notes" placeholder="Search notes" clearLabel="Clear search" value="zebra" onChange={() => {}} resultsLabel="No notes match" />;
+  return <Held value="zebra">{(query, set) => <SearchField label="Search notes" placeholder="Search notes" clearLabel="Clear search" value={query} onChange={set} resultsLabel={query === 'zebra' ? 'No notes match' : undefined} />}</Held>;
 }
 
 export function StateDisabled() {
-  return <SearchField label="Search notes" placeholder="Search notes" clearLabel="Clear search" value="" onChange={() => {}} isDisabled data-testid="disabled" />;
+  return <SearchField label="Search notes" placeholder="Search notes" clearLabel="Clear search" value="" onChange={unused} isDisabled data-testid="disabled" />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <SearchField label="Search" placeholder="Search" clearLabel="Clear" value="" onChange={() => {}} size="sm" className="w-32" />;
+  return <SearchField label="Search" placeholder="Search" clearLabel="Clear" value="" onChange={unused} size="sm" className="w-32" />;
 }

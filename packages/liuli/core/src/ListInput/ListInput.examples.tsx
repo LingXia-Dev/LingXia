@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import { Select } from '../Select/Select';
 import { TextInput } from '../TextInput/TextInput';
 import { ListInput } from './ListInput';
@@ -65,10 +66,10 @@ export function StateDisabled() {
       isDisabled
       disabledMessage="Ask an admin to change these."
       rowKeys={['p1']}
-      renderRow={() => <TextInput label="Phone 1" isLabelHidden isDisabled value="+351 912 345 678" onChange={() => {}} />}
-      onAdd={() => {}}
+      renderRow={() => <TextInput label="Phone 1" isLabelHidden isDisabled value="+351 912 345 678" onChange={unused} />}
+      onAdd={unused}
       addLabel="Add a phone number"
-      onRemove={() => {}}
+      onRemove={unused}
       removeLabel={index => `Remove phone ${index + 1}`}
     />
   );

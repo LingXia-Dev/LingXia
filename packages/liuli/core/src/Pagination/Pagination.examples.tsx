@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import { Pagination } from './Pagination';
 
 const words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };
@@ -39,5 +40,5 @@ export function Narrow() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Pagination label="Pages" variant="compact" page={3} pageCount={12} onChange={() => {}} {...words} />;
+  return <Pagination label="Pages" variant="compact" page={3} pageCount={12} onChange={unused} {...words} />;
 }

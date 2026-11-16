@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import { CheckboxList } from './CheckboxList';
 
 const topics = [
@@ -13,7 +14,7 @@ export function Notifications() {
   return (
     <view className="gap-3">
       <CheckboxList label="Notify me about" bind={chosen} options={topics} data-testid="topics" />
-      <text role="status" data-testid="chosen" className="text-footnote text-muted">{chosen.value.length === 0 ? 'Nothing chosen' : chosen.value.join(', ')}</text>
+      {chosen.value.length > 0 && <text role="status" data-testid="chosen" className="text-footnote text-muted">{chosen.value.join(', ')}</text>}
     </view>
   );
 }
@@ -58,15 +59,13 @@ export function Sizes() {
   );
 }
 
-const none = () => {};
-
 export function StateDisabled() {
-  return <CheckboxList label="Notify me about" value={['mentions']} onChange={none} options={topics.slice(0, 2)} isDisabled data-testid="disabled" />;
+  return <CheckboxList label="Notify me about" value={['mentions']} onChange={unused} options={topics.slice(0, 2)} isDisabled data-testid="disabled" />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <CheckboxList label="Days" isLabelHidden value={['a']} onChange={none} options={[{ value: 'a', label: 'Mentions' }, { value: 'b', label: 'Comments' }]} size="sm" />;
+  return <CheckboxList label="Days" isLabelHidden value={['a']} onChange={unused} options={[{ value: 'a', label: 'Mentions' }, { value: 'b', label: 'Comments' }]} size="sm" />;
 }
 
 /** A box for all of them: checked when all are, a dash when some are. */

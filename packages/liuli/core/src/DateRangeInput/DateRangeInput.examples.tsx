@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import type { CalendarRange } from '../Calendar/Calendar';
 import { calendarEn } from '../Calendar/locale/en';
 import { DateRangeInput } from './DateRangeInput';
@@ -45,17 +46,18 @@ export function Empty() {
 }
 
 const set = { start: '2026-12-01', end: '2026-12-05' };
-const none = () => {};
 
 export function StateInvalid() {
-  return <DateRangeInput label="Stay" range={set} onRangeChange={none} format={short} locale={calendarEn} today={today} status={{ type: 'error', message: 'These nights are taken.' }} data-testid="invalid" />;
+  const stay = useLocal<CalendarRange>('taken', set);
+  const isTaken = stay.value.start === set.start && stay.value.end === set.end;
+  return <DateRangeInput label="Stay" range={stay.value} onRangeChange={stay.set} format={short} locale={calendarEn} today={today} status={isTaken ? { type: 'error', message: 'These nights are taken.' } : undefined} data-testid="invalid" />;
 }
 
 export function StateDisabled() {
-  return <DateRangeInput label="Stay" range={set} onRangeChange={none} format={short} locale={calendarEn} today={today} isDisabled data-testid="disabled" />;
+  return <DateRangeInput label="Stay" range={set} onRangeChange={unused} format={short} locale={calendarEn} today={today} isDisabled data-testid="disabled" />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <DateRangeInput label="Stay" isLabelHidden size="sm" range={set} onRangeChange={none} format={short} locale={calendarEn} today={today} className="w-36" />;
+  return <DateRangeInput label="Stay" isLabelHidden size="sm" range={set} onRangeChange={unused} format={short} locale={calendarEn} today={today} className="w-36" />;
 }

@@ -132,13 +132,14 @@ export function Position() {
 ### Small and medium
 
 ```tsx
+import { Held } from '../example';
 import { Slider } from '@liulidesign/core/Slider';
 
 export function Sizes() {
   return (
     <view className="gap-4">
-      <Slider value={30} onChange={() => {}} label="Small" size="sm" />
-      <Slider value={60} onChange={() => {}} label="Medium" />
+      <Held value={30}>{(level, set) => <Slider value={level} onChange={set} label="Small" size="sm" />}</Held>
+      <Held value={60}>{(level, set) => <Slider value={level} onChange={set} label="Medium" />}</Held>
     </view>
   );
 }

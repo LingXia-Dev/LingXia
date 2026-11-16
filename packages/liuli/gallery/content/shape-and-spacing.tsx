@@ -1,4 +1,5 @@
 import { DensityProvider } from '@liulidesign/core/density';
+import { Held, Said } from '@liulidesign/core/example';
 import { Item, ItemList } from '@liulidesign/core/Item';
 import { Select } from '@liulidesign/core/Select';
 import { TextInput } from '@liulidesign/core/TextInput';
@@ -45,14 +46,18 @@ const roles = [{ value: 'editor', label: 'Editor' }, { value: 'viewer', label: '
 /** The same short form and list, for the density comparison; ids keep the two copies apart. */
 function Sample({ id }: { id: string }) {
   return (
-    <view className="gap-4">
-      <TextInput label="Name" value="Ana Lima" onChange={() => {}} data-testid={`${id}-name`} />
-      <Select label="Role" value="editor" onChange={() => {}} options={roles} data-testid={`${id}-role`} />
-      <ItemList label="Members">
-        <Item label="Kai Chen" description="Editor" hasChevron onClick={() => {}} data-testid={`${id}-row`} />
-        <Item label="Mira Patel" description="Viewer" hasChevron onClick={() => {}} />
-      </ItemList>
-    </view>
+    <Said>
+      {say => (
+        <view className="gap-4">
+          <Held value="Ana Lima">{(name, set) => <TextInput label="Name" value={name} onChange={set} data-testid={`${id}-name`} />}</Held>
+          <Held value="editor">{(role, set) => <Select label="Role" value={role} onChange={set} options={roles} data-testid={`${id}-role`} />}</Held>
+          <ItemList label="Members">
+            <Item label="Kai Chen" description="Editor" hasChevron onClick={() => say('Opened Kai Chen')} data-testid={`${id}-row`} />
+            <Item label="Mira Patel" description="Viewer" hasChevron onClick={() => say('Opened Mira Patel')} />
+          </ItemList>
+        </view>
+      )}
+    </Said>
   );
 }
 

@@ -42,6 +42,7 @@ export function FirstRun() {
 
 ```tsx
 import { useLocal, type VectorPath } from '@lingxia/view';
+import { Said } from '../example';
 import { Button } from '@liulidesign/core/Button';
 import { EmptyState } from '@liulidesign/core/EmptyState';
 
@@ -53,18 +54,22 @@ const search: VectorPath[] = [
 export function NoResults() {
   const query = useLocal('query', 'invoice 2019');
   return (
-    <EmptyState
-      title="No matching notes"
-      description={`Nothing matches "${query.value}". Check the spelling, or search all folders.`}
-      media={<vector aria-hidden paths={search} viewBox={[0, 0, 24, 24]} className="size-full" />}
-      actions={
-        <>
-          <Button label="Clear search" variant="ghost" onClick={() => query.set('')} />
-          <Button label="Search all folders" />
-        </>
-      }
-      data-testid="no-results"
-    />
+    <Said>
+      {say => (
+        <EmptyState
+          title="No matching notes"
+          description={`Nothing matches "${query.value}". Check the spelling, or search all folders.`}
+          media={<vector aria-hidden paths={search} viewBox={[0, 0, 24, 24]} className="size-full" />}
+          actions={
+            <>
+              <Button label="Clear search" variant="ghost" onClick={() => query.set('')} />
+              <Button label="Search all folders" onClick={() => say('Searched all folders')} />
+            </>
+          }
+          data-testid="no-results"
+        />
+      )}
+    </Said>
   );
 }
 ```

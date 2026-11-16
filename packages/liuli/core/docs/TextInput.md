@@ -114,11 +114,12 @@ export function Checking() {
 ### Read-only
 
 ```tsx
+import { unused } from '../example';
 import { TextInput } from '@liulidesign/core/TextInput';
 
 /** A value to read and copy, not to change. */
 export function ReadOnly() {
-  return <TextInput value="C-204188" onChange={() => {}} label="Customer ID" description="Set when the account was opened." isReadOnly data-testid="iban" />;
+  return <TextInput value="C-204188" onChange={unused} label="Customer ID" description="Set when the account was opened." isReadOnly data-testid="iban" />;
 }
 ```
 

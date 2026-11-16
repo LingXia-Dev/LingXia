@@ -4,6 +4,7 @@ import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
 import { Dialog } from '@liulidesign/core/Dialog';
 import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';
+import { Said } from '@liulidesign/core/example';
 import { Item, ItemList } from '@liulidesign/core/Item';
 import { RadioGroup } from '@liulidesign/core/RadioGroup';
 import { Slider } from '@liulidesign/core/Slider';
@@ -113,39 +114,43 @@ export function Content() {
         <Switch bind={cellular} label="Sync over mobile data" variant="row" data-testid="cellular" />
       </Group>
 
-      <Group title="Signed-in devices" footer="Signing a device out removes its offline copy.">
-        {initialDevices
-          .filter(device => devices.value.includes(device.id))
-          .map(device => (
-            <Item
-              key={device.id}
-              label={device.name}
-              description={device.detail}
-              startContent={<vector aria-hidden paths={device.icon} viewBox={[0, 0, 24, 24]} className="size-5 text-muted" />}
-              endContent={
-                <DropdownMenu
-                  label={`${device.name} actions`}
-                  isLabelHidden
-                  icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className="size-5" />}
-                  variant="ghost"
-                  size="sm"
-                  alignment="end"
-                  data-testid={`device-${device.id}`}
-                >
-                  <DropdownMenuItem label="Rename" onClick={() => {}} />
-                  <DropdownMenuDivider />
-                  <DropdownMenuItem
-                    label="Sign out"
-                    variant="destructive"
-                    isDisabled={device.id === 'mac'}
-                    onClick={() => devices.set(devices.value.filter(id => id !== device.id))}
-                    data-testid={`sign-out-${device.id}`}
-                  />
-                </DropdownMenu>
-              }
-            />
-          ))}
-      </Group>
+      <Said>
+        {say => (
+          <Group title="Signed-in devices" footer="Signing a device out removes its offline copy.">
+            {initialDevices
+              .filter(device => devices.value.includes(device.id))
+              .map(device => (
+                <Item
+                  key={device.id}
+                  label={device.name}
+                  description={device.detail}
+                  startContent={<vector aria-hidden paths={device.icon} viewBox={[0, 0, 24, 24]} className="size-5 text-muted" />}
+                  endContent={
+                    <DropdownMenu
+                      label={`${device.name} actions`}
+                      isLabelHidden
+                      icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className="size-5" />}
+                      variant="ghost"
+                      size="sm"
+                      alignment="end"
+                      data-testid={`device-${device.id}`}
+                    >
+                      <DropdownMenuItem label="Rename" onClick={() => say(`Chose Rename for ${device.name}`)} />
+                      <DropdownMenuDivider />
+                      <DropdownMenuItem
+                        label="Sign out"
+                        variant="destructive"
+                        isDisabled={device.id === 'mac'}
+                        onClick={() => devices.set(devices.value.filter(id => id !== device.id))}
+                        data-testid={`sign-out-${device.id}`}
+                      />
+                    </DropdownMenu>
+                  }
+                />
+              ))}
+          </Group>
+        )}
+      </Said>
 
       <Group title="Danger zone">
         {scheduled.value ? (

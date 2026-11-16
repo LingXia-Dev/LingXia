@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import { FileInput, type FileInputFile } from './FileInput';
 
 const first: FileInputFile[] = [
@@ -30,15 +31,16 @@ export function Documents() {
 
 /** Nothing chosen, on a required field after a failed send. */
 export function Empty() {
+  const files = useLocal<readonly FileInputFile[]>('proof', []);
   return (
     <FileInput
       label="Proof of address"
       isRequired
-      status={{ type: 'error', message: 'Add one document.' }}
-      files={[]}
-      onPick={() => {}}
+      status={files.value.length === 0 ? { type: 'error', message: 'Add one document.' } : undefined}
+      files={files.value}
+      onPick={() => files.set([more])}
       pickLabel="Add a document"
-      onRemove={() => {}}
+      onRemove={() => files.set([])}
       removeLabel={name => `Remove ${name}`}
       progressLabel={name => `Uploading ${name}`}
       data-testid="proof"
@@ -53,9 +55,9 @@ export function StateDisabled() {
       isDisabled
       disabledMessage="The request is closed."
       files={[first[0]]}
-      onPick={() => {}}
+      onPick={unused}
       pickLabel="Choose files"
-      onRemove={() => {}}
+      onRemove={unused}
       removeLabel={name => `Remove ${name}`}
       progressLabel={name => `Uploading ${name}`}
     />
@@ -65,6 +67,6 @@ export function StateDisabled() {
 /** The home tile. */
 export function Specimen() {
   return (
-    <FileInput label="Files" isLabelHidden files={[]} onPick={() => {}} pickLabel="Choose files" onRemove={() => {}} removeLabel={name => `Remove ${name}`} progressLabel={name => `Uploading ${name}`} className="w-36" />
+    <FileInput label="Files" isLabelHidden files={[]} onPick={unused} pickLabel="Choose files" onRemove={unused} removeLabel={name => `Remove ${name}`} progressLabel={name => `Uploading ${name}`} className="w-36" />
   );
 }

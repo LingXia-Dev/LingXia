@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { TextArea } from './TextArea';
 
 /** Bound to a View-local cell; it grows with the text up to six lines, then scrolls. */
@@ -58,7 +59,7 @@ export function Invalid() {
 
 /** The home tile. */
 export function Specimen() {
-  return <TextArea value="Leave it by the blue door." onChange={() => {}} label="Note" isLabelHidden size="sm" rows={2} className="w-32" />;
+  return <TextArea value="Leave it by the blue door." onChange={unused} label="Note" isLabelHidden size="sm" rows={2} className="w-32" />;
 }
 
 export function Sizes() {
@@ -73,19 +74,19 @@ export function Sizes() {
 }
 
 export function StateEmpty() {
-  return <TextArea value="" onChange={() => {}} label="Comment" placeholder="Add a comment" rows={2} />;
+  return <Held value="">{(text, set) => <TextArea value={text} onChange={set} label="Comment" placeholder="Add a comment" rows={2} />}</Held>;
 }
 
 export function StateFilled() {
-  return <TextArea value={'Lovely place.\nWould stay again.'} onChange={() => {}} label="Comment" rows={2} />;
+  return <Held value={'Lovely place.\nWould stay again.'}>{(text, set) => <TextArea value={text} onChange={set} label="Comment" rows={2} />}</Held>;
 }
 
 export function StateInvalid() {
-  return <TextArea value="Meh" onChange={() => {}} label="Feedback" rows={2} status={{ type: 'error', message: 'Write at least 10 characters.' }} />;
+  return <Held value="Meh">{(text, set) => <TextArea value={text} onChange={set} label="Feedback" rows={2} status={text.length < 10 ? { type: 'error', message: 'Write at least 10 characters.' } : undefined} />}</Held>;
 }
 
 export function StateDisabled() {
-  return <TextArea value="Sent on 3 May." onChange={() => {}} label="Message" rows={2} isDisabled />;
+  return <TextArea value="Sent on 3 May." onChange={unused} label="Message" rows={2} isDisabled />;
 }
 
 /** A limit the writer can see coming. */

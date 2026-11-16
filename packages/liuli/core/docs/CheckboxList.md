@@ -30,7 +30,7 @@ export function Notifications() {
   return (
     <view className="gap-3">
       <CheckboxList label="Notify me about" bind={chosen} options={topics} data-testid="topics" />
-      <text role="status" data-testid="chosen" className="text-footnote text-muted">{chosen.value.length === 0 ? 'Nothing chosen' : chosen.value.join(', ')}</text>
+      {chosen.value.length > 0 && <text role="status" data-testid="chosen" className="text-footnote text-muted">{chosen.value.join(', ')}</text>}
     </view>
   );
 }

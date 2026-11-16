@@ -42,25 +42,29 @@ export function Path() {
 ### A deep trail, folded
 
 ```tsx
+import { Said } from '../example';
 import { Breadcrumb } from '@liulidesign/core/Breadcrumb';
 
 /** A deep trail: the middle levels fold into a menu, and the first level and the last two stay. */
 export function Deep() {
-  const none = () => {};
   return (
-    <Breadcrumb
-      label="Breadcrumb"
-      moreLabel="More levels"
-      items={[
-        { key: 'drive', label: 'Drive', onClick: none },
-        { key: 'clients', label: 'Clients', onClick: none },
-        { key: 'northwind', label: 'Northwind', onClick: none },
-        { key: '2026', label: '2026', onClick: none },
-        { key: 'invoices', label: 'Invoices', onClick: none },
-        { key: 'inv', label: 'INV-1043.pdf' },
-      ]}
-      data-testid="deep"
-    />
+    <Said>
+      {say => (
+        <Breadcrumb
+          label="Breadcrumb"
+          moreLabel="More levels"
+          items={[
+            { key: 'drive', label: 'Drive', onClick: () => say('Opened Drive') },
+            { key: 'clients', label: 'Clients', onClick: () => say('Opened Clients') },
+            { key: 'northwind', label: 'Northwind', onClick: () => say('Opened Northwind') },
+            { key: '2026', label: '2026', onClick: () => say('Opened 2026') },
+            { key: 'invoices', label: 'Invoices', onClick: () => say('Opened Invoices') },
+            { key: 'inv', label: 'INV-1043.pdf' },
+          ]}
+          data-testid="deep"
+        />
+      )}
+    </Said>
   );
 }
 ```

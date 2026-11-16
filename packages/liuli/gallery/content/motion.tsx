@@ -2,6 +2,7 @@ import { useLocal } from '@lingxia/view';
 import { Button } from '@liulidesign/core/Button';
 import { Dialog } from '@liulidesign/core/Dialog';
 import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+import { Said } from '@liulidesign/core/example';
 import { ProgressBar } from '@liulidesign/core/ProgressBar';
 import { PageSection, Stage } from '../shared/Layout';
 
@@ -9,10 +10,14 @@ import { PageSection, Stage } from '../shared/Layout';
 
 function Press() {
   return (
-    <view className="flex-row gap-3">
-      <Button label="Save" variant="primary" width="content" data-testid="press-primary" />
-      <Button label="Preview" width="content" data-testid="press-secondary" />
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row gap-3">
+          <Button label="Save" variant="primary" width="content" onClick={() => say('Saved')} data-testid="press-primary" />
+          <Button label="Preview" width="content" onClick={() => say('Opened the preview')} data-testid="press-secondary" />
+        </view>
+      )}
+    </Said>
   );
 }
 
@@ -55,13 +60,17 @@ function DialogDemo() {
 
 function Menu() {
   return (
-    <view className="flex-row">
-      <DropdownMenu label="Open menu" data-testid="open-menu">
-        <DropdownMenuItem label="Rename" onClick={() => {}} />
-        <DropdownMenuItem label="Duplicate" onClick={() => {}} />
-        <DropdownMenuItem label="Move to folder" onClick={() => {}} />
-      </DropdownMenu>
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row">
+          <DropdownMenu label="Open menu" data-testid="open-menu">
+            <DropdownMenuItem label="Rename" onClick={() => say('Chose Rename')} />
+            <DropdownMenuItem label="Duplicate" onClick={() => say('Chose Duplicate')} />
+            <DropdownMenuItem label="Move to folder" onClick={() => say('Chose Move to folder')} />
+          </DropdownMenu>
+        </view>
+      )}
+    </Said>
   );
 }
 

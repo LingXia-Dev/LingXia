@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import { Button } from '../Button/Button';
 import { CommandPalette, type CommandGroup } from './CommandPalette';
 
@@ -19,11 +20,11 @@ const groups: CommandGroup[] = [
 /** Opened from a button here; an app also opens it from its own shortcut. Type to narrow, arrows to move, Return to run. */
 export function Commands() {
   const open = useLocal('open', false);
-  const ran = useLocal('ran', 'Nothing yet');
+  const ran = useLocal('ran', '');
   return (
     <view className="items-start gap-2">
       <Button label="Search commands" startIcon="search" onClick={() => open.set(true)} data-testid="palette-open" />
-      <text role="status" className="text-footnote text-muted">{`Last run: ${ran.value}`}</text>
+      {ran.value !== '' && <text role="status" className="text-footnote text-muted">{`Last run: ${ran.value}`}</text>}
       <CommandPalette
         isOpen={open.value}
         onOpenChange={next => open.set(next)}
@@ -40,5 +41,5 @@ export function Commands() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Button label="Search" startIcon="search" size="sm" />;
+  return <Button label="Search" startIcon="search" size="sm" onClick={unused} />;
 }

@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { ToggleButton } from './ToggleButton';
 
 const notes = [
@@ -40,35 +41,35 @@ export function WordWrap() {
 export function Sizes() {
   return (
     <view className="flex-row flex-wrap items-center gap-2">
-      <ToggleButton label="Small" size="sm" isPressed onPressedChange={() => {}} />
-      <ToggleButton label="Medium" isPressed onPressedChange={() => {}} />
-      <ToggleButton label="Large" size="lg" isPressed onPressedChange={() => {}} />
+      <Held value={true}>{(isPressed, set) => <ToggleButton label="Small" size="sm" isPressed={isPressed} onPressedChange={set} />}</Held>
+      <Held value={true}>{(isPressed, set) => <ToggleButton label="Medium" isPressed={isPressed} onPressedChange={set} />}</Held>
+      <Held value={true}>{(isPressed, set) => <ToggleButton label="Large" size="lg" isPressed={isPressed} onPressedChange={set} />}</Held>
     </view>
   );
 }
 
 export function StateOff() {
-  return <ToggleButton label="Starred" isPressed={false} onPressedChange={() => {}} className="self-start" />;
+  return <Held value={false}>{(isPressed, set) => <ToggleButton label="Starred" isPressed={isPressed} onPressedChange={set} className="self-start" />}</Held>;
 }
 
 export function StateOn() {
-  return <ToggleButton label="Starred" isPressed onPressedChange={() => {}} className="self-start" />;
+  return <Held value={true}>{(isPressed, set) => <ToggleButton label="Starred" isPressed={isPressed} onPressedChange={set} className="self-start" />}</Held>;
 }
 
 export function StateDisabled() {
-  return <ToggleButton label="Starred" isPressed={false} isDisabled onPressedChange={() => {}} className="self-start" />;
+  return <ToggleButton label="Starred" isPressed={false} isDisabled onPressedChange={unused} className="self-start" />;
 }
 
 export function StateDisabledOn() {
-  return <ToggleButton label="Starred" isPressed isDisabled onPressedChange={() => {}} className="self-start" />;
+  return <ToggleButton label="Starred" isPressed isDisabled onPressedChange={unused} className="self-start" />;
 }
 
 /** The home tile. */
 export function Specimen() {
   return (
     <view className="flex-row gap-2">
-      <ToggleButton label="Bold" size="sm" isPressed onPressedChange={() => {}} />
-      <ToggleButton label="Italic" size="sm" isPressed={false} onPressedChange={() => {}} />
+      <ToggleButton label="Bold" size="sm" isPressed onPressedChange={unused} />
+      <ToggleButton label="Italic" size="sm" isPressed={false} onPressedChange={unused} />
     </view>
   );
 }

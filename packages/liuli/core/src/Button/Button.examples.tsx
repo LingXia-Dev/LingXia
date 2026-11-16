@@ -1,25 +1,34 @@
 import { useLocal, useView, type View } from '@lingxia/view';
+import { Said, unused } from '../example';
 import { Button } from './Button';
 import { Item } from '../Item/Item';
 
 export function Variants() {
   return (
-    <view className="flex-row flex-wrap gap-2">
-      <Button label="Save changes" variant="primary" data-testid="primary" />
-      <Button label="Preview" />
-      <Button label="Skip" variant="ghost" />
-      <Button label="Delete draft" variant="destructive" />
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row flex-wrap gap-2">
+          <Button label="Save changes" variant="primary" onClick={() => say('Saved changes')} data-testid="primary" />
+          <Button label="Preview" onClick={() => say('Opened the preview')} />
+          <Button label="Skip" variant="ghost" onClick={() => say('Skipped')} />
+          <Button label="Delete draft" variant="destructive" onClick={() => say('Deleted the draft')} />
+        </view>
+      )}
+    </Said>
   );
 }
 
 export function Sizes() {
   return (
-    <view className="flex-row flex-wrap items-center gap-2">
-      <Button label="Small" size="sm" />
-      <Button label="Medium" />
-      <Button label="Large" size="lg" />
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row flex-wrap items-center gap-2">
+          <Button label="Small" size="sm" onClick={() => say('Chose Small')} />
+          <Button label="Medium" onClick={() => say('Chose Medium')} />
+          <Button label="Large" size="lg" onClick={() => say('Chose Large')} />
+        </view>
+      )}
+    </Said>
   );
 }
 
@@ -35,23 +44,28 @@ export function AsyncAction() {
 export function DisabledWithReason() {
   const agreed = useLocal('agreed', false);
   return (
-    <view className="gap-2">
-      <Button
-        label="Continue"
-        variant="primary"
-        width="fill"
-        isDisabled={!agreed.value}
-        disabledMessage="Accept the terms first"
-        data-testid="continue"
-      />
-      <Button
-        label={agreed.value ? 'Withdraw consent' : 'Accept the terms'}
-        variant="ghost"
-        width="content"
-        onClick={() => agreed.set(!agreed.value)}
-        data-testid="toggle-terms"
-      />
-    </view>
+    <Said>
+      {say => (
+        <view className="gap-2">
+          <Button
+            label="Continue"
+            variant="primary"
+            width="fill"
+            isDisabled={!agreed.value}
+            disabledMessage="Accept the terms first"
+            onClick={() => say('Continued')}
+            data-testid="continue"
+          />
+          <Button
+            label={agreed.value ? 'Withdraw consent' : 'Accept the terms'}
+            variant="ghost"
+            width="content"
+            onClick={() => agreed.set(!agreed.value)}
+            data-testid="toggle-terms"
+          />
+        </view>
+      )}
+    </Said>
   );
 }
 
@@ -59,8 +73,8 @@ export function DisabledWithReason() {
 export function Specimen() {
   return (
     <view className="flex-row gap-2">
-      <Button label="Cancel" size="sm" />
-      <Button label="Save" variant="primary" size="sm" />
+      <Button label="Cancel" size="sm" onClick={unused} />
+      <Button label="Save" variant="primary" size="sm" onClick={unused} />
     </view>
   );
 }
@@ -68,15 +82,19 @@ export function Specimen() {
 /** The page's hero: the one main action beside a quiet one. */
 export function Hero() {
   return (
-    <view className="flex-row gap-2">
-      <Button label="Discard" variant="ghost" />
-      <Button label="Save changes" variant="primary" />
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row gap-2">
+          <Button label="Discard" variant="ghost" onClick={() => say('Discarded changes')} />
+          <Button label="Save changes" variant="primary" onClick={() => say('Saved changes')} />
+        </view>
+      )}
+    </Said>
   );
 }
 
 export function StateDefault() {
-  return <Button label="Continue" variant="primary" width="content" />;
+  return <Said>{say => <Button label="Continue" variant="primary" width="content" onClick={() => say('Continued')} />}</Said>;
 }
 
 export function StateDisabled() {
@@ -93,32 +111,40 @@ export function StateSecondaryDisabled() {
 
 export function VariantsEveryday() {
   return (
-    <view className="flex-row gap-2">
-      <Button label="Save" variant="primary" />
-      <Button label="Preview" />
-      <Button label="Skip" variant="ghost" />
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row gap-2">
+          <Button label="Save" variant="primary" onClick={() => say('Saved')} />
+          <Button label="Preview" onClick={() => say('Opened the preview')} />
+          <Button label="Skip" variant="ghost" onClick={() => say('Skipped')} />
+        </view>
+      )}
+    </Said>
   );
 }
 
 export function VariantDestructive() {
-  return <Button label="Delete draft" variant="destructive" width="content" />;
+  return <Said>{say => <Button label="Delete draft" variant="destructive" width="content" onClick={() => say('Deleted the draft')} />}</Said>;
 }
 
 /** A quiet way out beside a form's main action: accent text at regular weight, still a button. */
 export function VariantLink() {
-  return <Button label="Forgot password?" variant="link" width="content" data-testid="forgot" />;
+  return <Said>{say => <Button label="Forgot password?" variant="link" width="content" onClick={() => say('Sent a password reset link')} data-testid="forgot" />}</Said>;
 }
 
 /** An icon before the label says what kind of action it is; one after it says where the button leads. */
 export function WithIcons() {
   return (
-    <view className="flex-row flex-wrap gap-3">
-      <Button label="New note" variant="primary" startIcon="add" data-testid="new-note" />
-      <Button label="Share" startIcon="share" />
-      <Button label="Continue" endIcon="arrow-end" data-testid="continue-on" />
-      <Button label="Delete" variant="destructive" startIcon="delete" />
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row flex-wrap gap-3">
+          <Button label="New note" variant="primary" startIcon="add" onClick={() => say('Created a note')} data-testid="new-note" />
+          <Button label="Share" startIcon="share" onClick={() => say('Shared')} />
+          <Button label="Continue" endIcon="arrow-end" onClick={() => say('Continued')} data-testid="continue-on" />
+          <Button label="Delete" variant="destructive" startIcon="delete" onClick={() => say('Deleted')} />
+        </view>
+      )}
+    </Said>
   );
 }
 
@@ -134,15 +160,19 @@ const notes = [
 /** Floating: the screen's one main action, inside the frame, over a list that scrolls under it. */
 export function Floating() {
   return (
-    <view className="relative h-72 overflow-hidden rounded-container border border-text/12 bg-surface">
-      <scroll className="h-full">
-        <view className="divide-y divide-text/8">
-          {notes.map(([label, edited]) => <Item key={label} label={label} description={edited} />)}
+    <Said>
+      {say => (
+        <view className="relative h-72 overflow-hidden rounded-container border border-text/12 bg-surface">
+          <scroll className="h-full">
+            <view className="divide-y divide-text/8">
+              {notes.map(([label, edited]) => <Item key={label} label={label} description={edited} />)}
+            </view>
+          </scroll>
+          <view className="absolute bottom-4 end-4">
+            <Button label="New note" variant="primary" size="lg" startIcon="add" isFloating onClick={() => say('Created a note')} data-testid="floating" />
+          </view>
         </view>
-      </scroll>
-      <view className="absolute bottom-4 end-4">
-        <Button label="New note" variant="primary" size="lg" startIcon="add" isFloating data-testid="floating" />
-      </view>
-    </view>
+      )}
+    </Said>
   );
 }

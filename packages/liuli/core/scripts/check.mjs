@@ -20,7 +20,8 @@ const rel = path => relative(core, path);
 const kind = path => {
   const name = basename(path);
   if (name.endsWith('.test.mjs') || rel(path).startsWith('src/testing/')) return 'test';
-  if (name.endsWith('.examples.tsx')) return 'examples';
+  // The examples' shared helper is example code: its classes are its own, and its presses answer too.
+  if (name.endsWith('.examples.tsx') || rel(path) === 'src/example.tsx') return 'examples';
   if (name.endsWith('.recipe.ts')) return 'recipe';
   if (name.endsWith('.doc.ts')) return 'doc';
   return 'source';
@@ -37,6 +38,34 @@ const iconNames = new Set(Object.keys(JSON.parse(readFileSync(resolve(dirname(fi
 const iconProps = new Set(['startIcon', 'endIcon']);
 const replacedProps = new Set(['disabled', 'checked', 'open', 'onPress', 'onClose', 'onValueChange', 'style', 'ref']);
 
+// A specimen that can be pressed answers visibly: no empty handler, and no button or link left
+// without one. `Said`, `Held` and `unused` in src/example.tsx are the ways to answer.
+const pressed = new Set(['Button', 'IconButton', 'Link']);
+const answering = new Set(['onClick', 'clickAction', 'isDisabled', 'isLoading']);
+function answers(file, report) {
+  const visit = node => {
+    if (ts.isArrowFunction(node) && ts.isBlock(node.body) && node.body.statements.length === 0 && !ts.isVariableDeclaration(node.parent))
+      report(node, 'answer', 'an empty handler: a press must answer visibly; use Said or Held from src/example.tsx, or `unused` on a control that cannot be used');
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && ts.isIdentifier(node.tagName) && pressed.has(node.tagName.text)) {
+      const attributes = node.attributes.properties;
+      if (!attributes.some(each => ts.isJsxSpreadAttribute(each) || answering.has(each.name.getText(file))))
+        report(node, 'answer', `<${node.tagName.text}> has no handler: a press must answer visibly; give it onClick, with Said from src/example.tsx where nothing else shows the press`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+}
+// The gallery's hand-written pages are specimens too; its generated ones repeat the examples.
+const galleryDir = resolve(core, '../gallery');
+if (basename(core) === 'core' && existsSync(galleryDir)) {
+  for (const path of ['content', 'shared'].flatMap(dir => walk(join(galleryDir, dir))).filter(path => path.endsWith('.tsx'))) {
+    const text = readFileSync(path, 'utf8');
+    if (text.startsWith('// Generated')) continue;
+    const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    answers(file, (node, rule, message) => problems.push(`${rel(path)}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1}: ${rule}: ${message}`));
+  }
+}
+
 for (const path of files) {
   const text = readFileSync(path, 'utf8');
   const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, path.endsWith('.tsx') ? ts.ScriptKind.TSX : path.endsWith('.mjs') ? ts.ScriptKind.JS : ts.ScriptKind.TS);
@@ -45,6 +74,8 @@ for (const path of files) {
     const { line } = file.getLineAndCharacterOfPosition(node.getStart(file));
     problems.push(`${rel(path)}:${line + 1}: ${rule}: ${message}`);
   };
+
+  if (role === 'examples') answers(file, report);
 
   const visit = node => {
     // Imports: the public `@lingxia/view` entry, its testing entry in tests, and files inside the package.

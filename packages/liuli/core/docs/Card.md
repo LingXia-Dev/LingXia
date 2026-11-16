@@ -58,20 +58,25 @@ export function Floating() {
 ### A card with actions
 
 ```tsx
+import { Said } from '../example';
 import { Button } from '@liulidesign/core/Button';
 import { Card, ClickableCard } from '@liulidesign/core/Card';
 
 /** Actions go in a plain Card, never in a ClickableCard. */
 export function WithActions() {
   return (
-    <Card>
-      <text role="heading" headingLevel={3} className="text-callout font-semibold text-text">Back up your notes</text>
-      <text className="text-footnote text-muted">Keep a copy on another device in case this one is lost.</text>
-      <view className="flex-row justify-end gap-2">
-        <Button label="Not now" variant="ghost" size="sm" />
-        <Button label="Turn on" variant="primary" size="sm" data-testid="turn-on" />
-      </view>
-    </Card>
+    <Said>
+      {say => (
+        <Card>
+          <text role="heading" headingLevel={3} className="text-callout font-semibold text-text">Back up your notes</text>
+          <text className="text-footnote text-muted">Keep a copy on another device in case this one is lost.</text>
+          <view className="flex-row justify-end gap-2">
+            <Button label="Not now" variant="ghost" size="sm" onClick={() => say('Put off the backup')} />
+            <Button label="Turn on" variant="primary" size="sm" onClick={() => say('Turned on backups')} data-testid="turn-on" />
+          </view>
+        </Card>
+      )}
+    </Said>
   );
 }
 ```

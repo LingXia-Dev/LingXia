@@ -28,7 +28,7 @@ const notes = [
 
 /** Rows with a menu each: hold a row, or click it with the secondary button. The row itself still opens. */
 export function Rows() {
-  const last = useLocal('last', 'Nothing yet');
+  const last = useLocal('last', '');
   return (
     <view className="gap-2">
       <ItemList label="Notes">
@@ -50,7 +50,7 @@ export function Rows() {
           </ContextMenu>
         ))}
       </ItemList>
-      <text role="status" className="text-footnote text-muted">{last.value}</text>
+      {last.value !== '' && <text role="status" className="text-footnote text-muted">{last.value}</text>}
     </view>
   );
 }

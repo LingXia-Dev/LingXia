@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { Item } from '../Item/Item';
 import { Tabs } from './Tabs';
 
@@ -86,37 +87,45 @@ export function Filter() {
 }
 
 export function StateUnderline() {
-  return <Tabs label="Sections" items={[{ value: 'notes', label: 'Notes' }, { value: 'files', label: 'Files' }]} value="notes" onChange={() => {}} />;
+  return <Held value="notes">{(tab, set) => <Tabs label="Sections" items={[{ value: 'notes', label: 'Notes' }, { value: 'files', label: 'Files' }]} value={tab} onChange={set} />}</Held>;
 }
 
 export function StateSegmented() {
-  return <Tabs label="Range" items={ranges.slice(0, 2)} value="week" onChange={() => {}} variant="segmented" />;
+  return <Held value="week">{(tab, set) => <Tabs label="Range" items={ranges.slice(0, 2)} value={tab} onChange={set} variant="segmented" />}</Held>;
 }
 
 export function StateDisabled() {
   return (
-    <Tabs
-      label="Sections"
-      items={[{ value: 'notes', label: 'Notes' }, { value: 'billing', label: 'Billing', isDisabled: true }]}
-      value="notes"
-      onChange={() => {}}
-    />
+    <Held value="notes">
+      {(tab, set) => (
+        <Tabs
+          label="Sections"
+          items={[{ value: 'notes', label: 'Notes' }, { value: 'billing', label: 'Billing', isDisabled: true }]}
+          value={tab}
+          onChange={set}
+        />
+      )}
+    </Held>
   );
 }
 
 export function StateSegmentedDisabled() {
   return (
-    <Tabs
-      label="Range"
-      items={[{ value: 'week', label: 'Week' }, { value: 'year', label: 'Year', isDisabled: true }]}
-      value="week"
-      onChange={() => {}}
-      variant="segmented"
-    />
+    <Held value="week">
+      {(tab, set) => (
+        <Tabs
+          label="Range"
+          items={[{ value: 'week', label: 'Week' }, { value: 'year', label: 'Year', isDisabled: true }]}
+          value={tab}
+          onChange={set}
+          variant="segmented"
+        />
+      )}
+    </Held>
   );
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <Tabs label="Range" items={ranges} value="week" onChange={() => {}} className="w-52" />;
+  return <Tabs label="Range" items={ranges} value="week" onChange={unused} className="w-52" />;
 }

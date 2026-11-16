@@ -29,6 +29,7 @@ export function Content() {
   const remember = useLocal('remember', true);
   const tried = useLocal('tried', false);
   const signedIn = useLocal('signedIn', false);
+  const last = useLocal('last', '');
 
   const errors = { email: emailError(email.value), password: passwordError(password.value) };
   const status = (message: string | undefined) => (tried.value && message !== undefined ? { type: 'error' as const, message } : undefined);
@@ -100,11 +101,12 @@ export function Content() {
       </FormLayout>
       <view className="gap-2">
         <Button label="Sign in" variant="primary" size="lg" width="fill" clickAction={submit} data-testid="submit" />
-        <Button label="Forgot password?" variant="link" width="content" className="self-center" data-testid="forgot" />
+        <Button label="Forgot password?" variant="link" width="content" className="self-center" onClick={() => last.set('Sent a password reset link')} data-testid="forgot" />
       </view>
       <text className="text-center text-footnote text-muted">
-        New to Notes? <Link label="Create an account" onClick={() => {}} data-testid="create" />
+        New to Notes? <Link label="Create an account" onClick={() => last.set('Opened Create an account')} data-testid="create" />
       </text>
+      {last.value !== '' && <text role="status" className="text-center text-footnote text-muted">{last.value}</text>}
     </>
   );
 }

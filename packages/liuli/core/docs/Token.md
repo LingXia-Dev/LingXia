@@ -89,16 +89,21 @@ export function Labels() {
 ### Sizes
 
 ```tsx
+import { Held } from '../example';
 import { Token } from '@liulidesign/core/Token';
 
 export function Sizes() {
   return (
-    <view className="flex-row flex-wrap items-center gap-2">
-      <Token label="Design" size="sm" />
-      <Token label="Design" />
-      <Token label="Design" size="sm" removeLabel="Remove Design" onRemove={() => {}} />
-      <Token label="Design" removeLabel="Remove Design" onRemove={() => {}} />
-    </view>
+    <Held value={['sm', 'md'] as readonly string[]}>
+      {(left, set) => (
+        <view className="flex-row flex-wrap items-center gap-2">
+          <Token label="Design" size="sm" />
+          <Token label="Design" />
+          {left.includes('sm') && <Token label="Design" size="sm" removeLabel="Remove Design" onRemove={() => set(left.filter(size => size !== 'sm'))} />}
+          {left.includes('md') && <Token label="Design" removeLabel="Remove Design" onRemove={() => set(left.filter(size => size !== 'md'))} />}
+        </view>
+      )}
+    </Held>
   );
 }
 ```

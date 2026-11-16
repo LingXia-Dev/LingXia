@@ -69,11 +69,26 @@ export function Sizes() {
 ### Partly chosen
 
 ```tsx
+import { Held } from '../example';
 import { CheckboxInput } from '@liulidesign/core/CheckboxInput';
 
 /** Partly chosen: one box that stands for a set of which some are on. */
 export function StateMixed() {
-  return <CheckboxInput value={false} onChange={() => {}} isIndeterminate label="All folders" description="3 of 8 chosen" data-testid="mixed" />;
+  return (
+    // A press on a mixed box chooses the whole set; after that it is an ordinary checkbox.
+    <Held value="mixed">
+      {(state, set) => (
+        <CheckboxInput
+          value={state === 'on'}
+          onChange={next => set(next ? 'on' : 'off')}
+          isIndeterminate={state === 'mixed'}
+          label="All folders"
+          description={state === 'mixed' ? '3 of 8 chosen' : state === 'on' ? '8 of 8 chosen' : '0 of 8 chosen'}
+          data-testid="mixed"
+        />
+      )}
+    </Held>
+  );
 }
 ```
 

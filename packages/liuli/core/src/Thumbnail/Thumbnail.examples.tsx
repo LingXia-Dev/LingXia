@@ -1,3 +1,4 @@
+import { Held, Said } from '../example';
 import { Item, ItemList } from '../Item/Item';
 import { Thumbnail } from './Thumbnail';
 
@@ -14,19 +15,27 @@ const photos = [
 /** A grid of photos, each as wide as its column. */
 export function Grid() {
   return (
-    <view className="grid grid-cols-3 gap-2">
-      {photos.map(([n, alt], index) => <Thumbnail key={alt} src={photo(n)} alt={alt} size="fill" onClick={() => {}} data-testid={`grid-${index}`} />)}
-    </view>
+    <Said>
+      {say => (
+        <view className="grid grid-cols-3 gap-2">
+          {photos.map(([n, alt], index) => <Thumbnail key={alt} src={photo(n)} alt={alt} size="fill" onClick={() => say(`Opened ${alt}`)} data-testid={`grid-${index}`} />)}
+        </view>
+      )}
+    </Said>
   );
 }
 
 /** At the start of a row, for the thing the row is about. */
 export function InRows() {
   return (
-    <ItemList label="Albums">
-      <Item label="Coast, November" description="48 photos" startContent={<Thumbnail src={photo(1)} alt="" size="sm" data-testid="row" />} hasChevron onClick={() => {}} />
-      <Item label="The valley" description="112 photos" startContent={<Thumbnail src={photo(4)} alt="" size="sm" />} hasChevron onClick={() => {}} />
-    </ItemList>
+    <Said>
+      {say => (
+        <ItemList label="Albums">
+          <Item label="Coast, November" description="48 photos" startContent={<Thumbnail src={photo(1)} alt="" size="sm" data-testid="row" />} hasChevron onClick={() => say('Opened Coast, November')} data-testid="album-coast" />
+          <Item label="The valley" description="112 photos" startContent={<Thumbnail src={photo(4)} alt="" size="sm" />} hasChevron onClick={() => say('Opened The valley')} />
+        </ItemList>
+      )}
+    </Said>
   );
 }
 
@@ -44,9 +53,13 @@ export function Sizes() {
 /** A strip under a picture: the one in view is ringed. */
 export function Strip() {
   return (
-    <view className="flex-row gap-3 p-1">
-      {photos.slice(0, 4).map(([n, alt], index) => <Thumbnail key={alt} src={photo(n)} alt={alt} size="sm" isSelected={index === 1} onClick={() => {}} data-testid={`strip-${index}`} />)}
-    </view>
+    <Held value={1}>
+      {(shown, show) => (
+        <view className="flex-row gap-3 p-1">
+          {photos.slice(0, 4).map(([n, alt], index) => <Thumbnail key={alt} src={photo(n)} alt={alt} size="sm" isSelected={index === shown} onClick={() => show(index)} data-testid={`strip-${index}`} />)}
+        </view>
+      )}
+    </Held>
   );
 }
 

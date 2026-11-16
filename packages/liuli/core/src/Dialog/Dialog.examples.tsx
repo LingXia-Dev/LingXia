@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Said, unused } from '../example';
 import { Button } from '../Button/Button';
 import { TextArea } from '../TextArea/TextArea';
 import { TextInput } from '../TextInput/TextInput';
@@ -12,7 +13,7 @@ export function Confirm() {
   return (
     <view className="gap-2">
       <Button label="Delete note" variant="destructive" width="content" onClick={() => open.set(true)} data-testid="confirm-open" />
-      <text role="status" data-testid="outcome" className="text-footnote text-muted">{deleted.value ? 'Deleted' : 'Not deleted'}</text>
+      {deleted.value && <text role="status" data-testid="outcome" className="text-footnote text-muted">Deleted</text>}
       <Dialog
         isOpen={open.value}
         onOpenChange={next => open.set(next)}
@@ -93,8 +94,8 @@ export function Specimen() {
     <view className="p-2.5 gap-2 rounded-container border border-text/12 bg-surface-overlay shadow-[0_2px_4px_rgb(0_0_0/0.10),0_6px_14px_rgb(0_0_0/0.18)]">
       <text className="text-footnote font-semibold text-text">Delete note?</text>
       <view className="flex-row justify-end gap-1.5">
-        <Button label="Keep" size="sm" />
-        <Button label="Delete" variant="destructive" size="sm" />
+        <Button label="Keep" size="sm" onClick={unused} />
+        <Button label="Delete" variant="destructive" size="sm" onClick={unused} />
       </view>
     </view>
   );
@@ -106,18 +107,22 @@ export function Specimen() {
  */
 export function Parts() {
   return (
-    <view className="items-center rounded-container bg-scrim px-4 py-8">
-      <view className="w-full max-w-[360px] p-5 gap-4 rounded-dialog border border-text/12 bg-surface-overlay shadow-modal">
-        <view className={dialogRecipe.header.base}>
-          <text className={dialogRecipe.title.base}>Delete this note?</text>
+    <Said>
+      {say => (
+        <view className="items-center rounded-container bg-scrim px-4 py-8">
+          <view className="w-full max-w-[360px] p-5 gap-4 rounded-dialog border border-text/12 bg-surface-overlay shadow-modal">
+            <view className={dialogRecipe.header.base}>
+              <text className={dialogRecipe.title.base}>Delete this note?</text>
+            </view>
+            <text className={dialogRecipe.description.base}>It leaves every device you are signed in on.</text>
+            <view className={dialogRecipe.footer.base}>
+              <Button label="Cancel" onClick={() => say('Kept the note')} />
+              <Button label="Delete" variant="destructive" onClick={() => say('Deleted the note')} />
+            </view>
+          </view>
         </view>
-        <text className={dialogRecipe.description.base}>It leaves every device you are signed in on.</text>
-        <view className={dialogRecipe.footer.base}>
-          <Button label="Cancel" />
-          <Button label="Delete" variant="destructive" />
-        </view>
-      </view>
-    </view>
+      )}
+    </Said>
   );
 }
 

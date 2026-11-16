@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { CheckboxInput } from './CheckboxInput';
 
 export function Basic() {
@@ -36,26 +37,40 @@ export function Sizes() {
 
 /** The home tile. */
 export function Specimen() {
-  return <CheckboxInput value onChange={() => {}} label="Remember me" size="sm" />;
+  return <CheckboxInput value onChange={unused} label="Remember me" size="sm" />;
 }
 
 export function StateOff() {
-  return <CheckboxInput value={false} onChange={() => {}} label="Updates" />;
+  return <Held value={false}>{(on, set) => <CheckboxInput value={on} onChange={set} label="Updates" />}</Held>;
 }
 
 export function StateOn() {
-  return <CheckboxInput value onChange={() => {}} label="Updates" />;
+  return <Held value={true}>{(on, set) => <CheckboxInput value={on} onChange={set} label="Updates" />}</Held>;
 }
 
 export function StateInvalid() {
-  return <CheckboxInput value={false} onChange={() => {}} label="Terms" status={{ type: 'error', message: 'Required.' }} />;
+  return <Held value={false}>{(on, set) => <CheckboxInput value={on} onChange={set} label="Terms" status={on ? undefined : { type: 'error', message: 'Required.' }} />}</Held>;
 }
 
 export function StateDisabled() {
-  return <CheckboxInput value onChange={() => {}} label="Backups" isDisabled />;
+  return <CheckboxInput value onChange={unused} label="Backups" isDisabled />;
 }
 
 /** Partly chosen: one box that stands for a set of which some are on. */
 export function StateMixed() {
-  return <CheckboxInput value={false} onChange={() => {}} isIndeterminate label="All folders" description="3 of 8 chosen" data-testid="mixed" />;
+  return (
+    // A press on a mixed box chooses the whole set; after that it is an ordinary checkbox.
+    <Held value="mixed">
+      {(state, set) => (
+        <CheckboxInput
+          value={state === 'on'}
+          onChange={next => set(next ? 'on' : 'off')}
+          isIndeterminate={state === 'mixed'}
+          label="All folders"
+          description={state === 'mixed' ? '3 of 8 chosen' : state === 'on' ? '8 of 8 chosen' : '0 of 8 chosen'}
+          data-testid="mixed"
+        />
+      )}
+    </Held>
+  );
 }

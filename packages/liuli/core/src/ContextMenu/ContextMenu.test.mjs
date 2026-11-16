@@ -39,7 +39,7 @@ test('Rows: the scrim closes the docked menu and runs nothing; from a mouse ther
   await ask(screen, 'note-reading', 'touch');
   screen.press(screen.getByTestId('note-reading-scrim'));
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual([menus(screen).length, status(screen)], [0, 'Nothing yet']);
+  assert.deepEqual([menus(screen).length, status(screen)], [0, '']);
   await ask(screen, 'note-reading', 'mouse');
   const menu = screen.getByTestId('note-reading-menu');
   assert.equal(menu.props.role, 'menu');

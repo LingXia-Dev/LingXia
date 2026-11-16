@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held } from '@liulidesign/core/example';
 import { summarize } from '../summary/en';
 import { LineChart } from './LineChart';
 
@@ -103,7 +104,7 @@ export function StateEmpty() {
 }
 
 export function StateError() {
-  return <LineChart data={weight} x="week" y="kg" label="Weight by week" title="Weight" size="sm" error="Weigh-ins could not be loaded." onRetry={() => {}} retryLabel="Try again" data-testid="error" />;
+  return <Held value={true}>{(hasFailed, set) => <LineChart data={weight} x="week" y="kg" label="Weight by week" title="Weight" size="sm" error={hasFailed ? "Weigh-ins could not be loaded." : undefined} onRetry={() => set(false)} retryLabel="Try again" data-testid="error" />}</Held>;
 }
 
 export function StateSingle() {

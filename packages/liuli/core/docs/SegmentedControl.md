@@ -66,6 +66,7 @@ export function Appearance() {
 ### Sizes
 
 ```tsx
+import { Held } from '../example';
 import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
 
 const themes = [
@@ -77,8 +78,8 @@ const themes = [
 export function Sizes() {
   return (
     <view className="gap-3">
-      <SegmentedControl label="Small" options={themes} value="light" onChange={() => {}} size="sm" />
-      <SegmentedControl label="Medium" options={themes} value="light" onChange={() => {}} />
+      <Held value="light">{(theme, set) => <SegmentedControl label="Small" options={themes} value={theme} onChange={set} size="sm" />}</Held>
+      <Held value="light">{(theme, set) => <SegmentedControl label="Medium" options={themes} value={theme} onChange={set} />}</Held>
     </view>
   );
 }

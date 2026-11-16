@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Said } from '../example';
 import { Banner } from './Banner';
 
 /** A problem with one way out, that the person can also put aside. */
@@ -61,11 +62,11 @@ export function StateWithMessage() {
 }
 
 export function StateWithAction() {
-  return <Banner tone="danger" title="Not sent" action={{ label: 'Retry', onClick: () => {} }} />;
+  return <Said>{say => <Banner tone="danger" title="Not sent" action={{ label: 'Retry', onClick: () => say('Retried') }} />}</Said>;
 }
 
 export function StateDismissible() {
-  return <Banner title="New" onDismiss={() => {}} dismissLabel="Dismiss" />;
+  return <Said>{say => <Banner title="New" onDismiss={() => say('Dismissed')} dismissLabel="Dismiss" />}</Said>;
 }
 
 /** The home tile. */
@@ -76,15 +77,19 @@ export function Specimen() {
 /** Folded to its title until someone wants the rest: for a notice that stays for days. */
 export function Collapsible() {
   return (
-    <Banner
-      tone="warning"
-      title="Scheduled maintenance on Sunday"
-      message="Sync pauses from 02:00 to 04:00 UTC. Notes you write then are kept on this device and sent when it ends."
-      action={{ label: 'See the schedule', onClick: () => {} }}
-      isCollapsible
-      toggleLabel="Details"
-      isDefaultCollapsed
-      data-testid="maintenance"
-    />
+    <Said>
+      {say => (
+        <Banner
+          tone="warning"
+          title="Scheduled maintenance on Sunday"
+          message="Sync pauses from 02:00 to 04:00 UTC. Notes you write then are kept on this device and sent when it ends."
+          action={{ label: 'See the schedule', onClick: () => say('Opened the schedule') }}
+          isCollapsible
+          toggleLabel="Details"
+          isDefaultCollapsed
+          data-testid="maintenance"
+        />
+      )}
+    </Said>
   );
 }

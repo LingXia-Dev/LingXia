@@ -79,14 +79,15 @@ export function Meeting() {
 ### Sizes
 
 ```tsx
+import { Held } from '../example';
 import { DateInput } from '@liulidesign/core/DateInput';
 
 export function Sizes() {
   return (
     <view className="gap-3">
-      <DateInput label="Small" size="sm" value="2026-12-18" onChange={() => {}} />
-      <DateInput label="Medium" value="2026-12-18" onChange={() => {}} />
-      <DateInput label="Large" size="lg" value="2026-12-18" onChange={() => {}} />
+      <Held value="2026-12-18">{(date, set) => <DateInput label="Small" size="sm" value={date} onChange={set} />}</Held>
+      <Held value="2026-12-18">{(date, set) => <DateInput label="Medium" value={date} onChange={set} />}</Held>
+      <Held value="2026-12-18">{(date, set) => <DateInput label="Large" size="lg" value={date} onChange={set} />}</Held>
     </view>
   );
 }

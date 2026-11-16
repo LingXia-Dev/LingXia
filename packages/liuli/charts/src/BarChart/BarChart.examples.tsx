@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held } from '@liulidesign/core/example';
 import { summarize } from '../summary/en';
 import { BarChart } from './BarChart';
 
@@ -91,7 +92,7 @@ export function StateEmpty() {
 }
 
 export function StateError() {
-  return <BarChart data={week} x="day" y="orders" label="Orders by weekday" title="Orders" size="sm" error="Orders could not be loaded." onRetry={() => {}} retryLabel="Try again" data-testid="error" />;
+  return <Held value={true}>{(hasFailed, set) => <BarChart data={week} x="day" y="orders" label="Orders by weekday" title="Orders" size="sm" error={hasFailed ? "Orders could not be loaded." : undefined} onRetry={() => set(false)} retryLabel="Try again" data-testid="error" />}</Held>;
 }
 
 /** The home tile. */

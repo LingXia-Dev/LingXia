@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { Button } from '../Button/Button';
 import { Combobox } from './Combobox';
 
@@ -88,35 +89,37 @@ export function Sizes() {
   );
 }
 
-const noChange = () => {};
-
 export function StateEmpty() {
-  return <Combobox label="Country" value="" onChange={noChange} options={countries} placeholder="Choose a country" searchLabel="Search countries" emptyLabel="No country matches" />;
+  return <Held value="">{(country, set) => <Combobox label="Country" value={country} onChange={set} options={countries} placeholder="Choose a country" searchLabel="Search countries" emptyLabel="No country matches" />}</Held>;
 }
 
 export function StateChosen() {
-  return <Combobox label="Country" value="kenya" onChange={noChange} options={countries} searchLabel="Search countries" emptyLabel="No country matches" data-testid="chosen" />;
+  return <Held value="kenya">{(country, set) => <Combobox label="Country" value={country} onChange={set} options={countries} searchLabel="Search countries" emptyLabel="No country matches" data-testid="chosen" />}</Held>;
 }
 
 export function StateInvalid() {
   return (
-    <Combobox
-      label="Country"
-      value=""
-      onChange={noChange}
-      options={countries}
-      placeholder="Choose a country"
-      status={{ type: 'error', message: 'Choose where to ship to.' }}
-      isRequired
-      searchLabel="Search countries"
-      emptyLabel="No country matches"
-      data-testid="invalid"
-    />
+    <Held value="">
+      {(country, set) => (
+        <Combobox
+          label="Country"
+          value={country}
+          onChange={set}
+          options={countries}
+          placeholder="Choose a country"
+          status={country === '' ? { type: 'error', message: 'Choose where to ship to.' } : undefined}
+          isRequired
+          searchLabel="Search countries"
+          emptyLabel="No country matches"
+          data-testid="invalid"
+        />
+      )}
+    </Held>
   );
 }
 
 export function StateDisabled() {
-  return <Combobox label="Country" value="kenya" onChange={noChange} options={countries} isDisabled searchLabel="Search countries" emptyLabel="No country matches" data-testid="disabled" />;
+  return <Combobox label="Country" value="kenya" onChange={unused} options={countries} isDisabled searchLabel="Search countries" emptyLabel="No country matches" data-testid="disabled" />;
 }
 
 /** In a form, beside the fields it belongs with. */
@@ -127,12 +130,12 @@ export function Shipping() {
     <view className="gap-4">
       <Combobox label="Ship to" bind={country} options={countries} searchLabel="Search countries" emptyLabel="No country matches" isRequired data-testid="ship-to" />
       <Button label="Save address" variant="primary" width="content" onClick={() => saved.set(country.value)} data-testid="save-address" />
-      <text role="status" data-testid="saved" className="text-footnote text-muted">{saved.value === '' ? 'Not saved' : `Saved: ${saved.value}`}</text>
+      {saved.value !== '' && <text role="status" data-testid="saved" className="text-footnote text-muted">{`Saved: ${saved.value}`}</text>}
     </view>
   );
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <Combobox label="Country" isLabelHidden value="kenya" onChange={noChange} options={countries} size="sm" searchLabel="Search countries" emptyLabel="No country matches" className="w-32" />;
+  return <Combobox label="Country" isLabelHidden value="kenya" onChange={unused} options={countries} size="sm" searchLabel="Search countries" emptyLabel="No country matches" className="w-32" />;
 }

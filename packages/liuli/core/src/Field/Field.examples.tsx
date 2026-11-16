@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { TextInput } from '../TextInput/TextInput';
 import { Field } from './Field';
 
@@ -43,7 +44,7 @@ export function Specimen() {
       {control => (
         <select
           value="yearly"
-          onChange={() => {}}
+          onChange={unused}
           aria-label={control['aria-label']}
           disabled={control.disabled}
           options={periods}
@@ -56,20 +57,24 @@ export function Specimen() {
 
 function PeriodField({ status, isDisabled = false }: { status?: { type: 'error' | 'warning' | 'success'; message: string }; isDisabled?: boolean }) {
   return (
-    <Field label="Billing" description="Change it any time." status={status} isDisabled={isDisabled}>
-      {control => (
-        <select
-          value="yearly"
-          onChange={() => {}}
-          aria-label={control['aria-label']}
-          aria-describedby={control['aria-describedby']}
-          aria-invalid={control['aria-invalid']}
-          disabled={control.disabled}
-          options={periods}
-          className="min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-body text-text"
-        />
+    <Held value="yearly">
+      {(period, set) => (
+        <Field label="Billing" description="Change it any time." status={status} isDisabled={isDisabled}>
+          {control => (
+            <select
+              value={period}
+              onChange={set}
+              aria-label={control['aria-label']}
+              aria-describedby={control['aria-describedby']}
+              aria-invalid={control['aria-invalid']}
+              disabled={control.disabled}
+              options={periods}
+              className="min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-body text-text"
+            />
+          )}
+        </Field>
       )}
-    </Field>
+    </Held>
   );
 }
 

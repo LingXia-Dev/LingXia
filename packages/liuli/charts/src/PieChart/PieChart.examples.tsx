@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held } from '@liulidesign/core/example';
 import { summarize } from '../summary/en';
 import { PieChart } from './PieChart';
 
@@ -90,7 +91,7 @@ export function StateEmpty() {
 }
 
 export function StateError() {
-  return <PieChart data={storage} name="kind" value="gb" label="Storage by kind" title="Storage" description="By kind of file" size="sm" error="Storage could not be read." onRetry={() => {}} retryLabel="Try again" data-testid="error" />;
+  return <Held value={true}>{(hasFailed, set) => <PieChart data={storage} name="kind" value="gb" label="Storage by kind" title="Storage" description="By kind of file" size="sm" error={hasFailed ? "Storage could not be read." : undefined} onRetry={() => set(false)} retryLabel="Try again" data-testid="error" />}</Held>;
 }
 
 /** The home tile. */

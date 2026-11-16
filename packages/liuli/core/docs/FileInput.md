@@ -48,19 +48,23 @@ export function Documents() {
 ### Nothing chosen, with an error
 
 ```tsx
-import { FileInput } from '@liulidesign/core/FileInput';
+import { useLocal } from '@lingxia/view';
+import { FileInput, type FileInputFile } from '@liulidesign/core/FileInput';
+
+const more: FileInputFile = { id: 'bill', name: 'Electricity bill.pdf', detail: 'Waiting to upload', progress: true };
 
 /** Nothing chosen, on a required field after a failed send. */
 export function Empty() {
+  const files = useLocal<readonly FileInputFile[]>('proof', []);
   return (
     <FileInput
       label="Proof of address"
       isRequired
-      status={{ type: 'error', message: 'Add one document.' }}
-      files={[]}
-      onPick={() => {}}
+      status={files.value.length === 0 ? { type: 'error', message: 'Add one document.' } : undefined}
+      files={files.value}
+      onPick={() => files.set([more])}
       pickLabel="Add a document"
-      onRemove={() => {}}
+      onRemove={() => files.set([])}
       removeLabel={name => `Remove ${name}`}
       progressLabel={name => `Uploading ${name}`}
       data-testid="proof"

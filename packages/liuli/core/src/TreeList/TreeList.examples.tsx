@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import { TreeList, type TreeNode } from './TreeList';
 
 const folders: TreeNode[] = [
@@ -55,7 +56,7 @@ export function Specimen() {
       label="Sample"
       nodes={[{ id: 'a', label: 'Notes', children: [{ id: 'b', label: 'Travel' }, { id: 'c', label: 'Work' }] }]}
       value="b"
-      onChange={() => {}}
+      onChange={unused}
       defaultExpanded={['a']}
       className="w-36"
     />

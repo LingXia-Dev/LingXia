@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import { PageControl } from './PageControl';
 
 const steps = [
@@ -34,5 +35,5 @@ export function OnMedia() {
 
 /** The home tile. */
 export function Specimen() {
-  return <PageControl label="Pages" count={4} value={1} onChange={() => {}} pageLabel={at => `Page ${at + 1}`} />;
+  return <PageControl label="Pages" count={4} value={1} onChange={unused} pageLabel={at => `Page ${at + 1}`} />;
 }

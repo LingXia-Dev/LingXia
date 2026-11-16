@@ -16,6 +16,7 @@ FormLayout sets the distance between a form's fields and puts its buttons after 
 
 ```tsx
 import { useLocal } from '@lingxia/view';
+import { Said } from '../example';
 import { Button } from '@liulidesign/core/Button';
 import { Select } from '@liulidesign/core/Select';
 import { TextArea } from '@liulidesign/core/TextArea';
@@ -34,19 +35,23 @@ export function Address() {
   const country = useLocal('country', 'pt');
   const notes = useLocal('notes', '');
   return (
-    <FormLayout
-      columns={2}
-      actions={<><Button label="Cancel" /><Button label="Save address" variant="primary" /></>}
-      data-testid="address"
-    >
-      <TextInput label="First name" bind={first} autoComplete="given-name" isRequired hasRequiredMark={false} />
-      <TextInput label="Last name" bind={last} autoComplete="family-name" isRequired hasRequiredMark={false} />
-      <FormSpan><TextInput label="Street and number" bind={street} isRequired hasRequiredMark={false} data-testid="street" /></FormSpan>
-      <TextInput label="City" bind={city} isRequired hasRequiredMark={false} />
-      <TextInput label="Postcode" bind={post} isRequired hasRequiredMark={false} />
-      <Select label="Country" bind={country} options={countries} />
-      <FormSpan><TextArea label="Notes for the courier" optionalLabel="optional" bind={notes} /></FormSpan>
-    </FormLayout>
+    <Said>
+      {say => (
+        <FormLayout
+          columns={2}
+          actions={<><Button label="Cancel" onClick={() => say('Cancelled')} /><Button label="Save address" variant="primary" onClick={() => say('Saved the address')} /></>}
+          data-testid="address"
+        >
+          <TextInput label="First name" bind={first} autoComplete="given-name" isRequired hasRequiredMark={false} />
+          <TextInput label="Last name" bind={last} autoComplete="family-name" isRequired hasRequiredMark={false} />
+          <FormSpan><TextInput label="Street and number" bind={street} isRequired hasRequiredMark={false} data-testid="street" /></FormSpan>
+          <TextInput label="City" bind={city} isRequired hasRequiredMark={false} />
+          <TextInput label="Postcode" bind={post} isRequired hasRequiredMark={false} />
+          <Select label="Country" bind={country} options={countries} />
+          <FormSpan><TextArea label="Notes for the courier" optionalLabel="optional" bind={notes} /></FormSpan>
+        </FormLayout>
+      )}
+    </Said>
   );
 }
 ```
@@ -55,6 +60,7 @@ export function Address() {
 
 ```tsx
 import { useLocal } from '@lingxia/view';
+import { Said } from '../example';
 import { Button } from '@liulidesign/core/Button';
 import { TextArea } from '@liulidesign/core/TextArea';
 import { TextInput } from '@liulidesign/core/TextInput';
@@ -66,11 +72,15 @@ export function Profile() {
   const site = useLocal('site', '');
   const about = useLocal('about', '');
   return (
-    <FormLayout actions={<Button label="Save profile" variant="primary" />} data-testid="profile">
-      <TextInput label="Display name" bind={name} isRequired data-testid="display-name" />
-      <TextInput label="Website" bind={site} placeholder="example.com" />
-      <TextArea label="About you" bind={about} />
-    </FormLayout>
+    <Said>
+      {say => (
+        <FormLayout actions={<Button label="Save profile" variant="primary" onClick={() => say('Saved the profile')} />} data-testid="profile">
+          <TextInput label="Display name" bind={name} isRequired data-testid="display-name" />
+          <TextInput label="Website" bind={site} placeholder="example.com" />
+          <TextArea label="About you" bind={about} />
+        </FormLayout>
+      )}
+    </Said>
   );
 }
 ```

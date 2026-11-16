@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import { NavList } from '../NavList/NavList';
 import { SplitView } from './SplitView';
 
@@ -41,7 +42,7 @@ export function Specimen() {
   return (
     <view className="w-full flex-row overflow-hidden rounded-control border border-text/12 bg-canvas">
       <view className="w-[84px] p-1 border-e border-text/8">
-        <NavList label="Mail" sections={[{ id: 'mail', items: [{ value: 'inbox', label: 'Inbox' }, { value: 'sent', label: 'Sent' }] }]} value="inbox" onChange={() => {}} />
+        <NavList label="Mail" sections={[{ id: 'mail', items: [{ value: 'inbox', label: 'Inbox' }, { value: 'sent', label: 'Sent' }] }]} value="inbox" onChange={unused} />
       </view>
       <view className="grow shrink basis-0 p-2.5 gap-1">
         <text className="text-footnote font-semibold text-text">Inbox</text>

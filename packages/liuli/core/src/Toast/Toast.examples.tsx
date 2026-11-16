@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Said } from '../example';
 import { Button } from '../Button/Button';
 import { Item, ItemList } from '../Item/Item';
 import { Toast, ToastRegion, useToast } from './Toast';
@@ -89,12 +90,16 @@ export function Progress() {
  */
 export function Faces() {
   return (
-    <view className="gap-8 pb-8">
-      <Toast message="Note moved to Travel" onDismiss={() => {}} dismissLabel="Dismiss" />
-      <Toast message="Changes saved" tone="success" onDismiss={() => {}} dismissLabel="Dismiss" />
-      <Toast message={'"Q3 plan" archived'} action={{ label: 'Undo', onClick: () => {} }} onDismiss={() => {}} dismissLabel="Dismiss" />
-      <Toast message="Could not save the note" tone="danger" action={{ label: 'Retry', onClick: () => {} }} onDismiss={() => {}} dismissLabel="Dismiss" />
-    </view>
+    <Said>
+      {say => (
+        <view className="gap-8 pb-8">
+          <Toast message="Note moved to Travel" onDismiss={() => say('Dismissed')} dismissLabel="Dismiss" />
+          <Toast message="Changes saved" tone="success" onDismiss={() => say('Dismissed')} dismissLabel="Dismiss" />
+          <Toast message={'"Q3 plan" archived'} action={{ label: 'Undo', onClick: () => say('Undid the archive') }} onDismiss={() => say('Dismissed')} dismissLabel="Dismiss" />
+          <Toast message="Could not save the note" tone="danger" action={{ label: 'Retry', onClick: () => say('Retried') }} onDismiss={() => say('Dismissed')} dismissLabel="Dismiss" />
+        </view>
+      )}
+    </Said>
   );
 }
 

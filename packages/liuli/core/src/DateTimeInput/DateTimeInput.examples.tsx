@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import { DateTimeInput } from './DateTimeInput';
 
 /** When a reminder goes off: one value, two parts. */
@@ -7,7 +8,7 @@ export function Reminder() {
   return (
     <view className="gap-2">
       <DateTimeInput bind={when} label="Remind me" dateLabel="Reminder date" timeLabel="Reminder time" description="In your own time zone." data-testid="remind" />
-      <text role="status" className="text-footnote text-muted">{when.value === '' ? 'No reminder set' : `Set for ${when.value.replace('T', ' at ')}`}</text>
+      {when.value !== '' && <text role="status" className="text-footnote text-muted">{`Set for ${when.value.replace('T', ' at ')}`}</text>}
     </view>
   );
 }
@@ -30,7 +31,7 @@ export function Required() {
 }
 
 export function StateDisabled() {
-  return <DateTimeInput value="2026-11-20T09:00" onChange={() => {}} label="Published" dateLabel="Publish date" timeLabel="Publish time" isDisabled disabledMessage="Set when it was published." />;
+  return <DateTimeInput value="2026-11-20T09:00" onChange={unused} label="Published" dateLabel="Publish date" timeLabel="Publish time" isDisabled disabledMessage="Set when it was published." />;
 }
 
 /** In a narrow place, such as a side panel, the time goes under the date and both fill the width. */
@@ -45,5 +46,5 @@ export function Narrow() {
 
 /** The home tile. */
 export function Specimen() {
-  return <DateTimeInput value="2026-11-20T09:00" onChange={() => {}} label="When" isLabelHidden dateLabel="Date" timeLabel="Time" size="sm" className="w-36" />;
+  return <DateTimeInput value="2026-11-20T09:00" onChange={unused} label="When" isLabelHidden dateLabel="Date" timeLabel="Time" size="sm" className="w-36" />;
 }

@@ -123,8 +123,8 @@ test('ItemList: a title names the list and is drawn once; the line under it foll
   const [title, , note] = list.parent.children;
   assert.deepEqual([title.text, title.props.accessibilityHidden, title.props.color, title.props.fontSize], ['Inbox', 1, 'text-muted', 13]);
   assert.equal(note.text, 'Drag a message to the side to flag or delete it.');
-  const plain = await renderExample('Item/Item', 'Navigation');
-  assert.equal(plain.getByTestId('notes').parent.children.length, 1, 'without a title or a description the list stands alone');
+  const plain = await renderExample('Item/Item', 'Selection');
+  assert.equal(plain.getByTestId('mailboxes').parent.children.length, 1, 'without a title or a description the list stands alone');
 });
 
 test('density: a compact list makes its rows 40 px; a row\'s own density wins', async () => {

@@ -92,22 +92,27 @@ export function Sizes() {
 ### At the end of a row
 
 ```tsx
+import { Said } from '../example';
 import { Item } from '@liulidesign/core/Item';
 import { Badge } from '@liulidesign/core/Badge';
 
 /** In a pressable row the end content is not read, so the status is repeated in the description. */
 export function InARow() {
   return (
-    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
-      <Item
-        label="Invoice 2041"
-        description="Overdue, due 3 May"
-        endContent={<Badge label="Overdue" tone="danger" size="sm" />}
-        hasChevron
-        onClick={() => {}}
-        data-testid="invoice"
-      />
-    </view>
+    <Said>
+      {say => (
+        <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
+          <Item
+            label="Invoice 2041"
+            description="Overdue, due 3 May"
+            endContent={<Badge label="Overdue" tone="danger" size="sm" />}
+            hasChevron
+            onClick={() => say('Opened Invoice 2041')}
+            data-testid="invoice"
+          />
+        </view>
+      )}
+    </Said>
   );
 }
 ```

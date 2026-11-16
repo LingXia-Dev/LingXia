@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { TextInput } from './TextInput';
 
 /** Bound to a View-local cell: no Logic round trip per keystroke. */
@@ -47,7 +48,7 @@ export function Disabled() {
 
 /** The home tile. */
 export function Specimen() {
-  return <TextInput value="Ana Lima" onChange={() => {}} label="Name" isLabelHidden size="sm" className="w-28" />;
+  return <TextInput value="Ana Lima" onChange={unused} label="Name" isLabelHidden size="sm" className="w-28" />;
 }
 
 export function Plain() {
@@ -67,19 +68,19 @@ export function Sizes() {
 }
 
 export function StateEmpty() {
-  return <TextInput value="" onChange={() => {}} label="City" placeholder="Lisbon" />;
+  return <Held value="">{(city, set) => <TextInput value={city} onChange={set} label="City" placeholder="Lisbon" />}</Held>;
 }
 
 export function StateFilled() {
-  return <TextInput value="Lisbon" onChange={() => {}} label="City" />;
+  return <Held value="Lisbon">{(city, set) => <TextInput value={city} onChange={set} label="City" />}</Held>;
 }
 
 export function StateInvalid() {
-  return <TextInput value="ana@" onChange={() => {}} label="Work email" status={{ type: 'error', message: 'Add the part after @.' }} />;
+  return <Held value="ana@">{(email, set) => <TextInput value={email} onChange={set} label="Work email" status={/@./.test(email) ? undefined : { type: 'error', message: 'Add the part after @.' }} />}</Held>;
 }
 
 export function StateDisabled() {
-  return <TextInput value="LX-2041" onChange={() => {}} label="Code" isDisabled />;
+  return <TextInput value="LX-2041" onChange={unused} label="Code" isDisabled />;
 }
 
 /** Fixed text beside the value says its unit or its start, so the person types only what changes. */
@@ -104,5 +105,5 @@ export function Checking() {
 
 /** A value to read and copy, not to change. */
 export function ReadOnly() {
-  return <TextInput value="C-204188" onChange={() => {}} label="Customer ID" description="Set when the account was opened." isReadOnly data-testid="iban" />;
+  return <TextInput value="C-204188" onChange={unused} label="Customer ID" description="Set when the account was opened." isReadOnly data-testid="iban" />;
 }

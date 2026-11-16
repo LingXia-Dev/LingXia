@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { Token, TokenList } from './Token';
 
 /** People a note is shared with: each can be taken away. */
@@ -56,17 +57,21 @@ export function Labels() {
 
 export function Sizes() {
   return (
-    <view className="flex-row flex-wrap items-center gap-2">
-      <Token label="Design" size="sm" />
-      <Token label="Design" />
-      <Token label="Design" size="sm" removeLabel="Remove Design" onRemove={() => {}} />
-      <Token label="Design" removeLabel="Remove Design" onRemove={() => {}} />
-    </view>
+    <Held value={['sm', 'md'] as readonly string[]}>
+      {(left, set) => (
+        <view className="flex-row flex-wrap items-center gap-2">
+          <Token label="Design" size="sm" />
+          <Token label="Design" />
+          {left.includes('sm') && <Token label="Design" size="sm" removeLabel="Remove Design" onRemove={() => set(left.filter(size => size !== 'sm'))} />}
+          {left.includes('md') && <Token label="Design" removeLabel="Remove Design" onRemove={() => set(left.filter(size => size !== 'md'))} />}
+        </view>
+      )}
+    </Held>
   );
 }
 
 export function StateDisabled() {
-  return <Token label="Locked" removeLabel="Remove Locked" onRemove={() => {}} isDisabled />;
+  return <Token label="Locked" removeLabel="Remove Locked" onRemove={unused} isDisabled />;
 }
 
 /** The home tile. */

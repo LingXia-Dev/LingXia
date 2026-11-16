@@ -5,6 +5,7 @@ import { Button } from '@liulidesign/core/Button';
 import { ButtonGroup } from '@liulidesign/core/ButtonGroup';
 import { Divider } from '@liulidesign/core/Divider';
 import { EmptyState } from '@liulidesign/core/EmptyState';
+import { Said } from '@liulidesign/core/example';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { Item, ItemList } from '@liulidesign/core/Item';
 import { Markdown } from '@liulidesign/core/Markdown';
@@ -74,44 +75,49 @@ function Row({ request, isUnread, isSelected, onOpen }: { request: Request; isUn
 /** The record: who asked, what for, and what can be done about it. */
 function Detail({ request, onDecide }: { request: Request; onDecide: (status: Request['status']) => void }) {
   return (
-    <view className="gap-5">
-      <view className="gap-3">
-        <view className="flex-row items-center gap-2">
-          <Badge label={request.status} tone={tone[request.status]} />
-          <view className="grow" />
-          <ButtonGroup label="More actions">
-            <IconButton label="Share" icon="share" size="sm" />
-            <IconButton label="Print" icon="print" size="sm" />
-          </ButtonGroup>
-        </view>
-        <text role="heading" headingLevel={2} className="text-title font-semibold tracking-tight text-text">{request.subject}</text>
-        <view className="flex-row items-center gap-3">
-          <Avatar name={request.from} isDecorative />
-          <view className="gap-0.5">
-            <text className="text-body font-medium text-text">{request.from}</text>
-            <text className="text-footnote text-muted">{request.team}</text>
+    // Keyed by the request, so one record's line does not stay under the next.
+    <Said key={request.id}>
+      {say => (
+        <view className="gap-5">
+          <view className="gap-3">
+            <view className="flex-row items-center gap-2">
+              <Badge label={request.status} tone={tone[request.status]} />
+              <view className="grow" />
+              <ButtonGroup label="More actions">
+                <IconButton label="Share" icon="share" size="sm" onClick={() => say(`Shared ${request.subject}`)} />
+                <IconButton label="Print" icon="print" size="sm" onClick={() => say(`Printed ${request.subject}`)} />
+              </ButtonGroup>
+            </view>
+            <text role="heading" headingLevel={2} className="text-title font-semibold tracking-tight text-text">{request.subject}</text>
+            <view className="flex-row items-center gap-3">
+              <Avatar name={request.from} isDecorative />
+              <view className="gap-0.5">
+                <text className="text-body font-medium text-text">{request.from}</text>
+                <text className="text-footnote text-muted">{request.team}</text>
+              </view>
+            </view>
+          </view>
+          <Markdown source={request.body} topHeadingLevel={3} taskLabels={{ done: 'Done', open: 'Not done' }} />
+          <Divider />
+          <Section title="Details" headingLevel={3}>
+            <MetadataList
+              label="Request details"
+              items={[
+                { key: 'reference', label: 'Reference', value: request.id.toUpperCase() },
+                { key: 'received', label: 'Received', value: request.when },
+                { key: 'amount', label: 'Amount', value: request.amount },
+                { key: 'needed', label: 'Needed by', value: request.neededBy },
+              ]}
+              data-testid="details"
+            />
+          </Section>
+          <view className="flex-row items-center gap-2 pt-1">
+            <Button label="Approve" variant="primary" isDisabled={request.status === 'Approved'} onClick={() => onDecide('Approved')} data-testid="approve" />
+            <Button label="Ask a question" onClick={() => onDecide('In review')} data-testid="ask" />
           </view>
         </view>
-      </view>
-      <Markdown source={request.body} topHeadingLevel={3} taskLabels={{ done: 'Done', open: 'Not done' }} />
-      <Divider />
-      <Section title="Details" headingLevel={3}>
-        <MetadataList
-          label="Request details"
-          items={[
-            { key: 'reference', label: 'Reference', value: request.id.toUpperCase() },
-            { key: 'received', label: 'Received', value: request.when },
-            { key: 'amount', label: 'Amount', value: request.amount },
-            { key: 'needed', label: 'Needed by', value: request.neededBy },
-          ]}
-          data-testid="details"
-        />
-      </Section>
-      <view className="flex-row items-center gap-2 pt-1">
-        <Button label="Approve" variant="primary" isDisabled={request.status === 'Approved'} onClick={() => onDecide('Approved')} data-testid="approve" />
-        <Button label="Ask a question" onClick={() => onDecide('In review')} data-testid="ask" />
-      </view>
-    </view>
+      )}
+    </Said>
   );
 }
 

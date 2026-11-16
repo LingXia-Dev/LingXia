@@ -1,5 +1,6 @@
 import { MessageBubble } from '@liulidesign/core/MessageBubble';
 import { Button } from '@liulidesign/core/Button';
+import { unused } from '@liulidesign/core/example';
 import { Stat } from '@liulidesign/charts/Stat';
 import { Item, ItemList } from '@liulidesign/core/Item';
 import { ProgressBar } from '@liulidesign/core/ProgressBar';
@@ -8,8 +9,6 @@ import { TextInput } from '@liulidesign/core/TextInput';
 
 // Tile specimens for the Foundations and Patterns pages, one per page, named after it. Patterns
 // show their own components at small scale; foundations draw the tokens themselves.
-
-const none = () => {};
 
 export function ColourSpecimen() {
   return (
@@ -77,7 +76,7 @@ export function PlaygroundSpecimen() {
           <view className="size-3 rounded-full bg-on-accent" />
         </view>
       </view>
-      <Button label="Save" variant="primary" size="sm" width="fill" />
+      <Button label="Save" variant="primary" size="sm" width="fill" onClick={unused} />
     </view>
   );
 }
@@ -85,8 +84,8 @@ export function PlaygroundSpecimen() {
 export function SignInSpecimen() {
   return (
     <view className="w-full gap-2">
-      <TextInput value="ana@example.com" onChange={none} label="Email" isLabelHidden size="sm" />
-      <Button label="Sign in" variant="primary" size="sm" width="fill" />
+      <TextInput value="ana@example.com" onChange={unused} label="Email" isLabelHidden size="sm" />
+      <Button label="Sign in" variant="primary" size="sm" width="fill" onClick={unused} />
     </view>
   );
 }
@@ -94,7 +93,7 @@ export function SignInSpecimen() {
 export function SettingsSpecimen() {
   return (
     <ItemList className="w-full">
-      <Switch value onChange={none} label="Wi-Fi" variant="row" />
+      <Switch value onChange={unused} label="Wi-Fi" variant="row" />
     </ItemList>
   );
 }
@@ -102,7 +101,7 @@ export function SettingsSpecimen() {
 export function ListDetailSpecimen() {
   return (
     <ItemList className="w-full">
-      <Item label="Two more seats" description="Ana Lima" isSelected onClick={none} />
+      <Item label="Two more seats" description="Ana Lima" isSelected onClick={unused} />
     </ItemList>
   );
 }

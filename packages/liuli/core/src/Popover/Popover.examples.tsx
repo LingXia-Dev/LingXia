@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Said } from '../example';
 import { Button } from '../Button/Button';
 import { Switch } from '../Switch/Switch';
 import { popoverRecipe } from './Popover.recipe';
@@ -37,14 +38,18 @@ export function Share() {
 /** The panel drawn at rest under its trigger, for the gallery's parts stage: its own part classes, in the page. */
 export function Parts() {
   return (
-    <view className="items-start gap-1.5">
-      <Button label="View options" />
-      <view className="w-72 p-4 gap-3 rounded-container border border-text/12 bg-surface-overlay shadow-raised">
-        <text className={popoverRecipe.title.base}>Show in the list</text>
-        <text className="text-body text-text">Previews</text>
-        <text className="text-body text-text">Dates</text>
-      </view>
-    </view>
+    <Said>
+      {say => (
+        <view className="items-start gap-1.5">
+          <Button label="View options" onClick={() => say('Opened View options')} />
+          <view className="w-72 p-4 gap-3 rounded-container border border-text/12 bg-surface-overlay shadow-raised">
+            <text className={popoverRecipe.title.base}>Show in the list</text>
+            <text className="text-body text-text">Previews</text>
+            <text className="text-body text-text">Dates</text>
+          </view>
+        </view>
+      )}
+    </Said>
   );
 }
 

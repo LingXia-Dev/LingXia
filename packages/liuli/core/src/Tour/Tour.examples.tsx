@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Said } from '../example';
 import { Button } from '../Button/Button';
 import { IconButton } from '../IconButton/IconButton';
 import { SearchField } from '../SearchField/SearchField';
@@ -15,31 +16,35 @@ export function Welcome() {
   const step = useLocal<number | null>('step', null);
   const query = useLocal('query', '');
   return (
-    <view className="gap-4">
-      <view className="flex-row items-center gap-2">
-        <view id="tour-new"><Button label="New note" variant="primary" startIcon="add" /></view>
-        <view id="tour-search" className="grow basis-0 min-w-0">
-          <SearchField label="Search notes" value={query.value} onChange={query.set} placeholder="Search" clearLabel="Clear" />
+    <Said>
+      {say => (
+        <view className="gap-4">
+          <view className="flex-row items-center gap-2">
+            <view id="tour-new"><Button label="New note" variant="primary" startIcon="add" onClick={() => say('Created a note')} /></view>
+            <view id="tour-search" className="grow basis-0 min-w-0">
+              <SearchField label="Search notes" value={query.value} onChange={query.set} placeholder="Search" clearLabel="Clear" />
+            </view>
+          </view>
+          <view className="flex-row items-center justify-between gap-3">
+            <text className="text-body text-text">Trip to the coast</text>
+            <view id="tour-share"><IconButton label="Share" icon="share" onClick={() => say('Shared Trip to the coast')} /></view>
+          </view>
+          <Button label="Show me around" width="content" onClick={() => step.set(0)} data-testid="tour-start" />
+          {step.value !== null && <text role="status" className="text-footnote text-muted">{`On step ${step.value + 1}`}</text>}
+          <Tour
+            steps={steps}
+            step={step.value}
+            onStepChange={next => step.set(next)}
+            nextLabel="Next"
+            backLabel="Back"
+            skipLabel="Skip"
+            doneLabel="Done"
+            stepLabel={(at, count) => `${at + 1} of ${count}`}
+            data-testid="tour"
+          />
         </view>
-      </view>
-      <view className="flex-row items-center justify-between gap-3">
-        <text className="text-body text-text">Trip to the coast</text>
-        <view id="tour-share"><IconButton label="Share" icon="share" /></view>
-      </view>
-      <Button label="Show me around" width="content" onClick={() => step.set(0)} data-testid="tour-start" />
-      <text role="status" className="text-footnote text-muted">{step.value === null ? 'Tour not running' : `On step ${step.value + 1}`}</text>
-      <Tour
-        steps={steps}
-        step={step.value}
-        onStepChange={next => step.set(next)}
-        nextLabel="Next"
-        backLabel="Back"
-        skipLabel="Skip"
-        doneLabel="Done"
-        stepLabel={(at, count) => `${at + 1} of ${count}`}
-        data-testid="tour"
-      />
-    </view>
+      )}
+    </Said>
   );
 }
 

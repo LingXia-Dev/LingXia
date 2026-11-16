@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { Select } from './Select';
 
 const countries = [
@@ -57,22 +58,22 @@ export function Required() {
 const sorts = [{ value: 'edited', label: 'Last edited' }, { value: 'created', label: 'Date created' }, { value: 'title', label: 'Title' }];
 
 export function StateEmpty() {
-  return <Select value="" onChange={() => {}} label="Sort by" placeholder="Choose" options={sorts} />;
+  return <Held value="">{(sort, set) => <Select value={sort} onChange={set} label="Sort by" placeholder="Choose" options={sorts} />}</Held>;
 }
 
 export function StateChosen() {
-  return <Select value="edited" onChange={() => {}} label="Sort by" options={sorts} />;
+  return <Held value="edited">{(sort, set) => <Select value={sort} onChange={set} label="Sort by" options={sorts} />}</Held>;
 }
 
 export function StateInvalid() {
-  return <Select value="" onChange={() => {}} label="Sort by" placeholder="Choose" options={sorts} status={{ type: 'error', message: 'Choose one.' }} />;
+  return <Held value="">{(sort, set) => <Select value={sort} onChange={set} label="Sort by" placeholder="Choose" options={sorts} status={sort === '' ? { type: 'error', message: 'Choose one.' } : undefined} />}</Held>;
 }
 
 export function StateDisabled() {
-  return <Select value="edited" onChange={() => {}} label="Sort by" options={sorts} isDisabled disabledMessage="Set by the folder." />;
+  return <Select value="edited" onChange={unused} label="Sort by" options={sorts} isDisabled disabledMessage="Set by the folder." />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <Select value="title" onChange={() => {}} label="Sort by" isLabelHidden size="sm" options={sorts} className="w-32 max-w-full" />;
+  return <Select value="title" onChange={unused} label="Sort by" isLabelHidden size="sm" options={sorts} className="w-32 max-w-full" />;
 }

@@ -65,14 +65,15 @@ export function WordWrap() {
 ### Sizes
 
 ```tsx
+import { Held } from '../example';
 import { ToggleButton } from '@liulidesign/core/ToggleButton';
 
 export function Sizes() {
   return (
     <view className="flex-row flex-wrap items-center gap-2">
-      <ToggleButton label="Small" size="sm" isPressed onPressedChange={() => {}} />
-      <ToggleButton label="Medium" isPressed onPressedChange={() => {}} />
-      <ToggleButton label="Large" size="lg" isPressed onPressedChange={() => {}} />
+      <Held value={true}>{(isPressed, set) => <ToggleButton label="Small" size="sm" isPressed={isPressed} onPressedChange={set} />}</Held>
+      <Held value={true}>{(isPressed, set) => <ToggleButton label="Medium" isPressed={isPressed} onPressedChange={set} />}</Held>
+      <Held value={true}>{(isPressed, set) => <ToggleButton label="Large" size="lg" isPressed={isPressed} onPressedChange={set} />}</Held>
     </view>
   );
 }

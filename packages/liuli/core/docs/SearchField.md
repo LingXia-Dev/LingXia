@@ -47,11 +47,12 @@ export function Notes() {
 ### While a search runs
 
 ```tsx
+import { Held } from '../example';
 import { SearchField } from '@liulidesign/core/SearchField';
 
 /** While a search runs elsewhere, the magnifier gives way to a spinner. */
 export function Loading() {
-  return <SearchField label="Search the catalogue" placeholder="Search the catalogue" clearLabel="Clear search" value="lamp" onChange={() => {}} isLoading resultsLabel="Searching" data-testid="catalogue" />;
+  return <Held value="lamp">{(query, set) => <SearchField label="Search the catalogue" placeholder="Search the catalogue" clearLabel="Clear search" value={query} onChange={set} isLoading resultsLabel="Searching" data-testid="catalogue" />}</Held>;
 }
 ```
 

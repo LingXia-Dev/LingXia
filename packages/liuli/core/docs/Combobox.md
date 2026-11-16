@@ -153,7 +153,7 @@ export function Shipping() {
     <view className="gap-4">
       <Combobox label="Ship to" bind={country} options={countries} searchLabel="Search countries" emptyLabel="No country matches" isRequired data-testid="ship-to" />
       <Button label="Save address" variant="primary" width="content" onClick={() => saved.set(country.value)} data-testid="save-address" />
-      <text role="status" data-testid="saved" className="text-footnote text-muted">{saved.value === '' ? 'Not saved' : `Saved: ${saved.value}`}</text>
+      {saved.value !== '' && <text role="status" data-testid="saved" className="text-footnote text-muted">{`Saved: ${saved.value}`}</text>}
     </view>
   );
 }

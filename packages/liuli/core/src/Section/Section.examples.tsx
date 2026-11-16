@@ -1,3 +1,4 @@
+import { Said } from '../example';
 import { Button } from '../Button/Button';
 import { Item, ItemList } from '../Item/Item';
 import { Section } from './Section';
@@ -5,12 +6,16 @@ import { Section } from './Section';
 /** A part of a page with its heading, a line about it and a way to see more. */
 export function Recent() {
   return (
-    <Section title="Recent notes" description="Edited in the last week" action={<Button label="See all" variant="link" size="sm" />} data-testid="recent">
-      <ItemList label="Recent notes">
-        <Item label="Trip to the coast" description="Edited yesterday" hasChevron onClick={() => {}} />
-        <Item label="Reading list" description="Edited on Monday" hasChevron onClick={() => {}} />
-      </ItemList>
-    </Section>
+    <Said>
+      {say => (
+        <Section title="Recent notes" description="Edited in the last week" action={<Button label="See all" variant="link" size="sm" onClick={() => say('Opened all recent notes')} />} data-testid="recent">
+          <ItemList label="Recent notes">
+            <Item label="Trip to the coast" description="Edited yesterday" hasChevron onClick={() => say('Opened Trip to the coast')} />
+            <Item label="Reading list" description="Edited on Monday" hasChevron onClick={() => say('Opened Reading list')} />
+          </ItemList>
+        </Section>
+      )}
+    </Said>
   );
 }
 

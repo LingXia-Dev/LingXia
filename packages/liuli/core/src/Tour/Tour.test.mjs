@@ -28,10 +28,10 @@ test('Welcome: Next and Back step through; the last step says Done and ends the 
   assert.deepEqual([shownTitle(screen), textOf(screen.getByTestId('tour-next'))], ['Share what you choose', 'Done']);
   assert.equal(screen.queryAll(node => node.testId === 'tour-skip').length, 0, 'nothing to skip on the last step');
   screen.press(screen.getByTestId('tour-next'));
-  screen.getByText('Tour not running');
+  assert.equal(screen.queryAll(node => /^On step/.test(node.text ?? '')).length, 0, 'the tour is not running: no step line');
   screen.press(screen.getByTestId('tour-start'));
   screen.press(screen.getByTestId('tour-skip'));
-  screen.getByText('Tour not running');
+  assert.equal(screen.queryAll(node => /^On step/.test(node.text ?? '')).length, 0, 'the tour is not running: no step line');
 });
 
 test('Welcome: a caret is anchored to the same target by itself, and is not read', async () => {

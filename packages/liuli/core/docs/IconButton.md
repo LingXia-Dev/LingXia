@@ -16,19 +16,24 @@ IconButton is a Button drawn as a square with its icon alone, for actions people
 
 ```tsx
 import { useLocal } from '@lingxia/view';
+import { Said } from '../example';
 import { IconButton } from '@liulidesign/core/IconButton';
 
 /** The label is never drawn and always read: name what the press does. */
 export function Toolbar() {
   const liked = useLocal('liked', 0);
   return (
-    <view className="flex-row items-center gap-1">
-      <IconButton label="Like" icon="heart" onClick={() => liked.set(liked.value + 1)} data-testid="like" />
-      <IconButton label="Share" icon="share" data-testid="share" />
-      <IconButton label="Bookmark" icon="bookmark" />
-      <IconButton label="More actions" icon="more" />
-      <text role="status" data-testid="likes" className="ps-2 text-footnote text-muted tabular-nums">{`${liked.value} likes`}</text>
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row items-center gap-1">
+          <IconButton label="Like" icon="heart" onClick={() => liked.set(liked.value + 1)} data-testid="like" />
+          <IconButton label="Share" icon="share" onClick={() => say('Shared')} data-testid="share" />
+          <IconButton label="Bookmark" icon="bookmark" onClick={() => say('Bookmarked')} />
+          <IconButton label="More actions" icon="more" onClick={() => say('Opened More actions')} />
+          <text role="status" data-testid="likes" className="ps-2 text-footnote text-muted tabular-nums">{`${liked.value} likes`}</text>
+        </view>
+      )}
+    </Said>
   );
 }
 ```
@@ -36,16 +41,21 @@ export function Toolbar() {
 ### Variants
 
 ```tsx
+import { Said } from '../example';
 import { IconButton } from '@liulidesign/core/IconButton';
 
 export function Variants() {
   return (
-    <view className="flex-row items-center gap-3">
-      <IconButton label="Add" icon="add" variant="primary" data-testid="add" />
-      <IconButton label="Edit" icon="edit" variant="secondary" />
-      <IconButton label="Settings" icon="settings" data-testid="quiet" />
-      <IconButton label="Delete" icon="delete" variant="destructive" />
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row items-center gap-3">
+          <IconButton label="Add" icon="add" variant="primary" onClick={() => say('Added')} data-testid="add" />
+          <IconButton label="Edit" icon="edit" variant="secondary" onClick={() => say('Opened Edit')} />
+          <IconButton label="Settings" icon="settings" onClick={() => say('Opened Settings')} data-testid="quiet" />
+          <IconButton label="Delete" icon="delete" variant="destructive" onClick={() => say('Deleted')} />
+        </view>
+      )}
+    </Said>
   );
 }
 ```
@@ -53,15 +63,20 @@ export function Variants() {
 ### Sizes
 
 ```tsx
+import { Said } from '../example';
 import { IconButton } from '@liulidesign/core/IconButton';
 
 export function Sizes() {
   return (
-    <view className="flex-row items-center gap-3">
-      <IconButton label="Search, small" icon="search" size="sm" variant="secondary" data-testid="small" />
-      <IconButton label="Search, medium" icon="search" variant="secondary" data-testid="medium" />
-      <IconButton label="Search, large" icon="search" size="lg" variant="secondary" data-testid="large" />
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row items-center gap-3">
+          <IconButton label="Search, small" icon="search" size="sm" variant="secondary" onClick={() => say('Searched, small')} data-testid="small" />
+          <IconButton label="Search, medium" icon="search" variant="secondary" onClick={() => say('Searched, medium')} data-testid="medium" />
+          <IconButton label="Search, large" icon="search" size="lg" variant="secondary" onClick={() => say('Searched, large')} data-testid="large" />
+        </view>
+      )}
+    </Said>
   );
 }
 ```

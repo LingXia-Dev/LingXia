@@ -46,14 +46,15 @@ export function QuietHours() {
 ### Sizes
 
 ```tsx
+import { Held } from '../example';
 import { TimeInput } from '@liulidesign/core/TimeInput';
 
 export function Sizes() {
   return (
     <view className="gap-3">
-      <TimeInput label="Small" size="sm" value="09:30" onChange={() => {}} />
-      <TimeInput label="Medium" value="09:30" onChange={() => {}} />
-      <TimeInput label="Large" size="lg" value="09:30" onChange={() => {}} />
+      <Held value="09:30">{(time, set) => <TimeInput label="Small" size="sm" value={time} onChange={set} />}</Held>
+      <Held value="09:30">{(time, set) => <TimeInput label="Medium" value={time} onChange={set} />}</Held>
+      <Held value="09:30">{(time, set) => <TimeInput label="Large" size="lg" value={time} onChange={set} />}</Held>
     </view>
   );
 }

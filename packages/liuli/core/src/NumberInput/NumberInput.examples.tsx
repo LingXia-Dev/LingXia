@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { NumberInput } from './NumberInput';
 
 /** A count people nudge more often than they type. */
@@ -57,35 +58,37 @@ export function Sizes() {
   );
 }
 
-const none = () => {};
-
 export function StateEmpty() {
-  return <NumberInput label="Quantity" value={null} onChange={none} min={0} placeholder="0" decrementLabel="Less" incrementLabel="More" />;
+  return <Held value={null as number | null}>{(quantity, set) => <NumberInput label="Quantity" value={quantity} onChange={set} min={0} placeholder="0" decrementLabel="Less" incrementLabel="More" />}</Held>;
 }
 
 export function StateAtMinimum() {
-  return <NumberInput label="Quantity" value={1} onChange={none} min={1} max={9} decrementLabel="Less" incrementLabel="More" data-testid="at-minimum" />;
+  return <Held value={1 as number | null}>{(quantity, set) => <NumberInput label="Quantity" value={quantity} onChange={set} min={1} max={9} decrementLabel="Less" incrementLabel="More" data-testid="at-minimum" />}</Held>;
 }
 
 export function StateInvalid() {
   return (
-    <NumberInput
-      label="Quantity"
-      value={14}
-      onChange={none}
-      status={{ type: 'error', message: 'Only 9 left in stock.' }}
-      decrementLabel="Less"
-      incrementLabel="More"
-      data-testid="invalid"
-    />
+    <Held value={14 as number | null}>
+      {(quantity, set) => (
+        <NumberInput
+          label="Quantity"
+          value={quantity}
+          onChange={set}
+          status={quantity !== null && quantity > 9 ? { type: 'error', message: 'Only 9 left in stock.' } : undefined}
+          decrementLabel="Less"
+          incrementLabel="More"
+          data-testid="invalid"
+        />
+      )}
+    </Held>
   );
 }
 
 export function StateDisabled() {
-  return <NumberInput label="Quantity" value={3} onChange={none} isDisabled decrementLabel="Less" incrementLabel="More" data-testid="disabled" />;
+  return <NumberInput label="Quantity" value={3} onChange={unused} isDisabled decrementLabel="Less" incrementLabel="More" data-testid="disabled" />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <NumberInput label="Guests" isLabelHidden value={2} onChange={none} size="sm" decrementLabel="Fewer" incrementLabel="More" className="w-32" />;
+  return <NumberInput label="Guests" isLabelHidden value={2} onChange={unused} size="sm" decrementLabel="Fewer" incrementLabel="More" className="w-32" />;
 }

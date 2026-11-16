@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import { DropdownMenuDivider, DropdownMenuItem } from '../DropdownMenu/DropdownMenu';
 import { Item, ItemList } from '../Item/Item';
 import { ContextMenu } from './ContextMenu';
@@ -11,7 +12,7 @@ const notes = [
 
 /** Rows with a menu each: hold a row, or click it with the secondary button. The row itself still opens. */
 export function Rows() {
-  const last = useLocal('last', 'Nothing yet');
+  const last = useLocal('last', '');
   return (
     <view className="gap-2">
       <ItemList label="Notes">
@@ -33,7 +34,7 @@ export function Rows() {
           </ContextMenu>
         ))}
       </ItemList>
-      <text role="status" className="text-footnote text-muted">{last.value}</text>
+      {last.value !== '' && <text role="status" className="text-footnote text-muted">{last.value}</text>}
     </view>
   );
 }
@@ -41,7 +42,7 @@ export function Rows() {
 /** The home tile. */
 export function Specimen() {
   return (
-    <ContextMenu label="Sample" menu={<DropdownMenuItem label="Copy" onClick={() => {}} />}>
+    <ContextMenu label="Sample" menu={<DropdownMenuItem label="Copy" onClick={unused} />}>
       <view className="w-28 h-12 items-center justify-center rounded-control bg-surface-sunken">
         <text className="text-footnote text-muted">Hold me</text>
       </view>

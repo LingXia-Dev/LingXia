@@ -24,7 +24,7 @@ export function Reminder() {
   return (
     <view className="gap-2">
       <DateTimeInput bind={when} label="Remind me" dateLabel="Reminder date" timeLabel="Reminder time" description="In your own time zone." data-testid="remind" />
-      <text role="status" className="text-footnote text-muted">{when.value === '' ? 'No reminder set' : `Set for ${when.value.replace('T', ' at ')}`}</text>
+      {when.value !== '' && <text role="status" className="text-footnote text-muted">{`Set for ${when.value.replace('T', ' at ')}`}</text>}
     </view>
   );
 }

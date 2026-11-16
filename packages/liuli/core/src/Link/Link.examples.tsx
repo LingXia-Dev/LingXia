@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Said, unused } from '../example';
 import { Link } from './Link';
 
 /** In a sentence, under a form. */
@@ -10,7 +11,7 @@ export function InSentence() {
         By creating an account you accept the <Link label="terms of service" onClick={() => opened.set('terms')} data-testid="terms" /> and the{' '}
         <Link label="privacy notice" onClick={() => opened.set('privacy')} data-testid="privacy" />.
       </text>
-      <text data-testid="opened" className="text-caption text-muted">{opened.value === '' ? 'Nothing opened' : `Opened: ${opened.value}`}</text>
+      {opened.value !== '' && <text role="status" data-testid="opened" className="text-caption text-muted">{`Opened: ${opened.value}`}</text>}
     </view>
   );
 }
@@ -18,9 +19,13 @@ export function InSentence() {
 /** In body text, at its size and weight. */
 export function InBody() {
   return (
-    <text className="text-body text-text">
-      Exports are kept for seven days. You can <Link label="download the last export" onClick={() => {}} data-testid="download" /> or start a new one from Settings.
-    </text>
+    <Said>
+      {say => (
+        <text className="text-body text-text">
+          Exports are kept for seven days. You can <Link label="download the last export" onClick={() => say('Downloaded the last export')} data-testid="download" /> or start a new one from Settings.
+        </text>
+      )}
+    </Said>
   );
 }
 
@@ -37,7 +42,7 @@ export function Disabled() {
 export function Specimen() {
   return (
     <text className="text-footnote text-muted">
-      Read the <Link label="guide" onClick={() => {}} />
+      Read the <Link label="guide" onClick={unused} />
     </text>
   );
 }

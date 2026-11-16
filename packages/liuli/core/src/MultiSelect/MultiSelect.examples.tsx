@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import { MultiSelect } from './MultiSelect';
 
 const labels = [
@@ -45,10 +46,10 @@ export function Empty() {
 }
 
 export function StateDisabled() {
-  return <MultiSelect value={['travel']} onChange={() => {}} label="Labels" options={labels} addLabel="Add a label" removeLabel={name => `Remove ${name}`} isDisabled disabledMessage="Labels are set by the owner." />;
+  return <MultiSelect value={['travel']} onChange={unused} label="Labels" options={labels} addLabel="Add a label" removeLabel={name => `Remove ${name}`} isDisabled disabledMessage="Labels are set by the owner." />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <MultiSelect value={['travel']} onChange={() => {}} label="Labels" isLabelHidden options={labels} addLabel="Add a label" removeLabel={name => `Remove ${name}`} className="w-36" />;
+  return <MultiSelect value={['travel']} onChange={unused} label="Labels" isLabelHidden options={labels} addLabel="Add a label" removeLabel={name => `Remove ${name}`} className="w-36" />;
 }

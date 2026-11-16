@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { RadioGroup } from './RadioGroup';
 
 const deliveries = [
@@ -69,24 +70,24 @@ export function Required() {
 const pair = [{ value: 'monthly', label: 'Monthly' }, { value: 'yearly', label: 'Yearly' }];
 
 export function StateDefault() {
-  return <RadioGroup value="monthly" onChange={() => {}} label="Billing" options={pair} />;
+  return <Held value={'monthly' as string | null}>{(billing, set) => <RadioGroup value={billing} onChange={set} label="Billing" options={pair} />}</Held>;
 }
 
 export function StateInvalid() {
-  return <RadioGroup value={null} onChange={() => {}} label="Billing" options={pair} status={{ type: 'error', message: 'Choose one.' }} />;
+  return <Held value={null as string | null}>{(billing, set) => <RadioGroup value={billing} onChange={set} label="Billing" options={pair} status={billing === null ? { type: 'error', message: 'Choose one.' } : undefined} />}</Held>;
 }
 
 export function StateDisabledOption() {
-  return <RadioGroup value="monthly" onChange={() => {}} label="Billing" options={[pair[0], { ...pair[1], isDisabled: true }]} />;
+  return <Held value={'monthly' as string | null}>{(billing, set) => <RadioGroup value={billing} onChange={set} label="Billing" options={[pair[0], { ...pair[1], isDisabled: true }]} />}</Held>;
 }
 
 export function StateDisabled() {
-  return <RadioGroup value="monthly" onChange={() => {}} label="Billing" options={pair} isDisabled disabledMessage="Set by your team." />;
+  return <RadioGroup value="monthly" onChange={unused} label="Billing" options={pair} isDisabled disabledMessage="Set by your team." />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <RadioGroup value="a" onChange={() => {}} label="Plan" isLabelHidden size="sm" options={[{ value: 'a', label: 'Monthly' }, { value: 'b', label: 'Yearly' }]} />;
+  return <RadioGroup value="a" onChange={unused} label="Plan" isLabelHidden size="sm" options={[{ value: 'a', label: 'Monthly' }, { value: 'b', label: 'Yearly' }]} />;
 }
 
 /** Two short options side by side. */

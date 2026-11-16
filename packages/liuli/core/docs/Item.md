@@ -15,6 +15,7 @@ Item is the row of a settings screen, an inbox or a file list. With `onClick` th
 ### Rows that open a page
 
 ```tsx
+import { Said } from '../example';
 import { Item, ItemList } from '@liulidesign/core/Item';
 
 const notes = [
@@ -26,11 +27,15 @@ const notes = [
 /** Rows that open a page, in a list: each is one button named by its title, read with its position. */
 export function Navigation() {
   return (
-    <ItemList label="Notes" data-testid="notes">
-      {notes.map(note => (
-        <Item key={note.id} label={note.title} description={note.updated} hasChevron onClick={() => {}} data-testid={`note-${note.id}`} />
-      ))}
-    </ItemList>
+    <Said>
+      {say => (
+        <ItemList label="Notes" data-testid="notes">
+          {notes.map(note => (
+            <Item key={note.id} label={note.title} description={note.updated} hasChevron onClick={() => say(`Opened ${note.title}`)} data-testid={`note-${note.id}`} />
+          ))}
+        </ItemList>
+      )}
+    </Said>
   );
 }
 ```
@@ -132,6 +137,7 @@ export function WithControl() {
 ### Disabled, with the reason
 
 ```tsx
+import { unused } from '../example';
 import { Item } from '@liulidesign/core/Item';
 
 export function Disabled() {
@@ -143,7 +149,7 @@ export function Disabled() {
         disabledMessage="Available once a change is saved"
         isDisabled
         hasChevron
-        onClick={() => {}}
+        onClick={unused}
         data-testid="export"
       />
     </view>
@@ -154,6 +160,7 @@ export function Disabled() {
 ### A destructive row
 
 ```tsx
+import { Said } from '../example';
 import { Item } from '@liulidesign/core/Item';
 
 const notes = [
@@ -165,9 +172,13 @@ const notes = [
 /** A row that deletes or ends something; the danger tone marks it before it is pressed. */
 export function Destructive() {
   return (
-    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
-      <Item label="Delete account" description="Removes your notes from every device" tone="danger" hasChevron onClick={() => {}} data-testid="delete-row" />
-    </view>
+    <Said>
+      {say => (
+        <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
+          <Item label="Delete account" description="Removes your notes from every device" tone="danger" hasChevron onClick={() => say('Opened Delete account')} data-testid="delete-row" />
+        </view>
+      )}
+    </Said>
   );
 }
 ```
@@ -176,6 +187,7 @@ export function Destructive() {
 
 ```tsx
 import { useLocal } from '@lingxia/view';
+import { Said } from '../example';
 import { Item, ItemList } from '@liulidesign/core/Item';
 
 const inbox = [
@@ -189,23 +201,27 @@ export function Swipe() {
   const gone = useLocal<readonly string[]>('gone', []);
   const flagged = useLocal<readonly string[]>('flagged', []);
   return (
-    <ItemList title="Inbox" description="Drag a message to the side to flag or delete it." data-testid="inbox">
-      {inbox.filter(mail => !gone.value.includes(mail.id)).map(mail => (
-        <Item
-          key={mail.id}
-          label={mail.from}
-          description={mail.subject}
-          endContent={flagged.value.includes(mail.id) ? <text className="text-footnote text-muted">Flagged</text> : undefined}
-          hasChevron
-          onClick={() => {}}
-          swipeActions={[
-            { key: 'flag', label: 'Flag', icon: 'flag', onClick: () => flagged.set(flagged.value.includes(mail.id) ? flagged.value.filter(id => id !== mail.id) : [...flagged.value, mail.id]) },
-            { key: 'delete', label: 'Delete', icon: 'delete', tone: 'danger', onClick: () => gone.set([...gone.value, mail.id]) },
-          ]}
-          data-testid={`mail-${mail.id}`}
-        />
-      ))}
-    </ItemList>
+    <Said>
+      {say => (
+        <ItemList title="Inbox" description="Drag a message to the side to flag or delete it." data-testid="inbox">
+          {inbox.filter(mail => !gone.value.includes(mail.id)).map(mail => (
+            <Item
+              key={mail.id}
+              label={mail.from}
+              description={mail.subject}
+              endContent={flagged.value.includes(mail.id) ? <text className="text-footnote text-muted">Flagged</text> : undefined}
+              hasChevron
+              onClick={() => say(`Opened ${mail.subject}`)}
+              swipeActions={[
+                { key: 'flag', label: 'Flag', icon: 'flag', onClick: () => flagged.set(flagged.value.includes(mail.id) ? flagged.value.filter(id => id !== mail.id) : [...flagged.value, mail.id]) },
+                { key: 'delete', label: 'Delete', icon: 'delete', tone: 'danger', onClick: () => gone.set([...gone.value, mail.id]) },
+              ]}
+              data-testid={`mail-${mail.id}`}
+            />
+          ))}
+        </ItemList>
+      )}
+    </Said>
   );
 }
 ```
@@ -213,6 +229,7 @@ export function Swipe() {
 ### A compact list
 
 ```tsx
+import { Said } from '../example';
 import { Item, ItemList } from '@liulidesign/core/Item';
 
 const files = [
@@ -223,11 +240,15 @@ const files = [
 /** Compact rows for a long list read with a mouse. */
 export function Compact() {
   return (
-    <ItemList title="Files" density="compact" data-testid="files">
-      {files.map(file => (
-        <Item key={file.name} label={file.name} endContent={<text className="text-footnote text-muted tabular-nums">{file.size}</text>} onClick={() => {}} data-testid={`file-${file.name}`} />
-      ))}
-    </ItemList>
+    <Said>
+      {say => (
+        <ItemList title="Files" density="compact" data-testid="files">
+          {files.map(file => (
+            <Item key={file.name} label={file.name} endContent={<text className="text-footnote text-muted tabular-nums">{file.size}</text>} onClick={() => say(`Opened ${file.name}`)} data-testid={`file-${file.name}`} />
+          ))}
+        </ItemList>
+      )}
+    </Said>
   );
 }
 ```

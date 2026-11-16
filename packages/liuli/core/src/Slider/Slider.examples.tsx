@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { Item } from '../Item/Item';
 import { Slider } from './Slider';
 
@@ -50,23 +51,23 @@ export function Position() {
 export function Sizes() {
   return (
     <view className="gap-4">
-      <Slider value={30} onChange={() => {}} label="Small" size="sm" />
-      <Slider value={60} onChange={() => {}} label="Medium" />
+      <Held value={30}>{(level, set) => <Slider value={level} onChange={set} label="Small" size="sm" />}</Held>
+      <Held value={60}>{(level, set) => <Slider value={level} onChange={set} label="Medium" />}</Held>
     </view>
   );
 }
 
 export function StateDefault() {
-  return <Slider value={40} onChange={() => {}} label="Brightness" />;
+  return <Held value={40}>{(level, set) => <Slider value={level} onChange={set} label="Brightness" />}</Held>;
 }
 
 export function StateDisabled() {
-  return <Slider value={40} onChange={() => {}} label="Brightness" description="Set by the system." isDisabled />;
+  return <Slider value={40} onChange={unused} label="Brightness" description="Set by the system." isDisabled />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <Slider value={60} onChange={() => {}} label="Volume" isLabelHidden className="w-28" />;
+  return <Slider value={60} onChange={unused} label="Volume" isLabelHidden className="w-28" />;
 }
 
 /** A short scale with its points named: ticks under the track, labels at the ends and the middle. */

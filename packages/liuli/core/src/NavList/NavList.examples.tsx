@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import { NavList } from './NavList';
 
 const workspace = [
@@ -44,7 +45,7 @@ export function Closed() {
 export function Specimen() {
   return (
     <view className="w-32">
-      <NavList label="Mail" sections={[{ id: 'mail', items: [{ value: 'inbox', label: 'Inbox', endText: '12' }, { value: 'sent', label: 'Sent' }] }]} value="inbox" onChange={() => {}} />
+      <NavList label="Mail" sections={[{ id: 'mail', items: [{ value: 'inbox', label: 'Inbox', endText: '12' }, { value: 'sent', label: 'Sent' }] }]} value="inbox" onChange={unused} />
     </view>
   );
 }

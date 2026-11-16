@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Held, unused } from '../example';
 import { TimeInput } from '../TimeInput/TimeInput';
 import { DateInput } from './DateInput';
 
@@ -47,30 +48,30 @@ export function Meeting() {
 export function Sizes() {
   return (
     <view className="gap-3">
-      <DateInput label="Small" size="sm" value="2026-12-18" onChange={() => {}} />
-      <DateInput label="Medium" value="2026-12-18" onChange={() => {}} />
-      <DateInput label="Large" size="lg" value="2026-12-18" onChange={() => {}} />
+      <Held value="2026-12-18">{(date, set) => <DateInput label="Small" size="sm" value={date} onChange={set} />}</Held>
+      <Held value="2026-12-18">{(date, set) => <DateInput label="Medium" value={date} onChange={set} />}</Held>
+      <Held value="2026-12-18">{(date, set) => <DateInput label="Large" size="lg" value={date} onChange={set} />}</Held>
     </view>
   );
 }
 
 export function StateEmpty() {
-  return <DateInput label="Birthday" placeholder="Add a date" value="" onChange={() => {}} />;
+  return <Held value="">{(date, set) => <DateInput label="Birthday" placeholder="Add a date" value={date} onChange={set} />}</Held>;
 }
 
 export function StateFilled() {
-  return <DateInput label="Birthday" value="1990-04-21" onChange={() => {}} />;
+  return <Held value="1990-04-21">{(date, set) => <DateInput label="Birthday" value={date} onChange={set} />}</Held>;
 }
 
 export function StateInvalid() {
-  return <DateInput label="Start" value="2026-01-04" onChange={() => {}} status={{ type: 'error', message: 'Choose a day this year.' }} />;
+  return <Held value="2026-01-04">{(date, set) => <DateInput label="Start" value={date} onChange={set} status={{ type: 'error', message: 'Choose a day this year.' }} />}</Held>;
 }
 
 export function StateDisabled() {
-  return <DateInput label="Start" value="2026-01-04" onChange={() => {}} isDisabled />;
+  return <DateInput label="Start" value="2026-01-04" onChange={unused} isDisabled />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <DateInput label="Due date" isLabelHidden value="2026-12-18" onChange={() => {}} size="sm" className="w-32" />;
+  return <DateInput label="Due date" isLabelHidden value="2026-12-18" onChange={unused} size="sm" className="w-32" />;
 }

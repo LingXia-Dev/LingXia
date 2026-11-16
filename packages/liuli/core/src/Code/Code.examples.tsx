@@ -24,7 +24,7 @@ export function Command() {
         action={<IconButton label="Copy the commands" icon="copy" size="sm" variant="ghost" onClick={() => copied.set(true)} data-testid="copy" />}
         data-testid="install"
       />
-      <text role="status" className="text-footnote text-muted">{copied.value ? 'Copied' : 'Not copied yet'}</text>
+      {copied.value && <text role="status" className="text-footnote text-muted">Copied</text>}
     </view>
   );
 }

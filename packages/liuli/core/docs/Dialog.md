@@ -26,7 +26,7 @@ export function Confirm() {
   return (
     <view className="gap-2">
       <Button label="Delete note" variant="destructive" width="content" onClick={() => open.set(true)} data-testid="confirm-open" />
-      <text role="status" data-testid="outcome" className="text-footnote text-muted">{deleted.value ? 'Deleted' : 'Not deleted'}</text>
+      {deleted.value && <text role="status" data-testid="outcome" className="text-footnote text-muted">Deleted</text>}
       <Dialog
         isOpen={open.value}
         onOpenChange={next => open.set(next)}

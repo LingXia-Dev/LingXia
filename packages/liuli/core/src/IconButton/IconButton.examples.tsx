@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { Said, unused } from '../example';
 import { Item } from '../Item/Item';
 import { IconButton } from './IconButton';
 
@@ -6,39 +7,51 @@ import { IconButton } from './IconButton';
 export function Toolbar() {
   const liked = useLocal('liked', 0);
   return (
-    <view className="flex-row items-center gap-1">
-      <IconButton label="Like" icon="heart" onClick={() => liked.set(liked.value + 1)} data-testid="like" />
-      <IconButton label="Share" icon="share" data-testid="share" />
-      <IconButton label="Bookmark" icon="bookmark" />
-      <IconButton label="More actions" icon="more" />
-      <text role="status" data-testid="likes" className="ps-2 text-footnote text-muted tabular-nums">{`${liked.value} likes`}</text>
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row items-center gap-1">
+          <IconButton label="Like" icon="heart" onClick={() => liked.set(liked.value + 1)} data-testid="like" />
+          <IconButton label="Share" icon="share" onClick={() => say('Shared')} data-testid="share" />
+          <IconButton label="Bookmark" icon="bookmark" onClick={() => say('Bookmarked')} />
+          <IconButton label="More actions" icon="more" onClick={() => say('Opened More actions')} />
+          <text role="status" data-testid="likes" className="ps-2 text-footnote text-muted tabular-nums">{`${liked.value} likes`}</text>
+        </view>
+      )}
+    </Said>
   );
 }
 
 export function Variants() {
   return (
-    <view className="flex-row items-center gap-3">
-      <IconButton label="Add" icon="add" variant="primary" data-testid="add" />
-      <IconButton label="Edit" icon="edit" variant="secondary" />
-      <IconButton label="Settings" icon="settings" data-testid="quiet" />
-      <IconButton label="Delete" icon="delete" variant="destructive" />
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row items-center gap-3">
+          <IconButton label="Add" icon="add" variant="primary" onClick={() => say('Added')} data-testid="add" />
+          <IconButton label="Edit" icon="edit" variant="secondary" onClick={() => say('Opened Edit')} />
+          <IconButton label="Settings" icon="settings" onClick={() => say('Opened Settings')} data-testid="quiet" />
+          <IconButton label="Delete" icon="delete" variant="destructive" onClick={() => say('Deleted')} />
+        </view>
+      )}
+    </Said>
   );
 }
 
 export function Sizes() {
   return (
-    <view className="flex-row items-center gap-3">
-      <IconButton label="Search, small" icon="search" size="sm" variant="secondary" data-testid="small" />
-      <IconButton label="Search, medium" icon="search" variant="secondary" data-testid="medium" />
-      <IconButton label="Search, large" icon="search" size="lg" variant="secondary" data-testid="large" />
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row items-center gap-3">
+          <IconButton label="Search, small" icon="search" size="sm" variant="secondary" onClick={() => say('Searched, small')} data-testid="small" />
+          <IconButton label="Search, medium" icon="search" variant="secondary" onClick={() => say('Searched, medium')} data-testid="medium" />
+          <IconButton label="Search, large" icon="search" size="lg" variant="secondary" onClick={() => say('Searched, large')} data-testid="large" />
+        </view>
+      )}
+    </Said>
   );
 }
 
 export function StateDefault() {
-  return <IconButton label="Refresh" icon="refresh" variant="secondary" />;
+  return <Said>{say => <IconButton label="Refresh" icon="refresh" variant="secondary" onClick={() => say('Refreshed')} />}</Said>;
 }
 
 export function StateBusy() {
@@ -71,8 +84,8 @@ export function InRows() {
 export function Specimen() {
   return (
     <view className="flex-row items-center gap-2">
-      <IconButton label="Like" icon="heart" variant="secondary" />
-      <IconButton label="Add" icon="add" variant="primary" />
+      <IconButton label="Like" icon="heart" variant="secondary" onClick={unused} />
+      <IconButton label="Add" icon="add" variant="primary" onClick={unused} />
     </view>
   );
 }

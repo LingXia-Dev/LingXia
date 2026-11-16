@@ -1,4 +1,5 @@
 import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
 import { Calendar, calendarWeekday, type CalendarRange } from './Calendar';
 import { calendarEn } from './locale/en';
 import { calendarZh } from './locale/zh';
@@ -38,5 +39,5 @@ export function Chinese() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Calendar label="Calendar" locale={calendarEn} value="2026-11-19" onChange={() => {}} today={today} className="w-[280px] scale-50" />;
+  return <Calendar label="Calendar" locale={calendarEn} value="2026-11-19" onChange={unused} today={today} className="w-[280px] scale-50" />;
 }

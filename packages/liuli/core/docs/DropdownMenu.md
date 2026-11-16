@@ -39,6 +39,7 @@ export function Basic() {
 ```tsx
 import { useLocal, type VectorPath } from '@lingxia/view';
 import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+import { Said, unused } from '../example';
 
 const dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];
 const trash: VectorPath[] = [{ d: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }];
@@ -47,28 +48,32 @@ const trash: VectorPath[] = [{ d: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13', fill: 'n
 export function More() {
   const removed = useLocal('removed', false);
   return (
-    <view className="flex-row items-center gap-3">
-      <text className="grow basis-0 text-body font-medium text-text">{removed.value ? 'Removed' : 'Groceries'}</text>
-      <DropdownMenu
-        label="More actions"
-        isLabelHidden
-        icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className="size-5" />}
-        variant="ghost"
-        alignment="end"
-        data-testid="more"
-      >
-        <DropdownMenuItem label="Rename" onClick={() => {}} />
-        <DropdownMenuItem label="Share" onClick={() => {}} isDisabled />
-        <DropdownMenuDivider />
-        <DropdownMenuItem
-          label="Delete"
-          variant="destructive"
-          icon={<vector aria-hidden paths={trash} viewBox={[0, 0, 24, 24]} className="size-4" />}
-          onClick={() => removed.set(true)}
-          data-testid="delete"
-        />
-      </DropdownMenu>
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row items-center gap-3">
+          <text className="grow basis-0 text-body font-medium text-text">{removed.value ? 'Removed' : 'Groceries'}</text>
+          <DropdownMenu
+            label="More actions"
+            isLabelHidden
+            icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className="size-5" />}
+            variant="ghost"
+            alignment="end"
+            data-testid="more"
+          >
+            <DropdownMenuItem label="Rename" onClick={() => say('Chose Rename')} />
+            <DropdownMenuItem label="Share" onClick={unused} isDisabled />
+            <DropdownMenuDivider />
+            <DropdownMenuItem
+              label="Delete"
+              variant="destructive"
+              icon={<vector aria-hidden paths={trash} viewBox={[0, 0, 24, 24]} className="size-4" />}
+              onClick={() => removed.set(true)}
+              data-testid="delete"
+            />
+          </DropdownMenu>
+        </view>
+      )}
+    </Said>
   );
 }
 ```
@@ -78,6 +83,7 @@ export function More() {
 ```tsx
 import { type VectorPath } from '@lingxia/view';
 import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+import { Said } from '../example';
 
 const dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];
 
@@ -85,24 +91,28 @@ const dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', 
 export function InList() {
   const rows = ['Inbox', 'Archive'];
   return (
-    <view className="gap-2">
-      {rows.map(row => (
-        <view key={row} className="flex-row items-center gap-3">
-          <text className="grow basis-0 text-body text-text">{row}</text>
-          <DropdownMenu
-            label={`${row} actions`}
-            isLabelHidden
-            icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className="size-5" />}
-            variant="ghost"
-            size="sm"
-            alignment="end"
-            data-testid={`menu-${row}`}
-          >
-            <DropdownMenuItem label="Open" onClick={() => {}} />
-          </DropdownMenu>
+    <Said>
+      {say => (
+        <view className="gap-2">
+          {rows.map(row => (
+            <view key={row} className="flex-row items-center gap-3">
+              <text className="grow basis-0 text-body text-text">{row}</text>
+              <DropdownMenu
+                label={`${row} actions`}
+                isLabelHidden
+                icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className="size-5" />}
+                variant="ghost"
+                size="sm"
+                alignment="end"
+                data-testid={`menu-${row}`}
+              >
+                <DropdownMenuItem label="Open" onClick={() => say(`Opened ${row}`)} />
+              </DropdownMenu>
+            </view>
+          ))}
         </view>
-      ))}
-    </view>
+      )}
+    </Said>
   );
 }
 ```
@@ -190,24 +200,29 @@ export function Grouped() {
 ```tsx
 import { useLocal } from '@lingxia/view';
 import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem, DropdownMenuSubmenu } from '@liulidesign/core/DropdownMenu';
+import { Said } from '../example';
 
 /** A submenu for a few choices under one name; it opens at the item's side. */
 export function Submenu() {
   const moved = useLocal('moved', 'Notes');
   return (
-    <view className="items-start gap-2">
-      <DropdownMenu label="Note" data-testid="note-menu">
-        <DropdownMenuItem label="Rename" onClick={() => {}} />
-        <DropdownMenuSubmenu label="Move to" data-testid="move">
-          {['Notes', 'Travel', 'Recipes', 'Archive'].map(folder => (
-            <DropdownMenuItem key={folder} label={folder} onClick={() => moved.set(folder)} data-testid={`move-${folder.toLowerCase()}`} />
-          ))}
-        </DropdownMenuSubmenu>
-        <DropdownMenuDivider />
-        <DropdownMenuItem label="Delete" variant="destructive" onClick={() => {}} />
-      </DropdownMenu>
-      <text role="status" className="text-footnote text-muted">{`In ${moved.value}`}</text>
-    </view>
+    <Said>
+      {say => (
+        <view className="items-start gap-2">
+          <DropdownMenu label="Note" data-testid="note-menu">
+            <DropdownMenuItem label="Rename" onClick={() => say('Chose Rename')} />
+            <DropdownMenuSubmenu label="Move to" data-testid="move">
+              {['Notes', 'Travel', 'Recipes', 'Archive'].map(folder => (
+                <DropdownMenuItem key={folder} label={folder} onClick={() => moved.set(folder)} data-testid={`move-${folder.toLowerCase()}`} />
+              ))}
+            </DropdownMenuSubmenu>
+            <DropdownMenuDivider />
+            <DropdownMenuItem label="Delete" variant="destructive" onClick={() => say('Chose Delete')} />
+          </DropdownMenu>
+          <text role="status" className="text-footnote text-muted">{`In ${moved.value}`}</text>
+        </view>
+      )}
+    </Said>
   );
 }
 ```

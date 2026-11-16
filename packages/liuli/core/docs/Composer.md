@@ -51,7 +51,7 @@ import { Composer } from '@liulidesign/core/Composer';
 /** With a way to attach, and a draft that fits on one line: attach, text and send in a row. */
 export function RowWithAttach() {
   const draft = useLocal('short', 'On my way.');
-  const said = useLocal('said', 'Nothing sent yet');
+  const said = useLocal('said', '');
   return (
     <view className="gap-2">
       <Composer
@@ -63,7 +63,7 @@ export function RowWithAttach() {
         startContent={<IconButton label="Attach a file" icon="attach" variant="ghost" onClick={() => said.set('Asked for a file')} />}
         data-testid="short"
       />
-      <text role="status" className="text-footnote text-muted">{said.value}</text>
+      {said.value !== '' && <text role="status" className="text-footnote text-muted">{said.value}</text>}
     </view>
   );
 }
@@ -79,7 +79,7 @@ import { Composer } from '@liulidesign/core/Composer';
 /** A draft past one line: the text takes the full width, to five lines and then scrolling, and the buttons go under it. */
 export function WithAttach() {
   const draft = useLocal('long', 'Leaving at eight from the east gate.\nBring the tent and the stove.\nI have the maps and water for two days.\nKai has the first-aid kit.\nBack on Sunday before dark.\nCall if the road is closed.');
-  const said = useLocal('said', 'Nothing sent yet');
+  const said = useLocal('said', '');
   return (
     <view className="gap-2">
       <Composer
@@ -91,7 +91,7 @@ export function WithAttach() {
         startContent={<IconButton label="Attach a file" icon="attach" variant="ghost" onClick={() => said.set('Asked for a file')} />}
         data-testid="long"
       />
-      <text role="status" className="text-footnote text-muted">{said.value}</text>
+      {said.value !== '' && <text role="status" className="text-footnote text-muted">{said.value}</text>}
     </view>
   );
 }

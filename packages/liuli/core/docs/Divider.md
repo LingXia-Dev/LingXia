@@ -38,17 +38,22 @@ export function Between() {
 ### With a word on the line
 
 ```tsx
+import { Said } from '../example';
 import { Button } from '@liulidesign/core/Button';
 import { Divider } from '@liulidesign/core/Divider';
 
 /** A word on the line, between two ways to do the same thing. */
 export function Labelled() {
   return (
-    <view className="gap-4">
-      <Button label="Continue with email" variant="primary" width="fill" />
-      <Divider label="or" data-testid="or" />
-      <Button label="Use a passkey" width="fill" />
-    </view>
+    <Said>
+      {say => (
+        <view className="gap-4">
+          <Button label="Continue with email" variant="primary" width="fill" onClick={() => say('Continued with email')} />
+          <Divider label="or" data-testid="or" />
+          <Button label="Use a passkey" width="fill" onClick={() => say('Used a passkey')} />
+        </view>
+      )}
+    </Said>
   );
 }
 ```
