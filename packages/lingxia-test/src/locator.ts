@@ -151,6 +151,8 @@ export interface LocatorRefine {
   hasText?: string | RegExp;
   /** The accessible name (`aria-label`, else the text), whole and exact, or a pattern. */
   name?: string | RegExp;
+  /** Only matches whose selected state is this; a match with no such state counts as not selected. */
+  selected?: boolean;
   /** Pick the last match (`.last()`); `LocatorTarget.index` picks from the start. */
   last?: boolean;
   /** Built by `Locator.getByRole`: the selector is a descendant chain. */
@@ -230,6 +232,20 @@ export function descendantSelector(outer: string, inner: string): string {
 // A GPU host that predates descendant chains lists no such form in its refusal.
 const SCOPED_GPU_QUERIES = "descendant chains";
 
+/** `getByRole`'s options as a refinement; an option it does not know is an error, never ignored. */
+export function roleRefine(options: unknown): Pick<LocatorRefine, "name" | "selected"> {
+  if (options === undefined) return {};
+  if (options === null || typeof options !== "object") throw new TypeError("getByRole() options must be an object");
+  const { name, selected, ...unknown } = options as Record<string, unknown>;
+  const extra = Object.keys(unknown);
+  if (extra.length) throw new TypeError(`getByRole() takes name and selected, not ${extra.join(", ")}`);
+  if (name !== undefined && typeof name !== "string" && !(name instanceof RegExp)) {
+    throw new TypeError("getByRole() name must be a string or RegExp");
+  }
+  if (selected !== undefined && typeof selected !== "boolean") throw new TypeError("getByRole() selected must be true or false");
+  return { ...(name === undefined ? {} : { name }), ...(selected === undefined ? {} : { selected }) };
+}
+
 export function roleSelector(role: string): string {
   if (!Object.prototype.hasOwnProperty.call(ROLE_SELECTORS, role)) {
     throw new TypeError(`getByRole: unknown role ${JSON.stringify(role)}; known: ${Object.keys(ROLE_SELECTORS).join(", ")}`);
@@ -275,15 +291,13 @@ export class PageLocator implements Locator {
       options, this.room, { ...this.refine, last: true });
   }
 
-  getByRole(role: LocatorRole, options?: { name?: string | RegExp }): Locator {
-    const name = options?.name;
-    if (name !== undefined && typeof name !== "string" && !(name instanceof RegExp)) {
-      throw new TypeError("getByRole() name must be a string or RegExp");
-    }
+  getByRole(role: LocatorRole, options?: { name?: string | RegExp; selected?: boolean }): Locator {
+    const refine = roleRefine(options);
     const narrowed = this.refine.last ? "last()"
       : this.options.index !== undefined ? `nth(${this.options.index})`
       : this.refine.hasText !== undefined ? "filter({ hasText })"
       : this.refine.name !== undefined ? "getByRole(..., { name })"
+      : this.refine.selected !== undefined ? "getByRole(..., { selected })"
       : undefined;
     if (narrowed) {
       throw new TypeError(`getByRole() cannot scope to a locator narrowed with ${narrowed}: a scope is every match ` +
@@ -292,7 +306,7 @@ export class PageLocator implements Locator {
     const frame = callerLocation();
     return new PageLocator(this.page, this.guard, this.record, descendantSelector(this.selector, roleSelector(role)),
       { source: frame.file, line: frame.line, column: frame.column }, this.options, this.room,
-      { ...(name === undefined ? {} : { name }), scoped: true });
+      { ...refine, scoped: true });
   }
 
   filter(options: LocatorFilterOptions): Locator {
@@ -472,13 +486,15 @@ export class PageLocator implements Locator {
     }));
     const hasText = this.refine.hasText;
     const name = this.refine.name;
+    const selected = this.refine.selected;
     const matches = indexed
       .filter((item) => hasText === undefined || textMatches(item.text ?? "", hasText))
-      .filter((item) => name === undefined || nameMatches(item, name));
+      .filter((item) => name === undefined || nameMatches(item, name))
+      .filter((item) => selected === undefined || (item.selected ?? false) === selected);
     const pick = this.refine.last ? matches.length - 1 : this.options.index;
     const picked = pick === undefined ? undefined : matches[pick];
     const items: QueryMatch[] = pick === undefined ? matches : picked ? [picked] : [];
-    const narrowed = hasText !== undefined || name !== undefined;
+    const narrowed = hasText !== undefined || name !== undefined || selected !== undefined;
     const count = pick !== undefined ? items.length : narrowed ? items.length : (all.count ?? items.length);
     const visibleItems = items.filter((item) => item.visible);
     const visibleCount = visibleItems.length;
@@ -611,7 +627,8 @@ export class PageLocator implements Locator {
 
   private target(): string {
     const filter = (this.refine.hasText === undefined ? "" : ` filter(hasText=${formatValue(this.refine.hasText)})`)
-      + (this.refine.name === undefined ? "" : ` name=${formatValue(this.refine.name)}`);
+      + (this.refine.name === undefined ? "" : ` name=${formatValue(this.refine.name)}`)
+      + (this.refine.selected === undefined ? "" : ` selected=${this.refine.selected}`);
     const pick = this.refine.last ? " [last]" : this.options.index === undefined ? "" : ` [${this.options.index}]`;
     return `${this.options.page ? `#${this.options.page} ` : ""}${this.selector}${filter}${pick}`;
   }

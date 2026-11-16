@@ -27,6 +27,7 @@ import {
   normalizeText,
   sleep,
   testIdSelector,
+  roleRefine,
   roleSelector,
   type LocatorResolve,
   type PageLike,
@@ -1500,12 +1501,8 @@ export class LiveFixture implements Fixture {
         noOptions("view.testId", options);
         return this.locator(lazyPage, testIdSelector(id), location(), target);
       },
-      getByRole: (role: string, options?: { name?: string | RegExp }) => {
-        const name = options?.name;
-        if (name !== undefined && typeof name !== "string" && !(name instanceof RegExp)) {
-          throw new TypeError("getByRole() name must be a string or RegExp");
-        }
-        return this.locator(lazyPage, roleSelector(role), location(), target, name === undefined ? {} : { name });
+      getByRole: (role: string, options?: { name?: string | RegExp; selected?: boolean }) => {
+        return this.locator(lazyPage, roleSelector(role), location(), target, roleRefine(options));
       },
       css: (selector: string, options?: unknown) => {
         noOptions("view.css", options);

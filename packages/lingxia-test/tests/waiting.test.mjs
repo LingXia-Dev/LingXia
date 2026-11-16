@@ -1013,6 +1013,28 @@ test("getByRole matches the role on either renderer and narrows by exact accessi
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
 });
+test("getByRole narrows by selected state and refuses an option it does not know", async () => {
+  const world = createWorld();
+  world.add({ tag: "div", role: "option", text: "Open file" });
+  world.add({ tag: "div", role: "option", text: "Save" });
+  const third = world.add({ tag: "div", role: "option", text: "Close", selected: true });
+  const { attachments } = installFakeHost(world);
+
+  spec("selected", async (t) => {
+    const view = t.app.view;
+    await expect(view.getByRole("option")).toHaveCount(3);
+    await expect(view.getByRole("option", { selected: true })).toHaveText("Close");
+    await expect(view.getByRole("option", { selected: false })).toHaveCount(2);
+    await expect(view.getByRole("option", { name: "Save", selected: true })).toHaveCount(0);
+    await view.getByRole("option", { selected: true }).click({ timeout: 500 });
+    assert.equal(third.clicked, 1);
+    assert.throws(() => view.getByRole("option", { checked: true }), /takes name and selected, not checked/);
+    assert.throws(() => view.getByRole("option", { selected: "yes" }), /selected must be true or false/);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
+});
 test("Locator.getByRole finds a role inside every match of its scope", async () => {
   const world = createWorld();
   const bar = world.add({ tag: "div", testId: "bar", role: "toolbar" });

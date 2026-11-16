@@ -256,7 +256,7 @@ export interface Locator {
    * exact accessible `name`. This locator must not be narrowed with `nth()`,
    * `first()`, `last()`, `filter()` or a role `name`.
    */
-  getByRole(role: LocatorRole, options?: { name?: string | RegExp }): Locator;
+  getByRole(role: LocatorRole, options?: { name?: string | RegExp; selected?: boolean }): Locator;
   click(options?: ActionOptions): Promise<void>;
   /** Double-click: on text and editors, selects the word at the center (a long press on touch). */
   dblclick(options?: ActionOptions): Promise<void>;
@@ -503,7 +503,7 @@ export interface TestView {
    * accessible `name` (`aria-label`, else the text) or a pattern. The same
    * locator reads a WebView page and a GPU page.
    */
-  getByRole(role: LocatorRole, options?: { name?: string | RegExp }): Locator;
+  getByRole(role: LocatorRole, options?: { name?: string | RegExp; selected?: boolean }): Locator;
   /**
    * Run `fn` in the page's WebView with JSON `args` and resolve to its JSON
    * result. `fn` must be self-contained (see `ViewFunction`).
