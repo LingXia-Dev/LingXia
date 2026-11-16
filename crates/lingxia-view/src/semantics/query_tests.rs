@@ -657,6 +657,22 @@ fn authored_aria_states_read_as_attributes_and_match_in_selectors() {
 }
 
 #[test]
+fn an_authored_label_reads_as_the_aria_label_attribute_and_text_alone_does_not() {
+    let i = interaction(
+        "h('view',{},h('button',{'data-testid':'play','aria-label':'Pause',onClick(){}},h('text',{},'||')),h('button',{'data-testid':'go',onClick(){}},'Go'))",
+    );
+    let label = |id: &str| {
+        i.automation_query(&format!("[data-testid=\"{id}\"]"), None, false, None)
+            .unwrap()["attributes"]["aria-label"]
+            .as_str()
+            .map(str::to_owned)
+    };
+    assert_eq!(label("play").as_deref(), Some("Pause"));
+    // As in a DOM: a name computed from content is not an attribute.
+    assert_eq!(label("go"), None);
+}
+
+#[test]
 fn a_disabled_link_renders_takes_no_press_and_reads_unavailable() {
     let i = interaction(
         "h('view',{},h('text',{},'Read the ',h('link',{'data-testid':'off',disabled:true,onClick(){}},'terms'),' and the ',h('link',{'data-testid':'on',onClick(){}},'policy')))",

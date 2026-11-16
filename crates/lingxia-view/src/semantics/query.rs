@@ -375,7 +375,8 @@ const ARIA_STATES: [&str; 7] = [
     "aria-checked",
 ];
 
-/// The node's `data-testid` and authored `data-*` and ARIA state props, as DOM attributes.
+/// The node's `data-testid` and authored `data-*`, `aria-label` and ARIA state props, as DOM
+/// attributes.
 fn attributes(node: &NodeSnapshot) -> Value {
     let mut out = serde_json::Map::new();
     if !node.test_id.is_empty() {
@@ -389,6 +390,9 @@ fn attributes(node: &NodeSnapshot) -> Value {
         if let Some(state) = state {
             out.insert((*name).into(), json!(state.to_string()));
         }
+    }
+    if let Some(label) = &node.accessibility_label {
+        out.insert("aria-label".into(), json!(label));
     }
     if node.mixed {
         out.insert("aria-checked".into(), json!("mixed"));
