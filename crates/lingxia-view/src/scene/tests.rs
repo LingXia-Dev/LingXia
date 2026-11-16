@@ -955,3 +955,29 @@ fn a_blurred_subtree_spreads_past_its_box_and_composites_the_same() {
         );
     }
 }
+
+#[test]
+fn a_rounded_clip_thinner_than_two_radii_still_culls() {
+    // Sides a collapsing box passes through, where `top + r` rounds above `top + height - r`.
+    for (top, height) in [
+        (249.543_5_f32, 7.147_458_6_f32),
+        (283.576_5, 6.881_563_7),
+        (290.142_73, 0.487_350_14),
+    ] {
+        let clip = ClipSnapshot {
+            radii: None,
+            bounds: [16.0, top, 300.0, height],
+            radius: 8.0,
+            transform: None,
+        };
+        let r = height / 2.0;
+        assert!(top + r > top + height - r, "not the rounding case");
+        assert!(clip.intersects([0.0, 0.0, 400.0, 800.0]));
+        assert!(!clip.intersects([0.0, 0.0, 400.0, top - 1.0]));
+        let turned = ClipSnapshot {
+            bounds: [top, 16.0, height, 300.0],
+            ..clip
+        };
+        assert!(turned.intersects([0.0, 0.0, 800.0, 400.0]));
+    }
+}

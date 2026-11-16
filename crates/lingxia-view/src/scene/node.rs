@@ -472,8 +472,9 @@ impl ClipSnapshot {
         let r = self.radius.min(width.min(height) / 2.0).max(0.0);
         let px = (left + width / 2.0).clamp(x, x + w);
         let py = (top + height / 2.0).clamp(y, y + h);
-        let dx = px - px.clamp(left + r, left + width - r);
-        let dy = py - py.clamp(top + r, top + height - r);
+        // A side of exactly two radii leaves the far bound an ulp under the near one.
+        let dx = px - px.max(left + r).min(left + width - r);
+        let dy = py - py.max(top + r).min(top + height - r);
         dx * dx + dy * dy <= r * r
     }
     pub(crate) fn path(self) -> vello_cpu::kurbo::BezPath {
