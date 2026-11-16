@@ -7,6 +7,7 @@ use image::ImageEncoder;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::time::{Duration, Instant};
 
 static NEXT: AtomicU64 = AtomicU64::new(1);
 pub type Shared = Arc<Mutex<Presenter>>;
@@ -31,6 +32,70 @@ fn gpu_work() -> RwLockReadGuard<'static, ()> {
 
 fn gpu_binding() -> RwLockWriteGuard<'static, ()> {
     GPU.write().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Starts the error of a device that could not be opened or was lost.
+const LOST: &str = "UI_GPU_LOST";
+
+/// A presenter on `context`. A driver that has lost its device panics inside wgpu instead of
+/// answering; that is an error here, so the caller can move to another device or the CPU.
+fn open(
+    context: super::gpu::Context,
+    source: SurfaceSource,
+    width: u32,
+    height: u32,
+) -> Result<Presenter, String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        Presenter::with_fallback(context, source, width, height)
+    }))
+    .unwrap_or_else(|panic| {
+        let message = panic
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("non-string panic");
+        Err(format!("{LOST}: {message}"))
+    })
+}
+
+/// No device could be opened: attaches are refused until the next attempt is due, so a page
+/// goes to the CPU renderer at once instead of waiting on a driver that takes seconds to fail.
+#[derive(Default)]
+struct Down {
+    until: Option<Instant>,
+    failures: u32,
+}
+
+impl Down {
+    const FIRST: Duration = Duration::from_secs(30);
+    const LONGEST: Duration = Duration::from_secs(480);
+
+    fn wait(&self, now: Instant) -> Option<Duration> {
+        self.until
+            .and_then(|until| until.checked_duration_since(now))
+            .filter(|left| !left.is_zero())
+    }
+
+    fn failed(&mut self, now: Instant) {
+        let wait = Self::FIRST
+            .saturating_mul(1 << self.failures.min(8))
+            .min(Self::LONGEST);
+        self.failures += 1;
+        self.until = Some(now + wait);
+    }
+
+    fn up(&mut self) {
+        *self = Self::default();
+    }
+}
+
+static DOWN: Mutex<Down> = Mutex::new(Down {
+    until: None,
+    failures: 0,
+});
+
+fn lock_down() -> MutexGuard<'static, Down> {
+    DOWN.lock().unwrap_or_else(|p| p.into_inner())
 }
 
 pub(crate) fn presenter(id: u64) -> Result<Option<Shared>, String> {
@@ -87,13 +152,41 @@ pub fn attach(
         lock(&presenter)?.resume(source, width, height)?;
         return Ok(existing);
     }
+    if let Some(wait) = lock_down().wait(Instant::now()) {
+        return Err(format!(
+            "{LOST}: no device; the next attempt is in {} s",
+            wait.as_secs().max(1)
+        ));
+    }
     // The registry retains the device domain only while a presenter exists.
     let shared = registry()?.values().next().cloned();
-    let context = match shared {
-        Some(presenter) => lock(&presenter)?.context(),
-        None => Default::default(),
+    let opened = match shared {
+        Some(presenter) => {
+            let context = lock(&presenter)?.context();
+            match open(context, source.clone(), width, height) {
+                // The shared device went away under every presenter (a driver reset): they all
+                // move to a new one, and this surface binds there.
+                Err(error) if error.starts_with(LOST) => {
+                    log::warn!(target: "lingxia_view", "{error}; rebuilding every presenter");
+                    rebuild().and_then(|()| {
+                        let context = match registry()?.values().next().cloned() {
+                            Some(presenter) => lock(&presenter)?.context(),
+                            None => Default::default(),
+                        };
+                        open(context, source, width, height)
+                    })
+                }
+                opened => opened,
+            }
+        }
+        None => open(Default::default(), source, width, height),
     };
-    let presenter = Presenter::with_fallback(context, source, width, height)?;
+    match &opened {
+        Ok(_) => lock_down().up(),
+        Err(error) if error.starts_with(LOST) => lock_down().failed(Instant::now()),
+        Err(_) => {}
+    }
+    let presenter = opened?;
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     registry()?.insert(id, Arc::new(Mutex::new(presenter)));
     Ok(id)
@@ -201,6 +294,11 @@ pub fn detach(id: u64) {
 /// suspended one is dropped and its page attaches anew.
 pub fn reset() -> Result<(), String> {
     let _binding = gpu_binding();
+    rebuild()
+}
+
+/// [`reset`] for a caller that holds the binding.
+fn rebuild() -> Result<(), String> {
     video_surfaces().clear();
     let presenters: Vec<(u64, Shared)> = registry()?
         .iter()
@@ -219,8 +317,7 @@ pub fn reset() -> Result<(), String> {
             registry()?.remove(&id);
             continue;
         };
-        let rebuilt =
-            Presenter::with_fallback(context.clone().unwrap_or_default(), source, width, height)?;
+        let rebuilt = open(context.clone().unwrap_or_default(), source, width, height)?;
         context.get_or_insert_with(|| rebuilt.context());
         registry()?.insert(id, Arc::new(Mutex::new(rebuilt)));
     }
@@ -442,6 +539,28 @@ pub fn readback(id: u64) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A device that cannot be opened is asked again later and later, and at once after it
+    /// opens.
+    #[test]
+    fn failed_device_opens_back_off_until_one_succeeds() {
+        let now = Instant::now();
+        let mut down = Down::default();
+        assert_eq!(down.wait(now), None);
+        down.failed(now);
+        assert_eq!(down.wait(now), Some(Down::FIRST));
+        assert_eq!(down.wait(now + Down::FIRST), None);
+        down.failed(now);
+        assert_eq!(down.wait(now), Some(Down::FIRST * 2));
+        for _ in 0..40 {
+            down.failed(now);
+        }
+        assert_eq!(down.wait(now), Some(Down::LONGEST));
+        down.up();
+        assert_eq!(down.wait(now), None);
+        down.failed(now);
+        assert_eq!(down.wait(now), Some(Down::FIRST));
+    }
 
     #[test]
     fn pending_gpu_targets_wait_instead_of_rasterizing() {
