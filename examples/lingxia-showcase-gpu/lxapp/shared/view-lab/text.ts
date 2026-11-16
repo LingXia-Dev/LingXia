@@ -37,7 +37,7 @@ export const demos = {
   controls: {
     controls: { testId: 'lab-controls', title: { en: 'Radios, sliders, switches and a multi-line field', zh: '单选、滑块、开关与多行输入' }, try: { en: 'Choose a size, drag the sliders, flip the switch and type a few lines. One radio and one switch cannot be changed.', zh: '选一个尺寸，拖动滑块，拨动开关，再输入几行文字。有一个单选项和一个开关不可更改。' } },
     select: { testId: 'lab-select', title: { en: 'Select', zh: '下拉选择' }, try: { en: 'Open the list and choose. A finger gets a sheet, a mouse a list under the field; one option cannot be chosen.', zh: '打开列表并选择。手指得到底部面板，鼠标得到输入框下的列表；有一项不可选。' } },
-    shared: { testId: 'lab-choices', title: { en: 'A value shared with every child', zh: '传给所有子元素的值' }, try: { en: 'Tap "Change size": every row follows. Tap a row to choose it; ··· opens one menu that all rows share.', zh: '点“切换大小”：每一行都跟着变。点一行即选中；··· 打开所有行共用的菜单。' } },
+    shared: { testId: 'lab-choices', title: { en: 'A value shared with every child', zh: '传给所有子元素的值' }, try: { en: 'Tap "Change size": every row follows. Tap a row to choose it; ⋯ opens one menu that all rows share.', zh: '点“切换大小”：每一行都跟着变。点一行即选中；⋯ 打开所有行共用的菜单。' } },
     pieces: { testId: 'lab-fragments', title: { en: 'A component that returns several elements', zh: '返回多个元素的组件' }, try: { en: 'Each term is two texts with no box around them. Tap Rotate: the first term moves to the end as one.', zh: '每个术语是两段文字，外面没有包一层方块。点“轮换”：第一个术语整体移到末尾。' } },
   },
   layout: {
@@ -80,7 +80,7 @@ export const demos = {
   overlays: {
     dialog: { testId: 'lab-dialog-demo', title: { en: 'Dialog', zh: '对话框' }, try: { en: 'Open it: the page behind stops responding. Escape or a button closes it; a tap outside does not.', zh: '打开后，后面的页面不再响应。按 Esc 或点按钮关闭；点外面不会关闭。' } },
     bottomSheet: { testId: 'lab-sheet-demo', title: { en: 'A sheet from the bottom', zh: '底部面板' }, try: { en: 'Open it: it covers the bars and its list scrolls on its own. A tap outside closes it.', zh: '打开后它盖住底部栏，里面的列表独立滚动。点外面即可关闭。' } },
-    more: { testId: 'lab-more', title: { en: 'A menu from a button', zh: '按钮唤出的菜单' }, try: { en: 'Tap ···: the menu opens under the button. With a keyboard, arrows move and a letter jumps to its item.', zh: '点 ···：菜单在按钮下方打开。使用键盘时，方向键移动，按字母跳到对应的项。' } },
+    more: { testId: 'lab-more', title: { en: 'A menu from a button', zh: '按钮唤出的菜单' }, try: { en: 'Tap ⋯: the menu opens under the button. With a keyboard, arrows move and a letter jumps to its item.', zh: '点 ⋯：菜单在按钮下方打开。使用键盘时，方向键移动，按字母跳到对应的项。' } },
     pickers: { testId: 'lab-pickers', title: { en: 'Date and time pickers', zh: '日期与时间选择器' }, try: { en: 'Tap a field: its picker opens. Choose and it closes with the value in the field.', zh: '点输入框：选择器打开。选好后关闭，值写入输入框。' } },
     menu: { testId: 'lab-menu', title: { en: 'A menu you ask for', zh: '按需唤出的菜单' }, try: { en: 'Hold a finger on the row, or click it with the secondary mouse button: its menu opens. A tap does nothing.', zh: '长按这一行，或用鼠标右键点击：菜单打开。轻点没有反应。' } },
     submenu: { testId: 'lab-submenu', title: { en: 'A menu inside a menu', zh: '菜单里的菜单' }, try: { en: 'Open the menu and choose "Move to": a second menu opens beside it and the first stays. Choose a folder and both close. With a keyboard, Right opens it and Left closes it.', zh: '打开菜单并选择“移动到”：第二个菜单在旁边打开，第一个保持不动；选一个文件夹后两个都关闭。使用键盘时，右方向键打开，左方向键关闭。' } },

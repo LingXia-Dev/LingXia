@@ -174,7 +174,7 @@ export function MoreDemo() {
     <>
       <view className="flex-row items-center gap-3">
         <view className="grow"><Readout testId="lab-more-last" state={`last=${last.value}`}>{t(readouts.last(last.value))}</Readout></view>
-        <button popoverTarget="lab-more-menu" data-testid="lab-overlay-more" aria-label="More" className="rounded-full px-3 py-1.5 bg-surface-sunken text-text">···</button>
+        <button popoverTarget="lab-more-menu" data-testid="lab-overlay-more" aria-label="More" className="rounded-full px-3 py-1.5 bg-surface-sunken text-text">⋯</button>
       </view>
       <view id="lab-more-menu" popover role="menu" aria-label="Note actions" data-testid="lab-more-menu"
         style={{ positionArea: 'bottom span-inline-start' }} className="w-44 p-1 rounded-xl bg-surface-raised shadow-lg border border-line">

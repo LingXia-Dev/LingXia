@@ -244,7 +244,7 @@ function Choice({ value }: { value: string }) {
         <text data-testid={`lab-choice-${value}-label`}>{value}</text>
         <text data-testid={`lab-choice-${value}-state`}>{`${group.size}${on ? ' on' : ''}`}</text>
       </button>
-      <button data-testid={`lab-choice-${value}-more`} popoverTarget={group.menu} aria-label={`More for ${value}`} className="px-3 py-2 text-sm">···</button>
+      <button data-testid={`lab-choice-${value}-more`} popoverTarget={group.menu} aria-label={`More for ${value}`} className="px-3 py-2 text-sm">⋯</button>
     </view>
   );
 }
