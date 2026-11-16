@@ -635,6 +635,8 @@ declare module 'liblingxia.so' {
   export function gpuPageDeclineChromeSnapshot(token: number): void;
   export function gpuPageWindowVisible(token: number, visible: boolean): void;
   export function gpuPageWindowFocus(token: number, focused: boolean): void;
+  /** Answers a `focusGained` event whose focus a key moved: keyboard focus walks into the page. */
+  export function gpuPageFocusByKey(token: number): void;
   export function gpuPageReveal(token: number, surfaceHoldsFrame: boolean): void;
   /** The container's push or pop slide of the page: start, each rendered frame with how far it has moved, end. */
   export function gpuPageTransitionStart(token: number, pop: boolean): void;

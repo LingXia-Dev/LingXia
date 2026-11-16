@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, spec, type Fixture } from '@lingxia/test';
 import { openDemo, rootOf } from './open-demo';
 import { harmonyDevice } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
@@ -91,4 +91,53 @@ spec('a focused editor scrolled off screen keeps focus and the keyboard, and typ
   await device.click(Math.round(surface.bounds[0] + (surface.bounds[2] - surface.bounds[0]) * 0.06), Math.round(bottom - keyboard * scale * 0.75));
   await expect(view.testId('lab-controls-values')).toHaveAttribute('data-state', /notes=1$/);
   await expect(notes).toBeInViewport({ timeout: 3_000 });
+});
+
+/** No control on the page holds keyboard focus, once a focus the system moved has had time to land. */
+async function expectNothingFocused(view: Fixture['app']['view']) {
+  await new Promise<void>(resolve => setTimeout(() => resolve(), 800));
+  for (const tag of ['button', 'a', 'input']) {
+    const controls = view.css(tag);
+    const count = Math.min(await controls.count(), 24);
+    for (let i = 0; i < count; i++) await expect(controls.nth(i), `${tag} ${i} after a touch`).not.toBeFocused();
+  }
+}
+
+// A finger focuses the page's node in ArkUI, as a key does; only the key may show a ring.
+spec('a finger on the page leaves no control focused, and Tab then focuses one', {
+  id: 'FOCUS-HARMONY-001', covers: ['view:a11y'],
+  reason: 'touches and presses Tab through the Harmony device fixture',
+  start: openDemo('more'),
+}, async (t) => {
+  const view = t.app.view;
+  const device = harmonyDevice(t);
+  const surface = (await device.nodes()).filter(node => node.type === 'XComponent')
+    .reduce((a, b) => ((b.bounds[2] - b.bounds[0]) * (b.bounds[3] - b.bounds[1]) > (a.bounds[2] - a.bounds[0]) * (a.bounds[3] - a.bounds[1]) ? b : a));
+  const scale = (surface.bounds[2] - surface.bounds[0]) / (await view.viewport()).width;
+  const last = await view.testId('lab-more-last').boundingBox();
+  await device.click(Math.round(surface.bounds[0] + (last.x + last.width / 2) * scale),
+    Math.round(surface.bounds[1] + (last.y + last.height / 2) * scale));
+  await expectNothingFocused(view);
+  const more = view.testId('lab-overlay-more');
+  for (let tab = 0; ; tab++) {
+    if (tab === 30) throw new Error('Tab never reached the menu button');
+    await device.key('tab');
+    try { await expect(more).toBeFocused({ timeout: 400 }); break; } catch { /* not yet */ }
+  }
+});
+
+spec('a finger on a tab shows its page with no control focused', {
+  id: 'FOCUS-HARMONY-002', covers: ['view:a11y'],
+  reason: 'taps the host tab bar through the Harmony device fixture',
+  start: { page: 'home' },
+}, async (t) => {
+  const device = harmonyDevice(t);
+  // The tab label is the lowest node with this text.
+  const tab = (await device.nodes()).filter(node => ['View Lab', '实验室'].includes(node.text))
+    .sort((a, b) => b.bounds[1] - a.bounds[1])[0];
+  if (!tab) throw new Error('no View Lab tab on screen');
+  await device.click(Math.round((tab.bounds[0] + tab.bounds[2]) / 2), Math.round((tab.bounds[1] + tab.bounds[3]) / 2));
+  const view = t.app.view;
+  await expect(view.testId('view-index')).toBeVisible();
+  await expectNothingFocused(view);
 });

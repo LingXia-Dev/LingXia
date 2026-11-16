@@ -2,7 +2,7 @@ import { NodeContent } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { LxLog } from '../app/LxLog';
 import { GpuFrameTextMenu } from './generated/GpuFrame';
-import { gpuPageReveal } from 'liblingxia.so';
+import { gpuPageFocusByKey, gpuPageReveal } from 'liblingxia.so';
 import { GpuRect } from './GpuEnvironment';
 
 const TAG = 'LingXia.GpuPages';
@@ -75,6 +75,8 @@ export class GpuPageModel {
   surfaceKept: boolean = true;
   /** Runs once the core reveals the page; a later reveal replaces it. */
   revealWaiter: (() => void) | null = null;
+  /** Whether the window's focus is in its keyboard state; set while the page's component lives. */
+  keyboardFocus: (() => boolean) | null = null;
   /** Where the page shows in its window, device pixels; null while it is hidden. A window
    *  snapshot leaves the XComponent surface out, so screenshots draw this page in beneath. */
   onScreen: GpuRect | null = null;
@@ -185,6 +187,12 @@ export class GpuPages {
         }
         break;
       }
+      case 'focusGained':
+        // A touch, a tab switch and a returning window focus the node too; only a key shows a ring.
+        if (page.keyboardFocus?.() === true) {
+          gpuPageFocusByKey(token);
+        }
+        break;
       case 'textMenu':
         page.textMenu = payload.length > 0 ? JSON.parse(payload) as GpuFrameTextMenu : null;
         break;

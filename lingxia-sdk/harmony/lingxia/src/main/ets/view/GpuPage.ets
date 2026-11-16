@@ -74,8 +74,11 @@ export struct GpuPage {
     $r('app.string.lx_gpu_update_failed'), $r('app.string.lx_gpu_display_failed')];
   private actions: Resource[] = [$r('app.string.lx_gpu_retry'), $r('app.string.lx_gpu_reload')];
 
+  private keyboardFocus: () => boolean = () => this.getUIContext().getFocusController().isActive();
+
   aboutToAppear(): void {
     this.gone = false;
+    this.page.keyboardFocus = this.keyboardFocus;
     if (!this.page.mounted) {
       this.page.mounted = gpuPageMount(this.page.token, this.page.content);
     }
@@ -148,6 +151,10 @@ export struct GpuPage {
       this.environment = -1;
     }
     this.gone = true;
+    // A replacement component may already have set its own.
+    if (this.page.keyboardFocus === this.keyboardFocus) {
+      this.page.keyboardFocus = null;
+    }
     const win = this.win;
     const onAvoidArea = this.onAvoidArea;
     const onWindowVisible = this.onWindowVisible;
@@ -378,12 +385,14 @@ export struct GpuPage {
           .backgroundColor(this.floor)
           .hitTestBehavior(HitTestMode.None)
       }
-      if (this.page.press !== null) {
-        this.feedback(this.page.press)
-      }
-      if (this.page.focusRing !== null) {
-        this.feedback(this.page.focusRing)
-      }
+      // Keyed by its shape: a builder's by-value argument is not redrawn when the feedback moves
+      // from one node to another without clearing in between, as a focus ring does on each Tab.
+      ForEach([this.page.press, this.page.focusRing], (shown: GpuFeedback | null) => {
+        if (shown !== null) {
+          this.feedback(shown)
+        }
+      }, (shown: GpuFeedback | null, which: number) =>
+        shown === null ? `${which}` : `${which}:${shown.color}:${shown.width}:${shown.shape.join(',')}`)
       if (this.page.handles !== null) {
         ForEach(this.page.handles.ends, (end: number[] | null, which: number) => {
           if (end !== null) {

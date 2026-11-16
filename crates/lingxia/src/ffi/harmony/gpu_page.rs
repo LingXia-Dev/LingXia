@@ -184,6 +184,9 @@ impl Shell for Bridge {
     fn haptic(&self, _: i64) {
         let _ = crate::device::vibrate(false);
     }
+    fn focus_gained(&self, token: i64) {
+        arkts(token, "focusGained", "");
+    }
     fn top_layer(&self, token: i64, modal: bool) {
         arkts(token, "topLayer", if modal { "true" } else { "false" });
     }
@@ -528,6 +531,12 @@ pub fn gpu_page_window_focus(token: i64, focused: bool) {
     with_page(token, |page| {
         page.with_host(|host| host.window_focus(focused))
     });
+}
+
+/// The answer to a `focusGained` event whose focus a key moved.
+#[napi]
+pub fn gpu_page_focus_by_key(token: i64) {
+    lingxia_view_harmony::focus_by_key(token);
 }
 
 #[napi]

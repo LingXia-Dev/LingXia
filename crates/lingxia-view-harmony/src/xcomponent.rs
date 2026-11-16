@@ -300,13 +300,47 @@ unsafe extern "C" fn on_event(event: *mut sys::ArkUI_NodeEvent) {
     };
     pages::with(token, |host| match kind {
         sys::NODE_TOUCH_EVENT if !input.is_null() => touch(host, input),
-        sys::NODE_ON_FOCUS => host.focus_entered(false),
-        sys::NODE_ON_BLUR => host.focus_left(),
+        sys::NODE_ON_FOCUS => focus::gained(host, token),
+        sys::NODE_ON_BLUR => {
+            focus::lost(token);
+            host.focus_left()
+        }
         sys::NODE_ON_KEY_EVENT if !input.is_null() => key(host, token, input),
         sys::NODE_ON_MOUSE if !input.is_null() => mouse(host, input),
         sys::NODE_ON_HOVER if !hovering(event) => host.hover(None),
         _ => {}
     });
+}
+
+/// ArkUI focuses the node on a touch, on a page or tab switch and when the window returns, as
+/// well as by Tab. Only a key walks focus into the page, and only the shell can tell which it was.
+pub(crate) mod focus {
+    use super::pages;
+    use std::cell::Cell;
+
+    thread_local! {
+        /// The page whose node holds ArkUI focus; 0 when none does. Main thread only.
+        static HOLDER: Cell<i64> = const { Cell::new(0) };
+    }
+
+    pub(super) fn gained(host: &pages::Host, token: i64) {
+        HOLDER.set(token);
+        host.adapter().shell.focus_gained(token);
+    }
+
+    pub(super) fn lost(token: i64) {
+        if HOLDER.get() == token {
+            HOLDER.set(0);
+        }
+    }
+
+    /// The shell's answer to `Shell::focus_gained`: a key moved focus to the page, which still
+    /// holds it.
+    pub(crate) fn by_key(token: i64) {
+        if HOLDER.get() == token {
+            pages::with(token, |host| host.focus_entered(false));
+        }
+    }
 }
 
 /// A mouse over the page drives `hover:`; presses still arrive as touches.

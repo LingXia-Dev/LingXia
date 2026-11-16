@@ -59,6 +59,9 @@ pub trait Shell: Send + Sync + 'static {
     /// the node's rounded rect then its clip masks, virtual pixels; `color` is ARGB.
     fn feedback(&self, token: i64, ring: bool, shape: &[f32], color: u32, width: f32);
     fn haptic(&self, token: i64);
+    /// The page's node took ArkUI focus. Call [`focus_by_key`] back when the focus system is in
+    /// its keyboard state; a touch or a page switch focuses the node too and must show no ring.
+    fn focus_gained(&self, token: i64);
     /// A top-layer dialog opened or closed; while open the page covers the host's bars.
     fn top_layer(&self, token: i64, modal: bool);
     /// The presented frame draws the host's bar snapshots up to `generation`; 0 when none.
@@ -227,6 +230,11 @@ pub fn inject_touch(
         events += 1;
     }
     Ok(events)
+}
+
+/// A key moved ArkUI focus to page `token`: keyboard focus walks into it. Main thread only.
+pub fn focus_by_key(token: i64) {
+    xcomponent::focus::by_key(token);
 }
 
 /// The page's visible area `[left, top, width, height]` in logical pixels.

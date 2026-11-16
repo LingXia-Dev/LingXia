@@ -1262,6 +1262,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.deliver(effects);
     }
 
+    /// A key moved system focus to the view: keyboard focus walks in and shows its ring. Never
+    /// call it for focus a touch, a page switch or a returning window gave the view.
     pub fn focus_entered(&self, backward: bool) {
         let page = self.inner.lifecycle.page();
         let effects = self.inner.main().interaction.focus_entered(backward, page);
