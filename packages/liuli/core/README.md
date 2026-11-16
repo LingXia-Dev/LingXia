@@ -118,7 +118,7 @@ that directory.
 | `@liulidesign/core/Timer` | formatTimer, Timer | A length of time in steady digits |
 | `@liulidesign/core/Code` | Code, CodeBlock | Code as it was written, in a sentence or as a block |
 | `@liulidesign/core/Timestamp` | formatTimestamp, Timestamp | When something happened, in the words people use |
-| `@liulidesign/core/MessageBubble` | MessageBubble | One message of a conversation |
+| `@liulidesign/core/MessageBubble` | MessageBubble, MessageReasoning | One message of a conversation |
 | `@liulidesign/core/VideoPlayer` | VideoPlayer | A video with its controls, over the picture or under it, and full screen |
 | `@liulidesign/core/VideoControls` | VideoControls | Play, seek, mute, speed, quality and full screen for a useVideo player |
 | `@liulidesign/core/Carousel` | Carousel | A few pages to swipe through, one at a time |

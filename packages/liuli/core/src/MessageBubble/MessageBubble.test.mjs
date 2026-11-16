@@ -27,3 +27,15 @@ test('States: a failed message says so in words with an error mark, and offers a
   screen.press(screen.getByTestId('retry'));
   screen.getByText('Not sent, tried 2 times');
 });
+
+test('Reasoning: one line that opens and closes its text; while streaming it reports busy', async () => {
+  const screen = await renderExample('MessageBubble/MessageBubble', 'Reasoning');
+  const toggle = screen.getByTestId('reasoning');
+  assert.equal(toggle.props.accessibilityLabel, 'Thought for 8 seconds');
+  assert.equal(toggle.props.stateExpanded, 1);
+  screen.press(toggle);
+  assert.equal(screen.getByTestId('reasoning').props.stateExpanded, 0);
+  const thinking = screen.getByTestId('thinking');
+  assert.equal(thinking.props.stateExpanded, 0);
+  assert.ok(thinking.props.stateBusy ?? thinking.props.busy ?? thinking.props.accessibilityBusy, 'busy while streaming');
+});

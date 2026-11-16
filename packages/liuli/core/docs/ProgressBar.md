@@ -80,6 +80,21 @@ export function Spinners() {
 }
 ```
 
+### A spinner that says what is loading
+
+```tsx
+import { Spinner } from '@liulidesign/core/ProgressBar';
+
+/** A whole panel that is loading says what, under the ring. */
+export function LoadingMessage() {
+  return (
+    <view className="items-center py-6">
+      <Spinner label="Loading your notes" isLabelShown size="lg" data-testid="loading-notes" />
+    </view>
+  );
+}
+```
+
 ### Meters in a tone
 
 ```tsx
@@ -136,7 +151,8 @@ export function SpinnerTones() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `label` (required) | `string` |  | The accessible name: what is loading. Not drawn. |
+| `label` (required) | `string` |  | The accessible name: what is loading. Drawn only with `isLabelShown`. |
+| `isLabelShown` | `boolean` | `false` | Draws the label under the ring, centred: for a page, a panel or a list that is loading and has room to say what. |
 | `size` | `SpinnerSize` | `'md'` | 16, 24, 32 or 48 px; `xl` for a whole page or a media frame that is loading. |
 | `tone` | `SpinnerTone` | `'accent'` |  |
 | `className` | `string` |  |  |
@@ -150,6 +166,7 @@ export function SpinnerTones() {
 | track | `<view>` | yes | The bar itself, and the element assistive tech reports as a progress bar. |
 | fill | `<view>` | yes | The amount done, as a share of the track width; a sweeping segment while the amount is unknown. |
 | spinner | `<vector>` | no | Spinner's spinning arc. |
+| loading | `<view>` | no | A Spinner with `isLabelShown`: the ring over its label, centred; the words are drawn only, the name is read once. |
 
 ## What an app may override
 
@@ -175,6 +192,7 @@ export function SpinnerTones() {
 | fill and spinner on a card | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 | spinner over media | `on-media` on `media` | 3:1 | 7.94:1 | 7.94:1 |
 | muted spinner | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
+| a spinner's shown label | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 | success fill | `success-mark` on `surface` | 3:1 | 3.61:1 | 6.91:1 |
 | warning fill | `warning-mark` on `surface` | 3:1 | 3.64:1 | 8.03:1 |
 | danger fill | `danger-mark` on `surface` | 3:1 | 3.91:1 | 5.19:1 |

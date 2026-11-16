@@ -10,6 +10,13 @@ export const messageBubbleParts = {
   meta: 'view',
   metaText: 'text',
   statusIcon: 'vector',
+  reasoning: 'view',
+  reasoningToggle: 'button',
+  reasoningSpinner: 'vector',
+  reasoningLabel: 'text',
+  reasoningChevron: 'vector',
+  reasoningBox: 'view',
+  reasoningText: 'text',
 } as const;
 
 /**
@@ -54,5 +61,31 @@ export const messageBubbleRecipe = {
   },
   statusIcon: {
     base: 'size-3.5 text-danger',
+  },
+  /** MessageReasoning: one quiet line that opens the text under it, behind a rule at the start. */
+  reasoning: {
+    base: 'self-start max-w-[520px]',
+    /** The avatar's width (32) and the gap after it (8). */
+    afterAvatar: 'ms-10',
+  },
+  reasoningToggle: {
+    base: 'flex-row items-center gap-1.5 self-start min-h-8 -mx-2 px-2 rounded-control text-muted transition-colors duration-fast ease-standard hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7',
+  },
+  reasoningSpinner: {
+    base: 'size-3.5 shrink-0 motion-safe:animate-spin',
+  },
+  reasoningLabel: {
+    base: 'text-footnote',
+  },
+  reasoningChevron: {
+    base: 'size-4 shrink-0 transition-transform duration-base ease-standard',
+    open: '-rotate-180',
+  },
+  reasoningBox: {
+    base: 'overflow-hidden transition-[height] duration-base ease-standard motion-reduce:transition-none',
+    closed: 'h-0',
+  },
+  reasoningText: {
+    base: 'mt-1 mb-2 ps-3 border-s-2 border-text/12 text-footnote text-muted break-words select-text',
   },
 } as const;

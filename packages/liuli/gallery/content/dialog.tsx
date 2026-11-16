@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Confirm, Parts, Form, Full } from '../../core/src/Dialog/Dialog.examples';
+import { Confirm, Parts, Form, Full, Hero } from '../../core/src/Dialog/Dialog.examples';
 import { Lead, PageSection, Stage } from '../shared/Layout';
 
 export function Content() {
@@ -19,6 +19,9 @@ export function Content() {
         </Stage>
         <Stage caption={"Full screen, for a task with its own content"}>
           <Full />
+        </Stage>
+        <Stage caption={"A picture above the title, for a dialog that introduces something"}>
+          <Hero />
         </Stage>
       </PageSection>
     </>

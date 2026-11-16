@@ -8,6 +8,7 @@ export const progressBarParts = {
   track: 'view',
   fill: 'view',
   spinner: 'vector',
+  loading: 'view',
 } as const;
 
 /** ProgressBar and Spinner classes by part. The fill's width is the one value set inline. */
@@ -38,5 +39,11 @@ export const progressBarRecipe = {
     base: 'motion-safe:animate-spin',
     tone: { accent: 'text-accent', muted: 'text-muted', 'on-media': 'text-on-media' } satisfies Record<SpinnerTone, string>,
     size: { sm: 'size-4', md: 'size-6', lg: 'size-8', xl: 'size-12' } satisfies Record<SpinnerSize, string>,
+  },
+  /** A Spinner that shows its label: the ring over the words, centred. */
+  loading: {
+    base: 'items-center gap-2',
+    label: 'text-footnote text-center',
+    tone: { accent: 'text-muted', muted: 'text-muted', 'on-media': 'text-on-media' } satisfies Record<SpinnerTone, string>,
   },
 } as const;

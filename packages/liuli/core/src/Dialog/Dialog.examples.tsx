@@ -58,6 +58,32 @@ export function Form() {
   );
 }
 
+/** A dialog that introduces something: a picture reaches the panel's top edges, with the close button over it. */
+export function Hero() {
+  const open = useLocal('open', false);
+  return (
+    <view className="flex-row">
+      <Button label="What is new" width="content" onClick={() => open.set(true)} data-testid="hero-open" />
+      <Dialog
+        isOpen={open.value}
+        onOpenChange={next => open.set(next)}
+        label="Shared notebooks"
+        description="Invite people to a notebook and write in it together. Changes show as they are made."
+        closeLabel="Close"
+        size="sm"
+        media={<image src="public/photos/photo-2.png" alt="" className="h-40 w-full object-cover" />}
+        data-testid="hero-dialog"
+        actions={
+          <>
+            <Button label="Not now" onClick={() => open.set(false)} />
+            <Button label="Try it" variant="primary" onClick={() => open.set(false)} data-testid="hero-try" />
+          </>
+        }
+      />
+    </view>
+  );
+}
+
 /**
  * The tile: the panel at rest with real buttons, since a real dialog covers the page. shadow-modal's
  * two layers are scaled down so the shadow stays inside the stage.

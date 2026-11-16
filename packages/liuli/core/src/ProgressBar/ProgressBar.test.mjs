@@ -64,3 +64,13 @@ test('SpinnerTones: 48 px in the on-media colour over a picture; 16 px muted bes
   assert.deepEqual([arc('on-media').props.width, arc('on-media').props.color], [48, 'on-media']);
   assert.deepEqual([arc('quiet').props.width, arc('quiet').props.color], [16, 'text-muted']);
 });
+
+test('LoadingMessage: the label is drawn under the ring and read once, as the name', async () => {
+  const screen = await renderExample('ProgressBar/ProgressBar', 'LoadingMessage');
+  const spinner = screen.getByTestId('loading-notes');
+  assert.equal(spinner.props.role, 'progressbar');
+  assert.equal(spinner.props.accessibilityLabel, 'Loading your notes');
+  const words = spinner.children.find(node => node.tag === 'text');
+  assert.equal(textOf(words), 'Loading your notes');
+  assert.ok(words.props.accessibilityHidden);
+});

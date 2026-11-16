@@ -6215,6 +6215,12 @@
           "default": "false"
         },
         {
+          "name": "media",
+          "type": "Child",
+          "required": false,
+          "description": "A picture or an illustration above the title, edge to edge under the panel's top corners: for a dialog that introduces something. Give it its own height or aspect ratio. The close button, if any, sits over it."
+        },
+        {
           "name": "children",
           "type": "Child",
           "required": false,
@@ -6262,6 +6268,8 @@
       "otherProps": {},
       "parts": {
         "panel": "dialog",
+        "media": "view",
+        "mediaClose": "button",
         "header": "view",
         "title": "text",
         "close": "button",
@@ -6296,6 +6304,14 @@
               "surface-overlay"
             ],
             "minimum": "4.5:1"
+          },
+          {
+            "what": "close button over a picture",
+            "pair": [
+              "on-media",
+              "media"
+            ],
+            "minimum": "3:1"
           },
           {
             "what": "description",
@@ -6343,6 +6359,11 @@
           "name": "Full",
           "title": "Full screen",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { TextArea } from '@liulidesign/core/TextArea';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** Full screen: a task with its own content to scroll, closed from its header. */\nexport function Full() {\n  const open = useLocal('open', false);\n  const title = useLocal('title', 'Trip to the coast');\n  const body = useLocal('body', '');\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"New note\" variant=\"primary\" width=\"content\" onClick={() => open.set(true)} data-testid=\"full-open\" />\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"New note\"\n        size=\"full\"\n        closeLabel=\"Close\"\n        dismissOn=\"closeRequest\"\n        data-testid=\"full-dialog\"\n        actions={\n          <>\n            <Button label=\"Discard\" onClick={() => open.set(false)} data-testid=\"full-discard\" />\n            <Button label=\"Save note\" variant=\"primary\" onClick={() => open.set(false)} data-testid=\"full-save\" />\n          </>\n        }\n      >\n        <TextInput bind={title} label=\"Title\" />\n        <TextArea bind={body} label=\"Note\" rows={8} maxRows={16} />\n      </Dialog>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Hero",
+          "title": "With a picture above the title",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** A dialog that introduces something: a picture reaches the panel's top edges, with the close button over it. */\nexport function Hero() {\n  const open = useLocal('open', false);\n  return (\n    <view className=\"flex-row\">\n      <Button label=\"What is new\" width=\"content\" onClick={() => open.set(true)} data-testid=\"hero-open\" />\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Shared notebooks\"\n        description=\"Invite people to a notebook and write in it together. Changes show as they are made.\"\n        closeLabel=\"Close\"\n        size=\"sm\"\n        media={<image src=\"public/photos/photo-2.png\" alt=\"\" className=\"h-40 w-full object-cover\" />}\n        data-testid=\"hero-dialog\"\n        actions={\n          <>\n            <Button label=\"Not now\" onClick={() => open.set(false)} />\n            <Button label=\"Try it\" variant=\"primary\" onClick={() => open.set(false)} data-testid=\"hero-try\" />\n          </>\n        }\n      />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -6369,6 +6390,8 @@
         "roles": [
           "canvas",
           "focus",
+          "media",
+          "on-media",
           "surface-overlay",
           "text",
           "text-muted"
@@ -6397,6 +6420,10 @@
             {
               "name": "Full",
               "title": "Full screen, for a task with its own content"
+            },
+            {
+              "name": "Hero",
+              "title": "A picture above the title, for a dialog that introduces something"
             }
           ]
         }
@@ -10031,20 +10058,24 @@
       "name": "MessageBubble",
       "import": "@liulidesign/core/MessageBubble",
       "exports": [
-        "MessageBubble"
+        "MessageBubble",
+        "MessageReasoning"
       ],
       "category": "content",
       "status": "preview",
       "since": "2026-11-15",
       "summary": "One message of a conversation",
-      "description": "MessageBubble draws one message: the user's own at the end edge in the accent's soft step, anyone else's at the start on a quiet tint, with a name and a face over the first of a run. Under it goes a line the app writes, the time or how the message stands, and for one that failed a way to send it again. A conversation is the View's list of these with a Composer under it; the Conversation pattern shows them together.",
+      "description": "MessageBubble draws one message: the user's own at the end edge in the accent's soft step, anyone else's at the start on a quiet tint, with a name and a face over the first of a run. Under it goes a line the app writes, the time or how the message stands, and for one that failed a way to send it again. A conversation is the View's list of these with a Composer under it; the Conversation pattern shows them together. MessageReasoning folds how an assistant got to its answer into one line above the message.",
       "keywords": [
         "message",
         "bubble",
         "chat",
         "conversation",
         "comment",
-        "reply"
+        "reply",
+        "reasoning",
+        "thinking",
+        "assistant"
       ],
       "props": [
         {
@@ -10130,7 +10161,67 @@
           "description": ""
         }
       ],
-      "otherProps": {},
+      "otherProps": {
+        "MessageReasoning": [
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "The one line that is always shown, and the toggle's name: \"Thought for 8 seconds\"."
+          },
+          {
+            "name": "text",
+            "type": "string",
+            "required": true,
+            "description": "The reasoning itself, shown while open."
+          },
+          {
+            "name": "isStreaming",
+            "type": "boolean",
+            "required": false,
+            "description": "Still being written: a spinner sits before the label and the toggle reports busy.",
+            "default": "false"
+          },
+          {
+            "name": "hasAvatarSpace",
+            "type": "boolean",
+            "required": false,
+            "description": "Keeps an avatar's width empty before it, so it lines up with the bubbles of a run.",
+            "default": "false"
+          },
+          {
+            "name": "isDefaultOpen",
+            "type": "boolean",
+            "required": false,
+            "description": "Open on first render, uncontrolled.",
+            "default": "false"
+          },
+          {
+            "name": "isOpen",
+            "type": "boolean",
+            "required": false,
+            "description": "Controlled open state; pass `onOpenChange` with it."
+          },
+          {
+            "name": "onOpenChange",
+            "type": "((isOpen: boolean) => void)",
+            "required": false,
+            "description": ""
+          },
+          {
+            "name": "className",
+            "type": "string",
+            "required": false,
+            "description": ""
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": "On the toggle; the text gets `<testid>-text`."
+          }
+        ]
+      },
       "parts": {
         "root": "view",
         "avatar": "view",
@@ -10140,14 +10231,35 @@
         "text": "text",
         "meta": "view",
         "metaText": "text",
-        "statusIcon": "vector"
+        "statusIcon": "vector",
+        "reasoning": "view",
+        "reasoningToggle": "button",
+        "reasoningSpinner": "vector",
+        "reasoningLabel": "text",
+        "reasoningChevron": "vector",
+        "reasoningBox": "view",
+        "reasoningText": "text"
       },
       "accessibility": {
         "pattern": null,
         "name": null,
         "description": [],
-        "states": [],
-        "keyboard": [],
+        "states": [
+          {
+            "state": "expanded",
+            "from": "MessageReasoning: isOpen, or isDefaultOpen and the presses since"
+          },
+          {
+            "state": "busy",
+            "from": "MessageReasoning: isStreaming"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Enter or Space",
+            "effect": "Opens and closes a MessageReasoning"
+          }
+        ],
         "target": {},
         "contrast": [
           {
@@ -10169,6 +10281,14 @@
           },
           {
             "what": "meta",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "reasoning, its line and its text",
             "pair": [
               "text-muted",
               "canvas"
@@ -10200,6 +10320,11 @@
           "name": "States",
           "title": "Sending, sent and not sent",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { MessageBubble } from '@liulidesign/core/MessageBubble';\n\n/** How a message of mine stands: on its way, sent, and not sent, with a way to try again. */\nexport function States() {\n  const tries = useLocal('tries', 0);\n  return (\n    <view className=\"gap-3\">\n      <MessageBubble side=\"end\" text=\"On my way.\" status=\"sending\" meta=\"Sending\" data-testid=\"sending\" />\n      <MessageBubble side=\"end\" text=\"Parked by the gate.\" status=\"sent\" meta=\"Sent · 10:02\" />\n      <MessageBubble\n        side=\"end\"\n        text=\"Can you see the car?\"\n        status=\"failed\"\n        meta={tries.value === 0 ? 'Not sent' : `Not sent, tried ${tries.value + 1} times`}\n        action={<Button label=\"Try again\" variant=\"link\" size=\"sm\" onClick={() => tries.set(tries.value + 1)} data-testid=\"retry\" />}\n        data-testid=\"failed\"\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Reasoning",
+          "title": "An assistant's reasoning, folded above its answer",
+          "source": "import { Avatar } from '@liulidesign/core/Avatar';\nimport { MessageBubble, MessageReasoning } from '@liulidesign/core/MessageBubble';\n\n/** An assistant's answer with how it got there folded above it; the second is still thinking. */\nexport function Reasoning() {\n  return (\n    <view className=\"gap-1\">\n      <MessageReasoning\n        label=\"Thought for 8 seconds\"\n        text=\"The trip is Saturday and the forecast shows rain after four. The ferry at 14:10 gets in before that; the 16:40 does not. So the earlier ferry, and the tent can wait in the car.\"\n        isDefaultOpen\n        hasAvatarSpace\n        data-testid=\"reasoning\"\n      />\n      <MessageBubble avatar={<Avatar name=\"Assistant\" initials=\"A\" size=\"sm\" isDecorative />} author=\"Assistant\" text=\"Take the 14:10 ferry: it lands before the rain.\" />\n      <view className=\"h-2\" />\n      <MessageReasoning label=\"Thinking\" text=\"Checking the return times for Sunday\" isStreaming hasAvatarSpace data-testid=\"thinking\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -10213,11 +10338,18 @@
             "name": "className",
             "on": "",
             "description": ""
+          },
+          {
+            "name": "className",
+            "on": "MessageReasoning",
+            "description": ""
           }
         ],
         "tokens": [
           "--text-caption",
+          "--text-footnote",
           "--text-body",
+          "--radius-control",
           "--radius-container",
           "--radius-checkbox"
         ],
@@ -10245,6 +10377,10 @@
             {
               "name": "States",
               "title": "On its way, sent, and not sent with a way to try again"
+            },
+            {
+              "name": "Reasoning",
+              "title": "MessageReasoning: how an assistant got to its answer, one line until opened; a spinner while it is still thinking"
             }
           ]
         }
@@ -12082,7 +12218,14 @@
             "name": "label",
             "type": "string",
             "required": true,
-            "description": "The accessible name: what is loading. Not drawn."
+            "description": "The accessible name: what is loading. Drawn only with `isLabelShown`."
+          },
+          {
+            "name": "isLabelShown",
+            "type": "boolean",
+            "required": false,
+            "description": "Draws the label under the ring, centred: for a page, a panel or a list that is loading and has room to say what.",
+            "default": "false"
           },
           {
             "name": "size",
@@ -12119,7 +12262,8 @@
         "value": "text",
         "track": "view",
         "fill": "view",
-        "spinner": "vector"
+        "spinner": "vector",
+        "loading": "view"
       },
       "accessibility": {
         "pattern": null,
@@ -12160,6 +12304,14 @@
               "surface"
             ],
             "minimum": "3:1"
+          },
+          {
+            "what": "a spinner's shown label",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
           },
           {
             "what": "success fill",
@@ -12231,6 +12383,11 @@
           "source": "import { Spinner } from '@liulidesign/core/ProgressBar';\n\nexport function Spinners() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <Spinner label=\"Loading\" size=\"sm\" />\n      <Spinner label=\"Loading messages\" data-testid=\"spinner\" />\n      <Spinner label=\"Loading\" size=\"lg\" />\n    </view>\n  );\n}"
         },
         {
+          "name": "LoadingMessage",
+          "title": "A spinner that says what is loading",
+          "source": "import { Spinner } from '@liulidesign/core/ProgressBar';\n\n/** A whole panel that is loading says what, under the ring. */\nexport function LoadingMessage() {\n  return (\n    <view className=\"items-center py-6\">\n      <Spinner label=\"Loading your notes\" isLabelShown size=\"lg\" data-testid=\"loading-notes\" />\n    </view>\n  );\n}"
+        },
+        {
           "name": "Tones",
           "title": "Meters in a tone",
           "source": "import { ProgressBar } from '@liulidesign/core/ProgressBar';\n\n/** Meters: the fill says how the amount stands, and the words say it too. */\nexport function Tones() {\n  return (\n    <view className=\"gap-4\">\n      <ProgressBar label=\"Monthly goal\" value={100} valueLabel=\"Reached\" tone=\"success\" data-testid=\"tone-goal\" />\n      <ProgressBar label=\"Storage\" value={86} valueLabel=\"43 of 50 GB, nearly full\" tone=\"warning\" data-testid=\"tone-storage\" />\n      <ProgressBar label=\"Data plan\" value={100} valueLabel=\"Over by 1.2 GB\" tone=\"danger\" data-testid=\"tone-plan\" />\n    </view>\n  );\n}"
@@ -12296,6 +12453,10 @@
             {
               "name": "Spinners",
               "title": "Spinner, for a short wait"
+            },
+            {
+              "name": "LoadingMessage",
+              "title": "With its label shown, for a panel or a page that is loading"
             },
             {
               "name": "Tones",

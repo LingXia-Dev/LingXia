@@ -1101,7 +1101,10 @@ export const entries: GalleryEntry[] = [
       "chat",
       "conversation",
       "comment",
-      "reply"
+      "reply",
+      "reasoning",
+      "thinking",
+      "assistant"
     ]
   },
   {

@@ -1,7 +1,25 @@
 import { useLocal } from '@lingxia/view';
 import { Avatar } from '../Avatar/Avatar';
 import { Button } from '../Button/Button';
-import { MessageBubble } from './MessageBubble';
+import { MessageBubble, MessageReasoning } from './MessageBubble';
+
+/** An assistant's answer with how it got there folded above it; the second is still thinking. */
+export function Reasoning() {
+  return (
+    <view className="gap-1">
+      <MessageReasoning
+        label="Thought for 8 seconds"
+        text="The trip is Saturday and the forecast shows rain after four. The ferry at 14:10 gets in before that; the 16:40 does not. So the earlier ferry, and the tent can wait in the car."
+        isDefaultOpen
+        hasAvatarSpace
+        data-testid="reasoning"
+      />
+      <MessageBubble avatar={<Avatar name="Assistant" initials="A" size="sm" isDecorative />} author="Assistant" text="Take the 14:10 ferry: it lands before the rain." />
+      <view className="h-2" />
+      <MessageReasoning label="Thinking" text="Checking the return times for Sunday" isStreaming hasAvatarSpace data-testid="thinking" />
+    </view>
+  );
+}
 
 /** A short exchange: theirs at the start with a name and a face, mine at the end; a run shares its inner corners. */
 export function Exchange() {

@@ -22,6 +22,12 @@ export interface DialogProps {
    * dialog. Pair it with `dismissOn="closeRequest"` or `"none"`. @default false
    */
   isAlert?: boolean;
+  /**
+   * A picture or an illustration above the title, edge to edge under the panel's top corners: for a
+   * dialog that introduces something. Give it its own height or aspect ratio. The close button, if
+   * any, sits over it.
+   */
+  media?: Child;
   /** The body; it scrolls when the panel reaches its maximum height. */
   children?: Child;
   /** The footer, typically Buttons, the main action last. */
@@ -54,6 +60,7 @@ export function Dialog({
   isLabelHidden = false,
   description,
   isAlert = false,
+  media,
   children,
   actions,
   closeLabel,
@@ -79,10 +86,20 @@ export function Dialog({
       style={clear}
       className={cx(r.panel.base, size !== 'full' && r.panel.floating, r.panel.size[size], className)}
     >
-      {(!isLabelHidden || closeLabel !== undefined) && (
+      {media !== undefined && (
+        <view className={cx(r.media.base, size !== 'full' && r.media.floating)}>
+          <view aria-hidden className={r.media.picture}>{media}</view>
+          {closeLabel !== undefined && (
+            <button aria-label={closeLabel} onClick={close} className={r.mediaClose.base}>
+              <Glyph name="close" className={r.closeIcon.base} />
+            </button>
+          )}
+        </view>
+      )}
+      {(!isLabelHidden || (closeLabel !== undefined && media === undefined)) && (
         <view className={r.header.base}>
           {!isLabelHidden && <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>}
-          {closeLabel !== undefined && (
+          {closeLabel !== undefined && media === undefined && (
             <button aria-label={closeLabel} onClick={close} className={r.close.base}>
               <Glyph name="close" className={r.closeIcon.base} />
             </button>

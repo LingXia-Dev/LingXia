@@ -14,6 +14,8 @@ export const doc: ComponentDoc = {
   recipe: { map: 'dialogRecipe', parts: 'dialogParts' },
   anatomy: [
     { part: 'panel', required: true, description: 'The dialog primitive: a centred panel on the overlay surface, in the top layer above a scrim; at `full` it covers the screen on the page\'s canvas.' },
+    { part: 'media', required: false, description: '`media`: a picture above the title, reaching the panel\'s top edges; hidden from assistive tech.' },
+    { part: 'mediaClose', required: false, description: 'With `media`, the close button sits over the picture on its own dock.' },
     { part: 'title', required: true, description: '`label` as a level-2 heading, unless `isLabelHidden`.' },
     { part: 'close', required: false, description: 'A close button named by `closeLabel`.' },
     { part: 'description', required: false, description: 'Text under the title.' },
@@ -28,6 +30,7 @@ export const doc: ComponentDoc = {
     keyboard: [{ keys: 'Escape', effect: 'onOpenChange(false), unless dismissOn is none' }],
     contrast: [
       { what: 'title', pair: ['text', 'surface-overlay'], minimum: '4.5:1' },
+      { what: 'close button over a picture', pair: ['on-media', 'media'], minimum: '3:1' },
       { what: 'description', pair: ['text-muted', 'surface-overlay'], minimum: '4.5:1' },
       { what: 'title, full screen', pair: ['text', 'canvas'], minimum: '4.5:1' },
       { what: 'description, full screen', pair: ['text-muted', 'canvas'], minimum: '4.5:1' },
@@ -54,6 +57,7 @@ export const doc: ComponentDoc = {
     { name: 'Confirm', title: 'Confirm a destructive action, as an alert dialog' },
     { name: 'Form', title: 'A short form' },
     { name: 'Full', title: 'Full screen' },
+    { name: 'Hero', title: 'With a picture above the title' },
   ],
   gaps: [
     {
@@ -71,7 +75,7 @@ export const doc: ComponentDoc = {
       lead: 'Use a dialog for a decision or a short task that must be finished before going on.',
       hero: 'Confirm',
       parts: { name: 'Parts', title: 'Title, then the body, then the actions with the main one last' },
-      variants: [{ name: 'Form', title: 'A short task: renaming' }, { name: 'Full', title: 'Full screen, for a task with its own content' }],
+      variants: [{ name: 'Form', title: 'A short task: renaming' }, { name: 'Full', title: 'Full screen, for a task with its own content' }, { name: 'Hero', title: 'A picture above the title, for a dialog that introduces something' }],
     },
   },
 };

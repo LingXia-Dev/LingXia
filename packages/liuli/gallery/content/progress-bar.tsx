@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Determinate, Indeterminate, Spinners, Tones, SpinnerTones, SizesBar, StateStarted, StateHalf, StateDone, StateUnknown, Compact } from '../../core/src/ProgressBar/ProgressBar.examples';
+import { Determinate, Indeterminate, Spinners, LoadingMessage, Tones, SpinnerTones, SizesBar, StateStarted, StateHalf, StateDone, StateUnknown, Compact } from '../../core/src/ProgressBar/ProgressBar.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -14,6 +14,9 @@ export function Content() {
         </Stage>
         <Stage caption={"Spinner, for a short wait"}>
           <Spinners />
+        </Stage>
+        <Stage caption={"With its label shown, for a panel or a page that is loading"}>
+          <LoadingMessage />
         </Stage>
         <Stage caption={"A tone for a meter: reached, nearly full, over"}>
           <Tones />

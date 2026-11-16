@@ -2,6 +2,8 @@ import type { DialogSize } from './Dialog';
 
 export const dialogParts = {
   panel: 'dialog',
+  media: 'view',
+  mediaClose: 'button',
   header: 'view',
   title: 'text',
   close: 'button',
@@ -22,6 +24,16 @@ export const dialogRecipe = {
     floating: 'w-[90%] max-h-[85vh] rounded-dialog border border-text/12 bg-surface-overlay shadow-modal motion-safe:starting:scale-96 motion-safe:exit:scale-96',
     /** `full` has nothing behind it to float over: it is a page, on the page's canvas, and only fades. */
     size: { sm: 'max-w-[360px]', md: 'max-w-[480px]', lg: 'max-w-[640px]', full: 'w-full h-full rounded-none bg-canvas' } satisfies Record<DialogSize, string>,
+  },
+  /** The picture above the title: it undoes the panel's padding to reach three edges, and takes the top corners. */
+  media: {
+    base: 'relative -mx-5 -mt-5 overflow-hidden',
+    floating: 'rounded-t-dialog',
+    picture: 'self-stretch',
+  },
+  /** Over a picture the close button brings its own dock, so it reads on any image. */
+  mediaClose: {
+    base: 'absolute end-3 top-3 size-8 items-center justify-center rounded-full bg-media text-on-media focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
   },
   header: {
     base: 'flex-row items-start gap-3',

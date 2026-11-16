@@ -122,6 +122,40 @@ export function Full() {
 }
 ```
 
+### With a picture above the title
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Button } from '@liulidesign/core/Button';
+import { Dialog } from '@liulidesign/core/Dialog';
+
+/** A dialog that introduces something: a picture reaches the panel's top edges, with the close button over it. */
+export function Hero() {
+  const open = useLocal('open', false);
+  return (
+    <view className="flex-row">
+      <Button label="What is new" width="content" onClick={() => open.set(true)} data-testid="hero-open" />
+      <Dialog
+        isOpen={open.value}
+        onOpenChange={next => open.set(next)}
+        label="Shared notebooks"
+        description="Invite people to a notebook and write in it together. Changes show as they are made."
+        closeLabel="Close"
+        size="sm"
+        media={<image src="public/photos/photo-2.png" alt="" className="h-40 w-full object-cover" />}
+        data-testid="hero-dialog"
+        actions={
+          <>
+            <Button label="Not now" onClick={() => open.set(false)} />
+            <Button label="Try it" variant="primary" onClick={() => open.set(false)} data-testid="hero-try" />
+          </>
+        }
+      />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -132,6 +166,7 @@ export function Full() {
 | `isLabelHidden` | `boolean` | `false` | Keeps `label` as the name without drawing it as a title. |
 | `description` | `string` |  | One or two sentences under the title, read as the dialog's description. |
 | `isAlert` | `boolean` | `false` | Interrupts with something to confirm or acknowledge; screen readers announce it as an alert dialog. Pair it with `dismissOn="closeRequest"` or `"none"`. |
+| `media` | `Child` |  | A picture or an illustration above the title, edge to edge under the panel's top corners: for a dialog that introduces something. Give it its own height or aspect ratio. The close button, if any, sits over it. |
 | `children` | `Child` |  | The body; it scrolls when the panel reaches its maximum height. |
 | `actions` | `Child` |  | The footer, typically Buttons, the main action last. |
 | `closeLabel` | `string` |  | Shows a close button in the header, named by this text. |
@@ -145,6 +180,8 @@ export function Full() {
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
 | panel | `<dialog>` | yes | The dialog primitive: a centred panel on the overlay surface, in the top layer above a scrim; at `full` it covers the screen on the page's canvas. |
+| media | `<view>` | no | `media`: a picture above the title, reaching the panel's top edges; hidden from assistive tech. |
+| mediaClose | `<button>` | no | With `media`, the close button sits over the picture on its own dock. |
 | title | `<text>` | yes | `label` as a level-2 heading, unless `isLabelHidden`. |
 | close | `<button>` | no | A close button named by `closeLabel`. |
 | description | `<text>` | no | Text under the title. |
@@ -156,7 +193,7 @@ export function Full() {
 - `className`: Classes for the panel.
 - The recipe, `dialogRecipe` from `@liulidesign/core/Dialog/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-body`, `--text-title`, `--shadow-modal`, `--radius-dialog`.
-- Colour roles it paints with, set by the theme pack: `canvas`, `focus`, `surface-overlay`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `canvas`, `focus`, `media`, `on-media`, `surface-overlay`, `text`, `text-muted`.
 
 ## Accessibility
 
@@ -172,6 +209,7 @@ export function Full() {
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | title | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.10:1 |
+| close button over a picture | `on-media` on `media` | 3:1 | 7.94:1 | 7.94:1 |
 | description | `text-muted` on `surface-overlay` | 4.5:1 | 5.89:1 | 4.84:1 |
 | title, full screen | `text` on `canvas` | 4.5:1 | 15.19:1 | 15.31:1 |
 | description, full screen | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |

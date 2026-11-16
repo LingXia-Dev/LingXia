@@ -1,5 +1,6 @@
-import { cx, type Child } from '@lingxia/view';
+import { cx, useLocal, type Child } from '@lingxia/view';
 import { Glyph } from '../internal/Glyph';
+import { spinner, spinnerBox } from '../internal/spinner';
 import { messageBubbleRecipe as r } from './MessageBubble.recipe';
 
 /** `end` is the user\'s own message; `start` is someone else\'s. */
@@ -54,6 +55,48 @@ export function MessageBubble({
             {action}
           </view>
         )}
+      </view>
+    </view>
+  );
+}
+
+export interface MessageReasoningProps {
+  /** The one line that is always shown, and the toggle's name: "Thought for 8 seconds". */
+  label: string;
+  /** The reasoning itself, shown while open. */
+  text: string;
+  /** Still being written: a spinner sits before the label and the toggle reports busy. @default false */
+  isStreaming?: boolean;
+  /** Keeps an avatar's width empty before it, so it lines up with the bubbles of a run. @default false */
+  hasAvatarSpace?: boolean;
+  /** Open on first render, uncontrolled. @default false */
+  isDefaultOpen?: boolean;
+  /** Controlled open state; pass `onOpenChange` with it. */
+  isOpen?: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
+  className?: string;
+  /** On the toggle; the text gets `<testid>-text`. */
+  'data-testid'?: string;
+}
+
+/** How an assistant got to its answer, folded to one quiet line over the message it belongs to. */
+export function MessageReasoning({ label, text, isStreaming = false, hasAvatarSpace = false, isDefaultOpen = false, isOpen, onOpenChange, className, 'data-testid': testId }: MessageReasoningProps) {
+  const local = useLocal(isDefaultOpen);
+  const open = isOpen ?? local.value;
+  const toggle = () => {
+    if (isOpen === undefined) local.set(!open);
+    onOpenChange?.(!open);
+  };
+  return (
+    <view className={cx(r.reasoning.base, hasAvatarSpace && r.reasoning.afterAvatar, className)}>
+      <button aria-label={label} aria-expanded={open} aria-busy={isStreaming || undefined} onClick={toggle} data-testid={testId} className={r.reasoningToggle.base}>
+        {isStreaming && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.reasoningSpinner.base} />}
+        <text className={r.reasoningLabel.base}>{label}</text>
+        <Glyph name="chevron-down" className={cx(r.reasoningChevron.base, open && r.reasoningChevron.open)} />
+      </button>
+      {/* Kept in the tree so the box can close around it; closed, it is clipped to nothing and hidden. */}
+      <view aria-hidden={!open || undefined} className={cx(r.reasoningBox.base, !open && r.reasoningBox.closed)}>
+        <text data-testid={testId && `${testId}-text`} className={r.reasoningText.base}>{text}</text>
       </view>
     </view>
   );

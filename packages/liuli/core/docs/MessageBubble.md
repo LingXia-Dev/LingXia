@@ -5,10 +5,10 @@
 One message of a conversation. Status: preview.
 
 ```ts
-import { MessageBubble } from '@liulidesign/core/MessageBubble';
+import { MessageBubble, MessageReasoning } from '@liulidesign/core/MessageBubble';
 ```
 
-MessageBubble draws one message: the user's own at the end edge in the accent's soft step, anyone else's at the start on a quiet tint, with a name and a face over the first of a run. Under it goes a line the app writes, the time or how the message stands, and for one that failed a way to send it again. A conversation is the View's list of these with a Composer under it; the Conversation pattern shows them together.
+MessageBubble draws one message: the user's own at the end edge in the accent's soft step, anyone else's at the start on a quiet tint, with a name and a face over the first of a run. Under it goes a line the app writes, the time or how the message stands, and for one that failed a way to send it again. A conversation is the View's list of these with a Composer under it; the Conversation pattern shows them together. MessageReasoning folds how an assistant got to its answer into one line above the message.
 
 ## Examples
 
@@ -59,6 +59,31 @@ export function States() {
 }
 ```
 
+### An assistant's reasoning, folded above its answer
+
+```tsx
+import { Avatar } from '@liulidesign/core/Avatar';
+import { MessageBubble, MessageReasoning } from '@liulidesign/core/MessageBubble';
+
+/** An assistant's answer with how it got there folded above it; the second is still thinking. */
+export function Reasoning() {
+  return (
+    <view className="gap-1">
+      <MessageReasoning
+        label="Thought for 8 seconds"
+        text="The trip is Saturday and the forecast shows rain after four. The ferry at 14:10 gets in before that; the 16:40 does not. So the earlier ferry, and the tent can wait in the car."
+        isDefaultOpen
+        hasAvatarSpace
+        data-testid="reasoning"
+      />
+      <MessageBubble avatar={<Avatar name="Assistant" initials="A" size="sm" isDecorative />} author="Assistant" text="Take the 14:10 ferry: it lands before the rain." />
+      <view className="h-2" />
+      <MessageReasoning label="Thinking" text="Checking the return times for Sunday" isStreaming hasAvatarSpace data-testid="thinking" />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -77,6 +102,20 @@ export function States() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
+## MessageReasoning props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `label` (required) | `string` |  | The one line that is always shown, and the toggle's name: "Thought for 8 seconds". |
+| `text` (required) | `string` |  | The reasoning itself, shown while open. |
+| `isStreaming` | `boolean` | `false` | Still being written: a spinner sits before the label and the toggle reports busy. |
+| `hasAvatarSpace` | `boolean` | `false` | Keeps an avatar's width empty before it, so it lines up with the bubbles of a run. |
+| `isDefaultOpen` | `boolean` | `false` | Open on first render, uncontrolled. |
+| `isOpen` | `boolean` |  | Controlled open state; pass `onOpenChange` with it. |
+| `onOpenChange` | `((isOpen: boolean) => void)` |  |  |
+| `className` | `string` |  |  |
+| `data-testid` | `string` |  | On the toggle; the text gets `<testid>-text`. |
+
 ## Anatomy
 
 | Part | Element | Required | Description |
@@ -86,12 +125,15 @@ export function States() {
 | author | `<text>` | no | Who wrote it, over the first bubble of a run. |
 | bubble | `<view>` | yes | The message: up to four fifths of the row, 520 px at most. |
 | meta | `<view>` | no | The line under the bubble: time, state, and the retry action. |
+| reasoningToggle | `<button>` | no | MessageReasoning's one line: a button named by `label`, with a spinner while `isStreaming`. |
+| reasoningText | `<text>` | no | The reasoning, behind a rule at the start; it can be selected. |
 
 ## What an app may override
 
 - `className`: classes merged after the recipe's, so they win.
+- `className` on MessageReasoning: classes merged after the recipe's, so they win.
 - The recipe, `messageBubbleRecipe` from `@liulidesign/core/MessageBubble/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-body`, `--radius-container`, `--radius-checkbox`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`, `--radius-control`, `--radius-container`, `--radius-checkbox`.
 - Colour roles it paints with, set by the theme pack: `accent-soft`, `danger`, `on-accent-soft`, `text`, `text-muted`.
 
 ## Accessibility
@@ -99,6 +141,8 @@ export function States() {
 - Pattern: none.
 - Name: none; its content is read.
 - Description: none.
+- States: expanded (from MessageReasoning: isOpen, or isDefaultOpen and the presses since); busy (from MessageReasoning: isStreaming).
+- Enter or Space: Opens and closes a MessageReasoning.
 - Press target: .
 - It is read in order: the name, the message, then the line under it. Put the list in the View's list so a screen reader steps message by message.
 - A failed message says so in words and with an error mark, not only with its red edge.
@@ -109,6 +153,7 @@ export function States() {
 | my message | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.44:1 | 9.49:1 |
 | their message | `text` on `text/6` over `canvas` | 4.5:1 | 13.54:1 | 13.46:1 |
 | meta | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
+| reasoning, its line and its text | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
 | failure words | `danger` on `canvas` | 4.5:1 | 4.87:1 | 5.98:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

@@ -44,3 +44,17 @@ test('Full: covers the screen with square corners and no floating shadow; the bo
   assert.deepEqual([dialog.props.widthPercent, dialog.props.heightPercent, dialog.props.radius, dialog.props.boxShadow, dialog.props.background], [100, 100, 0, undefined, 'canvas']);
   assert.equal(dialog.children.find(node => node.tag === 'scroll').props.grow, 1);
 });
+
+test('Hero: the picture is drawn only, and the close button over it still closes', async () => {
+  const screen = await renderExample('Dialog/Dialog', 'Hero');
+  screen.press(screen.getByTestId('hero-open'));
+  const dialog = screen.getByTestId('hero-dialog');
+  assert.equal(dialog.props.accessibilityLabel, 'Shared notebooks');
+  const [media] = dialog.children;
+  assert.ok(media.children[0].props.accessibilityHidden, 'the picture is not read');
+  const close = media.children[1];
+  assert.equal(close.props.accessibilityLabel, 'Close');
+  assert.equal(close.props.background, 'media');
+  screen.press(close);
+  assert.equal(screen.queryAll(node => node.props.testId === 'hero-dialog').length, 0);
+});

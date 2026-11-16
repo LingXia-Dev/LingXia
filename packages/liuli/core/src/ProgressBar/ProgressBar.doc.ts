@@ -19,6 +19,7 @@ export const doc: ComponentDoc = {
     { part: 'track', required: true, description: 'The bar itself, and the element assistive tech reports as a progress bar.' },
     { part: 'fill', required: true, description: 'The amount done, as a share of the track width; a sweeping segment while the amount is unknown.' },
     { part: 'spinner', required: false, description: "Spinner's spinning arc." },
+    { part: 'loading', required: false, description: 'A Spinner with `isLabelShown`: the ring over its label, centred; the words are drawn only, the name is read once.' },
   ],
   accessibility: {
     pattern: null,
@@ -31,6 +32,7 @@ export const doc: ComponentDoc = {
       { what: 'fill and spinner on a card', pair: ['accent', 'surface'], minimum: '3:1' },
       { what: 'spinner over media', pair: ['on-media', 'media'], minimum: '3:1' },
       { what: 'muted spinner', pair: ['text-muted', 'surface'], minimum: '3:1' },
+      { what: 'a spinner\'s shown label', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
       { what: 'success fill', pair: ['success-mark', 'surface'], minimum: '3:1' },
       { what: 'warning fill', pair: ['warning-mark', 'surface'], minimum: '3:1' },
       { what: 'danger fill', pair: ['danger-mark', 'surface'], minimum: '3:1' },
@@ -61,6 +63,7 @@ export const doc: ComponentDoc = {
     { name: 'Indeterminate', title: 'Running, amount unknown' },
     { name: 'Compact', title: 'Thin, under its own heading' },
     { name: 'Spinners', title: 'Spinner sizes' },
+    { name: 'LoadingMessage', title: 'A spinner that says what is loading' },
     { name: 'Tones', title: 'Meters in a tone' },
     { name: 'SpinnerTones', title: 'A spinner over media, and a quiet one' },
   ],
@@ -77,6 +80,7 @@ export const doc: ComponentDoc = {
       variants: [
         { name: 'Indeterminate', title: 'Amount unknown' },
         { name: 'Spinners', title: 'Spinner, for a short wait' },
+        { name: 'LoadingMessage', title: 'With its label shown, for a panel or a page that is loading' },
         { name: 'Tones', title: 'A tone for a meter: reached, nearly full, over' },
         { name: 'SpinnerTones', title: 'Extra large over media; muted beside quiet text' },
       ],

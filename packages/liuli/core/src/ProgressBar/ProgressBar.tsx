@@ -72,8 +72,10 @@ export function ProgressBar({
 }
 
 export interface SpinnerProps {
-  /** The accessible name: what is loading. Not drawn. */
+  /** The accessible name: what is loading. Drawn only with `isLabelShown`. */
   label: string;
+  /** Draws the label under the ring, centred: for a page, a panel or a list that is loading and has room to say what. @default false */
+  isLabelShown?: boolean;
   /** 16, 24, 32 or 48 px; `xl` for a whole page or a media frame that is loading. @default 'md' */
   size?: SpinnerSize;
   /** @default 'accent' */
@@ -83,10 +85,12 @@ export interface SpinnerProps {
 }
 
 /** A spinning arc for a wait whose length is unknown. */
-export function Spinner({ label, size = 'md', tone = 'accent', className, 'data-testid': testId }: SpinnerProps) {
+export function Spinner({ label, isLabelShown = false, size = 'md', tone = 'accent', className, 'data-testid': testId }: SpinnerProps) {
   return (
-    <view role="progressbar" aria-label={label} data-testid={testId} className={className}>
+    <view role="progressbar" aria-label={label} data-testid={testId} className={cx(isLabelShown && r.loading.base, className)}>
       <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={cx(r.spinner.base, r.spinner.tone[tone], r.spinner.size[size])} />
+      {/* Read once, as the name; the drawn words are for the eye. */}
+      {isLabelShown && <text aria-hidden className={cx(r.loading.label, r.loading.tone[tone])}>{label}</text>}
     </view>
   );
 }

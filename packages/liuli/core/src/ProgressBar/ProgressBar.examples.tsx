@@ -44,6 +44,15 @@ export function Spinners() {
   );
 }
 
+/** A whole panel that is loading says what, under the ring. */
+export function LoadingMessage() {
+  return (
+    <view className="items-center py-6">
+      <Spinner label="Loading your notes" isLabelShown size="lg" data-testid="loading-notes" />
+    </view>
+  );
+}
+
 /** The home tile. */
 export function Specimen() {
   return (
