@@ -1,4 +1,4 @@
-import type { Child } from '@lingxia/view';
+import { useView, type Child } from '@lingxia/view';
 
 /** Authored `data-*` props: page state automation reads as attributes. */
 export type DataAttributes = Record<`data-${string}`, string>;
@@ -20,6 +20,10 @@ export function Page({
   intro?: string;
   children?: Child;
 }) {
+  const { insets, safeArea, keyboard } = useView().env;
+  // A see-through tab bar sits over the page's bottom edge: its labels need a plate to read on
+  // while rows pass under them.
+  const bar = keyboard.height > 0 ? 0 : insets.bottom - safeArea.bottom;
   return (
     <page data-testid={testId} {...data} className="bg-canvas text-text">
       <scroll data-testid={scrollId} className="grow basis-0">
@@ -28,6 +32,10 @@ export function Page({
           {children}
         </view>
       </scroll>
+      {bar > 0 ? (
+        <view aria-hidden data-testid="page-bar-plate" style={{ height: insets.bottom }}
+          className="absolute left-0 right-0 bottom-0 bg-surface/95 border-t border-line" />
+      ) : null}
     </page>
   );
 }
