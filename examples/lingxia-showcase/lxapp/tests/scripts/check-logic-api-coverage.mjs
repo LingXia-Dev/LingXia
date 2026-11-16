@@ -249,7 +249,15 @@ function filesBelow(directory, suffix) {
 
 function specCoverage() {
   const result = new Map();
-  for (const file of filesBelow(path.join(root, 'tests'), '.test.ts')) {
+  // The specs every showcase shares ship in @lingxia/test; one counts when this example's
+  // tests import it, which puts it in the tests project.
+  const shared = fs.realpathSync(path.join(root, 'node_modules/@lingxia/test/showcase'));
+  const imported = (file) => compilerProjects.some((project) => project.program.getSourceFile(file));
+  const files = [
+    ...filesBelow(path.join(root, 'tests'), '.test.ts'),
+    ...filesBelow(shared, '.test.ts').filter(imported),
+  ];
+  for (const file of files) {
     const ast = sourceFile(file);
     const visit = (node) => {
       if (ts.isCallExpression(node) && node.arguments.length >= 2) {
