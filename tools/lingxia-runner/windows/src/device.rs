@@ -85,6 +85,8 @@ pub(crate) struct DevicePreset {
     pub(crate) name: String,
     pub(crate) width: i32,
     pub(crate) height: i32,
+    #[serde(rename = "pixelRatio")]
+    pub(crate) pixel_ratio: f32,
     #[serde(rename = "bezelWidth")]
     bezel_width: i32,
     #[serde(rename = "bezelColor")]

@@ -246,6 +246,11 @@ struct DeviceSetOpt {
     landscape: Option<bool>,
     /// Simulated appearance: "system" | "light" | "dark"; omit to keep.
     appearance: Option<String>,
+    /// Simulated system text size as a factor of the default (1.3, 2); omit to keep.
+    #[js_name = "textScale"]
+    text_scale: Option<f64>,
+    /// Simulated contrast: "standard" | "high"; omit to keep.
+    contrast: Option<String>,
 }
 
 #[js_class(rename = "DeviceDriver")]
@@ -275,20 +280,29 @@ impl JSDeviceDriver {
     #[js_method]
     async fn set(&self, ctx: JSContext, options: DeviceSetOpt) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
-        if options.id.is_none() && options.landscape.is_none() && options.appearance.is_none() {
+        let change = lxapp::device::DeviceChange {
+            id: options.id,
+            landscape: options.landscape,
+            appearance: options
+                .appearance
+                .as_deref()
+                .map(str::parse)
+                .transpose()
+                .map_err(auto_err)?,
+            text_scale: options.text_scale,
+            contrast: options
+                .contrast
+                .as_deref()
+                .map(str::parse)
+                .transpose()
+                .map_err(auto_err)?,
+        };
+        if change.is_empty() {
             return Err(auto_err(
-                "set requires at least one of id, landscape, appearance",
+                "set requires at least one of id, landscape, appearance, textScale, contrast",
             ));
         }
-        let appearance = options
-            .appearance
-            .as_deref()
-            .map(str::parse::<lxapp::device::Appearance>)
-            .transpose()
-            .map_err(auto_err)?;
-        let state = lxapp::device::device_set(options.id.as_deref(), options.landscape, appearance)
-            .await
-            .map_err(auto_err)?;
+        let state = lxapp::device::device_set(change).await.map_err(auto_err)?;
         to_js(&ctx, &state)
     }
 }

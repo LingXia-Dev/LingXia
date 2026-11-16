@@ -62,11 +62,13 @@ The lxapps and pages in the session. Commands target the current lxapp
 
 The simulated device (Runner sessions only).
 
-- `presets` — the device presets
-- `get` — current preset, orientation, appearance
+- `presets` — the device presets: viewport in points and pixel ratio
+- `get` — current preset, orientation, appearance, text scale, contrast
 - `set` — partial update of preset, orientation and `--appearance
   system|light|dark`. The capsule follows the host: none on its home lxapp,
   always on every other.
+- `set --text-scale 1.3` / `--contrast standard|high` — the simulated system text size (0.5 to 3)
+  and contrast, which GPU pages read as `env`'s; macOS Runner only.
 
 Switching between desktop and handheld presets restarts Logic, so app state
 resets.

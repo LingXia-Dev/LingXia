@@ -51,6 +51,63 @@ impl std::str::FromStr for Appearance {
     }
 }
 
+/// Simulated contrast setting of the device: `High` is the system's increased contrast.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Contrast {
+    #[default]
+    Standard,
+    High,
+}
+
+impl std::str::FromStr for Contrast {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "standard" => Ok(Contrast::Standard),
+            "high" => Ok(Contrast::High),
+            other => Err(format!(
+                "unknown contrast: {other} (expected standard|high)"
+            )),
+        }
+    }
+}
+
+/// The text scales a simulated device takes: the system's smallest to its largest
+/// accessibility size.
+pub const TEXT_SCALE_RANGE: std::ops::RangeInclusive<f64> = 0.5..=3.0;
+
+/// A change to the simulated environment; `None` keeps what is set.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DeviceChange {
+    /// Preset id.
+    pub id: Option<String>,
+    pub landscape: Option<bool>,
+    pub appearance: Option<Appearance>,
+    /// The system text size as a factor of the default, within [`TEXT_SCALE_RANGE`]; `f64` so
+    /// the decimal a user wrote reads back as written.
+    pub text_scale: Option<f64>,
+    pub contrast: Option<Contrast>,
+}
+
+impl DeviceChange {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        match self.text_scale {
+            Some(scale) if !TEXT_SCALE_RANGE.contains(&scale) => Err(format!(
+                "text scale {scale} is outside {}..={}",
+                TEXT_SCALE_RANGE.start(),
+                TEXT_SCALE_RANGE.end()
+            )),
+            _ => Ok(()),
+        }
+    }
+}
+
 /// A device preset the host runner can simulate.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DeviceEntry {
@@ -64,8 +121,20 @@ pub struct DeviceEntry {
     pub width: u32,
     /// Logical height in points.
     pub height: u32,
+    /// Device pixels per point: a GPU page renders at it, so its screenshot is
+    /// `width * pixel_ratio` by `height * pixel_ratio` pixels.
+    #[serde(rename = "pixelRatio", default = "one")]
+    pub pixel_ratio: f32,
     /// True for the currently selected device.
     pub current: bool,
+}
+
+fn one() -> f32 {
+    1.0
+}
+
+fn default_text_scale() -> f64 {
+    1.0
 }
 
 /// The active device selection reported by the host runner.
@@ -81,11 +150,20 @@ pub struct DeviceState {
     pub width: u32,
     /// Logical height in points (accounts for orientation).
     pub height: u32,
+    /// Device pixels per point.
+    #[serde(rename = "pixelRatio", default = "one")]
+    pub pixel_ratio: f32,
     /// True when the device is rotated to landscape.
     pub landscape: bool,
     /// Simulated system appearance of the device screen.
     #[serde(default = "Appearance::default_system")]
     pub appearance: Appearance,
+    /// Simulated system text size, a factor of the default.
+    #[serde(rename = "textScale", default = "default_text_scale")]
+    pub text_scale: f64,
+    /// Simulated system contrast.
+    #[serde(default)]
+    pub contrast: Contrast,
 }
 
 /// Host-provided controller for switching the simulated device. Implemented by
@@ -95,14 +173,9 @@ pub struct DeviceState {
 pub trait DeviceController: Send + Sync {
     fn list(&self) -> Result<Vec<DeviceEntry>, String>;
     fn get(&self) -> Result<DeviceState, String>;
-    /// Partial update: only the provided fields change. `id: None` keeps the
-    /// current preset, so orientation or appearance can flip on their own.
-    fn set(
-        &self,
-        id: Option<&str>,
-        landscape: Option<bool>,
-        appearance: Option<Appearance>,
-    ) -> Result<DeviceState, String>;
+    /// Partial update: only the provided fields change, so orientation,
+    /// appearance, text scale or contrast can each change on their own.
+    fn set(&self, change: &DeviceChange) -> Result<DeviceState, String>;
 }
 
 static DEVICE_CONTROLLER: OnceLock<Box<dyn DeviceController>> = OnceLock::new();
@@ -177,13 +250,9 @@ impl Drop for CreationPause {
 
 /// Change the simulated environment and await replacement Logic/page readiness.
 /// Runs independently of the caller, so disconnecting cannot strand paused apps.
-pub async fn device_set(
-    id: Option<&str>,
-    landscape: Option<bool>,
-    appearance: Option<Appearance>,
-) -> Result<DeviceState, String> {
-    let id = id.map(str::to_owned);
-    crate::executor::spawn(async move { change_device(id, landscape, appearance).await })
+pub async fn device_set(change: DeviceChange) -> Result<DeviceState, String> {
+    change.validate()?;
+    crate::executor::spawn(async move { change_device(change).await })
         .await
         .map_err(|error| format!("device transition failed: {error}"))?
 }
@@ -191,22 +260,21 @@ pub async fn device_set(
 /// Native UI entry: never block a platform's main thread waiting for Logic.
 pub fn request_device_set(id: String, landscape: Option<bool>) {
     std::mem::drop(crate::executor::spawn(async move {
-        if let Err(error) = device_set(Some(&id), landscape, None).await {
+        let change = DeviceChange {
+            id: Some(id),
+            landscape,
+            ..Default::default()
+        };
+        if let Err(error) = device_set(change).await {
             crate::error!("Runner device change failed: {error}");
         }
     }));
 }
 
-async fn apply_device(
-    id: Option<String>,
-    landscape: Option<bool>,
-    appearance: Option<Appearance>,
-) -> Result<DeviceState, String> {
-    tokio::task::spawn_blocking(move || {
-        device_controller()?.set(id.as_deref(), landscape, appearance)
-    })
-    .await
-    .map_err(|error| format!("device controller failed: {error}"))?
+async fn apply_device(change: DeviceChange) -> Result<DeviceState, String> {
+    tokio::task::spawn_blocking(move || device_controller()?.set(&change))
+        .await
+        .map_err(|error| format!("device controller failed: {error}"))?
 }
 
 async fn resume_apps(apps: &[std::sync::Arc<crate::LxApp>]) -> Vec<String> {
@@ -222,14 +290,10 @@ async fn resume_apps(apps: &[std::sync::Arc<crate::LxApp>]) -> Vec<String> {
     .collect()
 }
 
-async fn change_device(
-    id: Option<String>,
-    landscape: Option<bool>,
-    appearance: Option<Appearance>,
-) -> Result<DeviceState, String> {
+async fn change_device(change: DeviceChange) -> Result<DeviceState, String> {
     let _change = DEVICE_CHANGE.lock().await;
     let (previous, target_group) = tokio::task::spawn_blocking({
-        let id = id.clone();
+        let id = change.id.clone();
         move || -> Result<_, String> {
             let previous = device_get()?;
             let group = match id {
@@ -248,7 +312,7 @@ async fn change_device(
     .await
     .map_err(|error| error.to_string())??;
     if (previous.group == "desktop") == (target_group == "desktop") {
-        return apply_device(id, landscape, appearance).await;
+        return apply_device(change).await;
     }
 
     let pause = CreationPause::begin();
@@ -271,13 +335,15 @@ async fn change_device(
         failures.extend(resume_apps(&apps).await);
         return Err(failures.join("; "));
     }
-    let applied = apply_device(id, landscape, appearance).await;
+    let applied = apply_device(change).await;
     if applied.is_err()
-        && let Err(error) = apply_device(
-            Some(previous.id),
-            Some(previous.landscape),
-            Some(previous.appearance),
-        )
+        && let Err(error) = apply_device(DeviceChange {
+            id: Some(previous.id),
+            landscape: Some(previous.landscape),
+            appearance: Some(previous.appearance),
+            text_scale: Some(previous.text_scale),
+            contrast: Some(previous.contrast),
+        })
         .await
     {
         failures.push(format!("device rollback failed: {error}"));

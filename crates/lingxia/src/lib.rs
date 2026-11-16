@@ -181,7 +181,8 @@ pub mod dev {
     pub use crate::applink::inject as inject_applink;
     pub use crate::devtool::prepare_dev_bundles;
     pub use crate::devtool::{
-        Appearance, DeviceController, DeviceEntry, DeviceState, LxAppDevConfig, LxAppDevIdentity,
+        Appearance, Contrast, DeviceChange, DeviceController, DeviceEntry, DeviceState,
+        LxAppDevConfig, LxAppDevIdentity,
         connect_dev_server, dev_session_connected, device_get, device_list, device_set,
         hot_swap_gpu_page, install_lxapp_dev_config, install_lxapp_dev_config_from_env,
         lxapp_dev_page_input_supported, register_device_controller, sync_dev_bundle, view_wire,

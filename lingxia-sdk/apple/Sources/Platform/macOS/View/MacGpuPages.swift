@@ -28,21 +28,56 @@ final class GpuPageView: NSView {
     var recoveryPanel: NSView?
     var recoveryCovers = false
 
-    /// A simulated phone (the Runner): its system bars, the host bars over the page and its
-    /// width, in points; nil measures the window as a desktop page does.
+    /// A simulated phone (the Runner): its viewport, its system bars, the host bars over the
+    /// page and its width, all in the phone's points; nil measures the window as a desktop
+    /// page does. The page lays out in `viewport` whatever size the view is shown at.
     struct Simulation: Equatable {
+        var viewport: CGSize
         var safeArea: NSEdgeInsets
         var chromeTop: CGFloat
         var chromeBottom: CGFloat
         var smallestWidth: CGFloat
 
         static func == (a: Self, b: Self) -> Bool {
-            NSEdgeInsetsEqual(a.safeArea, b.safeArea) && a.chromeTop == b.chromeTop
-                && a.chromeBottom == b.chromeBottom && a.smallestWidth == b.smallestWidth
+            a.viewport == b.viewport && NSEdgeInsetsEqual(a.safeArea, b.safeArea)
+                && a.chromeTop == b.chromeTop && a.chromeBottom == b.chromeBottom
+                && a.smallestWidth == b.smallestWidth
         }
     }
     var simulation: Simulation? {
-        didSet { if simulation != oldValue { report() } }
+        didSet {
+            if simulation != oldValue {
+                applyViewport()
+                report()
+            }
+        }
+    }
+
+    /// The view's coordinate system is the simulated viewport: AppKit scales it onto the frame,
+    /// so the page, its input and every rect the core reports stay in the device's points.
+    private func applyViewport() {
+        let wanted = simulation?.viewport ?? frame.size
+        guard wanted.width > 0, wanted.height > 0, frame.width > 0, frame.height > 0,
+              bounds.size != wanted
+        else { return }
+        setBoundsSize(wanted)
+        needsLayout = true
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        applyViewport()
+    }
+
+    /// Pixels per point of the page: the simulated device's ratio, else the window's.
+    var pixelScale: CGFloat {
+        GpuPages.simulatedPixelRatio ?? window?.backingScaleFactor ?? 2
+    }
+
+    /// Points of the page per point of the window; above 1 when a simulated phone is shown
+    /// smaller than it is.
+    private var zoomOut: CGFloat {
+        frame.width > 0 ? bounds.width / frame.width : 1
     }
     /// A host that draws phone bars over the page lifts it above them while a dialog is open.
     var topLayerChanged: (@MainActor (Bool) -> Void)?
@@ -90,6 +125,8 @@ final class GpuPageView: NSView {
 
     override func layout() {
         super.layout()
+        applyViewport()
+        layoutRecovery()
         report()
     }
 
@@ -188,7 +225,7 @@ final class GpuPageView: NSView {
     fileprivate func report() {
         guard let window, bounds.width > 0, bounds.height > 0 else { return }
         let presentable = !window.isMiniaturized && !NSApp.isHidden
-        let scale = window.backingScaleFactor
+        let scale = pixelScale
         let insets = simulation?.safeArea ?? safeAreaInsets
         let screen = window.screen?.frame.size ?? window.frame.size
         let smallest = simulation?.smallestWidth ?? min(screen.width, screen.height)
@@ -214,12 +251,13 @@ final class GpuPageView: NSView {
             Float(smallest),
             Locale.preferredLanguages.first ?? "en",
             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-            NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast,
-            RustVec<Float>(),
+            GpuPages.simulatedHighContrast
+                ?? NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast,
+            Self.textScale(),
             GpuPageView.hourCycle(),
             UInt8(Calendar.current.firstWeekday)
         )
-        layer?.contentsScale = scale
+        fitContents(width: bounds.width * scale)
         if !attached, presentable {
             attached = true
             gpuPageAttach(
@@ -229,6 +267,23 @@ final class GpuPageView: NSView {
                 UInt32((bounds.height * scale).rounded())
             )
         }
+    }
+
+    /// Shows a frame `width` pixels wide across the layer, whichever space AppKit keeps the
+    /// layer of a view with scaled bounds in.
+    private func fitContents(width: CGFloat) {
+        guard let layer, layer.bounds.width > 0 else { return }
+        layer.contentsScale = width / layer.bounds.width
+    }
+
+    /// The simulated device's text size as `[authored, shown]` rows; empty at the Mac's own,
+    /// which has no system text size.
+    private static func textScale() -> RustVec<Float> {
+        let rows = RustVec<Float>()
+        if let scale = GpuPages.simulatedTextScale, scale != 1 {
+            for value in [0, 0, 16384, 16384 * Float(scale)] { rows.push(value: value) }
+        }
+        return rows
     }
 
     /// Calls `gpuPageVsync` on the next refresh of this view's display.
@@ -285,10 +340,10 @@ final class GpuPageView: NSView {
     private func send(_ phase: UInt8, _ event: NSEvent) -> Bool {
         gpuPageInputAge(token, Self.inputAge(event))
         let point = convert(event.locationInWindow, from: nil)
-        let scale = window?.backingScaleFactor ?? 2
+        let scale = pixelScale
         return gpuPagePointer(
             token, phase, Float(point.x * scale), Float(point.y * scale),
-            Float(Self.slopPoints * scale), 0, 0, .greatestFiniteMagnitude)
+            Float(Self.slopPoints * zoomOut * scale), 0, 0, .greatestFiniteMagnitude)
     }
 
     /// NSEvent timestamps share CACurrentMediaTime's clock (time since boot).
@@ -298,7 +353,7 @@ final class GpuPageView: NSView {
 
     private func pixels(_ event: NSEvent) -> (Float, Float) {
         let point = convert(event.locationInWindow, from: nil)
-        let scale = window?.backingScaleFactor ?? 2
+        let scale = pixelScale
         return (Float(point.x * scale), Float(point.y * scale))
     }
 
@@ -329,7 +384,8 @@ final class GpuPageView: NSView {
             if refresh.handleScrollWheel(event) { return }
         }
         let (x, y) = pixels(event)
-        let scale = Float(window?.backingScaleFactor ?? 2)
+        // Deltas are window points.
+        let scale = Float(pixelScale * zoomOut)
         let precise = event.hasPreciseScrollingDeltas
         let unit: Float = precise ? scale : 1
         let phase: UInt8
@@ -443,7 +499,7 @@ final class GpuPageView: NSView {
         }
         let highlight = highlights[ring ? 1 : 0]
         highlight.frame = bounds
-        highlight.contentsScale = window?.backingScaleFactor ?? 2
+        highlight.contentsScale = pixelScale
         highlight.update(rects: rects, argb: argb, ringWidth: width)
     }
 
@@ -460,7 +516,7 @@ final class GpuPageView: NSView {
                   bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
                   provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
         else { return false }
-        layer?.contentsScale = window?.backingScaleFactor ?? 2
+        fitContents(width: CGFloat(width))
         layer?.contents = image
         return true
     }
@@ -514,6 +570,32 @@ private extension String {
 /// GPU page views by token; Rust calls these on the main thread.
 public enum GpuPages {
     @MainActor private static var views: [Int64: GpuPageView] = [:]
+
+    /// The simulated device's pixels per point (the Runner): every page reports it and renders
+    /// at it, so a page's pixels do not depend on the screen its window is on. Nil follows
+    /// the window.
+    @MainActor static var simulatedPixelRatio: CGFloat? {
+        didSet {
+            guard simulatedPixelRatio != oldValue else { return }
+            for view in views.values { view.report() }
+        }
+    }
+
+    /// The simulated device's system text size, a factor of the default; nil is the Mac's.
+    @MainActor static var simulatedTextScale: CGFloat? {
+        didSet {
+            guard simulatedTextScale != oldValue else { return }
+            for view in views.values { view.report() }
+        }
+    }
+
+    /// The simulated device's increased-contrast setting; nil follows the Mac's.
+    @MainActor static var simulatedHighContrast: Bool? {
+        didSet {
+            guard simulatedHighContrast != oldValue else { return }
+            for view in views.values { view.report() }
+        }
+    }
 
     /// The view for a page token, created on first use.
     @MainActor static func view(for token: Int64) -> GpuPageView {
@@ -693,7 +775,8 @@ public enum GpuPages {
             let cg = context.cgContext
             cg.saveGState()
             cg.translateBy(x: rect.minX, y: rect.maxY)
-            cg.scaleBy(x: 1, y: -1)
+            // Feedback is drawn in the page's points, which a simulated phone shows smaller.
+            cg.scaleBy(x: rect.width / view.bounds.width, y: -rect.height / view.bounds.height)
             view.drawFeedback(in: cg)
             cg.restoreGState()
             drawViewsAbove(view, upTo: contentView)

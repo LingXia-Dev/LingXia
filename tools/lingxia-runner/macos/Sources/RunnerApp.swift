@@ -68,6 +68,10 @@ public class RunnerApp {
     private(set) var deviceOrientation: RunnerDeviceOrientation = .portrait
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
     private(set) var simulatedAppearance: RunnerAppearance = .system
+    /// The simulated system text size, a factor of the default.
+    private(set) var simulatedTextScale: CGFloat = 1
+    /// The simulated increased-contrast setting.
+    private(set) var simulatedHighContrast = false
     /// The enclosing host's home lxapp, when that is what `lingxia dev`
     /// launched: like the real host, it gets no capsule.
     private let hostHomeAppId: String? = ProcessInfo.processInfo
@@ -77,6 +81,7 @@ public class RunnerApp {
     private init() {
         deviceOrientation = Self.defaultOrientation(for: selectedDeviceSize)
         RunnerUserAgentPolicy.shared.setProfile(selectedDeviceSize.browserProfile)
+        LingxiaRunnerSPI.GpuPage.setPixelRatio(selectedDeviceSize.pixelRatio)
         RunnerSupport.PageChrome.setCapsuleRectProvider { [weak self] appId in
             self?.windowController?.capsuleRect(for: appId)
         }
@@ -110,6 +115,7 @@ public class RunnerApp {
     ) {
         let shapeChanged = size.shape != selectedDeviceSize.shape
         selectedDeviceSize = size
+        LingxiaRunnerSPI.GpuPage.setPixelRatio(size.pixelRatio)
         if let orientation, size.supportsOrientation {
             deviceOrientation = orientation
         } else if shapeChanged || !size.supportsOrientation {
@@ -135,6 +141,14 @@ public class RunnerApp {
     public static let appearanceDidChange = Notification.Name("LingXiaRunnerAppearanceDidChange")
 
     /// Pin or release the simulated appearance of the device screen.
+    /// The simulated device's text size and contrast; GPU pages read them as the system's.
+    func setAccessibility(textScale: CGFloat?, highContrast: Bool?) {
+        if let textScale { simulatedTextScale = textScale }
+        if let highContrast { simulatedHighContrast = highContrast }
+        LingxiaRunnerSPI.GpuPage.setAccessibility(
+            textScale: simulatedTextScale, highContrast: simulatedHighContrast)
+    }
+
     public func setAppearance(_ appearance: RunnerAppearance) {
         simulatedAppearance = appearance
         applyAppearanceToHosts()

@@ -261,6 +261,10 @@ enum RunnerSupport {
             LingxiaRunnerSPI.SurfaceShell.setTopAccessory(shell, view: view, height: height)
         }
 
+        static func setKeepsSizeOffScreen(_ shell: LxAppShell, keeps: Bool) {
+            LingxiaRunnerSPI.SurfaceShell.setKeepsSizeOffScreen(shell, keeps: keeps)
+        }
+
         static func setDeviceCompactProjectionEnabled(
             _ shell: LxAppShell,
             enabled: Bool

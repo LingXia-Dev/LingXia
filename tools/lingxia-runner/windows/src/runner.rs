@@ -288,6 +288,7 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
                 group: preset.group().to_string(),
                 width: preset.width.max(0) as u32,
                 height: preset.height.max(0) as u32,
+                pixel_ratio: preset.pixel_ratio,
                 current: index == current,
             })
             .collect())
@@ -299,12 +300,13 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
         Ok(device_state(index, landscape))
     }
 
-    fn set(
-        &self,
-        id: Option<&str>,
-        landscape: Option<bool>,
-        appearance: Option<lingxia::dev::Appearance>,
-    ) -> Result<lingxia::dev::DeviceState, String> {
+    fn set(&self, change: &lingxia::dev::DeviceChange) -> Result<lingxia::dev::DeviceState, String> {
+        // WebView pages take their text size and contrast from Windows itself.
+        if change.text_scale.is_some() || change.contrast.is_some() {
+            return Err("this Runner does not simulate text scale or contrast".into());
+        }
+        let (id, landscape, appearance) =
+            (change.id.as_deref(), change.landscape, change.appearance);
         // Validate the preset before any side effect so a typo cannot leave a
         // half-applied environment.
         let index = match id {
@@ -349,8 +351,11 @@ fn device_state(index: usize, landscape: bool) -> lingxia::dev::DeviceState {
         group: preset.group().to_string(),
         width: width.max(0) as u32,
         height: height.max(0) as u32,
+        pixel_ratio: preset.pixel_ratio,
         landscape,
         appearance: simulated_appearance(),
+        text_scale: 1.0,
+        contrast: lingxia::dev::Contrast::Standard,
     }
 }
 

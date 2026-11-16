@@ -346,11 +346,13 @@ pub(crate) async fn lxapp_dev_restart(
                 // onReady belongs to the next show.
                 if reload_finished && (state.ready || page.loaded_while_hidden()) {
                     if let Some(device) = &simulated_device {
-                        device_set(
-                            Some(&device.id),
-                            Some(device.landscape),
-                            Some(device.appearance),
-                        )
+                        device_set(lingxia::dev::DeviceChange {
+                            id: Some(device.id.clone()),
+                            landscape: Some(device.landscape),
+                            appearance: Some(device.appearance),
+                            text_scale: Some(device.text_scale),
+                            contrast: Some(device.contrast),
+                        })
                         .await
                         .map_err(|error| {
                             format!("failed to restore simulated device after restart: {error}")

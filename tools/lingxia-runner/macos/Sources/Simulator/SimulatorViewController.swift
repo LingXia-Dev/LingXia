@@ -320,9 +320,16 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         return true
     }
 
-    /// The emulated phone's system bars, the bars drawn over the page and its width.
+    /// The emulated phone's viewport, its system bars, the bars drawn over the page and its
+    /// width. The page gets the device's own viewport; the bars are measured as drawn here, on
+    /// a screen the phone may be shrunk to fit, and converted to the device's points.
     private func simulateGpuPhone() {
         guard let page = activeGpuView, view.bounds.width > 0 else { return }
+        let app = RunnerApp.shared
+        let viewport = app.selectedDeviceSize.oriented(app.deviceOrientation).size
+        // A device's bars are whole points; the shrunk skin's are not.
+        let fit = viewport.width / view.bounds.width
+        func points(_ drawn: CGFloat) -> CGFloat { (drawn * fit).rounded() }
         let statusBar = SimulatorWindowController.Layout.systemStatusBarHeight
         // Phones with a status bar taller than 20 pt have a home indicator.
         let homeIndicator: CGFloat = statusBar > 20 ? 34 : 0
@@ -332,10 +339,12 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         }
         LingxiaRunnerSPI.GpuPage.simulate(
             page,
-            safeArea: NSEdgeInsets(top: statusBar, left: 0, bottom: homeIndicator, right: 0),
-            chromeTop: currentTopMargin,
-            chromeBottom: tabBarHeight,
-            smallestWidth: min(view.bounds.width, view.bounds.height)
+            viewport: viewport,
+            safeArea: NSEdgeInsets(
+                top: points(statusBar), left: 0, bottom: points(homeIndicator), right: 0),
+            chromeTop: points(currentTopMargin),
+            chromeBottom: points(tabBarHeight),
+            smallestWidth: min(viewport.width, viewport.height)
         )
     }
 

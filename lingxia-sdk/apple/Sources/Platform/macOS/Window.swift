@@ -141,6 +141,18 @@ class LxAppWindow: NSWindow {
         titlebarObserver.map(NotificationCenter.default.removeObserver)
     }
 
+    /// A simulated device's window (the Runner) keeps its size on a screen too small for it:
+    /// its top stays where AppKit allows and the rest runs off the screen.
+    var keepsSizeOffScreen = false
+
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        let allowed = super.constrainFrameRect(frameRect, to: screen)
+        guard keepsSizeOffScreen else { return allowed }
+        return NSRect(
+            x: allowed.minX, y: allowed.maxY - frameRect.height,
+            width: frameRect.width, height: frameRect.height)
+    }
+
     override var canBecomeKey: Bool {
         return true
     }

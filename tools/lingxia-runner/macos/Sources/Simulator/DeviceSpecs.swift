@@ -48,6 +48,8 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     public let name: String
     public let width: CGFloat
     public let height: CGFloat
+    /// The device's pixels per point: what a GPU page renders at.
+    public let pixelRatio: CGFloat
     public let bezelWidth: CGFloat
     public let outerRadius: CGFloat
     public let screenRadius: CGFloat
@@ -60,6 +62,7 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         case name
         case width
         case height
+        case pixelRatio
         case bezelWidth
         case outerRadius
         case screenRadius
@@ -157,6 +160,7 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
             name: name,
             width: targetWidth,
             height: targetHeight,
+            pixelRatio: pixelRatio,
             bezelWidth: bezelWidth,
             outerRadius: outerRadius,
             screenRadius: screenRadius,
@@ -177,6 +181,7 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
             // whole pixels (radii are cosmetic curves — leave them exact).
             width: (width * scale).rounded(),
             height: (height * scale).rounded(),
+            pixelRatio: pixelRatio,
             bezelWidth: (bezelWidth * scale).rounded(),
             outerRadius: outerRadius * scale,
             screenRadius: screenRadius * scale,

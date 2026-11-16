@@ -248,6 +248,8 @@ final class RunnerSurfaceShellHost {
             width: CGFloat.greatestFiniteMagnitude,
             height: CGFloat.greatestFiniteMagnitude
         )
+        // The device's size, not the Mac screen's: a page measures the same on any screen.
+        RunnerSupport.SurfaceShell.setKeepsSizeOffScreen(shell, keeps: true)
 
         if device.isResizableDesktop {
             window.styleMask.insert(.resizable)

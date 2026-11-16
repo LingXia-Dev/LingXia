@@ -43,6 +43,12 @@ pub enum RunnerCommand {
         /// Simulated appearance for the device screen
         #[arg(long, value_enum)]
         appearance: Option<AppearanceArg>,
+        /// Simulated system text size as a factor of the default (1.3, 2), 0.5 to 3
+        #[arg(long, value_name = "FACTOR")]
+        text_scale: Option<f64>,
+        /// Simulated system contrast
+        #[arg(long, value_enum)]
+        contrast: Option<ContrastArg>,
         /// Print JSON output
         #[arg(long)]
         json: bool,
@@ -65,6 +71,23 @@ impl AppearanceArg {
             AppearanceArg::System => "system",
             AppearanceArg::Light => "light",
             AppearanceArg::Dark => "dark",
+        }
+    }
+}
+
+#[derive(ValueEnum, Clone, Copy)]
+pub enum ContrastArg {
+    /// The system's standard contrast
+    Standard,
+    /// The system's increased contrast
+    High,
+}
+
+impl ContrastArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            ContrastArg::Standard => "standard",
+            ContrastArg::High => "high",
         }
     }
 }
@@ -95,11 +118,19 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
             landscape,
             portrait,
             appearance,
+            text_scale,
+            contrast,
             json,
         } => {
-            if id.is_none() && !landscape && !portrait && appearance.is_none() {
+            if id.is_none()
+                && !landscape
+                && !portrait
+                && appearance.is_none()
+                && text_scale.is_none()
+                && contrast.is_none()
+            {
                 anyhow::bail!(
-                    "nothing to change: pass --id, --landscape/--portrait, or --appearance"
+                    "nothing to change: pass --id, --landscape/--portrait, --appearance, --text-scale or --contrast"
                 );
             }
             // Leave orientation to the runner's normal selector behavior
@@ -118,6 +149,8 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
                     "id": id,
                     "landscape": orientation,
                     "appearance": appearance.map(AppearanceArg::as_str),
+                    "textScale": text_scale,
+                    "contrast": contrast.map(ContrastArg::as_str),
                 })),
             )?
             .unwrap_or(Value::Null);
@@ -141,8 +174,8 @@ fn print_presets(data: &Value) {
         return;
     }
     println!(
-        "{:<3}  {:<20}  {:<8}  {:<11}  ID",
-        "CUR", "NAME", "GROUP", "SIZE"
+        "{:<3}  {:<20}  {:<8}  {:<11}  {:<5}  ID",
+        "CUR", "NAME", "GROUP", "SIZE", "RATIO"
     );
     for preset in array {
         let id = preset.get("id").and_then(Value::as_str).unwrap_or("-");
@@ -155,14 +188,21 @@ fn print_presets(data: &Value) {
             .and_then(Value::as_bool)
             .unwrap_or(false);
         println!(
-            "{:<3}  {:<20}  {:<8}  {:<11}  {}",
+            "{:<3}  {:<20}  {:<8}  {:<11}  {:<5}  {}",
             if current { " * " } else { "" },
             name,
             group,
             format!("{width}x{height}"),
+            pixel_ratio(preset),
             id
         );
     }
+}
+
+/// `@3x`: the device pixels per point a GPU page renders at.
+fn pixel_ratio(data: &Value) -> String {
+    let ratio = data.get("pixelRatio").and_then(Value::as_f64).unwrap_or(1.0);
+    format!("@{ratio}x")
 }
 
 fn print_state(data: &Value) -> Result<()> {
@@ -187,9 +227,19 @@ fn describe_state(data: &Value) -> Result<String> {
         .get("appearance")
         .and_then(Value::as_str)
         .unwrap_or("system");
-    Ok(format!(
-        "{name} ({id})  {width}x{height}  {orientation}  appearance: {appearance}"
-    ))
+    let mut line = format!(
+        "{name} ({id})  {width}x{height} {}  {orientation}  appearance: {appearance}",
+        pixel_ratio(data)
+    );
+    // The defaults go unsaid.
+    let text_scale = data.get("textScale").and_then(Value::as_f64).unwrap_or(1.0);
+    if (text_scale - 1.0).abs() > 0.001 {
+        line.push_str(&format!("  text scale: {text_scale}"));
+    }
+    if data.get("contrast").and_then(Value::as_str) == Some("high") {
+        line.push_str("  contrast: high");
+    }
+    Ok(line)
 }
 
 fn print_json(value: &Value, pretty: bool) -> Result<()> {
@@ -210,11 +260,11 @@ mod tests {
     fn the_environment_names_device_orientation_and_appearance() {
         let state = json!({
             "name": "iPhone 15 Pro", "id": "iphone-15-pro", "width": 393, "height": 852,
-            "landscape": false, "appearance": "dark",
+            "pixelRatio": 3, "landscape": false, "appearance": "dark",
         });
         assert_eq!(
             describe_state(&state).unwrap(),
-            "iPhone 15 Pro (iphone-15-pro)  393x852  portrait  appearance: dark"
+            "iPhone 15 Pro (iphone-15-pro)  393x852 @3x  portrait  appearance: dark"
         );
     }
 }

@@ -321,6 +321,11 @@ import WebKit
             RunnerBridge.setSurfaceShellTopAccessory(shell, view: view, height: height)
         }
 
+        /// The shell's window keeps a simulated device's size on a screen too small for it.
+        public static func setKeepsSizeOffScreen(_ shell: LxAppShell, keeps: Bool) {
+            (shell.window as? LxAppWindow)?.keepsSizeOffScreen = keeps
+        }
+
         public static func setDeviceCompactProjectionEnabled(
             _ shell: LxAppShell,
             enabled: Bool
@@ -418,15 +423,30 @@ import WebKit
                 pageInstanceId: pageInstanceId, completion: ready)
         }
 
-        /// The simulated phone around the page: its system bars, the host bars drawn over the
-        /// page and its width, in points.
+        /// The simulated phone around the page: its viewport, its system bars, the host bars
+        /// drawn over the page and its width, in the phone's points. The page lays out in
+        /// `viewport` however small the view is shown.
         public static func simulate(
-            _ view: NSView, safeArea: NSEdgeInsets, chromeTop: CGFloat, chromeBottom: CGFloat,
-            smallestWidth: CGFloat
+            _ view: NSView, viewport: CGSize, safeArea: NSEdgeInsets, chromeTop: CGFloat,
+            chromeBottom: CGFloat, smallestWidth: CGFloat
         ) {
             (view as? GpuPageView)?.simulation = .init(
-                safeArea: safeArea, chromeTop: chromeTop, chromeBottom: chromeBottom,
-                smallestWidth: smallestWidth)
+                viewport: viewport, safeArea: safeArea, chromeTop: chromeTop,
+                chromeBottom: chromeBottom, smallestWidth: smallestWidth)
+        }
+
+        /// The simulated device's pixels per point: GPU pages report it and render at it
+        /// whatever screen their window is on. Nil follows the window's screen.
+        public static func setPixelRatio(_ ratio: CGFloat?) {
+            GpuPages.simulatedPixelRatio = ratio
+        }
+
+        /// The simulated device's system text size (a factor of the default) and its
+        /// increased-contrast setting, which GPU pages read as their environment's. Nil
+        /// follows the Mac.
+        public static func setAccessibility(textScale: CGFloat?, highContrast: Bool?) {
+            GpuPages.simulatedTextScale = textScale
+            GpuPages.simulatedHighContrast = highContrast
         }
 
         /// Called when a top-layer dialog opens or closes: lift the page above the phone's bars.

@@ -16,6 +16,8 @@ enum GpuPageMount {
     /// Pin `view` in `container` as a WebView page sits; a declared pull to refresh moves it.
     static func attach(_ view: GpuPageView, to container: NSView) {
         view.translatesAutoresizingMaskIntoConstraints = false
+        // A simulated device belongs to the host that mounted the page last; this one sets its own.
+        view.simulation = nil
         container.addSubview(view)
         let pullToRefresh = MacPullToRefreshController.attachIfNeeded(to: view, in: container)
         NSLayoutConstraint.activate(pullToRefresh.pageConstraints(in: container))

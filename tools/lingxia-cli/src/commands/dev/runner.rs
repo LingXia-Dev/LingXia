@@ -58,6 +58,8 @@ struct RunnerDevicePreset {
     name: String,
     width: u32,
     height: u32,
+    #[serde(rename = "pixelRatio")]
+    pixel_ratio: f32,
 }
 
 pub(super) fn print_runner_devices() -> Result<()> {
@@ -85,10 +87,11 @@ fn render_runner_devices() -> Result<String> {
 
     let mut out = String::from("Runner devices:\n");
     out.push_str(&format!(
-        "  {:id_width$}  {:group_width$}  {:>11}  {}\n",
+        "  {:id_width$}  {:group_width$}  {:>11}  {:5}  {}\n",
         "device",
         "group",
         "size",
+        "ratio",
         "name",
         id_width = id_width,
         group_width = group_width
@@ -100,11 +103,12 @@ fn render_runner_devices() -> Result<String> {
             ""
         };
         out.push_str(&format!(
-            "  {:id_width$}  {:group_width$}  {:>4} x {:<4}  {}{}\n",
+            "  {:id_width$}  {:group_width$}  {:>4} x {:<4}  {:5}  {}{}\n",
             device.id,
             device.group,
             device.width,
             device.height,
+            format!("@{}x", device.pixel_ratio),
             device.name,
             marker,
             id_width = id_width,
@@ -1628,6 +1632,9 @@ mod tests {
 
         assert!(list.contains("iphone-15-pro"));
         assert!(list.contains("(default)"));
+        // A page screenshot is the viewport times this ratio.
+        assert!(list.contains("393 x 852   @3x"), "{list}");
+        assert!(list.contains("1280 x 800   @2x"), "{list}");
         assert!(list.contains("lingxia dev --runner <device>"));
     }
 

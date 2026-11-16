@@ -1818,6 +1818,8 @@ export interface DeviceEntry {
   width: number;
   /** Logical height in points. */
   height: number;
+  /** Device pixels per point: a GPU page's screenshot is `width * pixelRatio` wide. */
+  pixelRatio: number;
   /** True for the currently selected device. */
   current: boolean;
 }
@@ -1832,8 +1834,14 @@ export interface DeviceState {
   height: number;
   /** True when rotated to landscape. */
   landscape: boolean;
+  /** Device pixels per point. */
+  pixelRatio: number;
   /** Simulated system appearance of the device screen. */
   appearance: "system" | "light" | "dark";
+  /** Simulated system text size, a factor of the default. */
+  textScale: number;
+  /** Simulated system contrast. */
+  contrast: "standard" | "high";
 }
 
 export interface DeviceSetOptions {
@@ -1844,6 +1852,10 @@ export interface DeviceSetOptions {
   landscape?: boolean;
   /** Simulated appearance; omit to keep. */
   appearance?: "system" | "light" | "dark";
+  /** Simulated system text size as a factor of the default, 0.5 to 3; omit to keep. */
+  textScale?: number;
+  /** Simulated system contrast; omit to keep. */
+  contrast?: "standard" | "high";
 }
 
 /**

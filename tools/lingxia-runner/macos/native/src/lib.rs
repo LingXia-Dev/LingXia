@@ -7,11 +7,14 @@ unsafe extern "C" {
     fn lingxia_runner_device_get_json() -> *mut std::ffi::c_char;
     /// `id` may be null (keep the current preset). `landscape`: -1 keep /
     /// 0 portrait / 1 landscape. `appearance`: -1 keep / 0 system / 1 light /
-    /// 2 dark.
+    /// 2 dark. `text_scale`: 0 keep, else the factor. `contrast`: -1 keep /
+    /// 0 standard / 1 high.
     fn lingxia_runner_device_set_json(
         id: *const std::ffi::c_char,
         landscape: i32,
         appearance: i32,
+        text_scale: f64,
+        contrast: i32,
     ) -> *mut std::ffi::c_char;
 }
 
@@ -48,12 +51,8 @@ impl lingxia::dev::DeviceController for MacRunnerDeviceController {
         )
     }
 
-    fn set(
-        &self,
-        id: Option<&str>,
-        landscape: Option<bool>,
-        appearance: Option<lingxia::dev::Appearance>,
-    ) -> Result<lingxia::dev::DeviceState, String> {
+    fn set(&self, change: &lingxia::dev::DeviceChange) -> Result<lingxia::dev::DeviceState, String> {
+        let id = change.id.as_deref();
         if let Some(id) = id {
             let entries = self.list()?;
             if !entries.iter().any(|entry| entry.id == id) {
@@ -63,8 +62,12 @@ impl lingxia::dev::DeviceController for MacRunnerDeviceController {
         let id = id
             .map(|id| std::ffi::CString::new(id).map_err(|_| "device id contains NUL".to_string()))
             .transpose()?;
-        let landscape = landscape.map_or(-1, i32::from);
-        let appearance = appearance.map_or(-1, |appearance| match appearance {
+        let landscape = change.landscape.map_or(-1, i32::from);
+        let contrast = change.contrast.map_or(-1, |contrast| match contrast {
+            lingxia::dev::Contrast::Standard => 0,
+            lingxia::dev::Contrast::High => 1,
+        });
+        let appearance = change.appearance.map_or(-1, |appearance| match appearance {
             lingxia::dev::Appearance::System => 0,
             lingxia::dev::Appearance::Light => 1,
             lingxia::dev::Appearance::Dark => 2,
@@ -75,6 +78,8 @@ impl lingxia::dev::DeviceController for MacRunnerDeviceController {
                     id.as_ref().map_or(std::ptr::null(), |id| id.as_ptr()),
                     landscape,
                     appearance,
+                    change.text_scale.unwrap_or(0.0),
+                    contrast,
                 )
             },
             "update the simulated environment",

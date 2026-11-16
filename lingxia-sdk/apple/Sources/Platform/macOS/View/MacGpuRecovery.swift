@@ -17,7 +17,6 @@ extension GpuPageView {
         let panel = NSView()
         panel.wantsLayer = true
         panel.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-        panel.translatesAutoresizingMaskIntoConstraints = false
         panel.setAccessibilityElement(true)
         panel.setAccessibilityRole(.group)
         panel.setAccessibilityIdentifier("lx-recovery")
@@ -39,23 +38,29 @@ extension GpuPageView {
         }
         panel.addSubview(stack)
         addSubview(panel)
-        var constraints = [
-            panel.leadingAnchor.constraint(equalTo: leadingAnchor),
-            panel.trailingAnchor.constraint(equalTo: trailingAnchor),
-            panel.bottomAnchor.constraint(equalTo: bottomAnchor),
+        NSLayoutConstraint.activate([
             stack.centerXAnchor.constraint(equalTo: panel.centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: panel.centerYAnchor),
             stack.widthAnchor.constraint(lessThanOrEqualTo: panel.widthAnchor, constant: -32),
             text.widthAnchor.constraint(lessThanOrEqualToConstant: 360),
-        ]
-        // A banner leaves a retained frame visible above it; otherwise nothing of the page shows.
-        constraints.append(covers
-            ? panel.topAnchor.constraint(equalTo: topAnchor)
-            : panel.heightAnchor.constraint(equalTo: stack.heightAnchor, constant: 32))
-        NSLayoutConstraint.activate(constraints)
+        ])
         recoveryPanel = panel
         recoveryCovers = covers
+        layoutRecovery()
         NSAccessibility.post(element: panel, notification: .layoutChanged)
+    }
+
+    /// Placed by frame: the page's bounds may be a simulated viewport, which constraints to
+    /// its edges do not follow. A banner leaves a retained frame visible above it; otherwise
+    /// nothing of the page shows.
+    func layoutRecovery() {
+        guard let panel = recoveryPanel else { return }
+        var frame = bounds
+        if !recoveryCovers, let stack = panel.subviews.first {
+            frame.size.height = min(bounds.height, stack.fittingSize.height + 32)
+            frame.origin.y = bounds.maxY - frame.height
+        }
+        panel.frame = frame
     }
 
     @objc private func recoveryAction(_ sender: NSButton) {

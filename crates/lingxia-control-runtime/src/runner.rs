@@ -23,6 +23,10 @@ struct RunnerSetArgs {
     landscape: Option<bool>,
     #[serde(default)]
     appearance: Option<String>,
+    #[serde(default, rename = "textScale")]
+    text_scale: Option<f64>,
+    #[serde(default)]
+    contrast: Option<String>,
 }
 
 fn handle_runner_command_impl(handler: &str, args: Option<Value>) -> Result<Option<Value>, String> {
@@ -34,28 +38,23 @@ fn handle_runner_command_impl(handler: &str, args: Option<Value>) -> Result<Opti
             .map(Some)
             .map_err(|err| err.to_string()),
         methods::runner::SET => {
-            let parsed: RunnerSetArgs = match args {
-                Some(value) => serde_json::from_value(value)
-                    .map_err(|e| format!("invalid args for {}: {}", handler, e))?,
-                None => RunnerSetArgs {
-                    id: None,
-                    landscape: None,
-                    appearance: None,
-                },
+            let parsed: RunnerSetArgs =
+                serde_json::from_value(args.unwrap_or_else(|| serde_json::json!({})))
+                    .map_err(|e| format!("invalid args for {}: {}", handler, e))?;
+            let change = lingxia::dev::DeviceChange {
+                id: parsed.id,
+                landscape: parsed.landscape,
+                appearance: parsed.appearance.as_deref().map(str::parse).transpose()?,
+                text_scale: parsed.text_scale,
+                contrast: parsed.contrast.as_deref().map(str::parse).transpose()?,
             };
-            if parsed.id.is_none() && parsed.landscape.is_none() && parsed.appearance.is_none() {
-                return Err("runner.set requires at least one of id, landscape, appearance".into());
+            if change.is_empty() {
+                return Err(
+                    "runner.set requires at least one of id, landscape, appearance, textScale, contrast"
+                        .into(),
+                );
             }
-            let appearance = parsed
-                .appearance
-                .as_deref()
-                .map(str::parse::<lingxia::dev::Appearance>)
-                .transpose()?;
-            serde_json::to_value(crate::util::run_async(lingxia::dev::device_set(
-                parsed.id.as_deref(),
-                parsed.landscape,
-                appearance,
-            ))?)
+            serde_json::to_value(crate::util::run_async(lingxia::dev::device_set(change))?)
             .map(Some)
             .map_err(|err| err.to_string())
         }
