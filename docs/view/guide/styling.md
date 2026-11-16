@@ -87,6 +87,8 @@ elements (`blurLayers`); past that they draw sharp.
 
 The system's increased-contrast setting (`env.highContrast`) resolves the pack's high-contrast palette.
 `shadow-*` elevation layers take the `shadow` role at their alpha, so a pack can tint shadows.
+A black layer in a shadow token does the same; write `--alpha(var(--color-shadow) / 10%)` to say so explicitly.
+Any other literal colour in a layer stays as written.
 
 An lxapp sets its own look with `theme/pack.json`. A pack may name only an accent seed. Surfaces, text,
 lines and the three status colours it leaves out come from the default pack; every other role (text on
