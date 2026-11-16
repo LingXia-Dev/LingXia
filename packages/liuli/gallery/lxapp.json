@@ -44,6 +44,7 @@
     { "name": "date-time-input", "path": "pages/date-time-input/index" },
     { "name": "file-input", "path": "pages/file-input/index" },
     { "name": "composer", "path": "pages/composer/index" },
+    { "name": "list-input", "path": "pages/list-input/index" },
     { "name": "checkbox-input", "path": "pages/checkbox-input/index" },
     { "name": "radio-group", "path": "pages/radio-group/index" },
     { "name": "switch", "path": "pages/switch/index" },

@@ -326,6 +326,22 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "ListInput",
+    "page": "list-input",
+    "category": "inputs",
+    "summary": "A field of rows the user adds and removes",
+    "keywords": [
+      "list",
+      "repeat",
+      "rows",
+      "add",
+      "remove",
+      "array",
+      "multiple",
+      "field"
+    ]
+  },
+  {
     "name": "CheckboxInput",
     "page": "checkbox-input",
     "category": "selection",
@@ -1353,7 +1369,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "text-input",
     "description": "Text, dates and amounts",
     "page": "category-inputs",
-    "count": 14
+    "count": 15
   },
   {
     "id": "selection",

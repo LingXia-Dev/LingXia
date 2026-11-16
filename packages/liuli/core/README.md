@@ -46,7 +46,7 @@ that directory.
 ## Components
 
 <!-- components:start -->
-74 components, each at its own import path:
+75 components, each at its own import path:
 
 | Import | Exports | What it is |
 | --- | --- | --- |
@@ -68,6 +68,7 @@ that directory.
 | `@liulidesign/core/DateTimeInput` | DateTimeInput | A day and a time of day as one value |
 | `@liulidesign/core/FileInput` | FileInput | Files the user chose, and a way to choose more |
 | `@liulidesign/core/Composer` | Composer | Where a message is written and sent |
+| `@liulidesign/core/ListInput` | ListInput | A field of rows the user adds and removes |
 | `@liulidesign/core/CheckboxInput` | CheckboxInput | One on/off choice with a label, help text and status |
 | `@liulidesign/core/RadioGroup` | RadioGroup | One choice from a short list, every option in view |
 | `@liulidesign/core/Switch` | Switch | A setting that turns on or off the moment it flips |

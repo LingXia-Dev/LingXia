@@ -35,6 +35,7 @@ import { Content as FormLayout } from '../content/form-layout';
 import { Content as DateTimeInput } from '../content/date-time-input';
 import { Content as FileInput } from '../content/file-input';
 import { Content as Composer } from '../content/composer';
+import { Content as ListInput } from '../content/list-input';
 import { Content as CheckboxInput } from '../content/checkbox-input';
 import { Content as RadioGroup } from '../content/radio-group';
 import { Content as Switch } from '../content/switch';
@@ -143,6 +144,7 @@ export const contents: Record<string, GalleryContent> = {
   "date-time-input": DateTimeInput,
   "file-input": FileInput,
   "composer": Composer,
+  "list-input": ListInput,
   "checkbox-input": CheckboxInput,
   "radio-group": RadioGroup,
   "switch": Switch,

@@ -9790,6 +9790,267 @@
       }
     },
     {
+      "name": "ListInput",
+      "import": "@liulidesign/core/ListInput",
+      "exports": [
+        "ListInput"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "since": "2026-11-15",
+      "summary": "A field of rows the user adds and removes",
+      "description": "ListInput is one field whose value is a list: phone numbers, links, line items. Each row holds the app's own controls with a remove button at its end, and a button under the rows adds one. The app owns the rows and draws each one; ListInput gives them a shared label, help text and status, reads them as a list, and keeps the count between `min` and `max`.",
+      "keywords": [
+        "list",
+        "repeat",
+        "rows",
+        "add",
+        "remove",
+        "array",
+        "multiple",
+        "field"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the control's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the visible label; the control keeps it as its name.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the control, read as the control's description."
+        },
+        {
+          "name": "status",
+          "type": "FieldStatus",
+          "required": false,
+          "description": "An `error` status marks the control invalid; its message is read as the control's description."
+        },
+        {
+          "name": "isRequired",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
+          "default": "false"
+        },
+        {
+          "name": "hasRequiredMark",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
+          "default": "true"
+        },
+        {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Shown in place of `description` while disabled."
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "rowKeys",
+          "type": "readonly string[]",
+          "required": true,
+          "description": "One stable key per row, in order: an id, never the row's place. The app owns the rows."
+        },
+        {
+          "name": "renderRow",
+          "type": "(index: number) => Child",
+          "required": true,
+          "description": "A row's controls, by its place from 0. Give each control its own label, hidden: \"Phone 2\"."
+        },
+        {
+          "name": "onAdd",
+          "type": "() => void",
+          "required": true,
+          "description": "Adds a row at the end."
+        },
+        {
+          "name": "addLabel",
+          "type": "string",
+          "required": true,
+          "description": "The words on the add button: \"Add a phone number\"."
+        },
+        {
+          "name": "onRemove",
+          "type": "(index: number) => void",
+          "required": true,
+          "description": "Takes the row at this place away."
+        },
+        {
+          "name": "removeLabel",
+          "type": "(index: number) => string",
+          "required": true,
+          "description": "Each remove button, named with what it removes: `index => \\`Remove phone ${index + 1}\\``."
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "required": false,
+          "description": "The add button is disabled once there are this many rows."
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "required": false,
+          "description": "Rows cannot be removed at or below this many.",
+          "default": "0"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the list; the add button gets `<testid>-add`, each remove button `<testid>-remove-<key>`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "list": "view",
+        "row": "view",
+        "controls": "view",
+        "add": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [
+          "description",
+          "status"
+        ],
+        "states": [
+          {
+            "state": "disabled",
+            "from": "isDisabled; the add button at `max`, the remove buttons at `min`"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Through each row's controls and its remove button, then to the add button"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Removes the row, or adds one"
+          }
+        ],
+        "target": {
+          "md": 40
+        },
+        "contrast": [
+          {
+            "what": "remove icon",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "The rows are a list named by the label and described by the help text and status.",
+          "Each control in a row needs its own name with the row's number, hidden: \"Phone 2\". The field's label names the list, not the controls.",
+          "Each remove button says which row it removes."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Phones",
+          "title": "Rows of two controls, between one and four",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Select } from '@liulidesign/core/Select';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { ListInput } from '@liulidesign/core/ListInput';\n\nconst kinds = [{ value: 'mobile', label: 'Mobile' }, { value: 'home', label: 'Home' }, { value: 'work', label: 'Work' }];\n\n/** Phone numbers: each row is a kind and a number; one row always stays, and four is the most. */\nexport function Phones() {\n  const phones = useLocal<readonly Phone[]>('phones', [\n    { id: 'p1', kind: 'mobile', number: '912 345 678' },\n    { id: 'p2', kind: 'work', number: '' },\n  ]);\n  const next = useLocal('next', 3);\n  const change = (index: number, patch: Partial<Phone>) => phones.set(phones.value.map((phone, at) => (at === index ? { ...phone, ...patch } : phone)));\n  return (\n    <ListInput\n      label=\"Phone numbers\"\n      description=\"We call only about a delivery.\"\n      rowKeys={phones.value.map(phone => phone.id)}\n      renderRow={index => (\n        <view className=\"flex-row gap-2\">\n          <Select label={`Kind of phone ${index + 1}`} isLabelHidden options={kinds} value={phones.value[index].kind} onChange={kind => change(index, { kind })} className=\"w-28\" />\n          <TextInput label={`Phone ${index + 1}`} isLabelHidden type=\"tel\" placeholder=\"Number\" value={phones.value[index].number} onChange={number => change(index, { number })} className=\"grow basis-0\" data-testid={`phone-${index + 1}`} />\n        </view>\n      )}\n      onAdd={() => { phones.set([...phones.value, { id: `p${next.value}`, kind: 'mobile', number: '' }]); next.set(next.value + 1); }}\n      addLabel=\"Add a phone number\"\n      onRemove={index => phones.set(phones.value.filter((_, at) => at !== index))}\n      removeLabel={index => `Remove phone ${index + 1}`}\n      min={1}\n      max={4}\n      data-testid=\"phones\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Links",
+          "title": "Empty and required",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { ListInput } from '@liulidesign/core/ListInput';\n\n/** Nothing yet, and required: the error says what to add. */\nexport function Links() {\n  const links = useLocal<readonly { id: string; url: string }[]>('links', []);\n  const next = useLocal('next', 1);\n  return (\n    <ListInput\n      label=\"Links\"\n      isRequired\n      status={links.value.length === 0 ? { type: 'error', message: 'Add at least one link.' } : undefined}\n      rowKeys={links.value.map(link => link.id)}\n      renderRow={index => (\n        <TextInput label={`Link ${index + 1}`} isLabelHidden type=\"text\" autoCapitalize=\"none\" placeholder=\"https://\" value={links.value[index].url} onChange={url => links.set(links.value.map((link, at) => (at === index ? { ...link, url } : link)))} />\n      )}\n      onAdd={() => { links.set([...links.value, { id: `l${next.value}`, url: '' }]); next.set(next.value + 1); }}\n      addLabel=\"Add a link\"\n      onRemove={index => links.set(links.value.filter((_, at) => at !== index))}\n      removeLabel={index => `Remove link ${index + 1}`}\n      data-testid=\"links\"\n    />\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "limits": [
+        "Rows are not reordered by dragging.",
+        "It does not move focus to a new row; the app's controls can ask for it."
+      ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": []
+      },
+      "related": [
+        "Field",
+        "MultiSelect",
+        "FormLayout"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Rows to add",
+        "order": 15,
+        "page": {
+          "lead": "Use a list input when one field holds several values that are typed, not picked.",
+          "hero": "Phones",
+          "variants": [
+            {
+              "name": "Links",
+              "title": "Empty and required: the error says what to add"
+            }
+          ],
+          "statesLayout": "stack",
+          "states": [
+            {
+              "name": "StateDisabled",
+              "title": "Disabled, with the reason"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Markdown",
       "import": "@liulidesign/core/Markdown",
       "exports": [

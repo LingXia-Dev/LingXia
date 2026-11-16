@@ -10,7 +10,7 @@ const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 const categories: Record<string, string[]> = {
   'category-foundations': ['colour', 'typography', 'shape-and-spacing', 'elevation', 'motion', 'playground'],
   'category-actions': ['button', 'toggle-button', 'icon-button', 'button-group'],
-  'category-inputs': ['text-input', 'text-area', 'date-input', 'time-input', 'slider', 'field', 'search-field', 'number-input', 'calendar', 'date-range-input', 'form-layout', 'date-time-input', 'file-input', 'composer'],
+  'category-inputs': ['text-input', 'text-area', 'date-input', 'time-input', 'slider', 'field', 'search-field', 'number-input', 'calendar', 'date-range-input', 'form-layout', 'date-time-input', 'file-input', 'composer', 'list-input'],
   'category-selection': ['checkbox-input', 'radio-group', 'switch', 'select', 'segmented-control', 'combobox', 'checkbox-list', 'token', 'multi-select'],
   'category-navigation': ['tabs', 'nav-list', 'breadcrumb', 'pagination', 'stepper', 'link', 'page-control', 'tree-list'],
   'category-feedback': ['badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast', 'circular-progress', 'status-dot'],

@@ -138,6 +138,8 @@
     "./TreeList/recipe": "./src/TreeList/TreeList.recipe.ts",
     "./FileInput": "./src/FileInput/FileInput.tsx",
     "./FileInput/recipe": "./src/FileInput/FileInput.recipe.ts",
+    "./ListInput": "./src/ListInput/ListInput.tsx",
+    "./ListInput/recipe": "./src/ListInput/ListInput.recipe.ts",
     "./HoverCard": "./src/HoverCard/HoverCard.tsx",
     "./HoverCard/recipe": "./src/HoverCard/HoverCard.recipe.ts",
     "./StatusDot": "./src/StatusDot/StatusDot.tsx",
