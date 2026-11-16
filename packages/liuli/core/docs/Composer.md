@@ -8,7 +8,7 @@ Where a message is written and sent. Status: preview.
 import { Composer } from '@liulidesign/core/Composer';
 ```
 
-Composer is a field that starts one line tall and grows with the draft to five lines, then scrolls, beside a send button that wakes when there is something to send. The keyboard's send key sends too; with a hardware keyboard Shift and Return add a line. The app sends the text and empties the draft. It sits at the bottom of a conversation, where the page keeps it above the keyboard.
+Composer is one surface holding the text and its buttons. While the draft fits on one line it is a single row: attach, text, send. Past one line the text takes the full width, growing to five lines and then scrolling, and the buttons sit under it. The send button wakes when there is something to send. The keyboard's send key sends too; with a hardware keyboard Shift and Return add a line. The app sends the text and empties the draft. It sits at the bottom of a conversation, where the page keeps it above the keyboard.
 
 ## Examples
 
@@ -41,24 +41,86 @@ export function Reply() {
 }
 ```
 
-### With a way to attach, and a long draft
+### With a way to attach
 
 ```tsx
 import { useLocal } from '@lingxia/view';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { Composer } from '@liulidesign/core/Composer';
 
-/** With a way to attach, and a long draft: the field grows to five lines, then scrolls. */
+/** With a way to attach, and a draft that fits on one line: attach, text and send in a row. */
+export function RowWithAttach() {
+  const draft = useLocal('short', 'On my way.');
+  const said = useLocal('said', 'Nothing sent yet');
+  return (
+    <view className="gap-2">
+      <Composer
+        bind={draft}
+        label="Message"
+        placeholder="Message Kai"
+        sendLabel="Send"
+        onSubmit={text => { said.set(`Sent "${text}"`); draft.set(''); }}
+        startContent={<IconButton label="Attach a file" icon="attach" variant="ghost" onClick={() => said.set('Asked for a file')} />}
+        data-testid="short"
+      />
+      <text role="status" className="text-footnote text-muted">{said.value}</text>
+    </view>
+  );
+}
+```
+
+### A draft past one line
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { IconButton } from '@liulidesign/core/IconButton';
+import { Composer } from '@liulidesign/core/Composer';
+
+/** A draft past one line: the text takes the full width, to five lines and then scrolling, and the buttons go under it. */
 export function WithAttach() {
   const draft = useLocal('long', 'Leaving at eight from the east gate.\nBring the tent and the stove.\nI have the maps and water for two days.\nKai has the first-aid kit.\nBack on Sunday before dark.\nCall if the road is closed.');
+  const said = useLocal('said', 'Nothing sent yet');
+  return (
+    <view className="gap-2">
+      <Composer
+        bind={draft}
+        label="Message"
+        placeholder="Message Kai"
+        sendLabel="Send"
+        onSubmit={text => { said.set(`Sent ${text.split('\n').length} lines`); draft.set(''); }}
+        startContent={<IconButton label="Attach a file" icon="attach" variant="ghost" onClick={() => said.set('Asked for a file')} />}
+        data-testid="long"
+      />
+      <text role="status" className="text-footnote text-muted">{said.value}</text>
+    </view>
+  );
+}
+```
+
+### With attachments
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { IconButton } from '@liulidesign/core/IconButton';
+import { Token } from '@liulidesign/core/Token';
+import { Composer } from '@liulidesign/core/Composer';
+
+/** What is attached sits inside the composer, over the text. */
+export function Attached() {
+  const draft = useLocal('note', 'The route and the packing list.');
+  const files = useLocal<readonly string[]>('files', ['Route.gpx', 'Packing list.pdf']);
   return (
     <Composer
       bind={draft}
       label="Message"
+      placeholder="Message Kai"
       sendLabel="Send"
-      onSubmit={() => {}}
-      startContent={<IconButton label="Attach a file" icon="attach" />}
-      data-testid="long"
+      onSubmit={() => { draft.set(''); files.set([]); }}
+      startContent={<IconButton label="Attach a file" icon="attach" variant="ghost" onClick={() => files.set([...files.value, `File ${files.value.length + 1}.pdf`])} />}
+      attachments={files.value.length === 0 ? undefined : files.value.map(name => (
+        <Token key={name} label={name} removeLabel={`Remove ${name}`} onRemove={() => files.set(files.value.filter(each => each !== name))} />
+      ))}
+      data-testid="attached"
     />
   );
 }
@@ -76,7 +138,8 @@ export function WithAttach() {
 | `onSubmit` (required) | `(text: string) => void` |  | Runs with the draft, trimmed, from the send button or the keyboard\'s send key. The app sends it and empties the draft. |
 | `sendLabel` (required) | `string` |  | The send button\'s name: "Send". |
 | `isSending` | `boolean` | `false` | The send button shows a spinner and takes no press; the draft stays editable. |
-| `startContent` | `Child` |  | Before the field: an IconButton that attaches a file or a picture. |
+| `startContent` | `Child` |  | Before the text, or under it at the start once the draft takes more than a line: an IconButton that attaches a file or a picture. |
+| `attachments` | `Child` |  | What is attached, shown inside the composer over the text: Tokens or Thumbnails, each with its own way to remove it. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Why it is disabled, shown under the field: "Only members can reply." |
 | `className` | `string` |  |  |
@@ -86,18 +149,20 @@ export function WithAttach() {
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
-| root | `<view>` | yes | The row, and under it the reason while disabled. |
-| row | `<view>` | yes | What sits beside the field stays on its last line. |
-| start | `<view>` | no | Before the field: a button that attaches. |
-| field | `<TextArea>` | yes | A TextArea named by `label`, one to five lines. |
+| root | `<view>` | yes | The surface, and under it the reason while disabled. |
+| surface | `<view>` | yes | The one bordered box; the focus ring goes round all of it. |
+| attachments | `<view>` | no | What is attached, over the text. |
+| start | `<view>` | no | A button that attaches: before the text, or under it at the start. |
+| field | `<view>` | yes | The text's place: between the buttons, or the full width over them. |
+| editor | `<textarea>` | yes | The text, named by `label`, one to five lines. |
 | send | `<IconButton>` | yes | An IconButton named by `sendLabel`; disabled while the draft is empty, loading while sending. |
 
 ## What an app may override
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `composerRecipe` from `@liulidesign/core/Composer/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`.
-- Colour roles it paints with, set by the theme pack: `text-muted`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--radius-container`.
+- Colour roles it paints with, set by the theme pack: `accent`, `line-strong`, `surface`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 
@@ -127,6 +192,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Limits
 
-- It does not hold attachments itself; show them over it with Thumbnail or FileInput rows.
+- It shows what is attached and leaves choosing and uploading files to the app.
+- While sending, the send button is busy; it does not turn into a stop button.
 
-Related: MessageBubble, TextArea, IconButton.
+Related: MessageBubble, TextArea, IconButton, Token.

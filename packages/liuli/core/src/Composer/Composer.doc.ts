@@ -7,17 +7,20 @@ export const doc: ComponentDoc = {
   since: '2026-11-15',
   summary: 'Where a message is written and sent',
   description:
-    'Composer is a field that starts one line tall and grows with the draft to five lines, then scrolls, beside a send button that wakes when there is something to send. ' +
+    'Composer is one surface holding the text and its buttons. While the draft fits on one line it is a single row: attach, text, send. Past one line the text takes the full width, growing to five lines and then scrolling, and the buttons sit under it. ' +
+    'The send button wakes when there is something to send. ' +
     'The keyboard\'s send key sends too; with a hardware keyboard Shift and Return add a line. The app sends the text and empties the draft. ' +
     'It sits at the bottom of a conversation, where the page keeps it above the keyboard.',
   keywords: ['composer', 'message input', 'chat input', 'reply', 'send', 'comment box'],
   propsType: 'ComposerProps',
   recipe: { map: 'composerRecipe', parts: 'composerParts' },
   anatomy: [
-    { part: 'root', required: true, description: 'The row, and under it the reason while disabled.' },
-    { part: 'row', required: true, description: 'What sits beside the field stays on its last line.' },
-    { part: 'start', required: false, description: 'Before the field: a button that attaches.' },
-    { part: 'field', required: true, description: 'A TextArea named by `label`, one to five lines.' },
+    { part: 'root', required: true, description: 'The surface, and under it the reason while disabled.' },
+    { part: 'surface', required: true, description: 'The one bordered box; the focus ring goes round all of it.' },
+    { part: 'attachments', required: false, description: 'What is attached, over the text.' },
+    { part: 'start', required: false, description: 'A button that attaches: before the text, or under it at the start.' },
+    { part: 'field', required: true, description: 'The text\'s place: between the buttons, or the full width over them.' },
+    { part: 'editor', required: true, description: 'The text, named by `label`, one to five lines.' },
     { part: 'send', required: true, description: 'An IconButton named by `sendLabel`; disabled while the draft is empty, loading while sending.' },
   ],
   accessibility: {
@@ -53,13 +56,16 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'Reply', title: 'Write and send' },
-    { name: 'WithAttach', title: 'With a way to attach, and a long draft' },
+    { name: 'RowWithAttach', title: 'With a way to attach' },
+    { name: 'WithAttach', title: 'A draft past one line' },
+    { name: 'Attached', title: 'With attachments' },
   ],
   gaps: [],
   limits: [
-    'It does not hold attachments itself; show them over it with Thumbnail or FileInput rows.',
+    'It shows what is attached and leaves choosing and uploading files to the app.',
+    'While sending, the send button is busy; it does not turn into a stop button.',
   ],
-  related: ['MessageBubble', 'TextArea', 'IconButton'],
+  related: ['MessageBubble', 'TextArea', 'IconButton', 'Token'],
   gallery: {
     specimen: 'Specimen',
     tagline: 'Write and send',
@@ -67,8 +73,11 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a composer to write and send a message.',
       hero: 'Reply',
+      stage: 'bare',
       variants: [
-        { name: 'WithAttach', title: 'A long draft grows the field to five lines; the buttons stay on the last line' },
+        { name: 'RowWithAttach', title: 'With a way to attach: attach, text and send in one row' },
+        { name: 'WithAttach', title: 'Past one line the text takes the full width, to five lines; the buttons go under it' },
+        { name: 'Attached', title: 'What is attached sits inside, over the text' },
         { name: 'StateSending', title: 'Sending: the button is busy, the draft stays' },
         { name: 'StateDisabled', title: 'Disabled, with the reason' },
       ],

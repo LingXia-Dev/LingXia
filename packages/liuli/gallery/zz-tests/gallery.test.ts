@@ -561,3 +561,48 @@ spec('context menu (touch): a long press docks the menu level between the edges,
   await expect(status).toHaveText('Pinned Reading list');
   await expect(view.testId('note-reading-menu')).toHaveCount(0);
 });
+
+spec('conversation: a message is sent, a failed one says so and is sent again', { id: 'CONVERSATION-001', start: { page: 'conversation' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  const field = view.testId('composer');
+  const send = view.testId('composer-send');
+  await expect(send).toBeDisabled();
+  await field.fill('I can see it from here.');
+  await expect(send).toBeEnabled();
+  await send.click();
+  // Ten entries are seeded, so the new message is the eleventh.
+  await expect(view.testId('message-m11')).toBeAttached();
+  await expect(field).toHaveValue('');
+  // The message that failed says so, and its own button sends it again.
+  await expect(view.testId('retry-m8')).toBeAttached();
+  await view.testId('retry-m8').click();
+  await expect(view.testId('retry-m8')).toHaveCount(0);
+  await t.attach('conversation-sent.png', await view.screenshot());
+});
+
+spec('composer: past one line the text takes the full width and the buttons go under it; five lines at most, whole', { id: 'COMPOSER-STACK-001', start: { page: 'composer' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  const field = view.testId('reply');
+  const send = view.testId('reply-send');
+  const boxes = async () => ({ field: await field.boundingBox(), send: await send.boundingBox() });
+  await field.fill('Leaving at eight');
+  await pause(400);
+  const row = await boxes();
+  const line = row.field.height;
+  if (row.send.y >= row.field.y + line) throw Error('a short draft is one row: the send button sits beside the text');
+  await field.fill('Leaving at eight from the east gate. Bring the tent, the stove, the maps and water for two days, and call if the road is closed.');
+  await pause(500);
+  const stacked = await boxes();
+  if (stacked.send.y < stacked.field.y + stacked.field.height - 1) throw Error('a long draft is stacked: the send button sits under the text');
+  if (stacked.field.width <= row.field.width) throw Error('stacked, the text is wider than beside the button');
+  await field.fill(Array.from({ length: 9 }, (_, index) => `Line ${index + 1}`).join('\n'));
+  await pause(500);
+  const full = await boxes();
+  const lines = full.field.height / line;
+  if (Math.abs(lines - 5) > 0.05) throw Error(`nine lines show ${lines} lines' height; five whole lines are the most`);
+  await t.attach('composer-five-lines.png', await view.screenshot());
+  await field.fill('Short again');
+  await pause(500);
+  const back = await boxes();
+  if (back.send.y >= back.field.y + line) throw Error('a short draft is one row again');
+});

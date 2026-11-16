@@ -85,3 +85,20 @@ test('list and detail: every request opens its record', async () => {
     assert.ok(has(screen, 'details'), `${id} shows its details`);
   }
 });
+
+// The messages are a windowed list, which lays out only on a device: the gallery spec CONVERSATION-001
+// sends, fails and sends again there. Here, what needs no layout.
+test('conversation: the send button wakes with a draft, and sending empties it', async () => {
+  const screen = await open('conversation');
+  const field = () => screen.getByTestId('composer');
+  assert.equal(screen.getByTestId('composer-send').props.enabled, 0, 'nothing to send yet');
+  screen.type(field(), '  I can see it from here.  ');
+  assert.notEqual(screen.getByTestId('composer-send').props.enabled, 0);
+  screen.press(screen.getByTestId('composer-send'));
+  await settle();
+  assert.equal(field().props.inputValue, '', 'the draft is emptied');
+  screen.type(field(), 'Two minutes.');
+  screen.submit(field());
+  await settle();
+  assert.equal(field().props.inputValue, '', 'the keyboard\'s send key sends too');
+});

@@ -1,32 +1,59 @@
 export const composerParts = {
   root: 'view',
-  row: 'view',
-  reason: 'text',
+  surface: 'view',
+  attachments: 'view',
   start: 'view',
-  field: 'TextArea',
+  field: 'view',
+  editor: 'textarea',
   send: 'IconButton',
+  measure: 'view',
+  line: 'text',
+  reason: 'text',
 } as const;
 
-/** The field grows upward from one line; what sits beside it stays on its last line. */
+/**
+ * One surface: its border is the field's edge, and the focus ring goes round all of it. In one
+ * row it is start, text, send; stacked, the text takes the first row whole and the buttons the
+ * row under it, at its two ends. The same three children in the same order either way, placed
+ * by the grid, so the editor keeps its caret through the change.
+ */
 export const composerRecipe = {
   root: {
     base: 'self-stretch gap-1.5',
   },
-  row: {
-    base: 'flex-row items-end gap-2',
+  surface: {
+    base: 'grid grid-cols-[auto_1fr_auto] items-center gap-x-1 gap-y-1 p-1.5 rounded-container border border-line-strong bg-surface transition-size duration-base ease-standard focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/20',
+    disabled: 'bg-text/5 border-text/8',
   },
-  /** Why it is disabled, under the whole row. */
-  reason: {
-    base: 'text-footnote text-muted',
+  /** Over the text, the whole width. */
+  attachments: {
+    base: 'col-span-3 flex-row flex-wrap gap-1.5 px-1.5 pt-1.5',
   },
   start: {
-    base: 'shrink-0 flex-row items-center',
+    base: 'col-start-1 flex-row items-center',
+    stacked: 'order-2',
   },
+  /** The text's inset is here, not on the editor, so the editor's height is a whole number of lines. */
   field: {
-    base: 'grow basis-0 min-w-0',
+    base: 'min-w-0 px-2',
+    row: 'col-start-2',
+    /** With nothing before it the text starts at the edge, where it starts when stacked. */
+    rowAlone: 'col-start-1 col-span-2',
+    stacked: 'order-1 col-span-3 pt-1.5',
   },
-  /** On the field's last line, not at its middle. */
+  editor: {
+    base: 'self-stretch p-0 bg-transparent text-body text-text placeholder:text-muted disabled:text-faint',
+  },
   send: {
-    base: 'shrink-0 self-end',
+    base: 'col-start-3',
+    stacked: 'order-3',
+  },
+  measure: {
+    base: 'absolute size-0 overflow-hidden opacity-0 flex-row',
+    line: 'shrink-0 whitespace-nowrap text-body',
+  },
+  /** Why it is disabled, under the composer. */
+  reason: {
+    base: 'text-footnote text-muted',
   },
 } as const;
