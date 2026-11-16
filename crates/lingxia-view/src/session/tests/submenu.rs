@@ -173,3 +173,56 @@ fn the_arrows_swap_in_a_right_to_left_menu() {
     assert!(exists(&host, "menu") && !exists(&host, "move"));
     assert!(focused(&host, "move-to"));
 }
+
+/// The same menu with its submenu asked to sit at the inline end of its item.
+fn side_page(platform: &Platform, worker: &Arc<ViewWorker>, width: u32) -> ViewHost<Fake> {
+    let host = platform.host(
+        worker,
+        &source(&format!(
+            "function render(){{return h('page',{{}},h('button',{{popoverTarget:'menu','data-testid':'more'}},'More'),h('view',{{id:'menu',popover:'auto',role:'menu','aria-label':'Actions','data-testid':'menu',style:{{width:{width}}}}},h('button',{{role:'menuitem','data-testid':'rename'}},'A'),h('button',{{role:'menuitem',popoverTarget:'move','data-testid':'move-to'}},'B')),h('view',{{id:'move',popover:'auto',role:'menu','aria-label':'Move to','data-testid':'move',style:{{width:{width},positionArea:'inline-end span-block-end'}}}},h('button',{{role:'menuitem','data-testid':'inbox'}},'C')))}}"
+        )),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    host
+}
+
+/// Left, top, right and bottom of the element with test id `id`.
+fn edges(host: &ViewHost<Fake>, id: &str) -> [f32; 4] {
+    let node = query(host, id);
+    let at = |key: &str| node["rect"][key].as_f64().unwrap() as f32;
+    [
+        at("left"),
+        at("top"),
+        at("left") + at("width"),
+        at("top") + at("height"),
+    ]
+}
+
+#[test]
+fn a_submenu_sits_beside_its_item_and_under_it_when_neither_side_has_room() {
+    let worker = ViewWorker::spawn("test-submenu-side").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let narrow = side_page(&platform, &worker, 40);
+    open_menu(&platform, &narrow);
+    key(&platform, &narrow, Key::Right);
+    let (menu, item, sub) = (
+        edges(&narrow, "menu"),
+        edges(&narrow, "move-to"),
+        edges(&narrow, "move"),
+    );
+    assert!(sub[0] >= menu[2], "beside the menu: {sub:?} against {menu:?}");
+    assert_eq!(sub[1], item[1], "level with its item");
+
+    let wide = side_page(&platform, &worker, 80);
+    open_menu(&platform, &wide);
+    key(&platform, &wide, Key::Right);
+    let (item, sub) = (edges(&wide, "move-to"), edges(&wide, "move"));
+    assert!(
+        sub[1] >= item[3],
+        "under its item, which stays in view: {sub:?} against {item:?}"
+    );
+    assert!(sub[0] >= 0.0 && sub[2] <= 100.0, "on screen: {sub:?}");
+    assert!(focused(&wide, "inbox"));
+}
