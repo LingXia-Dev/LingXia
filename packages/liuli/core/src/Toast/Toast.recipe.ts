@@ -17,11 +17,11 @@ export const toastParts = {
 export const toastRecipe = {
   /** The top-layer box the toast sits in; its padding, the 16 px gap plus the bars, is set from the environment. */
   region: {
-    base: 'absolute inset-0 m-0 justify-end transition duration-200 ease-out starting:opacity-0 exit:opacity-0 motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
+    base: 'absolute inset-0 m-0 justify-end transition duration-base ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
     pointer: { coarse: 'items-center', fine: 'items-end' },
   },
   toast: {
-    base: 'flex-row items-center gap-3 min-h-12 ps-4 pe-1.5 py-1.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition-transform duration-300 ease-out',
+    base: 'flex-row items-center gap-3 min-h-12 ps-4 pe-1.5 py-1.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition-transform duration-slow ease-standard',
     pointer: { coarse: 'w-full max-w-[480px]', fine: 'w-[360px] max-w-full' },
     /** Without a dismiss button the end padding matches the start. */
     plain: 'pe-4',

@@ -50,3 +50,13 @@
     100% { transform: translateX(100%); }
   }
 }
+
+/* Motion by name. Recipes use only these; the values are what Liuli was reviewed with. They become
+   the app's theme pack's once the View resolves duration and easing utilities from it, and this
+   block goes. */
+@utility duration-fast { transition-duration: 150ms; }
+@utility duration-base { transition-duration: 200ms; }
+@utility duration-slow { transition-duration: 300ms; }
+@utility ease-standard { transition-timing-function: cubic-bezier(0, 0, 0.2, 1); }
+@utility ease-enter { transition-timing-function: cubic-bezier(0, 0, 0.2, 1); }
+@utility ease-exit { transition-timing-function: cubic-bezier(0.4, 0, 1, 1); }

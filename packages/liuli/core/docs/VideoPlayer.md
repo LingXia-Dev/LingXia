@@ -92,7 +92,7 @@ export function UnderThePicture() {
 
 - `className`: Classes for the frame, such as its aspect ratio or width.
 - The recipe, `videoPlayerRecipe` from `@liulidesign/core/VideoPlayer/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- It reads no Liuli scale token.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--radius-container`.
 - It paints with no colour role of its own.
 
 ## Accessibility

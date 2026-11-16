@@ -51,7 +51,7 @@ export const tableRecipe = {
   row: {
     base: 'grid items-center gap-x-3 px-4 self-stretch text-start',
     density: { comfortable: 'min-h-[44px] py-2', compact: 'min-h-[36px] py-1.5' } satisfies Record<TableDensity, string>,
-    pressable: 'transition-colors duration-150 ease-out',
+    pressable: 'transition-colors duration-fast ease-standard',
     idle: 'hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7',
     selected: 'bg-accent-soft hover:bg-accent/16 active:bg-accent/20 focus-visible:bg-accent/20',
   },

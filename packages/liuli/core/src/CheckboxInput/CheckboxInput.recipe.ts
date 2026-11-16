@@ -23,14 +23,14 @@ export const checkboxInputRecipe = {
   },
   control: {
     /** A row: keyboard focus is a fill, given room past the box and text by the negative margins. */
-    base: '-mx-2 px-2 -my-1 py-1 rounded-control transition-colors duration-150 ease-out disabled:opacity-40 hover:bg-text/4 focus-visible:bg-text/7',
+    base: '-mx-2 px-2 -my-1 py-1 rounded-control transition-colors duration-fast ease-standard disabled:opacity-40 hover:bg-text/4 focus-visible:bg-text/7',
   },
   /** Centred in the primitive's minimum height when the content is shorter. */
   row: {
     base: 'flex-row items-start gap-3 py-1 my-auto',
   },
   box: {
-    base: 'items-center justify-center rounded-checkbox border-2 transition-colors duration-150 ease-out',
+    base: 'items-center justify-center rounded-checkbox border-2 transition-colors duration-fast ease-standard',
     /** Centred on the label's first line. */
     size: { sm: 'size-4 mt-px', md: 'size-5 mt-px', lg: 'size-6' } satisfies Record<FieldSize, string>,
     state: {
@@ -52,7 +52,7 @@ export const checkboxInputRecipe = {
   },
   label: {
     base: 'text-text',
-    size: { sm: 'text-footnote', md: 'text-body', lg: 'text-base' } satisfies Record<FieldSize, string>,
+    size: { sm: 'text-footnote', md: 'text-body', lg: 'text-callout' } satisfies Record<FieldSize, string>,
     hidden: 'sr-only',
   },
   description: {

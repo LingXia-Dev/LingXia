@@ -41,7 +41,7 @@ export const calendarRecipe = {
     end: 'bg-accent-soft rounded-e-full',
   },
   day: {
-    base: 'size-10 items-center justify-center rounded-full transition-colors duration-150 ease-out disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+    base: 'size-10 items-center justify-center rounded-full transition-colors duration-fast ease-standard disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     idle: 'hover:bg-text/6 active:bg-text/10',
     chosen: 'bg-accent hover:bg-accent/92 active:bg-accent/88',
     today: 'inset-ring-1 inset-ring-line-strong',

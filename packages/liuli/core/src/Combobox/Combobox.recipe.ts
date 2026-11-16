@@ -29,7 +29,7 @@ export const comboboxParts = {
  */
 export const comboboxRecipe = {
   trigger: {
-    base: 'flex-row items-center gap-2 px-3 rounded-control border border-line-strong bg-surface text-start transition duration-150 ease-out hover:border-text/30',
+    base: 'flex-row items-center gap-2 px-3 rounded-control border border-line-strong bg-surface text-start transition duration-fast ease-standard hover:border-text/30',
     // The sheet's trigger is a button; the typeahead's box holds the editor and takes its focus ring.
     pressable: 'focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:bg-text/5 disabled:border-text/8',
     editable: 'focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/20',
@@ -41,7 +41,7 @@ export const comboboxRecipe = {
     base: 'min-w-0 grow basis-0 truncate text-text',
     placeholder: 'min-w-0 grow basis-0 truncate text-muted',
     disabled: 'text-faint',
-    size: { sm: 'text-footnote', md: 'text-body', lg: 'text-base' } satisfies Record<FieldSize, string>,
+    size: { sm: 'text-footnote', md: 'text-body', lg: 'text-callout' } satisfies Record<FieldSize, string>,
   },
   editor: {
     base: 'grow basis-0 min-w-0 truncate self-stretch px-0 bg-transparent text-text placeholder:text-muted disabled:text-faint',
@@ -51,10 +51,10 @@ export const comboboxRecipe = {
   },
   popover: {
     // As wide as the field once that is measured.
-    typeahead: 'w-72 max-w-[90vw] p-1 origin-top rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-150 ease-out starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-95',
+    typeahead: 'w-72 max-w-[90vw] p-1 origin-top rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-95',
   },
   sheet: {
-    base: 'mt-auto mb-0 w-full max-w-[640px] max-h-[90vh] px-4 pt-2 gap-3 rounded-t-dialog border border-b-0 border-text/12 bg-surface-overlay shadow-modal transition duration-300 ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
+    base: 'mt-auto mb-0 w-full max-w-[640px] max-h-[90vh] px-4 pt-2 gap-3 rounded-t-dialog border border-b-0 border-text/12 bg-surface-overlay shadow-modal transition duration-slow ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
   },
   grabber: {
     base: 'self-center w-9 h-1 rounded-full bg-text/20',

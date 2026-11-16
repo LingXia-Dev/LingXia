@@ -28,7 +28,7 @@ export const stepperRecipe = {
   step: {
     base: 'self-stretch text-start',
     orientation: { horizontal: 'gap-1.5', vertical: 'flex-row items-stretch gap-3' } satisfies Record<StepperOrientation, string>,
-    pressable: 'rounded-control transition-colors duration-150 ease-out hover:bg-text/4 active:bg-text/7 focus-visible:ring-2 focus-visible:ring-focus',
+    pressable: 'rounded-control transition-colors duration-fast ease-standard hover:bg-text/4 active:bg-text/7 focus-visible:ring-2 focus-visible:ring-focus',
   },
   rail: {
     row: 'flex-row items-center self-stretch',

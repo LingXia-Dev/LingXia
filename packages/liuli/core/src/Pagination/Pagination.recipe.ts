@@ -20,7 +20,7 @@ export const paginationRecipe = {
     base: 'flex-row items-center gap-1',
   },
   page: {
-    base: 'h-control-md min-w-control-md px-2 items-center justify-center rounded-control transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+    base: 'h-control-md min-w-control-md px-2 items-center justify-center rounded-control transition-colors duration-fast ease-standard focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     idle: 'hover:bg-text/5 active:bg-text/8',
     current: 'bg-accent-soft',
   },

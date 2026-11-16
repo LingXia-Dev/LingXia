@@ -19,7 +19,7 @@ export const tokenRecipe = {
     size: { sm: 'h-6 ps-2.5 gap-1', md: 'h-8 ps-3 gap-1.5' } satisfies Record<TokenSize, string>,
     /** Without a remove button the end inset matches the start. */
     plain: { sm: 'pe-2.5', md: 'pe-3' } satisfies Record<TokenSize, string>,
-    pressable: 'transition-colors duration-150 ease-out hover:bg-text/12 active:bg-text/16 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+    pressable: 'transition-colors duration-fast ease-standard hover:bg-text/12 active:bg-text/16 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     /** A category: the hue's soft fill; selected still wins. */
     hue: { 1: 'bg-hue-1-soft', 2: 'bg-hue-2-soft', 3: 'bg-hue-3-soft', 4: 'bg-hue-4-soft', 5: 'bg-hue-5-soft', 6: 'bg-hue-6-soft', 7: 'bg-hue-7-soft', 8: 'bg-hue-8-soft' } satisfies Record<Hue, string>,
     selected: 'bg-accent-soft text-on-accent-soft',

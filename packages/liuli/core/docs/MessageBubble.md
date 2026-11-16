@@ -91,7 +91,7 @@ export function States() {
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `messageBubbleRecipe` from `@liulidesign/core/MessageBubble/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-body`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-body`, `--radius-container`, `--radius-checkbox`.
 - Colour roles it paints with, set by the theme pack: `accent-soft`, `danger`, `on-accent-soft`, `text`, `text-muted`.
 
 ## Accessibility

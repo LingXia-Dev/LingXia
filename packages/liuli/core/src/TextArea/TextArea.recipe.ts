@@ -9,7 +9,7 @@ export const textAreaParts = { box: 'view', editor: 'textarea', count: 'text' } 
  */
 export const textAreaRecipe = {
   box: {
-    base: 'rounded-control border border-line-strong bg-surface transition duration-150 ease-out focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/20',
+    base: 'rounded-control border border-line-strong bg-surface transition duration-fast ease-standard focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/20',
     status: { error: 'border-danger', warning: 'border-warning', success: 'border-line-strong' } satisfies Record<FieldStatusType, string>,
     disabled: 'bg-text/5 border-text/8',
   },
@@ -21,6 +21,6 @@ export const textAreaRecipe = {
   editor: {
     base: 'self-stretch px-3 py-2 bg-transparent text-text placeholder:text-muted disabled:text-faint',
     /** Matches TextInput's text at each size. */
-    size: { sm: 'text-footnote', md: 'text-body', lg: 'text-base' } satisfies Record<FieldSize, string>,
+    size: { sm: 'text-footnote', md: 'text-body', lg: 'text-callout' } satisfies Record<FieldSize, string>,
   },
 } as const;

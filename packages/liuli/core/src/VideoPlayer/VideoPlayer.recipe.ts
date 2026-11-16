@@ -10,10 +10,10 @@ export const videoPlayerParts = {
 /** The picture fills its frame; the video backs itself in black where the picture leaves room. */
 export const videoPlayerRecipe = {
   root: {
-    variant: { overlay: 'relative overflow-hidden rounded-xl', bar: 'gap-1' } satisfies Record<VideoPlayerVariant, string>,
+    variant: { overlay: 'relative overflow-hidden rounded-container', bar: 'gap-1' } satisfies Record<VideoPlayerVariant, string>,
   },
   frame: {
-    base: 'overflow-hidden rounded-xl',
+    base: 'overflow-hidden rounded-container',
   },
   video: {
     base: 'w-full',

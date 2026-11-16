@@ -15,10 +15,10 @@ export const avatarParts = {
 export const avatarRecipe = {
   root: {
     base: 'relative shrink-0 items-center-safe justify-center-safe bg-accent-soft',
-    /** A rounded square's corner grows with its size, staying near a quarter of it. */
+    /** A rounded square's corner grows with its size, a quarter of it: the four smallest radius steps, by the names Liuli gives them. */
     shape: {
       circle: { xs: 'rounded-full', sm: 'rounded-full', md: 'rounded-full', lg: 'rounded-full' },
-      rounded: { xs: 'rounded-md', sm: 'rounded-lg', md: 'rounded-xl', lg: 'rounded-2xl' },
+      rounded: { xs: 'rounded-checkbox', sm: 'rounded-segment', md: 'rounded-control', lg: 'rounded-container' },
     } satisfies Record<AvatarShape, Record<AvatarSize, string>>,
     size: { xs: 'size-6', sm: 'size-8', md: 'size-10', lg: 'size-14' } satisfies Record<AvatarSize, string>,
     /** A hue's soft fill in place of the accent's, so people are told apart at a glance. */

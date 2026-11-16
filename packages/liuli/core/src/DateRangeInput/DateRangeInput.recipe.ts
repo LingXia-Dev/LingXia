@@ -13,6 +13,6 @@ export const dateRangeInputRecipe = {
     base: 'tabular-nums',
   },
   popover: {
-    base: 'mt-1 w-[312px] max-w-[90vw] p-3 origin-top rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-150 ease-out starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-95',
+    base: 'mt-1 w-[312px] max-w-[90vw] p-3 origin-top rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-95',
   },
 } as const;

@@ -48,9 +48,9 @@ test('Unread: a badge sits on the top end edge and is read by its own label', as
   screen.getByText('3');
 });
 
-test('Teams: a rounded square for a team, its corner about a quarter of its size', async () => {
+test('Teams: a rounded square for a team, its corner a quarter of its size', async () => {
   const team = (await renderExample('Avatar/Avatar', 'Teams')).getByTestId('team');
-  assert.deepEqual([team.props.width, team.props.radius], [40, 12]);
+  assert.deepEqual([team.props.width, team.props.radius], [40, 10]);
 });
 
 test('Group: the count takes the group\'s shape, a circle like the avatars beside it', async () => {

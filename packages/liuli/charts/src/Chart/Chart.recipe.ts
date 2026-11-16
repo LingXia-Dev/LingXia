@@ -89,7 +89,7 @@ export const chartRecipe = {
       inline: 'flex-row items-center gap-1.5 rounded-control text-start',
       list: 'min-h-9 flex-row items-center gap-2.5 rounded-control px-2 -mx-2 text-start',
     } satisfies Record<ChartLegendVariant, string>,
-    pressable: 'transition-colors duration-150 ease-out hover:bg-text/4 active:bg-text/8 focus-visible:bg-text/7',
+    pressable: 'transition-colors duration-fast ease-standard hover:bg-text/4 active:bg-text/8 focus-visible:bg-text/7',
     selected: 'bg-text/6',
   },
   legendSwatch: {

@@ -15,7 +15,7 @@ export const pageControlRecipe = {
     base: 'px-1 py-2.5 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-focus',
   },
   mark: {
-    base: 'h-1.5 rounded-full transition-layout duration-200 ease-out',
+    base: 'h-1.5 rounded-full transition-layout duration-base ease-standard',
     state: { on: 'w-4.5', off: 'w-1.5' },
     tone: {
       accent: { on: 'bg-accent', off: 'bg-text/20' },

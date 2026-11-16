@@ -45,7 +45,7 @@ export const itemRecipe = {
   root: {
     base: 'flex-row items-center gap-3 px-4 self-stretch text-start',
     density: { comfortable: 'py-2.5 min-h-control-lg', compact: 'py-1.5 min-h-control-md' } satisfies Record<ItemDensity, string>,
-    pressable: 'transition-colors duration-150 ease-out disabled:opacity-40',
+    pressable: 'transition-colors duration-fast ease-standard disabled:opacity-40',
     idle: 'hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7',
     /** The current choice: ToggleButton's on wash, deepening on hover, press and focus. */
     selected: 'bg-accent-soft hover:bg-accent/16 active:bg-accent/20 focus-visible:bg-accent/20',
@@ -79,14 +79,14 @@ export const itemRecipe = {
     base: 'relative self-stretch overflow-hidden',
   },
   slide: {
-    base: 'self-stretch transition-transform duration-300 ease-out',
+    base: 'self-stretch transition-transform duration-slow ease-standard',
     layer: { page: 'bg-surface', overlay: 'bg-surface-overlay' } satisfies Record<Layer, string>,
   },
   actions: {
     base: 'absolute inset-y-0 end-0 flex-row items-stretch',
   },
   action: {
-    base: 'w-[72px] items-center justify-center gap-0.5 px-1 transition-colors duration-150 ease-out focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
+    base: 'w-[72px] items-center justify-center gap-0.5 px-1 transition-colors duration-fast ease-standard focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
     tone: {
       neutral: 'bg-text/8 text-text hover:bg-text/12 active:bg-text/16',
       accent: 'bg-accent text-on-accent hover:bg-accent/92 active:bg-accent/88',

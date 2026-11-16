@@ -19,13 +19,13 @@ export const tourRecipe = {
    * callout hangs from the caret, is shifted to fit the screen, and covers the caret's far half.
    */
   caret: {
-    base: 'size-3 overflow-visible bg-transparent transition duration-150 ease-out starting:opacity-0 exit:opacity-0',
+    base: 'size-3 overflow-visible bg-transparent transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
     point: 'size-3 rotate-45 rounded-[2px] bg-text',
     /** Moved across the gap the View keeps between an anchor and its popover, so its far half tucks under the callout. */
     offset: { bottom: 'translate-y-2', top: '-translate-y-2', end: 'translate-x-2 rtl:-translate-x-2', start: '-translate-x-2 rtl:translate-x-2' } satisfies Record<TourPlacement, string>,
   },
   callout: {
-    base: 'w-72 p-4 gap-2 rounded-container bg-text shadow-raised transition duration-150 ease-out starting:opacity-0 exit:opacity-0',
+    base: 'w-72 p-4 gap-2 rounded-container bg-text shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
     offset: { bottom: '', top: '', end: '', start: '' } satisfies Record<TourPlacement, string>,
   },
   title: {

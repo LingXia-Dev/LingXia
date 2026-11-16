@@ -20,7 +20,7 @@ export const fileInputRecipe = {
     base: 'gap-2',
   },
   pick: {
-    base: 'items-center justify-center gap-1 px-4 py-5 rounded-control border border-line-strong bg-surface-sunken text-center transition-colors duration-150 ease-out hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:opacity-40',
+    base: 'items-center justify-center gap-1 px-4 py-5 rounded-control border border-line-strong bg-surface-sunken text-center transition-colors duration-fast ease-standard hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:opacity-40',
     status: { error: 'border-danger', warning: 'border-warning', success: 'border-line-strong' } satisfies Record<FieldStatusType, string>,
   },
   pickIcon: {

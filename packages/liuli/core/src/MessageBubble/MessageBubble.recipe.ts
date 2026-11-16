@@ -34,11 +34,11 @@ export const messageBubbleRecipe = {
     base: 'ps-3 text-caption font-medium text-muted',
   },
   bubble: {
-    base: 'max-w-[520px] px-3 py-2 gap-2 rounded-2xl',
+    base: 'max-w-[520px] px-3 py-2 gap-2 rounded-container',
     side: { start: 'bg-text/6 text-text', end: 'bg-accent-soft text-on-accent-soft' } satisfies Record<MessageSide, string>,
     /** Tight on the side of its own edge, toward the bubble before and after it in a run. */
-    joinBefore: { start: 'rounded-ss-md', end: 'rounded-se-md' } satisfies Record<MessageSide, string>,
-    joinAfter: { start: 'rounded-es-md', end: 'rounded-ee-md' } satisfies Record<MessageSide, string>,
+    joinBefore: { start: 'rounded-ss-checkbox', end: 'rounded-se-checkbox' } satisfies Record<MessageSide, string>,
+    joinAfter: { start: 'rounded-es-checkbox', end: 'rounded-ee-checkbox' } satisfies Record<MessageSide, string>,
     failed: 'border border-danger',
   },
   /** Long words and addresses break rather than push the bubble past the row. */

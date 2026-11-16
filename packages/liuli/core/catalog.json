@@ -323,7 +323,11 @@
         "tokens": [
           "--text-caption",
           "--text-footnote",
-          "--text-callout"
+          "--text-callout",
+          "--radius-control",
+          "--radius-container",
+          "--radius-checkbox",
+          "--radius-segment"
         ],
         "roles": [
           "accent-soft",
@@ -1841,6 +1845,7 @@
           "--spacing-control-lg",
           "--text-footnote",
           "--text-body",
+          "--text-callout",
           "--shadow-raised",
           "--radius-control"
         ],
@@ -3201,6 +3206,7 @@
         "tokens": [
           "--text-footnote",
           "--text-body",
+          "--text-callout",
           "--radius-control",
           "--radius-checkbox"
         ],
@@ -4318,6 +4324,7 @@
           "--spacing-control-lg",
           "--text-footnote",
           "--text-body",
+          "--text-callout",
           "--text-title",
           "--shadow-raised",
           "--shadow-modal",
@@ -5256,6 +5263,7 @@
           "--spacing-control-lg",
           "--text-footnote",
           "--text-body",
+          "--text-callout",
           "--radius-control"
         ],
         "roles": [
@@ -10209,7 +10217,9 @@
         ],
         "tokens": [
           "--text-caption",
-          "--text-body"
+          "--text-body",
+          "--radius-container",
+          "--radius-checkbox"
         ],
         "roles": [
           "accent-soft",
@@ -12599,6 +12609,7 @@
         "tokens": [
           "--text-footnote",
           "--text-body",
+          "--text-callout",
           "--radius-control",
           "--radius-container"
         ],
@@ -13591,6 +13602,7 @@
           "--spacing-control-lg",
           "--text-footnote",
           "--text-body",
+          "--text-callout",
           "--radius-control"
         ],
         "roles": [
@@ -16088,6 +16100,7 @@
           "--text-caption",
           "--text-footnote",
           "--text-body",
+          "--text-callout",
           "--radius-control"
         ],
         "roles": [
@@ -16541,6 +16554,7 @@
           "--spacing-control-lg",
           "--text-footnote",
           "--text-body",
+          "--text-callout",
           "--radius-control"
         ],
         "roles": [
@@ -17097,6 +17111,7 @@
           "--spacing-control-lg",
           "--text-footnote",
           "--text-body",
+          "--text-callout",
           "--radius-control"
         ],
         "roles": [
@@ -17844,6 +17859,7 @@
           "--spacing-control-lg",
           "--text-footnote",
           "--text-body",
+          "--text-callout",
           "--radius-control"
         ],
         "roles": [
@@ -19232,8 +19248,12 @@
         ],
         "tokens": [
           "--spacing-control-md",
+          "--text-caption",
+          "--text-footnote",
           "--text-body",
-          "--shadow-contact"
+          "--shadow-contact",
+          "--radius-container",
+          "--radius-dialog"
         ],
         "roles": [
           "accent",
@@ -19416,7 +19436,9 @@
             "description": "Classes for the frame, such as its aspect ratio or width."
           }
         ],
-        "tokens": [],
+        "tokens": [
+          "--radius-container"
+        ],
         "roles": []
       },
       "related": [

@@ -9,7 +9,7 @@ export const buttonParts = { root: 'button', glyph: 'vector', icon: 'view', spin
  */
 export const buttonRecipe = {
   root: {
-    base: 'flex-row items-center justify-center-safe rounded-control transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+    base: 'flex-row items-center justify-center-safe rounded-control transition-colors duration-fast ease-standard focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     variant: {
       primary: 'bg-accent text-on-accent border border-transparent shadow-[0_1px_2px_rgb(0_0_0/0.10)] hover:bg-accent/92 active:bg-accent/88',
       secondary: 'bg-surface text-text border border-text/12 shadow-[0_1px_2px_rgb(0_0_0/0.05)] hover:bg-text/5 active:bg-text/8',
@@ -65,7 +65,7 @@ export const buttonRecipe = {
     base: 'text-start',
     /** A link reads as text in a sentence, so it keeps the regular weight. */
     weight: { primary: 'font-medium', secondary: 'font-medium', ghost: 'font-medium', link: 'font-normal', destructive: 'font-medium' } satisfies Record<ButtonVariant, string>,
-    size: { sm: 'text-footnote', md: 'text-body', lg: 'text-base' } satisfies Record<ButtonSize, string>,
+    size: { sm: 'text-footnote', md: 'text-body', lg: 'text-callout' } satisfies Record<ButtonSize, string>,
   },
   /** The disabled reason: not drawn, read as the description. */
   reason: {

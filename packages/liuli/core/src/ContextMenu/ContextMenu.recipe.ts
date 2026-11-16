@@ -14,7 +14,7 @@ export const contextMenuRecipe = {
     base: '',
   },
   menu: {
-    base: 'fixed p-1 gap-0.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-150 ease-out starting:opacity-0 exit:opacity-0',
+    base: 'fixed p-1 gap-0.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
     point: 'min-w-48 motion-safe:starting:scale-95',
     docked: 'inset-x-2 p-2 gap-1 rounded-dialog shadow-modal motion-safe:starting:translate-y-4 motion-safe:exit:translate-y-4',
   },

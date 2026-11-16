@@ -115,7 +115,7 @@ export function Bar() {
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `videoControlsRecipe` from `@liulidesign/core/VideoControls/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-md`, `--text-body`, `--shadow-contact`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-md`, `--text-caption`, `--text-footnote`, `--text-body`, `--shadow-contact`, `--radius-container`, `--radius-dialog`.
 - Colour roles it paints with, set by the theme pack: `accent`, `danger`, `focus`, `knob`, `line`, `line-strong`, `media`, `on-accent`, `on-media`, `text`, `text-muted`.
 
 ## Accessibility

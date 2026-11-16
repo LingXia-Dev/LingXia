@@ -14,7 +14,7 @@ export const lightboxParts = {
 /** The whole screen on the opaque media canvas: pictures shown whole, one at a time, with their controls in the on-media colour. */
 export const lightboxRecipe = {
   panel: {
-    base: 'w-full h-full rounded-none bg-media-canvas p-0 gap-2 transition duration-200 ease-out starting:opacity-0 exit:opacity-0',
+    base: 'w-full h-full rounded-none bg-media-canvas p-0 gap-2 transition duration-base ease-standard starting:opacity-0 exit:opacity-0',
   },
   bar: {
     base: 'flex-row items-center justify-between min-h-11 ps-4 pe-2',

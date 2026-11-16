@@ -17,7 +17,7 @@ export const dialogParts = {
  */
 export const dialogRecipe = {
   panel: {
-    base: 'p-5 gap-4 transition duration-200 ease-out starting:opacity-0 exit:opacity-0',
+    base: 'p-5 gap-4 transition duration-base ease-standard starting:opacity-0 exit:opacity-0',
     /** A floating panel sits on the overlay surface and scales in from 96%. */
     floating: 'w-[90%] max-h-[85vh] rounded-dialog border border-text/12 bg-surface-overlay shadow-modal motion-safe:starting:scale-96 motion-safe:exit:scale-96',
     /** `full` has nothing behind it to float over: it is a page, on the page's canvas, and only fades. */
