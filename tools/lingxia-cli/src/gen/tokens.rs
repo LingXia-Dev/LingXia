@@ -70,6 +70,9 @@ pub fn load(path: Option<&Path>) -> Result<Pack> {
             list.join("\n")
         );
     }
+    for advice in lingxia_theme::advise(&pack) {
+        eprintln!("warning: theme pack {}: {advice}", pack.name);
+    }
     Ok(pack)
 }
 

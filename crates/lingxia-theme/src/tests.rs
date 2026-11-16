@@ -1019,3 +1019,17 @@ fn the_default_hues_stand_off_their_surfaces_and_carry_text_on_their_fills() {
         }
     }
 }
+
+#[test]
+fn advice_names_a_status_colour_that_reads_as_a_hue() {
+    assert_eq!(advise(&default_pack()), Vec::new());
+    let advice: Vec<String> = advise(&warm_pack())
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(
+        advice,
+        ["light: warning is 3.2 from hue-4; under 5 they read as one colour"]
+    );
+    assert_eq!(check(&warm_pack()), Vec::new(), "advice is not a failure");
+}

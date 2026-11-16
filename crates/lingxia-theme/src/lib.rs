@@ -509,6 +509,44 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
     problems
 }
 
+/// Under this distance two colours read as one.
+const ALIKE: f64 = 5.0;
+
+/// Colours that pass every pair yet read alike: a status colour beside a hue or the accent.
+/// Advice for the pack's author, not a failure.
+pub fn advise(pack: &Pack) -> Vec<Problem> {
+    let mut advice = Vec::new();
+    for (name, appearance) in [("light", Appearance::Light), ("dark", Appearance::Dark)] {
+        let prefs = Prefs {
+            appearance,
+            ..Prefs::default()
+        };
+        let Ok(theme) = resolve(pack, &prefs) else {
+            continue;
+        };
+        for status in [Role::Danger, Role::Success, Role::Warning] {
+            let others = Role::ALL.into_iter().filter(|role| {
+                *role == Role::Accent
+                    || (role.name().starts_with("hue-") && !role.name().ends_with("-soft"))
+            });
+            for other in others {
+                let apart = distance(theme.color(status), theme.color(other));
+                if apart < ALIKE {
+                    advice.push(Problem {
+                        appearance: name,
+                        message: format!(
+                            "{} is {apart:.1} from {}; under {ALIKE:.0} they read as one colour",
+                            status.name(),
+                            other.name()
+                        ),
+                    });
+                }
+            }
+        }
+    }
+    advice
+}
+
 impl Pack {
     /// A pack from W3C Design Tokens: `color.<appearance>.<role>.$value` hex colours.
     /// Numeric scales come from `base`, which also supplies roles the tokens omit.
