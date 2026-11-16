@@ -523,3 +523,15 @@ spec('tree list: Right opens a closed branch and Left closes it', { id: 'TREE-KE
   await shared.press('ArrowLeft');
   await expect(shared).not.toBeExpanded();
 });
+
+spec('dashboard: every period draws its charts', { id: 'DASHBOARD-PERIODS-001', start: { page: 'dashboard' }, timeout: 90_000 }, async (t) => {
+  const view = t.app.view;
+  // A page that fails to render answers every locator with the failure, so each check below also says the page is alive.
+  for (const period of ['month', 'week', 'year']) {
+    await view.testId(`period-${period}`).click();
+    await expect(view.testId(`period-${period}`)).toBeChecked();
+    await expect(view.testId('revenue-chart')).toBeAttached();
+    await expect(view.testId('products')).toBeAttached();
+  }
+  await t.attach('dashboard-year.png', await view.screenshot());
+});

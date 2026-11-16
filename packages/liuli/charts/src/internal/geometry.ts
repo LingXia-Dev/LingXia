@@ -218,17 +218,40 @@ export function reach(width: number, height: number, inset: number, foot: number
 }
 
 /**
+ * Lengths in data units as shares a layout can take: parts of 1000, whole, finite and never
+ * negative. A layout number is a small figure; a data value may be millions or thousandths, and
+ * neither is a size the View accepts or divides well.
+ */
+export function shares(...lengths: number[]): number[] {
+  const sizes = lengths.map(length => (Number.isFinite(length) && length > 0 ? length : 0));
+  const total = sizes.reduce((sum, size) => sum + size, 0);
+  return total > 0 ? sizes.map(size => Math.round((size / total) * 1000)) : sizes.map(() => 1);
+}
+
+/**
  * A scale for the values between `low` and `high`: ticks at round numbers about `target` apart
  * in count, inside a range that reaches a quarter of a step past the data at most, so the
  * plot is not left half empty under a round top.
+ *
+ * Range and ticks are counted in quarter steps, as whole numbers, so every tick is inside the
+ * range by construction. `gaps` is the plot's height from the top down, in those quarter steps:
+ * above the top tick, between each two, under the bottom one. They are small whole numbers
+ * whatever the data's size, which is what a layout takes.
  */
-export function niceTicks([low, high]: readonly [number, number], target: number): { ticks: number[]; range: readonly [number, number] } {
+export function niceTicks([low, high]: readonly [number, number], target: number): { ticks: number[]; range: readonly [number, number]; gaps: number[] } {
+  if (!Number.isFinite(low) || !Number.isFinite(high)) [low, high] = [0, 0];
+  if (high < low) [low, high] = [high, low];
   const span = high - low || Math.abs(high) || 1;
   const step = leading(span / Math.max(1, target), [1, 2, 2.5, 5, 10]);
   const fine = step / 4;
-  const range = [exact(Math.floor(low / fine + 1e-9) * fine), exact(Math.ceil(high / fine - 1e-9) * fine)] as const;
-  const ticks: number[] = [];
-  for (let tick = Math.ceil(range[0] / step - 1e-9) * step; tick <= range[1] + step * 1e-9; tick += step) ticks.push(exact(tick));
+  const from = Math.floor(low / fine + 1e-9);
+  const to = Math.max(from, Math.ceil(high / fine - 1e-9));
+  const range = [exact(from * fine), exact(to * fine)] as const;
+  // One value: one tick, on the middle line where a flat range is drawn.
+  if (to === from) return { ticks: [range[0]], range, gaps: [1, 1] };
+  const [first, last] = [Math.ceil(from / 4), Math.floor(to / 4)];
   // Too few round numbers fall inside a narrow range: its two ends are the scale.
-  return { ticks: ticks.length < 2 ? [range[0], range[1]] : ticks, range };
+  const marks = last > first ? Array.from({ length: last - first + 1 }, (_, index) => (first + index) * 4) : [from, to];
+  const gaps = [to - marks[marks.length - 1], ...marks.slice(1).map((mark, index) => mark - marks[index]).reverse(), marks[0] - from];
+  return { ticks: marks.map(mark => exact(mark * fine)), range, gaps };
 }

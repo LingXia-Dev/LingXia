@@ -48,7 +48,7 @@ test('Weight: the scale is round numbers at the start edge, each level with a ha
   const frame = screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1)[0].parent.parent;
   const [scale, plot, end] = frame.children;
   assert.deepEqual(ticks(scale).map(textOf), ['72.5 kg', '72.0 kg', '71.5 kg', '71.0 kg', ''], 'half a kilo apart; the foot is 70.5 kg, which the end figure says on the same line');
-  assert.deepEqual(shares(scale), [0, 0.5, 0.5, 0.5, 0.5, 0], 'each label stands at its value\'s share of the range');
+  assert.deepEqual(shares(scale), [0, 4, 4, 4, 4, 0], 'each label stands at its value\'s share of the range, counted in quarter steps');
   assert.ok(unread(scale.children[1]), 'the same numbers are in the summary and the list');
   const labels = ticks(scale).map(tick => tick.children[0]);
   assert.deepEqual(labels.map(label => [label.props.fontSize, label.props.color, label.props.fontVariantNumeric]), Array(5).fill([13, 'text-muted', 'tabular-nums']));
@@ -63,7 +63,7 @@ test('Weight: the scale is round numbers at the start edge, each level with a ha
   assert.deepEqual(reach(), [-1.37, -2.38, 102.74, 104.76], 'until the plot is measured: 300 pt wide, and 176 pt high at this size');
   screen.layout(plot, { width: 208, height: 176 });
   assert.deepEqual(reach(), [-2, -2.38, 104, 104.76], '4 of 200 pt is 2 of 100');
-  assert.deepEqual(end.children.map(part => part.props.grow ?? textOf(part)), [2, '70.5 kg', 0], 'two kilos of range above the latest value, none below');
+  assert.deepEqual(end.children.map(part => part.props.grow ?? textOf(part)), [1000, '70.5 kg', 0], 'all of the range above the latest value, none below');
   assert.equal(end.children[1].props.height, 0);
   assert.equal(JSON.parse(end.children[1].children[0].props.transform).translate[1], '-50%', 'the figure is centred on the value\'s height');
   const ghosts = screen.getByText('6 Oct').parent.parent.parent.children.filter(node => node.props.height === 0);
@@ -79,10 +79,10 @@ test('the scale fits the data: an area from zero stops just past its highest val
   const scaleOf = screen => screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1)[0].parent.parent.children[0];
   const medium = scaleOf(await renderPage(page('')));
   assert.deepEqual(ticks(medium).map(textOf), ['6000', '4000', '2000', '0'], 'two thousand apart');
-  assert.deepEqual(shares(medium), [500, 2000, 2000, 2000, 0], 'the plot ends at 6500, a quarter step past 6130, not at 8000');
+  assert.deepEqual(shares(medium), [1, 4, 4, 4, 0], 'the plot ends at 6500, a quarter step past 6130, not at 8000');
   const small = scaleOf(await renderPage(page('size="sm"')));
   assert.deepEqual(ticks(small).map(textOf), ['5000', '0'], 'two ticks in 112 pt');
-  assert.deepEqual(shares(small), [1250, 5000, 0]);
+  assert.deepEqual(shares(small), [1, 4, 0]);
 });
 
 test('hasScale off fits the data exactly; the smallest size is bare; several series get the scale but no end figure', async () => {
@@ -277,4 +277,16 @@ test('states: one value is a dot; loading, empty and error replace the plot', as
   const error = await renderExample('LineChart/LineChart', 'StateError');
   assert.equal(error.getByText('Weigh-ins could not be loaded.').props.role, 'alert');
   assert.equal(error.queryAll(node => node.tag === 'vector').length, 1, 'the error mark alone: no plot');
+});
+
+test('a scale in the hundred thousands lays out with small numbers: no size taken from a data value', async () => {
+  const screen = await renderPage(`
+    import { LineChart } from '@liulidesign/charts/LineChart';
+    const rows = [98400, 91200, 104800, 109300, 118700, 112400, 121900, 117600, 126300, 134800, 141200].map((revenue, index) => ({ month: String(index + 1), revenue }));
+    export function render() { return <page><LineChart data={rows} x="month" y="revenue" label="Revenue by month" hasArea isSmooth data-testid="year" /></page>; }
+  `);
+  const grows = screen.queryAll(node => node.tag !== 'vector' && node.props.grow !== undefined).map(node => node.props.grow);
+  assert.ok(grows.length > 4, 'the scale and the end figure are placed by flex shares');
+  assert.ok(grows.every(value => Number.isFinite(value) && value >= 0 && value <= 1000), `flex shares are small, whole and never negative: ${grows}`);
+  assert.ok(JSON.stringify(screen.getByTestId('year')).includes('150000'), 'the scale tops out at a round 150000');
 });

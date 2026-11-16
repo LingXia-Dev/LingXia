@@ -14,7 +14,7 @@ test('Budget: a group named by its label; the summary is read and not drawn; a c
   assert.equal(summary.props.opacity, 0);
   assert.ok(!hidden(summary));
   const bar = screen.queryAll(node => node.props.flexDirection === 'row' && node.children.length === 3 && node.children[0].props.height === 24)[0];
-  assert.deepEqual(bar.children.map(node => node.props.grow), [6200, 2300, 1500]);
+  assert.deepEqual(bar.children.map(node => node.props.grow), [62, 23, 15]);
   assert.equal(bar.parent.props.height, undefined, 'a fitted plot is as tall as its content');
   const legend = screen.queryAll(node => node.props.role === 'list')[0];
   assert.equal(legend.props.accessibilityLabel, 'Parts');

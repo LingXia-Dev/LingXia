@@ -2,7 +2,7 @@ import { cx, useBox, type Child, type PointerEvent, type VectorPath } from '@lin
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
-import { box, closed, domain, dot, indexAt, monotone, niceTicks, polyline, reach, runs, scaleY, thin, type Point } from '../internal/geometry';
+import { box, closed, domain, dot, indexAt, monotone, niceTicks, polyline, reach, runs, scaleY, shares, thin, type Point } from '../internal/geometry';
 import { Ticks } from '../internal/Ticks';
 import { remember } from '../internal/memo';
 import { lineChartRecipe as r } from './LineChart.recipe';
@@ -114,8 +114,10 @@ export function LineChart({
   const labels = data.length > 1 ? xLabels ?? (size === 'xs' ? 'none' : 'fit') : 'none';
   // The scale from the top down. A label that says what the end figure says, on the same line, is left to the end figure.
   const scale = scaled && [...scaled.ticks].reverse().map(value => ({ value, text: formatValue(value) === latest?.text ? '' : formatValue(value) }));
-  // Each tick's place: the shares of the plot above the first, between two, and under the last.
-  const gaps = scale ? [range[1] - scale[0].value, ...scale.slice(1).map((tick, index) => scale[index].value - tick.value), scale[scale.length - 1].value - range[0]] : [];
+  // Each tick's place: the plot above the first, between two, and under the last, as the scale counted them.
+  const gaps = scaled?.gaps ?? [];
+  // The end figure's place: the plot above its value and under it.
+  const [aboveLatest, underLatest] = latest ? shares(range[1] - latest.value, latest.value - range[0]) : [1, 1];
   const rungs = (mark: (tick: { value: number; text: string }, index: number) => Child) => scale && scale.flatMap((tick, index) => [
     <view key={`gap-${index}`} className={r.space.base} style={{ flexGrow: gaps[index] }} />,
     <view key={`tick-${index}`} className={r.tick.base}>{mark(tick, index)}</view>,
@@ -273,9 +275,9 @@ export function LineChart({
         </view>
         {latest && (
           <view aria-hidden className={cx(r.end.base, r.inset.base, !isArea && r.inset.open)}>
-            <view className={r.space.base} style={{ flexGrow: range[1] - latest.value }} />
+            <view className={r.space.base} style={{ flexGrow: aboveLatest }} />
             <view className={r.endAnchor.base}><text className={cx(r.endLabel.base, r.endLabel.level)}>{latest.text}</text></view>
-            <view className={r.space.base} style={{ flexGrow: latest.value - range[0] }} />
+            <view className={r.space.base} style={{ flexGrow: underLatest }} />
           </view>
         )}
       </view>

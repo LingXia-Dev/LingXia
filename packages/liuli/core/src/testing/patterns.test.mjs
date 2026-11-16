@@ -62,3 +62,26 @@ test('uploads: a failed upload retries, and the photos finish', async () => {
   screen.press(screen.getByTestId('send-more'));
   assert.ok(!has(screen, 'photos'));
 });
+
+// A page whose content changes with a control is driven through every value: a size the View refuses
+// (a layout number taken from the data) fails the render, and the press throws.
+test('dashboard: every period draws its figures and both charts', async () => {
+  const screen = await open('dashboard');
+  for (const period of ['month', 'year', 'week', 'year']) {
+    screen.press(screen.getByTestId(`period-${period}`));
+    await settle();
+    assert.ok(has(screen, 'revenue-chart'), `the revenue chart is drawn for the ${period}`);
+    assert.ok(screen.queryAll(node => node.props.accessibilityLabel === 'Orders by channel').length >= 1, `the channels chart is drawn for the ${period}`);
+    const sizes = screen.queryAll(node => node.tag !== 'vector' && node.props.grow !== undefined).map(node => node.props.grow);
+    assert.ok(sizes.every(size => Number.isFinite(size) && size >= 0 && size <= 1000), `${period}: no layout number is a data value: ${sizes.filter(size => !(size >= 0 && size <= 1000))}`);
+  }
+});
+
+test('list and detail: every request opens its record', async () => {
+  for (const id of ['r-218', 'r-217', 'r-214', 'r-209', 'r-204']) {
+    const screen = await open('list-detail');
+    screen.press(screen.getByTestId(`request-${id}`));
+    await settle();
+    assert.ok(has(screen, 'details'), `${id} shows its details`);
+  }
+});

@@ -2,7 +2,7 @@ import { cx, type PointerEvent, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
-import { box, indexAt, roundUp } from '../internal/geometry';
+import { box, indexAt, roundUp, shares } from '../internal/geometry';
 import { Ticks } from '../internal/Ticks';
 import { remember } from '../internal/memo';
 import { barChartRecipe as r } from './BarChart.recipe';
@@ -140,6 +140,8 @@ export function BarChart({
   // With the ends of the scale written out, the plot's edges are round numbers.
   const [high, depth] = scale === 'ends' ? reach.map(roundUp) : reach;
   const isSigned = depth > 0;
+  // The plot above zero and under it, as shares of its height.
+  const [above, below] = shares(high > 0 ? high : 1, depth);
   const isPressable = onSelect !== undefined && data.length <= maxPressable;
   const labels = xLabels ?? 'fit';
   const chosen = data.findIndex((row, index) => keyOf(row, keyField ?? x, index) === selectedKey);
@@ -180,10 +182,12 @@ export function BarChart({
     const key = keyOf(row, keyField ?? x, index);
     const name = `${textOf(row, x)}: ${reading(row)}`;
     const value = numberOf(row, shown[0]?.field ?? '');
+    // The figure's place: the plot above the bar's free end and under it.
+    const [over, under] = shares(high - value, depth + value);
     const figure = scale === 'each' && shown.length === 1 && Number.isFinite(value) && [
-      <view key="over" className={r.space.base} style={{ flexGrow: high - value }} />,
+      <view key="over" className={r.space.base} style={{ flexGrow: over }} />,
       <view key="figure" aria-hidden className={r.valueSlot.base}><text className={r.value.base}>{formatValue(value)}</text></view>,
-      <view key="under" className={r.space.base} style={{ flexGrow: depth + value }} />,
+      <view key="under" className={r.space.base} style={{ flexGrow: under }} />,
     ];
     const slot = cx(r.slot.base, scale === 'each' && isSigned && (value < 0 ? r.slot.below : r.slot.above));
     if (!isPressable) return <view key={key} role="listitem" aria-label={name} className={slot}>{figure}</view>;
@@ -266,13 +270,13 @@ export function BarChart({
       <view className={cx(r.plot.base, scale === 'ends' && r.plot.ruled, scale === 'ends' && isSigned && r.plot.floored)}>
         {/* The marks: one drawing per side of zero, and a second, fainter one for bars that stepped back. */}
         <view aria-hidden className={cx(r.marks.base, scale === 'each' && r.marks.figured, scale === 'each' && isSigned && r.marks.figuredBelow)}>
-          <view className={r.region.base} style={{ flexGrow: high > 0 ? high : 1 }}>
+          <view className={r.region.base} style={{ flexGrow: above }}>
             {drawing(wrapUp, paths.up, false)}
             {drawing(wrapUp, paths.upDimmed, true)}
           </view>
           <view className={r.baseline.base} />
           {isSigned && (
-            <view className={r.region.base} style={{ flexGrow: depth }}>
+            <view className={r.region.base} style={{ flexGrow: below }}>
               {drawing(wrapDown, paths.down, false)}
               {drawing(wrapDown, paths.downDimmed, true)}
             </view>

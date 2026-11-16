@@ -47,7 +47,7 @@ test('Orders: each weekday is a button named by its day and value, carrying its 
   assert.equal(bar('Thu').tag, 'button');
   assert.equal(bar('Thu').props.accessibilityLabel, 'Thu: 163');
   assert.equal(bar('Thu').props.statePressed, 0);
-  assert.deepEqual(figure(bar('Thu')), [24, '163', 163], 'twenty-four of 187 above the figure, 163 under it');
+  assert.deepEqual(figure(bar('Thu')), [128, '163', 872], 'twenty-four of 187 above the figure, 163 under it, as parts of a thousand');
   const line = bar('Thu').children[1];
   assert.deepEqual([line.props.height, line.props.accessibilityHidden, line.props.alignSafe], [20, 1, 1], 'the button already reads the value');
   assert.deepEqual([line.children[0].props.fontVariantNumeric, line.children[0].props.fontSize, line.children[0].props.color, line.children[0].props.whiteSpace], ['tabular-nums', 13, 'text-muted', 'nowrap']);
@@ -99,7 +99,7 @@ test('Grouped: one outline per series, a pair closer than two groups; the scale\
   screen.press(legend);
   assert.equal(slots(chart())[0].props.accessibilityLabel, 'Q1: In store $31k');
   assert.deepEqual(drawings(chart())[0].paths.map(path => path.fill), ['chart-2'], 'a series keeps its colour when another is hidden');
-  assert.deepEqual(figure(slots(chart())[0]), [7, '$31k', 31], 'one series of four bars: each bar carries its value, and the range refits');
+  assert.deepEqual(figure(slots(chart())[0]), [184, '$31k', 816], 'one series of four bars: each bar carries its value, and the range refits');
   assert.equal(screen.getByTestId('channels-legend-online').props.statePressed, 0);
 });
 
@@ -107,15 +107,15 @@ test('Signed: bars below zero hang from the same line in their own drawing, with
   const screen = await renderExample('BarChart/BarChart', 'Signed');
   const chart = screen.getByTestId('cash');
   const [up, down] = drawings(chart);
-  assert.deepEqual([up.region.grow, down.region.grow], [15, 11], 'fifteen above zero, eleven below');
+  assert.deepEqual([up.region.grow, down.region.grow], [577, 423], 'fifteen above zero, eleven below, as parts of a thousand');
   assert.deepEqual(bars(up.paths[0].d).map(bar => bar[1]), [20, 46.67, 80, 0], '12, 8, 3 and 15 of 15');
   assert.deepEqual(bars(down.paths[0].d).map(bar => bar[1]), [45.45, 100], '5 and 11 of 11, measured down from the zero line');
   assert.deepEqual([down.wrap.insetBottom, down.wrap.insetTop, down.wrap.paddingBottom], [0, -3, 3]);
   const zero = up.region && find(chart, node => node.props.height === 1 && node.props.background === 'text/20');
   assert.equal(zero.length, 1);
   const slot = name => slots(chart).find(node => node.props.accessibilityLabel === name);
-  assert.deepEqual([figure(slot('Jan: $12k')), slot('Jan: $12k').props.paddingBottom], [[3, '$12k', 23], 20]);
-  assert.deepEqual([figure(slot('Apr: -$11k')), slot('Apr: -$11k').props.paddingTop], [[26, '-$11k', 0], 20]);
+  assert.deepEqual([figure(slot('Jan: $12k')), slot('Jan: $12k').props.paddingBottom], [[115, '$12k', 885], 20]);
+  assert.deepEqual([figure(slot('Apr: -$11k')), slot('Apr: -$11k').props.paddingTop], [[1000, '-$11k', 0], 20]);
   const marks = find(chart, node => node.props.position === 'absolute' && node.props.insetTop === 20)[0];
   assert.equal(marks.props.insetBottom, 20, 'a figures\' line is kept on both sides');
 });
@@ -292,4 +292,15 @@ test('states: a chosen bar set from outside; loading, empty and error replace th
   const error = await renderExample('BarChart/BarChart', 'StateError');
   assert.equal(error.getByText('Orders could not be loaded.').props.role, 'alert');
   assert.equal(error.queryAll(node => node.tag === 'vector').length, 1, 'the error mark alone: no plot');
+});
+
+test('bars in the hundred thousands, and below zero, lay out with small numbers', async () => {
+  const screen = await renderPage(`
+    import { BarChart } from '@liulidesign/charts/BarChart';
+    const rows = [{ k: 'a', v: 98400 }, { k: 'b', v: -41200 }, { k: 'c', v: 141200 }];
+    export function render() { return <page><BarChart data={rows} x="k" y="v" label="Result by unit" valueLabels="always" data-testid="big" /></page>; }
+  `);
+  const grows = screen.queryAll(node => node.tag !== 'vector' && node.props.grow !== undefined).map(node => node.props.grow);
+  assert.ok(grows.length >= 2, 'regions and figures are placed by flex shares');
+  assert.ok(grows.every(value => Number.isFinite(value) && value >= 0 && value <= 1000), `flex shares are small, whole and never negative: ${grows}`);
 });

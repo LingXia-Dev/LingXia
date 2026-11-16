@@ -7,6 +7,8 @@ const budget = [
   { key: 'left', label: 'Left', amount: 1500, color: 3 as const },
 ];
 const fills = { 1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3' } as const;
+// A layout takes small numbers: a part's share of the whole, never the amount itself.
+const percent = (amount: number, parts: readonly { amount: number }[]) => Math.round((amount / parts.reduce((sum, part) => sum + part.amount, 0)) * 100);
 const dollars = (value: number) => `$${String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 
 /** The frame around a plot of your own: here one bar split into parts, built from plain views. */
@@ -22,7 +24,7 @@ export function Budget() {
       data-testid="budget"
     >
       <view aria-hidden className="flex-row gap-0.5">
-        {budget.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', fills[part.color])} style={{ flexGrow: part.amount }} />)}
+        {budget.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', fills[part.color])} style={{ flexGrow: percent(part.amount, budget) }} />)}
       </view>
     </Chart>
   );
@@ -55,7 +57,7 @@ export function Spending() {
       data-testid="spending"
     >
       <view aria-hidden className="flex-row gap-0.5">
-        {spending.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', eight[part.color])} style={{ flexGrow: part.amount }} data-testid={`part-${part.key}`} />)}
+        {spending.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', eight[part.color])} style={{ flexGrow: percent(part.amount, spending) }} data-testid={`part-${part.key}`} />)}
       </view>
     </Chart>
   );
@@ -112,7 +114,7 @@ export function Specimen() {
       className="w-32 self-center"
     >
       <view aria-hidden className="flex-row gap-0.5">
-        {budget.map(part => <view key={part.key} className={cx('h-2.5 basis-0 rounded-[2px]', fills[part.color])} style={{ flexGrow: part.amount }} />)}
+        {budget.map(part => <view key={part.key} className={cx('h-2.5 basis-0 rounded-[2px]', fills[part.color])} style={{ flexGrow: percent(part.amount, budget) }} />)}
       </view>
     </Chart>
   );
