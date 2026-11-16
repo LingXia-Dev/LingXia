@@ -287,7 +287,7 @@
           {
             "what": "sixth series, as a bar",
             "pair": [
-              "hue-3/85",
+              "chart-6/85",
               "surface"
             ],
             "minimum": "3:1"
@@ -295,7 +295,7 @@
           {
             "what": "seventh series, as a bar",
             "pair": [
-              "hue-5/85",
+              "chart-7/85",
               "surface"
             ],
             "minimum": "3:1"
@@ -303,7 +303,7 @@
           {
             "what": "eighth series, as a bar",
             "pair": [
-              "hue-4/85",
+              "chart-8/85",
               "surface"
             ],
             "minimum": "3:1"
@@ -808,7 +808,7 @@
           {
             "what": "sixth mark colour",
             "pair": [
-              "hue-3",
+              "chart-6",
               "surface"
             ],
             "minimum": "3:1"
@@ -816,7 +816,7 @@
           {
             "what": "seventh mark colour",
             "pair": [
-              "hue-5",
+              "chart-7",
               "surface"
             ],
             "minimum": "3:1"
@@ -824,7 +824,7 @@
           {
             "what": "eighth mark colour",
             "pair": [
-              "hue-4",
+              "chart-8",
               "surface"
             ],
             "minimum": "3:1"
@@ -889,7 +889,7 @@
         {
           "name": "Spending",
           "title": "Eight series colours",
-          "source": "import { cx } from '@lingxia/view';\nimport { Chart, ChartLegend } from '@liulidesign/charts/Chart';\n\nconst percent = (amount: number, parts: readonly { amount: number }[]) => Math.round((amount / parts.reduce((sum, part) => sum + part.amount, 0)) * 100);\nconst dollars = (value: number) => `$${String(value).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',')}`;\nconst spending = [\n  { key: 'rent', label: 'Rent', amount: 1400, color: 1 as const },\n  { key: 'food', label: 'Food', amount: 620, color: 2 as const },\n  { key: 'transport', label: 'Transport', amount: 310, color: 3 as const },\n  { key: 'utilities', label: 'Utilities', amount: 240, color: 4 as const },\n  { key: 'health', label: 'Health', amount: 180, color: 5 as const },\n  { key: 'leisure', label: 'Leisure', amount: 160, color: 6 as const },\n  { key: 'clothes', label: 'Clothes', amount: 120, color: 7 as const },\n  { key: 'gifts', label: 'Gifts', amount: 70, color: 8 as const },\n];\nconst eight = {\n  1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3', 4: 'bg-chart-4', 5: 'bg-chart-5', 6: 'bg-hue-3', 7: 'bg-hue-5', 8: 'bg-hue-4',\n} as const;\n\n/** Eight series colours: the five chart roles, then three of the theme's hues. Past eight, merge the rest. */\nexport function Spending() {\n  return (\n    <Chart\n      label=\"Spending in May\"\n      title=\"Spending\"\n      description=\"May, $3,100\"\n      summary=\"Rent is 45% of spending; food 20%; the other six kinds share the rest.\"\n      size=\"fit\"\n      legend={<ChartLegend label=\"Kinds\" variant=\"list\" items={spending.map(part => ({ key: part.key, label: part.label, color: part.color, value: dollars(part.amount) }))} data-testid=\"spending-legend\" />}\n      data-testid=\"spending\"\n    >\n      <view aria-hidden className=\"flex-row gap-0.5\">\n        {spending.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', eight[part.color])} style={{ flexGrow: percent(part.amount, spending) }} data-testid={`part-${part.key}`} />)}\n      </view>\n    </Chart>\n  );\n}"
+          "source": "import { cx } from '@lingxia/view';\nimport { Chart, ChartLegend } from '@liulidesign/charts/Chart';\n\nconst percent = (amount: number, parts: readonly { amount: number }[]) => Math.round((amount / parts.reduce((sum, part) => sum + part.amount, 0)) * 100);\nconst dollars = (value: number) => `$${String(value).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',')}`;\nconst spending = [\n  { key: 'rent', label: 'Rent', amount: 1400, color: 1 as const },\n  { key: 'food', label: 'Food', amount: 620, color: 2 as const },\n  { key: 'transport', label: 'Transport', amount: 310, color: 3 as const },\n  { key: 'utilities', label: 'Utilities', amount: 240, color: 4 as const },\n  { key: 'health', label: 'Health', amount: 180, color: 5 as const },\n  { key: 'leisure', label: 'Leisure', amount: 160, color: 6 as const },\n  { key: 'clothes', label: 'Clothes', amount: 120, color: 7 as const },\n  { key: 'gifts', label: 'Gifts', amount: 70, color: 8 as const },\n];\nconst eight = {\n  1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3', 4: 'bg-chart-4', 5: 'bg-chart-5', 6: 'bg-chart-6', 7: 'bg-chart-7', 8: 'bg-chart-8',\n} as const;\n\n/** Eight series colours, the theme's `chart-1` to `chart-8`. Past eight, merge the rest. */\nexport function Spending() {\n  return (\n    <Chart\n      label=\"Spending in May\"\n      title=\"Spending\"\n      description=\"May, $3,100\"\n      summary=\"Rent is 45% of spending; food 20%; the other six kinds share the rest.\"\n      size=\"fit\"\n      legend={<ChartLegend label=\"Kinds\" variant=\"list\" items={spending.map(part => ({ key: part.key, label: part.label, color: part.color, value: dollars(part.amount) }))} data-testid=\"spending-legend\" />}\n      data-testid=\"spending\"\n    >\n      <view aria-hidden className=\"flex-row gap-0.5\">\n        {spending.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', eight[part.color])} style={{ flexGrow: percent(part.amount, spending) }} data-testid={`part-${part.key}`} />)}\n      </view>\n    </Chart>\n  );\n}"
         },
         {
           "name": "Legends",
@@ -944,10 +944,10 @@
           "chart-3",
           "chart-4",
           "chart-5",
+          "chart-6",
+          "chart-7",
+          "chart-8",
           "danger",
-          "hue-3",
-          "hue-4",
-          "hue-5",
           "line-strong",
           "text",
           "text-faint",
@@ -970,7 +970,7 @@
           "variants": [
             {
               "name": "Spending",
-              "title": "Eight parts: the five chart colours, then three of the theme's hues"
+              "title": "Eight parts, each in its own chart colour"
             },
             {
               "name": "Legends",

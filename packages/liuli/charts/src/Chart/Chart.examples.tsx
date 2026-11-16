@@ -41,10 +41,10 @@ const spending = [
   { key: 'gifts', label: 'Gifts', amount: 70, color: 8 as const },
 ];
 const eight = {
-  1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3', 4: 'bg-chart-4', 5: 'bg-chart-5', 6: 'bg-hue-3', 7: 'bg-hue-5', 8: 'bg-hue-4',
+  1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3', 4: 'bg-chart-4', 5: 'bg-chart-5', 6: 'bg-chart-6', 7: 'bg-chart-7', 8: 'bg-chart-8',
 } as const;
 
-/** Eight series colours: the five chart roles, then three of the theme's hues. Past eight, merge the rest. */
+/** Eight series colours, the theme's `chart-1` to `chart-8`. Past eight, merge the rest. */
 export function Spending() {
   return (
     <Chart

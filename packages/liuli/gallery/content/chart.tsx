@@ -9,7 +9,7 @@ export function Content() {
         <Budget />
       </Lead>
       <PageSection title={"Variants"}>
-        <Stage caption={"Eight parts: the five chart colours, then three of the theme's hues"}>
+        <Stage caption={"Eight parts, each in its own chart colour"}>
           <Spending />
         </Stage>
         <Stage caption={"Squares for bars and slices, strokes for lines; the second can hide a series"}>

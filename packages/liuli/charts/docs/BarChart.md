@@ -190,9 +190,9 @@ export function Month() {
 | third series, as a bar | `chart-3/85` on `surface` | 3:1 | 3.39:1 | 5.85:1 |
 | fourth series, as a bar | `chart-4/85` on `surface` | 3:1 | 4.40:1 | 5.49:1 |
 | fifth series, as a bar | `chart-5/85` on `surface` | 3:1 | 4.20:1 | 6.36:1 |
-| sixth series, as a bar | `hue-3/85` on `surface` | 3:1 | 5.29:1 | 4.19:1 |
-| seventh series, as a bar | `hue-5/85` on `surface` | 3:1 | 6.51:1 | 6.25:1 |
-| eighth series, as a bar | `hue-4/85` on `surface` | 3:1 | 3.65:1 | 7.91:1 |
+| sixth series, as a bar | `chart-6/85` on `surface` | 3:1 | 5.29:1 | 4.19:1 |
+| seventh series, as a bar | `chart-7/85` on `surface` | 3:1 | 6.51:1 | 6.25:1 |
+| eighth series, as a bar | `chart-8/85` on `surface` | 3:1 | 3.67:1 | 7.91:1 |
 | second series, straight on the page | `chart-2/85` on `canvas` | 3:1 | 3.33:1 | 6.01:1 |
 | third series, straight on the page | `chart-3/85` on `canvas` | 3:1 | 3.22:1 | 6.34:1 |
 | title and figures | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |

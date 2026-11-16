@@ -66,10 +66,10 @@ const spending = [
   { key: 'gifts', label: 'Gifts', amount: 70, color: 8 as const },
 ];
 const eight = {
-  1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3', 4: 'bg-chart-4', 5: 'bg-chart-5', 6: 'bg-hue-3', 7: 'bg-hue-5', 8: 'bg-hue-4',
+  1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3', 4: 'bg-chart-4', 5: 'bg-chart-5', 6: 'bg-chart-6', 7: 'bg-chart-7', 8: 'bg-chart-8',
 } as const;
 
-/** Eight series colours: the five chart roles, then three of the theme's hues. Past eight, merge the rest. */
+/** Eight series colours, the theme's `chart-1` to `chart-8`. Past eight, merge the rest. */
 export function Spending() {
   return (
     <Chart
@@ -196,7 +196,7 @@ export function Readout() {
 - `className` on ChartLegend: classes merged after the recipe's, so they win.
 - The recipe, `chartRecipe` from `@liulidesign/charts/Chart/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `chart-1`, `chart-2`, `chart-3`, `chart-4`, `chart-5`, `danger`, `hue-3`, `hue-4`, `hue-5`, `line-strong`, `text`, `text-faint`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `chart-1`, `chart-2`, `chart-3`, `chart-4`, `chart-5`, `chart-6`, `chart-7`, `chart-8`, `danger`, `line-strong`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 
@@ -220,9 +220,9 @@ export function Readout() {
 | third mark colour | `chart-3` on `surface` | 3:1 | 4.36:1 | 7.60:1 |
 | fourth mark colour | `chart-4` on `surface` | 3:1 | 5.81:1 | 7.11:1 |
 | fifth mark colour | `chart-5` on `surface` | 3:1 | 5.65:1 | 8.32:1 |
-| sixth mark colour | `hue-3` on `surface` | 3:1 | 7.68:1 | 5.30:1 |
-| seventh mark colour | `hue-5` on `surface` | 3:1 | 8.29:1 | 8.18:1 |
-| eighth mark colour | `hue-4` on `surface` | 3:1 | 4.87:1 | 10.50:1 |
+| sixth mark colour | `chart-6` on `surface` | 3:1 | 7.68:1 | 5.30:1 |
+| seventh mark colour | `chart-7` on `surface` | 3:1 | 8.29:1 | 8.18:1 |
+| eighth mark colour | `chart-8` on `surface` | 3:1 | 4.88:1 | 10.50:1 |
 | second mark colour, straight on the page | `chart-2` on `canvas` | 3:1 | 4.01:1 | 7.96:1 |
 | third mark colour, straight on the page | `chart-3` on `canvas` | 3:1 | 4.07:1 | 8.39:1 |
 | title and figures | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |

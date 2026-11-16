@@ -90,7 +90,7 @@ test('parts without a positive amount are left out; without otherLabel every par
   `);
   assert.equal(slices(screen).length, 6);
   assert.deepEqual(screen.getByTestId('pie-legend').children.map(textOf), ['a3', 'd1', 'e1', 'f1', 'g1', 'h1']);
-  assert.deepEqual(slices(screen).map(path => path.fill).slice(4), ['chart-5', 'hue-3'], 'a sixth part continues with a hue');
+  assert.deepEqual(slices(screen).map(path => path.fill).slice(4), ['chart-5', 'chart-6'], 'a sixth part takes the sixth chart colour');
 });
 
 test('states: a part chosen from outside; one part is a whole ring; loading, empty and error replace the plot', async () => {
