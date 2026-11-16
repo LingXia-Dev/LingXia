@@ -150,7 +150,7 @@ export function Reasoning() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| my message | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.44:1 | 9.49:1 |
+| my message | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.54:1 | 9.49:1 |
 | their message | `text` on `text/6` over `canvas` | 4.5:1 | 13.54:1 | 13.46:1 |
 | meta | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
 | reasoning, its line and its text | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |

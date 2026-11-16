@@ -185,13 +185,13 @@ export function Month() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| first series, as a bar | `chart-1/85` on `surface` | 3:1 | 4.20:1 | 5.05:1 |
+| first series, as a bar | `chart-1/85` on `surface` | 3:1 | 4.20:1 | 4.85:1 |
 | second series, as a bar | `chart-2/85` on `surface` | 3:1 | 3.51:1 | 5.54:1 |
-| third series, as a bar | `chart-3/85` on `surface` | 3:1 | 3.40:1 | 5.85:1 |
-| fourth series, as a bar | `chart-4/85` on `surface` | 3:1 | 4.40:1 | 5.50:1 |
-| fifth series, as a bar | `chart-5/85` on `surface` | 3:1 | 4.16:1 | 6.36:1 |
-| sixth series, as a bar | `hue-3/85` on `surface` | 3:1 | 5.27:1 | 4.17:1 |
-| seventh series, as a bar | `hue-5/85` on `surface` | 3:1 | 6.48:1 | 6.21:1 |
+| third series, as a bar | `chart-3/85` on `surface` | 3:1 | 3.39:1 | 5.85:1 |
+| fourth series, as a bar | `chart-4/85` on `surface` | 3:1 | 4.40:1 | 5.49:1 |
+| fifth series, as a bar | `chart-5/85` on `surface` | 3:1 | 4.20:1 | 6.36:1 |
+| sixth series, as a bar | `hue-3/85` on `surface` | 3:1 | 5.29:1 | 4.19:1 |
+| seventh series, as a bar | `hue-5/85` on `surface` | 3:1 | 6.51:1 | 6.25:1 |
 | eighth series, as a bar | `hue-4/85` on `surface` | 3:1 | 3.65:1 | 7.91:1 |
 | second series, straight on the page | `chart-2/85` on `canvas` | 3:1 | 3.33:1 | 6.01:1 |
 | third series, straight on the page | `chart-3/85` on `canvas` | 3:1 | 3.22:1 | 6.34:1 |

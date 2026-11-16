@@ -164,97 +164,101 @@ fn a_partial_pack_completes_from_the_default_and_derives_its_accent() {
 }
 
 #[test]
-fn a_pack_without_surface_overlay_floats_overlays_on_its_own_surface_raised() {
+fn overlays_float_on_surface_raised_a_step_lighter_in_dark() {
     let old: Pack = serde_json::from_str(
         r##"{"name":"old","version":1,"accent":{"seed":"#365cdd","derive":true},"appearance":{
-            "light":{"surface-raised":"#fafafa"},
+            "light":{"surface-raised":"#ffffff"},
             "dark":{"surface-raised":"#202020"}}}"##,
     )
     .unwrap();
     let old = complete(old);
+    assert!(
+        !old.appearance
+            .dark
+            .contains_key(Role::SurfaceOverlay.name()),
+        "the default pack's overlay is not copied"
+    );
     assert_eq!(check(&old), Vec::new());
-    for (appearance, raised) in [
-        (Appearance::Light, "#fafafa"),
-        (Appearance::Dark, "#202020"),
-    ] {
+    let light = resolve(&old, &Prefs::default()).unwrap();
+    assert_eq!(light.color(Role::SurfaceOverlay), hex("#ffffff"));
+    for high_contrast in [false, true] {
         let prefs = Prefs {
-            appearance,
+            appearance: Appearance::Dark,
+            high_contrast,
             ..Prefs::default()
         };
-        let theme = resolve(&old, &prefs).unwrap();
-        assert_eq!(theme.color(Role::SurfaceOverlay), hex(raised));
+        let dark = resolve(&old, &prefs).unwrap();
+        let (raised, overlay) = (
+            dark.color(Role::SurfaceRaised).oklch(),
+            dark.color(Role::SurfaceOverlay).oklch(),
+        );
+        assert!(
+            overlay.l > raised.l + 0.03 && overlay.l < raised.l + 0.06,
+            "{high_contrast}: {} against {}",
+            overlay.l,
+            raised.l
+        );
     }
+
+    // A raised surface too light for faint text to read on moves off it.
+    let mut pale = default_pack();
+    pale.appearance
+        .light
+        .insert("surface-raised".into(), hex("#f4f4f4"));
+    let theme = resolve(&pale, &Prefs::default()).unwrap();
+    assert!(
+        contrast(
+            theme.color(Role::TextFaint),
+            theme.color(Role::SurfaceOverlay)
+        ) >= 3.0
+    );
 
     // An explicit high-contrast set is not completed; it still resolves without the role.
     let mut contrast_set = default_pack();
-    let mut dark = contrast_set.appearance.dark.clone();
-    dark.remove(Role::SurfaceOverlay.name());
+    let dark = contrast_set.appearance.dark.clone();
     contrast_set.appearance.high_contrast_dark = Some(dark);
     let prefs = Prefs {
         appearance: Appearance::Dark,
         high_contrast: true,
         ..Prefs::default()
     };
-    let theme = resolve(&contrast_set, &prefs).unwrap();
-    assert_eq!(
-        theme.color(Role::SurfaceOverlay),
-        theme.color(Role::SurfaceRaised)
-    );
+    assert!(resolve(&contrast_set, &prefs).is_ok());
 
-    // The showcase pack sets only an accent, so its overlays take the default pack's.
-    let showcase: Pack = serde_json::from_str(include_str!(
-        "../../../examples/lingxia-showcase-gpu/lxapp/theme/pack.json"
-    ))
-    .unwrap();
-    assert!(showcase.appearance.light.is_empty() && showcase.appearance.dark.is_empty());
-    let showcase = complete(showcase);
-    for (appearance, overlay) in [
-        (Appearance::Light, "#ffffff"),
-        (Appearance::Dark, "#2d3546"),
-    ] {
-        let prefs = Prefs {
-            appearance,
-            ..Prefs::default()
-        };
-        assert_eq!(
-            resolve(&showcase, &prefs)
-                .unwrap()
-                .color(Role::SurfaceOverlay),
-            hex(overlay)
-        );
-    }
+    // A pack an overlay was written for keeps it.
+    let mut own = default_pack();
+    own.appearance
+        .dark
+        .insert("surface-overlay".into(), hex("#303846"));
+    let prefs = Prefs {
+        appearance: Appearance::Dark,
+        ..Prefs::default()
+    };
+    assert_eq!(
+        resolve(&own, &prefs).unwrap().color(Role::SurfaceOverlay),
+        hex("#303846")
+    );
 }
 
 #[test]
-fn a_pack_without_status_marks_draws_them_in_its_status_colours() {
-    let mut pack = default_pack();
+fn status_marks_are_fuller_in_light_and_the_status_tone_in_dark() {
+    let pack = default_pack();
     let marks = [
         (Role::SuccessMark, Role::Success),
         (Role::WarningMark, Role::Warning),
         (Role::DangerMark, Role::Danger),
     ];
-    for colors in [&mut pack.appearance.light, &mut pack.appearance.dark] {
-        for (mark, _) in marks {
-            colors.remove(mark.name());
-        }
+    let light = resolve(&pack, &Prefs::default()).unwrap();
+    for (mark, status) in marks {
+        let (dot, text) = (light.color(mark).oklch(), light.color(status).oklch());
+        assert!(dot.l > text.l && dot.c >= text.c, "{}", mark.name());
     }
-    assert_eq!(
-        check(&pack),
-        Vec::new(),
-        "it is not held to the marks' pairs"
-    );
-    for appearance in [Appearance::Light, Appearance::Dark] {
-        for high_contrast in [false, true] {
-            let prefs = Prefs {
-                appearance,
-                high_contrast,
-                ..Prefs::default()
-            };
-            let theme = resolve(&pack, &prefs).unwrap();
-            for (mark, status) in marks {
-                assert_eq!(theme.color(mark), theme.color(status), "{}", mark.name());
-            }
-        }
+    let prefs = Prefs {
+        appearance: Appearance::Dark,
+        ..Prefs::default()
+    };
+    let dark = resolve(&pack, &prefs).unwrap();
+    for (mark, status) in marks {
+        assert_eq!(dark.color(mark), dark.color(status), "{}", mark.name());
     }
 }
 
@@ -420,9 +424,8 @@ fn the_default_media_canvas_is_opaque_and_carries_on_media_text() {
 }
 
 #[test]
-fn a_pack_without_info_uses_its_accent_family() {
+fn info_is_a_fixed_blue_and_a_blue_accent_lends_its_family() {
     let pack = default_pack();
-    assert!(!pack.appearance.light.contains_key(Role::Info.name()));
     let family = [
         (Role::Info, Role::Accent),
         (Role::OnInfo, Role::OnAccent),
@@ -431,20 +434,37 @@ fn a_pack_without_info_uses_its_accent_family() {
     ];
     for appearance in [Appearance::Light, Appearance::Dark] {
         for high_contrast in [false, true] {
-            for accent in [None, Some(hex("#b4532a"))] {
-                let prefs = Prefs {
-                    appearance,
-                    high_contrast,
-                    accent,
-                    ..Prefs::default()
-                };
-                let theme = resolve(&pack, &prefs).unwrap();
-                for (info, lender) in family {
-                    assert_eq!(theme.color(info), theme.color(lender), "{}", info.name());
-                }
+            let prefs = Prefs {
+                appearance,
+                high_contrast,
+                ..Prefs::default()
+            };
+            let theme = resolve(&pack, &prefs).unwrap();
+            for (info, lender) in family {
+                assert_eq!(theme.color(info), theme.color(lender), "{}", info.name());
             }
+            // An orange accent leaves info blue, as light and as strong as the accent.
+            let prefs = Prefs {
+                accent: Some(hex("#b4532a")),
+                ..prefs
+            };
+            let theme = resolve(&pack, &prefs).unwrap();
+            let (info, accent) = (
+                theme.color(Role::Info).oklch(),
+                theme.color(Role::Accent).oklch(),
+            );
+            assert!((info.h - 250.0).abs() < 3.0, "{}", info.h);
+            assert!((info.l - accent.l).abs() < 0.08, "{appearance:?}");
+            assert!((theme.color(Role::InfoSoft).oklch().h - 250.0).abs() < 6.0);
         }
     }
+    // A grey accent still gets a blue notice.
+    let prefs = Prefs {
+        accent: Some(hex("#808080")),
+        ..Prefs::default()
+    };
+    let theme = resolve(&pack, &prefs).unwrap();
+    assert!(theme.color(Role::Info).oklch().c >= 0.09);
 }
 
 #[test]
@@ -457,10 +477,10 @@ fn a_pack_with_its_own_info_is_held_to_the_info_pairs() {
     }
     let theme = resolve(&pack, &Prefs::default()).unwrap();
     assert_eq!(theme.color(Role::Info), hex("#8fb4e8"));
-    assert_eq!(
-        theme.color(Role::InfoMark),
-        hex("#8fb4e8"),
-        "a pack without an info mark draws it in its info"
+    assert_ne!(theme.color(Role::InfoMark), hex("#8fb4e8"));
+    assert!(
+        contrast(theme.color(Role::InfoMark), theme.color(Role::Surface)) >= 3.0,
+        "its mark is built from it to stand off the surface"
     );
     let problems = check(&pack);
     assert!(
@@ -471,46 +491,485 @@ fn a_pack_with_its_own_info_is_held_to_the_info_pairs() {
     );
 }
 
-#[test]
-fn a_pack_without_hues_cycles_its_chart_colours_and_fills_with_its_sunken_surface() {
-    let mut pack = default_pack();
-    for colors in [&mut pack.appearance.light, &mut pack.appearance.dark] {
-        colors.retain(|name, _| !name.starts_with("hue-"));
-    }
-    assert_eq!(
-        check(&pack),
-        Vec::new(),
-        "it is not held to the hues' pairs"
-    );
-    let hues = [
-        (Role::Hue1, Role::Hue1Soft, Role::Chart1),
-        (Role::Hue2, Role::Hue2Soft, Role::Chart2),
-        (Role::Hue3, Role::Hue3Soft, Role::Chart3),
-        (Role::Hue4, Role::Hue4Soft, Role::Chart4),
-        (Role::Hue5, Role::Hue5Soft, Role::Chart5),
-        (Role::Hue6, Role::Hue6Soft, Role::Chart1),
-        (Role::Hue7, Role::Hue7Soft, Role::Chart2),
-        (Role::Hue8, Role::Hue8Soft, Role::Chart3),
-    ];
-    for appearance in [Appearance::Light, Appearance::Dark] {
+/// Cream and brown surfaces under an orange accent, authored roles only.
+fn warm_pack() -> Pack {
+    let pack = serde_json::from_str(
+        r##"{"name":"warm","version":1,"accent":{"seed":"#c4532a","derive":true},"appearance":{
+            "light":{"canvas":"#faf6f0","surface":"#fffdf9","surface-raised":"#ffffff","surface-sunken":"#f2ebe1",
+                "line":"#e7ddd0","line-strong":"#8c7f71","text":"#2a211b","text-muted":"#6a5c50","text-faint":"#978877",
+                "danger":"#c2255a","success":"#2f7a48","warning":"#806a00"},
+            "dark":{"canvas":"#161210","surface":"#201b17","surface-raised":"#2b2520","surface-sunken":"#110e0c",
+                "line":"#3a322a","line-strong":"#7f7366","text":"#f2ece5","text-muted":"#b3a79a","text-faint":"#877b6f",
+                "danger":"#f4728a","success":"#6fc48c","warning":"#e6b84a"}}}"##,
+    )
+    .unwrap();
+    complete(pack)
+}
+
+fn every(mut visit: impl FnMut(Prefs, &str)) {
+    for (appearance, name) in [(Appearance::Light, "light"), (Appearance::Dark, "dark")] {
         for high_contrast in [false, true] {
             let prefs = Prefs {
                 appearance,
                 high_contrast,
                 ..Prefs::default()
             };
-            let theme = resolve(&pack, &prefs).unwrap();
-            for (hue, soft, chart) in hues {
-                assert_eq!(theme.color(hue), theme.color(chart), "{}", hue.name());
-                assert_eq!(
-                    theme.color(soft),
-                    theme.color(Role::SurfaceSunken),
-                    "{}",
-                    soft.name()
+            let label = format!("{name}{}", if high_contrast { " high" } else { "" });
+            visit(prefs, &label);
+        }
+    }
+}
+
+#[test]
+fn roles_fall_in_three_tiers() {
+    let named = |tier| -> Vec<&str> {
+        Role::ALL
+            .into_iter()
+            .filter(|role| role.tier() == tier)
+            .map(Role::name)
+            .collect()
+    };
+    assert_eq!(
+        named(Tier::Authored),
+        [
+            "canvas",
+            "surface",
+            "surface-raised",
+            "surface-sunken",
+            "line",
+            "text",
+            "text-muted",
+            "text-faint",
+            "danger",
+            "success",
+            "warning",
+            "line-strong"
+        ]
+    );
+    assert_eq!(
+        named(Tier::Fixed),
+        [
+            "scrim",
+            "shadow",
+            "media",
+            "on-media",
+            "knob",
+            "media-canvas"
+        ]
+    );
+    // The default pack writes no derived role: every one is computed.
+    let pack = default_pack();
+    for colors in [&pack.appearance.light, &pack.appearance.dark] {
+        for name in colors.keys() {
+            assert_ne!(
+                Role::from_name(name).unwrap().tier(),
+                Tier::Derived,
+                "{name}"
+            );
+        }
+    }
+}
+
+#[test]
+fn completion_copies_authored_and_fixed_roles_and_never_a_derived_one() {
+    let seed: Pack = serde_json::from_str(
+        r##"{"name":"seed","version":1,"appearance":{"light":{"surface-sunken":"#f2ebe1"}}}"##,
+    )
+    .unwrap();
+    let pack = complete(seed);
+    let base = default_pack();
+    assert_eq!(pack.accent, base.accent, "the seed is authored");
+    assert_eq!(pack.appearance.light["surface-sunken"], hex("#f2ebe1"));
+    assert_eq!(
+        pack.appearance.light["scrim"],
+        base.appearance.light["scrim"]
+    );
+    for colors in [&pack.appearance.light, &pack.appearance.dark] {
+        for name in colors.keys() {
+            assert_ne!(
+                Role::from_name(name).unwrap().tier(),
+                Tier::Derived,
+                "{name}"
+            );
+        }
+    }
+    // A pack that writes its accent without a seed keeps it.
+    let own: Pack = serde_json::from_str(
+        r##"{"name":"own","version":1,"appearance":{"light":{"accent":"#0b6e4f"},"dark":{"accent":"#58c9a0"}}}"##,
+    )
+    .unwrap();
+    let own = complete(own);
+    assert_eq!(own.accent, None);
+    assert_eq!(check(&own), Vec::new());
+    let theme = resolve(&own, &Prefs::default()).unwrap();
+    assert_eq!(theme.color(Role::Accent), hex("#0b6e4f"));
+    assert_eq!(theme.color(Role::Chart1), hex("#0b6e4f"));
+    assert!(contrast(theme.color(Role::OnAccent), hex("#0b6e4f")) >= 4.5);
+}
+
+#[test]
+fn a_pack_of_authored_roles_derives_a_whole_theme_from_its_own_colours() {
+    let pack = warm_pack();
+    assert_eq!(check(&pack), Vec::new());
+    let base = default_pack();
+    every(|prefs, label| {
+        let theme = resolve(&pack, &prefs).unwrap();
+        let default = resolve(&base, &prefs).unwrap();
+        for &(foreground, background, ratio) in CONTRAST {
+            let needed = if prefs.high_contrast && !involves_selection(foreground, background) {
+                boosted(ratio)
+            } else {
+                f64::from(ratio)
+            };
+            let actual = contrast(theme.color(foreground), theme.color(background));
+            assert!(
+                actual + 1e-9 >= needed,
+                "{label}: {} on {} is {actual:.2}",
+                foreground.name(),
+                background.name()
+            );
+        }
+        // Nothing derived is the default pack's: fills are tinted from this pack's surface.
+        for role in [
+            Role::DangerSoft,
+            Role::Hue2Soft,
+            Role::Hue8,
+            Role::SurfaceOverlay,
+            Role::Info,
+            Role::WarningMark,
+        ] {
+            if prefs.appearance == Appearance::Light && role == Role::SurfaceOverlay {
+                continue;
+            }
+            assert_ne!(
+                theme.color(role),
+                default.color(role),
+                "{label}: {}",
+                role.name()
+            );
+        }
+        // A hue keeps its contrast with the surface whatever the surface is.
+        if !prefs.high_contrast {
+            for role in [Role::Hue2, Role::Hue6, Role::Chart4] {
+                let (ours, theirs) = (
+                    contrast(theme.color(role), theme.color(Role::Surface)),
+                    contrast(default.color(role), default.color(Role::Surface)),
                 );
+                assert!((ours - theirs).abs() < 0.2, "{label}: {}", role.name());
+            }
+        }
+    });
+}
+
+#[test]
+fn a_crowded_colour_gives_way_to_a_spare_in_both_appearances() {
+    let angle = |theme: &ResolvedTheme, role: Role| theme.color(role).oklch().h;
+    let near = |a: f64, b: f64| derive::apart(a, b) < 4.0;
+    let warm = warm_pack();
+    let base = default_pack();
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        let prefs = Prefs {
+            appearance,
+            ..Prefs::default()
+        };
+        let theme = resolve(&warm, &prefs).unwrap();
+        // The orange series sits on the orange accent and the brown hue on the warm neutral:
+        // both take the blue this accent leaves empty. Pink, crowded by the accent's pastel in
+        // dark, goes green in light too.
+        assert!(near(angle(&theme, Role::Chart2), 267.0), "{appearance:?}");
+        assert!(near(angle(&theme, Role::Hue3), 267.0), "{appearance:?}");
+        assert!(near(angle(&theme, Role::Hue5), 150.0), "{appearance:?}");
+        // The brown series, crowded by the accent in dark, goes grey: blue is taken, and no
+        // other hue is free of the seven beside it.
+        let grey = theme.color(Role::Chart6).oklch();
+        assert!(grey.c < 0.04, "{appearance:?}: {}", grey.c);
+        assert!(
+            near(grey.h, angle(&theme, Role::TextMuted)),
+            "{appearance:?}"
+        );
+        let default = resolve(&base, &prefs).unwrap();
+        for role in [
+            Role::Hue2,
+            Role::Hue4,
+            Role::Hue6,
+            Role::Hue7,
+            Role::Chart3,
+            Role::Chart4,
+            Role::Chart5,
+            Role::Chart7,
+            Role::Chart8,
+        ] {
+            assert!(
+                near(angle(&theme, role), angle(&default, role)),
+                "{appearance:?}: {} stays",
+                role.name()
+            );
+        }
+        assert!(near(angle(&theme, Role::Hue1), angle(&theme, Role::Accent)));
+        assert_eq!(theme.color(Role::Chart1), theme.color(Role::Accent));
+        assert!(near(
+            angle(&theme, Role::Hue8),
+            angle(&theme, Role::TextMuted)
+        ));
+    }
+    // A small change of accent moves nothing: the choice has one threshold, not a slope.
+    let moved = |seed: &str| {
+        let prefs = Prefs {
+            accent: Some(hex(seed)),
+            ..Prefs::default()
+        };
+        let theme = resolve(&warm, &prefs).unwrap();
+        (theme.color(Role::Chart2), theme.color(Role::Hue3))
+    };
+    assert_eq!(moved("#c4532a"), moved("#c65a2a"));
+}
+
+/// The least distance between two of `roles`, or from one of `roles` to one of `others`.
+fn least(theme: &ResolvedTheme, roles: &[Role], others: Option<&[Role]>) -> (f64, Role, Role) {
+    least_by(distance, theme, roles, others)
+}
+
+fn least_by(
+    measure: fn(Rgba, Rgba) -> f64,
+    theme: &ResolvedTheme,
+    roles: &[Role],
+    others: Option<&[Role]>,
+) -> (f64, Role, Role) {
+    let mut found = (f64::INFINITY, roles[0], roles[0]);
+    for (index, &a) in roles.iter().enumerate() {
+        for &b in others.unwrap_or(&roles[index + 1..]) {
+            let gap = measure(theme.color(a), theme.color(b));
+            if gap < found.0 {
+                found = (gap, a, b);
             }
         }
     }
+    found
+}
+
+#[test]
+fn hues_and_series_stand_apart_under_any_accent() {
+    // `hue-1` and `hue-8` are left out: both are the pack's own, the accent and the neutral, and
+    // a dull accent brings them together whatever the rest does.
+    let hues = [
+        Role::Hue2,
+        Role::Hue3,
+        Role::Hue4,
+        Role::Hue5,
+        Role::Hue6,
+        Role::Hue7,
+    ];
+    let own = [Role::Hue1, Role::Hue8];
+    let series = [
+        Role::Chart1,
+        Role::Chart2,
+        Role::Chart3,
+        Role::Chart4,
+        Role::Chart5,
+        Role::Chart6,
+        Role::Chart7,
+        Role::Chart8,
+    ];
+    for pack in [default_pack(), warm_pack()] {
+        for (l, c) in [(0.6, 0.17), (0.75, 0.2), (0.5, 0.12)] {
+            for step in 0..72 {
+                let h = f64::from(step * 5);
+                let seed = Oklch { l, c, h }.rgba(255);
+                for appearance in [Appearance::Light, Appearance::Dark] {
+                    let prefs = Prefs {
+                        appearance,
+                        accent: Some(seed),
+                        ..Prefs::default()
+                    };
+                    let theme = resolve(&pack, &prefs).unwrap();
+                    let label = format!("{} {} {appearance:?}", pack.name, seed.hex());
+                    for &(foreground, background, ratio) in CONTRAST {
+                        let actual = contrast(theme.color(foreground), theme.color(background));
+                        assert!(
+                            actual + 1e-9 >= f64::from(ratio),
+                            "{label}: {} on {} is {actual:.2}",
+                            foreground.name(),
+                            background.name()
+                        );
+                    }
+                    for (found, floor) in [
+                        (least(&theme, &hues, None), 9.4),
+                        (least(&theme, &hues, Some(&own)), 9.4),
+                        (least(&theme, &series, None), 10.5),
+                    ] {
+                        let (gap, a, b) = found;
+                        assert!(
+                            gap >= floor,
+                            "{label}: {} and {} are {gap:.2} apart",
+                            a.name(),
+                            b.name()
+                        );
+                    }
+                    // Apart in hue and chroma too: lightness alone does not make two categories.
+                    let plane = derive::plane;
+                    for (found, floor) in [
+                        (least_by(plane, &theme, &hues, None), 4.7),
+                        (least_by(plane, &theme, &hues, Some(&own)), 4.7),
+                        (least_by(plane, &theme, &series, None), 5.5),
+                    ] {
+                        let (gap, a, b) = found;
+                        assert!(
+                            gap >= floor,
+                            "{label}: {} and {} are {gap:.2} apart in the chroma plane",
+                            a.name(),
+                            b.name()
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn status_fills_stand_apart_from_each_other_and_from_the_surfaces() {
+    let fills = [
+        Role::DangerSoft,
+        Role::SuccessSoft,
+        Role::WarningSoft,
+        Role::InfoSoft,
+    ];
+    let surfaces = [
+        Role::Canvas,
+        Role::Surface,
+        Role::SurfaceRaised,
+        Role::SurfaceSunken,
+    ];
+    // Warning seeds from orange to yellow, light then dark, on both packs' surfaces.
+    let mut packs = vec![default_pack(), warm_pack()];
+    for (light, dark) in [
+        ("#b45309", "#fbbf24"),
+        ("#c2410c", "#fb923c"),
+        ("#854d0e", "#facc15"),
+        ("#806a00", "#e6b84a"),
+    ] {
+        for mut pack in [default_pack(), warm_pack()] {
+            pack.name = format!("{} with {light}", pack.name);
+            pack.appearance.light.insert("warning".into(), hex(light));
+            pack.appearance.dark.insert("warning".into(), hex(dark));
+            packs.push(pack);
+        }
+    }
+    let accents = [
+        None,
+        Some("#c4532a"),
+        Some("#0f9d58"),
+        Some("#7c4dff"),
+        Some("#ffeb3b"),
+        Some("#00a3ad"),
+    ];
+    for pack in &packs {
+        for accent in accents {
+            for appearance in [Appearance::Light, Appearance::Dark] {
+                let prefs = Prefs {
+                    appearance,
+                    accent: accent.map(hex),
+                    ..Prefs::default()
+                };
+                let theme = resolve(pack, &prefs).unwrap();
+                let band = theme.color(Role::WarningSoft).oklch().h;
+                assert!((72.0..=98.0).contains(&band), "{}: {band:.1}", pack.name);
+                for (found, floor) in [
+                    (least(&theme, &fills, None), 2.1),
+                    (least(&theme, &fills, Some(&surfaces)), 1.3),
+                ] {
+                    let (gap, a, b) = found;
+                    assert!(
+                        gap >= floor,
+                        "{} {accent:?} {appearance:?}: {} and {} are {gap:.2} apart",
+                        pack.name,
+                        a.name(),
+                        b.name()
+                    );
+                }
+            }
+        }
+    }
+    // The default pack's warning fill is the peach-yellow picked by hand; the warm pack's is a
+    // cream-yellow well clear of its sunken surface and its danger fill.
+    let light = resolve(&default_pack(), &Prefs::default()).unwrap();
+    assert!(distance(light.color(Role::WarningSoft), hex("#fdf1e1")) < 0.5);
+    let warm = resolve(&warm_pack(), &Prefs::default()).unwrap();
+    for other in [Role::SurfaceSunken, Role::DangerSoft] {
+        let gap = distance(warm.color(Role::WarningSoft), warm.color(other));
+        assert!(gap >= 4.0, "{}: {gap:.2}", other.name());
+    }
+}
+
+#[test]
+fn a_derived_role_a_pack_writes_is_used_as_written_and_held_to_its_pairs() {
+    let mut pack = warm_pack();
+    for colors in [&mut pack.appearance.light, &mut pack.appearance.dark] {
+        colors.insert("hue-3".into(), hex("#8a5a2b"));
+        colors.insert("danger-soft".into(), hex("#ffe0e6"));
+    }
+    pack.appearance
+        .light
+        .insert("chart-2".into(), hex("#f6d9a8"));
+    every(|prefs, label| {
+        let theme = resolve(&pack, &prefs).unwrap();
+        assert_eq!(theme.color(Role::DangerSoft), hex("#ffe0e6"), "{label}");
+        // High contrast boosts what the pack wrote like any authored colour.
+        if prefs.high_contrast {
+            let ratio = contrast(theme.color(Role::Hue3), theme.color(Role::Surface));
+            assert!(ratio >= 4.5, "{label}: {ratio:.2}");
+        } else {
+            assert_eq!(theme.color(Role::Hue3), hex("#8a5a2b"), "{label}");
+        }
+        // Its fill is tinted at its own angle, not the one the rule would have picked.
+        let (hue, fill) = (
+            theme.color(Role::Hue3).oklch().h,
+            theme.color(Role::Hue3Soft).oklch().h,
+        );
+        assert!((hue - fill).abs() < 12.0, "{label}: {hue} and {fill}");
+    });
+    let problems: Vec<String> = check(&pack).iter().map(ToString::to_string).collect();
+    assert_eq!(
+        problems
+            .iter()
+            .filter(|problem| problem.starts_with("light: chart-2 on "))
+            .count(),
+        2,
+        "{problems:?}"
+    );
+}
+
+#[test]
+fn every_target_resolves_the_same_bytes() {
+    // The resolver runs on the device: these palettes are what a pack must look like on all of
+    // them. Re-record with LINGXIA_UPDATE_PALETTE=1 after a deliberate change of the rules.
+    let mut green = default_pack();
+    green.accent = Some(Accent {
+        seed: hex("#0f9d58"),
+        derive: true,
+    });
+    let mut lines = Vec::new();
+    for (name, pack) in [
+        ("default", default_pack()),
+        ("warm", warm_pack()),
+        ("green", green),
+    ] {
+        every(|prefs, label| {
+            let theme = resolve(&pack, &prefs).unwrap();
+            let colors: Vec<String> = theme.palette.iter().map(|color| color.hex()).collect();
+            lines.push(format!("{name} {label}: {}", colors.join(" ")));
+        });
+    }
+    let recorded = format!("{}\n", lines.join("\n"));
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/src/golden.txt");
+    if std::env::var_os("LINGXIA_UPDATE_PALETTE").is_some() {
+        std::fs::write(path, &recorded).unwrap();
+    }
+    assert_eq!(
+        include_str!("golden.txt").replace("\r\n", "\n"),
+        recorded,
+        "a palette changed; if the rules changed on purpose, re-record with LINGXIA_UPDATE_PALETTE=1 cargo test -p lingxia-theme"
+    );
 }
 
 #[test]

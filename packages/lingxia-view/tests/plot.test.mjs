@@ -30,9 +30,9 @@ test('plot series are roles: chart-1..5 by default, hex refused at build with th
   assert.equal(rendered(() => plot({ colors: undefined }), view).props.plotColors, '["chart-1","chart-2","chart-3","chart-4","chart-5"]');
   // The build refuses authored hex; the runtime refuses only what the wire cannot carry.
   for (const colors of [['url(file)'], ['brand']])
-    assert.throws(() => describe(() => plot({ colors }), view), /UI_COLOR: ".+" is not a role; plot series use 'chart-1' to 'chart-5'/);
+    assert.throws(() => describe(() => plot({ colors }), view), /UI_COLOR: ".+" is not a role; plot series use 'chart-1' to 'chart-8'/);
   assert.deepEqual(audit('const v = <plot kind="bar" aria-label="A" values={[1]} colors={["#123456"]} />;', 'plot.tsx'),
-    [`plot.tsx:1:65: UI_COLOR: "#123456" is not a role; plot series use 'chart-1' to 'chart-5'`]);
+    [`plot.tsx:1:65: UI_COLOR: "#123456" is not a role; plot series use 'chart-1' to 'chart-8'`]);
 });
 
 test('invalid plot data, palette and children fail before commit', () => {

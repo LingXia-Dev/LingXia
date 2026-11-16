@@ -137,7 +137,7 @@ export function Empty() {
 | span in the field | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | placeholder | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 | field edge | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
-| day in the panel | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.10:1 |
+| day in the panel | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.11:1 |
 | error edge | `danger` on `surface` | 3:1 | 5.21:1 | 5.42:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

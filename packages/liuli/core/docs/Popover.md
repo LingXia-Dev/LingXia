@@ -125,7 +125,7 @@ export function Beside() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| title | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.10:1 |
+| title | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.11:1 |
 | panel edge | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

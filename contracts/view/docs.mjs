@@ -112,7 +112,9 @@ function styles(schema) {
     'Every colour is one of these roles, optionally with an alpha percent (`accent/12`). The utility drops a `text-`',
     'prefix (`text-muted`, not `text-text-muted`). The theme pack resolves each role per appearance and proves the',
     'listed contrast minimums. `defaultPalette` from `@lingxia/view/theme` holds the default pack resolved for light and', 'dark, derived accent roles included, for proving contrast in code.', '',
-    table(['Role', 'Minimum contrast', 'Use'], schema.roles.map(role => [code(role.name),
+    'A pack writes the authored roles. Fixed roles are the same in every pack, and derived roles are computed from the',
+    'authored ones and the accent seed, unless a pack sets them.', '',
+    table(['Role', 'Set by', 'Minimum contrast', 'Use'], schema.roles.map(role => [code(role.name), { authored: 'the pack', fixed: 'fixed', derived: 'derived' }[role.tier],
       Object.entries(role.on ?? {}).map(([background, ratio]) => `${ratio}:1 on ${code(background)}`).join(', '), role.doc])), '');
   return out.join('\n');
 }

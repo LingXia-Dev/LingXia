@@ -88,9 +88,12 @@ elements (`blurLayers`); past that they draw sharp.
 The system's increased-contrast setting (`env.highContrast`) resolves the pack's high-contrast palette.
 `shadow-*` elevation layers take the `shadow` role at their alpha, so a pack can tint shadows.
 
-An lxapp sets its own look with `theme/pack.json`. A pack may name only an accent seed and derive the
-accent family from it; every role it leaves out comes from the default pack. `lingxia build` proves the
-pack's contrast pairs and ships it; the host resolves it when a page opens:
+An lxapp sets its own look with `theme/pack.json`. A pack may name only an accent seed. Surfaces, text,
+lines and the three status colours it leaves out come from the default pack; every other role (text on
+fills, soft fills, marks, hues, chart series, info, the overlay surface) is computed from the pack's own
+colours, so it follows the pack's surfaces and accent. A derived role the pack does set is used as
+written. `lingxia build` proves the pack's contrast pairs and ships it; the host resolves it when a page
+opens:
 
 ```json
 { "name": "brand", "version": 1, "accent": { "seed": "#0f9d58", "derive": true } }

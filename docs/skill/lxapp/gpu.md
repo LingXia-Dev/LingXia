@@ -39,7 +39,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `chart-1`..`chart-5`; controls over video `bg-media text-on-media` (tracks `on-media/25`). Roles follow appearance, so `dark:` on a colour fails (`UI_COLOR`).
 - `lingxia gen tokens` writes the theme pack's type, radius and spacing scales to `theme/tokens.css`.
 - `theme/pack.json` gives the lxapp its own palette; it may set only `accent` (`{"seed":"#…","derive":true}`),
-  the rest comes from the default pack. A palette the host pushes wins. `env.highContrast` picks the
+  or its surfaces, text and status colours too; every other role is derived from those. A palette the host pushes wins. `env.highContrast` picks the
   pack's high-contrast palette; `shadow-*` layers use the `shadow` role.
 - Supported variants: `dark:`, `rtl:`/`ltr:`, `first:`/`last:`/`odd:`/`even:`/`only:`/`empty:`, `sm:`–`2xl:`, `focus:` (editors), `focus-visible:` (keyboard focus; replaces the ring), `active:`
   (controls), `hover:` (mouse, stylus or trackpad), `disabled:`, `placeholder:`, slider parts `track:`/`range:`/`secondary:`/`thumb:`

@@ -122,7 +122,7 @@ export function Outline() {
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
-| selected row | `text` on `accent-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
+| selected row | `text` on `accent-soft` | 4.5:1 | 14.25:1 | 11.26:1 |
 | count | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

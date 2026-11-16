@@ -218,64 +218,70 @@ prefix (`text-muted`, not `text-text-muted`). The theme pack resolves each role 
 listed contrast minimums. `defaultPalette` from `@lingxia/view/theme` holds the default pack resolved for light and
 dark, derived accent roles included, for proving contrast in code.
 
-| Role | Minimum contrast | Use |
-| --- | --- | --- |
-| `canvas` |  | Window and page floor. |
-| `surface` |  | Cards, cells and sheets. |
-| `surface-raised` |  | Raised cards and panels that stay in the page. |
-| `surface-sunken` |  | Inset fields and grouped backgrounds. |
-| `line` | 1.2:1 on `surface`, 1.1:1 on `canvas` | Decorative separators and card borders; interactive boundaries use line-strong. |
-| `text` | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-raised`, 4.5:1 on `surface-sunken`, 4.5:1 on `selection`, 4.5:1 on `surface-overlay`, 4.5:1 on `hue-1-soft`, 4.5:1 on `hue-2-soft`, 4.5:1 on `hue-3-soft`, 4.5:1 on `hue-4-soft`, 4.5:1 on `hue-5-soft`, 4.5:1 on `hue-6-soft`, 4.5:1 on `hue-7-soft`, 4.5:1 on `hue-8-soft` | Body text. |
-| `text-muted` | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-overlay` | Secondary text. |
-| `text-faint` | 3:1 on `surface`, 3:1 on `surface-overlay` | Hints and disabled text. |
-| `accent` | 3:1 on `surface`, 3:1 on `canvas` | Primary actions, selection and links. |
-| `on-accent` | 4.5:1 on `accent` | Text and icons on accent. |
-| `accent-soft` |  | Tinted containers and selected rows. |
-| `on-accent-soft` | 4.5:1 on `accent-soft` | Text on accent-soft. |
-| `danger` | 3:1 on `surface` | Destructive actions and errors. |
-| `on-danger` | 4.5:1 on `danger` | Text and icons on danger. |
-| `danger-soft` |  | Error containers; text on it uses text. |
-| `success` | 3:1 on `surface` | Success state. |
-| `on-success` | 4.5:1 on `success` | Text and icons on success. |
-| `success-soft` |  | Success containers; text on it uses text. |
-| `warning` | 3:1 on `surface` | Warning state. |
-| `on-warning` | 4.5:1 on `warning` | Text and icons on warning. |
-| `warning-soft` |  | Warning containers; text on it uses text. |
-| `focus` | 3:1 on `surface`, 3:1 on `canvas` | Focus ring. |
-| `scrim` |  | Modal backdrop, translucent. |
-| `chart-1` | 3:1 on `surface`, 3:1 on `canvas` | First categorical series. |
-| `chart-2` | 3:1 on `surface`, 3:1 on `canvas` | Second categorical series. |
-| `chart-3` | 3:1 on `surface`, 3:1 on `canvas` | Third categorical series. |
-| `chart-4` | 3:1 on `surface`, 3:1 on `canvas` | Fourth categorical series. |
-| `chart-5` | 3:1 on `surface`, 3:1 on `canvas` | Fifth categorical series. |
-| `line-strong` | 3:1 on `surface`, 3:1 on `canvas` | Interactive boundaries: editor borders and control outlines. |
-| `selection` | 3:1 on `surface`, 3:1 on `canvas` | Selected-text background; derived from the accent when a pack omits it. |
-| `shadow` |  | Elevation shadow ink; `shadow-*` layers take it at their alpha. |
-| `media` |  | Translucent dock over video and images; the same in both appearances. |
-| `on-media` | 4.5:1 on `media`, 4.5:1 on `media-canvas` | Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`). |
-| `surface-overlay` |  | Anything floating over the page: menus, popovers, toasts, dialogs and sheets; a pack without it uses its surface-raised. |
-| `knob` |  | The thumb of a switch or slider, drawn on an accent track; white in both appearances by default. |
-| `success-mark` | 3:1 on `surface`, 3:1 on `surface-sunken` | Success as a dot or shape, never text; a pack without it uses its success. |
-| `warning-mark` | 3:1 on `surface`, 3:1 on `surface-sunken` | Warning as a dot or shape, never text; a pack without it uses its warning. |
-| `danger-mark` | 3:1 on `surface`, 3:1 on `surface-sunken` | Danger as a dot or shape, never text; a pack without it uses its danger. |
-| `media-canvas` |  | The whole screen behind a full-screen picture or video: opaque, near-black in both appearances; a pack without it uses the darkest surface it has. |
-| `info` | 3:1 on `surface` | Information that is neither good nor bad: notices and hints; a pack without it uses its accent family for all four info roles. |
-| `on-info` | 4.5:1 on `info` | Text and icons on info. |
-| `info-soft` |  | Information containers; text on it uses text. |
-| `info-mark` | 3:1 on `surface`, 3:1 on `surface-sunken` | Information as a dot or shape, never text; a pack without it uses its info. |
-| `hue-1` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-1-soft` | First categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
-| `hue-2` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-2-soft` | Second categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
-| `hue-3` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-3-soft` | Third categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
-| `hue-4` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-4-soft` | Fourth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
-| `hue-5` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-5-soft` | Fifth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
-| `hue-6` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-6-soft` | Sixth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
-| `hue-7` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-7-soft` | Seventh categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
-| `hue-8` | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-8-soft` | Eighth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour. |
-| `hue-1-soft` |  | Fill behind the first hue; text on it uses text; a pack without it uses its surface-sunken. |
-| `hue-2-soft` |  | Fill behind the second hue; text on it uses text; a pack without it uses its surface-sunken. |
-| `hue-3-soft` |  | Fill behind the third hue; text on it uses text; a pack without it uses its surface-sunken. |
-| `hue-4-soft` |  | Fill behind the fourth hue; text on it uses text; a pack without it uses its surface-sunken. |
-| `hue-5-soft` |  | Fill behind the fifth hue; text on it uses text; a pack without it uses its surface-sunken. |
-| `hue-6-soft` |  | Fill behind the sixth hue; text on it uses text; a pack without it uses its surface-sunken. |
-| `hue-7-soft` |  | Fill behind the seventh hue; text on it uses text; a pack without it uses its surface-sunken. |
-| `hue-8-soft` |  | Fill behind the eighth hue; text on it uses text; a pack without it uses its surface-sunken. |
+A pack writes the authored roles. Fixed roles are the same in every pack, and derived roles are computed from the
+authored ones and the accent seed, unless a pack sets them.
+
+| Role | Set by | Minimum contrast | Use |
+| --- | --- | --- | --- |
+| `canvas` | the pack |  | Window and page floor. |
+| `surface` | the pack |  | Cards, cells and sheets. |
+| `surface-raised` | the pack |  | Raised cards and panels that stay in the page. |
+| `surface-sunken` | the pack |  | Inset fields and grouped backgrounds. |
+| `line` | the pack | 1.2:1 on `surface`, 1.1:1 on `canvas` | Decorative separators and card borders; interactive boundaries use line-strong. |
+| `text` | the pack | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-raised`, 4.5:1 on `surface-sunken`, 4.5:1 on `selection`, 4.5:1 on `surface-overlay`, 4.5:1 on `hue-1-soft`, 4.5:1 on `hue-2-soft`, 4.5:1 on `hue-3-soft`, 4.5:1 on `hue-4-soft`, 4.5:1 on `hue-5-soft`, 4.5:1 on `hue-6-soft`, 4.5:1 on `hue-7-soft`, 4.5:1 on `hue-8-soft` | Body text. |
+| `text-muted` | the pack | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-overlay` | Secondary text. |
+| `text-faint` | the pack | 3:1 on `surface`, 3:1 on `surface-overlay` | Hints and disabled text. |
+| `accent` | derived | 3:1 on `surface`, 3:1 on `canvas` | Primary actions, selection and links. |
+| `on-accent` | derived | 4.5:1 on `accent` | Text and icons on accent. |
+| `accent-soft` | derived |  | Tinted containers and selected rows. |
+| `on-accent-soft` | derived | 4.5:1 on `accent-soft` | Text on accent-soft. |
+| `danger` | the pack | 3:1 on `surface` | Destructive actions and errors. |
+| `on-danger` | derived | 4.5:1 on `danger` | Text and icons on danger. |
+| `danger-soft` | derived |  | Error containers; text on it uses text. |
+| `success` | the pack | 3:1 on `surface` | Success state. |
+| `on-success` | derived | 4.5:1 on `success` | Text and icons on success. |
+| `success-soft` | derived |  | Success containers; text on it uses text. |
+| `warning` | the pack | 3:1 on `surface` | Warning state. |
+| `on-warning` | derived | 4.5:1 on `warning` | Text and icons on warning. |
+| `warning-soft` | derived |  | Warning containers; text on it uses text. |
+| `focus` | derived | 3:1 on `surface`, 3:1 on `canvas` | Focus ring. |
+| `scrim` | fixed |  | Modal backdrop, translucent. |
+| `chart-1` | derived | 3:1 on `surface`, 3:1 on `canvas` | First categorical series. |
+| `chart-2` | derived | 3:1 on `surface`, 3:1 on `canvas` | Second categorical series. |
+| `chart-3` | derived | 3:1 on `surface`, 3:1 on `canvas` | Third categorical series. |
+| `chart-4` | derived | 3:1 on `surface`, 3:1 on `canvas` | Fourth categorical series. |
+| `chart-5` | derived | 3:1 on `surface`, 3:1 on `canvas` | Fifth categorical series. |
+| `line-strong` | the pack | 3:1 on `surface`, 3:1 on `canvas` | Interactive boundaries: editor borders and control outlines. |
+| `selection` | derived | 3:1 on `surface`, 3:1 on `canvas` | Selected-text background, from the accent's soft tone. |
+| `shadow` | fixed |  | Elevation shadow ink; `shadow-*` layers take it at their alpha. |
+| `media` | fixed |  | Translucent dock over video and images; the same in both appearances. |
+| `on-media` | fixed | 4.5:1 on `media`, 4.5:1 on `media-canvas` | Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`). |
+| `surface-overlay` | derived |  | Anything floating over the page: menus, popovers, toasts, dialogs and sheets; surface-raised, a step lighter in dark. |
+| `knob` | fixed |  | The thumb of a switch or slider, drawn on an accent track; white in both appearances by default. |
+| `success-mark` | derived | 3:1 on `surface`, 3:1 on `surface-sunken` | Success as a dot or shape, never text. |
+| `warning-mark` | derived | 3:1 on `surface`, 3:1 on `surface-sunken` | Warning as a dot or shape, never text. |
+| `danger-mark` | derived | 3:1 on `surface`, 3:1 on `surface-sunken` | Danger as a dot or shape, never text. |
+| `media-canvas` | fixed |  | The whole screen behind a full-screen picture or video: opaque, near-black in both appearances; a pack without it uses the darkest surface it has. |
+| `info` | derived | 3:1 on `surface` | Information that is neither good nor bad: notices and hints; a fixed blue at the accent's strength, or the accent family when the accent is that blue. |
+| `on-info` | derived | 4.5:1 on `info` | Text and icons on info. |
+| `info-soft` | derived |  | Information containers; text on it uses text. |
+| `info-mark` | derived | 3:1 on `surface`, 3:1 on `surface-sunken` | Information as a dot or shape, never text. |
+| `hue-1` | derived | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-1-soft` | First categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text. |
+| `hue-2` | derived | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-2-soft` | Second categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text. |
+| `hue-3` | derived | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-3-soft` | Third categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text. |
+| `hue-4` | derived | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-4-soft` | Fourth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text. |
+| `hue-5` | derived | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-5-soft` | Fifth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text. |
+| `hue-6` | derived | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-6-soft` | Sixth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text. |
+| `hue-7` | derived | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-7-soft` | Seventh categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text. |
+| `hue-8` | derived | 3:1 on `surface`, 3:1 on `surface-sunken`, 3:1 on `hue-8-soft` | Eighth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text. |
+| `hue-1-soft` | derived |  | Fill behind the first hue; text on it uses text. |
+| `hue-2-soft` | derived |  | Fill behind the second hue; text on it uses text. |
+| `hue-3-soft` | derived |  | Fill behind the third hue; text on it uses text. |
+| `hue-4-soft` | derived |  | Fill behind the fourth hue; text on it uses text. |
+| `hue-5-soft` | derived |  | Fill behind the fifth hue; text on it uses text. |
+| `hue-6-soft` | derived |  | Fill behind the sixth hue; text on it uses text. |
+| `hue-7-soft` | derived |  | Fill behind the seventh hue; text on it uses text. |
+| `hue-8-soft` | derived |  | Fill behind the eighth hue; text on it uses text. |
+| `chart-6` | derived | 3:1 on `surface`, 3:1 on `canvas` | Sixth categorical series. |
+| `chart-7` | derived | 3:1 on `surface`, 3:1 on `canvas` | Seventh categorical series. |
+| `chart-8` | derived | 3:1 on `surface`, 3:1 on `canvas` | Eighth categorical series. |

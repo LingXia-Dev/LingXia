@@ -153,33 +153,33 @@ export function InARow() {
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | neutral, on a surface | `text` on `text/8` over `surface` | 4.5:1 | 13.91:1 | 11.29:1 |
-| neutral, on a selected row | `text` on `text/8` over `accent-soft` | 4.5:1 | 12.09:1 | 9.07:1 |
-| soft accent | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.44:1 | 9.49:1 |
-| soft info | `text` on `info-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
-| soft success | `text` on `success-soft` | 4.5:1 | 14.34:1 | 11.76:1 |
+| neutral, on a selected row | `text` on `text/8` over `accent-soft` | 4.5:1 | 12.23:1 | 9.07:1 |
+| soft accent | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.54:1 | 9.49:1 |
+| soft info | `text` on `info-soft` | 4.5:1 | 14.25:1 | 11.26:1 |
+| soft success | `text` on `success-soft` | 4.5:1 | 14.33:1 | 11.76:1 |
 | soft warning | `text` on `warning-soft` | 4.5:1 | 14.59:1 | 11.36:1 |
-| soft danger | `text` on `danger-soft` | 4.5:1 | 14.24:1 | 12.84:1 |
+| soft danger | `text` on `danger-soft` | 4.5:1 | 14.12:1 | 12.22:1 |
 | solid accent | `on-accent` on `accent` | 4.5:1 | 5.62:1 | 7.12:1 |
 | solid info | `on-info` on `info` | 4.5:1 | 5.62:1 | 7.12:1 |
-| solid success | `on-success` on `success` | 4.5:1 | 5.31:1 | 8.54:1 |
-| solid warning | `on-warning` on `warning` | 4.5:1 | 5.40:1 | 8.84:1 |
-| solid danger | `on-danger` on `danger` | 4.5:1 | 5.21:1 | 6.29:1 |
-| hue 1, text on its fill | `text` on `hue-1-soft` | 4.5:1 | 14.23:1 | 11.25:1 |
-| hue 1, the dot on its fill | `hue-1` on `hue-1-soft` | 3:1 | 3.25:1 | 8.04:1 |
-| hue 2, text on its fill | `text` on `hue-2-soft` | 4.5:1 | 14.45:1 | 11.01:1 |
-| hue 2, the dot on its fill | `hue-2` on `hue-2-soft` | 3:1 | 4.66:1 | 9.72:1 |
-| hue 3, text on its fill | `text` on `hue-3-soft` | 4.5:1 | 14.24:1 | 11.37:1 |
-| hue 3, the dot on its fill | `hue-3` on `hue-3-soft` | 3:1 | 6.69:1 | 4.32:1 |
-| hue 4, text on its fill | `text` on `hue-4-soft` | 4.5:1 | 14.32:1 | 11.18:1 |
-| hue 4, the dot on its fill | `hue-4` on `hue-4-soft` | 3:1 | 4.29:1 | 8.46:1 |
-| hue 5, text on its fill | `text` on `hue-5-soft` | 4.5:1 | 14.13:1 | 11.41:1 |
-| hue 5, the dot on its fill | `hue-5` on `hue-5-soft` | 3:1 | 7.15:1 | 6.68:1 |
-| hue 6, text on its fill | `text` on `hue-6-soft` | 4.5:1 | 14.10:1 | 11.41:1 |
-| hue 6, the dot on its fill | `hue-6` on `hue-6-soft` | 3:1 | 5.54:1 | 4.22:1 |
+| solid success | `on-success` on `success` | 4.5:1 | 5.31:1 | 8.72:1 |
+| solid warning | `on-warning` on `warning` | 4.5:1 | 5.40:1 | 9.41:1 |
+| solid danger | `on-danger` on `danger` | 4.5:1 | 5.21:1 | 6.27:1 |
+| hue 1, text on its fill | `text` on `hue-1-soft` | 4.5:1 | 14.25:1 | 11.24:1 |
+| hue 1, the dot on its fill | `hue-1` on `hue-1-soft` | 3:1 | 3.26:1 | 8.07:1 |
+| hue 2, text on its fill | `text` on `hue-2-soft` | 4.5:1 | 14.42:1 | 11.00:1 |
+| hue 2, the dot on its fill | `hue-2` on `hue-2-soft` | 3:1 | 4.65:1 | 9.71:1 |
+| hue 3, text on its fill | `text` on `hue-3-soft` | 4.5:1 | 14.23:1 | 11.31:1 |
+| hue 3, the dot on its fill | `hue-3` on `hue-3-soft` | 3:1 | 6.72:1 | 4.32:1 |
+| hue 4, text on its fill | `text` on `hue-4-soft` | 4.5:1 | 14.34:1 | 11.06:1 |
+| hue 4, the dot on its fill | `hue-4` on `hue-4-soft` | 3:1 | 4.29:1 | 8.37:1 |
+| hue 5, text on its fill | `text` on `hue-5-soft` | 4.5:1 | 14.16:1 | 11.41:1 |
+| hue 5, the dot on its fill | `hue-5` on `hue-5-soft` | 3:1 | 7.22:1 | 6.73:1 |
+| hue 6, text on its fill | `text` on `hue-6-soft` | 4.5:1 | 14.17:1 | 11.31:1 |
+| hue 6, the dot on its fill | `hue-6` on `hue-6-soft` | 3:1 | 5.60:1 | 4.20:1 |
 | hue 7, text on its fill | `text` on `hue-7-soft` | 4.5:1 | 14.32:1 | 11.05:1 |
-| hue 7, the dot on its fill | `hue-7` on `hue-7-soft` | 3:1 | 6.45:1 | 5.87:1 |
-| hue 8, text on its fill | `text` on `hue-8-soft` | 4.5:1 | 14.31:1 | 11.20:1 |
-| hue 8, the dot on its fill | `hue-8` on `hue-8-soft` | 3:1 | 3.25:1 | 4.35:1 |
+| hue 7, the dot on its fill | `hue-7` on `hue-7-soft` | 3:1 | 6.47:1 | 5.92:1 |
+| hue 8, text on its fill | `text` on `hue-8-soft` | 4.5:1 | 14.22:1 | 11.20:1 |
+| hue 8, the dot on its fill | `hue-8` on `hue-8-soft` | 3:1 | 3.25:1 | 4.40:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

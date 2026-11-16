@@ -214,21 +214,21 @@ export function Hues() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| initials | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.44:1 | 9.49:1 |
-| hue 1, initials on its fill | `text` on `hue-1-soft` | 4.5:1 | 14.23:1 | 11.25:1 |
-| hue 2, initials on its fill | `text` on `hue-2-soft` | 4.5:1 | 14.45:1 | 11.01:1 |
-| hue 3, initials on its fill | `text` on `hue-3-soft` | 4.5:1 | 14.24:1 | 11.37:1 |
-| hue 4, initials on its fill | `text` on `hue-4-soft` | 4.5:1 | 14.32:1 | 11.18:1 |
-| hue 5, initials on its fill | `text` on `hue-5-soft` | 4.5:1 | 14.13:1 | 11.41:1 |
-| hue 6, initials on its fill | `text` on `hue-6-soft` | 4.5:1 | 14.10:1 | 11.41:1 |
+| initials | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.54:1 | 9.49:1 |
+| hue 1, initials on its fill | `text` on `hue-1-soft` | 4.5:1 | 14.25:1 | 11.24:1 |
+| hue 2, initials on its fill | `text` on `hue-2-soft` | 4.5:1 | 14.42:1 | 11.00:1 |
+| hue 3, initials on its fill | `text` on `hue-3-soft` | 4.5:1 | 14.23:1 | 11.31:1 |
+| hue 4, initials on its fill | `text` on `hue-4-soft` | 4.5:1 | 14.34:1 | 11.06:1 |
+| hue 5, initials on its fill | `text` on `hue-5-soft` | 4.5:1 | 14.16:1 | 11.41:1 |
+| hue 6, initials on its fill | `text` on `hue-6-soft` | 4.5:1 | 14.17:1 | 11.31:1 |
 | hue 7, initials on its fill | `text` on `hue-7-soft` | 4.5:1 | 14.32:1 | 11.05:1 |
-| hue 8, initials on its fill | `text` on `hue-8-soft` | 4.5:1 | 14.31:1 | 11.20:1 |
-| online dot | `success-mark` on `surface` | 3:1 | 3.61:1 | 6.91:1 |
-| away dot | `warning-mark` on `surface` | 3:1 | 3.64:1 | 8.03:1 |
-| busy dot | `danger-mark` on `surface` | 3:1 | 3.91:1 | 5.19:1 |
-| online dot, in a sunken card | `success-mark` on `surface-sunken` | 3:1 | 3.19:1 | 7.75:1 |
-| away dot, in a sunken card | `warning-mark` on `surface-sunken` | 3:1 | 3.22:1 | 9.00:1 |
-| busy dot, in a sunken card | `danger-mark` on `surface-sunken` | 3:1 | 3.45:1 | 5.82:1 |
+| hue 8, initials on its fill | `text` on `hue-8-soft` | 4.5:1 | 14.22:1 | 11.20:1 |
+| online dot | `success-mark` on `surface` | 3:1 | 3.71:1 | 7.61:1 |
+| away dot | `warning-mark` on `surface` | 3:1 | 3.70:1 | 8.18:1 |
+| busy dot | `danger-mark` on `surface` | 3:1 | 3.70:1 | 5.42:1 |
+| online dot, in a sunken card | `success-mark` on `surface-sunken` | 3:1 | 3.28:1 | 8.53:1 |
+| away dot, in a sunken card | `warning-mark` on `surface-sunken` | 3:1 | 3.27:1 | 9.17:1 |
+| busy dot, in a sunken card | `danger-mark` on `surface-sunken` | 3:1 | 3.27:1 | 6.08:1 |
 | offline dot's ring | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

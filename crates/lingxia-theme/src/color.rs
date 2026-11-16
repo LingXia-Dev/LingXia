@@ -1,4 +1,6 @@
 //! sRGB colours, WCAG contrast and OKLCH lightness moves.
+//!
+//! Transcendental maths goes through `libm`, so a pack resolves to the same bytes on every target.
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -36,20 +38,37 @@ impl Rgba {
         0.2126 * r + 0.7152 * g + 0.0722 * b
     }
 
-    pub fn oklch(self) -> Oklch {
+    /// OKLab lightness and the two opponent axes.
+    fn oklab(self) -> [f64; 3] {
         let [r, g, b, _] = self.0.map(|channel| linear(f64::from(channel) / 255.0));
-        let l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b).cbrt();
-        let m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b).cbrt();
-        let s = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b).cbrt();
-        let lab_l = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
-        let a = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
-        let b = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+        let l = libm::cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+        let m = libm::cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+        let s = libm::cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+        [
+            0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+            1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+            0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+        ]
+    }
+
+    pub fn oklch(self) -> Oklch {
+        let [l, a, b] = self.oklab();
         Oklch {
-            l: lab_l,
-            c: a.hypot(b),
-            h: b.atan2(a).to_degrees().rem_euclid(360.0),
+            l,
+            c: (a * a + b * b).sqrt(),
+            h: libm::atan2(b, a).to_degrees().rem_euclid(360.0),
         }
     }
+}
+
+/// How far apart two colours look, alpha ignored: Euclidean in OKLab × 100, where about 2 is
+/// a just-visible step.
+pub fn distance(a: Rgba, b: Rgba) -> f64 {
+    let (x, y) = (a.oklab(), b.oklab());
+    let squares: f64 = (0..3)
+        .map(|axis| (x[axis] - y[axis]) * (x[axis] - y[axis]))
+        .sum();
+    100.0 * squares.sqrt()
 }
 
 /// WCAG contrast ratio of two opaque colours, 1–21.
@@ -92,10 +111,11 @@ fn pack(rgb: [f64; 3], alpha: u8) -> Rgba {
 }
 
 fn srgb(l: f64, c: f64, h: f64) -> Option<[f64; 3]> {
-    let (a, b) = (c * h.to_radians().cos(), c * h.to_radians().sin());
-    let l_ = (l + 0.3963377774 * a + 0.2158037573 * b).powi(3);
-    let m_ = (l - 0.1055613458 * a - 0.0638541728 * b).powi(3);
-    let s_ = (l - 0.0894841775 * a - 1.2914855480 * b).powi(3);
+    let (a, b) = (c * libm::cos(h.to_radians()), c * libm::sin(h.to_radians()));
+    let cube = |value: f64| value * value * value;
+    let l_ = cube(l + 0.3963377774 * a + 0.2158037573 * b);
+    let m_ = cube(l - 0.1055613458 * a - 0.0638541728 * b);
+    let s_ = cube(l - 0.0894841775 * a - 1.2914855480 * b);
     let rgb = [
         4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_,
         -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_,
@@ -110,7 +130,7 @@ fn linear(channel: f64) -> f64 {
     if channel <= 0.04045 {
         channel / 12.92
     } else {
-        ((channel + 0.055) / 1.055).powf(2.4)
+        libm::pow((channel + 0.055) / 1.055, 2.4)
     }
 }
 
@@ -118,7 +138,7 @@ fn encode(channel: f64) -> f64 {
     if channel <= 0.0031308 {
         channel * 12.92
     } else {
-        1.055 * channel.powf(1.0 / 2.4) - 0.055
+        1.055 * libm::pow(channel, 1.0 / 2.4) - 0.055
     }
 }
 

@@ -315,7 +315,7 @@ export function Submenu() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| item text | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.10:1 |
+| item text | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.11:1 |
 | destructive icon | `danger` on `surface-overlay` | 3:1 | 5.21:1 | 3.95:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

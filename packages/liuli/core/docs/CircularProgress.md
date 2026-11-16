@@ -126,9 +126,9 @@ export function Tones() {
 | --- | --- | --- | --- | --- |
 | arc on a card | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 | arc against the track | `accent` on `text/10` over `surface` | 3:1 | 4.62:1 | 4.75:1 |
-| success arc | `success-mark` on `surface` | 3:1 | 3.61:1 | 6.91:1 |
-| warning arc | `warning-mark` on `surface` | 3:1 | 3.64:1 | 8.03:1 |
-| danger arc | `danger-mark` on `surface` | 3:1 | 3.91:1 | 5.19:1 |
+| success arc | `success-mark` on `surface` | 3:1 | 3.71:1 | 7.61:1 |
+| warning arc | `warning-mark` on `surface` | 3:1 | 3.70:1 | 8.18:1 |
+| danger arc | `danger-mark` on `surface` | 3:1 | 3.70:1 | 5.42:1 |
 | value | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

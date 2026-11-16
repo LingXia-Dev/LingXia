@@ -234,7 +234,7 @@ export function Shipping() {
 | chosen option in the field | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | placeholder | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 | field edge | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
-| option in the panel | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.10:1 |
+| option in the panel | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.11:1 |
 | option's second line and the notes | `text-muted` on `surface-overlay` | 4.5:1 | 5.89:1 | 4.84:1 |
 | tick on the chosen option | `accent` on `surface-overlay` | 3:1 | 5.62:1 | 4.51:1 |
 | error edge | `danger` on `surface` | 3:1 | 5.21:1 | 5.42:1 |

@@ -129,19 +129,19 @@ export function DotOnly() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| success dot | `success-mark` on `surface` | 3:1 | 3.61:1 | 6.91:1 |
-| warning dot | `warning-mark` on `surface` | 3:1 | 3.64:1 | 8.03:1 |
-| danger dot | `danger-mark` on `surface` | 3:1 | 3.91:1 | 5.19:1 |
+| success dot | `success-mark` on `surface` | 3:1 | 3.71:1 | 7.61:1 |
+| warning dot | `warning-mark` on `surface` | 3:1 | 3.70:1 | 8.18:1 |
+| danger dot | `danger-mark` on `surface` | 3:1 | 3.70:1 | 5.42:1 |
 | info dot | `info-mark` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 | accent dot | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
-| hue 1 dot | `hue-1` on `surface` | 3:1 | 3.72:1 | 9.91:1 |
+| hue 1 dot | `hue-1` on `surface` | 3:1 | 3.72:1 | 9.96:1 |
 | hue 2 dot | `hue-2` on `surface` | 3:1 | 5.25:1 | 12.25:1 |
-| hue 3 dot | `hue-3` on `surface` | 3:1 | 7.64:1 | 5.28:1 |
+| hue 3 dot | `hue-3` on `surface` | 3:1 | 7.68:1 | 5.30:1 |
 | hue 4 dot | `hue-4` on `surface` | 3:1 | 4.87:1 | 10.50:1 |
-| hue 5 dot | `hue-5` on `surface` | 3:1 | 8.24:1 | 8.12:1 |
-| hue 6 dot | `hue-6` on `surface` | 3:1 | 6.39:1 | 5.13:1 |
-| hue 7 dot | `hue-7` on `surface` | 3:1 | 7.33:1 | 7.37:1 |
-| hue 8 dot | `hue-8` on `surface` | 3:1 | 3.69:1 | 5.39:1 |
+| hue 5 dot | `hue-5` on `surface` | 3:1 | 8.29:1 | 8.18:1 |
+| hue 6 dot | `hue-6` on `surface` | 3:1 | 6.42:1 | 5.15:1 |
+| hue 7 dot | `hue-7` on `surface` | 3:1 | 7.35:1 | 7.44:1 |
+| hue 8 dot | `hue-8` on `surface` | 3:1 | 3.72:1 | 5.44:1 |
 | neutral ring | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 

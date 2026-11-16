@@ -98,7 +98,7 @@ export function Rows() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| item | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.10:1 |
+| item | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.11:1 |
 | docked title | `text-muted` on `surface-overlay` | 4.5:1 | 5.89:1 | 4.84:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

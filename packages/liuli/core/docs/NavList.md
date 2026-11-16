@@ -116,8 +116,8 @@ export function Closed() {
 | --- | --- | --- | --- | --- |
 | row text | `text` on `canvas` | 4.5:1 | 15.19:1 | 15.31:1 |
 | section titles and counts | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
-| current row text | `text` on `accent-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
-| current row count | `text-muted` on `accent-soft` | 4.5:1 | 5.10:1 | 5.39:1 |
+| current row text | `text` on `accent-soft` | 4.5:1 | 14.25:1 | 11.26:1 |
+| current row count | `text-muted` on `accent-soft` | 4.5:1 | 5.16:1 | 5.39:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

@@ -232,7 +232,7 @@ export function MembersColumns() {
 | --- | --- | --- | --- | --- |
 | cell text | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | headings and the empty line | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
-| cell text, selected row | `text` on `accent-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
+| cell text, selected row | `text` on `accent-soft` | 4.5:1 | 14.25:1 | 11.26:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

@@ -225,13 +225,13 @@ export function Gaps() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| first mark colour | `chart-1` on `surface` | 3:1 | 5.62:1 | 6.46:1 |
-| second mark colour | `chart-2` on `surface` | 3:1 | 4.29:1 | 7.22:1 |
-| third mark colour | `chart-3` on `surface` | 3:1 | 4.36:1 | 7.61:1 |
-| fourth mark colour | `chart-4` on `surface` | 3:1 | 5.81:1 | 7.12:1 |
-| fifth mark colour | `chart-5` on `surface` | 3:1 | 5.58:1 | 8.32:1 |
+| first mark colour | `chart-1` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
+| second mark colour | `chart-2` on `surface` | 3:1 | 4.30:1 | 7.21:1 |
+| third mark colour | `chart-3` on `surface` | 3:1 | 4.36:1 | 7.60:1 |
+| fourth mark colour | `chart-4` on `surface` | 3:1 | 5.81:1 | 7.11:1 |
+| fifth mark colour | `chart-5` on `surface` | 3:1 | 5.65:1 | 8.32:1 |
 | second mark colour, straight on the page | `chart-2` on `canvas` | 3:1 | 4.01:1 | 7.96:1 |
-| third mark colour, straight on the page | `chart-3` on `canvas` | 3:1 | 4.08:1 | 8.40:1 |
+| third mark colour, straight on the page | `chart-3` on `canvas` | 3:1 | 4.07:1 | 8.39:1 |
 | title and figures | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | description, labels and legend | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 

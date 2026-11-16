@@ -4300,6 +4300,7 @@ dependencies = [
 name = "lingxia-theme"
 version = "0.28.0"
 dependencies = [
+ "libm",
  "serde",
  "serde_json",
 ]

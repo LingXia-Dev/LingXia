@@ -108,7 +108,7 @@ export function Commands() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| row | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.10:1 |
+| row | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.11:1 |
 | second line and end text | `text-muted` on `surface-overlay` | 4.5:1 | 5.89:1 | 4.84:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

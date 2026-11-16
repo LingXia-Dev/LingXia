@@ -2,6 +2,7 @@
 //! preferences into one palette every renderer and host chrome paints from.
 
 mod color;
+mod derive;
 mod generated;
 
 use std::collections::{BTreeMap, HashMap};
@@ -9,8 +10,8 @@ use std::sync::{LazyLock, Mutex};
 
 use serde::{Deserialize, Serialize};
 
-pub use color::{Oklch, Rgba, contrast, ensure_contrast};
-pub use generated::{CONTRAST, ROLE_COUNT, Role};
+pub use color::{Oklch, Rgba, contrast, distance, ensure_contrast};
+pub use generated::{CONTRAST, ROLE_COUNT, Role, Tier};
 
 /// The pack shipped when a host names none.
 pub fn default_pack() -> Pack {
@@ -38,21 +39,25 @@ pub fn app_pack(key: &str) -> Option<Pack> {
         .cloned()
 }
 
-/// `pack` with every role and scale step it leaves out taken from the default pack, so an
-/// lxapp pack may change only its accent. A pack that sets `surface-raised` but predates
-/// `surface-overlay` keeps no overlay of its own, so [`resolve`] floats overlays on its raised.
+/// `pack` with every authored and fixed role, the accent seed and every scale step it leaves
+/// out taken from the default pack, so an lxapp pack may change only its accent. Derived roles
+/// are never copied: [`resolve`] computes them from the pack's own colours.
 pub fn complete(mut pack: Pack) -> Pack {
     let base = default_pack();
+    let own_accent = [&pack.appearance.light, &pack.appearance.dark]
+        .iter()
+        .any(|colors| colors.contains_key(Role::Accent.name()));
+    if pack.accent.is_none() && !own_accent {
+        pack.accent = base.accent;
+    }
     for (colors, defaults) in [
         (&mut pack.appearance.light, &base.appearance.light),
         (&mut pack.appearance.dark, &base.appearance.dark),
     ] {
-        let own_raised = colors.contains_key(Role::SurfaceRaised.name());
         for (role, color) in defaults {
-            if own_raised && role == Role::SurfaceOverlay.name() {
-                continue;
+            if Role::from_name(role).is_some_and(|role| role.tier() != Tier::Derived) {
+                colors.entry(role.clone()).or_insert(*color);
             }
-            colors.entry(role.clone()).or_insert(*color);
         }
     }
     for (values, defaults) in [
@@ -109,8 +114,9 @@ pub struct Appearances {
     pub high_contrast_dark: Option<Colors>,
 }
 
-/// With `derive`, the accent family (accent, on-accent, accent-soft, on-accent-soft, focus)
-/// comes from the seed, and a user accent preference replaces the seed.
+/// The colour every derived role starts from. With `derive`, the accent family (accent,
+/// on-accent, accent-soft, on-accent-soft, focus) always comes from the seed, and a user accent
+/// preference replaces the seed; without it, accent roles the pack wrote are used as written.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Accent {
@@ -229,58 +235,58 @@ const ACCENT_FAMILY: [Role; 5] = [
     Role::Focus,
 ];
 
-/// The pack resolved for `prefs`. Contrast is proven by [`check`], not here, except that
-/// derived accents and the high-contrast boost construct passing pairs.
+/// The pack resolved for `prefs`: its authored and fixed roles as written, boosted under high
+/// contrast, then every derived role it left out, built to pass its pairs. A colour the pack
+/// wrote is proven by [`check`], not here.
 pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
     let (base, explicit_high_contrast) = colors_for(pack, prefs.appearance, prefs.high_contrast);
-    let derived = pack.accent.filter(|accent| accent.derive);
+    let seeded = pack.accent.filter(|accent| accent.derive);
     let mut palette = [Rgba([0, 0, 0, 255]); ROLE_COUNT];
+    let mut written = [false; ROLE_COUNT];
     for role in Role::ALL {
-        if (derived.is_some() && ACCENT_FAMILY.contains(&role))
-            || (role == Role::Selection && !base.contains_key(role.name()))
-            || borrows_colour(base, role)
-        {
+        if seeded.is_some() && ACCENT_FAMILY.contains(&role) {
             continue;
         }
-        // Roles added after packs shipped: overlays float on `surface-raised`, knobs stay white,
-        // a status mark is drawn in its status colour, and full-screen media sits on the darkest
-        // surface. Info and hue roles are filled in below, once what they borrow is final.
-        let missing = !base.contains_key(role.name());
-        palette[role as usize] = match role {
-            Role::SurfaceOverlay if missing => base.get(Role::SurfaceRaised.name()).copied(),
-            Role::Knob if missing => Some(Rgba([255, 255, 255, 255])),
-            Role::SuccessMark | Role::WarningMark | Role::DangerMark | Role::InfoMark
-                if missing =>
-            {
-                base.get(status_of(role).name()).copied()
-            }
-            Role::MediaCanvas if missing => darkest_surface(base),
-            _ => base.get(role.name()).copied(),
+        let slot = role as usize;
+        if let Some(color) = base.get(role.name()) {
+            palette[slot] = *color;
+            written[slot] = true;
+            continue;
+        }
+        palette[slot] = match role {
+            _ if role.tier() == Tier::Derived => continue,
+            Role::Knob => Some(Rgba([255, 255, 255, 255])),
+            Role::MediaCanvas => darkest_surface(base),
+            _ => None,
         }
         .ok_or_else(|| format!("THEME: {} has no {}", pack.name, role.name()))?;
     }
-    if let Some(accent) = derived {
-        derive_accent(
-            &mut palette,
-            prefs.accent.unwrap_or(accent.seed),
-            prefs.appearance,
+    let seed = match seeded {
+        Some(accent) => prefs.accent.unwrap_or(accent.seed),
+        None if written[Role::Accent as usize] => palette[Role::Accent as usize],
+        None => pack
+            .accent
+            .map(|accent| accent.seed)
+            .ok_or_else(|| format!("THEME: {} has no accent", pack.name))?,
+    };
+    // The overlay is in place before the boost, so text is boosted on it too.
+    let overlay = Role::SurfaceOverlay as usize;
+    let mut placed = written;
+    if !written[overlay] {
+        palette[overlay] = derive::overlay(
+            palette[Role::SurfaceRaised as usize],
+            prefs.appearance == Appearance::Dark,
         );
+        placed[overlay] = true;
     }
-    let derive = !base.contains_key(Role::Selection.name());
-    let borrowed_overlay = !base.contains_key(Role::SurfaceOverlay.name());
-    if prefs.high_contrast && !explicit_high_contrast {
+    let boost = prefs.high_contrast && !explicit_high_contrast;
+    if boost {
         for _ in 0..2 {
             for &(foreground, background, ratio) in CONTRAST {
-                if involves_selection(foreground, background)
-                    || (borrowed_overlay && involves_overlay(foreground, background))
-                    || borrows_mark(base, foreground)
-                    || borrows_media_canvas(base, background)
-                    || borrows_colour(base, foreground)
-                    || borrows_colour(base, background)
-                {
+                let (fg, bg) = (foreground as usize, background as usize);
+                if involves_selection(foreground, background) || !placed[fg] || !placed[bg] {
                     continue;
                 }
-                let (fg, bg) = (foreground as usize, background as usize);
                 let target = boosted(ratio);
                 palette[fg] = ensure_contrast(palette[fg], palette[bg], target);
                 // A foreground already at black or white leaves only the background to move.
@@ -290,25 +296,25 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
             }
         }
     }
-    if derive {
+    // Both appearances move the same categorical colours, so each lends its side.
+    let both = [&pack.appearance.light, &pack.appearance.dark];
+    let side =
+        |role: Role| both.map(|colors| *colors.get(role.name()).unwrap_or(&palette[role as usize]));
+    let sides = derive::Sides {
+        surface: side(Role::Surface),
+        canvas: side(Role::Canvas),
+        muted: side(Role::TextMuted),
+    };
+    derive::Build {
+        palette: &mut palette,
+        written,
+        dark: prefs.appearance == Appearance::Dark,
+        strong: prefs.high_contrast,
+        movable: boost,
+    }
+    .run(seed, &sides);
+    if !written[Role::Selection as usize] {
         palette[Role::Selection as usize] = derive_selection(&palette);
-    }
-    // Borrowed colours follow what they borrow through the derived accent and the
-    // high-contrast boost.
-    for role in Role::ALL {
-        if borrows_colour(base, role) {
-            palette[role as usize] = palette[lender_of(role) as usize];
-        }
-    }
-    for mark in [
-        Role::SuccessMark,
-        Role::WarningMark,
-        Role::DangerMark,
-        Role::InfoMark,
-    ] {
-        if borrows_mark(base, mark) {
-            palette[mark as usize] = palette[status_of(mark) as usize];
-        }
     }
     Ok(ResolvedTheme {
         appearance: prefs.appearance,
@@ -345,62 +351,6 @@ fn boosted(ratio: f32) -> f64 {
     }
 }
 
-fn derive_accent(palette: &mut [Rgba; ROLE_COUNT], seed: Rgba, appearance: Appearance) {
-    let dark = appearance == Appearance::Dark;
-    let tone = seed.oklch();
-    let surface = palette[Role::Surface as usize];
-    let canvas = palette[Role::Canvas as usize];
-    let start = if dark {
-        Oklch {
-            l: tone.l.max(0.7),
-            ..tone
-        }
-        .rgba(255)
-    } else {
-        Oklch {
-            l: tone.l.min(0.6),
-            ..tone
-        }
-        .rgba(255)
-    };
-    let mut accent = ensure_contrast(ensure_contrast(start, surface, 3.0), canvas, 3.0);
-    let white = Rgba([255, 255, 255, 255]);
-    let ink = Oklch {
-        l: 0.16,
-        c: tone.c.min(0.03),
-        h: tone.h,
-    }
-    .rgba(255);
-    let on_accent = if contrast(white, accent) >= contrast(ink, accent) {
-        white
-    } else {
-        ink
-    };
-    accent = ensure_contrast(accent, on_accent, 4.5);
-    let soft = Oklch {
-        l: if dark { 0.3 } else { 0.95 },
-        c: tone.c * if dark { 0.35 } else { 0.25 },
-        h: tone.h,
-    }
-    .rgba(255);
-    let on_soft = Oklch {
-        l: if dark { 0.88 } else { 0.4 },
-        c: tone.c * 0.9,
-        h: tone.h,
-    }
-    .rgba(255);
-    palette[Role::Accent as usize] = accent;
-    palette[Role::OnAccent as usize] = on_accent;
-    palette[Role::AccentSoft as usize] = soft;
-    palette[Role::OnAccentSoft as usize] = ensure_contrast(on_soft, soft, 4.5);
-    palette[Role::Focus as usize] = accent;
-}
-
-/// A pack without `surface-overlay` is held to the pairs it shipped with, not the overlay's.
-fn involves_overlay(foreground: Role, background: Role) -> bool {
-    foreground == Role::SurfaceOverlay || background == Role::SurfaceOverlay
-}
-
 /// The darkest of a pack's surfaces: where full-screen media sits in a pack without a canvas for it.
 fn darkest_surface(colors: &Colors) -> Option<Rgba> {
     [
@@ -417,73 +367,6 @@ fn darkest_surface(colors: &Colors) -> Option<Rgba> {
 /// A pack without a media canvas borrows a surface for it, and is not held to the media pairs on it.
 fn borrows_media_canvas(colors: &Colors, background: Role) -> bool {
     background == Role::MediaCanvas && !colors.contains_key(background.name())
-}
-
-/// The status colour a mark stands for.
-fn status_of(mark: Role) -> Role {
-    match mark {
-        Role::SuccessMark => Role::Success,
-        Role::WarningMark => Role::Warning,
-        Role::DangerMark => Role::Danger,
-        Role::InfoMark => Role::Info,
-        other => other,
-    }
-}
-
-/// A pack without a status mark draws it in its status colour, and is held to that colour's
-/// pairs, not the mark's.
-fn borrows_mark(colors: &Colors, foreground: Role) -> bool {
-    matches!(
-        foreground,
-        Role::SuccessMark | Role::WarningMark | Role::DangerMark | Role::InfoMark
-    ) && !colors.contains_key(foreground.name())
-}
-
-const INFO_FAMILY: [(Role, Role); 4] = [
-    (Role::Info, Role::Accent),
-    (Role::OnInfo, Role::OnAccent),
-    (Role::InfoSoft, Role::AccentSoft),
-    (Role::InfoMark, Role::Accent),
-];
-
-const HUES: [(Role, Role); 8] = [
-    (Role::Hue1, Role::Hue1Soft),
-    (Role::Hue2, Role::Hue2Soft),
-    (Role::Hue3, Role::Hue3Soft),
-    (Role::Hue4, Role::Hue4Soft),
-    (Role::Hue5, Role::Hue5Soft),
-    (Role::Hue6, Role::Hue6Soft),
-    (Role::Hue7, Role::Hue7Soft),
-    (Role::Hue8, Role::Hue8Soft),
-];
-
-const CHARTS: [Role; 5] = [
-    Role::Chart1,
-    Role::Chart2,
-    Role::Chart3,
-    Role::Chart4,
-    Role::Chart5,
-];
-
-/// Roles added after packs shipped that take another role's colour in a pack without them, and
-/// are then held to that role's pairs, not their own: the four info roles take the accent family
-/// when the pack has no `info`; a hue takes a chart colour, in turn, and its fill the sunken surface.
-fn borrows_colour(colors: &Colors, role: Role) -> bool {
-    if INFO_FAMILY.iter().any(|&(info, _)| info == role) {
-        return !colors.contains_key(Role::Info.name());
-    }
-    HUES.iter().any(|&(hue, soft)| hue == role || soft == role) && !colors.contains_key(role.name())
-}
-
-/// The role a borrowed colour is taken from.
-fn lender_of(role: Role) -> Role {
-    if let Some(&(_, accent)) = INFO_FAMILY.iter().find(|&&(info, _)| info == role) {
-        return accent;
-    }
-    match HUES.iter().position(|&(hue, _)| hue == role) {
-        Some(index) => CHARTS[index % CHARTS.len()],
-        None => Role::SurfaceSunken,
-    }
 }
 
 /// Selection pairs keep their base ratios under high contrast: text must stay readable on the
@@ -587,14 +470,8 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
                 continue;
             }
         };
-        let borrowed_overlay = !colors.contains_key(Role::SurfaceOverlay.name());
         for &(foreground, background, ratio) in CONTRAST {
-            if (borrowed_overlay && involves_overlay(foreground, background))
-                || borrows_mark(colors, foreground)
-                || borrows_media_canvas(colors, background)
-                || borrows_colour(colors, foreground)
-                || borrows_colour(colors, background)
-            {
+            if borrows_media_canvas(colors, background) {
                 continue;
             }
             let needed = if high_contrast && !involves_selection(foreground, background) {

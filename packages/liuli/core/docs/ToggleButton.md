@@ -119,10 +119,10 @@ export function Sizes() {
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | label, off | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
-| label, on | `text` on `accent-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
+| label, on | `text` on `accent-soft` | 4.5:1 | 14.25:1 | 11.26:1 |
 | boundary, off | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
 | disabled label, off, on a card | `text-muted` on `text/6` over `surface` | 4.5:1 | 5.24:1 | 5.72:1 |
-| disabled label, on | `text-muted` on `accent-soft` | 4.5:1 | 5.10:1 | 5.39:1 |
+| disabled label, on | `text-muted` on `accent-soft` | 4.5:1 | 5.16:1 | 5.39:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

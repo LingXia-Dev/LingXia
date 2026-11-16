@@ -62,7 +62,7 @@ pub enum Role {
     Chart5 = 27,
     /// Interactive boundaries: editor borders and control outlines.
     LineStrong = 28,
-    /// Selected-text background; derived from the accent when a pack omits it.
+    /// Selected-text background, from the accent's soft tone.
     Selection = 29,
     /// Elevation shadow ink; `shadow-*` layers take it at their alpha.
     Shadow = 30,
@@ -70,61 +70,67 @@ pub enum Role {
     Media = 31,
     /// Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`).
     OnMedia = 32,
-    /// Anything floating over the page: menus, popovers, toasts, dialogs and sheets; a pack without it uses its surface-raised.
+    /// Anything floating over the page: menus, popovers, toasts, dialogs and sheets; surface-raised, a step lighter in dark.
     SurfaceOverlay = 33,
     /// The thumb of a switch or slider, drawn on an accent track; white in both appearances by default.
     Knob = 34,
-    /// Success as a dot or shape, never text; a pack without it uses its success.
+    /// Success as a dot or shape, never text.
     SuccessMark = 35,
-    /// Warning as a dot or shape, never text; a pack without it uses its warning.
+    /// Warning as a dot or shape, never text.
     WarningMark = 36,
-    /// Danger as a dot or shape, never text; a pack without it uses its danger.
+    /// Danger as a dot or shape, never text.
     DangerMark = 37,
     /// The whole screen behind a full-screen picture or video: opaque, near-black in both appearances; a pack without it uses the darkest surface it has.
     MediaCanvas = 38,
-    /// Information that is neither good nor bad: notices and hints; a pack without it uses its accent family for all four info roles.
+    /// Information that is neither good nor bad: notices and hints; a fixed blue at the accent's strength, or the accent family when the accent is that blue.
     Info = 39,
     /// Text and icons on info.
     OnInfo = 40,
     /// Information containers; text on it uses text.
     InfoSoft = 41,
-    /// Information as a dot or shape, never text; a pack without it uses its info.
+    /// Information as a dot or shape, never text.
     InfoMark = 42,
-    /// First categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    /// First categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text.
     Hue1 = 43,
-    /// Second categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    /// Second categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text.
     Hue2 = 44,
-    /// Third categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    /// Third categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text.
     Hue3 = 45,
-    /// Fourth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    /// Fourth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text.
     Hue4 = 46,
-    /// Fifth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    /// Fifth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text.
     Hue5 = 47,
-    /// Sixth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    /// Sixth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text.
     Hue6 = 48,
-    /// Seventh categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    /// Seventh categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text.
     Hue7 = 49,
-    /// Eighth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text; a pack without it uses a chart colour.
+    /// Eighth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text.
     Hue8 = 50,
-    /// Fill behind the first hue; text on it uses text; a pack without it uses its surface-sunken.
+    /// Fill behind the first hue; text on it uses text.
     Hue1Soft = 51,
-    /// Fill behind the second hue; text on it uses text; a pack without it uses its surface-sunken.
+    /// Fill behind the second hue; text on it uses text.
     Hue2Soft = 52,
-    /// Fill behind the third hue; text on it uses text; a pack without it uses its surface-sunken.
+    /// Fill behind the third hue; text on it uses text.
     Hue3Soft = 53,
-    /// Fill behind the fourth hue; text on it uses text; a pack without it uses its surface-sunken.
+    /// Fill behind the fourth hue; text on it uses text.
     Hue4Soft = 54,
-    /// Fill behind the fifth hue; text on it uses text; a pack without it uses its surface-sunken.
+    /// Fill behind the fifth hue; text on it uses text.
     Hue5Soft = 55,
-    /// Fill behind the sixth hue; text on it uses text; a pack without it uses its surface-sunken.
+    /// Fill behind the sixth hue; text on it uses text.
     Hue6Soft = 56,
-    /// Fill behind the seventh hue; text on it uses text; a pack without it uses its surface-sunken.
+    /// Fill behind the seventh hue; text on it uses text.
     Hue7Soft = 57,
-    /// Fill behind the eighth hue; text on it uses text; a pack without it uses its surface-sunken.
+    /// Fill behind the eighth hue; text on it uses text.
     Hue8Soft = 58,
+    /// Sixth categorical series.
+    Chart6 = 59,
+    /// Seventh categorical series.
+    Chart7 = 60,
+    /// Eighth categorical series.
+    Chart8 = 61,
 }
 
-pub const ROLE_COUNT: usize = 59;
+pub const ROLE_COUNT: usize = 62;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -187,6 +193,9 @@ impl Role {
         Role::Hue6Soft,
         Role::Hue7Soft,
         Role::Hue8Soft,
+        Role::Chart6,
+        Role::Chart7,
+        Role::Chart8,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -250,12 +259,50 @@ impl Role {
             Role::Hue6Soft => "hue-6-soft",
             Role::Hue7Soft => "hue-7-soft",
             Role::Hue8Soft => "hue-8-soft",
+            Role::Chart6 => "chart-6",
+            Role::Chart7 => "chart-7",
+            Role::Chart8 => "chart-8",
         }
     }
 
     pub fn from_name(name: &str) -> Option<Role> {
         Role::ALL.into_iter().find(|role| role.name() == name)
     }
+
+    pub const fn tier(self) -> Tier {
+        match self {
+            Role::Canvas
+            | Role::Surface
+            | Role::SurfaceRaised
+            | Role::SurfaceSunken
+            | Role::Line
+            | Role::Text
+            | Role::TextMuted
+            | Role::TextFaint
+            | Role::Danger
+            | Role::Success
+            | Role::Warning
+            | Role::LineStrong => Tier::Authored,
+            Role::Scrim
+            | Role::Shadow
+            | Role::Media
+            | Role::OnMedia
+            | Role::Knob
+            | Role::MediaCanvas => Tier::Fixed,
+            _ => Tier::Derived,
+        }
+    }
+}
+
+/// Who gives a role its colour.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tier {
+    /// The pack writes it.
+    Authored,
+    /// The same in every pack unless a pack sets it.
+    Fixed,
+    /// Computed from the pack's authored roles unless a pack sets it.
+    Derived,
 }
 
 /// (foreground, background, minimum WCAG contrast) every resolved palette meets.
@@ -343,4 +390,10 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::Hue8, Role::Surface, 3.0),
     (Role::Hue8, Role::SurfaceSunken, 3.0),
     (Role::Hue8, Role::Hue8Soft, 3.0),
+    (Role::Chart6, Role::Surface, 3.0),
+    (Role::Chart6, Role::Canvas, 3.0),
+    (Role::Chart7, Role::Surface, 3.0),
+    (Role::Chart7, Role::Canvas, 3.0),
+    (Role::Chart8, Role::Surface, 3.0),
+    (Role::Chart8, Role::Canvas, 3.0),
 ];

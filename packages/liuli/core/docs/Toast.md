@@ -126,7 +126,7 @@ export function Faces() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| message | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.10:1 |
+| message | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.11:1 |
 | dismiss icon | `text-muted` on `surface-overlay` | 3:1 | 5.89:1 | 4.84:1 |
 | action | `accent` on `surface-overlay` | 4.5:1 | 5.62:1 | 4.51:1 |
 

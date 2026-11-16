@@ -153,10 +153,10 @@ export function Collapsible() {
 | --- | --- | --- | --- | --- |
 | title and message on neutral | `text` on `text/6` over `canvas` | 4.5:1 | 13.54:1 | 13.46:1 |
 | neutral icon | `text-muted` on `text/6` over `canvas` | 3:1 | 4.90:1 | 6.45:1 |
-| title and message on info | `text` on `info-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
-| title and message on success | `text` on `success-soft` | 4.5:1 | 14.34:1 | 11.76:1 |
+| title and message on info | `text` on `info-soft` | 4.5:1 | 14.25:1 | 11.26:1 |
+| title and message on success | `text` on `success-soft` | 4.5:1 | 14.33:1 | 11.76:1 |
 | title and message on warning | `text` on `warning-soft` | 4.5:1 | 14.59:1 | 11.36:1 |
-| title and message on danger | `text` on `danger-soft` | 4.5:1 | 14.24:1 | 12.84:1 |
+| title and message on danger | `text` on `danger-soft` | 4.5:1 | 14.12:1 | 12.22:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

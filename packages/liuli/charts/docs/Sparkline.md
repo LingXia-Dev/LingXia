@@ -195,11 +195,11 @@ export function InRows() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| series line and bars | `chart-1` on `surface` | 3:1 | 5.62:1 | 6.46:1 |
-| series line and bars, straight on the page | `chart-1` on `canvas` | 3:1 | 5.25:1 | 7.13:1 |
+| series line and bars | `chart-1` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
+| series line and bars, straight on the page | `chart-1` on `canvas` | 3:1 | 5.25:1 | 6.83:1 |
 | neutral line | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
-| positive line | `success-mark` on `surface` | 3:1 | 3.61:1 | 6.91:1 |
-| negative line | `danger-mark` on `surface` | 3:1 | 3.91:1 | 5.19:1 |
+| positive line | `success-mark` on `surface` | 3:1 | 3.71:1 | 7.61:1 |
+| negative line | `danger-mark` on `surface` | 3:1 | 3.70:1 | 5.42:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

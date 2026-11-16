@@ -88,6 +88,7 @@ function validateRoles(roles) {
   if (!names.length || new Set(names).size !== names.length) throw Error('schema.json: role names must be unique');
   for (const role of roles) {
     if (!/^[a-z]+(?:-[a-z0-9]+)*$/.test(role.name) || typeof role.doc !== 'string') throw Error(`schema.json: role ${role.name} needs a kebab-case name and a doc`);
+    if (!['authored', 'fixed', 'derived'].includes(role.tier)) throw Error(`schema.json: role ${role.name} needs a tier: authored, fixed or derived`);
     for (const [background, ratio] of Object.entries(role.on ?? {}))
       if (!names.includes(background) || !(ratio >= 1 && ratio <= 21)) throw Error(`schema.json: role ${role.name} needs a known background and a 1-21 contrast`);
   }
@@ -123,6 +124,24 @@ ${roles.map(role => `            Role::${roleVariant(role.name)} => ${JSON.strin
     pub fn from_name(name: &str) -> Option<Role> {
         Role::ALL.into_iter().find(|role| role.name() == name)
     }
+
+    pub const fn tier(self) -> Tier {
+        match self {
+${['authored', 'fixed'].map(tier => `            ${roles.filter(role => role.tier === tier).map(role => `Role::${roleVariant(role.name)}`).join('\n            | ')} => Tier::${roleVariant(tier)},`).join('\n')}
+            _ => Tier::Derived,
+        }
+    }
+}
+
+/// Who gives a role its colour.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tier {
+    /// The pack writes it.
+    Authored,
+    /// The same in every pack unless a pack sets it.
+    Fixed,
+    /// Computed from the pack's authored roles unless a pack sets it.
+    Derived,
 }
 
 /// (foreground, background, minimum WCAG contrast) every resolved palette meets.

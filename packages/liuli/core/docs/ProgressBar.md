@@ -193,9 +193,9 @@ export function SpinnerTones() {
 | spinner over media | `on-media` on `media` | 3:1 | 7.94:1 | 7.94:1 |
 | muted spinner | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
 | a spinner's shown label | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
-| success fill | `success-mark` on `surface` | 3:1 | 3.61:1 | 6.91:1 |
-| warning fill | `warning-mark` on `surface` | 3:1 | 3.64:1 | 8.03:1 |
-| danger fill | `danger-mark` on `surface` | 3:1 | 3.91:1 | 5.19:1 |
+| success fill | `success-mark` on `surface` | 3:1 | 3.71:1 | 7.61:1 |
+| warning fill | `warning-mark` on `surface` | 3:1 | 3.70:1 | 8.18:1 |
+| danger fill | `danger-mark` on `surface` | 3:1 | 3.70:1 | 5.42:1 |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | value | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 

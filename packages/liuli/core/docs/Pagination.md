@@ -133,7 +133,7 @@ export function Narrow() {
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | page number | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
-| current page | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.44:1 | 9.49:1 |
+| current page | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.54:1 | 9.49:1 |
 | ellipsis | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

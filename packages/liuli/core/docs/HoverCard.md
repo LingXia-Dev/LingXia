@@ -97,7 +97,7 @@ export function Term() {
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | trigger | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
-| card text | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.10:1 |
+| card text | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.11:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

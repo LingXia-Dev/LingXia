@@ -21,7 +21,7 @@ export function wireColorProblem(value, where) {
 
 /** Plot series take the categorical roles. */
 export function seriesProblem(value) {
-  return isRole(value) ? undefined : `UI_COLOR: ${JSON.stringify(value)} is not a role; plot series use 'chart-1' to 'chart-5'`;
+  return isRole(value) ? undefined : `UI_COLOR: ${JSON.stringify(value)} is not a role; plot series use 'chart-1' to 'chart-8'`;
 }
 
 export const defaultSeries = ['chart-1', 'chart-2', 'chart-3', 'chart-4', 'chart-5'];
