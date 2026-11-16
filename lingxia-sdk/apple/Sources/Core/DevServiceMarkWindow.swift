@@ -14,6 +14,12 @@ private func devMark(compact: Bool) -> String? {
     return String(bytes: buffer, encoding: .utf8)
 }
 
+/// A dev session or dev service drives this process: lxapp code and automation ask for its
+/// windows, not only the user.
+enum DevSession {
+    static var attached: Bool { devMark(compact: false) != nil }
+}
+
 #if os(iOS)
 import UIKit
 

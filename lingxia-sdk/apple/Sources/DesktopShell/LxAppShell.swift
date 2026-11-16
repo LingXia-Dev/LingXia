@@ -456,12 +456,16 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     // MARK: - Show / Hide
 
     public func show() {
-        // A scripted dev launch keeps the user's front app: the first window goes in behind it.
-        if !hasShown, ProcessInfo.processInfo.environment["LINGXIA_LAUNCH_INACTIVE"] == "1" {
-            window?.orderBack(nil)
-        } else {
+        // The launch comes forward unless it was scripted; a later show never pulls a
+        // dev-driven app over the user's front app.
+        let forward = hasShown
+            ? comesForward
+            : ProcessInfo.processInfo.environment["LINGXIA_LAUNCH_INACTIVE"] != "1"
+        if forward {
             showWindow(nil)
             NSApp.activate(ignoringOtherApps: true)
+        } else if window?.isVisible != true {
+            window?.orderBack(nil)
         }
         hasShown = true
         applyRestoredZoomIfNeeded()
@@ -1697,8 +1701,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// windows of an already-active app. macOS 14+ may still refuse a
     /// background app's self-activation; nothing stronger exists.
     func orderShellFront() {
+        guard comesForward else { return }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Whether this app may put itself over others: it is in front already (the user clicked
+    /// it), or no dev session drives it.
+    private var comesForward: Bool {
+        NSApp.isActive || !DevSession.attached
     }
 
     /// Orders the window front only while this app is active: an inactive app's window would

@@ -84,7 +84,7 @@ final class RunnerSurfaceShellHost {
         isHiddenForHostSwitch = false
         RunnerSupport.SurfaceShell.activate(shell)
         if !headless {
-            RunnerFront.show(shell.window, activate: true)
+            RunnerFront.show(shell.window)
         }
     }
 
@@ -116,7 +116,7 @@ final class RunnerSurfaceShellHost {
         RunnerSupport.SurfaceShell.setBrowserBlankNewTabs(shell, enabled: true)
         RunnerSupport.SurfaceShell.presentBrowserTab(shell, tabId: tabId)
         if !headless {
-            RunnerFront.show(shell.window, activate: true)
+            RunnerFront.show(shell.window)
         }
     }
 

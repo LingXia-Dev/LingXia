@@ -319,19 +319,32 @@ enum RunnerSupport {
     }
 }
 
-/// Brings a Runner window forward. A `--background` dev launch keeps the user's front app: while
-/// the Runner is inactive its windows go in behind, since ordering one front would cover theirs.
+/// Shows a Runner window. Only the first window of a launch activates the Runner, and not when
+/// the launch was scripted (`--background`). Every later window (an lxapp opened, a device
+/// changed, a host rebuilt, a browser tab, an automation call) follows the Runner: in front while
+/// the user has it active, else beside its other windows, never over another app's.
 @MainActor
 enum RunnerFront {
     static let launchInactive = ProcessInfo.processInfo.environment["LINGXIA_LAUNCH_INACTIVE"] == "1"
+    private static var launched = false
 
-    static func show(_ window: NSWindow?, activate: Bool = false) {
+    static func show(_ window: NSWindow?) {
         guard let window else { return }
-        if launchInactive, !NSApp.isActive {
-            window.orderBack(nil)
+        let launching = !launched
+        launched = true
+        if NSApp.isActive || (launching && !launchInactive) {
+            window.makeKeyAndOrderFront(nil)
+            if launching { NSApp.activate(ignoringOtherApps: true) }
             return
         }
-        window.makeKeyAndOrderFront(nil)
-        if activate, !launchInactive { NSApp.activate(ignoringOtherApps: true) }
+        guard !window.isVisible else { return }
+        let sibling = NSApp.orderedWindows.first {
+            $0 !== window && $0.isVisible && !$0.isMiniaturized && $0.level == window.level
+        }
+        if let sibling {
+            window.order(.above, relativeTo: sibling.windowNumber)
+        } else {
+            window.orderBack(nil)
+        }
     }
 }

@@ -92,7 +92,8 @@ lingxia dev --background --mock all        # answer from mocks/ (CI against mock
   ready (`--json` prints it); parallel starts of the same project (one per
   platform) each wait for their own. On failure or no readiness within 30 minutes it stops what it
   started, prints the log tail, and exits non-zero. On macOS the app opens behind the front app
-  without taking focus.
+  without taking focus. Only a launch activates the app: later opens, reloads,
+  device changes and automation leave its window where it is.
 - **Names.** `--name NAME` gives a stable alias for `lxdev --session` and
   `lingxia dev stop`.
 - **Mocks.** `--mock all|none` answers the session from `mocks/` handlers or

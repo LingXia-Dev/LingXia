@@ -467,8 +467,7 @@ public class RunnerApp {
         }
 
         let controller = SimulatorWindowController(appId: appId, path: path)
-        controller.showWindow(self)
-        RunnerFront.show(controller.window, activate: true)
+        RunnerFront.show(controller.window)
 
         windowController = controller
         refreshCapsulePageChrome(for: controller)
@@ -517,12 +516,9 @@ public class RunnerApp {
             webTarget: target,
             headless: headlessWebTarget
         )
-        if !headlessWebTarget {
-            host.showWindow(self)
-        }
         restoreBrowserTabs(in: host, target: target)
         if !headlessWebTarget {
-            RunnerFront.show(host.window, activate: true)
+            RunnerFront.show(host.window)
         }
         windowController = host
     }
@@ -783,9 +779,13 @@ public class RunnerApp {
 
     public func restartRunner() {
         let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
+        // The new instance takes this one's place: in front only if this one is.
+        let active = NSApp.isActive
+        configuration.activates = active
         configuration.createsNewApplicationInstance = true
-        configuration.environment = ProcessInfo.processInfo.environment
+        var environment = ProcessInfo.processInfo.environment
+        environment["LINGXIA_LAUNCH_INACTIVE"] = active ? nil : "1"
+        configuration.environment = environment
         let log = Self.log
 
         NSWorkspace.shared.openApplication(
