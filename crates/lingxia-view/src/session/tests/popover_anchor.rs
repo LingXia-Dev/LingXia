@@ -56,3 +56,31 @@ fn a_popover_opened_from_state_sits_under_the_element_it_names_and_goes_with_it(
         "an anchored popover closes with its anchor"
     );
 }
+
+#[test]
+fn two_popovers_naming_one_element_both_sit_against_it() {
+    let worker = ViewWorker::spawn("test-popover-anchor-two").unwrap();
+    let platform = Platform::new(&[&worker]);
+    // A list under the field and a hint over it, both open at once.
+    let host = platform.host(
+        &worker,
+        &source("function render(){const open=useLocal('open',false);return h('page',{},h('view',{style:{height:60}}),h('view',{id:'field','data-testid':'field',style:{marginLeft:10,width:70,height:24}}),h('button',{'data-testid':'show',onClick(){open.set(true)}},'Show'),h('view',{id:'list',popover:'manual',anchor:'field',open:open.value,'data-testid':'list',style:{width:60,height:30}}),h('view',{id:'hint',popover:'manual',anchor:'field',open:open.value,'data-testid':'hint',style:{width:60,height:30,positionArea:'top'}}))}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    click(&platform, &host, "show");
+    let field = rect(&host, "field").unwrap();
+    let (list, hint) = (rect(&host, "list").unwrap(), rect(&host, "hint").unwrap());
+    assert_eq!(
+        [list[0], list[1]],
+        [field[0], field[1] + field[3] + 4.0],
+        "the list under it: {list:?} {field:?}"
+    );
+    assert_eq!(
+        hint[1] + hint[3],
+        field[1] - 4.0,
+        "the hint over it: {hint:?} {field:?}"
+    );
+    assert!(hint[0] >= field[0] && hint[0] + hint[2] <= field[0] + field[2]);
+}

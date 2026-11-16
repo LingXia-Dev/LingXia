@@ -294,10 +294,12 @@ function wireInvokers(top, tree) {
   const interests = new Map(top.interests.map(entry => [entry.identity, entry]));
   // Open popovers that name their anchor element, by that element's id.
   const named = new Map();
-  for (const [id, entry] of top.popovers) if (entry.open && entry.anchorId) named.set(entry.anchorId, id);
+  for (const [id, entry] of top.popovers) if (entry.open && entry.anchorId) named.set(entry.anchorId, [...(named.get(entry.anchorId) ?? []), id]);
   const walk = node => {
+    // One element may anchor several popovers: it carries every name, a line each.
+    const names = [];
     const anchored = named.size && typeof node.props?.id === 'string' ? named.get(node.props.id) : undefined;
-    if (anchored !== undefined) node.wire.push(['anchorName', anchorName(anchored)]);
+    if (anchored !== undefined) for (const id of anchored) names.push(anchorName(id));
     const interest = interests.get(node.identity);
     if (interest) {
       const target = top.popovers.get(interest.target);
@@ -305,7 +307,7 @@ function wireInvokers(top, tree) {
       // While it shows, the hint describes its trigger; the trigger keeps its own description if it has one.
       if (target.open && node.props['aria-describedby'] === undefined) node.wire.push(['ariaDescribedBy', interest.target]);
       if (!invokers.has(node.identity) && target.open && !target.anchorId && anchors.get(interest.target) === node.identity)
-        node.wire.push(['anchorName', anchorName(interest.target)]);
+        names.push(anchorName(interest.target));
     }
     const entry = invokers.get(node.identity);
     if (entry && node.element === 'button') {
@@ -313,8 +315,9 @@ function wireInvokers(top, tree) {
       if (!target) throw Error(`UI_ID: popoverTarget "${entry.target}" names no popover on this page`);
       if (node.props.accessibilityState?.expanded === undefined) node.wire.push(['stateExpanded', +target.open]);
       // The invoker that opened the popover carries the CSS anchor name it sits against.
-      if (target.open && !target.anchorId && anchors.get(entry.target) === node.identity) node.wire.push(['anchorName', anchorName(entry.target)]);
+      if (target.open && !target.anchorId && anchors.get(entry.target) === node.identity) names.push(anchorName(entry.target));
     }
+    if (names.length) node.wire.push(['anchorName', [...new Set(names)].join('\n')]);
     for (const child of node.children ?? []) walk(child);
   };
   walk(tree);

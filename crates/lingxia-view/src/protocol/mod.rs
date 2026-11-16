@@ -177,6 +177,14 @@ impl Record {
     }
 }
 
+/// Whether `record` carries the anchor `name`: an element that anchors several popovers
+/// carries every name, a line each.
+pub(crate) fn anchors(record: &Record, name: &str) -> bool {
+    record
+        .string(field::ANCHOR_NAME)
+        .is_some_and(|names| names.split('\n').any(|own| own == name))
+}
+
 pub(crate) fn identities(records: &[Record]) -> Vec<String> {
     let mut identities: Vec<String> = Vec::with_capacity(records.len());
     let mut children = vec![0; records.len()];

@@ -339,7 +339,7 @@
     return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value) ? void 0 : colorProblem(value, where);
   }
   function seriesProblem(value) {
-    return isRole(value) ? void 0 : `UI_COLOR: ${JSON.stringify(value)} is not a role; plot series use 'chart-1' to 'chart-5'`;
+    return isRole(value) ? void 0 : `UI_COLOR: ${JSON.stringify(value)} is not a role; plot series use 'chart-1' to 'chart-8'`;
   }
   var defaultSeries = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"];
 
@@ -1362,25 +1362,27 @@
     const invokers = new Map(top.invokers.map((entry) => [entry.identity, entry]));
     const interests = new Map(top.interests.map((entry) => [entry.identity, entry]));
     const named = /* @__PURE__ */ new Map();
-    for (const [id, entry] of top.popovers) if (entry.open && entry.anchorId) named.set(entry.anchorId, id);
+    for (const [id, entry] of top.popovers) if (entry.open && entry.anchorId) named.set(entry.anchorId, [...named.get(entry.anchorId) ?? [], id]);
     const walk = (node) => {
+      const names3 = [];
       const anchored = named.size && typeof node.props?.id === "string" ? named.get(node.props.id) : void 0;
-      if (anchored !== void 0) node.wire.push(["anchorName", anchorName(anchored)]);
+      if (anchored !== void 0) for (const id of anchored) names3.push(anchorName(id));
       const interest2 = interests.get(node.identity);
       if (interest2) {
         const target = top.popovers.get(interest2.target);
         if (!target) throw Error(`UI_ID: interestFor "${interest2.target}" names no popover on this page`);
         if (target.open && node.props["aria-describedby"] === void 0) node.wire.push(["ariaDescribedBy", interest2.target]);
         if (!invokers.has(node.identity) && target.open && !target.anchorId && anchors.get(interest2.target) === node.identity)
-          node.wire.push(["anchorName", anchorName(interest2.target)]);
+          names3.push(anchorName(interest2.target));
       }
       const entry = invokers.get(node.identity);
       if (entry && node.element === "button") {
         const target = top.popovers.get(entry.target);
         if (!target) throw Error(`UI_ID: popoverTarget "${entry.target}" names no popover on this page`);
         if (node.props.accessibilityState?.expanded === void 0) node.wire.push(["stateExpanded", +target.open]);
-        if (target.open && !target.anchorId && anchors.get(entry.target) === node.identity) node.wire.push(["anchorName", anchorName(entry.target)]);
+        if (target.open && !target.anchorId && anchors.get(entry.target) === node.identity) names3.push(anchorName(entry.target));
       }
+      if (names3.length) node.wire.push(["anchorName", [...new Set(names3)].join("\n")]);
       for (const child of node.children ?? []) walk(child);
     };
     walk(tree);

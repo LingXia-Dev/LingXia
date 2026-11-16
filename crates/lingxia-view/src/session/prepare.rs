@@ -959,9 +959,9 @@ impl ViewSession {
             .iter()
             .filter(|id| {
                 let name = format!("--lx-popover-{id}");
-                !records.iter().any(|record| {
-                    record.string(crate::protocol::field::ANCHOR_NAME) == Some(name.as_str())
-                })
+                !records
+                    .iter()
+                    .any(|record| crate::protocol::anchors(record, &name))
             })
             .map(String::as_str)
             .collect();

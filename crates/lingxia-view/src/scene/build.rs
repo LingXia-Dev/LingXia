@@ -309,7 +309,7 @@ impl Renderer {
                 let named = target.starts_with("--").then(|| {
                     records
                         .iter()
-                        .position(|other| other.string(field::ANCHOR_NAME) == Some(target))
+                        .position(|other| crate::protocol::anchors(other, target))
                         .map(|other| identities[other].clone())
                 });
                 (
@@ -1327,7 +1327,7 @@ impl Renderer {
                         let name = format!("--lx-popover-{id}");
                         let invoker = records
                             .iter()
-                            .position(|other| other.string(field::ANCHOR_NAME) == Some(&name))
+                            .position(|other| crate::protocol::anchors(other, &name))
                             .map(|other| Arc::<str>::from(identities[other].as_str()));
                         Some((id.to_owned(), invoker))
                     })

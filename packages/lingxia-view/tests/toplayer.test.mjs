@@ -103,6 +103,18 @@ test('a popover its invoker opened is owned; closing it as an orphan tells the p
   assert.deepEqual(toggled, [true, false]);
 });
 
+test('an element two open popovers name carries both anchor names', () => {
+  reset();
+  const view = () => h('page', {},
+    h('view', { id: 'field', 'data-testid': 'field' }, h('text', {}, 'Field')),
+    h('view', { id: 'list', popover: 'manual', anchor: 'field', open: true, 'data-testid': 'list' }, h('text', {}, 'List')),
+    h('view', { id: 'hint', popover: 'manual', anchor: 'field', open: true, 'data-testid': 'hint' }, h('text', {}, 'Hint')));
+  const nodes = render(view);
+  assert.equal(byId(nodes, 'field').props.anchorName, '--lx-popover-list\n--lx-popover-hint');
+  assert.equal(byId(nodes, 'list').props.anchorTo, '--lx-popover-list');
+  assert.equal(byId(nodes, 'hint').props.anchorTo, '--lx-popover-hint');
+});
+
 test('a popover that names its anchor is placed against that element however it opens, and is owned by it', () => {
   reset();
   const open = { value: false };
