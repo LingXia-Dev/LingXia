@@ -8,7 +8,7 @@ spec.configure({ requires: { args: ['androidDevice'] } });
 spec('an edge swipe goes back across a pager; a drag starting on the pager pages it', {
   id: 'EDGE-BACK-CLAIM-ANDROID-001', covers: ['view:scroll', 'lx.navigateBack'],
   reason: 'swipes through the OS input path of the Android device fixture',
-  start: { page: 'view-lab' },
+  start: { page: 'view' },
 }, async (t) => {
   const app = t.app;
   const view = app.view;
@@ -25,10 +25,10 @@ spec('an edge swipe goes back across a pager; a drag starting on the pager pages
       y: Math.round(top + (box.y + box.height / 2) * scale), scale };
   };
   const onPage = async (page: number) => {
-    await expect(view.testId('motion-pager-state')).toHaveText(`page=${page}`);
+    await expect(view.testId('motion-pager-state')).toHaveAttribute('data-state', `page=${page}`);
   };
 
-  await app.nav.to({ page: 'motion-target' });
+  await app.nav.to({ page: 'view-scrolling' });
   await view.testId('motion-pager-next').click();
   await onPage(1);
 
@@ -38,11 +38,11 @@ spec('an edge swipe goes back across a pager; a drag starting on the pager pages
   expect(start / pager.scale, 'the drag starts past the hard back zone').toBeGreaterThan(16);
   await device.swipe({ x1: start, y1: pager.y, x2: pager.right - 10, y2: pager.y, duration: 300 });
   await onPage(0);
-  expect((await app.nav.current()).name, 'a drag on the pager stays on the page').toBe('motion-target');
+  expect((await app.nav.current()).name, 'a drag on the pager stays on the page').toBe('view-scrolling');
 
   await view.testId('motion-pager-next').click();
   await onPage(1);
   // From the screen edge, across the same pager: back.
   await device.swipe({ x1: 1, y1: pager.y, x2: pager.right - 10, y2: pager.y, duration: 300 });
-  await expect.poll(async () => (await app.nav.current()).name).toBe('view-lab');
+  await expect.poll(async () => (await app.nav.current()).name).toBe('view');
 });

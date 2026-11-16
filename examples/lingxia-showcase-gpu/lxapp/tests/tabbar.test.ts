@@ -1,4 +1,5 @@
 import { expect, spec, type Fixture, type Locator } from '@lingxia/test';
+import { openDemo, openUnderTabs, rootOf } from './open-demo';
 
 // How a GPU page shares the bottom edge with the host tab bar: the page scroll runs under the bar
 // and its end scrolls clear of it; an open dialog (sheet, picker, its scrim) lies over the bar.
@@ -7,8 +8,9 @@ type Box = { x: number; y: number; width: number; height: number };
 const bottom = (box: Box) => box.y + box.height;
 
 /** The page box and where its bottom bars begin, as the page's own `env.insets` measures them. */
-async function bars(t: Fixture) {
-  const lab = t.app.view.testId('view-lab');
+async function bars(t: Fixture, root = 'view-index') {
+  const lab = t.app.view.testId(root);
+  await expect(lab).toBeVisible();
   const page = await lab.boundingBox();
   const inset = Number(await lab.getAttribute('data-inset-bottom'));
   const safe = Number(await lab.getAttribute('data-safe-bottom'));
@@ -27,10 +29,10 @@ async function tabItems(t: Fixture) {
 }
 
 /** `dialog` reaches the page's bottom edge, and the host lifts the page over its tab bar until it closes. */
-async function coversTheBar(t: Fixture, open: () => Promise<void>, dialog: Locator, close: () => Promise<void>) {
+async function coversTheBar(t: Fixture, root: string, open: () => Promise<void>, dialog: Locator, close: () => Promise<void>) {
   const before = await tabItems(t);
   console.log(`tab items readable before: ${before?.length ?? 'unsupported'}`);
-  const { page, inset } = await bars(t);
+  const { page, inset } = await bars(t, root);
   await open();
   await expect(dialog).toBeVisible();
   // Once its entrance settles the panel reaches past the bar's top to the bottom edge (a detent may rest lower).
@@ -46,12 +48,12 @@ async function coversTheBar(t: Fixture, open: () => Promise<void>, dialog: Locat
   if (before?.length) await t.waitFor(() => tabItems(t), { until: items => items?.length === before.length });
 }
 
-spec('a tab page scroll runs under the tab bar and its end scrolls clear of it', { covers: ['view:scroll'], start: { page: 'view-lab' } }, async (t) => {
+spec('a tab page scroll runs under the tab bar and its end scrolls clear of it', { covers: ['view:scroll'], start: openUnderTabs('controls') }, async (t) => {
   const view = t.app.view;
-  const { page, inset, top } = await bars(t);
+  const { page, inset, top } = await bars(t, rootOf('controls'));
   const scroll = await view.testId('page-scroll').boundingBox();
   expect(Math.abs(bottom(scroll) - bottom(page))).toBeLessThanOrEqual(1);
-  const last = view.testId('lab-transforms');
+  const last = view.testId('lab-fragments');
   let previous = Number.NaN;
   for (let attempt = 0; attempt < 8; attempt++) {
     await view.fling('up', 4000);
@@ -71,40 +73,35 @@ spec('another tab page scroll runs under the tab bar too', { covers: ['view:scro
 });
 
 // A fine pointer opens a popover, not a sheet with Cancel.
-spec('a select picker covers the tab bar', { covers: ['view:select', 'view:dialog'], start: { page: 'view-lab' }, requires: { pointer: 'coarse' } }, async (t) => {
+spec('a select picker covers the tab bar', { covers: ['view:select', 'view:dialog'], start: openUnderTabs('select'), requires: { pointer: 'coarse' } }, async (t) => {
   const view = t.app.view;
-  await view.testId('lab-tab-input').click();
-  await coversTheBar(t, () => view.testId('lab-input-plan').click(), view.testId('lx-picker'),
+  await coversTheBar(t, rootOf('select'), () => view.testId('lab-input-plan').click(), view.testId('lx-picker'),
     () => view.testId('lx-picker-cancel').click());
 });
 
-spec('a date picker covers the tab bar', { covers: ['view:input', 'view:dialog'], start: { page: 'view-lab' }, requires: { pointer: 'coarse' } }, async (t) => {
+spec('a date picker covers the tab bar', { covers: ['view:input', 'view:dialog'], start: openUnderTabs('fields'), requires: { pointer: 'coarse' } }, async (t) => {
   const view = t.app.view;
-  await view.testId('lab-tab-input').click();
-  await coversTheBar(t, () => view.testId('lab-input-date').click(), view.testId('lx-picker'),
+  await coversTheBar(t, rootOf('fields'), () => view.testId('lab-input-date').click(), view.testId('lx-picker'),
     () => view.testId('lx-picker-cancel').click());
 });
 
-spec('an overlay sheet covers the tab bar', { covers: ['view:dialog'], start: { page: 'view-lab' } }, async (t) => {
+spec('an overlay sheet covers the tab bar', { covers: ['view:dialog'], start: openUnderTabs('bottomSheet') }, async (t) => {
   const view = t.app.view;
-  await view.testId('lab-tab-feedback').click();
-  await coversTheBar(t, () => view.testId('lab-overlay-sheet').click(), view.getByRole('dialog', { name: 'Filters' }),
+  await coversTheBar(t, rootOf('bottomSheet'), () => view.testId('lab-overlay-sheet').click(), view.getByRole('dialog', { name: 'Filters' }),
     () => view.testId('lab-sheet-apply').click());
 });
 
-spec('a sheet with detents covers the tab bar', { covers: ['view:dialog', 'view:drag'], start: { page: 'view-lab' } }, async (t) => {
+spec('a sheet with detents covers the tab bar', { covers: ['view:dialog', 'view:drag'], start: openUnderTabs('sheet') }, async (t) => {
   const view = t.app.view;
-  await view.testId('lab-tab-gesture').click();
-  await coversTheBar(t, () => view.testId('lab-detents-open').click(), view.testId('lab-detents-sheet'),
+  await coversTheBar(t, rootOf('sheet'), () => view.testId('lab-detents-open').click(), view.testId('lab-detents-sheet'),
     () => view.testId('lab-detents-sheet').performAction('dismiss'));
 });
 
-spec('a tap at an element under the tab bar scrolls it clear of the bar first and lands on it', { covers: ['view:scroll'], start: { page: 'view-lab' } }, async (t) => {
+spec('a tap at an element under the tab bar scrolls it clear of the bar first and lands on it', { covers: ['view:scroll'], start: openUnderTabs('dots') }, async (t) => {
   const view = t.app.view;
-  const { page, top } = await bars(t);
-  await view.testId('lab-tab-swipe').click();
+  const { page, top } = await bars(t, rootOf('dots'));
   const state = view.testId('lab-kit-pager-state');
-  await expect(state).toHaveText('page=0');
+  await expect(state).toHaveAttribute('data-state', 'page=0');
   // Park a pager dot in the middle of the bar with a slow drag that does not fling.
   const dot = view.testId('lab-kit-pager-view-dot-2');
   const center = (box: Box) => box.y + box.height / 2;
@@ -117,16 +114,15 @@ spec('a tap at an element under the tab bar scrolls it clear of the bar first an
   expect(parked.y).toBeGreaterThanOrEqual(top);
   await expect(dot).not.toBeInViewport();
   await (await view.touch(dot)).up();
-  await expect(state).toHaveText('page=2');
+  await expect(state).toHaveAttribute('data-state', 'page=2');
   expect(bottom(await dot.boundingBox())).toBeLessThanOrEqual(top);
 });
 
-spec('a tap at an element partly under the tab bar lands on its visible part without scrolling', { covers: ['view:scroll'], start: { page: 'view-lab' } }, async (t) => {
+spec('a tap at an element partly under the tab bar lands on its visible part without scrolling', { covers: ['view:scroll'], start: openUnderTabs('dots') }, async (t) => {
   const view = t.app.view;
-  const { top } = await bars(t);
-  await view.testId('lab-tab-swipe').click();
+  const { top } = await bars(t, rootOf('dots'));
   const state = view.testId('lab-kit-pager-state');
-  await expect(state).toHaveText('page=0');
+  await expect(state).toHaveAttribute('data-state', 'page=0');
   // Park a pager dot so its centre sits just under the bar's top edge and its upper part shows.
   const dot = view.testId('lab-kit-pager-view-dot-2');
   const center = (box: Box) => box.y + box.height / 2;
@@ -148,33 +144,33 @@ spec('a tap at an element partly under the tab bar lands on its visible part wit
   expect(center(parked)).toBeGreaterThan(top);
   await expect(dot).toBeInViewport();
   await (await view.touch(dot)).up();
-  await expect(state).toHaveText('page=2');
+  await expect(state).toHaveAttribute('data-state', 'page=2');
   expect((await dot.boundingBox()).y).toBe(parked.y);
 });
 
-spec('a relaunch onto a page outside the tab bar hides the bar and keeps no room for it, and back onto a tab page shows it', { start: { page: 'view-lab' } }, async (t) => {
+spec('a relaunch onto a page outside the tab bar hides the bar and keeps no room for it, and back onto a tab page shows it', { start: { page: 'view' } }, async (t) => {
   const before = await tabItems(t);
   console.log(`tab items readable before: ${before?.length ?? 'unsupported'}`);
-  await t.app.nav.relaunch({ page: 'motion-target' });
-  const page = t.app.view.testId('motion-lab');
+  await t.app.nav.relaunch(openDemo('press'));
+  const page = t.app.view.testId(rootOf('press'));
   await expect(page).toBeVisible();
   const inset = Number(await page.getAttribute('data-inset-bottom'));
   const safe = Number(await page.getAttribute('data-safe-bottom'));
   expect(inset, 'no room kept for a bar').toBe(safe);
   if (before?.length) await t.waitFor(() => tabItems(t), { until: items => items?.length === 0 });
-  await t.app.nav.relaunch({ page: 'view-lab' });
+  await t.app.nav.relaunch({ page: 'view' });
   await bars(t);
   if (before?.length) await t.waitFor(() => tabItems(t), { until: items => items?.length === before.length });
 });
 
 // Every tab page: at scroll end its last control rests above the bar; content passes under only while scrolling.
-spec('every tab page ends its content above the tab bar', { covers: ['view:scroll'], start: { page: 'view-lab' } }, async (t) => {
+spec('every tab page ends its content above the tab bar', { covers: ['view:scroll'], start: { page: 'view' } }, async (t) => {
   const view = t.app.view;
   const { inset } = await bars(t);
   const controls = 'button, input, select, textarea, checkbox, switch, slider, [role="button"], [role="link"]';
   for (const [name, root] of [
-    ['home', 'home-page'], ['api', 'api-page'], ['view-lab', 'view-lab'], ['motion-lab', 'motion-lab'],
-    ['perf-lab', 'perf-lab'], ['todo', 'todo-page'], ['surface', 'surface-page'],
+    ['home', 'home-page'], ['api', 'api-page'], ['view', 'view-index'], ['perf-lab', 'perf-lab'],
+    ['todo', 'todo-page'], ['surface', 'surface-page'],
   ]) {
     await t.app.nav.switchTab({ page: name });
     const page = view.testId(root);

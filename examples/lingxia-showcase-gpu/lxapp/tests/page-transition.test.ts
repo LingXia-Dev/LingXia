@@ -18,7 +18,7 @@ const slid = (slide: PageTransition, kind: PageTransition['kind']) => {
 
 spec('a push and a pop slide the GPU page on every display frame', {
   id: 'CHROME-PUSH-POP-001', covers: ['lx.navigateTo', 'lx.navigateBack'],
-  start: { page: 'view-lab' },
+  start: { page: 'view' },
 }, async (t) => {
   const app = t.app;
   const platform = await runtimePlatform(app);
@@ -29,9 +29,9 @@ spec('a push and a pop slide the GPU page on every display frame', {
   await t.attach('push', pushed.transition);
   slid(pushed.transition!, 'push');
 
-  const before = (await app.metrics({ page: 'view-lab' })).transition?.atMs ?? -1;
+  const before = (await app.metrics({ page: 'view' })).transition?.atMs ?? -1;
   await app.nav.back();
-  const popped = await t.waitFor(() => app.metrics({ page: 'view-lab' }), {
+  const popped = await t.waitFor(() => app.metrics({ page: 'view' }), {
     until: m => m.transition?.kind === 'pop' && m.transition.atMs !== before && m.transition.durationMs != null,
   });
   await t.attach('pop', popped.transition);

@@ -1,4 +1,5 @@
 import { expect, spec } from '@lingxia/test';
+import { openUnderTabs } from './open-demo';
 import { rawAutomation } from '@lingxia/test/runner';
 import { androidDevice, type AndroidNode } from '@lingxia/test/showcase/helpers/android-device.js';
 
@@ -12,7 +13,7 @@ const same = (a: number[], b: number[]) => a.every((channel, i) => Math.abs(chan
 spec('a float outlives its opener navigating away and stays above a page dialog', {
   id: 'SURFACE-FLOAT-STACK-001', covers: ['lx.surface.openPage', 'view:dialog'],
   requires: { args: ['androidDevice'] }, reason: 'reads the composited screen through the Android device fixture',
-  start: { page: 'view-lab' },
+  start: openUnderTabs('sheet'),
 }, async (t) => {
   const app = t.app;
   const device = androidDevice(t);
@@ -38,8 +39,7 @@ spec('a float outlives its opener navigating away and stays above a page dialog'
     const points = [...float.map(centre), page];
     const before = await device.pixels(points);
 
-    const lab = (await app.page({ name: 'view-lab' })).view;
-    await lab.testId('lab-tab-gesture').click();
+    const lab = (await app.page({ name: 'view' })).view;
     await lab.testId('lab-detents-open').click();
     await expect(lab.getByRole('dialog', { name: 'Places' })).toBeVisible();
     const after = await device.pixels(points);
@@ -110,7 +110,7 @@ async function decodePng(base64: string): Promise<{ width: number; height: numbe
 // page under a scrim rather than the float window's opaque snapshot.
 spec('a host screenshot shows the page dimmed around a modal float card', {
   id: 'SURFACE-FLOAT-SHOT-001', covers: ['lx.surface.openPage'],
-  start: { page: 'view-lab' },
+  start: { page: 'view' },
 }, async (t) => {
   const app = t.app;
   const os = await app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());

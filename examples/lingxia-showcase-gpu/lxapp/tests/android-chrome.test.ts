@@ -1,4 +1,5 @@
 import { expect, spec, type Fixture } from '@lingxia/test';
+import { openUnderTabs } from './open-demo';
 import { androidDevice, type AndroidNode } from '@lingxia/test/showcase/helpers/android-device.js';
 
 const centre = ({ bounds: [l, t, r, b] }: AndroidNode): [number, number] => [Math.round((l + r) / 2), Math.round((t + b) / 2)];
@@ -39,17 +40,16 @@ async function screenBox(t: Fixture, surface: AndroidNode, testId: string) {
 spec('the nav bar takes the GPU page palette in light and in dark on Android', {
   id: 'CHROME-NAV-PALETTE-ANDROID-001', covers: ['lx.host.control.appearance.setPreference'],
   reason: 'reads the composited screen through the Android device fixture',
-  start: { page: 'view-lab' },
+  start: openUnderTabs('dialog'),
 }, async (t) => {
   const app = t.app;
   const device = androidDevice(t);
   const previous = await app.logic.eval(({ lx }) => lx.host.control?.appearance.getPreference() ?? null);
   if (previous === null) t.skip('only the Control app sets the appearance');
-  await app.view.testId('lab-tab-feedback').click();
   const colours = async () => {
     const { title, width, surface } = await bars(device);
     // The Overlays card's heading row, short of its right edge: the card's own surface.
-    const card = await screenBox(t, surface, 'lab-overlays');
+    const card = await screenBox(t, surface, 'lab-dialog-demo');
     const [nav, own] = await device.pixels([
       [Math.round(width * 0.1), centre(title)[1]],
       [Math.round(card.right - 20 * card.scale), Math.round(card.top + 26 * card.scale)],
@@ -76,7 +76,7 @@ spec('the nav bar takes the GPU page palette in light and in dark on Android', {
 spec('a page dialog dims the nav and tab bars as it dims the page on Android', {
   id: 'TOP-LAYER-BARS-ANDROID-001', covers: ['view:dialog'],
   reason: 'reads the composited screen through the Android device fixture',
-  start: { page: 'view-lab' },
+  start: openUnderTabs('dialog'),
 }, async (t) => {
   const view = t.app.view;
   const device = androidDevice(t);
@@ -88,7 +88,6 @@ spec('a page dialog dims the nav and tab bars as it dims the page on Android', {
       await t.app.logic.eval(async ({ lx }, previous) => { await lx.host.control!.appearance.setPreference(previous); }, previous);
     });
   }
-  await view.testId('lab-tab-feedback').click();
   const { title, tab, surface } = await bars(device);
   // Points across the page's own view: in landscape a cutout keeps the window off the screen's edge.
   const [left, , right] = surface.bounds;

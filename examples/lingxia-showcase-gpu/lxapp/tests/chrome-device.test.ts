@@ -1,4 +1,5 @@
 import { expect, spec } from '@lingxia/test';
+import { openUnderTabs } from './open-demo';
 import { harmonyDevice, type HarmonyNode } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
 const centre = ({ bounds: [l, t, r, b] }: HarmonyNode): [number, number] => [Math.round((l + r) / 2), Math.round((t + b) / 2)];
@@ -11,13 +12,12 @@ spec.configure({ requires: { args: ['harmonyDevice'] } });
 spec('the nav bar takes the GPU page palette in light and in dark', {
   id: 'CHROME-NAV-PALETTE-001', covers: ['lx.host.control.appearance.setPreference'],
   reason: 'reads the composited screen through the Harmony device fixture',
-  start: { page: 'view-lab' },
+  start: openUnderTabs('dialog'),
 }, async (t) => {
   const app = t.app;
   const device = harmonyDevice(t);
   const previous = await app.logic.eval(({ lx }) => lx.host.control?.appearance.getPreference() ?? null);
   if (previous === null) t.skip('only the Control app sets the appearance');
-  await app.view.testId('lab-tab-feedback').click();
   const colours = async () => {
     const layout = await device.nodes();
     const title = layout.filter(node => ['View lab', '视图实验'].includes(node.text)).sort((a, b) => a.bounds[1] - b.bounds[1])[0];

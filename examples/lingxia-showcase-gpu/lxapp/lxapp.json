@@ -90,10 +90,6 @@
       "path": "pages/pulltorefresh/index"
     },
     {
-      "name": "view-lab",
-      "path": "pages/view-lab/index"
-    },
-    {
       "name": "view",
       "path": "pages/view/index"
     },
@@ -150,10 +146,6 @@
       "path": "pages/view-appearance/index"
     },
     {
-      "name": "motion-lab",
-      "path": "pages/motion-lab/index"
-    },
-    {
       "name": "motion-target",
       "path": "pages/motion-target/index"
     },
@@ -202,16 +194,8 @@
           "default": "View Lab",
           "zh-CN": "实验室"
         },
-        "page": "view-lab",
+        "page": "view",
         "iconPath": "public/tab-lab.svg"
-      },
-      {
-        "text": {
-          "default": "Motion",
-          "zh-CN": "动效"
-        },
-        "page": "motion-lab",
-        "iconPath": "public/tab-motion.svg"
       },
       {
         "text": {

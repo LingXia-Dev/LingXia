@@ -9,7 +9,7 @@ const same = (a: number[], b: number[]) => a.every((channel, i) => Math.abs(chan
 spec('a modal float draws its GPU page in its own window', {
   id: 'SURFACE-FLOAT-HARMONY-001', covers: ['lx.surface.openPage'],
   requires: { args: ['harmonyDevice'] }, reason: 'reads the composited screen through the Harmony device fixture',
-  start: { page: 'view-lab' },
+  start: { page: 'view' },
 }, async (t) => {
   const app = t.app;
   const device = harmonyDevice(t);

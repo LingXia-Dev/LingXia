@@ -1,4 +1,5 @@
 import { expect, spec } from '@lingxia/test';
+import { openDemo, openUnderTabs } from './open-demo';
 import { harmonyDevice, type HarmonyNode } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
 const centre = ({ bounds: [l, t, r, b] }: HarmonyNode): [number, number] => [Math.round((l + r) / 2), Math.round((t + b) / 2)];
@@ -12,11 +13,10 @@ spec.configure({ requires: { args: ['harmonyDevice'] } });
 spec('a page dialog dims the nav and tab bars as it dims the page', {
   id: 'TOP-LAYER-BARS-001', covers: ['view:dialog'],
   reason: 'reads the composited screen through the Harmony device fixture',
-  start: { page: 'view-lab' },
+  start: openUnderTabs('dialog'),
 }, async (t) => {
   const view = t.app.view;
   const device = harmonyDevice(t);
-  await view.testId('lab-tab-feedback').click();
   const layout = await device.nodes();
   const one = (labels: string[], pick: (nodes: HarmonyNode[]) => HarmonyNode | undefined) => {
     const node = pick(layout.filter(node => labels.includes(node.text)));
@@ -52,21 +52,20 @@ spec('a page dialog dims the nav and tab bars as it dims the page', {
 spec('the system back gesture closes an open dialog and leaves the page where it was', {
   id: 'TOP-LAYER-BACK-001', covers: ['view:dialog'],
   reason: 'performs the system back gesture through the Harmony device fixture',
-  start: { page: 'view-lab' },
+  start: openDemo('dialog'),
 }, async (t) => {
   const view = t.app.view;
   const device = harmonyDevice(t);
-  await view.testId('lab-tab-feedback').click();
-  const last = await view.testId('lab-overlay-last').textContent();
+  const last = await view.testId('lab-dialog-last').textContent();
   for (const [open, name] of [['lab-overlay-confirm', 'Delete note?'], ['lab-overlay-sheet', 'Filters']] as const) {
     await view.testId(open).click();
     const dialog = view.getByRole('dialog', { name });
     await expect(dialog).toBeVisible();
     await device.edgeBack();
     await expect(dialog).not.toBeAttached();
-    expect((await t.app.nav.current()).name, `back after "${name}" stays on the page`).toBe('view-lab');
+    expect((await t.app.nav.current()).name, `back after "${name}" stays on the page`).toBe('view-overlays');
     // Back cancels without choosing an action.
-    await expect(view.testId('lab-overlay-last')).toHaveText(last ?? '');
+    await expect(view.testId('lab-dialog-last')).toHaveText(last ?? '');
   }
 });
 
@@ -75,11 +74,10 @@ spec('the system back gesture closes an open dialog and leaves the page where it
 spec('a finger on the covered tab bar strip in full screen stays with the video', {
   id: 'TOP-LAYER-BARS-002', covers: ['view:dialog'],
   reason: 'taps through the system input path of the Harmony device fixture',
-  start: { page: 'view-lab', query: { media: 'packaged' } },
+  start: { page: 'view', query: { spec: 'video', media: 'packaged' } },
 }, async (t) => {
   const view = t.app.view;
   const device = harmonyDevice(t);
-  await view.testId('lab-tab-media').click();
   await view.testId('lab-video-controls-fullscreen').click();
   const layer = view.testId('lab-video-controls-fullscreen-view');
   await expect(layer).toBeVisible();
@@ -87,17 +85,15 @@ spec('a finger on the covered tab bar strip in full screen stays with the video'
   await expect.poll(async () => { const area = await view.viewport(); return area.width > area.height; }, { timeout: 5_000 }).toBe(true);
   await new Promise<void>(resolve => setTimeout(() => resolve(), 500));
   // The tab items still lie under the layer: a finger on each label, More included.
-  const labels = ['Home', '首页', 'API', '接口', 'Motion', '动效', 'More', '更多'];
+  const labels = ['Home', '首页', 'API', '接口', 'Perf', '性能', 'ToDo', '待办'];
   const items = (await device.nodes()).filter(node => labels.includes(node.text));
   expect(items.length, 'the covered tab labels').toBe(4);
   for (const item of items) {
     await device.click(...centre(item));
     await new Promise<void>(resolve => setTimeout(() => resolve(), 400));
   }
-  expect((await t.app.nav.current()).name).toBe('view-lab');
+  expect((await t.app.nav.current()).name).toBe('view');
   await expect(layer).toBeVisible();
-  // More's panel lists the tabs past the bar.
-  expect((await device.nodes()).some(node => ['ToDo', '待办'].includes(node.text)), 'More stays closed').toBe(false);
   await view.testId('lab-video-controls-full-fullscreen').click();
   await expect(layer).not.toBeAttached();
   await expect.poll(async () => { const area = await view.viewport(); return area.height > area.width; }, { timeout: 5_000 }).toBe(true);
