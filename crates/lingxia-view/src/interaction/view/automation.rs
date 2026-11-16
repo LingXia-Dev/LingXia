@@ -138,11 +138,24 @@ impl ViewInteraction {
             });
             return Ok(vec![Effect::Dispatch]);
         }
+        // Typing with no selector goes to the editor that holds the input method.
+        let held = (selector.is_empty() && matches!(act, AutomationAct::Type(_))).then(|| {
+            self.frame.as_ref().and_then(|frame| {
+                frame.nodes.iter().position(|node| {
+                    node.input
+                        .as_ref()
+                        .is_some_and(|input| input.edit_token.is_some_and(|token| token > 0))
+                })
+            })
+        });
         let (id, value, enabled, editable, visible, in_viewport) = {
             let projection = self
                 .semantics()
                 .ok_or("E_PAGE_NOT_READY: no presented frame")?;
-            let matches = query::select(&projection, selector)?;
+            let matches = match held {
+                Some(editor) => vec![editor.ok_or("Element not found: no editor has focus")?],
+                None => query::select(&projection, selector)?,
+            };
             let position = index.unwrap_or(0);
             let mut node = *matches
                 .get(position)

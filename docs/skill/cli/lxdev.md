@@ -79,6 +79,8 @@ The selected session's native host window, when the target is not a page.
   raises its own window, so no Accessibility grant is needed
 - `screenshot` — the full host surface, native controls included
 - `mouse move|down|up|click|drag|scroll`, `key type|press`
+  — on a GPU page `key` goes to the focused element without raising the window;
+  only Shift chords exist there, and `--window` takes the native path
 - `applink <url>` — inject an inbound link ([App links](../app/applinks.md#testing))
 
 Screenshot JSON returns `window_id`, content size, and pixel scale. Mouse

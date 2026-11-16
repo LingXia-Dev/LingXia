@@ -25,6 +25,42 @@ fn interaction(render: &str) -> ViewInteraction {
 const PAGE: &str = "h('view',{},h('text',{'data-testid':'title',role:'heading',headingLevel:1},'Bills'),h('button',{'data-testid':'pay',onClick(){}},'Pay now'),h('button',{'data-testid':'off',disabled:true},'Later'),h('input',{'data-testid':'amount','aria-label':'Amount',value:'12'}),h('view',{'data-testid':'gone','aria-hidden':true},h('text',{},'x')),h('text',{},'Read ',h('link',{onClick(){}},'terms')))";
 
 #[test]
+fn typing_with_no_selector_reaches_the_editor_that_holds_focus() {
+    let page = PageTicket::new(1);
+    let mut idle = interaction(PAGE);
+    let refused = idle.automate("", None, AutomationAct::Type("3".into()), false, page);
+    assert!(refused.unwrap_err().ends_with("no editor has focus"));
+
+    let source = crate::session::tests::source(&format!("function render(){{return {PAGE}}}"));
+    let mut session = crate::ViewSession::new(&source).unwrap();
+    let mut display = session.layout(300, 400, 1.0).unwrap();
+    for node in &mut display.nodes {
+        if let Some(input) = &mut node.input {
+            input.edit_token = Some(1);
+        }
+    }
+    let mut focused = ViewInteraction::default();
+    focused.presented(
+        Arc::new(PresentedFrame::new(
+            CommitTicket::new(1),
+            1.0,
+            display.nodes,
+        )),
+        0,
+        &Default::default(),
+        page,
+    );
+    let effects = focused
+        .automate("", None, AutomationAct::Type("34".into()), false, page)
+        .unwrap();
+    assert!(
+        effects
+            .iter()
+            .any(|e| matches!(e, Effect::EditText { text: Some(t), .. } if t == "1234"))
+    );
+}
+
+#[test]
 fn locators_match_test_ids_roles_names_and_tags_in_reading_order() {
     let i = interaction(PAGE);
     let one = |selector: &str| i.automation_query(selector, None, false, None).unwrap();

@@ -587,6 +587,25 @@ pub(crate) async fn perform_app_keyboard(
     use lingxia_platform::traits::keyboard::AppKeyboard;
     let platform =
         lxapp::get_platform().ok_or_else(|| "platform is not initialized".to_string())?;
+    // A GPU page takes keys in-process: the platform path makes the window key and front.
+    let (appid, _, _) = lxapp::get_current_lxapp();
+    if request.window_id.is_none()
+        && let Some(app) = lxapp::try_get(&appid)
+        && auto::page_is_gpu(&app, None)
+    {
+        use lingxia_platform::traits::keyboard::AppKeyboardResult;
+        use lingxia_platform::traits::screenshot::AppScreenshot;
+        auto::gpu_page_keyboard(&app, &request.action).await?;
+        let window = platform
+            .resolve_app_window(None)
+            .await
+            .map_err(|err| err.to_string())?;
+        return Ok(AppKeyboardResult {
+            window_id: window.id,
+            action: request.action.kind().to_owned(),
+            modifier_reliability: None,
+        });
+    }
     platform
         .perform_app_keyboard(request)
         .await

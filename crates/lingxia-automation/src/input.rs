@@ -294,71 +294,6 @@ impl JSPageKey {
     }
 }
 
-/// A window key press as the DOM key name a GPU page's focused element takes. A GPU page
-/// is driven in-process so a covered window is never activated; only Shift chords exist there.
-fn gpu_key_name(key: &str, modifiers: &[keyboard::AppKeyboardModifier]) -> Result<String, String> {
-    let mut shift = false;
-    for modifier in modifiers {
-        match modifier {
-            keyboard::AppKeyboardModifier::Shift => shift = true,
-            other => {
-                return Err(format!(
-                    "E_UNSUPPORTED: modifier {other:?} on a GPU page; press the control's key directly"
-                ));
-            }
-        }
-    }
-    let key = key.trim();
-    let name = match key.to_ascii_lowercase().as_str() {
-        "return" | "enter" => "Enter",
-        "tab" => "Tab",
-        "escape" | "esc" => "Escape",
-        "space" => "Space",
-        "left" | "arrowleft" => "ArrowLeft",
-        "right" | "arrowright" => "ArrowRight",
-        "up" | "arrowup" => "ArrowUp",
-        "down" | "arrowdown" => "ArrowDown",
-        "home" => "Home",
-        "end" => "End",
-        "pageup" => "PageUp",
-        "pagedown" => "PageDown",
-        _ if key.chars().count() == 1 => key,
-        _ => return Err(format!("E_UNSUPPORTED: key {key:?} on a GPU page")),
-    };
-    Ok(if shift {
-        format!("Shift+{name}")
-    } else {
-        name.to_owned()
-    })
-}
-
-#[cfg(test)]
-mod gpu_key_tests {
-    use super::gpu_key_name;
-    use lingxia_platform::traits::keyboard::AppKeyboardModifier;
-
-    #[test]
-    fn window_key_names_map_to_the_gpu_page_vocabulary() {
-        assert_eq!(gpu_key_name("return", &[]).unwrap(), "Enter");
-        assert_eq!(gpu_key_name("down", &[]).unwrap(), "ArrowDown");
-        assert_eq!(gpu_key_name("ArrowLeft", &[]).unwrap(), "ArrowLeft");
-        assert_eq!(gpu_key_name("End", &[]).unwrap(), "End");
-        assert_eq!(gpu_key_name("s", &[]).unwrap(), "s");
-        assert_eq!(
-            gpu_key_name("tab", &[AppKeyboardModifier::Shift]).unwrap(),
-            "Shift+Tab"
-        );
-    }
-
-    #[test]
-    fn a_chord_a_gpu_page_cannot_take_is_refused_not_sent_to_the_window() {
-        let err = gpu_key_name("a", &[AppKeyboardModifier::Command]).unwrap_err();
-        assert!(err.starts_with("E_UNSUPPORTED"), "{err}");
-        let err = gpu_key_name("backspace", &[]).unwrap_err();
-        assert!(err.starts_with("E_UNSUPPORTED"), "{err}");
-    }
-}
-
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
     use super::windows_window_id_matches;
@@ -426,7 +361,7 @@ impl JSPageKey {
         let modifiers = keyboard_modifiers(&o.modifiers)?;
         if let Some(app) = self.gpu_app() {
             require_host_context(&ctx)?;
-            let key = gpu_key_name(&o.key, &modifiers).map_err(auto_err)?;
+            let key = lxapp::automation::gpu_key_name(&o.key, &modifiers).map_err(auto_err)?;
             lxapp::automation::page_press(&app, None, &key, None, None)
                 .await
                 .map_err(auto_err)?;

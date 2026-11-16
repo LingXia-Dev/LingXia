@@ -714,6 +714,90 @@ pub async fn page_press(
         .map_err(|err| err.to_string())
 }
 
+/// A window-level key request on the current GPU page, run in-process: its window is never
+/// made key or brought forward. Text goes to the editor that has focus.
+pub async fn gpu_page_keyboard(
+    app: &Arc<LxApp>,
+    action: &lingxia_platform::traits::keyboard::AppKeyboardAction,
+) -> Result<(), String> {
+    use lingxia_platform::traits::keyboard::AppKeyboardAction;
+    match action {
+        AppKeyboardAction::Press { key, modifiers } => {
+            let key = gpu_key_name(key, modifiers)?;
+            page_press(app, None, &key, None, None).await
+        }
+        AppKeyboardAction::Type { text, .. } => page_type(app, None, "", None, text).await,
+    }
+}
+
+/// A window key press as the DOM key name a GPU page's focused element takes. A GPU page
+/// is driven in-process so a covered window is never activated; only Shift chords exist there.
+pub fn gpu_key_name(
+    key: &str,
+    modifiers: &[lingxia_platform::traits::keyboard::AppKeyboardModifier],
+) -> Result<String, String> {
+    let mut shift = false;
+    for modifier in modifiers {
+        match modifier {
+            lingxia_platform::traits::keyboard::AppKeyboardModifier::Shift => shift = true,
+            other => {
+                return Err(format!(
+                    "E_UNSUPPORTED: modifier {other:?} on a GPU page; press the control's key directly"
+                ));
+            }
+        }
+    }
+    let key = key.trim();
+    let name = match key.to_ascii_lowercase().as_str() {
+        "return" | "enter" => "Enter",
+        "tab" => "Tab",
+        "escape" | "esc" => "Escape",
+        "space" => "Space",
+        "left" | "arrowleft" => "ArrowLeft",
+        "right" | "arrowright" => "ArrowRight",
+        "up" | "arrowup" => "ArrowUp",
+        "down" | "arrowdown" => "ArrowDown",
+        "home" => "Home",
+        "end" => "End",
+        "pageup" => "PageUp",
+        "pagedown" => "PageDown",
+        _ if key.chars().count() == 1 => key,
+        _ => return Err(format!("E_UNSUPPORTED: key {key:?} on a GPU page")),
+    };
+    Ok(if shift {
+        format!("Shift+{name}")
+    } else {
+        name.to_owned()
+    })
+}
+
+#[cfg(test)]
+mod gpu_key_tests {
+    use super::gpu_key_name;
+    use lingxia_platform::traits::keyboard::AppKeyboardModifier;
+
+    #[test]
+    fn window_key_names_map_to_the_gpu_page_vocabulary() {
+        assert_eq!(gpu_key_name("return", &[]).unwrap(), "Enter");
+        assert_eq!(gpu_key_name("down", &[]).unwrap(), "ArrowDown");
+        assert_eq!(gpu_key_name("ArrowLeft", &[]).unwrap(), "ArrowLeft");
+        assert_eq!(gpu_key_name("End", &[]).unwrap(), "End");
+        assert_eq!(gpu_key_name("s", &[]).unwrap(), "s");
+        assert_eq!(
+            gpu_key_name("tab", &[AppKeyboardModifier::Shift]).unwrap(),
+            "Shift+Tab"
+        );
+    }
+
+    #[test]
+    fn a_chord_a_gpu_page_cannot_take_is_refused_not_sent_to_the_window() {
+        let err = gpu_key_name("a", &[AppKeyboardModifier::Command]).unwrap_err();
+        assert!(err.starts_with("E_UNSUPPORTED"), "{err}");
+        let err = gpu_key_name("backspace", &[]).unwrap_err();
+        assert!(err.starts_with("E_UNSUPPORTED"), "{err}");
+    }
+}
+
 /// Capture a PNG screenshot of the target page's WebView.
 pub async fn page_screenshot(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Vec<u8>, String> {
     if let Some(page) = gpu::backend(app, page_name)? {
