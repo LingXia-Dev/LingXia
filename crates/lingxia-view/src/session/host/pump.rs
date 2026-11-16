@@ -1,7 +1,7 @@
 //! Frame sequencing: sample, prepare on the worker, present on vsync, then run
 //! the presented frame's effects, reach, images and animation wakeup.
 use super::environment::HostEnvironment;
-use super::{FrameSnapshot, FrameTiming, Guard, Inner};
+use super::{FrameSnapshot, FrameTiming, Guard, Inner, STALL_AFTER};
 use crate::interaction::frame::PresentedFrame;
 use crate::platform::{FrameEnvironment, PlatformAdapter};
 use crate::session::lifecycle::{CommitTicket, PageTicket, SurfaceTicket};
@@ -176,13 +176,14 @@ impl<A: PlatformAdapter> Inner<A> {
                 return;
             }
             match main.stalled_at {
-                Some(size) if size == (environment.width, environment.height) => {
+                Some(stall) if stall == super::stall_key(&environment) => {
                     main.pending = false;
                     return;
                 }
                 Some(_) => {
                     main.stalled_at = None;
                     main.failure_repeats = 0;
+                    main.panics = 0;
                 }
                 None => {}
             }
@@ -308,6 +309,15 @@ impl<A: PlatformAdapter> Inner<A> {
                 let input = inner.run_input(session);
                 request.rebuild |= input.changed;
                 let rebuild = request.rebuild;
+                #[cfg(test)]
+                {
+                    let mut main = inner.main();
+                    if main.prepare_panics > 0 {
+                        main.prepare_panics -= 1;
+                        drop(main);
+                        panic!("test fault while preparing");
+                    }
+                }
                 let prepared = inner.prepare(session, request, now);
                 let reads = session.reads_host_context();
                 {
@@ -721,6 +731,29 @@ impl<A: PlatformAdapter> Inner<A> {
             }
             return;
         }
+        // A panic over one sample of an animation is a dropped frame too; in a row it is a failure.
+        let panicked = error
+            .as_deref()
+            .is_some_and(|error| error.starts_with(crate::session::PANIC))
+            && self.lifecycle.is_current_page(page)
+            && self.lifecycle.is_current_surface(surface);
+        if panicked {
+            let run = {
+                let mut main = self.main();
+                main.dirty = true;
+                if main.disposed || main.snapshot.is_none() {
+                    0
+                } else {
+                    main.panics += 1;
+                    main.panics
+                }
+            };
+            if (1..STALL_AFTER).contains(&run) {
+                self.adapter
+                    .warn(&format!("{}; the frame is dropped", error.unwrap_or_default()));
+                return self.schedule();
+            }
+        }
         let (pending, effects) = {
             let mut main = self.main();
             main.dirty = true;
@@ -737,7 +770,8 @@ impl<A: PlatformAdapter> Inner<A> {
             && self.lifecycle.is_current_page(page)
             && self.lifecycle.is_current_surface(surface)
         {
-            self.fail(error);
+            // The third panic in a row stalls: the count already says it repeats.
+            self.fail_with(error, panicked && self.main().panics >= STALL_AFTER);
         }
         if pending {
             self.schedule();
@@ -1051,6 +1085,7 @@ impl<A: PlatformAdapter> Inner<A> {
             if recovered {
                 main.failure_repeats = 0;
             }
+            main.panics = 0;
             let presented =
                 main.interaction
                     .presented(snapshot.frame.clone(), revision, &offsets, page);

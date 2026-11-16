@@ -5303,6 +5303,8 @@ mod submenu;
 mod close_request;
 #[path = "failed_first_frame.rs"]
 mod failed_first_frame;
+#[path = "failed_page.rs"]
+mod failed_page;
 #[path = "tree_keys.rs"]
 mod tree_keys;
 #[path = "range_slider.rs"]

@@ -311,6 +311,8 @@ impl<A: PlatformAdapter> Inner<A> {
             "reveal": main.reveal.metrics(telemetry.opened),
             "transition": telemetry.transition_metrics(),
             "budget": { "overruns": telemetry.overruns },
+            "failure": main.failure.as_ref().map(|failure| failure.error.as_str()),
+            "stalled": main.stalled_at.is_some(),
             "hud": main.hud,
             // What the page renders for (`env.pointer`), so specs can require one.
             "pointer": main

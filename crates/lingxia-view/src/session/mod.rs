@@ -150,6 +150,8 @@ pub struct ClickRecord {
 
 /// Prefix of a frame dropped for finishing past its budget; the page keeps running.
 pub const OVERRUN: &str = "UI_OVERRUN:";
+/// Prefix of a failure that was a caught panic in native code.
+pub(crate) const PANIC: &str = "UI_RENDER: native panic";
 /// A frame asked to build ahead while two frames already wait under it.
 pub(crate) const AHEAD_REFUSED: &str = "UI_ANIMATION: two frames already wait for presentation";
 

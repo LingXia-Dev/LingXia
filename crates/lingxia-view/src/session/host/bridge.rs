@@ -121,6 +121,7 @@ impl<A: PlatformAdapter> Inner<A> {
             self.adapter.bootstrap_overdue(false);
         }
         if update.changed {
+            self.revive();
             self.main().dirty = true;
             self.schedule();
         }

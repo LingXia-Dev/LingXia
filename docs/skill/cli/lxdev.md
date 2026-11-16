@@ -53,8 +53,10 @@ The lxapps and pages in the session. Commands target the current lxapp
   `page press KEY [SELECTOR]`, `page scroll|back`
 - `page tree`, `page find ROLE [--name NAME]` — the accessibility tree (role, name, test id,
   state, bounds); every page command reaches GPU pages too
-- `page frame` — a GPU page's presentation counters (frames, queue and eval time, image cache, reveal)
-- `page screenshot` — PNG of one page's WebView
+- `page frame` — a GPU page's presentation counters (frames, queue and eval time, image cache,
+  reveal); `failure` and `stalled` say when it stopped rendering
+- `page screenshot` — PNG of one page. On a Runner a GPU page's is the simulated device's pixels,
+  viewport × the preset's pixel ratio (iPhone 15 Pro: 1179 × 2556), on any Mac screen
 
 ## `lxdev runner`
 

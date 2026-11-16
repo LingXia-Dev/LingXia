@@ -589,6 +589,7 @@ impl<A: PlatformAdapter> Inner<A> {
             }
         }
         // A frame starting now runs the input first; this job runs it if no frame did.
+        self.revive();
         self.schedule();
         self.work(
             Guard::Page(page),

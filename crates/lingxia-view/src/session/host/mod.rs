@@ -32,6 +32,7 @@ pub use hot_swap::{SwapReporter, set_swap_reporter};
 mod autoclose;
 mod images;
 mod interest;
+mod panics;
 mod pump;
 mod reveal;
 mod snap;
@@ -55,6 +56,29 @@ const CARET_BLINK: Duration = Duration::from_millis(500);
 /// The same failure this many times in a row stops rendering until a retry or a new size: a
 /// deterministic error would otherwise re-render and fail at frame rate.
 const STALL_AFTER: u32 = 3;
+
+fn failure_answer(failure: &Failure) -> String {
+    if failure.retained {
+        format!("E_PAGE_FAILED: the page stopped rendering: {}", failure.error)
+    } else {
+        format!(
+            "E_PAGE_FAILED: the page failed before its first frame: {}",
+            failure.error
+        )
+    }
+}
+
+/// The surface size and look a page stalled under: theme dark, high contrast.
+type Stall = (u16, u16, bool, bool);
+
+fn stall_key(environment: &FrameEnvironment) -> Stall {
+    (
+        environment.width,
+        environment.height,
+        environment.value["theme"] == "dark",
+        environment.value["highContrast"] == true,
+    )
+}
 
 /// A presented frame as the adapter sees it.
 pub struct FrameSnapshot {
@@ -404,14 +428,19 @@ struct Main<F> {
     last_build: Duration,
     #[cfg(test)]
     no_frames_ahead: bool,
+    /// How many of the next frames panic while they are prepared.
+    #[cfg(test)]
+    prepare_panics: u32,
     /// A fake presenter's modelled build time, which the worker clock does not see.
     #[cfg(test)]
     modelled_build: Option<Duration>,
     failure: Option<Failure>,
     /// How many times in a row the current failure's error repeated.
     failure_repeats: u32,
-    /// The target size rendering stalled at after repeated failures; another size renders again.
-    stalled_at: Option<(u16, u16)>,
+    /// Frames in a row dropped because preparing them panicked.
+    panics: u32,
+    /// Where rendering stalled after repeated failures; another size or look renders again.
+    stalled_at: Option<Stall>,
     styled_press: Option<String>,
     styled_hover: Option<String>,
     interest: interest::Interest,
@@ -621,9 +650,12 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     #[cfg(test)]
                     no_frames_ahead: false,
                     #[cfg(test)]
+                    prepare_panics: 0,
+                    #[cfg(test)]
                     modelled_build: None,
                     failure: None,
                     failure_repeats: 0,
+                    panics: 0,
                     stalled_at: None,
                     styled_press: None,
                     styled_hover: None,
@@ -821,6 +853,17 @@ impl<A: PlatformAdapter> ViewHost<A> {
     #[cfg(test)]
     pub(crate) fn disable_frames_ahead(&self) {
         self.inner.main().no_frames_ahead = true;
+    }
+
+    /// The next `frames` frames panic while they are prepared.
+    #[cfg(test)]
+    pub(crate) fn panic_preparing(&self, frames: u32) {
+        self.inner.main().prepare_panics = frames;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn panics_left(&self) -> u32 {
+        self.inner.main().prepare_panics
     }
 
     /// Ahead frames the session refused because two frames already waited.
@@ -1412,12 +1455,12 @@ impl<A: PlatformAdapter> ViewHost<A> {
         use crate::interaction::view::AutomationAct;
         let css = request["css"].as_str().unwrap_or_default();
         let index = request["index"].as_u64().map(|i| i as usize);
-        // A page that failed before it presented anything never becomes ready: a caller
-        // waiting for a frame hears why at once.
+        // No frame is coming from a page that stalled or sits under recovery chrome: a caller
+        // waiting for one hears why at once.
         if matches!(
             request["op"].as_str(),
-            Some("query" | "act" | "tree" | "action" | "data")
-        ) && let Some(error) = self.first_frame_failure()
+            Some("query" | "act" | "tree" | "action" | "data" | "result")
+        ) && let Some(error) = self.page_failure()
         {
             return Err(error);
         }
@@ -1531,6 +1574,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
             self.inner.blink(timer);
         }
         if changed {
+            self.inner.revive();
             self.environment_changed();
         }
         Ok(self.test_environment_answer())
@@ -1793,11 +1837,20 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// What automation hears from a page that failed before presenting a frame.
     pub fn first_frame_failure(&self) -> Option<String> {
         let main = self.inner.main();
-        let failure = main.failure.as_ref().filter(|failure| !failure.retained)?;
-        Some(format!(
-            "E_PAGE_FAILED: the page failed before its first frame: {}",
-            failure.error
-        ))
+        main.failure
+            .as_ref()
+            .filter(|failure| !failure.retained)
+            .map(failure_answer)
+    }
+
+    /// What automation hears from a page no frame is coming from: rendering stalled, or
+    /// recovery chrome covers it. A failure that still retries under its kept frame is `None`.
+    pub fn page_failure(&self) -> Option<String> {
+        let main = self.inner.main();
+        main.failure
+            .as_ref()
+            .filter(|failure| main.stalled_at.is_some() || failure.covers_page())
+            .map(failure_answer)
     }
 
     /// An input-method protocol request; `reply` runs on the main thread with
@@ -1881,13 +1934,14 @@ impl<A: PlatformAdapter> Inner<A> {
     ) {
         let inner = self.clone();
         let run = move |app: &mut crate::ViewApp| {
+            panics::watch();
             let result = inner.current(guard).then(|| {
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let id = (*inner.page.lock().unwrap_or_else(|p| p.into_inner()))
                         .ok_or("UI_SESSION: page not loaded")?;
                     job(&inner, app.page(id)?)
                 }))
-                .unwrap_or_else(|_| Err("UI_RENDER: native panic".into()))
+                .unwrap_or_else(|panic| Err(panics::describe(panic)))
             });
             let host = inner.clone();
             inner.adapter.post(Box::new(move || done(&host, result)));
@@ -1912,6 +1966,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.bootstrap_timer += 1;
             main.failure = None;
             main.failure_repeats = 0;
+            main.panics = 0;
             main.stalled_at = None;
             let page = self.lifecycle.load();
             main.telemetry.opened(self.adapter.now());
@@ -1964,7 +2019,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 *slot = Some(app.create_with_console(&source, logic, Some(console))?);
                 Ok(true)
             }))
-            .unwrap_or_else(|_| Err("UI_RENDER: native panic".into()));
+            .unwrap_or_else(|panic| Err(panics::describe(panic)));
             let host = inner.clone();
             inner.adapter.post(Box::new(move || match result {
                 Ok(true) if !host.main().disposed && host.lifecycle.loaded(page) => {
@@ -1990,6 +2045,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.bootstrap_timer += 1;
             main.failure = None;
             main.failure_repeats = 0;
+            main.panics = 0;
             main.stalled_at = None;
             main.telemetry.stats.abandon_reveal();
             let page = self.lifecycle.park();
@@ -2157,6 +2213,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let mut main = self.main();
             main.stalled_at = None;
             main.failure_repeats = 0;
+            main.panics = 0;
         }
         match failure.recovery.retry {
             Retry::None => {}
@@ -2178,9 +2235,25 @@ impl<A: PlatformAdapter> Inner<A> {
         }
     }
 
+    /// One more attempt for a stalled page, after a change that could cure it; a failure of
+    /// that attempt stalls again at once.
+    fn revive(self: &Arc<Self>) {
+        let mut main = self.main();
+        if main.stalled_at.take().is_some() {
+            main.failure_repeats = STALL_AFTER - 1;
+            main.panics = STALL_AFTER - 1;
+            main.dirty = true;
+        }
+    }
+
     /// Record a failure, stop scheduling and show recovery chrome.
     fn fail(self: &Arc<Self>, error: String) {
-        let (failure, effects, repeats) = {
+        self.fail_with(error, false);
+    }
+
+    /// `stall` stops rendering now instead of after the failure repeats.
+    fn fail_with(self: &Arc<Self>, error: String, stall: bool) {
+        let (failure, effects, repeats, shown) = {
             let mut main = self.main();
             if main.disposed {
                 return;
@@ -2193,16 +2266,15 @@ impl<A: PlatformAdapter> Inner<A> {
                 .failure
                 .as_ref()
                 .is_some_and(|last| last.error == error);
-            main.failure_repeats = if repeated {
+            main.failure_repeats = if stall {
+                STALL_AFTER
+            } else if repeated {
                 main.failure_repeats + 1
             } else {
                 1
             };
             if main.failure_repeats >= STALL_AFTER {
-                main.stalled_at = self
-                    .adapter
-                    .environment()
-                    .map(|environment| (environment.width, environment.height));
+                main.stalled_at = self.adapter.environment().as_ref().map(stall_key);
             }
             let recovery = self.lifecycle.fail(&error);
             let effects = if recovery.kind == FailureKind::Session {
@@ -2214,7 +2286,7 @@ impl<A: PlatformAdapter> Inner<A> {
             };
             let failure = Failure::new(error, recovery, main.snapshot.is_some());
             main.failure = Some(failure.clone());
-            (failure, effects, main.failure_repeats)
+            (failure, effects, main.failure_repeats, repeated)
         };
         if failure.recovery.kind == FailureKind::Session {
             self.adapter.reset();
@@ -2222,14 +2294,16 @@ impl<A: PlatformAdapter> Inner<A> {
         self.deliver(effects);
         self.adapter.bootstrap_overdue(false);
         // A repeat is already shown and logged; the stall is said once.
-        if repeats == 1 {
-            self.adapter.warn(&failure.error);
+        if !shown {
             self.adapter.recovery(Some(&failure));
-        } else if repeats == STALL_AFTER {
+        }
+        if repeats == STALL_AFTER {
             self.adapter.warn(&format!(
                 "{} (failed {STALL_AFTER} times in a row; rendering stops until a retry)",
                 failure.error
             ));
+        } else if !shown {
+            self.adapter.warn(&failure.error);
         }
         self.revealed_by_failure();
     }
