@@ -4,13 +4,16 @@
 //
 //   node scripts/visual-baseline.mjs capture   run the capture spec per preset into gallery/.baseline/current
 //   node scripts/visual-baseline.mjs check     compare current with reference; exit 1 past the threshold
-//   node scripts/visual-baseline.mjs accept    make current the reference and rewrite the manifest
+//   node scripts/visual-baseline.mjs accept    make current the reference and rewrite the manifest;
+//                                              it needs a second capture, `--into confirm`, that agrees
 //
 //   --into <name>       capture into gallery/.baseline/<name> instead of current
 //   --against <name>    check current (or --into) against gallery/.baseline/<name>, a capture kept
 //                       aside, with no manifest: a before and an after of one change
 //   --tolerance <n>, --share <x>   with --against: a finer or coarser comparison than the gate's
 //   --gallery <dir>     another copy of the gallery, such as one scripts/gallery-with-pack.mjs wrote
+//   --presets <a,b>     only these size presets, for a capture and what is accepted from it
+//   --confirm <name>    with accept: the second capture to hold current against (default confirm)
 //
 // The pictures stay out of git (gallery/.baseline); gallery/baseline.manifest.json, which is
 // committed, records what was accepted: each picture's size and hash, and the host that drew it.
@@ -30,7 +33,7 @@ const into = option('into') ?? 'current';
 const root = join(gallery, '.baseline');
 const manifestPath = join(gallery, 'baseline.manifest.json');
 // A phone and a desk: the two forms every page has.
-const presets = ['iphone-15-pro', 'desktop-1280'];
+const presets = option('presets')?.split(',') ?? ['iphone-15-pro', 'desktop-1280'];
 // A pixel differs when any channel is further than this from the reference; a picture fails when
 // more than this share of its pixels differ. Text edges move by a shade between runs; layout does not.
 const channelTolerance = 12;
@@ -75,9 +78,35 @@ function* walk(dir) {
 const pictures = which => presets.flatMap(preset => (existsSync(join(root, which, preset)) ? readdirSync(join(root, which, preset)).filter(name => name.endsWith('.png')).sort().map(name => `${preset}/${name}`) : []));
 const hash = path => createHash('sha256').update(readFileSync(path)).digest('hex');
 
+// The share of two pictures' pixels that differ by more than `tolerance` in a channel; 1 when their sizes differ.
+function differing(a, b, tolerance, mark) {
+  if (a.width !== b.width || a.height !== b.height) return 1;
+  let count = 0;
+  for (let i = 0; i < a.data.length; i += 4) {
+    const off = Math.max(Math.abs(a.data[i] - b.data[i]), Math.abs(a.data[i + 1] - b.data[i + 1]), Math.abs(a.data[i + 2] - b.data[i + 2]));
+    if (off > tolerance) { count += 1; mark?.(i); }
+  }
+  return count / (a.width * a.height);
+}
+
 function accept() {
   const current = pictures(into);
   if (!current.length) throw Error('nothing captured: run `capture` first');
+  // A reference is a picture the Runner draws every time. One capture cannot show that, so a second
+  // one, taken afterwards, has to agree with it within the gate's own limits.
+  const confirm = option('confirm') ?? 'confirm';
+  const again = new Set(pictures(confirm));
+  if (!again.size) throw Error(`no second capture: run \`capture --into ${confirm}\` and accept again`);
+  const unsteady = current.filter(name => {
+    if (!again.has(name)) return true;
+    if (hash(join(root, into, name)) === hash(join(root, confirm, name))) return false;
+    return differing(decode(readFileSync(join(root, into, name))), decode(readFileSync(join(root, confirm, name))), channelTolerance) > failShare;
+  });
+  if (unsteady.length) {
+    console.error(unsteady.map(name => `${name}: differs between the two captures`).join('\n'));
+    console.error(`\n${unsteady.length} of ${current.length} pictures are not drawn the same twice; nothing accepted`);
+    process.exit(1);
+  }
   rmSync(join(root, 'reference'), { recursive: true, force: true });
   cpSync(join(root, into), join(root, 'reference'), { recursive: true });
   const manifest = {
@@ -91,7 +120,7 @@ function accept() {
     })),
   };
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(`accepted ${current.length} pictures`);
+  console.log(`accepted ${current.length} pictures, each drawn the same in two captures`);
 }
 
 function check() {
@@ -115,13 +144,8 @@ function check() {
     if (hash(join(root, into, name)) === manifest.pictures[name].sha256) continue;
     const [a, b] = [decode(readFileSync(referencePath)), decode(readFileSync(join(root, into, name)))];
     if (a.width !== b.width || a.height !== b.height) { problems.push(`${name}: ${b.width}x${b.height}, was ${a.width}x${a.height}`); continue; }
-    let differing = 0;
     const marked = Buffer.from(b.data);
-    for (let i = 0; i < a.data.length; i += 4) {
-      const off = Math.max(Math.abs(a.data[i] - b.data[i]), Math.abs(a.data[i + 1] - b.data[i + 1]), Math.abs(a.data[i + 2] - b.data[i + 2]));
-      if (off > manifest.channelTolerance) { differing += 1; marked[i] = 255; marked[i + 1] = 0; marked[i + 2] = 96; marked[i + 3] = 255; }
-    }
-    const share = differing / (a.width * a.height);
+    const share = differing(a, b, manifest.channelTolerance, i => { marked[i] = 255; marked[i + 1] = 0; marked[i + 2] = 96; marked[i + 3] = 255; });
     if (share > manifest.failShare) {
       // Reference, current, and current with the differing pixels marked, side by side.
       const out = join(root, 'diff', name);

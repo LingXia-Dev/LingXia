@@ -1,4 +1,4 @@
-import { useLocal } from '@lingxia/view';
+import { useLocal, useView } from '@lingxia/view';
 import { NavList, type NavListSection } from '@liulidesign/core/NavList';
 import { SplitView } from '@liulidesign/core/SplitView';
 import { Content as Overview } from '../content/home';
@@ -31,6 +31,7 @@ export interface WorkspaceProps {
 
 export function Workspace({ page, onSelect }: WorkspaceProps) {
   const chosen = useLocal<string | null>('chosen', null);
+  const { env } = useView();
   const requested = chosen.value ?? page;
   const current = titles.has(requested) ? requested : overview;
   const select = (next: string) => {
@@ -43,6 +44,7 @@ export function Workspace({ page, onSelect }: WorkspaceProps) {
     <page className="bg-canvas">
       {/* Test probe: the workspace is the regular form; see GalleryPage. */}
       <view aria-hidden data-testid="form-regular" className="absolute start-0 top-0 size-px" />
+      <view aria-hidden data-testid={`page-appearance-${env.theme}`} className="absolute start-0 top-0 size-px" />
       <SplitView
         sidebarLabel="Gallery"
         contentLabel={title}
