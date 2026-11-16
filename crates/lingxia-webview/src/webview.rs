@@ -557,9 +557,10 @@ pub(crate) const fn platform_console_delivery(
     profile: SecurityProfile,
     _backend: PlatformConsoleBackend,
 ) -> PlatformConsoleDelivery {
-    match profile {
-        SecurityProfile::StrictDefault => PlatformConsoleDelivery::DirectDelegate,
-        SecurityProfile::BrowserRelaxed => PlatformConsoleDelivery::RequiredV3Envelope,
+    if profile.rules().native_console {
+        PlatformConsoleDelivery::DirectDelegate
+    } else {
+        PlatformConsoleDelivery::RequiredV3Envelope
     }
 }
 
@@ -896,7 +897,7 @@ impl WebViewCreateOptions {
     pub(crate) fn normalize(
         self,
     ) -> Result<(EffectiveWebViewCreateOptions, PendingCallbacks), WebViewError> {
-        if self.profile != SecurityProfile::BrowserRelaxed && self.download_handler.is_some() {
+        if !self.profile.rules().downloads && self.download_handler.is_some() {
             return Err(WebViewError::InvalidCreateOptions(
                 "download callback is only supported in browser profile; use WebViewBuilder::browser(webtag).on_download(...).create()".to_string(),
             ));
@@ -3408,9 +3409,7 @@ pub(crate) fn first_browser_webview() -> Option<Arc<WebView>> {
         .and_then(|webviews| {
             webviews
                 .values()
-                .find(|webview| {
-                    webview.effective_options.profile == SecurityProfile::BrowserRelaxed
-                })
+                .find(|webview| webview.effective_options.rules().persistent_data)
                 .cloned()
         })
 }

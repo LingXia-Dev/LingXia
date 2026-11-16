@@ -103,6 +103,12 @@ Every WebView is created under one of two security profiles. The profile
 determines navigation policy, storage, and whether app-page lifecycle events
 fire.
 
+What a profile permits is one table, `SecurityProfile::rules()`
+(`lingxia-webview/src/profile_rules.rs`). Backends read its fields and never
+compare profiles. Android and Harmony receive the table inside the
+create-options token and reject a token that lacks a rule, so neither keeps a
+copy: a new rule or profile is added in that one `match`.
+
 | Profile | Builder | Content | Navigation policy | Page lifecycle |
 | --- | --- | --- | --- | --- |
 | `StrictDefault` | `WebViewBuilder::strict(tag)` | LxApp pages served via the `lx://` scheme | Creator-registered scheme handlers serve `lx`; the creator navigation handler decides everything else (lxapp policy: allow `lx`/`data`/`blob`, cancel the rest — see below) | Full `onLoad` → `onShow` → `onReady` → `onHide` → `onUnload` |
@@ -787,10 +793,10 @@ Rendering and visibility:
 - The ack callback (`onAppear` / `onControllerAttached`) does the
   controller-created ack only (avoids a duplicate `onPageShow`).
 
-Harmony `Web` settings (in `LingXiaWebView.ets`) are profile-aware:
-`.domStorageAccess(isBrowserRelaxed)`, `.fileAccess(false)`,
-`.databaseAccess(isBrowserRelaxed)`, `.mixedMode(MixedMode.None)`. JS dialogs are
-suppressed in strict, allowed in browser.
+Harmony `Web` settings (in `LingXiaWebView.ets`) read the profile's rules:
+`.domStorageAccess(rules.siteStorage)`, `.fileAccess(false)`,
+`.databaseAccess(rules.siteStorage)`, `.mixedMode(MixedMode.None)`; JS dialogs
+are suppressed unless `rules.jsDialogs`.
 
 ### Android
 

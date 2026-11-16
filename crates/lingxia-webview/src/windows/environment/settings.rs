@@ -71,7 +71,6 @@ pub(crate) fn configure_settings(
     webview: &ICoreWebView2,
     effective_options: &EffectiveWebViewCreateOptions,
 ) -> StdResult<()> {
-    let relaxed_profile = effective_options.profile == SecurityProfile::BrowserRelaxed;
     unsafe {
         let settings = webview
             .Settings()
@@ -80,7 +79,7 @@ pub(crate) fn configure_settings(
             .SetIsScriptEnabled(true)
             .map_err(|err| WebViewError::WebView(format!("SetIsScriptEnabled failed: {err}")))?;
         settings
-            .SetAreDefaultScriptDialogsEnabled(relaxed_profile)
+            .SetAreDefaultScriptDialogsEnabled(effective_options.rules().js_dialogs)
             .map_err(|err| {
                 WebViewError::WebView(format!("SetAreDefaultScriptDialogsEnabled failed: {err}"))
             })?;
@@ -172,7 +171,7 @@ pub(crate) fn configure_context_menu(
     webtag: &WebTag,
     effective_options: &EffectiveWebViewCreateOptions,
 ) -> StdResult<()> {
-    if effective_options.profile == SecurityProfile::BrowserRelaxed {
+    if effective_options.rules().full_context_menu {
         return Ok(());
     }
 

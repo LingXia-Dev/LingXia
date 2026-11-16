@@ -97,7 +97,7 @@ fn ephemeral_user_data_dir(
     // Strict-profile webviews keep their existing per-creation isolation;
     // browser-profile webviews opt into it through the data mode (auth sheets
     // and future private tabs), while ordinary browser tabs stay persistent.
-    if effective_options.profile != SecurityProfile::StrictDefault
+    if effective_options.rules().persistent_data
         && effective_options.data_mode != WebViewDataMode::Ephemeral
     {
         return Ok(None);

@@ -59,10 +59,10 @@ use objc2_app_kit::{NSEvent, NSEventModifierFlags, NSEventType, NSResponder, NSV
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use objc2_core_graphics::CGEvent;
 
+use crate::profile_rules::ProfileRules;
 use crate::webview::{
-    EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, SecurityProfile,
-    WebTag, WebViewCreateSender, WebViewCreateStage, WebViewDataMode,
-    configured_proxy_for_new_webviews,
+    EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, WebTag,
+    WebViewCreateSender, WebViewCreateStage, WebViewDataMode, configured_proxy_for_new_webviews,
 };
 
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -1367,7 +1367,7 @@ define_class!(
             if should_perform_download
                 && let Some(managed_webview) =
                     current_native_callback_webview(webtag, self.ivars().native_view_id)
-                && managed_webview.effective_options().profile == SecurityProfile::BrowserRelaxed
+                && managed_webview.effective_options().rules().downloads
             {
                 self.ivars()
                     .pending_browser_download_url
@@ -1479,7 +1479,7 @@ define_class!(
             };
 
             // Strict/lxapp pages never trigger in-webview download handling.
-            if managed_webview.effective_options().profile != SecurityProfile::BrowserRelaxed {
+            if !managed_webview.effective_options().rules().downloads {
                 allow_navigation();
                 return;
             }
@@ -2411,9 +2411,10 @@ impl WebViewInner {
 
             // Access preferences to set security settings
             let prefs = config.preferences();
-            let allow_new_windows = effective_options.profile == SecurityProfile::BrowserRelaxed;
-            let uses_ephemeral_data = effective_options.profile == SecurityProfile::StrictDefault
-                || effective_options.data_mode == WebViewDataMode::Ephemeral;
+            let rules = effective_options.rules();
+            let allow_new_windows = rules.new_windows_without_handler;
+            let uses_ephemeral_data =
+                !rules.persistent_data || effective_options.data_mode == WebViewDataMode::Ephemeral;
             let allow_js_windows = allow_new_windows || effective_options.has_new_window_handler;
             prefs.setJavaScriptCanOpenWindowsAutomatically(allow_js_windows);
 
@@ -2447,7 +2448,7 @@ impl WebViewInner {
             config.setUpgradeKnownHostsToHTTPS(false);
 
             #[cfg(target_os = "ios")]
-            if effective_options.profile == SecurityProfile::BrowserRelaxed && is_iphone_idiom() {
+            if rules.browser_user_agent && is_iphone_idiom() {
                 // The bare WKWebView UA identifies an embedded app. Websites
                 // may redirect it to an external browser instead of serving
                 // their web UI. Use the native engine's browser tokens, while
@@ -2462,12 +2463,9 @@ impl WebViewInner {
                 config.setApplicationNameForUserAgent(Some(&name));
             }
 
-            // Profile policy on Apple data store:
-            // - StrictDefault: non-persistent (ephemeral DOM storage, cleared on destroy)
-            // - BrowserRelaxed: default (persistent localStorage / database)
             if uses_ephemeral_data {
                 let non_persistent_store = WKWebsiteDataStore::nonPersistentDataStore(mtm);
-                if effective_options.profile == SecurityProfile::BrowserRelaxed {
+                if rules.proxy {
                     let proxy = configured_proxy_for_new_webviews();
                     if let Some(proxy) = &proxy {
                         apply_proxy_to_data_store(&non_persistent_store, Some(proxy))?;
@@ -2616,18 +2614,13 @@ impl WebViewInner {
             // Immediately hide the webview. It will be made visible by Swift once it's sized and positioned.
             let _: () = msg_send![webview, setHidden: true];
 
-            let is_strict = effective_options.profile != SecurityProfile::BrowserRelaxed;
-
             // Create navigation delegate
             let navigation_delegate = LingXiaNavigationDelegate::new(
                 appid.to_string(),
                 path.to_string(),
                 session_id,
                 native_view_id,
-                // Profile policy on Apple:
-                // - StrictDefault: intercept https:// top-level navigation
-                // - BrowserRelaxed: do not intercept
-                is_strict,
+                rules.https_scheme_interception,
                 mtm,
             );
 
@@ -2636,13 +2629,13 @@ impl WebViewInner {
                 ProtocolObject::from_ref(&*navigation_delegate);
             let _: () = msg_send![webview, setNavigationDelegate: Some(proto_navigation_delegate)];
 
-            // Set UI delegate in strict mode to suppress JS dialogs, and in browser/new-window
-            // mode to handle target="_blank", window.open(), and JS dialogs.
+            // The UI delegate answers suppressed JS dialogs, and routes
+            // target="_blank" / window.open() when new windows are possible.
             let needs_ui_delegate =
-                is_strict || allow_new_windows || effective_options.has_new_window_handler;
+                !rules.js_dialogs || allow_new_windows || effective_options.has_new_window_handler;
             let ui_delegate = if needs_ui_delegate {
                 let delegate =
-                    LingXiaUIDelegate::new(webtag.clone(), native_view_id, !is_strict, mtm);
+                    LingXiaUIDelegate::new(webtag.clone(), native_view_id, rules.js_dialogs, mtm);
                 let proto_ui_delegate: &ProtocolObject<dyn WKUIDelegate> =
                     ProtocolObject::from_ref(&*delegate);
                 let _: () = msg_send![webview, setUIDelegate: Some(proto_ui_delegate)];
@@ -2652,14 +2645,8 @@ impl WebViewInner {
             };
 
             // Set up message handler for bridge communication
-            let inject_platform_baseline = is_strict;
-            let message_handler = Self::setup_message_handler(
-                webview,
-                appid,
-                path,
-                session_id,
-                inject_platform_baseline,
-            )?;
+            let message_handler =
+                Self::setup_message_handler(webview, appid, path, session_id, rules)?;
 
             // Observe URL/title/back-forward state so the Rust delegate is the
             // single source of truth for observable WebView state.
@@ -2689,7 +2676,7 @@ impl WebViewInner {
         appid: &str,
         path: &str,
         session_id: Option<u64>,
-        inject_platform_baseline: bool,
+        rules: ProfileRules,
     ) -> Result<Retained<LingXiaMessageHandler>, WebViewError> {
         unsafe {
             // Get the configuration from the WebView
@@ -2698,7 +2685,7 @@ impl WebViewInner {
             let user_script_class = objc2::class!(WKUserScript);
             let injection_time: objc2::ffi::NSInteger = 0; // WKUserScriptInjectionTimeAtDocumentStart
 
-            if inject_platform_baseline {
+            if rules.native_console {
                 // The outer scope keeps the shared formatter off `window`.
                 let console_script = concat!(
                     "(function () {\n",
@@ -2797,8 +2784,10 @@ impl WebViewInner {
                 let _ = Retained::from_raw(hint_script);
             }
 
+            // Without the native console hook, automation reads the console
+            // from the in-page recorder.
             #[cfg(all(feature = "webview-input", target_os = "macos"))]
-            if !inject_platform_baseline {
+            if !rules.native_console {
                 let recorder = NSString::from_str(crate::page_console::PAGE_CONSOLE_RECORDER);
                 let recorder_script: *mut AnyObject = msg_send![user_script_class, alloc];
                 let recorder_script: *mut AnyObject = msg_send![recorder_script,
@@ -2828,7 +2817,7 @@ impl WebViewInner {
             // arbitrary external pages and must not be restyled. The runtime owns the
             // selection/copy policy per platform (desktop = selectable, touch = native-app
             // no-select) so apps don't bake a build-time assumption into their CSS.
-            if inject_platform_baseline {
+            if rules.platform_baseline {
                 #[cfg(target_os = "macos")]
                 let (lx_class, lx_platform, baseline_css) = (
                     "lx-desktop",
@@ -2882,7 +2871,7 @@ impl WebViewInner {
             let lingxia_name = NSString::from_str("LingXia");
             let lifecycle_name = NSString::from_str("LingXiaLifecycle");
             let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*lingxia_name];
-            if inject_platform_baseline {
+            if rules.native_console {
                 let console_name = NSString::from_str("LingXiaConsole");
                 let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*console_name];
             }

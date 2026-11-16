@@ -24,10 +24,11 @@ import {
   handleWebViewLoadError,
   handleWebViewNavigationPolicy,
   isEphemeralDataMode,
-  isBrowserRelaxed as isWebViewBrowserRelaxed,
   notifyWebViewControllerAttached,
+  profileRules,
   WebViewManager
 } from './WebViewBridge';
+import { ProfileRules } from './WebViewCore';
 import { NativeComponentEmbedManager } from './NativeComponents/NativeComponentEmbed';
 import { setEmbedController, teardownEmbedManager } from './NativeComponents/NativeBridgeInternal';
 import { Lingxia } from '../app/Lingxia';
@@ -124,8 +125,8 @@ export struct LingXiaWebView {
   // Profile Resolution
   // ============================================================================
 
-  private isBrowserRelaxed(): boolean {
-    return isWebViewBrowserRelaxed(this.webTag);
+  private rules(): ProfileRules {
+    return profileRules(this.webTag);
   }
 
   /** The same document: equal URLs once any fragment is dropped, never about:blank. */
@@ -261,7 +262,7 @@ export struct LingXiaWebView {
         // exactly, and a fragment-only difference must not revoke the load.
         // BrowserControl keeps requiring visible-commit proof.
         if (!this.documentCommitted
-          && !this.isBrowserRelaxed()
+          && !this.rules().provenDocumentBinding
           && !this.mainFrameFailed
           && this.isSameDocumentUrl(this.pageBeginUrl, event?.url ?? '')) {
           this.commitDocument(this.pageBeginUrl);
@@ -297,26 +298,26 @@ export struct LingXiaWebView {
         );
       })
       .onAlert((event) => {
-        if (this.isBrowserRelaxed()) {
+        if (this.rules().jsDialogs) {
           return false;
         }
-        hilog.info(DOMAIN, TAG, `Suppressed JavaScript alert in strict profile for ${this.webTag}: ${event.url}`);
+        hilog.info(DOMAIN, TAG, `Suppressed JavaScript alert for ${this.webTag}: ${event.url}`);
         event.result.handleConfirm();
         return true;
       })
       .onConfirm((event) => {
-        if (this.isBrowserRelaxed()) {
+        if (this.rules().jsDialogs) {
           return false;
         }
-        hilog.info(DOMAIN, TAG, `Suppressed JavaScript confirm in strict profile for ${this.webTag}: ${event.url}`);
+        hilog.info(DOMAIN, TAG, `Suppressed JavaScript confirm for ${this.webTag}: ${event.url}`);
         event.result.handleCancel();
         return true;
       })
       .onPrompt((event) => {
-        if (this.isBrowserRelaxed()) {
+        if (this.rules().jsDialogs) {
           return false;
         }
-        hilog.info(DOMAIN, TAG, `Suppressed JavaScript prompt in strict profile for ${this.webTag}: ${event.url}`);
+        hilog.info(DOMAIN, TAG, `Suppressed JavaScript prompt for ${this.webTag}: ${event.url}`);
         event.result.handleCancel();
         return true;
       })
@@ -338,8 +339,8 @@ export struct LingXiaWebView {
         this.cleanupEmbedManager();
         hilog.info(DOMAIN, TAG, `Same-level cleanup for webTag: ${this.webTag}`);
       })
-      .verticalScrollBarAccess(this.isBrowserRelaxed())
-      .horizontalScrollBarAccess(this.isBrowserRelaxed())
+      .verticalScrollBarAccess(this.rules().scrollbars)
+      .horizontalScrollBarAccess(this.rules().scrollbars)
       .enableNativeEmbedMode(true)
       .onNativeEmbedLifecycleChange((embed: NativeEmbedDataInfo) => {
         if (this.embedManager) {
@@ -352,9 +353,9 @@ export struct LingXiaWebView {
           this.embedManager.handleGestureEvent(touch);
         }
       })
-      .domStorageAccess(this.isBrowserRelaxed())
+      .domStorageAccess(this.rules().siteStorage)
       .fileAccess(false)
-      .databaseAccess(this.isBrowserRelaxed())
+      .databaseAccess(this.rules().siteStorage)
       .mixedMode(MixedMode.None)
       // Transparent keeps the light-container behavior; a dark lxapp must
       // paint its own canvas or the container bleeds white before first paint.

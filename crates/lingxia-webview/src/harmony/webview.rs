@@ -12,8 +12,8 @@ use crate::traits::{
     WebMessageTransport,
 };
 use crate::webview::{
-    EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, SecurityProfile,
-    WebTag, WebViewCreateSender, WebViewCreateStage, find_webview, find_webview_by_native_view_id,
+    EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, WebTag,
+    WebViewCreateSender, WebViewCreateStage, find_webview, find_webview_by_native_view_id,
     register_webview,
 };
 use crate::{
@@ -33,7 +33,7 @@ use tokio::sync::oneshot;
 use tokio::time::timeout;
 
 fn encode_options_token(options: &EffectiveWebViewCreateOptions) -> Result<String, WebViewError> {
-    let json = serde_json::to_vec(options).map_err(|e| {
+    let json = options.platform_token_json().map_err(|e| {
         WebViewError::InvalidCreateOptions(format!("Serialize options failed: {e}"))
     })?;
     Ok(URL_SAFE_NO_PAD.encode(json))
@@ -2642,7 +2642,7 @@ pub fn on_download_start(
     };
 
     // Strict/lxapp pages should not trigger in-webview download flows.
-    if webview.effective_options().profile != SecurityProfile::BrowserRelaxed {
+    if !webview.effective_options().rules().downloads {
         return false;
     }
 

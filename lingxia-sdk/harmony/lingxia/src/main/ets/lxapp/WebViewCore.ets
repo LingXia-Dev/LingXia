@@ -44,8 +44,22 @@ interface ScreenshotSnapshotResult {
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
 
+/**
+ * What the WebView's security profile permits. The table is owned by native
+ * and arrives in the create-options token; this side reads it and holds none.
+ */
+export interface ProfileRules {
+  jsDialogs: boolean;
+  downloads: boolean;
+  siteStorage: boolean;
+  scrollbars: boolean;
+  provenDocumentBinding: boolean;
+}
+
 export interface EffectiveWebViewCreateOptions {
+  // Only logged and compared; what the profile permits is in `rules`.
   profile: string;
+  rules: ProfileRules;
   dataMode: string;
   hasDownloadHandler: boolean;
   hasFileChooserHandler: boolean;
@@ -90,26 +104,25 @@ export interface WebViewHostHooks {
   onRenderExited?: (webtag: string, nativeViewToken: string) => boolean;
 }
 
+interface RawProfileRules {
+  js_dialogs?: boolean;
+  downloads?: boolean;
+  site_storage?: boolean;
+  scrollbars?: boolean;
+  proven_document_binding?: boolean;
+}
+
 interface RawOptionsToken {
   profile?: string;
+  rules?: RawProfileRules;
   data_mode?: string;
   has_download_handler?: boolean;
   has_file_chooser_handler?: boolean;
   surface_owned?: boolean;
 }
 
-const PROFILE_STRICT_DEFAULT = 'strict_default';
-const PROFILE_BROWSER_RELAXED = 'browser_relaxed';
 const DATA_MODE_PROFILE_DEFAULT = 'profile_default';
 const DATA_MODE_EPHEMERAL = 'ephemeral';
-
-const STRICT_DEFAULT_OPTIONS: EffectiveWebViewCreateOptions = {
-  profile: PROFILE_STRICT_DEFAULT,
-  dataMode: DATA_MODE_PROFILE_DEFAULT,
-  hasDownloadHandler: false,
-  hasFileChooserHandler: false,
-  surfaceOwned: false
-};
 
 let hostHooks: WebViewHostHooks = {};
 let defaultHostHooksBound = false;
@@ -179,14 +192,44 @@ function bindDefaultHostHooksIfNeeded(): void {
   defaultHostHooksBound = true;
 }
 
-function strictDefaultOptions(): EffectiveWebViewCreateOptions {
-  return {
-    profile: STRICT_DEFAULT_OPTIONS.profile,
-    dataMode: STRICT_DEFAULT_OPTIONS.dataMode,
-    hasDownloadHandler: STRICT_DEFAULT_OPTIONS.hasDownloadHandler,
-    hasFileChooserHandler: STRICT_DEFAULT_OPTIONS.hasFileChooserHandler,
-    surfaceOwned: STRICT_DEFAULT_OPTIONS.surfaceOwned
+// Options of a WebView this side does not know: nothing is permitted.
+function unconfiguredOptions(): EffectiveWebViewCreateOptions {
+  const rules: ProfileRules = {
+    jsDialogs: false,
+    downloads: false,
+    siteStorage: false,
+    scrollbars: false,
+    provenDocumentBinding: false
   };
+  return {
+    profile: '',
+    rules,
+    dataMode: DATA_MODE_PROFILE_DEFAULT,
+    hasDownloadHandler: false,
+    hasFileChooserHandler: false,
+    surfaceOwned: false
+  };
+}
+
+// A missing or non-boolean rule rejects the token: no rule has a default.
+function decodeProfileRules(raw?: RawProfileRules): ProfileRules | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const jsDialogs = raw.js_dialogs;
+  const downloads = raw.downloads;
+  const siteStorage = raw.site_storage;
+  const scrollbars = raw.scrollbars;
+  const provenDocumentBinding = raw.proven_document_binding;
+  if (typeof jsDialogs !== 'boolean'
+    || typeof downloads !== 'boolean'
+    || typeof siteStorage !== 'boolean'
+    || typeof scrollbars !== 'boolean'
+    || typeof provenDocumentBinding !== 'boolean') {
+    return undefined;
+  }
+  const rules: ProfileRules = { jsDialogs, downloads, siteStorage, scrollbars, provenDocumentBinding };
+  return rules;
 }
 
 function decodeBase64Url(token: string): string {
@@ -218,19 +261,24 @@ function decodeBase64Url(token: string): string {
   return output;
 }
 
-// An unknown value must never resolve to a known profile: strict is the most
-// privileged one, so a fallback would grant, not restrict.
+// Nothing in the token has a permissive default: an incomplete one is rejected.
 function normalizeDecodedOptions(raw: Object): EffectiveWebViewCreateOptions | undefined {
   const data = raw as RawOptionsToken;
-  const normalized: EffectiveWebViewCreateOptions = strictDefaultOptions();
+  const normalized: EffectiveWebViewCreateOptions = unconfiguredOptions();
 
   const profile = data.profile;
-  if (typeof profile !== 'string'
-    || (profile !== PROFILE_STRICT_DEFAULT && profile !== PROFILE_BROWSER_RELAXED)) {
-    hilog.error(DOMAIN, TAG, `Unknown security profile in create options: ${profile}`);
+  if (typeof profile !== 'string' || profile.length === 0) {
+    hilog.error(DOMAIN, TAG, 'Create options name no security profile');
     return undefined;
   }
   normalized.profile = profile;
+
+  const rules = decodeProfileRules(data.rules);
+  if (!rules) {
+    hilog.error(DOMAIN, TAG, `Create options for profile ${profile} lack a profile rule`);
+    return undefined;
+  }
+  normalized.rules = rules;
 
   const dataMode = data.data_mode;
   if (dataMode !== undefined) {
@@ -456,7 +504,7 @@ export class WebViewManager {
   static getEffectiveOptions(webtag: string): EffectiveWebViewCreateOptions {
     const logicalTag = WebViewManager.resolveLogicalTag(webtag);
     const info = WebViewManager.webViewInfos.get(logicalTag);
-    return info ? info.effectiveOptions : strictDefaultOptions();
+    return info ? info.effectiveOptions : unconfiguredOptions();
   }
 
   /**
@@ -1054,8 +1102,8 @@ export function getWebViewCreateOptions(webtag: string): EffectiveWebViewCreateO
   return WebViewManager.getEffectiveOptions(webtag);
 }
 
-export function isBrowserRelaxedProfile(webtag: string): boolean {
-  return getWebViewCreateOptions(webtag).profile === PROFILE_BROWSER_RELAXED;
+export function getWebViewProfileRules(webtag: string): ProfileRules {
+  return getWebViewCreateOptions(webtag).rules;
 }
 
 export function isEphemeralDataMode(webtag: string): boolean {
@@ -1169,7 +1217,7 @@ export function handleWebViewDownloadStart(
 ): void {
   bindDefaultHostHooksIfNeeded();
   const options = getWebViewCreateOptions(webtag);
-  if (options.profile !== PROFILE_BROWSER_RELAXED || options.hasDownloadHandler !== true) {
+  if (!options.rules.downloads || options.hasDownloadHandler !== true) {
     return;
   }
 

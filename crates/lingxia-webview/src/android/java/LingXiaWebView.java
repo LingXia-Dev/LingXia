@@ -85,7 +85,7 @@ public class LingXiaWebView extends WebView {
     // credential and is used only to reject callbacks from a stale instance.
     private final NativeViewIdBinding nativeViewIdBinding = new NativeViewIdBinding();
     private boolean pageLoaded = false;
-    private CreateOptions createOptions = CreateOptions.strictDefault();
+    private CreateOptions createOptions = CreateOptions.unconfigured();
     private String ephemeralProfileName;
     private boolean usesGlobalEphemeralFallback;
     private boolean browserControlDegradationReported;
@@ -130,46 +130,17 @@ public class LingXiaWebView extends WebView {
     public static class CreateOptions {
         public String profile;
         public String dataMode;
-        public boolean domStorageEnabled;
-        public boolean databaseEnabled;
         public boolean hasNewWindowHandler;
         public boolean hasDownloadHandler;
         public boolean hasFileChooserHandler;
+        ProfileRules rules = ProfileRules.NONE;
 
-        static CreateOptions strictDefault() {
+        /** Placeholder until a token is applied. */
+        static CreateOptions unconfigured() {
             CreateOptions options = new CreateOptions();
-            options.profile = "strict_default";
+            options.profile = "";
             options.dataMode = "profile_default";
-            options.domStorageEnabled = false;
-            options.databaseEnabled = false;
-            options.hasNewWindowHandler = false;
-            options.hasDownloadHandler = false;
-            options.hasFileChooserHandler = false;
             return options;
-        }
-
-        static CreateOptions browserRelaxed() {
-            CreateOptions options = new CreateOptions();
-            options.profile = "browser_relaxed";
-            options.dataMode = "profile_default";
-            options.domStorageEnabled = true;
-            options.databaseEnabled = true;
-            options.hasNewWindowHandler = false;
-            options.hasDownloadHandler = false;
-            options.hasFileChooserHandler = false;
-            return options;
-        }
-
-        // An unknown value must never resolve to a known profile: strict is
-        // the most privileged one, so a fallback would grant, not restrict.
-        static CreateOptions fromProfile(String profile) {
-            if ("strict_default".equals(profile)) {
-                return strictDefault();
-            }
-            if ("browser_relaxed".equals(profile)) {
-                return browserRelaxed();
-            }
-            throw new IllegalArgumentException("unknown security profile in create options: " + profile);
         }
 
         static CreateOptions fromToken(String optionsToken) {
@@ -187,7 +158,13 @@ public class LingXiaWebView extends WebView {
             } catch (Throwable e) {
                 throw new IllegalArgumentException("create options token is not decodable", e);
             }
-            CreateOptions options = fromProfile(obj.optString("profile", null));
+            CreateOptions options = new CreateOptions();
+            // The name is only logged; what the profile permits is in `rules`.
+            options.profile = obj.optString("profile", "");
+            if (options.profile.isEmpty()) {
+                throw new IllegalArgumentException("create options name no security profile");
+            }
+            options.rules = ProfileRules.fromJson(obj.optJSONObject("rules"));
             String dataMode = obj.optString("data_mode", "profile_default");
             if (!"profile_default".equals(dataMode) && !"ephemeral".equals(dataMode)) {
                 throw new IllegalArgumentException("unknown data mode in create options: " + dataMode);
@@ -336,12 +313,17 @@ public class LingXiaWebView extends WebView {
         }
     }
 
-    private boolean isBrowserProfile() {
-        return createOptions != null && "browser_relaxed".equals(createOptions.profile);
+    private ProfileRules rules() {
+        return createOptions != null ? createOptions.rules : ProfileRules.NONE;
     }
 
+    boolean reportsNativeConsole() {
+        return rules().nativeConsole;
+    }
+
+    /** True for the one profile that may reach the native-component interface. */
     public boolean usesStrictSecurityProfile() {
-        return createOptions != null && "strict_default".equals(createOptions.profile);
+        return rules().nativeComponentBridge;
     }
 
     private boolean hasDownloadHandler() {
@@ -350,7 +332,7 @@ public class LingXiaWebView extends WebView {
 
     public boolean supportsNewWindows() {
         return createOptions != null &&
-                (isBrowserProfile() || createOptions.hasNewWindowHandler);
+                (rules().newWindowsWithoutHandler || createOptions.hasNewWindowHandler);
     }
 
     public boolean handleNewWindowRequest(String url) {
@@ -377,7 +359,7 @@ public class LingXiaWebView extends WebView {
     }
 
     public boolean shouldSkipRustIntercept(String url) {
-        if (!isBrowserProfile() || !sHttpProxyEnabled || url == null) {
+        if (!rules().proxy || !sHttpProxyEnabled || url == null) {
             return false;
         }
         String lower = url.toLowerCase(Locale.ROOT);
@@ -493,8 +475,7 @@ public class LingXiaWebView extends WebView {
             TAG,
             "Apply create options: profile=" + this.createOptions.profile
                 + ", dataMode=" + this.createOptions.dataMode
-                + ", domStorage=" + this.createOptions.domStorageEnabled
-                + ", database=" + this.createOptions.databaseEnabled
+                + ", siteStorage=" + this.createOptions.rules.siteStorage
                 + ", hasNewWindowHandler=" + this.createOptions.hasNewWindowHandler
                 + ", hasDownloadHandler=" + this.createOptions.hasDownloadHandler
                 + ", hasFileChooserHandler=" + this.createOptions.hasFileChooserHandler
@@ -634,7 +615,7 @@ public class LingXiaWebView extends WebView {
     }
 
     private void reportBrowserControlDegradation(String reason) {
-        if (!isBrowserProfile() || browserControlDegradationReported) {
+        if (!rules().provenDocumentBinding || browserControlDegradationReported) {
             return;
         }
         browserControlDegradationReported = true;
@@ -750,7 +731,7 @@ public class LingXiaWebView extends WebView {
      */
     @SuppressWarnings("deprecation")
     public static void applyWebViewSettings(WebSettings settings) {
-        applyWebViewSettings(settings, CreateOptions.strictDefault());
+        applyWebViewSettings(settings, CreateOptions.unconfigured());
     }
 
     @SuppressWarnings("deprecation")
@@ -758,11 +739,8 @@ public class LingXiaWebView extends WebView {
         try {
             // Enable JavaScript
             settings.setJavaScriptEnabled(true);
-            // Profile policy on Android:
-            // - strict_default: disable JS popup windows
-            // - browser_relaxed or explicit new-window handler: enable JS popup windows
             boolean supportsNewWindows =
-                    "browser_relaxed".equals(options.profile) || options.hasNewWindowHandler;
+                    options.rules.newWindowsWithoutHandler || options.hasNewWindowHandler;
             settings.setJavaScriptCanOpenWindowsAutomatically(supportsNewWindows);
             settings.setSupportMultipleWindows(supportsNewWindows);
 
@@ -783,8 +761,8 @@ public class LingXiaWebView extends WebView {
             // Caching - minimal caching for security
             settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
 
-            settings.setDatabaseEnabled(options.databaseEnabled);
-            settings.setDomStorageEnabled(options.domStorageEnabled);
+            settings.setDatabaseEnabled(options.rules.siteStorage);
+            settings.setDomStorageEnabled(options.rules.siteStorage);
 
             // File access is always disabled (not profile-configurable).
             settings.setAllowFileAccess(false);
@@ -836,7 +814,7 @@ public class LingXiaWebView extends WebView {
         // port timeout. If the old document asked instead, the new one merely
         // receives a port it adopts or ignores. The browser profile still drops
         // it: a port minted for a trusted document must not outlive it.
-        if (isBrowserProfile() && documentBridgeState.hasCommittedDocument()) {
+        if (rules().provenDocumentBinding && documentBridgeState.hasCommittedDocument()) {
             messagePortRequested = false;
         }
         cleanupDocumentMessagePort();
@@ -860,11 +838,11 @@ public class LingXiaWebView extends WebView {
      * finish reaches Rust, which retires the pending commit on finish.
      */
     void commitTopLevelDocumentOnFinish(String url) {
-        commitNavigation(documentBridgeState.pendingFinishCommit(url, isBrowserProfile()));
+        commitNavigation(documentBridgeState.pendingFinishCommit(url, rules().provenDocumentBinding));
     }
 
     boolean awaitsTrustedVisibleCommit(String url) {
-        return isBrowserProfile() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+        return rules().provenDocumentBinding && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                 && documentBridgeState.awaitsTrustedVisibleCommit(url);
     }
 
@@ -900,7 +878,7 @@ public class LingXiaWebView extends WebView {
         }
         if (messagePortCapable
                 && documentBridgeState.mayInstallPort(
-                        pending.loadToken, generation, isBrowserProfile())) {
+                        pending.loadToken, generation, rules().provenDocumentBinding)) {
             installDocumentMessagePort(pending.loadToken, generation);
         }
     }
@@ -910,7 +888,7 @@ public class LingXiaWebView extends WebView {
     }
 
     void handleVisitedHistoryUpdate(String url) {
-        if (documentBridgeState.historyRestoreNeedsReproof(isBrowserProfile())) {
+        if (documentBridgeState.historyRestoreNeedsReproof(rules().provenDocumentBinding)) {
             // The Java gate closes before JNI/delegate work so neither stale
             // inbound nor queued platform delivery can race the trusted reload.
             messagePortRequested = false;
@@ -968,7 +946,7 @@ public class LingXiaWebView extends WebView {
      * document; the browser profile keeps its one-shot port.
      */
     private void handlePortRequest() {
-        if (messagePortBridge != null && renewPortMethod != null && !isBrowserProfile()) {
+        if (messagePortBridge != null && renewPortMethod != null && !rules().provenDocumentBinding) {
             try {
                 renewPortMethod.invoke(messagePortBridge);
             } catch (Throwable t) {
@@ -1088,14 +1066,14 @@ public class LingXiaWebView extends WebView {
     }
 
     private void setupWebViewClients() {
-        setWebChromeClient(new LingXiaWebChromeClient(this, isBrowserProfile()));
+        setWebChromeClient(new LingXiaWebChromeClient(this, rules().jsDialogs));
         setWebViewClient(new LingXiaWebViewClient(this));
         setupDownloadSupport();
         Log.i(TAG, "WebView clients setup completed");
     }
 
     private void setupDownloadSupport() {
-        if (!isBrowserProfile()) {
+        if (!rules().downloads) {
             setDownloadListener(null);
             return;
         }

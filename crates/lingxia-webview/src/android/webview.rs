@@ -24,7 +24,7 @@ use tokio::time::timeout;
 use super::jni_env::{get_lingxia_webview_class, with_env};
 
 fn encode_options_token(options: &EffectiveWebViewCreateOptions) -> Result<String, WebViewError> {
-    let json = serde_json::to_vec(options).map_err(|e| {
+    let json = options.platform_token_json().map_err(|e| {
         WebViewError::InvalidCreateOptions(format!("Serialize options failed: {e}"))
     })?;
     Ok(URL_SAFE_NO_PAD.encode(json))

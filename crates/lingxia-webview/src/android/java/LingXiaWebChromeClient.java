@@ -36,7 +36,7 @@ public class LingXiaWebChromeClient extends WebChromeClient {
         // BrowserRelaxed may be displaying hostile external content. Its
         // trusted control document forwards console only through the bound V3
         // document port; direct WebChromeClient delivery would bypass it.
-        if (webView != null && webView.usesStrictSecurityProfile()) {
+        if (webView != null && webView.reportsNativeConsole()) {
             int level = getLogLevel(message.messageLevel());
             webView.onConsoleMessage(
                 webView.getAppId() != null ? webView.getAppId() : "",

@@ -92,6 +92,7 @@ mod input_helper;
     any(target_os = "macos", target_os = "windows")
 ))]
 mod page_console;
+mod profile_rules;
 mod traits;
 /// Process-local URL callback channels for navigation handoff.
 pub mod url_callback;
