@@ -290,6 +290,6 @@ test('states: a chosen bar set from outside; loading, empty and error replace th
   assert.equal((await renderExample('BarChart/BarChart', 'StateLoading')).getByTestId('loading').props.stateBusy, 1);
   (await renderExample('BarChart/BarChart', 'StateEmpty')).getByText('No orders this week');
   const error = await renderExample('BarChart/BarChart', 'StateError');
-  assert.equal(error.getByText('Orders could not be loaded').props.role, 'alert');
-  assert.equal(error.queryAll(node => node.tag === 'vector').length, 0);
+  assert.equal(error.getByText('Orders could not be loaded.').props.role, 'alert');
+  assert.equal(error.queryAll(node => node.tag === 'vector').length, 1, 'the error mark alone: no plot');
 });

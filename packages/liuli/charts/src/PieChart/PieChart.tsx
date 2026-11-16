@@ -49,6 +49,12 @@ export interface PieChartProps {
   error?: string;
   /** What to say when no part has an amount. */
   emptyLabel?: string;
+  /** A second, quieter line under `emptyLabel`: what to do next. */
+  emptyHint?: string;
+  /** With `error`: tries again. Pass `retryLabel` with it. */
+  onRetry?: () => void;
+  /** The words on the retry button: "Try again". */
+  retryLabel?: string;
   className?: string;
   /** On the chart; a legend row's button is `<id>-legend-<key>`. */
   'data-testid'?: string;
@@ -67,7 +73,7 @@ export const otherKey = '__other';
 export function PieChart({
   data, name, value, keyField, label, title, description, formatValue: format, formatShare, summarize, variant = 'donut', totalLabel,
   otherLabel, maxParts = 5, legend = 'bottom', legendLabel, selectedKey, onSelect, size = 'md',
-  isLoading = false, error, emptyLabel, className, 'data-testid': testId,
+  isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: PieChartProps) {
   const formatValue = format ?? plain;
   const listed = data
@@ -108,7 +114,11 @@ export function PieChart({
       summary={summarize?.({ kind: 'pie', count: parts.length, series: facts ? [facts] : [] })}
       size={size}
       isLoading={isLoading}
+      plotShape={variant === 'donut' ? 'ring' : 'disc'}
       error={error}
+      onRetry={onRetry}
+      retryLabel={retryLabel}
+      emptyHint={emptyHint}
       isEmpty={!parts.length}
       emptyLabel={emptyLabel}
       className={className}

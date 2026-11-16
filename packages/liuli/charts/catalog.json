@@ -169,6 +169,24 @@
           "description": "What to say when no row has a number."
         },
         {
+          "name": "emptyHint",
+          "type": "string",
+          "required": false,
+          "description": "A second, quieter line under `emptyLabel`: what to do next."
+        },
+        {
+          "name": "onRetry",
+          "type": "(() => void)",
+          "required": false,
+          "description": "With `error`: tries again. Pass `retryLabel` with it."
+        },
+        {
+          "name": "retryLabel",
+          "type": "string",
+          "required": false,
+          "description": "The words on the retry button: \"Try again\"."
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -552,10 +570,29 @@
           "default": "false"
         },
         {
+          "name": "plotShape",
+          "type": "ChartPlotShape",
+          "required": false,
+          "description": "What the plot is: the loading skeleton takes its outline and the empty state its mark, so a chart with nothing to draw still looks like itself.",
+          "default": "'block'"
+        },
+        {
           "name": "error",
           "type": "string",
           "required": false,
-          "description": "Why the data could not be shown; drawn in place of the plot and announced."
+          "description": "Why the data could not be shown; drawn in place of the plot with an error mark, and announced."
+        },
+        {
+          "name": "onRetry",
+          "type": "(() => void)",
+          "required": false,
+          "description": "With `error`: tries again. Pass `retryLabel` with it."
+        },
+        {
+          "name": "retryLabel",
+          "type": "string",
+          "required": false,
+          "description": "The words on the retry button: \"Try again\"."
         },
         {
           "name": "isEmpty",
@@ -569,6 +606,12 @@
           "type": "string",
           "required": false,
           "description": "What to say when there is nothing to draw: \"No sales yet\"."
+        },
+        {
+          "name": "emptyHint",
+          "type": "string",
+          "required": false,
+          "description": "A second, quieter line under `emptyLabel`: what to do next."
         },
         {
           "name": "className",
@@ -675,8 +718,16 @@
         "readoutLabel": "text",
         "readoutValue": "text",
         "plot": "view",
+        "state": "view",
+        "stateIcon": "vector",
+        "stateWords": "view",
+        "stateAction": "view",
         "message": "text",
+        "hint": "text",
         "skeleton": "view",
+        "loadingBars": "view",
+        "loadingLine": "view",
+        "loadingRing": "view",
         "axis": "view",
         "ticks": "view",
         "tick": "text",
@@ -891,6 +942,7 @@
           "chart-3",
           "chart-4",
           "chart-5",
+          "danger",
           "hue-3",
           "hue-4",
           "hue-5",
@@ -1136,6 +1188,24 @@
           "type": "string",
           "required": false,
           "description": "What to say when no row has a number."
+        },
+        {
+          "name": "emptyHint",
+          "type": "string",
+          "required": false,
+          "description": "A second, quieter line under `emptyLabel`: what to do next."
+        },
+        {
+          "name": "onRetry",
+          "type": "(() => void)",
+          "required": false,
+          "description": "With `error`: tries again. Pass `retryLabel` with it."
+        },
+        {
+          "name": "retryLabel",
+          "type": "string",
+          "required": false,
+          "description": "The words on the retry button: \"Try again\"."
         },
         {
           "name": "className",
@@ -1566,6 +1636,24 @@
           "type": "string",
           "required": false,
           "description": "What to say when no part has an amount."
+        },
+        {
+          "name": "emptyHint",
+          "type": "string",
+          "required": false,
+          "description": "A second, quieter line under `emptyLabel`: what to do next."
+        },
+        {
+          "name": "onRetry",
+          "type": "(() => void)",
+          "required": false,
+          "description": "With `error`: tries again. Pass `retryLabel` with it."
+        },
+        {
+          "name": "retryLabel",
+          "type": "string",
+          "required": false,
+          "description": "The words on the retry button: \"Try again\"."
         },
         {
           "name": "className",

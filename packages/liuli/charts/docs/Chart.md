@@ -142,9 +142,13 @@ export function Readout() {
 | `legendPosition` | `ChartLegendPosition` | `'bottom'` |  |
 | `size` | `ChartPlotSize` | `'md'` | The plot's height: 64, 112, 176 or 240, or `fit` to take the height of the plot's own content. `xs` is for a tile or a row, with nothing but the marks. |
 | `isLoading` | `boolean` | `false` | Stands a skeleton in for the plot; the chart is reported busy. |
-| `error` | `string` |  | Why the data could not be shown; drawn in place of the plot and announced. |
+| `plotShape` | `ChartPlotShape` | `'block'` | What the plot is: the loading skeleton takes its outline and the empty state its mark, so a chart with nothing to draw still looks like itself. |
+| `error` | `string` |  | Why the data could not be shown; drawn in place of the plot with an error mark, and announced. |
+| `onRetry` | `(() => void)` |  | With `error`: tries again. Pass `retryLabel` with it. |
+| `retryLabel` | `string` |  | The words on the retry button: "Try again". |
 | `isEmpty` | `boolean` | `false` | Shows `emptyLabel` in place of the plot. |
 | `emptyLabel` | `string` |  | What to say when there is nothing to draw: "No sales yet". |
+| `emptyHint` | `string` |  | A second, quieter line under `emptyLabel`: what to do next. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the chart. |
 
@@ -190,7 +194,7 @@ export function Readout() {
 - `className` on ChartLegend: classes merged after the recipe's, so they win.
 - The recipe, `chartRecipe` from `@liulidesign/charts/Chart/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `chart-1`, `chart-2`, `chart-3`, `chart-4`, `chart-5`, `hue-3`, `hue-4`, `hue-5`, `line-strong`, `text`, `text-faint`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `chart-1`, `chart-2`, `chart-3`, `chart-4`, `chart-5`, `danger`, `hue-3`, `hue-4`, `hue-5`, `line-strong`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 

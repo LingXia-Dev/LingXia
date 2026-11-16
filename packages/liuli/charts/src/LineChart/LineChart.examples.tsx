@@ -99,11 +99,11 @@ export function StateLoading() {
 }
 
 export function StateEmpty() {
-  return <LineChart data={[]} x="week" y="kg" label="Weight by week" title="Weight" size="sm" emptyLabel="No weigh-ins yet" data-testid="empty" />;
+  return <LineChart data={[]} x="week" y="kg" label="Weight by week" title="Weight" size="sm" emptyLabel="No weigh-ins yet" emptyHint="Add one to start the line." data-testid="empty" />;
 }
 
 export function StateError() {
-  return <LineChart data={weight} x="week" y="kg" label="Weight by week" title="Weight" size="sm" error="Weigh-ins could not be loaded" data-testid="error" />;
+  return <LineChart data={weight} x="week" y="kg" label="Weight by week" title="Weight" size="sm" error="Weigh-ins could not be loaded." onRetry={() => {}} retryLabel="Try again" data-testid="error" />;
 }
 
 export function StateSingle() {

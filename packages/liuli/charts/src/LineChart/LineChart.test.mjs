@@ -275,6 +275,6 @@ test('states: one value is a dot; loading, empty and error replace the plot', as
   assert.equal((await renderExample('LineChart/LineChart', 'StateLoading')).getByTestId('loading').props.stateBusy, 1);
   (await renderExample('LineChart/LineChart', 'StateEmpty')).getByText('No weigh-ins yet');
   const error = await renderExample('LineChart/LineChart', 'StateError');
-  assert.equal(error.getByText('Weigh-ins could not be loaded').props.role, 'alert');
-  assert.equal(error.queryAll(node => node.tag === 'vector').length, 0);
+  assert.equal(error.getByText('Weigh-ins could not be loaded.').props.role, 'alert');
+  assert.equal(error.queryAll(node => node.tag === 'vector').length, 1, 'the error mark alone: no plot');
 });

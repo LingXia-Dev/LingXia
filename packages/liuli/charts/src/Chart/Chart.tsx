@@ -1,6 +1,9 @@
 import { cx, type Child, type VectorPath } from '@lingxia/view';
+import { Button } from '@liulidesign/core/Button';
+import { Icon } from '@liulidesign/core/Icon';
 import { Skeleton } from '@liulidesign/core/Skeleton';
 import { roleOf, type ChartColor } from '../internal/data';
+import { circle } from '../internal/geometry';
 import { chartRecipe as r } from './Chart.recipe';
 
 export type { ChartColor, ChartDatum, ChartFacts, ChartPointFact, ChartRow, ChartSeries, ChartSeriesFacts, ChartSummarize } from '../internal/data';
@@ -34,15 +37,65 @@ export interface ChartProps {
   size?: ChartPlotSize;
   /** Stands a skeleton in for the plot; the chart is reported busy. @default false */
   isLoading?: boolean;
-  /** Why the data could not be shown; drawn in place of the plot and announced. */
+  /** What the plot is: the loading skeleton takes its outline and the empty state its mark, so a chart with nothing to draw still looks like itself. @default 'block' */
+  plotShape?: ChartPlotShape;
+  /** Why the data could not be shown; drawn in place of the plot with an error mark, and announced. */
   error?: string;
+  /** With `error`: tries again. Pass `retryLabel` with it. */
+  onRetry?: () => void;
+  /** The words on the retry button: "Try again". */
+  retryLabel?: string;
   /** Shows `emptyLabel` in place of the plot. @default false */
   isEmpty?: boolean;
   /** What to say when there is nothing to draw: "No sales yet". */
   emptyLabel?: string;
+  /** A second, quieter line under `emptyLabel`: what to do next. */
+  emptyHint?: string;
   className?: string;
   /** On the chart. */
   'data-testid'?: string;
+}
+
+export type ChartPlotShape = 'block' | 'bars' | 'line' | 'ring' | 'disc';
+
+const barHeights = ['a', 'b', 'c', 'd', 'e', 'f'] as const;
+// A line chart at rest: a smooth rise with a faint area under it, on a 240 by 80 box that stretches to the plot.
+const curve = 'M0 62C40 60 56 50 84 48S128 52 150 38S196 20 240 16';
+const loadingLine: VectorPath[] = [
+  { d: `${curve}V80H0Z`, fill: 'text/5' },
+  { d: curve, fill: 'none', stroke: 'text/16', strokeWidth: 2.5, strokeLinecap: 'round', vectorEffect: 'non-scaling-stroke' },
+];
+const loadingBox = [0, 0, 240, 80] as const;
+// The donut's ring and the pie's disc, on the charts' 100 box.
+const loadingRing: VectorPath[] = [{ d: circle(37.5), fill: 'none', stroke: 'text/10', strokeWidth: 17 }];
+const loadingDisc: VectorPath[] = [{ d: circle(46), fill: 'text/10' }];
+const pieBox = [0, 0, 100, 100] as const;
+// The empty state's mark by what the plot is, drawn like the icon set's own chart mark.
+const axes = 'M3 3v16a2 2 0 0 0 2 2h16';
+const marks = {
+  line: { paths: [axes, 'M7 15l4-4 3 2 5-7'] },
+  ring: { paths: ['M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18', 'M12 8.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7'] },
+  disc: { paths: ['M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18', 'M12 3v9h9'] },
+} as const;
+
+/** The plot's stand-in while loading: bars with a skeleton's glint, or a line or a ring drawn faintly and pulsing. */
+function LoadingPlot({ shape, size }: { shape: ChartPlotShape; size: ChartPlotSize }) {
+  if (shape === 'bars')
+    return <view aria-hidden className={r.loadingBars.base}>{barHeights.map(step => <Skeleton key={step} shape="block" className={cx(r.loadingBars.bar, r.loadingBars.height[step])} />)}</view>;
+  if (shape === 'line')
+    return (
+      <view aria-hidden className={r.loadingLine.base}>
+        <view className={r.loadingLine.grid}>
+          <view className={r.loadingLine.rule} />
+          <view className={r.loadingLine.rule} />
+          <view className={r.loadingLine.rule} />
+        </view>
+        <vector paths={loadingLine} viewBox={loadingBox} className={r.loadingLine.curve} />
+      </view>
+    );
+  if (shape === 'ring' || shape === 'disc')
+    return <view aria-hidden className={r.loadingRing.base}><vector paths={shape === 'ring' ? loadingRing : loadingDisc} viewBox={pieBox} className={r.loadingRing.size[size]} /></view>;
+  return <Skeleton shape="block" className={r.skeleton.base} />;
 }
 
 /** The frame a chart sits in: heading, summary, plot at a fixed height, legend, and the loading, empty and error states. */
@@ -58,13 +111,19 @@ export function Chart({
   legendPosition = 'bottom',
   size = 'md',
   isLoading = false,
+  plotShape = 'block',
   error,
+  onRetry,
+  retryLabel,
   isEmpty = false,
   emptyLabel,
+  emptyHint,
   className,
   'data-testid': testId,
 }: ChartProps) {
   const isReady = !isLoading && error === undefined && !isEmpty;
+  // The shortest plot has room for one line: the mark sits beside the words, and nothing else is drawn.
+  const isSmall = size === 'xs';
   const hasLegend = legend !== undefined && isReady && legendPosition !== 'none';
   return (
     <view role="group" aria-label={label} aria-busy={isLoading || undefined} data-testid={testId} className={cx(r.root.base, className)}>
@@ -79,9 +138,30 @@ export function Chart({
       {hasLegend && legendPosition === 'top' && legend}
       {isReady && readout}
       <view className={cx(r.plot.base, r.plot.size[size], !isReady && r.plot.state)}>
-        {isLoading && <Skeleton shape="block" className={r.skeleton.base} />}
-        {!isLoading && error !== undefined && <text role="alert" className={r.message.base}>{error}</text>}
-        {!isLoading && error === undefined && isEmpty && emptyLabel !== undefined && <text className={r.message.base}>{emptyLabel}</text>}
+        {isLoading && <LoadingPlot shape={plotShape} size={size} />}
+        {!isLoading && error !== undefined && (
+          // A mark and a way on, so a failure reads as a state the chart is in, not as nothing drawn.
+          <view className={cx(r.state.base, isSmall && r.state.small)}>
+            <Icon name="error" size={isSmall ? 'sm' : 'md'} className={r.stateIcon.error} />
+            <text role="alert" className={r.message.base}>{error}</text>
+            {!isSmall && onRetry !== undefined && retryLabel !== undefined && (
+              <view className={r.stateAction.base}>
+                <Button label={retryLabel} size="sm" width="content" onClick={onRetry} data-testid={testId && `${testId}-retry`} />
+              </view>
+            )}
+          </view>
+        )}
+        {!isLoading && error === undefined && isEmpty && emptyLabel !== undefined && (
+          <view className={cx(r.state.base, isSmall && r.state.small)}>
+            {plotShape === 'line' || plotShape === 'ring' || plotShape === 'disc'
+              ? <Icon icon={marks[plotShape]} size={isSmall ? 'sm' : 'md'} className={r.stateIcon.empty} />
+              : <Icon name="chart" size={isSmall ? 'sm' : 'md'} className={r.stateIcon.empty} />}
+            <view className={r.stateWords.base}>
+              <text className={r.message.base}>{emptyLabel}</text>
+              {!isSmall && emptyHint !== undefined && <text className={r.hint.base}>{emptyHint}</text>}
+            </view>
+          </view>
+        )}
         {isReady && children}
       </view>
       {isReady && axis !== undefined && <view aria-hidden className={r.axis.base}>{axis}</view>}

@@ -87,11 +87,11 @@ export function StateLoading() {
 }
 
 export function StateEmpty() {
-  return <BarChart data={[]} x="day" y="orders" label="Orders by weekday" title="Orders" size="sm" emptyLabel="No orders this week" data-testid="empty" />;
+  return <BarChart data={[]} x="day" y="orders" label="Orders by weekday" title="Orders" size="sm" emptyLabel="No orders this week" emptyHint="New orders show here as they come in." data-testid="empty" />;
 }
 
 export function StateError() {
-  return <BarChart data={week} x="day" y="orders" label="Orders by weekday" title="Orders" size="sm" error="Orders could not be loaded" data-testid="error" />;
+  return <BarChart data={week} x="day" y="orders" label="Orders by weekday" title="Orders" size="sm" error="Orders could not be loaded." onRetry={() => {}} retryLabel="Try again" data-testid="error" />;
 }
 
 /** The home tile. */

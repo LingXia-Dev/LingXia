@@ -11,8 +11,16 @@ export const chartParts = {
   readoutLabel: 'text',
   readoutValue: 'text',
   plot: 'view',
+  state: 'view',
+  stateIcon: 'vector',
+  stateWords: 'view',
+  stateAction: 'view',
   message: 'text',
+  hint: 'text',
   skeleton: 'view',
+  loadingBars: 'view',
+  loadingLine: 'view',
+  loadingRing: 'view',
   axis: 'view',
   ticks: 'view',
   tick: 'text',
@@ -72,11 +80,49 @@ export const chartRecipe = {
     // A message taller than a small plot starts at its top; centred, it would be cut at both ends.
     state: 'items-center justify-center-safe',
   },
+  /** Empty and error: a mark over the words, centred in the plot's own height. */
+  state: {
+    base: 'items-center gap-2 px-4',
+    small: 'flex-row gap-1.5',
+  },
+  stateIcon: {
+    empty: 'text-faint',
+    error: 'text-danger',
+  },
+  stateWords: {
+    base: 'items-center gap-0.5',
+  },
+  /** The retry button, centred under the message whatever its own alignment. */
+  stateAction: {
+    base: 'self-stretch flex-row justify-center pt-1',
+  },
   message: {
-    base: 'px-4 text-center text-footnote text-muted',
+    base: 'text-center text-footnote font-medium text-text',
+  },
+  hint: {
+    base: 'text-center text-caption text-muted',
   },
   skeleton: {
     base: 'self-stretch grow',
+  },
+  /** Loading, as bars: six columns on the plot's floor. */
+  loadingBars: {
+    base: 'self-stretch grow flex-row items-end gap-3 px-2',
+    bar: 'grow basis-0 rounded-b-none',
+    height: { a: 'h-2/5', b: 'h-3/5', c: 'h-1/2', d: 'h-4/5', e: 'h-3/5', f: 'h-3/4' },
+  },
+  /** Loading, as a line: three faint rules and one smooth rise across the plot. Drawn, so it pulses where a skeleton glints. */
+  loadingLine: {
+    base: 'relative self-stretch grow motion-safe:animate-pulse',
+    grid: 'absolute inset-0 justify-between py-1',
+    rule: 'h-px bg-text/8',
+    curve: 'absolute inset-0 size-full object-fill',
+  },
+  /** Loading, as a ring or a pie: the plot's height, as the chart draws it. */
+  loadingRing: {
+    base: 'self-stretch grow items-center justify-center motion-safe:animate-pulse',
+    // A vector keeps its own size until given one: the plot's height.
+    size: { fit: 'size-28', xs: 'size-16', sm: 'size-28', md: 'size-44', lg: 'size-60' } satisfies Record<ChartPlotSize, string>,
   },
   axis: {
     base: 'self-stretch -mt-1.5',

@@ -70,6 +70,12 @@ export interface LineChartProps {
   error?: string;
   /** What to say when no row has a number. */
   emptyLabel?: string;
+  /** A second, quieter line under `emptyLabel`: what to do next. */
+  emptyHint?: string;
+  /** With `error`: tries again. Pass `retryLabel` with it. */
+  onRetry?: () => void;
+  /** The words on the retry button: "Try again". */
+  retryLabel?: string;
   className?: string;
   /** On the chart. */
   'data-testid'?: string;
@@ -91,7 +97,7 @@ const maxRead = 60;
 export function LineChart({
   data, x, y, keyField, label, title, description, formatValue: format, summarize, isSmooth = false, hasArea = false, hasEndDot = true,
   hasScale, hasEndLabel = false, xLabels, legend = 'bottom', legendLabel, selectedKey, onSelect, hiddenSeries = [], onHiddenSeriesChange,
-  domainMin, domainMax, size = 'md', isLoading = false, error, emptyLabel, className, 'data-testid': testId,
+  domainMin, domainMax, size = 'md', isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: LineChartProps) {
   const formatValue = format ?? plain;
   const all = seriesOf(y).map((series, index) => ({ ...series, color: colorOf(index, series.color), dash: dashes[index % dashes.length] }));
@@ -194,7 +200,11 @@ export function LineChart({
       summary={summarize?.({ kind: 'line', count: data.length, series: facts })}
       size={size}
       isLoading={isLoading}
+      plotShape="line"
       error={error}
+      onRetry={onRetry}
+      retryLabel={retryLabel}
+      emptyHint={emptyHint}
       isEmpty={!facts.length}
       emptyLabel={emptyLabel}
       className={className}

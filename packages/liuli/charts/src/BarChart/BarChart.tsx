@@ -64,6 +64,12 @@ export interface BarChartProps {
   error?: string;
   /** What to say when no row has a number. */
   emptyLabel?: string;
+  /** A second, quieter line under `emptyLabel`: what to do next. */
+  emptyHint?: string;
+  /** With `error`: tries again. Pass `retryLabel` with it. */
+  onRetry?: () => void;
+  /** The words on the retry button: "Try again". */
+  retryLabel?: string;
   className?: string;
   /** On the chart; a bar's button is `<id>-<key>`. */
   'data-testid'?: string;
@@ -120,7 +126,7 @@ function barPaths(
 export function BarChart({
   data, x, y, keyField, label, title, description, formatValue: format, summarize, xLabels, valueLabels = 'auto', legend = 'bottom', legendLabel,
   selectedKey, onSelect, hiddenSeries = [], onHiddenSeriesChange, domainMin, domainMax, size = 'md',
-  isLoading = false, error, emptyLabel, className, 'data-testid': testId,
+  isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: BarChartProps) {
   const formatValue = format ?? plain;
   const all = seriesOf(y).map((series, index) => ({ ...series, color: colorOf(index, series.color) }));
@@ -222,7 +228,11 @@ export function BarChart({
       summary={summarize?.({ kind: 'bar', count: data.length, series: facts })}
       size={size}
       isLoading={isLoading}
+      plotShape="bars"
       error={error}
+      onRetry={onRetry}
+      retryLabel={retryLabel}
+      emptyHint={emptyHint}
       isEmpty={!values.length}
       emptyLabel={emptyLabel}
       className={className}

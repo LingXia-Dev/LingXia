@@ -89,15 +89,16 @@ export function Readout() {
 }
 
 export function StateLoading() {
-  return <Chart label="Budget for the quarter" title="Budget" size="sm" isLoading data-testid="loading" />;
+  return <Chart label="Budget for the quarter" title="Budget" size="sm" isLoading plotShape="bars" data-testid="loading" />;
 }
 
 export function StateEmpty() {
-  return <Chart label="Budget for the quarter" title="Budget" size="sm" isEmpty emptyLabel="No budget set" data-testid="empty" />;
+  return <Chart label="Budget for the quarter" title="Budget" size="sm" isEmpty plotShape="bars" emptyLabel="No budget set yet" emptyHint="Set one in Settings to track spending here." data-testid="empty" />;
 }
 
 export function StateError() {
-  return <Chart label="Budget for the quarter" title="Budget" size="sm" error="The budget could not be loaded" data-testid="error" />;
+  const tries = useLocal('tries', 0);
+  return <Chart label="Budget for the quarter" title="Budget" size="sm" error={tries.value === 0 ? 'The budget could not be loaded.' : `Still not loaded after ${tries.value + 1} tries.`} onRetry={() => tries.set(tries.value + 1)} retryLabel="Try again" data-testid="error" />;
 }
 
 /** The home tile: a heading, a plot and a legend, as small as the frame goes. */

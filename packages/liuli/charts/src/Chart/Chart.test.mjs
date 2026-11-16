@@ -64,14 +64,28 @@ test('states: loading is busy with a hidden skeleton; empty shows its words; an 
   assert.equal(loading.props.stateBusy, 1);
   assert.match(JSON.stringify(loading), /skeleton-glint/);
   const empty = await renderExample('Chart/Chart', 'StateEmpty');
-  assert.equal(empty.getByText('No budget set').props.color, 'text-muted');
-  assert.equal(empty.getByText('No budget set').parent.props.alignSafe, 1, 'a message taller than the plot starts at its top');
+  assert.equal(empty.getByText('No budget set yet').props.color, 'text');
+  assert.equal(empty.getByText('No budget set yet').parent.parent.parent.props.alignSafe, 1, 'a state taller than the plot starts at its top');
   const error = await renderExample('Chart/Chart', 'StateError');
-  assert.equal(error.getByText('The budget could not be loaded').props.role, 'alert');
+  assert.equal(error.getByText('The budget could not be loaded.').props.role, 'alert');
   for (const screen of [empty, error]) assert.equal(screen.queryAll(node => node.props.role === 'list').length, 0);
 });
 
 test('Spending: a sixth, seventh and eighth series take hues', async () => {
   const screen = await renderExample('Chart/Chart', 'Spending');
   assert.deepEqual(['health', 'leisure', 'clothes', 'gifts'].map(key => screen.getByTestId(`part-${key}`).props.background), ['chart-5', 'hue-3', 'hue-5', 'hue-4']);
+});
+
+test('states: loading draws a skeleton shaped like the plot; empty has a mark and a hint; an error has a mark and a retry', async () => {
+  const loading = (await renderExample('Chart/Chart', 'StateLoading')).getByTestId('loading');
+  assert.ok(loading.props.accessibilityBusy ?? loading.props.stateBusy ?? loading.props.busy, 'busy while loading');
+  const empty = await renderExample('Chart/Chart', 'StateEmpty');
+  empty.getByText('No budget set yet');
+  empty.getByText('Set one in Settings to track spending here.');
+  const failed = await renderExample('Chart/Chart', 'StateError');
+  failed.getByText('The budget could not be loaded.');
+  const retry = failed.getByTestId('error-retry');
+  assert.equal(retry.props.accessibilityLabel, 'Try again');
+  failed.press(retry);
+  failed.getByText('Still not loaded after 2 tries.');
 });

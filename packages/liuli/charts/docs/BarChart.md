@@ -137,6 +137,9 @@ export function Month() {
 | `isLoading` | `boolean` | `false` |  |
 | `error` | `string` |  |  |
 | `emptyLabel` | `string` |  | What to say when no row has a number. |
+| `emptyHint` | `string` |  | A second, quieter line under `emptyLabel`: what to do next. |
+| `onRetry` | `(() => void)` |  | With `error`: tries again. Pass `retryLabel` with it. |
+| `retryLabel` | `string` |  | The words on the retry button: "Try again". |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the chart; a bar's button is `<id>-<key>`. |
 

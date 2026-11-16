@@ -102,6 +102,6 @@ test('states: a part chosen from outside; one part is a whole ring; loading, emp
   assert.equal((await renderExample('PieChart/PieChart', 'StateLoading')).getByTestId('loading').props.stateBusy, 1);
   (await renderExample('PieChart/PieChart', 'StateEmpty')).getByText('Nothing stored yet');
   const error = await renderExample('PieChart/PieChart', 'StateError');
-  assert.equal(error.getByText('Storage could not be read').props.role, 'alert');
-  assert.equal(error.queryAll(node => node.tag === 'vector').length, 0);
+  assert.equal(error.getByText('Storage could not be read.').props.role, 'alert');
+  assert.equal(error.queryAll(node => node.tag === 'vector').length, 1, 'the error mark alone: no plot');
 });

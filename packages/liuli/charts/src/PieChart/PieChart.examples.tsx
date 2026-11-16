@@ -82,15 +82,15 @@ export function StateWhole() {
 }
 
 export function StateLoading() {
-  return <PieChart data={[]} name="kind" value="gb" label="Storage by kind" size="sm" isLoading data-testid="loading" />;
+  return <PieChart data={[]} name="kind" value="gb" label="Storage by kind" title="Storage" description="By kind of file" size="sm" isLoading data-testid="loading" />;
 }
 
 export function StateEmpty() {
-  return <PieChart data={[]} name="kind" value="gb" label="Storage by kind" size="sm" emptyLabel="Nothing stored yet" data-testid="empty" />;
+  return <PieChart data={[]} name="kind" value="gb" label="Storage by kind" title="Storage" description="By kind of file" size="sm" emptyLabel="Nothing stored yet" emptyHint="Files you upload are counted here." data-testid="empty" />;
 }
 
 export function StateError() {
-  return <PieChart data={storage} name="kind" value="gb" label="Storage by kind" size="sm" error="Storage could not be read" data-testid="error" />;
+  return <PieChart data={storage} name="kind" value="gb" label="Storage by kind" title="Storage" description="By kind of file" size="sm" error="Storage could not be read." onRetry={() => {}} retryLabel="Try again" data-testid="error" />;
 }
 
 /** The home tile. */
