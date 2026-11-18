@@ -5,7 +5,7 @@ import * as details from '../src/runtime/details.js';
 import { Pager } from '../src/runtime/pager.js';
 import { Progress } from '../src/runtime/progress.js';
 import { rendered, byTestId } from './support/wire.mjs';
-import { h, List, childrenToArray, describe, prepare, discard, reset, dispatch, useLocal, useRequest, configureActions, createView, takeActionRequests } from '../src/internal.js';
+import { h, List, childrenToArray, elementType, cloneElement, describe, prepare, discard, reset, dispatch, useLocal, useRequest, configureActions, createView, takeActionRequests } from '../src/internal.js';
 
 beforeEach(() => reset());
 
@@ -33,6 +33,69 @@ test('component children preserve zero/one/many and explicit JSX precedence', ()
   function Many({children}) { assert.equal(children.length, 2); return h('view', {}, children); }
   assert.ok(describe(() => h(Many, {}, h('text', {}, 'a'), h('text', {}, 'b')), {}).includes('b'));
   assert.deepEqual(childrenToArray([null, ['a', false, [1]], undefined]), ['a', 1]);
+});
+
+test('elementType names an intrinsic, a component or a fragment, and nothing else', () => {
+  function Button() { return h('text', {}, 'b'); }
+  const seen = [];
+  describe(() => {
+    seen.push(elementType(h('view')), elementType(h(Button)), elementType(h(Fragment, {}, 'x')),
+      elementType('text'), elementType(null), elementType(false), elementType([h('view')]));
+    return h('text', {}, 'x');
+  }, {});
+  assert.deepEqual(seen, ['view', Button, Fragment, undefined, undefined, undefined, undefined]);
+});
+
+test('a stale element handle cannot be read or cloned', () => {
+  let kept;
+  describe(() => (kept = h('text', {}, 'a')), {});
+  describe(() => {
+    assert.throws(() => elementType(kept), /UI_STALE/);
+    assert.throws(() => cloneElement(kept, {}), /UI_STALE/);
+    return h('text', {}, 'b');
+  }, {});
+});
+
+test('a clone joins className, replaces other props and keeps local state in its place', () => {
+  const props = [], cells = [];
+  function Trigger({ className, label }) {
+    const cell = useLocal('count', 0); cells.push(cell); props.push({ className, label });
+    return h('text', {}, `${label} ${cell.value}`);
+  }
+  function Wrap({ clone, children }) {
+    const [child] = childrenToArray(children);
+    return clone ? cloneElement(child, { className: 'added', label: 'cloned' }) : child;
+  }
+  let clone = false;
+  const render = () => h(Wrap, { clone }, h(Trigger, { className: 'own', label: 'plain' }));
+  assert.ok(describe(render, {}).includes('plain 0'));
+  cells.at(-1).set(5);
+  clone = true;
+  assert.ok(describe(render, {}).includes('cloned 5'), 'the clone keeps the original\'s local state');
+  assert.deepEqual(props.at(-1), { className: 'own added', label: 'cloned' });
+});
+
+test('cloneElement refuses replacing a handler unless it is named in override', () => {
+  const own = () => {}, added = () => {};
+  let got;
+  function Trigger({ onClick, onFocus }) { got = { onClick, onFocus }; return h('text', {}, 't'); }
+  const render = options => () => cloneElement(h(Trigger, { onClick: own }), { onClick: added, onFocus: added }, options);
+  assert.throws(() => describe(render(), {}), /UI_PROP: cloneElement would replace onClick on <Trigger>; pass \{ override: \["onClick"\] \} to replace it/);
+  describe(render({ override: ['onClick'] }), {});
+  assert.equal(got.onClick, added);
+  assert.equal(got.onFocus, added);
+});
+
+test('cloneElement takes one element and leaves key and children alone', () => {
+  describe(() => {
+    const child = h('text', { key: 'a' }, 'x');
+    assert.throws(() => cloneElement('text', {}), /UI_PROP: cloneElement takes one element; use childrenToArray first/);
+    assert.throws(() => cloneElement(null, {}), /UI_PROP: cloneElement takes one element/);
+    assert.throws(() => cloneElement([child], {}), /UI_PROP: cloneElement takes one element/);
+    assert.throws(() => cloneElement(child, { key: 'b' }), /UI_PROP: cloneElement does not change key or children/);
+    assert.throws(() => cloneElement(child, { children: 'y' }), /UI_PROP: cloneElement does not change key or children/);
+    return cloneElement(child, { 'data-testid': 'kept' });
+  }, {});
 });
 
 test('duplicate locals fail with component context, while custom hook namespaces stay independent', () => {

@@ -1,5 +1,6 @@
 import { render } from './state.js';
 import { counted } from './profile.js';
+import { cx } from './cx.js';
 
 // JSX produces handles into a per-render arena; a handle from another render is stale.
 let arena = [], epoch = 0;
@@ -20,14 +21,42 @@ export function readNode(node) {
 export const isNode = value => Boolean(value && typeof value === 'object' && brand in value);
 export const nodeKey = value => isNode(value) ? readNode(value)[1].key : undefined;
 
-export function h(tag, props, ...children) {
+function push(record) {
   if (!render.active) throw Error('UI_SCOPE: JSX outside render');
   if (arena.length >= 16384) throw Error('UI_LIMIT: candidate arena too large');
   counted('h');
   const handle = { [brand]: [epoch, arena.length] };
-  const { children: supplied, __loc: location, ...attributes } = props ?? {};
-  arena.push([tag, attributes, children.length ? children : supplied === undefined ? [] : [supplied], location]);
+  arena.push(record);
   return handle;
+}
+
+export function h(tag, props, ...children) {
+  const { children: supplied, __loc: location, ...attributes } = props ?? {};
+  return push([tag, attributes, children.length ? children : supplied === undefined ? [] : [supplied], location]);
+}
+
+/** An element's intrinsic tag or component; undefined for anything that is not an element. */
+export const elementType = child => isNode(child) ? readNode(child)[0] : undefined;
+
+const tagName = tag => typeof tag === 'string' ? `<${tag}>` : `<${tag?.name || 'component'}>`;
+
+/** A copy of `element` with `props` over its own; key, children and location stay the original's. */
+export function cloneElement(element, props, options) {
+  if (!isNode(element)) throw Error('UI_PROP: cloneElement takes one element; use childrenToArray first');
+  const [tag, own, children, location] = readNode(element);
+  if (props === null || typeof props !== 'object' || Array.isArray(props)) throw Error('UI_PROP: cloneElement takes a props object');
+  if ('key' in props || 'children' in props) throw Error('UI_PROP: cloneElement does not change key or children');
+  const override = options?.override ?? [];
+  if (!Array.isArray(override)) throw Error('UI_PROP: cloneElement override takes an array of handler names');
+  const merged = { ...own };
+  for (const name of Object.keys(props)) {
+    // The original's handler is not readable, so it cannot be composed: replacing it must be explicit.
+    if (/^on[A-Z]/.test(name) && own[name] !== undefined && !override.includes(name)) {
+      throw Error(`UI_PROP: cloneElement would replace ${name} on ${tagName(tag)}; pass { override: ["${name}"] } to replace it`);
+    }
+    merged[name] = name === 'className' ? cx(own.className, props.className) : props[name];
+  }
+  return push([tag, merged, children, location]);
 }
 
 /** `<>…</>` and `<Fragment key>`: its children stand in its place among its parent's. */

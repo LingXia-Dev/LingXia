@@ -1,5 +1,5 @@
 // Host and test entry: the render/commit protocol the native session drives.
-export { h, childrenToArray } from './runtime/nodes.js';
+export { h, childrenToArray, elementType, cloneElement } from './runtime/nodes.js';
 export { Details, Summary } from './runtime/details.js';
 // Tests reach the list element directly, as `List` does.
 export { listTag, takeLowered, seedLowered } from './runtime/elements.js';

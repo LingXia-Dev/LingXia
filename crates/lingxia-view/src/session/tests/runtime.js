@@ -13,6 +13,7 @@
     List: () => List,
     Summary: () => Summary,
     childrenToArray: () => childrenToArray,
+    cloneElement: () => cloneElement,
     commit: () => commit,
     configureActions: () => configureActions,
     configureClasses: () => configureClasses,
@@ -22,6 +23,7 @@
     describe: () => describe,
     discard: () => discard,
     dispatch: () => dispatch,
+    elementType: () => elementType,
     enableHotSwap: () => enableHotSwap,
     h: () => h,
     hasLocalUpdates: () => hasLocalUpdates,
@@ -102,6 +104,21 @@
     return out;
   }
 
+  // src/runtime/cx.js
+  function cx(...values) {
+    const out = [];
+    const add = (value) => {
+      if (!value) return;
+      if (typeof value === "string" || typeof value === "number") out.push(String(value));
+      else if (Array.isArray(value)) value.forEach(add);
+      else if (typeof value === "object") {
+        for (const key of Object.keys(value)) if (value[key]) out.push(key);
+      }
+    };
+    values.forEach(add);
+    return out.join(" ");
+  }
+
   // src/runtime/nodes.js
   var arena = [];
   var epoch = 0;
@@ -121,14 +138,35 @@
   }
   var isNode = (value) => Boolean(value && typeof value === "object" && brand in value);
   var nodeKey = (value) => isNode(value) ? readNode(value)[1].key : void 0;
-  function h(tag, props, ...children) {
+  function push(record) {
     if (!render.active) throw Error("UI_SCOPE: JSX outside render");
     if (arena.length >= 16384) throw Error("UI_LIMIT: candidate arena too large");
     counted("h");
     const handle2 = { [brand]: [epoch, arena.length] };
-    const { children: supplied, __loc: location, ...attributes } = props ?? {};
-    arena.push([tag, attributes, children.length ? children : supplied === void 0 ? [] : [supplied], location]);
+    arena.push(record);
     return handle2;
+  }
+  function h(tag, props, ...children) {
+    const { children: supplied, __loc: location, ...attributes } = props ?? {};
+    return push([tag, attributes, children.length ? children : supplied === void 0 ? [] : [supplied], location]);
+  }
+  var elementType = (child) => isNode(child) ? readNode(child)[0] : void 0;
+  var tagName = (tag) => typeof tag === "string" ? `<${tag}>` : `<${tag?.name || "component"}>`;
+  function cloneElement(element, props, options2) {
+    if (!isNode(element)) throw Error("UI_PROP: cloneElement takes one element; use childrenToArray first");
+    const [tag, own2, children, location] = readNode(element);
+    if (props === null || typeof props !== "object" || Array.isArray(props)) throw Error("UI_PROP: cloneElement takes a props object");
+    if ("key" in props || "children" in props) throw Error("UI_PROP: cloneElement does not change key or children");
+    const override = options2?.override ?? [];
+    if (!Array.isArray(override)) throw Error("UI_PROP: cloneElement override takes an array of handler names");
+    const merged = { ...own2 };
+    for (const name of Object.keys(props)) {
+      if (/^on[A-Z]/.test(name) && own2[name] !== void 0 && !override.includes(name)) {
+        throw Error(`UI_PROP: cloneElement would replace ${name} on ${tagName(tag)}; pass { override: ["${name}"] } to replace it`);
+      }
+      merged[name] = name === "className" ? cx(own2.className, props.className) : props[name];
+    }
+    return push([tag, merged, children, location]);
   }
   function Fragment() {
     throw Error("UI_FRAGMENT: a fragment is not a component");

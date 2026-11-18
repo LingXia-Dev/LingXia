@@ -77,7 +77,8 @@ A render that throws keeps the previous frame on screen ([Diagnostics](diagnosti
 - Fragments work as in React, except as the page root (`UI_FRAGMENT`) or a `<List>` row.
 - `key` must be a string.
 - `{count && <x/>}` renders `0` when `count` is `0`, as in React.
-- Children are passed through as given; there is no `React.Children`, only `childrenToArray`.
+- Children are passed through as given; there is no `React.Children`, only `childrenToArray`,
+  `elementType` and `cloneElement` (props only; replacing a handler needs `override`).
 - React component libraries do not work: they render DOM. Plain TypeScript libraries do, if they
   avoid DOM, timers and `Intl`.
 

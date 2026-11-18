@@ -1,5 +1,5 @@
 // Public authoring entry. Runtime internals live behind `@lingxia/view/internal`.
-export { childrenToArray, Fragment } from './runtime/nodes.js';
+export { childrenToArray, elementType, cloneElement, Fragment } from './runtime/nodes.js';
 export { List } from './runtime/tree.js';
 export { Details, Summary } from './runtime/details.js';
 export { Pager } from './runtime/pager.js';

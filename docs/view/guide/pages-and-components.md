@@ -129,6 +129,42 @@ export function render() {
 `children` is exactly what the caller passed: `undefined`, one child, or an array. Use
 `childrenToArray(children)` to get a flat array without empty values.
 
+## Taking a child as the trigger
+
+`elementType(child)` says what a child is: its tag name, its component (compare by identity), or
+`undefined` for text and empty values. `cloneElement(child, props)` returns the child with `props`
+merged over its own, in the child's place, so its local state carries over. `className` is joined;
+`key` and `children` cannot change. Adding a handler the child already has throws `UI_PROP` unless
+it is named in `{ override: [...] }`; the child's own handler is not readable, so wrap the child
+when both must run.
+
+```tsx
+import { useLocal, childrenToArray, cloneElement, elementType, type Child } from '@lingxia/view';
+
+function Disclosure({ children }: { children?: Child }) {
+  const open = useLocal(false);
+  const [trigger, ...body] = childrenToArray(children);
+  if (elementType(trigger) !== 'button') throw Error('Disclosure takes a <button> first');
+  return (
+    <view className="gap-2">
+      {cloneElement(trigger, { 'aria-expanded': open.value, onClick: () => open.set(!open.value) })}
+      {open.value && body}
+    </view>
+  );
+}
+
+export function render() {
+  return (
+    <page>
+      <Disclosure>
+        <button className="p-2"><text>Shipping</text></button>
+        <text>Ships in two days.</text>
+      </Disclosure>
+    </page>
+  );
+}
+```
+
 ## Children and conditionals
 
 - `null`, `undefined`, booleans and `''` render nothing, so `{flag && <x/>}` is safe.

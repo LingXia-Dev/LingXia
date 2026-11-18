@@ -11,6 +11,14 @@ export type ComponentProps<C> = C extends (props: infer P) => unknown ? P : neve
 /** Groups children without a box: `<>…</>`, or `<Fragment key>` to move a group together in a keyed list. */
 export declare function Fragment(props: { key?: string; children?: Child }): JSX.Element;
 export declare function childrenToArray(children: Child): readonly Exclude<Child, readonly Child[] | boolean | null | undefined>[];
+/** What `child` is: an intrinsic tag name, the component it renders, `Fragment`, or undefined for text, null, booleans and arrays. Compare a component by identity: `elementType(c) === Button`. */
+export declare function elementType(child: Child): string | Component<any> | undefined;
+/** A copy of `element` with `props` merged over its own, in the original's place: its key, children and local state stay. `className` is joined, not replaced. A handler (`on*`) the element already has is replaced only when named in `override`; otherwise it throws `UI_PROP`. Anything but one element (text, null, an array) throws `UI_PROP`. */
+export declare function cloneElement<P = Record<string, unknown>>(
+  element: Child,
+  props: Partial<P> & { key?: never; children?: never },
+  options?: { override?: readonly (keyof P & `on${string}`)[] },
+): JSX.Element;
 
 /** Props every element accepts; `style` is narrowed per element. */
 /** `dir` sets the inline direction of a subtree; otherwise it follows `env.direction`. Editors also take `"auto"` (first strong character). */
@@ -176,7 +184,7 @@ export interface Video {
   readonly currentTime: number; readonly duration: number | null; readonly buffered: number;
   readonly videoWidth: number; readonly videoHeight: number;
   readonly playbackRate: number; readonly volume: number; readonly muted: boolean;
-  /** `"auto"` or the label chosen with `setQuality`; `qualities` are the labels to choose from. */
+  /** `"auto"` or the label chosen with `setQuality`; `qualities` are the labels to choose from. `"auto"` adapts but never past the smallest rendition that fills the picture (on HarmonyOS the system player chooses); a chosen label is not capped. */
   readonly quality: string; readonly qualities: readonly string[];
   readonly error: VideoError | null;
   /** Shown full screen: the page draws it in an open dialog holding a `<video>` of this player; without one, the bare picture fills the window. */
