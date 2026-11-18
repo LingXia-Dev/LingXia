@@ -40,6 +40,7 @@ mod telemetry;
 mod text_menu;
 mod video;
 mod virtual_rows;
+mod webview;
 mod worker;
 
 /// Largest input-method request [`ViewHost::input`] accepts, in bytes.
@@ -348,6 +349,7 @@ struct Main<F> {
     /// When playback time last reached the page, and the scroll revision seen then.
     video_time_flushed: Option<Duration>,
     video_scroll_revision: u64,
+    webviews: webview::WebViewState,
     environment: Option<FrameEnvironment>,
     /// The environment of the last frame the target accepted; cleared when the target changes.
     presented_environment: Option<FrameEnvironment>,
@@ -602,6 +604,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     video_flushed: None,
                     video_time_flushed: None,
                     video_scroll_revision: 0,
+                    webviews: Default::default(),
                     environment: None,
                     presented_environment: None,
                     host_environment,
@@ -2018,6 +2021,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.styled_focus = (None, false);
             main.interest.reset();
             main.autoclose.reset();
+            main.webviews.reset();
             let effects = main.interaction.reset();
             main.interaction.set_inert(false);
             let mut cancelled = main.images.inflight_tokens();
@@ -2028,6 +2032,7 @@ impl<A: PlatformAdapter> Inner<A> {
         self.adapter.recovery(None);
         self.adapter.bootstrap_overdue(false);
         self.adapter.reset();
+        self.adapter.clear_webviews();
         self.deliver(effects);
         for token in cancelled {
             self.adapter.cancel(token);
@@ -2041,7 +2046,7 @@ impl<A: PlatformAdapter> Inner<A> {
                     app.discard(old);
                 }
                 if !inner.lifecycle.is_current_page(page) {
-                    return Ok(false);
+                    return Ok(None);
                 }
                 let host = std::sync::Arc::downgrade(&inner);
                 let console: crate::engine::console::ConsoleSink =
@@ -2050,13 +2055,16 @@ impl<A: PlatformAdapter> Inner<A> {
                             host.adapter.console(level, message);
                         }
                     });
-                *slot = Some(app.create_with_console(&source, logic, Some(console))?);
-                Ok(true)
+                let created = app.create_with_console(&source, logic, Some(console))?;
+                let scope = app.page(created)?.webview_scope();
+                *slot = Some(created);
+                Ok(Some(scope))
             }))
             .unwrap_or_else(|panic| Err(panics::describe(panic)));
             let host = inner.clone();
             inner.adapter.post(Box::new(move || match result {
-                Ok(true) if !host.main().disposed && host.lifecycle.loaded(page) => {
+                Ok(Some(scope)) if !host.main().disposed && host.lifecycle.loaded(page) => {
+                    host.main().webviews.set_scope(scope);
                     host.adapter.loaded();
                     host.main().dirty = true;
                     host.schedule();
@@ -2096,6 +2104,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.styled_focus = (None, false);
             main.interest.reset();
             main.autoclose.reset();
+            main.webviews.reset();
             // Input stops; automation reads a parked page as blank.
             let effects = main.interaction.park();
             for slot in main.automation_calls.values_mut() {
@@ -2107,6 +2116,7 @@ impl<A: PlatformAdapter> Inner<A> {
         };
         self.adapter.recovery(None);
         self.adapter.bootstrap_overdue(false);
+        self.adapter.clear_webviews();
         self.deliver(effects);
         for token in cancelled {
             self.adapter.cancel(token);
@@ -2135,11 +2145,13 @@ impl<A: PlatformAdapter> Inner<A> {
             main.bootstrap_timer += 1;
             main.forget_frames();
             main.caret.stop();
+            main.webviews.reset();
             let effects = main.interaction.cancel_all();
             let cancelled = main.images.inflight_tokens();
             main.images.clear();
             (effects, cancelled)
         };
+        self.adapter.clear_webviews();
         self.deliver(effects);
         self.lifecycle.dispose();
         for token in cancelled.into_iter().chain(self.take_font_fetches()) {

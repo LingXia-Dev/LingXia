@@ -33,7 +33,7 @@ const editors = new Set(['input', 'textarea']);
 const controls = new Set(['button', 'checkbox', 'switch', 'radio', 'link', 'slider']);
 const focusables = new Set([...editors, ...controls, 'select', 'slider']);
 // Elements that take input of their own; they may sit inside a pressable control.
-const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'select', 'slider']);
+const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'select', 'slider', 'webview']);
 
 export function acceptsProp(tag, key) {
   const element = elements[tag];
@@ -54,7 +54,7 @@ const position = (file, node) => {
 
 /** Every authoring problem in one module, as `file:line:col: CODE: message`. */
 // Controls a screen reader announces need a name; the fix is named in the message.
-const labelled = new Set(['input', 'textarea', 'slider', 'radio', 'plot', 'select', 'dialog']);
+const labelled = new Set(['input', 'textarea', 'slider', 'radio', 'plot', 'select', 'dialog', 'webview']);
 const contentNamed = new Set(['button', 'link', 'checkbox', 'switch']);
 function unnamed(tag, node, file) {
   const attributes = node.attributes.properties;

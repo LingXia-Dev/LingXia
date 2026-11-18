@@ -80,6 +80,7 @@ fn placements(display: &crate::DisplayList) -> Option<Vec<Placement>> {
             Paint::PopOpacity | Paint::PopBackdrop | Paint::PopMask(_) | Paint::PopBlur => {
                 groups = groups.checked_sub(1)?
             }
+            Paint::WebHole { .. } => return None,
             Paint::Video {
                 player,
                 bounds,

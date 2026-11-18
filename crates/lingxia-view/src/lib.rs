@@ -20,6 +20,7 @@ pub use scene::display::{ChromeEdge, DisplayList};
 pub use scene::node::Frame;
 pub use scene::plot::{PieLayout, PlotSelection, PlotSnapshot};
 pub use scene::slider::SliderSnapshot;
+pub use scene::webview::{WebViewInbound, WebViewMount, WebViewNode};
 pub use session::ViewSession;
 pub use session::app::{ViewApp, ViewPageId};
 pub use session::image_requests::{ImageRequest, ImageRequests, ImageSource};

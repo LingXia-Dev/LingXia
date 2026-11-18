@@ -672,6 +672,8 @@ declare module 'liblingxia.so' {
   export function gpuPageTextHandleDrag(token: number, active: boolean): void;
   export function gpuPageMoveTextSelection(token: number, which: number, x: number, y: number): void;
   export function gpuPageInputBlocked(token: number): boolean;
+  /** Completes a composited GPU page screenshot requested via `gpuPageEvent(token, 'screenshot', id)`. */
+  export function gpuPageScreenshotReply(requestId: string, pngBase64: string): void;
   /** The GPU token of a page instance, or 0 for a WebView page. */
   export function gpuPageToken(pageInstanceId: string): number;
 }

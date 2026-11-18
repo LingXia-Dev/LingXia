@@ -274,6 +274,37 @@ impl DisplayList {
                 }
                 // No decoder feeds the CPU renderer: the box's own background shows.
                 Paint::Video { .. } => {}
+                Paint::WebHole {
+                    key,
+                    bounds,
+                    radius,
+                    corners,
+                    degraded,
+                } => {
+                    if !degraded && crate::scene::webview::is_ready_key(&key) {
+                        context.push_layer(
+                            None,
+                            Some(vello_cpu::peniko::BlendMode::new(
+                                vello_cpu::peniko::Mix::Normal,
+                                vello_cpu::peniko::Compose::DestOut,
+                            )),
+                            None,
+                            None,
+                            None,
+                        );
+                        context.set_paint(AlphaColor::<Srgb>::from_rgba8(0, 0, 0, 255));
+                        context.fill_path(
+                            &ClipSnapshot {
+                                bounds,
+                                radius,
+                                radii: corners,
+                                transform: None,
+                            }
+                            .path(),
+                        );
+                        context.pop_layer();
+                    }
+                }
                 Paint::Text {
                     color: [r, g, b, a],
                     font,

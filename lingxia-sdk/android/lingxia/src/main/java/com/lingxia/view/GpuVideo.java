@@ -27,7 +27,12 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
     private static final String TAG = "LingXia.UI";
     private static HandlerThread thread;
 
+    private static final String WEBVIEW_PREFIX = "lx-webview://";
+    private static final java.util.concurrent.ConcurrentHashMap<String, GpuVideo> WEB_SINKS =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
     private final Handler handler;
+    private final String webKey;
     private final SurfaceTexture texture = new SurfaceTexture(false);
     private final Surface surface = new Surface(texture);
     private final float[] matrix = new float[16];
@@ -54,7 +59,14 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
     private static java.util.concurrent.ExecutorService posters;
 
     static GpuVideo open(String source) {
+        if (source != null && source.startsWith(WEBVIEW_PREFIX)) {
+            return new GpuVideo(source.substring(WEBVIEW_PREFIX.length()), true);
+        }
         return new GpuVideo(source);
+    }
+
+    static GpuVideo webSink(String key) {
+        return key == null ? null : WEB_SINKS.get(key);
     }
 
     private static synchronized Handler handler() {
@@ -65,7 +77,17 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
         return new Handler(thread.getLooper());
     }
 
+    private GpuVideo(String webKey, boolean webview) {
+        this.webKey = webKey;
+        this.handler = handler();
+        texture.setOnFrameAvailableListener(this, handler);
+        snapshot = new double[] {0, -1, 0, 0, 0, 0, 1, 1, 0, 0, 1};
+        WEB_SINKS.put(webKey, this);
+        GpuWebView.onSinkRegistered(webKey);
+    }
+
     private GpuVideo(String source) {
+        this.webKey = null;
         handler = handler();
         texture.setOnFrameAvailableListener(this, handler);
         Context context = application();
@@ -366,8 +388,37 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
         return matrix;
     }
 
+    synchronized boolean drawWebView(android.view.View target, int w, int h) {
+        if (closed || w <= 0 || h <= 0 || !surface.isValid()) {
+            return false;
+        }
+        if (width != w || height != h) {
+            texture.setDefaultBufferSize(w, h);
+            width = w;
+            height = h;
+        }
+        android.graphics.Canvas canvas = android.os.Build.VERSION.SDK_INT >= 23
+            ? surface.lockHardwareCanvas()
+            : surface.lockCanvas(null);
+        if (canvas == null) {
+            return false;
+        }
+        try {
+            canvas.drawColor(android.graphics.Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR);
+            target.draw(canvas);
+        } finally {
+            surface.unlockCanvasAndPost(canvas);
+        }
+        return true;
+    }
+
     void close() {
-        closed = true;
+        synchronized (this) {
+            closed = true;
+            if (webKey != null) {
+                WEB_SINKS.remove(webKey, this);
+            }
+        }
         poster = null;
         if (posterTask != null) {
             posterTask.cancel(true);
@@ -377,8 +428,10 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
                 player.release();
                 player = null;
             }
-            surface.release();
-            texture.release();
+            synchronized (GpuVideo.this) {
+                surface.release();
+                texture.release();
+            }
         });
     }
 

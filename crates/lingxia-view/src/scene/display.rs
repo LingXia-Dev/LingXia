@@ -782,6 +782,7 @@ impl DisplayList {
             | Paint::Border { bounds, .. }
             | Paint::Image { bounds, .. }
             | Paint::Video { bounds, .. }
+            | Paint::WebHole { bounds, .. }
             | Paint::Vector { bounds, .. } => *bounds,
             Paint::RasterShadow { raster } => raster.bounds,
             Paint::Shadow {

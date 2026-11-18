@@ -202,6 +202,7 @@ fn projected_roles_match_the_schema_vocabulary() {
         Role::Row,
         Role::MenuItemCheckBox,
         Role::MenuItemRadio,
+        Role::WebView,
     ]
     .iter()
     .map(|role| {

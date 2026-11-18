@@ -14,8 +14,16 @@ impl NativeWindow {
     /// Takes a reference on `window`, so it outlives the XComponent's own surface callbacks.
     pub(crate) fn retain(window: *mut sys::OHNativeWindow) -> Option<Self> {
         let window = NonNull::new(window)?;
-        // SAFETY: a live window from the surface holder.
-        unsafe { sys::OH_NativeWindow_NativeObjectReference(window.as_ptr().cast()) };
+        // SAFETY: a live window from the surface holder; RGBA_8888 keeps an alpha channel for
+        // premultiplied `<webview>` hole composition.
+        unsafe {
+            sys::OH_NativeWindow_NativeObjectReference(window.as_ptr().cast());
+            sys::OH_NativeWindow_NativeWindowHandleOpt(
+                window.as_ptr(),
+                sys::SET_FORMAT,
+                sys::PIXEL_FMT_RGBA_8888,
+            );
+        }
         Some(Self(window))
     }
 

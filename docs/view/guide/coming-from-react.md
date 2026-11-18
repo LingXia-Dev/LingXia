@@ -48,8 +48,9 @@ no React and no DOM. This page lists what changes.
 | `input`, `textarea` | `<input>`, `<textarea>` |
 | `input type="checkbox"`, radio buttons, `select`, `input type="range"` | `<checkbox>`/`<switch>`, `<radio>`, `<select>`, `<slider>` |
 | `form` | none: state + an action ([Inputs and forms](inputs-and-forms.md)) |
-| `video` | `<video>` |
-| `canvas`, `iframe` | none; `<plot>` for charts |
+| `video` | `<video>` (`useVideo(name)` shares a player with a full-screen `<dialog>`) |
+| `iframe` | `<webview>` (`useWebView(name)` shares a live document with a `<dialog>` or sheet) |
+| `canvas` | none; `<plot>` for charts, `<vector>` for shapes |
 | scrolling `div` | `<scroll>`; long lists `<List>` |
 
 Unknown tags fail the build (`UI_TAG`). Text must be inside `<text>`; a bare string becomes one.

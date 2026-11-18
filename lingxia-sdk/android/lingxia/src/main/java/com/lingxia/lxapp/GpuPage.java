@@ -17,6 +17,7 @@ public final class GpuPage extends FrameLayout {
     private static native boolean presented(long token, long generation);
     private static native boolean restart(long token, long generation);
     private static native void automationReply(long replyId, String reply);
+    private static native android.view.View embeddedWebView(long token, String webId);
     private static final String INACTIVE = "{\"error\":\"page is not active: the GPU page was disposed\"}";
     private final String appId, path, webTag;
     private final GpuView content;
@@ -59,6 +60,7 @@ public final class GpuPage extends FrameLayout {
                     com.lingxia.app.LxLog.INSTANCE.e("LingXia.UI", "GPU page " + webTag + " failed: " + error.getMessage(), null, appId, path);
                 }
             }, logic);
+            candidate.setWebViewResolver(webId -> embeddedWebView(token, webId));
             candidate.pause();
             addView(candidate, new FrameLayout.LayoutParams(-1, -1));
             content = candidate;
@@ -152,6 +154,10 @@ public final class GpuPage extends FrameLayout {
 
     public static void updateEnvironment(long token, String update) {
         MAIN.post(() -> { GpuPage page = PAGES.get(token); if (page != null) page.content.updateEnvironment(update); });
+    }
+
+    public static void syncWebViews(long token, String mountsJson) {
+        MAIN.post(() -> { GpuPage page = PAGES.get(token); if (page != null) page.content.syncWebViews(mountsJson); });
     }
 
     public static void reload(long token, String source) {

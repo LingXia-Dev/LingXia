@@ -67,6 +67,8 @@ export interface Screen {
   drag(node: WireNode, event: { phase: "start" | "end" | "settle"; index?: number; velocity?: number; hidden?: boolean }): void;
   /** `<video>` events (`{ type: "play" }`, …) with the player's status. */
   video(node: WireNode, status: object, events?: ReadonlyArray<{ type: string; [detail: string]: unknown }>): void;
+  /** `<webview>` events (`{ type: "load", url, title }`, `{ type: "message", json, origin }`, …). */
+  webview(node: WireNode, events?: ReadonlyArray<{ type: string; [detail: string]: unknown }>): void;
   /** The Back or Escape a device sends: closes the topmost overlay; false when none was open. */
   escape(): boolean;
   /** Merges `data` and `env` into the current view and re-renders; local state is kept. */

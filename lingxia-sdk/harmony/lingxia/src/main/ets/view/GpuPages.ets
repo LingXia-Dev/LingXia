@@ -1,8 +1,10 @@
-import { NodeContent } from '@kit.ArkUI';
-import { pasteboard } from '@kit.BasicServicesKit';
+import { componentSnapshot, NodeContent } from '@kit.ArkUI';
+import { image } from '@kit.ImageKit';
+import { util } from '@kit.ArkTS';
+import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { LxLog } from '../app/LxLog';
 import { GpuFrameTextMenu } from './generated/GpuFrame';
-import { gpuPageFocusByKey, gpuPageReveal } from 'liblingxia.so';
+import { gpuPageFocusByKey, gpuPageReveal, gpuPageScreenshotReply } from 'liblingxia.so';
 import { GpuRect } from './GpuEnvironment';
 
 const TAG = 'LingXia.GpuPages';
@@ -49,6 +51,25 @@ export class GpuRecovery {
   action: number = -1;
 }
 
+export interface GpuClipMount {
+  bounds: number[];
+  radius: number;
+  radii: number[][] | null;
+}
+
+/** Embedded `<webview>` mount geometry and state for a GPU page, in page virtual pixels. */
+export class GpuWebViewMount {
+  webId: string = '';
+  webTag: string = '';
+  bounds: number[] = [0, 0, 0, 0];
+  visibleBounds: number[] = [0, 0, 0, 0];
+  radius: number = 0;
+  radii: number[][] | null = null;
+  clips: GpuClipMount[] = [];
+  degraded: boolean = false;
+  accessibilityHidden: boolean = false;
+}
+
 /** One GPU page as ArkTS sees it: the slot Rust mounts its XComponent node into, and chrome state. */
 @Observed
 export class GpuPageModel {
@@ -64,6 +85,7 @@ export class GpuPageModel {
   focusRing: GpuFeedback | null = null;
   textMenu: GpuFrameTextMenu | null = null;
   handles: GpuSelectionHandles | null = null;
+  webViews: GpuWebViewMount[] = [];
   topLayer: boolean = false;
   /** The bar-snapshot generation the frame on screen draws; 0 when none. */
   chromeSnapshot: number = 0;
@@ -228,12 +250,51 @@ export class GpuPages {
         break;
       case 'bootstrapOverdue':
         break;
+      case 'webviews':
+        page.webViews = payload.length > 0 ? JSON.parse(payload) as GpuWebViewMount[] : [];
+        break;
+      case 'screenshot':
+        GpuPages.captureScreenshot(token, payload);
+        return true;
       default:
         LxLog.w(TAG, `unknown GPU page event ${kind}`);
         return false;
     }
     GpuPages.changed.forEach((listener: GpuPageListener) => listener(page));
     return true;
+  }
+
+  private static captureScreenshot(token: number, requestId: string): void {
+    try {
+      componentSnapshot.get(`lx-gpu-page-${token}`, (err: BusinessError, pixelMap: image.PixelMap) => {
+        if (err && err.code !== 0 || !pixelMap) {
+          gpuPageScreenshotReply(requestId, '');
+          return;
+        }
+        try {
+          const packer = image.createImagePacker();
+          const opts: image.PackingOption = { format: 'image/png', quality: 100 };
+          packer.packing(pixelMap, opts, (packErr: BusinessError | null, buffer: ArrayBuffer) => {
+            try {
+              if (packErr && packErr.code !== 0) {
+                gpuPageScreenshotReply(requestId, '');
+                return;
+              }
+              const b64 = new util.Base64Helper().encodeToStringSync(new Uint8Array(buffer));
+              gpuPageScreenshotReply(requestId, b64);
+            } finally {
+              try { packer.release(); } catch (_) {}
+              try { pixelMap.release(); } catch (_) {}
+            }
+          });
+        } catch (_) {
+          try { pixelMap.release(); } catch (_) {}
+          gpuPageScreenshotReply(requestId, '');
+        }
+      });
+    } catch (_) {
+      gpuPageScreenshotReply(requestId, '');
+    }
   }
 
   private static copy(text: string): void {

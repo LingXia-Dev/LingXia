@@ -40,8 +40,10 @@ pub type ArkUI_NodeContentHandle = *mut ArkUI_NodeContent;
 
 pub const ARKUI_NATIVE_NODE: i32 = 0;
 pub const ARKUI_NODE_XCOMPONENT: i32 = 12;
+pub const ARKUI_NODE_XCOMPONENT_TEXTURE: i32 = 20;
 pub const ARKUI_XCOMPONENT_TYPE_SURFACE: i32 = 0;
 
+pub const NODE_BACKGROUND_COLOR: i32 = 2;
 pub const NODE_ID: i32 = 5;
 pub const NODE_FOCUSABLE: i32 = 39;
 pub const NODE_FOCUS_STATUS: i32 = 66;
@@ -54,9 +56,13 @@ pub const NODE_XCOMPONENT_TYPE: i32 = 12001;
 pub const NODE_TOUCH_EVENT: i32 = 0;
 pub const NODE_ON_FOCUS: i32 = 4;
 pub const NODE_ON_BLUR: i32 = 5;
+pub const NODE_ON_TOUCH_INTERCEPT: i32 = 7;
 pub const NODE_ON_HOVER: i32 = 9;
 pub const NODE_ON_MOUSE: i32 = 10;
 pub const NODE_ON_KEY_EVENT: i32 = 21;
+
+pub const HTM_DEFAULT: i32 = 0;
+pub const HTM_NONE: i32 = 3;
 pub const ARKUI_KEY_EVENT_DOWN: i32 = 0;
 pub const ARKUI_KEY_EVENT_LONG_PRESS: i32 = 2;
 pub const ARKUI_MODIFIER_KEY_SHIFT: u64 = 1 << 1;
@@ -200,6 +206,10 @@ unsafe extern "C" {
     pub fn OH_ArkUI_PointerEvent_SetStopPropagation(
         event: *const ArkUI_UIInputEvent,
         stop: bool,
+    ) -> i32;
+    pub fn OH_ArkUI_PointerEvent_SetInterceptHitTestMode(
+        event: *const ArkUI_UIInputEvent,
+        mode: i32,
     ) -> i32;
 
     // XComponent surface holder (API 19); frame callback, soft keyboard and provider (API 20).

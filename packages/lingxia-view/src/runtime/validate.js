@@ -160,6 +160,13 @@ export function video(props) {
   for (const [name, value] of Object.entries(props)) if (/^on[A-Z]/.test(name) && value !== undefined && typeof value !== 'function') throw Error(`UI_VIDEO: ${name} takes a function`);
 }
 
+export function webview(props) {
+  if (props.src !== undefined && !source(props.src)) throw Error('UI_WEBVIEW: invalid source');
+  label(props.accessibilityLabel, 'UI_WEBVIEW', true);
+  for (const name of ['onFullscreenChange', 'onLoad', 'onMessage', 'onBlocked', 'onError'])
+    if (props[name] !== undefined && typeof props[name] !== 'function') throw Error(`UI_WEBVIEW: ${name} takes a function`);
+}
+
 // `key:"…"` of a key this long is at most 6 bytes per character plus 6, within the limit.
 const SHORT_KEY = Math.floor((limits.identifierBytes - 6) / 6);
 // Surrogates are checked in full: a lone one is not UTF-8.

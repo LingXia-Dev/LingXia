@@ -21,6 +21,7 @@ import { playerName, videoStatus, fullscreenHandler } from './video.js';
 import { boxBinding } from './box.js';
 import { shownInDialog } from './fullscreen.js';
 import { fieldText } from './calendar.js';
+import { resolveWebView } from './webview.js';
 
 const videoFlags = [['videoMuted', 'muted'], ['videoLoop', 'loop']];
 const videoEvents = [['loadedmetadata', 'onLoadedMetadata'], ['play', 'onPlay'], ['playing', 'onPlaying'], ['pause', 'onPause'],
@@ -43,7 +44,7 @@ function dropped(key) {
   return true;
 }
 // Elements that take input of their own; they may sit inside a pressable control.
-const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'select', 'slider']);
+const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'select', 'slider', 'webview']);
 const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO', select: 'UI_SELECT' };
 const optionStyle = ['fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'color', 'background'];
 // A component's id keys its local state and nodes. The compiler stamps each top-level component
@@ -386,8 +387,9 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   // `data-testid` names the node for automation; it is not one of the data-* variant attributes.
   if (props['data-testid'] !== undefined) { props.testId = props['data-testid']; delete props['data-testid']; }
   ariaProps(props);
-  // Controls nest inside a pressable control and take presses in their own bounds; scrolls do not.
-  if (parent.inControl && (tag === 'scroll' || tag === 'list')) throw Error('UI_BUTTON: a scroll or list cannot sit inside a pressable control');
+  // Controls nest inside a pressable control and take presses in their own bounds; scrolls and webviews do not.
+  if (parent.inControl && (tag === 'scroll' || tag === 'list' || tag === 'webview'))
+    throw Error(`UI_BUTTON: a ${tag === 'webview' ? '<webview>' : 'scroll or list'} cannot sit inside a pressable control`);
   if (element.binding) bind(tag, element, props);
   const editor = tag === 'input' || tag === 'textarea';
   if (props.dir !== undefined && !['ltr', 'rtl', 'auto'].includes(props.dir)) throw Error('UI_PROP: dir must be "ltr", "rtl" or "auto"');
@@ -677,6 +679,11 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       }, 'text', true);
       break;
     }
+    case 'webview':
+      check.webview(props);
+      wire('accessibilityLabel', props.accessibilityLabel);
+      resolveWebView(props, identity, parent, wire, on);
+      break;
     case 'vector': {
       const fit = result.fields.imageFit; delete result.fields.imageFit;
       wire('vectorSource', check.vector(props, fit));

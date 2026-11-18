@@ -158,6 +158,9 @@ pub struct NodeSnapshot {
     /// `onContextMenu`'s handle: a long press, a secondary click or the Menu key asks for it.
     #[serde(skip)]
     pub on_context_menu: Option<u64>,
+    /// `<webview>` state and callback handle; never serialized into FrameSnapshot JSON.
+    #[serde(skip)]
+    pub webview: Option<crate::scene::webview::WebViewNode>,
     /// `onPointer`'s handle, and whether the element keeps horizontal and vertical movement
     /// from scrolls.
     #[serde(skip)]

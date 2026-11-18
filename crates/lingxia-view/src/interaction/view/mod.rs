@@ -368,12 +368,20 @@ impl ViewInteraction {
         self.inert = inert;
     }
 
+    pub fn inert(&self) -> bool {
+        self.inert
+    }
+
     pub fn set_fine_pointer(&mut self, fine: bool) {
         self.fine_pointer = fine;
     }
 
     pub fn set_touch_target(&mut self, minimum: f32) {
         self.touch_target = minimum;
+    }
+
+    pub fn touch_target(&self) -> f32 {
+        self.touch_target
     }
 
     /// Edges covered by all bars and the keyboard, and by system bars and the keyboard alone.

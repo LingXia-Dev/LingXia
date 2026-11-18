@@ -124,6 +124,33 @@ impl Renderer {
                 unspoken[index] |= !inside[index] && !around[index];
             }
         }
+        let top_layer_z = |mut at: Option<usize>| -> i64 {
+            while let Some(index) = at {
+                if records[index].number(field::TOP_LAYER).is_some() {
+                    return records[index]
+                        .number(field::Z_INDEX)
+                        .map(|v| v as i64)
+                        .unwrap_or(0);
+                }
+                at = records[index].parent;
+            }
+            i64::MIN
+        };
+        let mut active_webviews: std::collections::HashMap<String, (usize, (bool, i64, usize))> =
+            std::collections::HashMap::new();
+        for (index, record) in records.iter().enumerate() {
+            if record.tag == tag::WEBVIEW && !hidden[index] {
+                let session = record.string(field::WEB_SESSION).unwrap_or_default();
+                let rank = (in_top_layer(Some(index)), top_layer_z(Some(index)), index);
+                match active_webviews.get(session) {
+                    Some(&(_, prev_rank)) if prev_rank >= rank => {}
+                    _ => {
+                        active_webviews.insert(session.to_owned(), (index, rank));
+                    }
+                }
+            }
+        }
+        let mut live_webviews: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut content_boxes: Vec<[f32; 4]> = Vec::with_capacity(records.len());
         let mut selectables = Vec::with_capacity(records.len());
         let mut selectable_count = 0;
@@ -414,7 +441,7 @@ impl Renderer {
             if let Some(background) = record.string(field::BACKGROUND).or(
                 if matches!(
                     record.tag,
-                    tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT
+                    tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT | tag::WEBVIEW
                 ) {
                     Some("surface")
                 } else if index == 0 {
@@ -1225,6 +1252,71 @@ impl Renderer {
                     position,
                 });
             }
+            let webview_node = if record.tag == tag::WEBVIEW && !hidden[index] {
+                let session = record.string(field::WEB_SESSION).unwrap_or_default();
+                live_webviews.insert(session.to_owned());
+                let web_id = self.webviews.id_for(session);
+                let active = active_webviews
+                    .get(session)
+                    .is_some_and(|&(winner, _)| winner == index);
+                let key = crate::scene::webview::make_key(self.webviews.scope(), &web_id);
+                let (inner_bounds, inner_radius, inner_corners) = match content_clip {
+                    Some(clip) => (clip.bounds, clip.radius, clip.radii),
+                    None => (control_bounds, radius, corners),
+                };
+                #[cfg(target_os = "android")]
+                if active && !collapsed[index] {
+                    let uniform_inner_radius = inner_corners
+                        .and_then(|r| {
+                            let first = r[0][0];
+                            r.iter()
+                                .flatten()
+                                .all(|v| (*v - first).abs() < 0.01)
+                                .then_some(first)
+                        })
+                        .unwrap_or(inner_radius);
+                    crate::renderer::video_configure(
+                        &key,
+                        Ok(crate::scene::video::Source {
+                            variants: vec![(String::new(), format!("lx-webview://{key}"))],
+                            settings: Default::default(),
+                        }),
+                    );
+                    commands.push(Paint::Video {
+                        player: key,
+                        bounds: inner_bounds,
+                        radius: uniform_inner_radius,
+                        fit: crate::scene::image::Fit::Fill,
+                        position: [0.5, 0.5],
+                    });
+                }
+                #[cfg(not(target_os = "android"))]
+                if active && !collapsed[index] {
+                    commands.push(Paint::WebHole {
+                        key,
+                        bounds: inner_bounds,
+                        radius: inner_radius,
+                        corners: inner_corners,
+                        degraded: false,
+                    });
+                }
+                Some(crate::scene::webview::WebViewNode {
+                    scope: self.webviews.scope(),
+                    web_id,
+                    src: record.string(field::WEB_SRC).unwrap_or_default().to_owned(),
+                    active,
+                    in_top_layer: in_top_layer(Some(index)),
+                    degraded: collapsed[index],
+                    on_event: record
+                        .fields
+                        .iter()
+                        .find(|(id, _)| *id == field::ON_WEB_EVENT)
+                        .and_then(|(_, v)| v.as_u64())
+                        .filter(|handle| *handle != 0),
+                })
+            } else {
+                None
+            };
             input_layouts.push(
                 if matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
                     Some(InputLayout {
@@ -1391,6 +1483,7 @@ impl Renderer {
                     .find(|(field, _)| *field == field::ON_CONTEXT_MENU)
                     .and_then(|(_, value)| value.as_u64())
                     .filter(|handle| *handle != 0),
+                webview: webview_node,
                 on_pointer_event: record
                     .fields
                     .iter()
@@ -1456,7 +1549,7 @@ impl Renderer {
                 control_bounds: (border.is_some()
                     && matches!(
                         record.tag,
-                        tag::IMAGE | tag::SLIDER | tag::PLOT | tag::VIDEO
+                        tag::IMAGE | tag::SLIDER | tag::PLOT | tag::VIDEO | tag::WEBVIEW
                     ))
                 .then_some(control_bounds),
                 scroll_parent,
@@ -1677,6 +1770,7 @@ impl Renderer {
                 },
             });
         }
+        self.webviews.retain_live(&live_webviews);
         snap_points(records, &mut nodes);
         Ok(RetainedLayout {
             top_layer: records

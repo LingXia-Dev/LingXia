@@ -812,6 +812,7 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     pub(super) fn vsync(self: &Arc<Self>) {
+        self.flush_webviews();
         // A window nothing of which shows still completes its frames, so the page's lifecycle,
         // hit-testing and readback advance, but nothing reaches a drawable that may not return.
         let hidden = self.window_hidden();
@@ -1155,6 +1156,7 @@ impl<A: PlatformAdapter> Inner<A> {
             self.worker.release();
         }
         self.adapter.presented(&snapshot, &timing);
+        self.sync_webviews_on_present(&snapshot);
         self.revealed_by_frame();
         self.update_text_menu();
         self.edits_presented();

@@ -88,6 +88,18 @@ pub trait Shell: Send + Sync + 'static {
     /// them (empty).
     fn selection_handles(&self, token: i64, handles: &str);
     fn host_chrome(&self, token: i64, chrome: &HostChrome);
+    /// Reconcile embedded `<webview>` mounts on the main thread.
+    fn sync_webviews(&self, token: i64, mounts: &[lingxia_view::scene::webview::WebViewMount]) {
+        let _ = (token, mounts);
+    }
+    /// Exit web-initiated fullscreen on `web_id`.
+    fn exit_webview_fullscreen(&self, token: i64, web_id: &str) {
+        let _ = (token, web_id);
+    }
+    /// Tear down all embedded `<webview>` mounts for `token`.
+    fn clear_webviews(&self, token: i64) {
+        let _ = token;
+    }
 }
 
 /// Live pages and their nodes; main thread only, as are all ArkUI callbacks.
@@ -237,6 +249,13 @@ pub fn focus_by_key(token: i64) {
     xcomponent::focus::by_key(token);
 }
 
+/// Any thread: deliver an embedded `<webview>` event or readiness flag to `token`'s host.
+pub fn webview_event(token: i64, web_id: String, event: lingxia_view::WebViewInbound) {
+    dispatch::post_main(Box::new(move || {
+        pages::with(token, |host| host.webview_event(web_id, event));
+    }));
+}
+
 /// The page's visible area `[left, top, width, height]` in logical pixels.
 pub fn page_viewport(token: i64) -> Option<[f64; 4]> {
     dispatch::run_on_main(move || {
@@ -340,7 +359,8 @@ impl Page {
     pub fn scrolls_right_at(&self, screen: [f32; 2]) -> bool {
         pages::with(self.token, |host| {
             let (_, origin) = host.adapter().placement();
-            host.can_scroll_horizontally_at([screen[0] - origin[0], screen[1] - origin[1]], -1)
+            let local = [screen[0] - origin[0], screen[1] - origin[1]];
+            host.webview_at(local).is_some() || host.can_scroll_horizontally_at(local, -1)
         })
         .unwrap_or(false)
     }

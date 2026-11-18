@@ -8,14 +8,14 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 
 | Code | Raised at | Meaning |
 | --- | --- | --- |
-| `UI_A11Y` | build, runtime, native | An image without `alt`, or a control, editor, plot, select or dialog without an accessible name. |
+| `UI_A11Y` | build, runtime, native | An image without `alt`, or a control, editor, plot, select, dialog or webview without an accessible name. |
 | `UI_ACTION` | runtime, native | An action call was malformed or its reply invalid. |
 | `UI_ANIMATION` | build, runtime, native | An invalid or over-budget animation definition, or an inline `style.animation`. |
 | `UI_BOOTSTRAP_TIMEOUT` | native | Logic did not deliver the first page state in time. |
 | `UI_BRIDGE` | native | The View-Logic connection failed or was replaced. |
 | `UI_BUDGET` | runtime, native | A warning, once per page and limit: a frame used at least three quarters of a page limit, or a dialog or popover past `topLayer` stayed closed. |
 | `UI_BUFFER` | native | A malformed wire buffer reached the native decoder. |
-| `UI_BUTTON` | build, runtime, native | Invalid button label, a scroll or list inside a composed control, or a control whose only content is another control. |
+| `UI_BUTTON` | build, runtime, native | Invalid button label, a scroll, list or webview inside a composed control, or a control whose only content is another control. |
 | `UI_CHANNEL` | runtime | Invalid `useChannel` call or channel failure. |
 | `UI_CHECK` | runtime, native | Invalid checkbox or switch value, label or binding. |
 | `UI_CHILD` | runtime, native | An element has children it does not accept, or lacks its required parent. |
@@ -85,4 +85,5 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_VECTOR` | runtime, native | Invalid vector paths, gradients or viewBox. |
 | `UI_VIDEO` | runtime, native | Invalid `<video>` source. |
 | `UI_VIEWPORT` | native | The host reported an invalid viewport. |
+| `UI_WEBVIEW` | runtime, native | Invalid `<webview>` source, session handle, label or callback. |
 | `UI_WORKER` | native | The View worker thread failed to start. |

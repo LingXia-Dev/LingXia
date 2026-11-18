@@ -184,13 +184,17 @@ pub fn valid(b: &mut Bytes, id: usize) -> Option<Value> {
                 json!(format!("{}%", b.below(101)))
             }
         }
-        "flag" | "input-flag" | "plot-flag" | "check-flag" | "semantic-state" => json!(b.below(2)),
+        "flag" | "input-flag" | "plot-flag" | "check-flag" | "semantic-state" => {
+            json!(b.below(2))
+        }
         "handle" | "input-handle" | "image-handle" | "reach-handle" | "check-handle"
         | "slider-handle" | "select-handle" | "plot-handle" => json!(b.below(1000) + 1),
         "textarea-rows" => json!(1 + b.below(8)),
         "list-count" => json!(b.below(50)),
         "list-extent" => json!(f64::from(b.byte())),
         "image-src" | "image-source" => json!(*b.pick(&["a.png", "images/b.jpg"])),
+        "web-source" => json!(*b.pick(&["https://example.com", "docs/terms.html"])),
+        "web-session" => json!(format!("name:web{}", b.below(4))),
         "list-id" => json!(format!("list{}", b.below(4))),
         "grid-template" => json!(*b.pick(&[
             "1fr 1fr",
@@ -199,6 +203,7 @@ pub fn valid(b: &mut Bytes, id: usize) -> Option<Value> {
             "minmax(0,1fr) 2fr"
         ])),
         "input-text" | "image-alt" => json!(*b.pick(&WORDS[26..30])),
+        _ if id == field::ACCESSIBILITY_LABEL => json!("Label"),
         _ => return None,
     })
 }

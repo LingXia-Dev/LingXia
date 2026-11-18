@@ -225,7 +225,70 @@ impl Shell for Bridge {
         });
         arkts(token, "hostChrome", &payload.to_string());
     }
+    fn sync_webviews(
+        &self,
+        token: i64,
+        mounts: &[lingxia_view_harmony::lingxia_view::scene::webview::WebViewMount],
+    ) {
+        gpu_page::webviews::sync_webviews(
+            token,
+            mounts,
+            deliver_harmony_webview,
+            sync_harmony_webviews_ui,
+        );
+    }
+    fn exit_webview_fullscreen(&self, token: i64, web_id: &str) {
+        gpu_page::webviews::exit_webview_fullscreen(token, web_id);
+    }
+    fn clear_webviews(&self, token: i64) {
+        gpu_page::webviews::clear_webviews(token, Some(clear_harmony_webviews_ui));
+    }
 }
+
+fn deliver_harmony_webview(
+    token: Token,
+    web_id: String,
+    event: lingxia_view_harmony::lingxia_view::WebViewInbound,
+) {
+    lingxia_view_harmony::webview_event(token, web_id, event);
+}
+
+fn sync_harmony_webviews_ui(
+    token: Token,
+    mounts: &[lingxia_view_harmony::lingxia_view::scene::webview::WebViewMount],
+) {
+    let payload: Vec<serde_json::Value> = mounts
+        .iter()
+        .map(|m| {
+            serde_json::json!({
+                "webId": m.web_id,
+                "webTag": gpu_page::webviews::child_webtag(token, &m.web_id).unwrap_or_default(),
+                "bounds": m.bounds,
+                "visibleBounds": m.visible_bounds,
+                "radius": m.radius,
+                "radii": m.radii,
+                "clips": m.clips,
+                "degraded": m.degraded,
+                "accessibilityHidden": m.accessibility_hidden,
+            })
+        })
+        .collect();
+    let json = if payload.is_empty() {
+        String::new()
+    } else {
+        serde_json::Value::Array(payload).to_string()
+    };
+    arkts(token, "webviews", &json);
+}
+
+fn clear_harmony_webviews_ui(token: Token) {
+    arkts(token, "webviews", "");
+}
+
+type ScreenshotWaiters = std::sync::Mutex<HashMap<u64, Box<dyn FnOnce(Option<String>) + Send>>>;
+static SCREENSHOT_WAITERS: std::sync::LazyLock<ScreenshotWaiters> =
+    std::sync::LazyLock::new(Default::default);
+static NEXT_SCREENSHOT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 struct HarmonyPage {
     token: Token,
@@ -325,23 +388,49 @@ impl NativePage for HarmonyPage {
     fn automation(&self, request: serde_json::Value, reply: AutomationReply) {
         let token = self.token;
         lingxia_view_harmony::post_main(Box::new(move || {
+            let has_webviews = request["op"] == "screenshot"
+                && gpu_page::webviews::has_webviews(token)
+                && with_page(token, |_| ()).is_some();
+            if has_webviews {
+                let req_id = NEXT_SCREENSHOT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let reply_cell = Arc::new(std::sync::Mutex::new(Some(reply)));
+                let fallback_reply = Arc::clone(&reply_cell);
+                SCREENSHOT_WAITERS
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .insert(
+                        req_id,
+                        Box::new(move |png_b64| {
+                            if let Some(png_b64) = png_b64 {
+                                if let Some(r) =
+                                    reply_cell.lock().unwrap_or_else(|p| p.into_inner()).take()
+                                {
+                                    r(Ok(serde_json::json!({ "png": png_b64 })));
+                                }
+                                return;
+                            }
+                            lingxia_view_harmony::post_main(Box::new(move || {
+                                let Some(r) = fallback_reply
+                                    .lock()
+                                    .unwrap_or_else(|p| p.into_inner())
+                                    .take()
+                                else {
+                                    return;
+                                };
+                                r(capture_gpu_only_png(token));
+                            }));
+                        }),
+                    );
+                arkts(token, "screenshot", &req_id.to_string());
+                return;
+            }
             let answer = with_page(token, |page| {
                 if request["op"] != "screenshot" {
                     return page
                         .with_host(|host| host.automation_request(&request))
                         .unwrap_or_else(|| Err("page is not active".into()));
                 }
-                use base64::Engine;
-                match page.screenshot_png() {
-                    Ok(Some(png)) => Ok(serde_json::json!({
-                        "png": base64::engine::general_purpose::STANDARD.encode(png)
-                    })),
-                    Ok(None) => Err(page
-                        .with_host(|host| host.first_frame_failure())
-                        .flatten()
-                        .unwrap_or_else(|| "E_PAGE_NOT_READY: no presented frame".into())),
-                    Err(error) => Err(error),
-                }
+                capture_page_png(page)
             });
             reply(answer.unwrap_or_else(|| Err("page is not active".into())));
         }));
@@ -646,6 +735,39 @@ pub fn gpu_page_input_blocked(token: i64) -> bool {
     with_page(token, |page| page.with_host(|host| host.input_blocked()))
         .flatten()
         .unwrap_or(false)
+}
+
+fn capture_gpu_only_png(token: Token) -> std::result::Result<serde_json::Value, String> {
+    with_page(token, capture_page_png).unwrap_or_else(|| Err("page is not active".into()))
+}
+
+fn capture_page_png(page: &Page) -> std::result::Result<serde_json::Value, String> {
+    use base64::Engine;
+    match page.screenshot_png() {
+        Ok(Some(png)) => Ok(serde_json::json!({
+            "png": base64::engine::general_purpose::STANDARD.encode(png)
+        })),
+        Ok(None) => Err(page
+            .with_host(|host| host.first_frame_failure())
+            .flatten()
+            .unwrap_or_else(|| "E_PAGE_NOT_READY: no presented frame".into())),
+        Err(error) => Err(error),
+    }
+}
+
+/// Completes a composited GPU page screenshot (`GpuPages` `screenshot` event).
+#[napi]
+pub fn gpu_page_screenshot_reply(request_id: String, png_base64: String) {
+    let Ok(id) = request_id.parse::<u64>() else {
+        return;
+    };
+    let waiter = SCREENSHOT_WAITERS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .remove(&id);
+    if let Some(waiter) = waiter {
+        waiter((!png_base64.is_empty()).then_some(png_base64));
+    }
 }
 
 /// The GPU token of a page instance, or 0 for a WebView page.

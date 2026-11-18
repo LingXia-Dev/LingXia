@@ -60,6 +60,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         mixed: false,
         on_context_menu: None,
         on_page: None,
+        webview: None,
         range: None,
         plot: None,
         radio_group: None,

@@ -8,6 +8,7 @@ mod list_end_resize;
 mod lowered;
 #[cfg(feature = "gpu")]
 mod video;
+mod webview;
 
 use super::*;
 

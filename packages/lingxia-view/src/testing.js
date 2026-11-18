@@ -162,6 +162,7 @@ function screen(host, view) {
     pointer: (node, { phase, x, y, width, height, pointer = 'touch' }) => json(node, 'onPointer', { phase, x, y, width, height, pointer }),
     drag: (node, event) => json(node, 'onDragEvent', event),
     video: (node, status, events = []) => json(node, 'onVideoEvent', { status, events }),
+    webview: (node, events = []) => json(node, 'onWebEvent', { events }),
     /** The Back or Escape a device sends: closes the topmost overlay; false when none was open. */
     escape() { const closed = host.__lingxiaEscape(); refresh(); return closed; },
     rerender(next = {}) {

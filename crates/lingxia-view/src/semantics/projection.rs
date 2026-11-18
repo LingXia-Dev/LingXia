@@ -70,6 +70,8 @@ pub enum Role {
     MenuItemCheckBox,
     /// One of a set of menu items, only one checked.
     MenuItemRadio,
+    /// An embedded web document (`<webview>`).
+    WebView,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -196,7 +198,7 @@ pub fn meaningful(node: &NodeSnapshot) -> bool {
             || node.checked.is_some()
             || node.range.is_some()
             || node.input.is_some()
-            || matches!(node.tag, "image" | "video")
+            || matches!(node.tag, "image" | "video" | "webview")
             || node.drag.is_some()
             || steppable(node)
             || (node.tag == "plot"
@@ -485,6 +487,8 @@ impl Projection<'_> {
             Role::Slider
         } else if node.tag == "video" {
             Role::Video
+        } else if node.tag == "webview" {
+            Role::WebView
         } else if matches!(node.tag, "image" | "plot") {
             Role::Image
         } else {
@@ -495,6 +499,7 @@ impl Projection<'_> {
             role,
             Role::Image
                 | Role::Video
+                | Role::WebView
                 | Role::ProgressBar
                 | Role::Slider
                 | Role::RadioGroup
@@ -538,7 +543,11 @@ impl Projection<'_> {
         // Enabled is what the author wrote: a control without a handler is enabled but does nothing.
         let mut enabled = !node.disabled && input.is_none_or(|input| input.enabled);
         let mut actions = Vec::new();
-        let mut focusable = button || check || input.is_some() || select.is_some();
+        let mut focusable = button
+            || check
+            || input.is_some()
+            || select.is_some()
+            || (node.tag == "webview" && !node.disabled);
         if let Some(range) = &node.range {
             focusable = true;
             if slider_enabled(node) {

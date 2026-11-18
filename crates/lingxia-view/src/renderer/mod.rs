@@ -72,6 +72,14 @@ pub(crate) fn video_forget(scope: u64) {
     let _ = scope;
 }
 
+/// Drop a single player `key` (e.g. an unmounted `<webview>`).
+pub(crate) fn video_forget_key(key: &str) {
+    #[cfg(feature = "gpu")]
+    gpu::video::forget_key(key);
+    #[cfg(not(feature = "gpu"))]
+    let _ = key;
+}
+
 /// A handle's or Logic's command to player `key`.
 pub(crate) fn video_command(
     key: &str,

@@ -61,6 +61,18 @@ pub trait StateListener: Send + Sync + 'static {
         let _ = owner;
         log::log!(target: "lingxia_view::console", level, "{message}");
     }
+    /// Main thread: reconcile embedded `<webview>` mounts for `owner`.
+    fn sync_webviews(&self, owner: i64, mounts: &[lingxia_view::scene::webview::WebViewMount]) {
+        let _ = (owner, mounts);
+    }
+    /// Main thread: exit web-initiated fullscreen on `web_id` for `owner`.
+    fn exit_webview_fullscreen(&self, owner: i64, web_id: &str) {
+        let _ = (owner, web_id);
+    }
+    /// Main thread: tear down all embedded `<webview>` mounts for `owner`.
+    fn clear_webviews(&self, owner: i64) {
+        let _ = owner;
+    }
 }
 
 static STATE_LISTENER: OnceLock<Arc<dyn StateListener>> = OnceLock::new();
@@ -963,6 +975,38 @@ impl HostEvents for AndroidAdapter {
 
     fn debug(&self, message: &str) {
         write(3, message);
+    }
+
+    fn sync_webviews(&self, mounts: &[lingxia_view::scene::webview::WebViewMount]) {
+        if self.target() == Target::Unavailable
+            && let Some(host) = self.host.get().and_then(WeakViewHost::upgrade)
+        {
+            for mount in mounts {
+                host.webview_event(
+                    mount.web_id.clone(),
+                    lingxia_view::WebViewInbound::Error {
+                        code: "WEBVIEW_UNSUPPORTED".into(),
+                        message: "GPU composition is unavailable on this device".into(),
+                    },
+                );
+            }
+            return;
+        }
+        if let Some(listener) = STATE_LISTENER.get().filter(|_| self.owner != 0) {
+            listener.sync_webviews(self.owner, mounts);
+        }
+    }
+
+    fn exit_webview_fullscreen(&self, web_id: &str) {
+        if let Some(listener) = STATE_LISTENER.get().filter(|_| self.owner != 0) {
+            listener.exit_webview_fullscreen(self.owner, web_id);
+        }
+    }
+
+    fn clear_webviews(&self) {
+        if let Some(listener) = STATE_LISTENER.get().filter(|_| self.owner != 0) {
+            listener.clear_webviews(self.owner);
+        }
     }
 }
 

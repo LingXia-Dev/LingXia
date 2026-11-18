@@ -44,6 +44,7 @@ public final class GpuSemantics {
     public static final String ROLE_ROW = "row";
     public static final String ROLE_MENU_ITEM_CHECK_BOX = "menu-item-check-box";
     public static final String ROLE_MENU_ITEM_RADIO = "menu-item-radio";
+    public static final String ROLE_WEB_VIEW = "web-view";
     public static final String LIVE_POLITE = "polite";
     public static final String LIVE_ASSERTIVE = "assertive";
     public static final String EVENT_ANNOUNCE = "announce";

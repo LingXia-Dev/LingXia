@@ -48,6 +48,7 @@ pub struct Renderer {
     /// Ink boxes of laid-out glyph runs, relative to the run origin.
     pub(crate) ink_cache: HashMap<InkKey, Option<[f32; 4]>>,
     pub(crate) videos: crate::scene::video::Sources,
+    pub(crate) webviews: crate::scene::webview::WebViews,
     /// Whether `focused` shows: false when a pointer moved it, so no indicator ring.
     pub(crate) focus_visible: bool,
 }
@@ -71,6 +72,8 @@ mod text_scale_layout_tests;
 impl Default for Renderer {
     fn default() -> Self {
         let fonts = crate::text::fonts::context();
+        let videos = crate::scene::video::Sources::default();
+        let webviews = crate::scene::webview::WebViews::new(videos.scope());
         Self {
             text_scale: Default::default(),
             fonts,
@@ -89,7 +92,8 @@ impl Default for Renderer {
             font_faces: Default::default(),
             layout_tree: None,
             ink_cache: HashMap::new(),
-            videos: Default::default(),
+            videos,
+            webviews,
             focus_visible: true,
         }
     }

@@ -131,6 +131,18 @@ pub trait Shell: Send + Sync + 'static {
         let _ = token;
         Ok(source.to_owned())
     }
+    /// Reconcile embedded `<webview>` mounts on the main thread.
+    fn sync_webviews(&self, token: i64, mounts: &[lingxia_view::scene::webview::WebViewMount]) {
+        let _ = (token, mounts);
+    }
+    /// Exit web-initiated fullscreen on `web_id`.
+    fn exit_webview_fullscreen(&self, token: i64, web_id: &str) {
+        let _ = (token, web_id);
+    }
+    /// Tear down all embedded `<webview>` mounts for `token`.
+    fn clear_webviews(&self, token: i64) {
+        let _ = token;
+    }
 }
 
 pub struct Page {

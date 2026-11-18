@@ -5,7 +5,7 @@ const container = new Set(['alignItems', 'alignContent', 'justifyContent', 'just
 const layouts = new Set(['view', 'scroll', 'list', 'button', 'checkbox', 'page']);
 // Box tags that `<view>` and its classes replace.
 const boxes = { column: '<view>', row: '<view className="flex-row">', grid: '<view className="grid">',
-  stack: '<view className="grid *:col-start-1 *:row-start-1">', spacer: '<view>' };
+  stack: '<view className="grid *:col-start-1 *:row-start-1">', spacer: '<view>', iframe: '<webview>' };
 
 /** `; use <view …>` for a box tag the layout classes replace, else nothing. */
 export function tagHint(tag) {

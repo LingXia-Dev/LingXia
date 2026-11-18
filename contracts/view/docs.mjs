@@ -68,8 +68,8 @@ async function elements(schema) {
     if (element.wire !== name) facts.push(`Renders as ${code(element.wire)}.`);
     if (parents[element.wire]) facts.push(`Only inside ${code(`<${parents[element.wire]}>`)}.`);
     if (admission.root) facts.push('The page root.');
-    // Controls nest inside a pressable control; only scrolls and lists are refused there.
-    if (name === 'scroll' || element.wire === 'list') facts.push('Not allowed inside a pressable control (`UI_BUTTON`).');
+    // Controls nest inside a pressable control; scrolls, lists and webviews are refused there.
+    if (name === 'scroll' || element.wire === 'list' || name === 'webview') facts.push('Not allowed inside a pressable control (`UI_BUTTON`).');
     out.push(facts.join(' '), '');
     if (element.binding) {
       const { type, event } = element.binding;
@@ -333,6 +333,8 @@ const limitNotes = {
   dragSnapPoints: 'Snap points one `drag` element declares in `dragSnapPoints`.',
   topLayer: 'Dialogs and popovers open at once; a further one stays closed (`UI_BUDGET`) and fires no `onClose` or `onToggle`.',
   dataAttributeBytes: '`data-*` props of a page, as UTF-8 JSON; automation reads them, nothing draws them.',
+  webMessageBytes: 'One `window.lingxia.postMessage` payload of a `<webview>` page, as UTF-8 JSON; past it the call throws in the web page.',
+  webMessageQueue: 'Queued (`{ queue: true }`) messages of one `<webview>` waiting for `onMessage`; past it the oldest is dropped and `onError` reports `WEBVIEW_MESSAGE_DROPPED` once.',
   outlineGlyphs: "Glyphs the platform outlines (Apple's PingFang UI faces) in one frame, each filled as a path; past it frames slow down.",
 };
 
@@ -405,7 +407,7 @@ const untestable = {
 };
 
 const errorNotes = {
-  UI_A11Y: 'An image without `alt`, or a control, editor, plot, select or dialog without an accessible name.',
+  UI_A11Y: 'An image without `alt`, or a control, editor, plot, select, dialog or webview without an accessible name.',
   UI_OVERRUN: 'A render ran past its time budget; the frame is dropped and the page renders again (`UI_TIMEOUT` after several in a row).',
   UI_SELECT: 'Invalid `<select>` options, value or selection reply.',
   UI_FONT: 'A family is not declared with `@font-face`, a declared face file is missing, outside the lxapp or too large, or a face or system font could not be read; text falls back to the next font.',
@@ -417,7 +419,7 @@ const errorNotes = {
   UI_BOOTSTRAP_TIMEOUT: 'Logic did not deliver the first page state in time.',
   UI_BRIDGE: 'The View-Logic connection failed or was replaced.',
   UI_BUFFER: 'A malformed wire buffer reached the native decoder.',
-  UI_BUTTON: 'Invalid button label, a scroll or list inside a composed control, or a control whose only content is another control.',
+  UI_BUTTON: 'Invalid button label, a scroll, list or webview inside a composed control, or a control whose only content is another control.',
   UI_CHANNEL: 'Invalid `useChannel` call or channel failure.',
   UI_CHECK: 'Invalid checkbox or switch value, label or binding.',
   UI_CHROME: 'Invalid host chrome geometry from the platform adapter.',
@@ -444,6 +446,7 @@ const errorNotes = {
   UI_GRID: 'An invalid grid track list or line.',
   UI_IMAGE: 'Invalid image source, alt, retry key or callback, or a failed load.',
   UI_VIDEO: 'Invalid `<video>` source.',
+  UI_WEBVIEW: 'Invalid `<webview>` source, session handle, label or callback.',
   UI_INPUT: 'Invalid editor prop, binding or text.',
   UI_KEY: 'A non-string or duplicate sibling key, or a component keyed by its own function name.',
   UI_LEAVE: 'Invalid `useLeaveGuard` call or answer.',

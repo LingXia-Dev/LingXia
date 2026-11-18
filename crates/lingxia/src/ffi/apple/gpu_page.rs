@@ -259,6 +259,18 @@ mod bridge {
         // The recovery chrome's button was pressed.
         #[swift_bridge(swift_name = "gpuPageRetry")]
         fn gpu_page_retry(token: i64);
+
+        // Hit-test logical point `(x, y)` for a live `<webview>`: returns its `web_id` or `""`.
+        #[swift_bridge(swift_name = "gpuPageWebViewAt")]
+        fn gpu_page_webview_at(token: i64, x: f32, y: f32) -> String;
+
+        // Raw `WKWebView*` pointer for `(token, web_id)`, or 0 when not yet created.
+        #[swift_bridge(swift_name = "gpuPageEmbeddedWebView")]
+        fn gpu_page_embedded_webview(token: i64, web_id: &str) -> usize;
+
+        // Close the topmost closable overlay / fullscreen `<webview>`; false when none is open.
+        #[swift_bridge(swift_name = "gpuPageCloseRequest")]
+        fn gpu_page_close_request(token: i64) -> bool;
     }
 
     extern "Swift" {
@@ -368,6 +380,12 @@ mod bridge {
         // Call `gpuPageVsync` on the next display refresh; false without a display link.
         #[swift_bridge(swift_name = "GpuPages.requestVsync")]
         fn gpu_pages_request_vsync(token: i64) -> bool;
+
+        #[swift_bridge(swift_name = "GpuPages.syncWebViews")]
+        fn gpu_pages_sync_webviews(token: i64, mounts: &str);
+
+        #[swift_bridge(swift_name = "GpuPages.captureCompositedPng")]
+        fn gpu_pages_capture_composited_png(token: i64) -> Vec<u8>;
     }
 }
 
@@ -821,6 +839,28 @@ fn gpu_page_retry(token: i64) {
     with_page(token, |page| page.host().retry());
 }
 
+fn gpu_page_webview_at(token: i64, x: f32, y: f32) -> String {
+    let mut hit = String::new();
+    with_page(token, |page| {
+        if let Some(mount) = page.host().webview_at_logical([x, y]) {
+            hit = mount.web_id;
+        }
+    });
+    hit
+}
+
+fn gpu_page_embedded_webview(token: i64, web_id: &str) -> usize {
+    gpu_page::webviews::apple_webview_ptr(token, web_id)
+}
+
+fn gpu_page_close_request(token: i64) -> bool {
+    let mut closed = false;
+    with_page(token, |page| {
+        closed = page.host().close_request();
+    });
+    closed
+}
+
 fn gpu_page_window_visible(token: i64, visible: bool) {
     log::debug!(target: "lingxia_view", "window token={token} visible={visible}");
     // AppKit reports occlusion: a covered window's surface stays live (minimized and hidden
@@ -1070,6 +1110,74 @@ mod live {
         fn video_url(&self, token: i64, source: &str) -> Result<String, String> {
             gpu_page::video_url(token, source)
         }
+        fn sync_webviews(
+            &self,
+            token: i64,
+            mounts: &[lingxia_view_apple::lingxia_view::scene::webview::WebViewMount],
+        ) {
+            gpu_page::webviews::sync_webviews(
+                token,
+                mounts,
+                deliver_apple_webview_event,
+                sync_apple_webviews_ui,
+            );
+        }
+        fn exit_webview_fullscreen(&self, token: i64, web_id: &str) {
+            gpu_page::webviews::exit_webview_fullscreen(token, web_id);
+        }
+        fn clear_webviews(&self, token: i64) {
+            gpu_page::webviews::clear_webviews(token, Some(clear_apple_webviews_ui));
+        }
+    }
+
+    fn deliver_apple_webview_event(
+        token: Token,
+        web_id: String,
+        event: lingxia_view_apple::lingxia_view::WebViewInbound,
+    ) {
+        on_page(token, move |page| page.host().webview_event(web_id, event));
+    }
+
+    fn sync_apple_webviews_ui(
+        token: Token,
+        mounts: &[lingxia_view_apple::lingxia_view::scene::webview::WebViewMount],
+    ) {
+        let items: Vec<serde_json::Value> = mounts
+            .iter()
+            .map(|m| {
+                let clips: Vec<serde_json::Value> = m
+                    .clips
+                    .iter()
+                    .map(|c| {
+                        serde_json::json!({
+                            "bounds": c.bounds,
+                            "radius": c.radius,
+                            "radii": c.radii,
+                        })
+                    })
+                    .collect();
+                serde_json::json!({
+                    "webId": m.web_id,
+                    "bounds": m.bounds,
+                    "visibleBounds": m.visible_bounds,
+                    "radius": m.radius,
+                    "radii": m.radii,
+                    "clips": clips,
+                    "degraded": m.degraded,
+                    "accessibilityHidden": m.accessibility_hidden,
+                })
+            })
+            .collect();
+        let json = serde_json::Value::Array(items).to_string();
+        lingxia_view_apple::post_main(Box::new(move || {
+            super::bridge::gpu_pages_sync_webviews(token, &json);
+        }));
+    }
+
+    fn clear_apple_webviews_ui(token: Token) {
+        lingxia_view_apple::post_main(Box::new(move || {
+            super::bridge::gpu_pages_sync_webviews(token, "[]");
+        }));
     }
 
     struct ApplePage {
@@ -1164,15 +1272,23 @@ mod live {
                         page.host().automation_request(&request)
                     } else {
                         use base64::Engine;
-                        match page.screenshot_png() {
-                            Ok(Some(png)) => Ok(serde_json::json!({
-                                "png": base64::engine::general_purpose::STANDARD.encode(png)
-                            })),
-                            Ok(None) => Err(page
-                                .host()
-                                .first_frame_failure()
-                                .unwrap_or_else(|| "E_PAGE_NOT_READY: no presented frame".into())),
-                            Err(error) => Err(error),
+                        let composited = super::bridge::gpu_pages_capture_composited_png(token);
+                        if !composited.is_empty() {
+                            Ok(serde_json::json!({
+                                "png": base64::engine::general_purpose::STANDARD.encode(composited)
+                            }))
+                        } else {
+                            match page.screenshot_png() {
+                                Ok(Some(png)) => Ok(serde_json::json!({
+                                    "png": base64::engine::general_purpose::STANDARD.encode(png)
+                                })),
+                                Ok(None) => {
+                                    Err(page.host().first_frame_failure().unwrap_or_else(|| {
+                                        "E_PAGE_NOT_READY: no presented frame".into()
+                                    }))
+                                }
+                                Err(error) => Err(error),
+                            }
                         }
                     });
                 });

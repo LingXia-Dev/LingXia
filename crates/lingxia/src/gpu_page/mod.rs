@@ -28,6 +28,13 @@ pub(crate) use images::{load_image, video_url};
     target_env = "ohos"
 ))]
 pub(crate) mod state;
+#[cfg(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    target_env = "ohos"
+))]
+pub(crate) mod webviews;
 
 /// Identifies one native page shell from creation to disposal.
 pub(crate) type Token = i64;
@@ -173,6 +180,13 @@ impl Lease {
                 }
             }
         }
+        #[cfg(any(
+            target_os = "android",
+            target_os = "ios",
+            target_os = "macos",
+            target_env = "ohos"
+        ))]
+        webviews::clear_webviews(self.token, None);
         {
             let mut registry = registry();
             registry.pending.remove(&self.token);

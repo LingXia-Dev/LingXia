@@ -35,6 +35,7 @@ final class GpuAccessibility {
             case GpuSemantics.ROLE_HORIZONTAL_SCROLL_VIEW: return "android.widget.HorizontalScrollView";
             case GpuSemantics.ROLE_IMAGE: return "android.widget.ImageView";
             case GpuSemantics.ROLE_VIDEO: return "android.widget.VideoView";
+            case GpuSemantics.ROLE_WEB_VIEW: return "android.webkit.WebView";
             case GpuSemantics.ROLE_SLIDER: return "android.widget.SeekBar";
             case GpuSemantics.ROLE_PROGRESS_BAR: return "android.widget.ProgressBar";
             case GpuSemantics.ROLE_LIST: return "android.widget.ListView";

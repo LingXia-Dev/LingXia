@@ -31,3 +31,5 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `blurLayers` | 8 | Elements a frame draws with `blur-*`; past it further ones draw sharp. |
 | `topLayer` | 16 | Dialogs and popovers open at once; a further one stays closed (`UI_BUDGET`) and fires no `onClose` or `onToggle`. |
 | `dragSnapPoints` | 8 | Snap points one `drag` element declares in `dragSnapPoints`. |
+| `webMessageBytes` | 65536 (64 KiB) | One `window.lingxia.postMessage` payload of a `<webview>` page, as UTF-8 JSON; past it the call throws in the web page. |
+| `webMessageQueue` | 64 | Queued (`{ queue: true }`) messages of one `<webview>` waiting for `onMessage`; past it the oldest is dropped and `onError` reports `WEBVIEW_MESSAGE_DROPPED` once. |

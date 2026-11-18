@@ -186,6 +186,7 @@ fn aria(role: Role) -> Option<&'static str> {
         Role::Row => "row",
         Role::MenuItemCheckBox => "menuitemcheckbox",
         Role::MenuItemRadio => "menuitemradio",
+        Role::WebView => "web-view",
         Role::Text | Role::ScrollView | Role::HorizontalScrollView => return None,
     })
 }
@@ -210,6 +211,7 @@ fn virtual_element(node: &NodeSnapshot, semantic: Option<&SemanticNode>) -> Virt
         "slider" => ("input", Some("range")),
         "image" => ("img", None),
         "video" => ("video", None),
+        "webview" => ("webview", None),
         "select" => ("select", None),
         _ => match role {
             Some(Role::Heading) => ("h", None),

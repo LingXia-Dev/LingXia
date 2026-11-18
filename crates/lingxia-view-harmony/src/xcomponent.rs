@@ -71,8 +71,9 @@ pub(crate) struct Node {
     pub(crate) provider: *mut sys::ArkUI_AccessibilityProvider,
 }
 
-const EVENTS: [i32; 7] = [
+const EVENTS: [i32; 8] = [
     sys::NODE_TOUCH_EVENT,
+    sys::NODE_ON_TOUCH_INTERCEPT,
     sys::NODE_ON_FOCUS,
     sys::NODE_ON_BLUR,
     sys::NODE_ON_HOVER,
@@ -89,7 +90,13 @@ impl Node {
         let id = CString::new(format!("lingxia-gpu-{token}")).expect("digits");
         // SAFETY: main thread; every handle is checked and owned by the returned node.
         unsafe {
-            let handle = (api.create_node)(sys::ARKUI_NODE_XCOMPONENT);
+            // `TEXTURE` composites inside ArkUI's render tree so premultiplied `DestOut` holes
+            // reveal `<webview>` siblings underneath in `GpuPage`'s `Stack`.
+            let mut handle = (api.create_node)(sys::ARKUI_NODE_XCOMPONENT_TEXTURE);
+            let is_surface = handle.is_null();
+            if is_surface {
+                handle = (api.create_node)(sys::ARKUI_NODE_XCOMPONENT);
+            }
             if handle.is_null() {
                 return Err("UI_SURFACE: XComponent node creation failed".into());
             }
@@ -106,12 +113,16 @@ impl Node {
                 object: std::ptr::null_mut(),
             };
             let full = sys::ArkUI_NumberValue { f32: 1.0 };
-            let surface = sys::ArkUI_NumberValue {
-                i32: sys::ARKUI_XCOMPONENT_TYPE_SURFACE,
-            };
+            let transparent = sys::ArkUI_NumberValue { u32: 0x0000_0000 };
             let yes = sys::ArkUI_NumberValue { i32: 1 };
             (api.set_attribute)(handle, sys::NODE_XCOMPONENT_ID, &string(&id));
-            (api.set_attribute)(handle, sys::NODE_XCOMPONENT_TYPE, &number(&surface));
+            if is_surface {
+                let surface = sys::ArkUI_NumberValue {
+                    i32: sys::ARKUI_XCOMPONENT_TYPE_SURFACE,
+                };
+                (api.set_attribute)(handle, sys::NODE_XCOMPONENT_TYPE, &number(&surface));
+            }
+            (api.set_attribute)(handle, sys::NODE_BACKGROUND_COLOR, &number(&transparent));
             (api.set_attribute)(handle, sys::NODE_WIDTH_PERCENT, &number(&full));
             (api.set_attribute)(handle, sys::NODE_HEIGHT_PERCENT, &number(&full));
             (api.set_attribute)(handle, sys::NODE_FOCUSABLE, &number(&yes));
@@ -299,6 +310,7 @@ unsafe extern "C" fn on_event(event: *mut sys::ArkUI_NodeEvent) {
         )
     };
     pages::with(token, |host| match kind {
+        sys::NODE_ON_TOUCH_INTERCEPT if !input.is_null() => touch_intercept(host, token, input),
         sys::NODE_TOUCH_EVENT if !input.is_null() => touch(host, input),
         sys::NODE_ON_FOCUS => focus::gained(host, token),
         sys::NODE_ON_BLUR => {
@@ -340,6 +352,30 @@ pub(crate) mod focus {
         if HOLDER.get() == token {
             pages::with(token, |host| host.focus_entered(false));
         }
+    }
+}
+
+/// Passes touches that land inside an uncovered `<webview>` hole directly to the sibling
+/// `LingXiaWebView` underneath `ContentSlot`, while keeping View overlays and dialogs opaque.
+fn touch_intercept(host: &pages::Host, token: i64, input: *mut sys::ArkUI_UIInputEvent) {
+    // SAFETY: the live input event of this callback.
+    let (x, y) = unsafe {
+        (
+            sys::OH_ArkUI_PointerEvent_GetX(input),
+            sys::OH_ArkUI_PointerEvent_GetY(input),
+        )
+    };
+    let scale = host.adapter().placement().0;
+    let mode = if host.webview_at([x * scale, y * scale]).is_some() {
+        crate::ime::disconnect(token);
+        host.hover(None);
+        sys::HTM_NONE
+    } else {
+        sys::HTM_DEFAULT
+    };
+    // SAFETY: as above.
+    unsafe {
+        sys::OH_ArkUI_PointerEvent_SetInterceptHitTestMode(input, mode);
     }
 }
 

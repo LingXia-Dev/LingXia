@@ -22,7 +22,9 @@ pub mod gles;
 static EPOCH: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn epoch() -> u64 {
-    EPOCH.load(Ordering::Relaxed)
+    EPOCH
+        .load(Ordering::Relaxed)
+        .wrapping_add(crate::scene::webview::epoch())
 }
 
 /// High bit set: image texture ids are pixmap addresses, which never have it.
@@ -735,7 +737,9 @@ static OPENER: LazyLock<Mutex<mpsc::Sender<(Instant, Job)>>> = LazyLock::new(|| 
                         .filter(|(key, entry)| {
                             // A frame still drawn keeps its player, hidden or not: closing it
                             // would only reopen it at the next draw.
-                            entry.drawn.elapsed() > IDLE && (!is_hidden(key) || hidden_long(key))
+                            !entry.url.starts_with("lx-webview://")
+                                && entry.drawn.elapsed() > IDLE
+                                && (!is_hidden(key) || hidden_long(key))
                         })
                         .map(|(key, _)| key.clone())
                         .collect();
@@ -919,6 +923,20 @@ pub(crate) fn forget(scope: u64) {
     };
     if !closed.is_empty() {
         // A platform release can block; the page's teardown must not wait on it.
+        std::thread::spawn(move || drop(closed));
+    }
+}
+
+/// Drops a single player `key` (such as an unmounted `<webview>`).
+pub(crate) fn forget_key(key: &str) {
+    stills().retain(|(k, _)| k != key);
+    sources().remove(key);
+    CONFIGURED
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .remove(key);
+    flights().tries.remove(key);
+    if let Some(closed) = players().remove(key) {
         std::thread::spawn(move || drop(closed));
     }
 }
@@ -1304,25 +1322,37 @@ pub(crate) fn has_new(display: &crate::DisplayList) -> bool {
 
 fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a mut Entry> {
     if !players.contains_key(key) {
+        let webview_url = source_of(key)
+            .map(|s| s.url(None).to_owned())
+            .filter(|u| u.starts_with("lx-webview://"));
         // Its decoder closed for a long hide, or its page closed: no new player for it.
-        if hidden_long(key) || is_gone(key) {
+        if (hidden_long(key) && webview_url.is_none()) || is_gone(key) {
             return None;
         }
         let now = Instant::now();
-        let mut state = State::Opening;
-        let reason = if still_frame(key).is_some() {
-            Reason::Returned
+        let (state, url, synchronous) = if let Some(url) = webview_url {
+            let state = match open(&url) {
+                Ok(player) => State::Ready(player),
+                Err(error) => State::Failed(VideoError::from_message(&error)),
+            };
+            (state, url, true)
         } else {
-            Reason::First
+            let mut state = State::Opening;
+            let reason = if still_frame(key).is_some() {
+                Reason::Returned
+            } else {
+                Reason::First
+            };
+            request(key, &mut state, reason);
+            (state, String::new(), false)
         };
-        request(key, &mut state, reason);
         players.insert(
             key.to_owned(),
             Entry {
                 state,
                 applied: None,
                 pending: Vec::new(),
-                url: String::new(),
+                url,
                 quality: None,
                 switch: None,
                 imported: None,
@@ -1345,8 +1375,8 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
                     None,
                     None,
                 ],
-                ready_at: None,
-                loaded_at: None,
+                ready_at: synchronous.then_some(now),
+                loaded_at: synchronous.then_some(now),
                 shown_at: None,
                 after_shown_ms: None,
                 new_at: None,
@@ -1356,7 +1386,9 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
                 waiting: None,
             },
         );
-        return None;
+        if !synchronous {
+            return None;
+        }
     }
     let entry = players.get_mut(key)?;
     entry.drawn = Instant::now();

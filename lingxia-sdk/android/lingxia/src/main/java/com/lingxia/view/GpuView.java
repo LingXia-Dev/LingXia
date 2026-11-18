@@ -83,6 +83,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native boolean nativeAccessibility(long host, int id, int action, double number, String argument);
     static native boolean nativeScrollBy(long host, String region, float delta);
     static native boolean nativeCanScrollVertically(long host, int direction);
+    static native String nativeWebViewAt(long host, float x, float y);
     static native String nativeSemanticRoots(long host);
     static native String nativeSemanticNode(long host, int id);
     static native String nativeFrame(long host);
@@ -191,6 +192,18 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private int bootstrapSurfaceImportance;
     private final Listener listener;
     private final UiSurface surface;
+    private final GpuWebView webviews;
+    public interface WebViewResolver { View resolve(String webId); }
+    public void setWebViewResolver(WebViewResolver resolver) {
+        webviews.setProvider(resolver == null ? null : resolver::resolve);
+    }
+    public void syncWebViews(String mountsJson) {
+        if (destroyed) return;
+        webviews.sync(mountsJson, frameScale);
+    }
+    void onWebViewTextureUpdated() {
+        if (!destroyed) nativeRedraw(host);
+    }
     /** CPU-route frame target, reused while the size holds; guarded by its lock. */
     private final Object cpuFrameLock = new Object();
     private Bitmap cpuFrame;
@@ -286,6 +299,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         // SurfaceView overlays can be hidden by its surface hole on physical devices.
         feedback = new View(context);
         feedback.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        webviews = new GpuWebView(context, this);
         surface = new UiSurface();
         ime = new GpuIme(surface, new GpuIme.Host() {
             @Override public void editingChanged() {
@@ -353,6 +367,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         // default); a later change would recreate the surface.
         surface.getHolder().setFormat(android.graphics.PixelFormat.RGBA_8888);
         surface.getHolder().addCallback(this);
+        addView(webviews, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         addView(surface, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         addView(feedback, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         load(source);
@@ -381,8 +396,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private void prepareInstance() {
         forgetFrame();
         inputReplies.clear();
-        if (surface.getParent() != this) {
+        if (webviews.getParent() != this || surface.getParent() != this) {
             removeAllViews();
+            addView(webviews, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
             addView(surface, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
             addView(feedback, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         }
@@ -407,7 +423,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 if (destroyed || !active) return true;
                 syncVisibility();
                 // Keys go to the focused view, so the page now shown takes it from the one it covers.
-                if (!surface.hasFocus()) surface.requestFocus();
+                if (!surface.hasFocus() && !webviews.hasFocusedWebView()) surface.requestFocus();
                 // Shown in the same frame when the target already holds a frame for this layout.
                 if (!revealed) nativeReveal(host, hasSurfaceFrame);
                 return true;
@@ -535,7 +551,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             updateCaretActivity();
         }
     }
-    private void cancel() { if (!destroyed) nativeCancel(host); }
+    private void cancel() {
+        webviews.cancelTouch();
+        if (!destroyed) nativeCancel(host);
+    }
     /** Sample the environment and present; the core rebuilds the View only when it changed. */
     private void requestFrame() { if (!destroyed) nativeRedraw(host); }
     public long getConnectionGeneration() { return destroyed ? 0 : nativeConnection(host); }
@@ -698,6 +717,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         int surfaceHeight = Math.max(height, unoccludedHeight);
         surface.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(surfaceHeight, MeasureSpec.EXACTLY));
+        webviews.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(surfaceHeight, MeasureSpec.EXACTLY));
     }
 
     @Override protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
@@ -801,6 +822,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         finishSurfaceRedraws();
         showBootstrapMessage(false);
         recovery.clear();
+        webviews.clearAll();
         cancel();
         destroyed = true;
         inputReplies.clear();
@@ -1184,6 +1206,14 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 refreshingGesture = false;
                 // A finger on a device that also has a mouse leaves no hover behind.
                 if (event.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER) nativeHover(host, false, 0, 0);
+            }
+            String webHit = action == MotionEvent.ACTION_DOWN
+                ? nativeWebViewAt(host, event.getX(), event.getY())
+                : null;
+            if (webviews.dispatchPointer(event, webHit, () -> {
+                if (ime.isActive()) ime.clear(true);
+            })) {
+                return true;
             }
             boolean refreshConsumed = pullToRefresh != null && pullToRefresh.onTouch(event);
             if (refreshConsumed || refreshingGesture) {

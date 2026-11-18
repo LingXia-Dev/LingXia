@@ -257,6 +257,7 @@ impl RetainedLayout {
                 node.plot = None;
                 node.range = None;
                 node.radio_group = None;
+                node.webview = None;
                 node.scroll_parent = None;
                 if let Some(drag) = node.drag.as_mut() {
                     drag.ghost = true;
@@ -265,7 +266,26 @@ impl RetainedLayout {
                 let start = next.commands.len();
                 let shift = |command: usize| command + start - old.ranges[index].start;
                 next.commands
-                    .extend_from_slice(&old.commands[old.ranges[index].clone()]);
+                    .extend(
+                        old.commands[old.ranges[index].clone()].iter().cloned().map(
+                            |cmd| match cmd {
+                                Paint::WebHole {
+                                    key,
+                                    bounds,
+                                    radius,
+                                    corners,
+                                    ..
+                                } => Paint::WebHole {
+                                    key,
+                                    bounds,
+                                    radius,
+                                    corners,
+                                    degraded: true,
+                                },
+                                other => other,
+                            },
+                        ),
+                    );
                 next.ranges.push(start..next.commands.len());
                 let mut style = old.paint_styles[index].clone();
                 style.background = style.background.map(shift);
@@ -784,6 +804,19 @@ impl RetainedLayout {
                     radius: self.blurs[index],
                 });
             }
+            let web_degraded = matrix != Affine::IDENTITY
+                || desired.iter().any(|p| {
+                    matches!(
+                        p,
+                        Paint::Opacity { .. }
+                            | Paint::Mask { .. }
+                            | Paint::Blur { .. }
+                            | Paint::Backdrop { .. }
+                    )
+                });
+            if let Some(wv) = &mut node.webview {
+                wv.degraded |= web_degraded;
+            }
             let mut descendants = desired.clone();
             if clips_children {
                 descendants.push(Paint::Clip(content_clip.unwrap_or(ClipSnapshot {
@@ -1117,6 +1150,9 @@ impl RetainedLayout {
                         fit,
                         position,
                     } => {
+                        if node.webview.as_ref().is_some_and(|wv| wv.degraded) {
+                            continue;
+                        }
                         let mut bounds = *bounds;
                         bounds[0] -= translation[0];
                         bounds[1] -= translation[1];
@@ -1131,6 +1167,32 @@ impl RetainedLayout {
                                 radius: *radius,
                                 fit: *fit,
                                 position: *position,
+                            });
+                        }
+                    }
+                    Paint::WebHole {
+                        key,
+                        bounds,
+                        radius,
+                        corners,
+                        degraded,
+                    } => {
+                        let degraded =
+                            *degraded || node.webview.as_ref().is_some_and(|wv| wv.degraded);
+                        let mut bounds = *bounds;
+                        bounds[0] -= translation[0];
+                        bounds[1] -= translation[1];
+                        let visible = intersect(bounds, clip);
+                        if visible[2] > 0.0
+                            && visible[3] > 0.0
+                            && node.clips.iter().all(|shape| shape.intersects(visible))
+                        {
+                            painted.push(Paint::WebHole {
+                                key: key.clone(),
+                                bounds,
+                                radius: *radius,
+                                corners: *corners,
+                                degraded,
                             });
                         }
                     }

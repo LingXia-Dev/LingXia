@@ -15,6 +15,7 @@ import { keysOf } from './keys.js';
 import { finishTopLayer, resetTopLayer } from './toplayer.js';
 import { fullscreenFallback, fullscreenDrawn, resolveBare } from './fullscreen.js';
 import { resetVideos } from './video.js';
+import { webFullscreenFallback, webFullscreenDrawn, resolveBareWeb, resetWebViews } from './webview.js';
 import { now, spent } from './profile.js';
 
 // Candidate transactions: prepare renders and encodes without touching the
@@ -88,6 +89,10 @@ export function prepare(renderPage, view, windows = {}, deferAnchors = false) {
     const bare = fallback && resolveBare(() => resolveNode(fallback, `root/${candidate.tree.element}/key:"lx-fullscreen"`, 1,
       { tag: candidate.tree.element, typography: candidate.tree.typography }));
     if (bare) candidate.tree.children.push(bare);
+    const webFallback = webFullscreenFallback();
+    const bareWeb = webFallback && resolveBareWeb(() => resolveNode(webFallback, `root/${candidate.tree.element}/key:"lx-web-fullscreen"`, 1,
+      { tag: candidate.tree.element, typography: candidate.tree.typography }));
+    if (bareWeb) candidate.tree.children.push(bareWeb);
     // A date or time editor's picker draws above everything else on the page.
     const picker = pickerNode(env);
     if (picker) {
@@ -109,8 +114,11 @@ export function prepare(renderPage, view, windows = {}, deferAnchors = false) {
     try {
       const wire = encodeTree(candidate.tree, windows);
       // List rows render while encoding; one that draws the full screen dialog retires the bare one.
-      if (!bare || !fullscreenDrawn()) return wire;
-      candidate.tree.children = candidate.tree.children.filter(child => child !== bare);
+      const retireVideo = bare && fullscreenDrawn();
+      const retireWeb = bareWeb && webFullscreenDrawn();
+      if (!retireVideo && !retireWeb) return wire;
+      candidate.tree.children = candidate.tree.children.filter(child =>
+        (!retireVideo || child !== bare) && (!retireWeb || child !== bareWeb));
       return encodeTree(candidate.tree, windows);
     } finally { spent('encode', encoding); }
   }, page.committed ?? { memo: new Map(), closures: new Map() });
@@ -125,6 +133,8 @@ export function prepareWindows(windows) {
     candidate.resources = new Map(base.resources);
     candidate.topLayer = base.topLayer;
     candidate.fullscreenHandlers = base.fullscreenHandlers;
+    candidate.webFullscreenHandlers = base.webFullscreenHandlers;
+    candidate.webSources = base.webSources && new Map(base.webSources);
     candidate.tree = copyTree(base.tree);
     candidate.memo = new Map(base.memo);
     candidate.closures = new Map(base.closures);
@@ -209,7 +219,7 @@ export function reset() {
   for (const resource of page.resources.values()) resource.dispose();
   page.resources.clear();
   resetActions();
-  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures(); resetReveals(); resetEnvReads(); resetVideos();
+  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures(); resetReveals(); resetEnvReads(); resetVideos(); resetWebViews();
   wireReset();
 }
 

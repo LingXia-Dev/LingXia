@@ -173,6 +173,12 @@ pub trait HostEvents {
     /// Main thread: the host chrome this page's palette asks for, on change and before the
     /// frame that first uses it.
     fn host_chrome(&self, _chrome: &HostChrome) {}
+    /// Main thread: reconcile mounted `<webview>` instances with the presented frame.
+    fn sync_webviews(&self, _mounts: &[crate::scene::webview::WebViewMount]) {}
+    /// Main thread: exit web-initiated fullscreen on `web_id`.
+    fn exit_webview_fullscreen(&self, _web_id: &str) {}
+    /// Main thread: tear down all `<webview>` mounts on page reload, park or dispose.
+    fn clear_webviews(&self) {}
 }
 
 /// Monotonic time for animation and presentation scheduling. Any thread.

@@ -553,6 +553,34 @@ impl HostEvents for AppleAdapter {
     fn debug(&self, message: &str) {
         log::debug!(target: "lingxia_view", "{message}");
     }
+    fn sync_webviews(&self, mounts: &[lingxia_view::scene::webview::WebViewMount]) {
+        #[cfg(feature = "gpu")]
+        let unavailable = *self.target.lock().unwrap_or_else(|p| p.into_inner())
+            == lingxia_view::renderer::surfaces::Target::Unavailable;
+        #[cfg(not(feature = "gpu"))]
+        let unavailable = true;
+        if unavailable {
+            if let Some(host) = self.host.get().and_then(WeakViewHost::upgrade) {
+                for mount in mounts {
+                    host.webview_event(
+                        mount.web_id.clone(),
+                        lingxia_view::WebViewInbound::Error {
+                            code: "WEBVIEW_UNSUPPORTED".into(),
+                            message: "GPU composition is unavailable on this device".into(),
+                        },
+                    );
+                }
+            }
+            return;
+        }
+        self.shell.sync_webviews(self.token, mounts);
+    }
+    fn exit_webview_fullscreen(&self, web_id: &str) {
+        self.shell.exit_webview_fullscreen(self.token, web_id);
+    }
+    fn clear_webviews(&self) {
+        self.shell.clear_webviews(self.token);
+    }
 }
 
 impl Clock for AppleAdapter {

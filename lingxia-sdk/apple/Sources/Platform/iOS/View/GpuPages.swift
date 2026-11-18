@@ -36,6 +36,8 @@ final class GpuPageView: UIView {
     /// Static-text selection handles and the one a finger holds (end, grab offset).
     var handleLayer: CAShapeLayer?
     var handleGrab: (which: Int32, dx: CGFloat, dy: CGFloat)?
+    let webContainer: GpuWebViewContainer
+    let metalView = GpuMetalSurfaceView()
     /// The colours the page asks its host to paint around it; nil before its first frame.
     var hostChrome: GpuHostChrome? {
         didSet {
@@ -53,8 +55,9 @@ final class GpuPageView: UIView {
 
     override var accessibilityElements: [Any]? {
         get {
-            guard let panel = recoveryPanel else { return semantics.list }
-            return recoveryCovers ? [panel] : semantics.list + [panel]
+            let base = semantics.list + webContainer.accessibleWebViews
+            guard let panel = recoveryPanel else { return base }
+            return recoveryCovers ? [panel] : base + [panel]
         }
         set {}
     }
@@ -63,13 +66,13 @@ final class GpuPageView: UIView {
         semantics.event(kind: kind, id: id, text: text)
     }
 
-    override class var layerClass: AnyClass { CAMetalLayer.self }
-
     init(token: Int64) {
         self.token = token
+        self.webContainer = GpuWebViewContainer(token: token)
         super.init(frame: .zero)
         isOpaque = true
-        layer.contentsGravity = .topLeft
+        addSubview(webContainer)
+        addSubview(metalView)
         let center = NotificationCenter.default
         // No GPU work in the background: iOS ends an app that submits it.
         center.addObserver(self, selector: #selector(suspend), name: UIApplication.didEnterBackgroundNotification, object: nil)
@@ -92,7 +95,7 @@ final class GpuPageView: UIView {
     /// Off screen and not kept: drop the layer's last frame and drawables; the next attach
     /// sizes the layer again, and the page background shows until its first frame.
     func releaseSurface() {
-        guard window == nil, let layer = layer as? CAMetalLayer else { return }
+        guard window == nil, let layer = metalView.layer as? CAMetalLayer else { return }
         suspend()
         layer.contents = nil
         layer.drawableSize = CGSize(width: 1, height: 1)
@@ -115,8 +118,55 @@ final class GpuPageView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        webContainer.frame = bounds
+        metalView.frame = bounds
         report()
         if raised != nil, bounds.size != capturedSize { recaptureBars() }
+    }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard !isHidden, isUserInteractionEnabled, alpha > 0.01, self.point(inside: point, with: event) else {
+            return nil
+        }
+        if let panel = recoveryPanel, !panel.isHidden,
+           let hit = panel.hitTest(convert(point, to: panel), with: event) {
+            return hit
+        }
+        if webContainer.hasActiveMounts, !gpuPageInputBlocked(token) {
+            let webId = gpuPageWebViewAt(token, Float(point.x), Float(point.y)).toString()
+            if !webId.isEmpty, let wv = webContainer.webView(for: webId) {
+                let local = convert(point, to: wv)
+                return wv.hitTest(local, with: event) ?? wv
+            }
+        }
+        return self
+    }
+
+    func syncWebViews(_ json: String) {
+        let hasWeb = webContainer.sync(json: json)
+        let opaque = !hasWeb
+        if metalView.isOpaque != opaque {
+            metalView.isOpaque = opaque
+            (metalView.layer as? CAMetalLayer)?.isOpaque = opaque
+            metalView.backgroundColor = opaque ? nil : .clear
+        }
+    }
+
+    func closeRequest() -> Bool {
+        gpuPageCloseRequest(token)
+    }
+
+    func captureCompositedPng() -> Data? {
+        guard webContainer.hasActiveMounts, bounds.width > 1, bounds.height > 1 else {
+            return nil
+        }
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = true
+        format.scale = window?.screen.scale ?? UIScreen.main.scale
+        let image = UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
+            drawHierarchy(in: bounds, afterScreenUpdates: false)
+        }
+        return image.pngData()
     }
 
     override func willMove(toSuperview newSuperview: UIView?) {
@@ -425,12 +475,12 @@ final class GpuPageView: UIView {
             GpuPageView.hourCycle(),
             UInt8(Calendar.current.firstWeekday)
         )
-        layer.contentsScale = scale
+        metalView.layer.contentsScale = scale
         if !attached, UIApplication.shared.applicationState != .background {
             attached = true
             gpuPageAttach(
                 token,
-                UInt(bitPattern: Unmanaged.passUnretained(self).toOpaque()),
+                UInt(bitPattern: Unmanaged.passUnretained(metalView).toOpaque()),
                 UInt32((bounds.width * scale).rounded()),
                 UInt32((bounds.height * scale).rounded())
             )
@@ -687,7 +737,7 @@ final class GpuPageView: UIView {
         if highlights.isEmpty {
             if rects.isEmpty { return }
             highlights = [GpuHighlightLayer(), GpuHighlightLayer()]
-            highlights.forEach { layer.addSublayer($0) }
+            highlights.forEach { metalView.layer.addSublayer($0) }
         }
         let highlight = highlights[ring ? 1 : 0]
         highlight.frame = bounds
@@ -704,8 +754,8 @@ final class GpuPageView: UIView {
                   bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
                   provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
         else { return false }
-        layer.contentsScale = window?.screen.scale ?? UIScreen.main.scale
-        layer.contents = image
+        metalView.layer.contentsScale = window?.screen.scale ?? UIScreen.main.scale
+        metalView.layer.contents = image
         return true
     }
 }
@@ -897,9 +947,28 @@ public enum GpuPages {
         MainActor.assumeIsolated { views[token]?.releaseSurface() }
     }
 
+    static func syncWebViews(token: Int64, mounts: RustStr) {
+        let json = mounts.toString()
+        MainActor.assumeIsolated { views[token]?.syncWebViews(json) }
+    }
+
+    static func captureCompositedPng(token: Int64) -> RustVec<UInt8> {
+        let out = RustVec<UInt8>()
+        let png: Data? = MainActor.assumeIsolated {
+            views[token]?.captureCompositedPng()
+        }
+        if let data = png {
+            for byte in data {
+                out.push(value: byte)
+            }
+        }
+        return out
+    }
+
     static func dispose(token: Int64) {
         MainActor.assumeIsolated {
             guard let view = views.removeValue(forKey: token) else { return }
+            view.webContainer.clearAll()
             view.pullToRefresh = nil
             view.removeFromSuperview()
         }

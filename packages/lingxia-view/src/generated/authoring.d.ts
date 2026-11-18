@@ -141,6 +141,26 @@ export declare function useChannel<P, T, S>(
 export type VideoErrorCode = "VIDEO_SOURCE" | "VIDEO_NOT_GRANTED" | "VIDEO_NETWORK" | "VIDEO_NOT_FOUND" | "VIDEO_FORMAT" | "VIDEO_DECODE" | "VIDEO_DECODERS" | "VIDEO_NO_PLAYER" | "VIDEO_UNSUPPORTED";
 /** Says what to do in `message`; `recoverable` errors resume with `retry()`. */
 export interface VideoError { readonly code: VideoErrorCode; readonly message: string; readonly recoverable: boolean }
+export type WebViewErrorCode = "WEBVIEW_SOURCE" | "WEBVIEW_NOT_GRANTED" | "WEBVIEW_NETWORK" | "WEBVIEW_CRASHED" | "WEBVIEW_UNSUPPORTED" | "WEBVIEW_MESSAGE_DROPPED";
+export interface WebViewError { readonly code: WebViewErrorCode; readonly message: string }
+/** A top-level document finished loading; an in-page navigation reports too. */
+export interface WebViewLoad { readonly url: string; readonly title: string }
+/** `data` is what the page passed to `window.lingxia.postMessage`; the host fills `origin` ("lxapp" for a packaged or `lx://` file). */
+export interface WebViewMessage { readonly data: unknown; readonly origin: string }
+/** A navigation the host cancelled: an address outside trustedDomains, or a scheme other than https. */
+export interface WebViewBlocked { readonly url: string }
+/** A page's embedded web document: pass it as `web` to each `<webview>` that shows it (for example an inline card and an open `<dialog>` or sheet), so moving between them keeps one live document without reloading. */
+export interface WebView {
+  readonly url: string;
+  readonly title: string;
+  readonly error: WebViewError | null;
+  /** Shown full screen: the page draws it in an open `<dialog>` holding a `<webview>` of this handle; without one, the bare page fills the window. */
+  readonly fullscreen: boolean;
+  /** One `<webview>` at a time; Back or `exitFullscreen()` leaves. */
+  requestFullscreen(): Promise<void>;
+  exitFullscreen(): Promise<void>;
+}
+export declare function useWebView(name: string): WebView;
 export interface VideoMetadata { readonly duration: number | null; readonly videoWidth: number; readonly videoHeight: number; readonly live: boolean }
 /** One quality of a `sources` video: `label` is what `setQuality` and `quality` name. */
 export interface VideoSource { readonly src: string; readonly label: string }
@@ -487,6 +507,8 @@ export type SelectStyle = Pick<Style, "width" | "height" | "minWidth" | "minHeig
 export type SelectProps = Omit<Props, "style" | "children"> & { style?: SelectStyle; children?: never; options: readonly RadioOption[]; placeholder?: string; "aria-label"?: string; disabled?: boolean; } & ({ bind: Local<string>; value?: never; onChange?: never } | { bind?: never; value?: string; onChange?: (value: string) => void });
 export type VideoStyle = Pick<Style, "width" | "height" | "minWidth" | "minHeight" | "maxWidth" | "aspectRatio" | "maxHeight" | "margin" | "marginTop" | "marginRight" | "marginBottom" | "marginLeft" | "marginInlineStart" | "marginInlineEnd" | "position" | "inset" | "top" | "right" | "bottom" | "left" | "insetInlineStart" | "insetInlineEnd" | "zIndex" | "positionArea" | "flexGrow" | "flexShrink" | "flexBasis" | "alignSelf" | "gridColumn" | "gridColumnStart" | "gridColumnEnd" | "gridRow" | "gridRowStart" | "gridRowEnd" | "justifySelf" | "order" | "opacity" | "overflow" | "backgroundColor" | "backgroundImage" | "borderRadius" | "borderTopLeftRadius" | "borderTopRightRadius" | "borderBottomRightRadius" | "borderBottomLeftRadius" | "borderStartStartRadius" | "borderStartEndRadius" | "borderEndStartRadius" | "borderEndEndRadius" | "borderWidth" | "borderTopWidth" | "borderRightWidth" | "borderBottomWidth" | "borderLeftWidth" | "borderInlineStartWidth" | "borderInlineEndWidth" | "borderStyle" | "borderColor" | "boxShadow" | "ring" | "backdropFilter" | "translate" | "rotate" | "scale" | "transformOrigin" | "filter" | "display" | "touchTarget" | "scrollSnapAlign" | "objectFit" | "objectPosition">;
 export type VideoProps = Omit<Props, "style" | "children"> & { style?: VideoStyle; children?: never; src?: string; sources?: readonly VideoSource[]; player?: Video; poster?: string; autoPlay?: boolean; paused?: boolean; muted?: boolean; loop?: boolean; playbackRate?: number; volume?: number; "aria-label"?: string; onLoadedMetadata?: (event: VideoMetadata) => void; onPlay?: () => void; onPlaying?: () => void; onPause?: (event: VideoPause) => void; onWaiting?: () => void; onSeeked?: (event: { readonly currentTime: number }) => void; onTimeUpdate?: (event: { readonly currentTime: number }) => void; onEnded?: () => void; onError?: (error: VideoError) => void; onRateChange?: (event: { readonly playbackRate: number }) => void; onVolumeChange?: (event: { readonly volume: number; readonly muted: boolean }) => void; onQualityChange?: (event: VideoQualityChange) => void; onFullscreenChange?: (event: { readonly fullscreen: boolean }) => void; };
+export type WebviewStyle = Pick<Style, "width" | "height" | "minWidth" | "minHeight" | "maxWidth" | "aspectRatio" | "maxHeight" | "margin" | "marginTop" | "marginRight" | "marginBottom" | "marginLeft" | "marginInlineStart" | "marginInlineEnd" | "position" | "inset" | "top" | "right" | "bottom" | "left" | "insetInlineStart" | "insetInlineEnd" | "zIndex" | "positionArea" | "flexGrow" | "flexShrink" | "flexBasis" | "alignSelf" | "gridColumn" | "gridColumnStart" | "gridColumnEnd" | "gridRow" | "gridRowStart" | "gridRowEnd" | "justifySelf" | "order" | "opacity" | "overflow" | "backgroundColor" | "backgroundImage" | "borderRadius" | "borderTopLeftRadius" | "borderTopRightRadius" | "borderBottomRightRadius" | "borderBottomLeftRadius" | "borderStartStartRadius" | "borderStartEndRadius" | "borderEndStartRadius" | "borderEndEndRadius" | "borderWidth" | "borderTopWidth" | "borderRightWidth" | "borderBottomWidth" | "borderLeftWidth" | "borderInlineStartWidth" | "borderInlineEndWidth" | "borderStyle" | "borderColor" | "boxShadow" | "ring" | "backdropFilter" | "translate" | "rotate" | "scale" | "transformOrigin" | "filter" | "display" | "touchTarget" | "scrollSnapAlign">;
+export type WebviewProps = Omit<Props, "style" | "children"> & { style?: WebviewStyle; children?: never; src?: string; web?: WebView; "aria-label": string; onFullscreenChange?: (event: { readonly fullscreen: boolean }) => void; onLoad?: (event: WebViewLoad) => void; onMessage?: (message: WebViewMessage) => void; onBlocked?: (event: WebViewBlocked) => void; onError?: (error: WebViewError) => void; };
 
 declare global {
   namespace JSX {
@@ -514,6 +536,7 @@ declare global {
       "link": LinkProps;
       "select": SelectProps;
       "video": VideoProps;
+      "webview": WebviewProps;
     }
   }
 }

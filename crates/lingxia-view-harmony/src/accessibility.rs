@@ -33,6 +33,7 @@ fn component_type(role: Role) -> &'static CStr {
         Role::ScrollView | Role::HorizontalScrollView => c"Scroll",
         Role::Image => c"Image",
         Role::Video => c"Video",
+        Role::WebView => c"Web",
         Role::Slider => c"Slider",
         Role::ProgressBar => c"Progress",
         Role::List | Role::ListBox | Role::Menu | Role::Tree => c"List",

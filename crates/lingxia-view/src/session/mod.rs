@@ -29,6 +29,7 @@ mod selection;
 #[cfg(test)]
 pub(crate) mod tests;
 mod video;
+mod webview;
 use frame_animation::FrameAnimations;
 
 /// Thread-confined View context. Candidates commit only after native validation and layout.
@@ -388,6 +389,7 @@ impl ViewSession {
         self.pending_animation = None;
         self.presenting_animation = None;
         self.renderer.clear_text_cache();
+        self.renderer.webviews.clear();
         self.retained = None;
         self.input_hits = None;
         self.viewport = None;

@@ -83,6 +83,53 @@ impl PresentedFrame {
             {
                 return Some(index);
             }
+            if node.webview.is_some()
+                && contains(node, point, true)
+                && contains_content(node, point)
+            {
+                return None;
+            }
+            if node.panel && panel.is_none() && contains(node, point, false) {
+                panel = Some(node);
+            }
+        }
+        None
+    }
+
+    /// The live `<webview>` that owns a pointer gesture starting at logical `point`, or `None`
+    /// when a View control (including its `minimum` touch band), dialog, or covering box claims
+    /// `point`, or the `<webview>` is disabled, degraded, or clipped away at `point`.
+    pub fn webview_at(&self, point: [f32; 2], minimum: f32) -> Option<(usize, &NodeSnapshot)> {
+        if point.iter().any(|value| !value.is_finite()) {
+            return None;
+        }
+        let order: Vec<_> = self.hit_order().collect();
+        let pressed = self.press_hit(point, minimum);
+        let pressed_rank = pressed.and_then(|target| order.iter().position(|&(i, _)| i == target));
+        let boxes = boxes_at(&self.nodes, &order, point);
+        let mut panel: Option<&NodeSnapshot> = None;
+        for (rank, &(index, node)) in order.iter().enumerate() {
+            if panel.is_some_and(|panel| !descends(node, panel)) {
+                continue;
+            }
+            if pressed_rank.is_some_and(|pr| pr < rank) {
+                return None;
+            }
+            if let Some(wv) = &node.webview
+                && wv.active
+            {
+                if !node.disabled
+                    && !wv.degraded
+                    && contains(node, point, true)
+                    && contains_content(node, point)
+                    && !covered(&boxes, rank, node)
+                {
+                    return Some((index, node));
+                }
+                if contains(node, point, true) && contains_content(node, point) {
+                    return None;
+                }
+            }
             if node.panel && panel.is_none() && contains(node, point, false) {
                 panel = Some(node);
             }
@@ -292,6 +339,7 @@ const CONTROLS: &[&str] = &[
     "search",
     "textarea",
     "slider",
+    "webview",
 ];
 
 pub fn acts(node: &NodeSnapshot) -> Acts {

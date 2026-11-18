@@ -801,6 +801,9 @@ final class LxAppViewController: UIViewController, ObservableObject {
             let velocityThreshold: CGFloat = 600
 
             if translation > translationThreshold || velocity > velocityThreshold {
+                if (activeGpuView as? GpuPageView)?.closeRequest() == true {
+                    return
+                }
                 let _ = onLxappEvent(appId, LxAppEvent.backPress, "")
             }
         default:

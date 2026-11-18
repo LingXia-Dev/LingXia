@@ -70,6 +70,9 @@ struct Log {
     released_transient: usize,
     /// Whether each prepared frame carried the HUD overlay.
     hud: Vec<bool>,
+    webviews: Vec<Vec<crate::scene::webview::WebViewMount>>,
+    exited_webview_fs: Vec<String>,
+    cleared_webviews: usize,
 }
 
 /// What a phone adapter reports, built as adapters build it, so the fake never lacks a key a
@@ -373,6 +376,15 @@ impl HostEvents for Fake {
         let mut log = self.main();
         let presented = log.presented.len();
         log.chrome.push((presented, *chrome));
+    }
+    fn sync_webviews(&self, mounts: &[crate::scene::webview::WebViewMount]) {
+        self.main().webviews.push(mounts.to_vec());
+    }
+    fn exit_webview_fullscreen(&self, web_id: &str) {
+        self.main().exited_webview_fs.push(web_id.to_owned());
+    }
+    fn clear_webviews(&self) {
+        self.main().cleared_webviews += 1;
     }
     fn text_menu(&self, menu: Option<&crate::session::host::TextMenu>) {
         self.main().menus.push(menu.cloned());
@@ -5249,7 +5261,10 @@ fn close_request_case(reduced: bool, blur: bool) {
             .unwrap();
         platform.settle(&[&host]);
     };
-    assert!(!host.close_request(), "nothing open: the page's back goes on");
+    assert!(
+        !host.close_request(),
+        "nothing open: the page's back goes on"
+    );
     for (trigger, open) in [
         ("country", "[role=\"dialog\"]"),
         ("day", "[data-testid=\"lx-picker\"]"),
@@ -5266,49 +5281,53 @@ fn close_request_case(reduced: bool, blur: bool) {
             platform.advance(std::time::Duration::from_millis(16));
             platform.settle(&[&host]);
         }
-        assert_eq!(count(open), 0, "{trigger}: closed by the request (reduced={reduced} blur={blur})");
+        assert_eq!(
+            count(open),
+            0,
+            "{trigger}: closed by the request (reduced={reduced} blur={blur})"
+        );
         assert!(!host.close_request(), "{trigger}: nothing left open");
     }
 }
 
 #[path = "appearance.rs"]
 mod appearance;
-#[path = "box_reading.rs"]
-mod box_reading;
-#[path = "combobox_semantics.rs"]
-mod combobox_semantics;
-#[path = "editor_keys.rs"]
-mod editor_keys;
 #[path = "automation_blur.rs"]
 mod automation_blur;
+#[path = "box_reading.rs"]
+mod box_reading;
+#[path = "clipped_focus.rs"]
+mod clipped_focus;
+#[path = "close_request.rs"]
+mod close_request;
+#[path = "combobox_semantics.rs"]
+mod combobox_semantics;
 #[path = "context_menu.rs"]
 mod context_menu;
+#[path = "editor_keys.rs"]
+mod editor_keys;
+#[path = "failed_first_frame.rs"]
+mod failed_first_frame;
+#[path = "failed_page.rs"]
+mod failed_page;
+#[path = "fixed_in_popover.rs"]
+mod fixed_in_popover;
+#[path = "list_name.rs"]
+mod list_name;
 #[path = "orphan_overlays.rs"]
 mod orphan_overlays;
 #[path = "pointer_events.rs"]
 mod pointer_events;
 #[path = "popover_anchor.rs"]
 mod popover_anchor;
-#[path = "fixed_in_popover.rs"]
-mod fixed_in_popover;
-#[path = "reveal_element.rs"]
-mod reveal_element;
-#[path = "clipped_focus.rs"]
-mod clipped_focus;
-#[path = "list_name.rs"]
-mod list_name;
-#[path = "submenu.rs"]
-mod submenu;
-#[path = "close_request.rs"]
-mod close_request;
-#[path = "failed_first_frame.rs"]
-mod failed_first_frame;
-#[path = "failed_page.rs"]
-mod failed_page;
-#[path = "tree_keys.rs"]
-mod tree_keys;
 #[path = "range_slider.rs"]
 mod range_slider;
+#[path = "reveal_element.rs"]
+mod reveal_element;
+#[path = "submenu.rs"]
+mod submenu;
+#[path = "tree_keys.rs"]
+mod tree_keys;
 
 #[test]
 fn escape_pressed_on_any_match_closes_an_open_light_dismiss_popover() {
@@ -5927,4 +5946,163 @@ fn a_slider_removed_or_disabled_mid_press_still_hears_exactly_one_release() {
         );
         assert_eq!(released, "TF", "{name}: and never twice");
     }
+}
+
+#[test]
+fn webview_host_coalesces_messages_caps_fifo_queue_and_reconciles_fullscreen_without_remounting() {
+    use crate::scene::webview::WebViewInbound;
+    let worker = ViewWorker::spawn("test-webview-host").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = source(
+        "function render(){\
+           const web=useWebView('embed');\
+           const log=useLocal('log','');\
+           const sheet=useLocal('sheet',false);\
+           return h('page',{},\
+             h('webview',{\
+               web,\
+               'aria-label':'Embed',\
+               'data-testid':'wv',\
+               src:'https://example.com',\
+               onLoad:e=>log.set(log.value+'L:'+e.title+';'),\
+               onMessage:e=>log.set(log.value+'M:'+e.data+';'),\
+               onBlocked:e=>log.set(log.value+'B:'+e.url+';'),\
+               onError:e=>log.set(log.value+'E:'+e.code+';'),\
+               onFullscreenChange:e=>log.set(log.value+'F:'+e.fullscreen+';'),\
+               style:{width:120,height:80}\
+             }),\
+             h('button',{'data-testid':'open-sheet',onClick:()=>sheet.set(true)},'Sheet'),\
+             h('dialog',{open:sheet.value,closedby:'closerequest',onClose:()=>sheet.set(false),'aria-label':'Sheet',style:{width:'100%',height:'70%',marginTop:'auto',marginBottom:0,marginLeft:0,marginRight:0}},\
+               h('webview',{web,'aria-label':'Embed',style:{width:'100%',height:'100%'}})\
+             ),\
+             h('text',{'data-testid':'log'},log.value||'-')\
+           );\
+         }",
+    );
+    let host = platform.host(&worker, &page, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+
+    let mounts = host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .webviews
+        .last()
+        .cloned()
+        .unwrap();
+    assert_eq!(mounts.len(), 1);
+    assert_eq!(mounts[0].web_id, "wv-1");
+    assert_eq!(mounts[0].bounds, [0.0, 0.0, 120.0, 80.0]);
+
+    // Coalesced messages within one frame keep only the latest ("c"), while queued messages
+    // preserve FIFO order up to 64 and report WEBVIEW_MESSAGE_DROPPED on overflow!
+    host.webview_event(
+        "wv-1".into(),
+        WebViewInbound::Message {
+            json: "\"a\"".into(),
+            origin: "https://example.com".into(),
+            queued: false,
+        },
+    );
+    host.webview_event(
+        "wv-1".into(),
+        WebViewInbound::Message {
+            json: "\"c\"".into(),
+            origin: "https://example.com".into(),
+            queued: false,
+        },
+    );
+    for i in 0..65 {
+        host.webview_event(
+            "wv-1".into(),
+            WebViewInbound::Message {
+                json: i.to_string(),
+                origin: "https://example.com".into(),
+                queued: true,
+            },
+        );
+    }
+    platform.settle(&[&host]);
+    let text = press_log(&host);
+    // 0 was dropped, 1..=64 delivered in order, then coalesced "c", then WEBVIEW_MESSAGE_DROPPED!
+    assert!(!text.contains("M:0;"), "oldest queued dropped: {text}");
+    assert!(text.starts_with("M:1;M:2;"), "FIFO preserved: {text}");
+    assert!(
+        text.contains("M:64;M:c;E:WEBVIEW_MESSAGE_DROPPED;"),
+        "{text}"
+    );
+
+    // Web-initiated HTML5 fullscreen opens the bare full-window dialog fallback, and close_request
+    // (Back / Escape) exits it and tells native WebView to exit fullscreen!
+    host.webview_event("wv-1".into(), WebViewInbound::Fullscreen(true));
+    platform.settle(&[&host]);
+    let fs_mounts = host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .webviews
+        .last()
+        .cloned()
+        .unwrap();
+    assert_eq!(fs_mounts.len(), 1);
+    assert_eq!(fs_mounts[0].web_id, "wv-1");
+    assert!(fs_mounts[0].in_top_layer);
+    assert_eq!(fs_mounts[0].bounds, [0.0, 0.0, 100.0, 200.0]);
+
+    assert!(host.close_request());
+    platform.settle(&[&host]);
+    assert_eq!(
+        host.adapter().log.lock().unwrap().exited_webview_fs,
+        vec!["wv-1".to_owned()]
+    );
+
+    // Author-owned 70%-height `<dialog>` sheet moves `wv-1` to `[0, 60, 100, 140]` without remounting!
+    host.automate(
+        "[data-testid=\"open-sheet\"]",
+        None,
+        crate::interaction::view::AutomationAct::Click,
+        false,
+    )
+    .unwrap();
+    platform.settle(&[&host]);
+    let sheet_mounts = host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .webviews
+        .last()
+        .cloned()
+        .unwrap();
+    assert_eq!(sheet_mounts.len(), 1);
+    assert_eq!(sheet_mounts[0].web_id, "wv-1");
+    assert!(sheet_mounts[0].in_top_layer);
+    assert_eq!(sheet_mounts[0].bounds, [0.0, 60.0, 100.0, 140.0]);
+
+    assert!(host.close_request());
+    platform.settle(&[&host]);
+    let back_mounts = host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .webviews
+        .last()
+        .cloned()
+        .unwrap();
+    assert_eq!(back_mounts[0].web_id, "wv-1");
+    assert!(!back_mounts[0].in_top_layer);
+    assert_eq!(back_mounts[0].bounds, [0.0, 0.0, 120.0, 80.0]);
+
+    // Parking clears webview mounts.
+    let cleared_before = host.adapter().log.lock().unwrap().cleared_webviews;
+    host.park();
+    platform.settle(&[&host]);
+    assert_eq!(
+        host.adapter().log.lock().unwrap().cleared_webviews,
+        cleared_before + 1
+    );
 }

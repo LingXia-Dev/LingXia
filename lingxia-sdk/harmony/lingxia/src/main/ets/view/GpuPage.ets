@@ -1,10 +1,13 @@
 import { window } from '@kit.ArkUI';
+import { webview } from '@kit.ArkWeb';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common, Configuration, EnvironmentCallback } from '@kit.AbilityKit';
 import { Lingxia } from '../app/Lingxia';
-import { GpuFeedback, GpuPageModel, GpuRecovery, GpuSelectionHandles } from './GpuPages';
+import { GpuFeedback, GpuPageModel, GpuRecovery, GpuSelectionHandles, GpuWebViewMount } from './GpuPages';
 import { GpuFrameTextMenu, GpuFrameTextMenuTargetKinds } from './generated/GpuFrame';
 import { HostOverlays } from '../lxapp/HostOverlays';
+import { LingXiaWebView } from '../lxapp/LingXiaWebView';
+import { WebViewInfo, WebViewManager } from '../lxapp/WebViewBridge';
 import { GpuRect, sampleFacts } from './GpuEnvironment';
 import {
   gpuPageMount,
@@ -33,6 +36,142 @@ const KNOB = 7;
 const LOG_DOMAIN = 0x0000;
 const LOG_TAG = 'LingXia.Container';
 const HANDLE_TOUCH = 40;
+
+interface GpuWebEntry {
+  webTag: string;
+  controller: webview.WebviewController;
+  generation: string;
+}
+
+/** One embedded `<webview>` slot positioned underneath `ContentSlot` in `GpuPage`. */
+@Component
+struct GpuWebSlot {
+  @ObjectLink page: GpuPageModel;
+  @Prop webTag: string = '';
+  @Prop appearanceDark: boolean = false;
+  @Prop pageVisible: boolean = true;
+  controller: webview.WebviewController = new webview.WebviewController();
+
+  private findMount(): GpuWebViewMount | null {
+    for (let i = 0; i < this.page.webViews.length; i++) {
+      if (this.page.webViews[i].webTag === this.webTag) {
+        return this.page.webViews[i];
+      }
+    }
+    return null;
+  }
+
+  private shown(mount: GpuWebViewMount | null): boolean {
+    return mount !== null
+      && this.pageVisible
+      && !mount.degraded
+      && mount.visibleBounds[2] > 0
+      && mount.visibleBounds[3] > 0;
+  }
+
+  private outerPosition(mount: GpuWebViewMount | null): Position {
+    if (mount === null) {
+      return { x: 0, y: 0 };
+    }
+    const vis = this.shown(mount);
+    return {
+      x: vis ? mount.visibleBounds[0] : mount.bounds[0],
+      y: vis ? mount.visibleBounds[1] : mount.bounds[1],
+    };
+  }
+
+  private outerWidth(mount: GpuWebViewMount | null): number {
+    if (mount === null) {
+      return 1;
+    }
+    return Math.max(1, this.shown(mount) ? mount.visibleBounds[2] : mount.bounds[2]);
+  }
+
+  private outerHeight(mount: GpuWebViewMount | null): number {
+    if (mount === null) {
+      return 1;
+    }
+    return Math.max(1, this.shown(mount) ? mount.visibleBounds[3] : mount.bounds[3]);
+  }
+
+  private innerPosition(mount: GpuWebViewMount | null): Position {
+    if (mount === null || !this.shown(mount)) {
+      return { x: 0, y: 0 };
+    }
+    return {
+      x: mount.bounds[0] - mount.visibleBounds[0],
+      y: mount.bounds[1] - mount.visibleBounds[1],
+    };
+  }
+
+  private innerWidth(mount: GpuWebViewMount | null): number {
+    return mount !== null ? Math.max(1, mount.bounds[2]) : 1;
+  }
+
+  private innerHeight(mount: GpuWebViewMount | null): number {
+    return mount !== null ? Math.max(1, mount.bounds[3]) : 1;
+  }
+
+  private radii(mount: GpuWebViewMount | null): BorderRadiuses {
+    if (mount === null) {
+      return { topLeft: 0, topRight: 0, bottomLeft: 0, bottomRight: 0 };
+    }
+    if (mount.radii !== null && mount.radii !== undefined && mount.radii.length >= 4) {
+      return {
+        topLeft: Math.min(mount.radii[0][0], mount.radii[0][1]),
+        topRight: Math.min(mount.radii[1][0], mount.radii[1][1]),
+        bottomRight: Math.min(mount.radii[2][0], mount.radii[2][1]),
+        bottomLeft: Math.min(mount.radii[3][0], mount.radii[3][1]),
+      };
+    }
+    const r = mount.radius > 0 ? mount.radius : 0;
+    return { topLeft: r, topRight: r, bottomRight: r, bottomLeft: r };
+  }
+
+  private hasRadius(mount: GpuWebViewMount | null): boolean {
+    if (mount === null) {
+      return false;
+    }
+    if (mount.radius > 0) {
+      return true;
+    }
+    if (mount.radii !== null && mount.radii !== undefined && mount.radii.length >= 4) {
+      return mount.radii[0][0] > 0 || mount.radii[1][0] > 0
+        || mount.radii[2][0] > 0 || mount.radii[3][0] > 0;
+    }
+    return false;
+  }
+
+  build() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      Column() {
+        LingXiaWebView({
+          webTag: this.webTag,
+          controller: this.controller,
+          syncRender: true,
+          appearanceDark: this.appearanceDark,
+          renderVisibility: Visibility.Visible,
+          renderWidth: this.innerWidth(this.findMount()),
+          renderHeight: this.innerHeight(this.findMount()),
+          renderBorderRadius: this.radii(this.findMount()),
+          renderClip: this.hasRadius(this.findMount()),
+          renderHitTest: this.shown(this.findMount()) ? HitTestMode.Default : HitTestMode.None,
+        })
+      }
+      .position(this.innerPosition(this.findMount()))
+      .width(this.innerWidth(this.findMount()))
+      .height(this.innerHeight(this.findMount()))
+    }
+    .position(this.outerPosition(this.findMount()))
+    .width(this.outerWidth(this.findMount()))
+    .height(this.outerHeight(this.findMount()))
+    .clip(true)
+    .opacity(this.shown(this.findMount()) ? 1 : 0)
+    .hitTestBehavior(this.shown(this.findMount()) ? HitTestMode.Default : HitTestMode.None)
+    .accessibilityLevel((!this.shown(this.findMount()) || (this.findMount()?.accessibilityHidden === true))
+      ? 'no-hide-descendants' : 'auto')
+  }
+}
 
 /**
  * A GPU page: the `ContentSlot` Rust mounts its XComponent node into, and the chrome a
@@ -67,6 +206,13 @@ export struct GpuPage {
   @State menuWidth: number = 0;
   /** The page's size, vp, for keeping the menu on screen. */
   @State pageWidth: number = 0;
+  /** Bumped when child WebView controllers attach or detach so `renderableWebEntries` refreshes. */
+  @State childWebRev: number = 0;
+  private webViewUiCallback: (action: string, info: WebViewInfo) => void = (_action: string, info: WebViewInfo) => {
+    if (info.webtag.indexOf('~child~') >= 0) {
+      this.childWebRev += 1;
+    }
+  };
   /** The grabbed handle: which end, and the finger's offset from its line middle. */
   private grabbed: number = -1;
   private grabOffset: number[] = [0, 0];
@@ -79,6 +225,7 @@ export struct GpuPage {
   aboutToAppear(): void {
     this.gone = false;
     this.page.keyboardFocus = this.keyboardFocus;
+    WebViewManager.addUiCallback(this.webViewUiCallback);
     if (!this.page.mounted) {
       this.page.mounted = gpuPageMount(this.page.token, this.page.content);
     }
@@ -146,6 +293,7 @@ export struct GpuPage {
   }
 
   aboutToDisappear(): void {
+    WebViewManager.removeUiCallback(this.webViewUiCallback);
     if (this.environment >= 0) {
       (Lingxia.context as common.UIAbilityContext).getApplicationContext().off('environment', this.environment);
       this.environment = -1;
@@ -372,8 +520,35 @@ export struct GpuPage {
     }
   }
 
+  private renderableWebEntries(): GpuWebEntry[] {
+    void this.childWebRev;
+    const entries: GpuWebEntry[] = [];
+    for (let i = 0; i < this.page.webViews.length; i++) {
+      const mount = this.page.webViews[i];
+      if (!mount.webTag) {
+        continue;
+      }
+      const controller = WebViewManager.getController(mount.webTag);
+      if (!controller) {
+        continue;
+      }
+      const generation = WebViewManager.getGenerationForController(mount.webTag, controller);
+      entries.push({ webTag: mount.webTag, controller: controller, generation: generation });
+    }
+    return entries;
+  }
+
   build() {
     Stack() {
+      ForEach(this.renderableWebEntries(), (entry: GpuWebEntry) => {
+        GpuWebSlot({
+          page: this.page,
+          webTag: entry.webTag,
+          controller: entry.controller,
+          appearanceDark: this.page.chrome?.dark ?? false,
+          pageVisible: this.pageVisible,
+        })
+      }, (entry: GpuWebEntry) => `${entry.webTag}@${entry.generation}`)
       // Unmounting the slot destroys the XComponent's surface; remounting creates a new one.
       if (this.page.surfaceKept) {
         ContentSlot(this.page.content)
@@ -407,6 +582,7 @@ export struct GpuPage {
         this.recoveryPanel(this.page.recovery)
       }
     }
+    .id(`lx-gpu-page-${this.page.token}`)
     .width('100%')
     .height('100%')
     .onTouch((event: TouchEvent) => {

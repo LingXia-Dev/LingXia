@@ -250,7 +250,10 @@ fn lays_out_in_row(parent: &Record) -> bool {
 
 /// A replaced element's fixed length on `axis`: its automatic minimum, as in CSS.
 fn replaced_size<T: taffy::style_helpers::FromLength>(record: &Record, axis: usize) -> Option<T> {
-    if !matches!(record.tag, tag::IMAGE | tag::VECTOR | tag::VIDEO) {
+    if !matches!(
+        record.tag,
+        tag::IMAGE | tag::VECTOR | tag::VIDEO | tag::WEBVIEW
+    ) {
         return None;
     }
     record.number(axis).map(length)
@@ -699,6 +702,8 @@ pub(crate) fn node_style(
                 {
                     // Unsized, a video is a full-width 16:9 box; given a height, the ratio sets its width.
                     percent(1.0)
+                } else if record.tag == tag::WEBVIEW {
+                    percent(1.0)
                 } else {
                     auto()
                 }),
@@ -722,6 +727,9 @@ pub(crate) fn node_style(
                     length(24.0)
                 } else if record.tag == tag::IMAGE {
                     length(64.0)
+                } else if record.tag == tag::WEBVIEW && record.number(field::ASPECT_RATIO).is_none()
+                {
+                    length(150.0)
                 } else {
                     auto()
                 }),

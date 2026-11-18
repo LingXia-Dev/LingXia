@@ -862,6 +862,29 @@ impl HostEvents for HarmonyAdapter {
     fn debug(&self, message: &str) {
         log::debug!(target: "lingxia_view", "{message}");
     }
+    fn sync_webviews(&self, mounts: &[lingxia_view::scene::webview::WebViewMount]) {
+        if *lock(&self.target) == Target::Unavailable
+            && let Some(host) = self.host.get().and_then(WeakViewHost::upgrade)
+        {
+            for mount in mounts {
+                host.webview_event(
+                    mount.web_id.clone(),
+                    lingxia_view::WebViewInbound::Error {
+                        code: "WEBVIEW_UNSUPPORTED".into(),
+                        message: "GPU composition is unavailable on this device".into(),
+                    },
+                );
+            }
+            return;
+        }
+        self.shell.sync_webviews(self.token, mounts);
+    }
+    fn exit_webview_fullscreen(&self, web_id: &str) {
+        self.shell.exit_webview_fullscreen(self.token, web_id);
+    }
+    fn clear_webviews(&self) {
+        self.shell.clear_webviews(self.token);
+    }
 }
 
 impl Clock for HarmonyAdapter {

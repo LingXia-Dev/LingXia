@@ -27,6 +27,8 @@ final class GpuPageView: NSView {
     /// Recovery chrome after a failure, and whether it hides the page entirely.
     var recoveryPanel: NSView?
     var recoveryCovers = false
+    let webContainer: GpuWebViewContainer
+    let metalView = GpuMetalSurfaceView()
 
     /// A simulated phone (the Runner): its viewport, its system bars, the host bars over the
     /// page and its width, all in the phone's points; nil measures the window as a desktop
@@ -97,8 +99,9 @@ final class GpuPageView: NSView {
     override func isAccessibilityElement() -> Bool { false }
 
     override func accessibilityChildren() -> [Any]? {
-        guard let panel = recoveryPanel else { return semantics.list }
-        return recoveryCovers ? [panel] : semantics.list + [panel]
+        let base = semantics.list + webContainer.accessibleWebViews
+        guard let panel = recoveryPanel else { return base }
+        return recoveryCovers ? [panel] : base + [panel]
     }
 
     func accessibilityEvent(kind: UInt8, id: UInt32, text: String) {
@@ -109,11 +112,13 @@ final class GpuPageView: NSView {
 
     init(token: Int64) {
         self.token = token
+        self.webContainer = GpuWebViewContainer(token: token)
         super.init(frame: .zero)
         wantsLayer = true
         layerContentsRedrawPolicy = .never
-        layer?.contentsGravity = .topLeft
         layer?.isOpaque = true
+        addSubview(webContainer)
+        addSubview(metalView)
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(accessibilityChanged),
             name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
@@ -128,18 +133,60 @@ final class GpuPageView: NSView {
 
     override var isFlipped: Bool { true }
 
-    override func makeBackingLayer() -> CALayer {
-        let layer = CAMetalLayer()
-        layer.isOpaque = true
-        layer.maximumDrawableCount = 3
-        return layer
-    }
-
     override func layout() {
         super.layout()
         applyViewport()
+        webContainer.frame = bounds
+        metalView.frame = bounds
         layoutRecovery()
         report()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHiddenOrHasHiddenAncestor else { return nil }
+        let local = superview.map { convert(point, from: $0) } ?? point
+        guard bounds.contains(local) else { return nil }
+        if let panel = recoveryPanel, !panel.isHidden,
+           let hit = panel.hitTest(convert(local, to: panel.superview)) {
+            return hit
+        }
+        if webContainer.hasActiveMounts, !gpuPageInputBlocked(token) {
+            let webId = gpuPageWebViewAt(token, Float(local.x), Float(local.y)).toString()
+            if !webId.isEmpty, let wv = webContainer.webView(for: webId) {
+                let wvSuper = convert(local, to: wv.superview)
+                return wv.hitTest(wvSuper) ?? wv
+            }
+        }
+        return self
+    }
+
+    func syncWebViews(_ json: String) {
+        let hasWeb = webContainer.sync(json: json)
+        let opaque = !hasWeb
+        if metalView.layer?.isOpaque != opaque {
+            metalView.layer?.isOpaque = opaque
+        }
+    }
+
+    func captureCompositedPng() -> Data? {
+        guard webContainer.hasActiveMounts, bounds.width > 1, bounds.height > 1,
+              let rep = bitmapImageRepForCachingDisplay(in: bounds)
+        else { return nil }
+        cacheDisplay(in: bounds, to: rep)
+        if let image = lastFrame(), let context = NSGraphicsContext(bitmapImageRep: rep) {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            context.cgContext.draw(image, in: CGRect(origin: .zero, size: bounds.size))
+            let cg = context.cgContext
+            cg.saveGState()
+            cg.translateBy(x: 0, y: bounds.height)
+            cg.scaleBy(x: 1, y: -1)
+            drawFeedback(in: cg)
+            cg.restoreGState()
+            context.flushGraphics()
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        return rep.representation(using: .png, properties: [:])
     }
 
     override func viewDidMoveToWindow() {
@@ -188,7 +235,7 @@ final class GpuPageView: NSView {
     /// Off screen and not kept: drop the layer's last frame and drawables; the next attach
     /// sizes the layer again, and the page background shows until its first frame.
     func releaseSurface() {
-        guard window == nil, let layer = layer as? CAMetalLayer else { return }
+        guard window == nil, let layer = metalView.layer as? CAMetalLayer else { return }
         if attached {
             attached = false
             gpuPageSuspend(token)
@@ -276,7 +323,7 @@ final class GpuPageView: NSView {
             attached = true
             gpuPageAttach(
                 token,
-                UInt(bitPattern: Unmanaged.passUnretained(self).toOpaque()),
+                UInt(bitPattern: Unmanaged.passUnretained(metalView).toOpaque()),
                 UInt32((bounds.width * live).rounded()),
                 UInt32((bounds.height * live).rounded())
             )
@@ -286,7 +333,7 @@ final class GpuPageView: NSView {
     /// Shows a frame `width` pixels wide across the layer, whichever space AppKit keeps the
     /// layer of a view with scaled bounds in.
     private func fitContents(width: CGFloat) {
-        guard let layer, layer.bounds.width > 0 else { return }
+        guard let layer = metalView.layer, layer.bounds.width > 0 else { return }
         layer.contentsScale = width / layer.bounds.width
     }
 
@@ -340,7 +387,7 @@ final class GpuPageView: NSView {
         return CGImage(
             width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
             bytesPerRow: width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
             provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
     }
 
@@ -509,7 +556,7 @@ final class GpuPageView: NSView {
         if highlights.isEmpty {
             if rects.isEmpty { return }
             highlights = [GpuHighlightLayer(), GpuHighlightLayer()]
-            highlights.forEach { layer!.addSublayer($0) }
+            highlights.forEach { metalView.layer!.addSublayer($0) }
         }
         let highlight = highlights[ring ? 1 : 0]
         highlight.frame = bounds
@@ -531,7 +578,7 @@ final class GpuPageView: NSView {
                   provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
         else { return false }
         fitContents(width: CGFloat(width))
-        layer?.contents = image
+        metalView.layer?.contents = image
         return true
     }
 }
@@ -762,9 +809,28 @@ public enum GpuPages {
         MainActor.assumeIsolated { views[token]?.releaseSurface() }
     }
 
+    static func syncWebViews(token: Int64, mounts: RustStr) {
+        let json = mounts.toString()
+        MainActor.assumeIsolated { views[token]?.syncWebViews(json) }
+    }
+
+    static func captureCompositedPng(token: Int64) -> RustVec<UInt8> {
+        let out = RustVec<UInt8>()
+        let png: Data? = MainActor.assumeIsolated {
+            views[token]?.captureCompositedPng()
+        }
+        if let data = png {
+            for byte in data {
+                out.push(value: byte)
+            }
+        }
+        return out
+    }
+
     static func dispose(token: Int64) {
         MainActor.assumeIsolated {
             guard let view = views.removeValue(forKey: token) else { return }
+            view.webContainer.clearAll()
             view.removeFromSuperview()
             // Whatever still references the view must not keep its drawables alive with it.
             view.releaseSurface()

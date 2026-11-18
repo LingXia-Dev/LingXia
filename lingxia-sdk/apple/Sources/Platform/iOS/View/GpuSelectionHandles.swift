@@ -17,7 +17,7 @@ extension GpuPageView {
         let layer = handleLayer ?? {
             let made = CAShapeLayer()
             made.actions = ["path": NSNull(), "hidden": NSNull()]
-            self.layer.addSublayer(made)
+            self.metalView.layer.addSublayer(made)
             handleLayer = made
             return made
         }()

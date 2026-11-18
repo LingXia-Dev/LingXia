@@ -44,6 +44,11 @@ pub(super) fn initialize(env: &mut Env) -> Result<(), jni::errors::Error> {
                     "(JLjava/lang/String;)V",
                     automation_reply
                 ),
+                method!(
+                    "embeddedWebView",
+                    "(JLjava/lang/String;)Landroid/view/View;",
+                    embedded_webview
+                ),
             ],
         )?;
     }
@@ -276,6 +281,68 @@ impl lingxia_view_android::StateListener for States {
     fn console(&self, owner: i64, level: log::Level, message: &str) {
         gpu_page::console(owner, level, message);
     }
+    fn sync_webviews(
+        &self,
+        owner: i64,
+        mounts: &[lingxia_view_android::lingxia_view::scene::webview::WebViewMount],
+    ) {
+        gpu_page::webviews::sync_webviews(
+            owner,
+            mounts,
+            lingxia_view_android::webview_event,
+            sync_android_webviews_ui,
+        );
+    }
+    fn exit_webview_fullscreen(&self, owner: i64, web_id: &str) {
+        gpu_page::webviews::exit_webview_fullscreen(owner, web_id);
+    }
+    fn clear_webviews(&self, owner: i64) {
+        gpu_page::webviews::clear_webviews(owner, Some(clear_android_webviews_ui));
+    }
+}
+
+fn sync_android_webviews_ui(
+    token: Token,
+    mounts: &[lingxia_view_android::lingxia_view::scene::webview::WebViewMount],
+) {
+    let items: Vec<serde_json::Value> = mounts
+        .iter()
+        .map(|m| {
+            let key =
+                lingxia_view_android::lingxia_view::scene::webview::make_key(m.scope, &m.web_id);
+            let ready = gpu_page::webviews::is_ready(token, &m.web_id)
+                || lingxia_view_android::lingxia_view::scene::webview::is_ready_key(&key);
+            serde_json::json!({
+                "key": key,
+                "webId": m.web_id,
+                "src": m.src,
+                "bounds": m.bounds,
+                "visibleBounds": m.visible_bounds,
+                "degraded": m.degraded,
+                "accessibilityHidden": m.accessibility_hidden,
+                "ready": ready,
+            })
+        })
+        .collect();
+    let json = serde_json::Value::Array(items).to_string();
+    let _ = value_operation(token, &json, jni_str!("syncWebViews"));
+}
+
+fn clear_android_webviews_ui(token: Token) {
+    let _ = value_operation(token, "[]", jni_str!("syncWebViews"));
+}
+
+extern "system" fn embedded_webview<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    token: i64,
+    web_id: JString<'a>,
+) -> JObject<'a> {
+    env.with_env(|env| -> Result<JObject<'a>, jni::errors::Error> {
+        let web_id = web_id.try_to_string(env)?;
+        gpu_page::webviews::java_webview(env, token, &web_id)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 struct Factory;

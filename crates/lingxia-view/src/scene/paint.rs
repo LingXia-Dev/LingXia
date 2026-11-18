@@ -204,6 +204,16 @@ pub(crate) enum Paint {
         fit: crate::scene::image::Fit,
         position: [f32; 2],
     },
+    /// Embedded `<webview>` hole-punch (Apple/Harmony): punches `Compose::DestOut` once ready
+    /// when not degraded; while not ready or degraded it leaves the box's background fill intact.
+    #[cfg_attr(target_os = "android", allow(dead_code))]
+    WebHole {
+        key: String,
+        bounds: [f32; 4],
+        radius: f32,
+        corners: Option<[[f32; 2]; 4]>,
+        degraded: bool,
+    },
     Clip(ClipSnapshot),
     PopClip,
     Opacity {

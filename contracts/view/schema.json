@@ -1,7 +1,7 @@
 {
   "uiAbi": 1,
-  "limits": {"nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256, "transitionMs": 10000, "evalBudgetMs": 100, "evalBudgetDebugMultiplier": 8, "evalWarmupMultiplier": 2, "evalLimitMultiplier": 4, "evalOverrunFrames": 3, "editorTextBytes": 65536, "inputRequestBytes": 524288, "inputBatchEdits": 64, "clipboardItems": 128, "wireValues": 100000, "textBytes": 65536, "identifierBytes": 256, "listRows": 100000, "gridTracks": 64, "vectorSourceBytes": 32768, "vectorPathBytes": 16384, "vectorPathWork": 16384, "vectorWork": 32768, "plotWork": 16384, "shadowMaskBytes": 16777216, "compositeFrames": 6, "leaseFrames": 6, "compositeBytes": 268435456, "outlineGlyphs": 4096, "ghosts": 64, "layoutMotions": 256, "dataAttributeBytes": 65536, "blurLayers": 8, "topLayer": 16, "dragSnapPoints": 8},
-  "tags": ["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video"],
+  "limits": {"nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256, "transitionMs": 10000, "evalBudgetMs": 100, "evalBudgetDebugMultiplier": 8, "evalWarmupMultiplier": 2, "evalLimitMultiplier": 4, "evalOverrunFrames": 3, "editorTextBytes": 65536, "inputRequestBytes": 524288, "inputBatchEdits": 64, "clipboardItems": 128, "wireValues": 100000, "textBytes": 65536, "identifierBytes": 256, "listRows": 100000, "gridTracks": 64, "vectorSourceBytes": 32768, "vectorPathBytes": 16384, "vectorPathWork": 16384, "vectorWork": 32768, "plotWork": 16384, "shadowMaskBytes": 16777216, "compositeFrames": 6, "leaseFrames": 6, "compositeBytes": 268435456, "outlineGlyphs": 4096, "ghosts": 64, "layoutMotions": 256, "dataAttributeBytes": 65536, "blurLayers": 8, "topLayer": 16, "dragSnapPoints": 8, "webMessageBytes": 65536, "webMessageQueue": 64},
+  "tags": ["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video", "webview"],
   "admission": {
     "column": {"children": "any", "content": true},
     "reserved-1": {"children": "none"},
@@ -27,7 +27,8 @@
     "span": {"children": "text", "content": true, "parent": "text"},
     "link": {"children": "text", "parent": "text"},
     "select": {"children": "text"},
-    "video": {"children": "none", "content": true}
+    "video": {"children": "none", "content": true},
+    "webview": {"children": "none", "content": true, "requires": ["webSrc", "webSession", "accessibilityLabel"]}
   },
   "options": {"snap-stop": ["normal", "always"],
     "font-family": ["sans", "mono", "serif"],
@@ -111,7 +112,7 @@
     {"id": 38, "key": "fontFamily", "wire": "fontFamily", "kind": "string"},
     {"id": 39, "key": "checked", "wire": "checked", "kind": "check-flag", "tags": ["checkbox", "switch", "radio-option"]},
     {"id": 40, "key": "onCheckedChange", "wire": "onChange", "kind": "check-handle", "tags": ["checkbox", "switch", "radio-option"]},
-    {"id": 41, "key": "accessibilityLabel", "wire": "accessibilityLabel", "kind": "radio-label", "tags": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "page", "text", "select", "video", "list"]},
+    {"id": 41, "key": "accessibilityLabel", "wire": "accessibilityLabel", "kind": "radio-label", "tags": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "page", "text", "select", "video", "webview", "list"]},
     {"id": 42, "key": "sliderValue", "wire": "value", "kind": "slider-number", "tags": ["slider"]},
     {"id": 43, "key": "sliderMin", "wire": "min", "kind": "slider-number", "tags": ["slider"]},
     {"id": 44, "key": "sliderMax", "wire": "max", "kind": "slider-number", "tags": ["slider"]},
@@ -272,7 +273,7 @@
     {"id": 199, "key": "drag", "wire": "drag", "kind": "drag", "tags": ["column", "button"]},
     {"id": 200, "key": "onDragEvent", "wire": "onDragEvent", "kind": "handle", "tags": ["column", "button"]},
     {"id": 201, "key": "dragScrim", "wire": "dragScrim", "kind": "flag", "tags": ["button"]},
-    {"id": 202, "key": "elementId", "wire": "elementId", "kind": "element-id", "tags": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video"]},
+    {"id": 202, "key": "elementId", "wire": "elementId", "kind": "element-id", "tags": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video", "webview"]},
     {"id": 203, "key": "ariaActions", "wire": "ariaActions", "kind": "element-ids", "tags": ["column", "button"]},
     {"id": 204, "key": "snapStop", "wire": "snapStop", "kind": "snap-stop", "tags": ["scroll", "list"]},
     {"id": 205, "key": "snapIndex", "wire": "snapIndex", "kind": "snap-index", "tags": ["scroll"]},
@@ -293,7 +294,7 @@
     {"id": 220, "key": "ariaValueText", "wire": "ariaValueText", "kind": "string"},
     {"id": 221, "key": "stateInvalid", "wire": "stateInvalid", "ignorable": true, "kind": "semantic-state"},
     {"id": 222, "key": "stateRequired", "wire": "stateRequired", "ignorable": true, "kind": "semantic-state"},
-    {"id": 223, "key": "ariaDescribedBy", "wire": "ariaDescribedBy", "ignorable": true, "kind": "element-ids", "tags": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video"]},
+    {"id": 223, "key": "ariaDescribedBy", "wire": "ariaDescribedBy", "ignorable": true, "kind": "element-ids", "tags": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video", "webview"]},
     {"id": 224, "key": "stateChecked", "wire": "stateChecked", "kind": "semantic-state"},
     {"id": 225, "key": "focusVisibleStyle", "wire": "focusVisibleStyle", "kind": "state-style", "tags": ["button", "checkbox", "switch", "radio", "slider", "link", "select", "input", "textarea", "search"]},
     {"id": 226, "key": "trackStyle", "wire": "trackStyle", "kind": "part-style"},
@@ -329,14 +330,17 @@
     {"id": 256, "key": "textDecorationStyle", "wire": "textDecorationStyle", "kind": "border-style", "ignorable": true},
     {"id": 257, "key": "textDecorationColor", "wire": "textDecorationColor", "kind": "string", "ignorable": true},
     {"id": 258, "key": "sliderOther", "wire": "sliderOther", "kind": "slider-number", "ignorable": true, "tags": ["slider"]},
-    {"id": 259, "key": "sliderThumb", "wire": "sliderThumb", "kind": "slider-thumb", "ignorable": true, "tags": ["slider"]}
+    {"id": 259, "key": "sliderThumb", "wire": "sliderThumb", "kind": "slider-thumb", "ignorable": true, "tags": ["slider"]},
+    {"id": 260, "key": "webSrc", "wire": "src", "kind": "web-source", "tags": ["webview"]},
+    {"id": 261, "key": "webSession", "wire": "session", "kind": "web-session", "tags": ["webview"]},
+    {"id": 262, "key": "onWebEvent", "wire": "onWebEvent", "kind": "handle", "tags": ["webview"]}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
     "keys": {"maxLength": "max_length", "autoComplete": "auto_complete", "enterKeyHint": "enter_key_hint", "autoCapitalize": "auto_capitalize", "spellCheck": "spell_check", "min": "min", "max": "max", "step": "step", "picker": "picker"}
   },
   "semantics": {
-    "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "combo-box", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status", "grid", "grid-cell", "list-box", "option", "menu", "menu-item", "video", "progress-bar", "alert-dialog", "group", "tooltip", "tab-list", "tab", "tab-panel", "toolbar", "tree", "tree-item", "row", "menu-item-check-box", "menu-item-radio"],
+    "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "combo-box", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status", "grid", "grid-cell", "list-box", "option", "menu", "menu-item", "video", "progress-bar", "alert-dialog", "group", "tooltip", "tab-list", "tab", "tab-panel", "toolbar", "tree", "tree-item", "row", "menu-item-check-box", "menu-item-radio", "web-view"],
     "liveRegions": ["polite", "assertive"],
     "events": ["announce"],
     "actions": ["copy", "cut", "paste", "set-selection"],
@@ -638,6 +642,7 @@
     "span": {"wire": "span", "children": "runs", "style": ["run"], "props": {}},
     "link": {"wire": "link", "children": "runs", "style": ["run"], "props": {"onContextMenu": {"type": "(event: ContextMenuEvent) => void"}, "onClick": {"type": "() => void"}, "aria-label": {"type": "string"}, "disabled": {"type": "boolean"}}},
     "select": {"wire": "select", "children": "none", "style": ["box", "padding", "text", "textBlock", "editor"], "binding": {"type": "string", "event": "onChange"}, "props": {"options": {"type": "readonly RadioOption[]", "required": true}, "placeholder": {"type": "string"}, "aria-label": {"type": "string"}, "disabled": {"type": "boolean"}}},
-    "video": {"wire": "video", "children": "none", "style": ["box", "media", "imagePlacement"], "props": {"src": {"type": "string"}, "sources": {"type": "readonly VideoSource[]"}, "player": {"type": "Video"}, "poster": {"type": "string"}, "autoPlay": {"type": "boolean"}, "paused": {"type": "boolean"}, "muted": {"type": "boolean"}, "loop": {"type": "boolean"}, "playbackRate": {"type": "number"}, "volume": {"type": "number"}, "aria-label": {"type": "string"}, "onLoadedMetadata": {"type": "(event: VideoMetadata) => void"}, "onPlay": {"type": "() => void"}, "onPlaying": {"type": "() => void"}, "onPause": {"type": "(event: VideoPause) => void"}, "onWaiting": {"type": "() => void"}, "onSeeked": {"type": "(event: { readonly currentTime: number }) => void"}, "onTimeUpdate": {"type": "(event: { readonly currentTime: number }) => void"}, "onEnded": {"type": "() => void"}, "onError": {"type": "(error: VideoError) => void"}, "onRateChange": {"type": "(event: { readonly playbackRate: number }) => void"}, "onVolumeChange": {"type": "(event: { readonly volume: number; readonly muted: boolean }) => void"}, "onQualityChange": {"type": "(event: VideoQualityChange) => void"}, "onFullscreenChange": {"type": "(event: { readonly fullscreen: boolean }) => void"}}}
+    "video": {"wire": "video", "children": "none", "style": ["box", "media", "imagePlacement"], "props": {"src": {"type": "string"}, "sources": {"type": "readonly VideoSource[]"}, "player": {"type": "Video"}, "poster": {"type": "string"}, "autoPlay": {"type": "boolean"}, "paused": {"type": "boolean"}, "muted": {"type": "boolean"}, "loop": {"type": "boolean"}, "playbackRate": {"type": "number"}, "volume": {"type": "number"}, "aria-label": {"type": "string"}, "onLoadedMetadata": {"type": "(event: VideoMetadata) => void"}, "onPlay": {"type": "() => void"}, "onPlaying": {"type": "() => void"}, "onPause": {"type": "(event: VideoPause) => void"}, "onWaiting": {"type": "() => void"}, "onSeeked": {"type": "(event: { readonly currentTime: number }) => void"}, "onTimeUpdate": {"type": "(event: { readonly currentTime: number }) => void"}, "onEnded": {"type": "() => void"}, "onError": {"type": "(error: VideoError) => void"}, "onRateChange": {"type": "(event: { readonly playbackRate: number }) => void"}, "onVolumeChange": {"type": "(event: { readonly volume: number; readonly muted: boolean }) => void"}, "onQualityChange": {"type": "(event: VideoQualityChange) => void"}, "onFullscreenChange": {"type": "(event: { readonly fullscreen: boolean }) => void"}}},
+    "webview": {"wire": "webview", "children": "none", "style": ["box"], "props": {"src": {"type": "string"}, "web": {"type": "WebView"}, "aria-label": {"type": "string", "required": true}, "onFullscreenChange": {"type": "(event: { readonly fullscreen: boolean }) => void"}, "onLoad": {"type": "(event: WebViewLoad) => void"}, "onMessage": {"type": "(message: WebViewMessage) => void"}, "onBlocked": {"type": "(event: WebViewBlocked) => void"}, "onError": {"type": "(error: WebViewError) => void"}}}
   }
 }

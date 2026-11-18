@@ -372,15 +372,22 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             }),
             "UI_FIELD: invalid child slot",
         ),
-        field::ACCESSIBILITY_LABEL => ensure(
-            value.as_str().is_some_and(|s| {
-                s.len() <= 1024
-                    && !s.contains('\0')
-                    && !(matches!(tag, tag::BUTTON | tag::CHECKBOX | tag::SWITCH)
-                        && s.trim().is_empty())
-            }),
-            "UI_PROP: invalid accessibility label",
-        ),
+        field::ACCESSIBILITY_LABEL => {
+            if tag == tag::WEBVIEW && value.as_str().is_none_or(|s| s.trim().is_empty()) {
+                return Err("UI_WEBVIEW: aria-label is required".into());
+            }
+            ensure(
+                value.as_str().is_some_and(|s| {
+                    s.len() <= 1024
+                        && !s.contains('\0')
+                        && !(matches!(
+                            tag,
+                            tag::BUTTON | tag::CHECKBOX | tag::SWITCH | tag::WEBVIEW
+                        ) && s.trim().is_empty())
+                }),
+                "UI_PROP: invalid accessibility label",
+            )
+        }
         field::CHECKED => ensure(flag(value), "UI_CHECK: invalid flag or handle"),
         field::ON_CHECKED_CHANGE => ensure(handle(value), "UI_CHECK: invalid flag or handle"),
         field::INPUT_VALUE | field::PLACEHOLDER | field::DISPLAY_VALUE | field::SIZE_TEXT => {
@@ -486,6 +493,19 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             }),
             "UI_VIDEO: invalid source",
         ),
+        field::WEB_SRC => ensure(
+            value.as_str().is_some_and(|s| {
+                !s.is_empty() && s.len() <= limits::SOURCE_BYTES && !s.contains('\0')
+            }),
+            "UI_WEBVIEW: invalid source",
+        ),
+        field::WEB_SESSION => ensure(
+            value.as_str().is_some_and(|s| {
+                (s.starts_with("name:") || s.starts_with("el:")) && s.len() <= 4096
+            }),
+            "UI_WEBVIEW: invalid session",
+        ),
+        field::ON_WEB_EVENT => ensure(handle(value), "UI_WEBVIEW: invalid handle"),
         field::IMAGE_FIT => ensure(
             matches!(value.as_str(), Some("cover" | "contain" | "fill")),
             "UI_IMAGE: invalid fit",

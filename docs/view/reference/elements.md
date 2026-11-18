@@ -371,3 +371,18 @@ Children: none.
 | `onVolumeChange` | `(event: { readonly volume: number; readonly muted: boolean }) => void` |  |
 | `onQualityChange` | `(event: VideoQualityChange) => void` |  |
 | `onFullscreenChange` | `(event: { readonly fullscreen: boolean }) => void` |  |
+
+## `<webview>`
+
+Children: none. Not allowed inside a pressable control (`UI_BUTTON`).
+
+| Prop | Type | Required |
+| --- | --- | --- |
+| `src` | `string` |  |
+| `web` | `WebView` |  |
+| `aria-label` | `string` | yes |
+| `onFullscreenChange` | `(event: { readonly fullscreen: boolean }) => void` |  |
+| `onLoad` | `(event: WebViewLoad) => void` |  |
+| `onMessage` | `(message: WebViewMessage) => void` |  |
+| `onBlocked` | `(event: WebViewBlocked) => void` |  |
+| `onError` | `(error: WebViewError) => void` |  |

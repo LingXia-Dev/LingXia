@@ -211,7 +211,14 @@ fn cheap(commands: &[Paint], cost: PassCost) -> bool {
 /// the outermost group, since a group's pixels only combine correctly in one scene.
 fn segments(display: &DisplayList, cost: PassCost) -> Option<Vec<Segment>> {
     let spans = display.animated_spans();
-    if spans.is_empty() || spans.len() > MAX_SPANS || !SceneKey::eligible(display, 2048, 32768) {
+    if spans.is_empty()
+        || spans.len() > MAX_SPANS
+        || !SceneKey::eligible(display, 2048, 32768)
+        || display
+            .commands
+            .iter()
+            .any(|paint| matches!(paint, Paint::WebHole { .. }))
+    {
         return None;
     }
     let commands = &display.commands;

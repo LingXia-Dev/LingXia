@@ -92,8 +92,8 @@ impl Devices {
             .await
             .ok_or("UI_SURFACE: no compatible GPU device")?;
         let handle = &self.devices[dev_id];
-        let format = surface
-            .get_capabilities(&handle.adapter)
+        let caps = surface.get_capabilities(&handle.adapter);
+        let format = caps
             .formats
             .into_iter()
             .find(|f| {
@@ -103,6 +103,17 @@ impl Devices {
                 )
             })
             .ok_or("UI_SURFACE: unsupported surface format")?;
+        #[cfg(any(target_vendor = "apple", target_env = "ohos"))]
+        let alpha_mode = [
+            wgpu::CompositeAlphaMode::PreMultiplied,
+            wgpu::CompositeAlphaMode::PostMultiplied,
+            wgpu::CompositeAlphaMode::Inherit,
+        ]
+        .into_iter()
+        .find(|mode| caps.alpha_modes.contains(mode))
+        .unwrap_or(wgpu::CompositeAlphaMode::Auto);
+        #[cfg(not(any(target_vendor = "apple", target_env = "ohos")))]
+        let alpha_mode = wgpu::CompositeAlphaMode::Auto;
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
@@ -111,7 +122,7 @@ impl Devices {
             present_mode: wgpu::PresentMode::Fifo,
             color_space: wgpu::SurfaceColorSpace::Auto,
             desired_maximum_frame_latency: 2,
-            alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            alpha_mode,
             view_formats: vec![],
         };
         configure(&surface, &handle.device, &config)?;
