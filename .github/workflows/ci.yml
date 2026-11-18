@@ -1689,6 +1689,9 @@ jobs:
       - name: Check that examples do not import from each other
         run: node scripts/ci/check-example-imports.mjs
 
+      - name: Check every semantic role has a native mapping
+        run: node scripts/ci/check-semantic-roles.mjs
+
       - name: Check GPU showcase contracts and Logic
         working-directory: examples/lingxia-showcase-gpu/lxapp
         run: |

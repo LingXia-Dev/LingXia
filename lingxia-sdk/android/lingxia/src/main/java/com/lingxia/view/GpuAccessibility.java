@@ -2,6 +2,7 @@ package com.lingxia.view;
 
 import android.graphics.Rect;
 import android.os.Build;
+import android.util.Log;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 import com.lingxia.view.generated.GpuFrame;
@@ -22,6 +23,9 @@ final class GpuAccessibility {
     static final int FOCUS = 0, CLEAR_FOCUS = 1, CLICK = 2, SHOW_ON_SCREEN = 3, SCROLL_FORWARD = 4, SCROLL_BACKWARD = 5,
         PROGRESS = 6, SET_TEXT = 7, SET_SELECTION = 8, CLEAR_SELECTION = 9, SELECT = 10, COPY = 11, CUT = 12, PASTE = 13,
         CUSTOM = 14, DISMISS = 15;
+
+    /** Roles already reported as unmapped, so each is logged once. */
+    private static final java.util.Set<String> UNMAPPED_ROLES = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 
     static String className(String role) {
         switch (role) {
@@ -59,8 +63,10 @@ final class GpuAccessibility {
             case GpuSemantics.ROLE_LIST_ITEM: case GpuSemantics.ROLE_DIALOG: case GpuSemantics.ROLE_ALERT_DIALOG:
             case GpuSemantics.ROLE_ALERT: case GpuSemantics.ROLE_STATUS: case GpuSemantics.ROLE_TOOLTIP:
                 return "android.widget.TextView";
-            // A role the core added without a mapping here fails loudly, never reads as plain text.
-            default: throw new IllegalArgumentException("unmapped semantic role " + role);
+            // A role without a case here is a bug the schema check catches; a shipping host reads it as a group.
+            default:
+                if (UNMAPPED_ROLES.add(role)) Log.w("LingXia.UI", "unmapped semantic role " + role);
+                return "android.view.ViewGroup";
         }
     }
 

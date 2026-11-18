@@ -116,7 +116,10 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
         return nil
     }
 
-    private static func traits(_ node: GpuFrameSemanticNode) -> UIAccessibilityTraits {
+    /// Roles already reported as unmapped, so each is logged once.
+    @MainActor private static var unmappedRoles = Set<String>()
+
+    @MainActor private static func traits(_ node: GpuFrameSemanticNode) -> UIAccessibilityTraits {
         var traits: UIAccessibilityTraits = []
         switch node.role {
         case "button", "combo-box", "radio-button": traits.insert(.button)
@@ -133,12 +136,15 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
         // Composite items: pressable, selected or checked when chosen.
         case "tab", "tree-item", "menu-item-check-box", "menu-item-radio": traits.insert(.button)
         case "grid", "list-box", "list", "list-item", "dialog", "alert-dialog", "alert", "status", "group", "text-field", "menu",
-             "scroll-view", "horizontal-scroll-view", "radio-group", "tab-list", "tab-panel", "toolbar", "tree", "row": break
+             "scroll-view", "horizontal-scroll-view", "radio-group", "tab-list", "tab-panel", "toolbar", "tree", "row",
+             "web-view": break
         // As UIProgressView: no trait, its share spoken as the value.
         case "progress-bar": traits.insert(.updatesFrequently)
         default:
-            // A role the core added without a mapping here is a bug, never silently traitless.
-            assertionFailure("unmapped semantic role \(node.role)")
+            // A role without a case here is a bug the schema check catches; a shipping host reads it as plain.
+            if unmappedRoles.insert(node.role).inserted {
+                LXLog.warn("unmapped semantic role \(node.role)", category: "Accessibility")
+            }
         }
         if node.clickable, traits.isEmpty { traits.insert(.button) }
         if !node.enabled { traits.insert(.notEnabled) }

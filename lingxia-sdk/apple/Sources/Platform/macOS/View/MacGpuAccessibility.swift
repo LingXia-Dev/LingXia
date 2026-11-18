@@ -120,7 +120,10 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
         return nil
     }
 
-    private static func role(_ node: GpuFrameSemanticNode) -> NSAccessibility.Role {
+    /// Roles already reported as unmapped, so each is logged once.
+    @MainActor private static var unmappedRoles = Set<String>()
+
+    @MainActor private static func role(_ node: GpuFrameSemanticNode) -> NSAccessibility.Role {
         switch node.role {
         case "button", "combo-box": return .button
         case "check-box", "switch": return .checkBox
@@ -143,11 +146,13 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
         case "toolbar": return .toolbar
         case "tree": return .outline
         case "tree-item", "row": return .row
-        case "dialog", "alert-dialog", "alert", "list-item", "status", "group", "tab-panel": return .group
+        case "dialog", "alert-dialog", "alert", "list-item", "status", "group", "tab-panel", "web-view": return .group
         case "tooltip": return .staticText
         default:
-            // A role the core added without a mapping here is a bug, never a silent group.
-            assertionFailure("unmapped semantic role \(node.role)")
+            // A role without a case here is a bug the schema check catches; a shipping host reads it as a group.
+            if unmappedRoles.insert(node.role).inserted {
+                LXLog.warn("unmapped semantic role \(node.role)", category: "Accessibility")
+            }
             return node.clickable ? .button : .group
         }
     }
