@@ -917,10 +917,17 @@ impl Presenter {
         };
         let context = self.context.lock()?;
         if surface.config.width != width || surface.config.height != height {
+            surface.config.alpha_mode = if display.has_web_hole() {
+                surface.transparent_alpha_mode_or_auto()
+            } else {
+                wgpu::CompositeAlphaMode::Auto
+            };
             context.resize_surface(surface, width, height)?;
             self.depth = Some(depth_view(surface, &context.devices[surface.dev_id].device));
             self.prepared = [None; 2];
             self.drawn = [None; 2];
+        } else {
+            context.set_surface_transparent(surface, display.has_web_hole())?;
         }
         if self.depth.is_none() {
             self.depth = Some(depth_view(surface, &context.devices[surface.dev_id].device));

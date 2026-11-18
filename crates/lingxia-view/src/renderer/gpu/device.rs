@@ -45,6 +45,7 @@ pub(crate) struct RenderSurface<'s> {
     pub surface: wgpu::Surface<'s>,
     pub config: wgpu::SurfaceConfiguration,
     pub dev_id: usize,
+    transparent_alpha_mode: Option<wgpu::CompositeAlphaMode>,
     /// `None` while trimmed; drawing creates them again.
     targets: Option<[wgpu::TextureView; 2]>,
     /// The real size while configured at 1x1 to free wgpu's GLES renderbuffer.
@@ -69,6 +70,11 @@ impl RenderSurface<'_> {
 
     pub fn parked(&self) -> Option<(u32, u32)> {
         self.parked
+    }
+
+    pub fn transparent_alpha_mode_or_auto(&self) -> wgpu::CompositeAlphaMode {
+        self.transparent_alpha_mode
+            .unwrap_or(wgpu::CompositeAlphaMode::Auto)
     }
 }
 
@@ -103,17 +109,13 @@ impl Devices {
                 )
             })
             .ok_or("UI_SURFACE: unsupported surface format")?;
-        #[cfg(any(target_vendor = "apple", target_env = "ohos"))]
-        let alpha_mode = [
+        let transparent_alpha_mode = [
             wgpu::CompositeAlphaMode::PreMultiplied,
             wgpu::CompositeAlphaMode::PostMultiplied,
             wgpu::CompositeAlphaMode::Inherit,
         ]
         .into_iter()
-        .find(|mode| caps.alpha_modes.contains(mode))
-        .unwrap_or(wgpu::CompositeAlphaMode::Auto);
-        #[cfg(not(any(target_vendor = "apple", target_env = "ohos")))]
-        let alpha_mode = wgpu::CompositeAlphaMode::Auto;
+        .find(|mode| caps.alpha_modes.contains(mode));
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
@@ -122,7 +124,7 @@ impl Devices {
             present_mode: wgpu::PresentMode::Fifo,
             color_space: wgpu::SurfaceColorSpace::Auto,
             desired_maximum_frame_latency: 2,
-            alpha_mode,
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
         };
         configure(&surface, &handle.device, &config)?;
@@ -133,7 +135,35 @@ impl Devices {
             surface,
             config,
             dev_id,
+            transparent_alpha_mode,
         })
+    }
+
+    /// Switches `surface`'s composite alpha mode between opaque (`Auto`) and `transparent` only
+    /// when a `<webview>` cutout enters or leaves the scene, so pages without `<webview>` stay
+    /// opaque layers.
+    pub fn set_surface_transparent(
+        &self,
+        surface: &mut RenderSurface<'_>,
+        transparent: bool,
+    ) -> Result<bool, String> {
+        let desired = if transparent {
+            surface
+                .transparent_alpha_mode
+                .unwrap_or(wgpu::CompositeAlphaMode::Auto)
+        } else {
+            wgpu::CompositeAlphaMode::Auto
+        };
+        if surface.config.alpha_mode == desired {
+            return Ok(false);
+        }
+        surface.config.alpha_mode = desired;
+        configure(
+            &surface.surface,
+            &self.devices[surface.dev_id].device,
+            &surface.config,
+        )?;
+        Ok(true)
     }
 
     pub fn resize_surface(

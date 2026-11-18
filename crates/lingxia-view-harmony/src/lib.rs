@@ -149,6 +149,30 @@ mod pages {
         })
     }
 
+    /// Swaps a mounted page's XComponent between `SURFACE` and `TEXTURE` when `<webview>` mounts
+    /// enter or leave the scene; a no-op before `mount` or when the node already matches.
+    pub(crate) fn rebind_node(token: i64) {
+        let Some((host, old_node)) = PAGES.with(|pages| {
+            let mut pages = pages.borrow_mut();
+            let host = pages.hosts.get(&token)?.clone();
+            let want_texture = host.adapter().wants_texture();
+            if pages.nodes.get(&token)?.texture == want_texture {
+                return None;
+            }
+            Some((host, pages.nodes.remove(&token)?))
+        }) else {
+            return;
+        };
+        let content = old_node.content;
+        let want_texture = host.adapter().wants_texture();
+        host.adapter().surface_destroyed(&host);
+        drop(old_node);
+        match xcomponent::Node::mount(token, content, want_texture) {
+            Ok(node) => mounted(token, node),
+            Err(error) => log::warn!(target: "lingxia_view", "UI_SURFACE: rebind failed: {error}"),
+        }
+    }
+
     /// An accessibility Paste: the clipboard arrives later, so the action reports success now.
     pub(crate) fn paste(token: i64, id: u32) -> i32 {
         let Some(shell) = with(token, |host| host.adapter().shell.clone()) else {
@@ -332,7 +356,9 @@ impl Page {
         if code != 0 || handle.is_null() {
             return Err(format!("UI_SURFACE: not a NodeContent ({code})"));
         }
-        let node = xcomponent::Node::mount(self.token, handle)?;
+        let texture =
+            pages::with(self.token, |host| host.adapter().wants_texture()).unwrap_or(false);
+        let node = xcomponent::Node::mount(self.token, handle, texture)?;
         pages::mounted(self.token, node);
         Ok(())
     }

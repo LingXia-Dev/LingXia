@@ -65,13 +65,24 @@ impl Velocity {
 pub(crate) struct Node {
     token: i64,
     handle: sys::ArkUI_NodeHandle,
-    content: sys::ArkUI_NodeContentHandle,
+    pub(crate) content: sys::ArkUI_NodeContentHandle,
+    pub(crate) texture: bool,
     holder: *mut sys::OH_ArkUI_SurfaceHolder,
     callback: *mut sys::OH_ArkUI_SurfaceCallback,
     pub(crate) provider: *mut sys::ArkUI_AccessibilityProvider,
 }
 
-const EVENTS: [i32; 8] = [
+const SURFACE_EVENTS: [i32; 7] = [
+    sys::NODE_TOUCH_EVENT,
+    sys::NODE_ON_FOCUS,
+    sys::NODE_ON_BLUR,
+    sys::NODE_ON_HOVER,
+    sys::NODE_ON_MOUSE,
+    sys::NODE_ON_AXIS,
+    sys::NODE_ON_KEY_EVENT,
+];
+
+const TEXTURE_EVENTS: [i32; 8] = [
     sys::NODE_TOUCH_EVENT,
     sys::NODE_ON_TOUCH_INTERCEPT,
     sys::NODE_ON_FOCUS,
@@ -83,16 +94,24 @@ const EVENTS: [i32; 8] = [
 ];
 
 impl Node {
-    /// Creates the page's XComponent node and adds it to `content`.
-    pub(crate) fn mount(token: i64, content: sys::ArkUI_NodeContentHandle) -> Result<Self, String> {
+    /// Creates the page's XComponent node and adds it to `content`. Pages use `SURFACE` by
+    /// default so RenderService scans out without an extra ArkUI composition pass; `texture`
+    /// switches to `TEXTURE` only while `<webview>` cutouts sit beneath the page.
+    pub(crate) fn mount(
+        token: i64,
+        content: sys::ArkUI_NodeContentHandle,
+        texture: bool,
+    ) -> Result<Self, String> {
         let api = api()?;
         let user = token as usize as *mut c_void;
         let id = CString::new(format!("lingxia-gpu-{token}")).expect("digits");
         // SAFETY: main thread; every handle is checked and owned by the returned node.
         unsafe {
-            // `TEXTURE` composites inside ArkUI's render tree so premultiplied `DestOut` holes
-            // reveal `<webview>` siblings underneath in `GpuPage`'s `Stack`.
-            let mut handle = (api.create_node)(sys::ARKUI_NODE_XCOMPONENT_TEXTURE);
+            let mut handle = if texture {
+                (api.create_node)(sys::ARKUI_NODE_XCOMPONENT_TEXTURE)
+            } else {
+                std::ptr::null_mut()
+            };
             let is_surface = handle.is_null();
             if is_surface {
                 handle = (api.create_node)(sys::ARKUI_NODE_XCOMPONENT);
@@ -113,7 +132,6 @@ impl Node {
                 object: std::ptr::null_mut(),
             };
             let full = sys::ArkUI_NumberValue { f32: 1.0 };
-            let transparent = sys::ArkUI_NumberValue { u32: 0x0000_0000 };
             let yes = sys::ArkUI_NumberValue { i32: 1 };
             (api.set_attribute)(handle, sys::NODE_XCOMPONENT_ID, &string(&id));
             if is_surface {
@@ -121,8 +139,10 @@ impl Node {
                     i32: sys::ARKUI_XCOMPONENT_TYPE_SURFACE,
                 };
                 (api.set_attribute)(handle, sys::NODE_XCOMPONENT_TYPE, &number(&surface));
+            } else {
+                let transparent = sys::ArkUI_NumberValue { u32: 0x0000_0000 };
+                (api.set_attribute)(handle, sys::NODE_BACKGROUND_COLOR, &number(&transparent));
             }
-            (api.set_attribute)(handle, sys::NODE_BACKGROUND_COLOR, &number(&transparent));
             (api.set_attribute)(handle, sys::NODE_WIDTH_PERCENT, &number(&full));
             (api.set_attribute)(handle, sys::NODE_HEIGHT_PERCENT, &number(&full));
             (api.set_attribute)(handle, sys::NODE_FOCUSABLE, &number(&yes));
@@ -130,7 +150,12 @@ impl Node {
             (api.set_attribute)(handle, sys::NODE_FOCUS_ON_TOUCH, &number(&yes));
             // The page runs its own input connection; the XComponent must not raise one.
             sys::OH_ArkUI_XComponent_SetNeedSoftKeyboard(handle, false);
-            for kind in EVENTS {
+            let events: &[i32] = if is_surface {
+                &SURFACE_EVENTS
+            } else {
+                &TEXTURE_EVENTS
+            };
+            for &kind in events {
                 let code = (api.register_node_event)(handle, kind, 0, user);
                 if code != 0 {
                     log::warn!(target: "lingxia_view", "UI_INPUT: node event {kind} refused ({code})");
@@ -163,6 +188,7 @@ impl Node {
                 token,
                 handle,
                 content,
+                texture: !is_surface,
                 holder,
                 callback,
                 provider,
@@ -237,6 +263,7 @@ mod vsync {
 
 impl Drop for Node {
     fn drop(&mut self) {
+        focus::lost(self.token);
         let Ok(api) = api() else { return };
         // SAFETY: main thread; releases what `mount` created, in reverse.
         unsafe {
@@ -244,7 +271,12 @@ impl Drop for Node {
                 sys::OH_ArkUI_AccessibilityProvider_Dispose(self.provider);
             }
             sys::OH_ArkUI_NodeContent_RemoveNode(self.content, self.handle);
-            for kind in EVENTS {
+            let events: &[i32] = if self.texture {
+                &TEXTURE_EVENTS
+            } else {
+                &SURFACE_EVENTS
+            };
+            for &kind in events {
                 (api.unregister_node_event)(self.handle, kind);
             }
             (api.remove_node_event_receiver)(self.handle, on_event);
@@ -252,7 +284,6 @@ impl Drop for Node {
             sys::OH_ArkUI_SurfaceCallback_Dispose(self.callback);
             (api.dispose_node)(self.handle);
         }
-        let _ = self.token;
     }
 }
 
@@ -262,9 +293,13 @@ fn holder_token(holder: *mut sys::OH_ArkUI_SurfaceHolder) -> i64 {
 }
 
 unsafe extern "C" fn surface_created(holder: *mut sys::OH_ArkUI_SurfaceHolder) {
-    // SAFETY: ArkUI's live holder.
-    let window = NativeWindow::retain(unsafe { sys::OH_ArkUI_XComponent_GetNativeWindow(holder) });
     let token = holder_token(holder);
+    let transparent = pages::with(token, |host| host.adapter().wants_texture()).unwrap_or(false);
+    // SAFETY: ArkUI's live holder.
+    let window = NativeWindow::retain(
+        unsafe { sys::OH_ArkUI_XComponent_GetNativeWindow(holder) },
+        transparent,
+    );
     pages::with(token, |host| match window {
         Some(window) => host.adapter().surface_created(host, window),
         None => log::warn!(target: "lingxia_view", "UI_SURFACE: page {token} has no native window"),

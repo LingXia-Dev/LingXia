@@ -73,6 +73,7 @@ pub struct HarmonyAdapter {
     /// the handles last sent to ArkTS.
     selection: Mutex<Option<(String, String, String)>>,
     orientation: Mutex<Option<lingxia_view::scene::video::Orientation>>,
+    texture: AtomicBool,
     vsync: AtomicBool,
     long_press: AtomicU64,
     claimed: AtomicBool,
@@ -141,6 +142,7 @@ impl HarmonyAdapter {
             chrome_snapshot: AtomicU64::new(0),
             selection: Mutex::new(None),
             orientation: Mutex::new(None),
+            texture: AtomicBool::new(false),
             vsync: AtomicBool::new(false),
             long_press: AtomicU64::new(0),
             claimed: AtomicBool::new(false),
@@ -216,11 +218,13 @@ impl HarmonyAdapter {
     /// The window goes away; its size is kept, a recreated surface usually has the same.
     pub(crate) fn surface_destroyed(&self, host: &pages::Host) {
         log::debug!(target: "lingxia_view", "surface destroyed token={}", self.token);
+        if lock(&self.window).take().is_none() {
+            return;
+        }
         let gpu = self.gpu.load(Ordering::Acquire);
         self.windows.fetch_add(1, Ordering::AcqRel);
         // The window goes when this returns: release its surface on the thread that owns GL.
         crate::render::run_now(move || surfaces::suspend(gpu));
-        *lock(&self.window) = None;
         host.surface_lost();
     }
 
@@ -296,6 +300,10 @@ impl HarmonyAdapter {
 
     fn route(&self) -> Route {
         surfaces::route(self.gpu.load(Ordering::Acquire), *lock(&self.target))
+    }
+
+    pub(crate) fn wants_texture(&self) -> bool {
+        self.texture.load(Ordering::Acquire)
     }
 }
 
@@ -877,12 +885,21 @@ impl HostEvents for HarmonyAdapter {
             }
             return;
         }
+        let want_texture = !mounts.is_empty();
+        if self.texture.swap(want_texture, Ordering::AcqRel) != want_texture {
+            let token = self.token;
+            dispatch::post_main(Box::new(move || pages::rebind_node(token)));
+        }
         self.shell.sync_webviews(self.token, mounts);
     }
     fn exit_webview_fullscreen(&self, web_id: &str) {
         self.shell.exit_webview_fullscreen(self.token, web_id);
     }
     fn clear_webviews(&self) {
+        if self.texture.swap(false, Ordering::AcqRel) {
+            let token = self.token;
+            dispatch::post_main(Box::new(move || pages::rebind_node(token)));
+        }
         self.shell.clear_webviews(self.token);
     }
 }

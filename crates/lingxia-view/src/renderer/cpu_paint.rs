@@ -48,6 +48,18 @@ impl DisplayList {
             .any(|p| matches!(p, Paint::Backdrop { .. }))
     }
 
+    pub fn has_web_hole(&self) -> bool {
+        self.commands.iter().any(|p| {
+            matches!(
+                p,
+                Paint::WebHole {
+                    degraded: false,
+                    ..
+                }
+            )
+        })
+    }
+
     pub fn rasterize(mut self) -> Result<Frame, String> {
         if self.requires_composition() {
             return self.rasterize_composited();

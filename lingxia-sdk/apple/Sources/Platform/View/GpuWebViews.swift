@@ -145,6 +145,7 @@ final class GpuMetalSurfaceView: UIView {
     init() {
         super.init(frame: .zero)
         isOpaque = true
+        layer.isOpaque = true
         isUserInteractionEnabled = false
         layer.contentsGravity = .topLeft
     }
@@ -193,6 +194,7 @@ final class GpuWebViewContainer: UIView {
     init(token: Int64) {
         self.token = token
         super.init(frame: .zero)
+        isHidden = true
         clipsToBounds = true
         backgroundColor = .clear
     }
@@ -223,6 +225,7 @@ final class GpuWebViewContainer: UIView {
         }
         slots.removeAll()
         orderedIds.removeAll()
+        isHidden = true
     }
 
     func sync(json: String) -> Bool {
@@ -232,6 +235,9 @@ final class GpuWebViewContainer: UIView {
         else {
             clearAll()
             return false
+        }
+        if isHidden {
+            isHidden = false
         }
 
         CATransaction.begin()
@@ -361,6 +367,7 @@ final class GpuWebViewContainer: NSView {
     init(token: Int64) {
         self.token = token
         super.init(frame: .zero)
+        isHidden = true
         wantsLayer = true
         layer?.masksToBounds = true
     }
@@ -393,6 +400,7 @@ final class GpuWebViewContainer: NSView {
         }
         slots.removeAll()
         orderedIds.removeAll()
+        isHidden = true
     }
 
     func sync(json: String) -> Bool {
@@ -402,6 +410,9 @@ final class GpuWebViewContainer: NSView {
         else {
             clearAll()
             return false
+        }
+        if isHidden {
+            isHidden = false
         }
 
         CATransaction.begin()
