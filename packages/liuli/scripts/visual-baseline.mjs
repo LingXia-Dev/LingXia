@@ -13,6 +13,8 @@
 //   --tolerance <n>, --share <x>   with --against: a finer or coarser comparison than the gate's
 //   --gallery <dir>     another copy of the gallery, such as one scripts/gallery-with-pack.mjs wrote
 //   --presets <a,b>     only these size presets, for a capture and what is accepted from it
+//   --pages <a,b>       only these gallery pages, by name: a capture shoots them, a check compares
+//                       them, and an accept replaces them in the reference and keeps every other picture
 //   --confirm <name>    with accept: the second capture to hold current against (default confirm)
 //
 // The pictures stay out of git (gallery/.baseline); gallery/baseline.manifest.json, which is
@@ -34,6 +36,9 @@ const root = join(gallery, '.baseline');
 const manifestPath = join(gallery, 'baseline.manifest.json');
 // A phone and a desk: the two forms every page has.
 const presets = option('presets')?.split(',') ?? ['iphone-15-pro', 'desktop-1280'];
+const named = option('pages')?.split(',');
+// A picture is `<page>-<theme>.png` under its preset.
+const ofNamed = name => !named || named.some(page => new RegExp(`/${page}-(light|dark)\\.png$`).test(name));
 // A pixel differs when any channel is further than this from the reference; a picture fails when
 // more than this share of its pixels differ. Text edges move by a shade between runs; layout does not.
 const channelTolerance = 12;
@@ -63,7 +68,8 @@ function capture() {
       // Fresh pages: one left scrolled by an earlier run or by a person would be shot where it was left.
       run(['lxapp', 'restart', '--app', appId]);
       // A run that did not start or did not pass leaves the last run's pictures behind: copy nothing from it.
-      try { run(['test', 'zz-tests/baseline.test.ts'], { stdio: 'inherit' }); } catch { onGpu(); throw Error(`${preset}: the capture spec did not run or did not pass; nothing was captured`); }
+      const only = named ? ['--grep', `^baseline: (${named.join('|')})$`] : [];
+      try { run(['test', 'zz-tests/baseline.test.ts', ...only], { stdio: 'inherit' }); } catch { onGpu(); throw Error(`${preset}: the capture spec did not run or did not pass; nothing was captured`); }
       onGpu();
       const attachments = join(gallery, 'test-results', 'latest', 'attachments');
       for (const file of walk(attachments)) if (file.endsWith('.png') && !file.endsWith('failure.png')) cpSync(file, join(out, file.slice(file.lastIndexOf('/') + 1)));
@@ -82,7 +88,7 @@ function* walk(dir) {
   }
 }
 
-const pictures = which => presets.flatMap(preset => (existsSync(join(root, which, preset)) ? readdirSync(join(root, which, preset)).filter(name => name.endsWith('.png')).sort().map(name => `${preset}/${name}`) : []));
+const pictures = which => presets.flatMap(preset => (existsSync(join(root, which, preset)) ? readdirSync(join(root, which, preset)).filter(name => name.endsWith('.png')).sort().map(name => `${preset}/${name}`) : [])).filter(ofNamed);
 const hash = path => createHash('sha256').update(readFileSync(path)).digest('hex');
 
 // The share of two pictures' pixels that differ by more than `tolerance` in a channel; 1 when their sizes differ.
@@ -114,17 +120,22 @@ function accept() {
     console.error(`\n${unsteady.length} of ${current.length} pictures are not drawn the same twice; nothing accepted`);
     process.exit(1);
   }
-  rmSync(join(root, 'reference'), { recursive: true, force: true });
-  cpSync(join(root, into), join(root, 'reference'), { recursive: true });
+  // Named pages replace their own pictures; every other accepted picture stays as it was.
+  const kept = named ? JSON.parse(readFileSync(manifestPath, 'utf8')) : null;
+  if (!named) rmSync(join(root, 'reference'), { recursive: true, force: true });
+  for (const name of current) { mkdirSync(dirname(join(root, 'reference', name)), { recursive: true }); cpSync(join(root, into, name), join(root, 'reference', name)); }
+  const fresh = Object.fromEntries(current.map(name => {
+    const { width, height } = decode(readFileSync(join(root, 'reference', name)));
+    return [name, { width, height, sha256: hash(join(root, 'reference', name)) }];
+  }));
+  // In the manifest's own order, so an accept of a few pages changes only their lines.
+  const pictureSet = kept ? { ...Object.fromEntries(Object.entries(kept.pictures).filter(([name]) => !ofNamed(name) || fresh[name]).map(([name, entry]) => [name, fresh[name] ?? entry])), ...fresh } : fresh;
   const manifest = {
     accepted: new Date().toISOString().slice(0, 10),
-    presets,
+    presets: kept?.presets ?? presets,
     channelTolerance,
     failShare,
-    pictures: Object.fromEntries(current.map(name => {
-      const { width, height } = decode(readFileSync(join(root, 'reference', name)));
-      return [name, { width, height, sha256: hash(join(root, 'reference', name)) }];
-    })),
+    pictures: pictureSet,
   };
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(`accepted ${current.length} pictures, each drawn the same in two captures`);
@@ -138,7 +149,7 @@ function check() {
   const manifest = against
     ? { channelTolerance: Number(option('tolerance') ?? channelTolerance), failShare: Number(option('share') ?? failShare), pictures: Object.fromEntries(pictures(against).map(name => [name, { sha256: hash(join(root, against, name)) }])) }
     : JSON.parse(readFileSync(manifestPath, 'utf8'));
-  const accepted = Object.keys(manifest.pictures);
+  const accepted = Object.keys(manifest.pictures).filter(name => presets.includes(name.split('/')[0]) && ofNamed(name));
   const current = new Set(pictures(into));
   if (!current.size) throw Error('nothing captured: run `capture` first');
   rmSync(join(root, 'diff'), { recursive: true, force: true });
