@@ -21,6 +21,9 @@ pub struct DisplayList {
     pub width: u16,
     pub height: u16,
     pub scale: f32,
+    /// The size and scale the page was laid out at, while it rasterizes at another; see
+    /// [`DisplayList::raster_at`].
+    pub(crate) device_raster: Option<(u16, u16, f32)>,
     pub(crate) retained: Arc<RetainedLayout>,
 }
 
@@ -131,6 +134,41 @@ impl ChromeEdge {
 }
 
 impl DisplayList {
+    /// Rasterizes at `scale` pixels per point instead of the device's: a host that shows a
+    /// simulated device at another size draws it sharp for the screen it is on. The paints stay
+    /// as laid out on the device's pixel grid; only the target and its scale change.
+    pub fn raster_at(&mut self, scale: f32) {
+        if let Some(device) = self.device_raster.take() {
+            (self.width, self.height, self.scale) = device;
+        }
+        if !(scale.is_finite() && scale > 0.0) || scale == self.scale {
+            return;
+        }
+        let fit = |extent: u16| {
+            (f32::from(extent) / self.scale * scale)
+                .round()
+                .clamp(1.0, f32::from(u16::MAX)) as u16
+        };
+        self.device_raster = Some((self.width, self.height, self.scale));
+        (self.width, self.height) = (fit(self.width), fit(self.height));
+        self.scale = scale;
+    }
+
+    /// The device's size and scale when the list rasterizes at another, see [`Self::raster_at`].
+    pub fn device_raster(&self) -> Option<(u16, u16, f32)> {
+        self.device_raster
+    }
+
+    /// Exchanges the raster with the device's; twice restores it.
+    #[cfg(feature = "gpu")]
+    pub(crate) fn swap_raster(&mut self) {
+        if let Some(other) = self.device_raster.as_mut() {
+            let current = (self.width, self.height, self.scale);
+            (self.width, self.height, self.scale) = *other;
+            *other = current;
+        }
+    }
+
     /// The host lifts the page over its chrome: a shown dialog, or its exit ghost. A popover
     /// stays under the chrome; a dialog's backdrop hides the chrome anyway.
     pub fn top_layer_open(&self) -> bool {
@@ -923,3 +961,7 @@ fn intersect(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
 #[cfg(test)]
 #[path = "tests/animation.rs"]
 mod animation_tests;
+
+#[cfg(test)]
+#[path = "tests/raster.rs"]
+mod raster_tests;

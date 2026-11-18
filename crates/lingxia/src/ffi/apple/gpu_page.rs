@@ -40,6 +40,11 @@ mod bridge {
             first_weekday: u8,
         );
 
+        // Pixels per point the view is shown at when it is not `scale` (a simulated device on
+        // the Mac's screen), 0 when it is; frames draw at it, screenshots stay device pixels.
+        #[swift_bridge(swift_name = "gpuPageRaster")]
+        fn gpu_page_raster(token: i64, scale: f32);
+
         #[swift_bridge(swift_name = "gpuPageSetVisible")]
         fn gpu_page_set_visible(token: i64, visible: bool);
 
@@ -414,6 +419,10 @@ fn gpu_page_measured(
         first_weekday: Some(first_weekday),
     };
     with_page(token, |page| page.measured(facts));
+}
+
+fn gpu_page_raster(token: i64, scale: f32) {
+    with_page(token, |page| page.raster((scale > 0.0).then_some(scale)));
 }
 
 fn gpu_page_attach(token: i64, view: usize, width: u32, height: u32) {

@@ -1372,6 +1372,7 @@ impl RetainedLayout {
             width: self.width,
             height: self.height,
             scale: self.scale,
+            device_raster: None,
             retained: Arc::clone(self),
         })
     }

@@ -19,6 +19,9 @@ pub struct AppleAdapter {
     pub(crate) host: OnceLock<WeakViewHost<AppleAdapter>>,
     /// The view's latest measurement; `None` until it has a size.
     pub(crate) facts: Mutex<Option<DeviceFacts>>,
+    /// Pixels per point the view is shown at, when that is not the measured scale: a simulated
+    /// device drawn for the screen it is on. See [`DisplayList::raster_at`].
+    pub(crate) raster_scale: Mutex<Option<f32>>,
     raster: OnceLock<Arc<Mailbox<(DisplayList, CommitTicket)>>>,
     /// The attached GPU presenter, or 0.
     #[cfg(feature = "gpu")]
@@ -48,6 +51,7 @@ impl AppleAdapter {
             started: Instant::now(),
             host: OnceLock::new(),
             facts: Mutex::new(None),
+            raster_scale: Mutex::new(None),
             raster: OnceLock::new(),
             #[cfg(feature = "gpu")]
             gpu: std::sync::atomic::AtomicU64::new(0),
@@ -127,10 +131,13 @@ impl Presenter for AppleAdapter {
 
     fn prepare(
         &self,
-        display: DisplayList,
+        mut display: DisplayList,
         _: SurfaceTicket,
         generation: CommitTicket,
     ) -> Result<Option<Frame>, String> {
+        if let Some(scale) = *self.raster_scale.lock().unwrap_or_else(|p| p.into_inner()) {
+            display.raster_at(scale);
+        }
         #[cfg(feature = "gpu")]
         {
             use lingxia_view::renderer::render_thread;

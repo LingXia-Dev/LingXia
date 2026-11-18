@@ -67,11 +67,23 @@ final class GpuPageView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         applyViewport()
+        // A viewport shown at a new size draws at a new live scale.
+        needsLayout = true
     }
 
-    /// Pixels per point of the page: the simulated device's ratio, else the window's.
+    /// Pixels per point the page lays out, reports and takes input in: the simulated device's
+    /// ratio, else the window's. Frames draw at `liveScale`.
     var pixelScale: CGFloat {
         GpuPages.simulatedPixelRatio ?? window?.backingScaleFactor ?? 2
+    }
+
+    /// Pixels per page point on the display the view is on, whole pixels across: a simulated
+    /// device shown smaller or on a 1x screen draws for those, not resampled from its own ratio.
+    var liveScale: CGFloat {
+        guard let window else { return pixelScale }
+        guard bounds.size != frame.size, bounds.width > 0 else { return window.backingScaleFactor }
+        let pixels = (convert(bounds, to: nil).width * window.backingScaleFactor).rounded()
+        return pixels > 0 ? pixels / bounds.width : pixelScale
     }
 
     /// Points of the page per point of the window; above 1 when a simulated phone is shown
@@ -235,6 +247,8 @@ final class GpuPageView: NSView {
         let dark = appId.isEmpty
             ? effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             : WebViewManager.resolvedDarkAppearance(appId: appId)
+        let live = liveScale
+        gpuPageRaster(token, live == scale ? 0 : Float(live))
         gpuPageMeasured(
             token,
             UInt32((bounds.width * scale).rounded()),
@@ -257,14 +271,14 @@ final class GpuPageView: NSView {
             GpuPageView.hourCycle(),
             UInt8(Calendar.current.firstWeekday)
         )
-        fitContents(width: bounds.width * scale)
+        fitContents(width: (bounds.width * live).rounded())
         if !attached, presentable {
             attached = true
             gpuPageAttach(
                 token,
                 UInt(bitPattern: Unmanaged.passUnretained(self).toOpaque()),
-                UInt32((bounds.width * scale).rounded()),
-                UInt32((bounds.height * scale).rounded())
+                UInt32((bounds.width * live).rounded()),
+                UInt32((bounds.height * live).rounded())
             )
         }
     }
@@ -499,7 +513,7 @@ final class GpuPageView: NSView {
         }
         let highlight = highlights[ring ? 1 : 0]
         highlight.frame = bounds
-        highlight.contentsScale = pixelScale
+        highlight.contentsScale = liveScale
         highlight.update(rects: rects, argb: argb, ringWidth: width)
     }
 

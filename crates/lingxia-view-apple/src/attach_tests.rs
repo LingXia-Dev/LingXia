@@ -144,3 +144,40 @@ fn a_page_dropped_before_its_attach_lands_leaves_no_presenter() {
         "the dropped page's presenter is still registered"
     );
 }
+
+/// Frames draw at the scale the view is shown at while it reports one (a simulated 3x phone on
+/// a 1x screen, then moved to a 2x one), and at the measured scale once it reports none.
+#[test]
+fn frames_draw_at_the_scale_the_view_is_shown_at() {
+    use lingxia_view::platform::Presenter as _;
+    use lingxia_view::session::lifecycle::{CommitTicket, SurfaceTicket};
+    let module = format!(
+        "{}\nfunction render(){{return h('view',null,h('text',null,'Sharp'))}}\n__lingxiaPublish(render);",
+        include_str!("../../lingxia-view/src/session/tests/runtime.js")
+    );
+    let display = lingxia_view::ViewSession::new(&module)
+        .unwrap()
+        .layout(1179, 2556, 3.0)
+        .unwrap();
+    let page = Page::new(2, Arc::new(Quiet), "raster-test", false).unwrap();
+    let drawn = |page: &Page| {
+        let frame = page.host().adapter().prepare(
+            display.clone(),
+            SurfaceTicket::new(1),
+            CommitTicket::new(1),
+        );
+        match frame {
+            Ok(Some(adapter::Frame::Cpu(display, _))) => {
+                (display.width, display.height, display.scale)
+            }
+            _ => panic!("no CPU frame"),
+        }
+    };
+    assert_eq!(drawn(&page), (1179, 2556, 3.0));
+    page.raster(Some(1.0));
+    assert_eq!(drawn(&page), (393, 852, 1.0));
+    page.raster(Some(2.0));
+    assert_eq!(drawn(&page), (786, 1704, 2.0));
+    page.raster(None);
+    assert_eq!(drawn(&page), (1179, 2556, 3.0));
+}

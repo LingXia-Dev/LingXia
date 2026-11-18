@@ -239,6 +239,8 @@ pub(crate) struct PrepareJob {
     output: Option<crate::renderer::gpu::composite::Surface>,
     preparation_us: [u64; 4],
     scene_cache_hit: bool,
+    /// Drawn for a capture: videos show the frame on screen and no player advances.
+    capture: bool,
 }
 
 /// Renders after which kept scenes are encoded again, under the atlas's 64-render entry age.
@@ -272,7 +274,11 @@ impl PrepareJob {
     pub(crate) fn run(&mut self, display: &crate::DisplayList) -> Result<(), String> {
         let (width, height) = (self.width, self.height);
         let target = &self.target;
-        let (has_video, imported) = video::import_frames(&self.device, display);
+        let (has_video, imported) = if self.capture {
+            (video::draws_video(display), false)
+        } else {
+            video::import_frames(&self.device, display)
+        };
         self.imported = imported;
         let rests = video_rests(has_video, imported, self.quiet);
         if self.composed {
@@ -498,7 +504,8 @@ pub struct Presenter {
     backend: &'static str,
     /// Rebuilds the surface target: a GLES window surface keeps its creation size.
     target: Option<SurfaceSource>,
-    /// The newest drawn frame while it draws video: a new video frame redraws it.
+    /// The newest drawn frame while it draws video, which a new video frame redraws, or while
+    /// it rasterizes off the device's scale, which a capture draws again at the device's.
     retained: Option<(u64, Box<crate::DisplayList>)>,
     /// The revision last shown.
     presented: Option<u64>,
@@ -721,6 +728,44 @@ impl Presenter {
         })
     }
 
+    /// A presenter with no surface, for capture tests.
+    #[cfg(test)]
+    fn headless(context: Context) -> Result<Self, String> {
+        let device_id = pollster::block_on(context.lock()?.device(None)).ok_or("no GPU adapter")?;
+        let renderer = context.renderer(device_id)?;
+        Ok(Self {
+            surface: None,
+            device_id,
+            prepared: [None; 2],
+            presentation_us: [0; 4],
+            preparation_us: [0; 4],
+            pass_us: Vec::new(),
+            base: None,
+            keep_base: true,
+            epoch: 0,
+            scene_cache_hit: false,
+            renderer,
+            scenes: Default::default(),
+            images: Default::default(),
+            compositor: None,
+            composed: [None, None],
+            drawn: [None; 2],
+            quiet: VIDEO_QUIET_FRAMES,
+            glyph_cache: Default::default(),
+            depth: None,
+            context,
+            adapter: String::new(),
+            backend: "vello-gpu",
+            target: None,
+            retained: None,
+            presented: None,
+            page_drawn: None,
+            video_plan: None,
+            video_pipelines: Default::default(),
+            video_pipelines_started: false,
+        })
+    }
+
     pub fn suspend(&mut self) {
         self.epoch += 1;
         self.retained = None;
@@ -898,6 +943,7 @@ impl Presenter {
             output: None,
             preparation_us: [0; 4],
             scene_cache_hit: false,
+            capture: false,
         }))
     }
 
@@ -1021,16 +1067,18 @@ impl Presenter {
         self.scene_cache_hit
     }
 
-    /// Keeps `display` as drawn for `revision` while it draws video; true when it does.
+    /// Keeps `display` as drawn for `revision` while it draws video or rasterizes off the
+    /// device's scale; true when it draws video.
     pub(crate) fn retain(&mut self, revision: u64, display: Box<crate::DisplayList>) -> bool {
         self.page_drawn = Some(Instant::now());
-        self.retained =
-            (self.surface.is_some() && video::draws_video(&display)).then_some((revision, display));
+        let video = self.surface.is_some() && video::draws_video(&display);
+        self.retained = (video || (self.surface.is_some() && display.device_raster().is_some()))
+            .then_some((revision, display));
         // The quad pipelines compile while the first video frames decode.
-        if self.retained.is_some() && self.surface.is_some() {
+        if video {
             self.warm_video_pipelines(device::TARGET_FORMAT);
         }
-        self.retained.is_some()
+        video
     }
 
     fn warm_video_pipelines(&mut self, format: wgpu::TextureFormat) {
@@ -1234,6 +1282,82 @@ impl Presenter {
             video::presented(display);
         }
         Ok(true)
+    }
+
+    /// The newest frame at the device's pixels, as straight-alpha RGBA rows: drawn again off
+    /// screen when the surface shows it at another scale, else read from the target holding it.
+    pub fn capture(&mut self) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
+        let Some((revision, mut display)) = self
+            .retained
+            .take_if(|(_, display)| display.device_raster().is_some())
+        else {
+            return self.readback();
+        };
+        display.swap_raster();
+        let drawn = self.draw_offscreen(revision, &display);
+        display.swap_raster();
+        self.retained = Some((revision, display));
+        drawn.map(Some)
+    }
+
+    /// Draws `display` whole into a target of its own, sharing only the renderer and its atlas
+    /// with the surface's frames.
+    fn draw_offscreen(
+        &mut self,
+        revision: u64,
+        display: &crate::DisplayList,
+    ) -> Result<(u32, u32, Vec<u8>), String> {
+        let (width, height) = (u32::from(display.width), u32::from(display.height));
+        if width == 0 || height == 0 || width > 4096 || height > 4096 {
+            return Err(format!("UI_SURFACE: no capture at {width}x{height}"));
+        }
+        let (device, queue) = self.device_queue()?;
+        let depth = vello_gpu::Renderer::create_depth_texture_view(
+            &device,
+            &vello_gpu::RenderSize {
+                width: width as u16,
+                height: height as u16,
+            },
+        );
+        let mut job = PrepareJob {
+            slot: 0,
+            epoch: self.epoch,
+            revision,
+            composed: display.requires_composition(),
+            keep_base: false,
+            pass_cost: if self.backend == "vello-gles" {
+                crate::renderer::gpu::scene::PassCost::High
+            } else {
+                crate::renderer::gpu::scene::PassCost::Low
+            },
+            width,
+            height,
+            target: device::target_view(&device, width, height),
+            device: device.clone(),
+            queue: queue.clone(),
+            depth: Some(depth),
+            renderer: self.renderer.clone(),
+            scenes: Default::default(),
+            glyph_cache: Default::default(),
+            images: Default::default(),
+            compositor: None,
+            base: None,
+            held: None,
+            drawn: None,
+            quiet: 0,
+            imported: false,
+            pass_us: Vec::new(),
+            output: None,
+            preparation_us: [0; 4],
+            scene_cache_hit: false,
+            capture: true,
+        };
+        job.run(display)?;
+        let texture = match &job.output {
+            Some(output) => output.texture(),
+            None => job.target.texture(),
+        };
+        Ok((width, height, read_texture(&device, &queue, texture)?))
     }
 
     /// The newest frame this presenter holds, shown or waiting to be, as straight-alpha RGBA rows.
@@ -1536,5 +1660,43 @@ mod tests {
             lifetime.upgrade().is_none(),
             "no process-lifetime device retention"
         );
+    }
+    /// A page laid out at 3x shown at another scale: its capture is still the device's pixels,
+    /// the same bytes as a draw at 3x, and the kept frame goes on drawing at the shown scale.
+    #[test]
+    #[ignore = "requires a GPU adapter; run explicitly with --features gpu -- --ignored"]
+    fn a_capture_is_the_devices_pixels_whatever_scale_the_surface_shows() {
+        let module = crate::session::tests::source(
+            "function render(){return h('view',{style:{padding:3,backgroundColor:'#ffffff'}},h('text',{style:{fontSize:11}},'Sharp text'),h('view',{style:{height:6,borderWidth:1,borderColor:'#333333',borderRadius:2}}))}",
+        );
+        let mut page = crate::ViewSession::new(&module).unwrap();
+        let laid_out = page.layout(120, 90, 3.0).unwrap();
+        let mut presenter = Presenter::headless(Context::default()).expect("GPU adapter required");
+        let (width, height, device) = presenter.draw_offscreen(1, &laid_out).unwrap();
+        assert_eq!((width, height), (120, 90));
+        assert!(device.chunks_exact(4).any(|p| p[..3] != [255, 255, 255]));
+        for live in [1.0, 1.25, 2.0, 3.0] {
+            let mut shown = laid_out.clone();
+            shown.raster_at(live);
+            let expected = ((40.0 * live).round() as u16, (30.0 * live).round() as u16);
+            assert_eq!((shown.width, shown.height), expected, "live {live}");
+            presenter.retained = Some((2, Box::new(shown)));
+            if live == 3.0 {
+                // Shown at the device's scale: the target holds the capture, and here there is none.
+                assert_eq!(presenter.capture().unwrap(), None);
+                continue;
+            }
+            let (width, height, pixels) = presenter.capture().unwrap().expect("a capture");
+            assert_eq!((width, height), (120, 90), "live {live}");
+            assert!(
+                pixels == device,
+                "live {live}: the capture differs from a draw at 3x"
+            );
+            let (_, kept) = presenter.retained.as_ref().expect("the frame is kept");
+            assert_eq!(
+                (kept.width, kept.height, kept.scale),
+                (expected.0, expected.1, live)
+            );
+        }
     }
 }

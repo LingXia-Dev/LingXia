@@ -183,6 +183,24 @@ impl Page {
             self.host.environment_changed();
         }
     }
+
+    /// The pixels per point the view is shown at, when it differs from the measured scale
+    /// (a simulated device on the Mac's screen); `None` draws at the measured scale. Layout,
+    /// input and the environment keep the measured scale, and screenshots its pixels.
+    pub fn raster(&self, scale: Option<f32>) {
+        let scale = scale.filter(|s| s.is_finite() && *s > 0.0);
+        let adapter = self.host.adapter();
+        let old = std::mem::replace(
+            &mut *adapter
+                .raster_scale
+                .lock()
+                .unwrap_or_else(|p| p.into_inner()),
+            scale,
+        );
+        if old != scale {
+            self.host.redraw();
+        }
+    }
 }
 
 impl Page {

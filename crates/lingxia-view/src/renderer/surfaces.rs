@@ -515,9 +515,10 @@ pub(crate) fn rebind(id: u64) -> Result<(), String> {
     Ok(())
 }
 
-/// The newest frame presenter `id` holds as a PNG, `None` when it holds none.
+/// The newest frame presenter `id` holds as a PNG at the device's pixels, whatever scale the
+/// surface shows it at; `None` when it holds none.
 pub fn screenshot_png(id: u64) -> Result<Option<Vec<u8>>, String> {
-    let Some((width, height, pixels)) = readback(id)? else {
+    let Some((width, height, pixels)) = capture(id)? else {
         return Ok(None);
     };
     let mut png = Vec::new();
@@ -527,7 +528,18 @@ pub fn screenshot_png(id: u64) -> Result<Option<Vec<u8>>, String> {
     Ok(Some(png))
 }
 
-/// The newest frame presenter `id` holds: width, height and straight-alpha RGBA rows.
+/// [`super::gpu::Presenter::capture`] of presenter `id`.
+pub fn capture(id: u64) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
+    let _work = gpu_work();
+    let _layers = super::gpu::LayerTransaction::begin();
+    let Some(presenter) = presenter(id)? else {
+        return Ok(None);
+    };
+    lock(&presenter)?.capture()
+}
+
+/// The newest frame presenter `id` holds as the surface shows it: width, height and
+/// straight-alpha RGBA rows.
 pub fn readback(id: u64) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
     let _work = gpu_work();
     let Some(presenter) = presenter(id)? else {
