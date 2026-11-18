@@ -4,8 +4,9 @@
 # plans, before any build plugin runs. Both are written by the build scripts of
 # `lingxia` and `lingxia-platform`, so a fresh checkout has neither. Source this,
 # then `ensure_swift_bridge <repo-root>`: it generates them when they are
-# missing and leaves them alone otherwise (a later cargo build keeps them
-# current).
+# missing or older than a bridge source. SwiftPM compiles the SDK against them
+# before the plugin's cargo build could rewrite them, so a stale copy fails the
+# build on any new bridge function.
 
 swift_bridge_outputs() {
   local generated="$1/lingxia-sdk/apple/Sources/generated"
@@ -23,9 +24,33 @@ swift_bridge_missing() {
   return 1
 }
 
+swift_bridge_sources() {
+  printf '%s\n' \
+    "$1/crates/lingxia/src/ffi/apple.rs" \
+    "$1/crates/lingxia/src/ffi/apple/gpu_page.rs" \
+    "$1/crates/lingxia-platform/src/apple/ffi.rs"
+}
+
+swift_bridge_stale() {
+  local root="$1" output source
+  while IFS= read -r output; do
+    while IFS= read -r source; do
+      [[ "$source" -nt "$output" ]] && return 0
+    done < <(swift_bridge_sources "$root")
+  done < <(swift_bridge_swift "$root")
+  return 1
+}
+
+swift_bridge_swift() {
+  local generated="$1/lingxia-sdk/apple/Sources/generated"
+  printf '%s\n' \
+    "$generated/LingXiaRustAPI/LingXiaRustAPI/LingXiaRustAPI.swift" \
+    "$generated/LingXiaSwiftAPI/LingXiaSwiftAPI/LingXiaSwiftAPI.swift"
+}
+
 ensure_swift_bridge() {
   local root="$1" cargo="${CARGO_BIN:-cargo}" target
-  swift_bridge_missing "$root" || return 0
+  swift_bridge_missing "$root" || swift_bridge_stale "$root" || return 0
 
   case "$(uname -m)" in
     arm64 | aarch64) target=aarch64-apple-darwin ;;
@@ -48,4 +73,6 @@ ensure_swift_bridge() {
     swift_bridge_outputs "$root" >&2
     return 1
   fi
+  # An unchanged output keeps its old time; mark it current so the next run skips this.
+  swift_bridge_swift "$root" | while IFS= read -r output; do touch "$output"; done
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ensure_swift_bridge (scripts/lib/swift-bridge.sh) against a fake cargo: it
-# generates the bridge a fresh checkout lacks, and only then.
+# generates the bridge a fresh checkout lacks or a bridge source has outdated, and only then.
 
 set -euo pipefail
 
@@ -28,7 +28,7 @@ cat >"$fake_cargo" <<'CARGO'
 echo "$PWD|${LINGXIA_GENERATE_BRIDGE:-}|$*" >>"$FAKE_CARGO_LOG"
 if [[ "${FAKE_CARGO_WRITES:-1}" == 1 ]]; then
   generated=lingxia-sdk/apple/Sources/generated
-  mkdir -p "$generated/LingXiaRustAPI" "$generated/LingXiaSwiftAPI"
+  mkdir -p "$generated/LingXiaRustAPI/LingXiaRustAPI" "$generated/LingXiaSwiftAPI/LingXiaSwiftAPI"
   touch "$generated/SwiftBridgeCore.h" "$generated/LingXiaRustAPI/module.modulemap" \
     "$generated/LingXiaSwiftAPI/module.modulemap"
 fi
@@ -54,6 +54,13 @@ rm "$root/lingxia-sdk/apple/Sources/generated/LingXiaSwiftAPI/module.modulemap"
 ensure_swift_bridge "$root" 2>/dev/null || fail "a partial bridge must be regenerated"
 [[ $(wc -l <"$FAKE_CARGO_LOG") -eq 2 ]] || fail "cargo must run for a partial bridge"
 
+# A bridge source newer than the generated Swift (a new bridge function) is a stale bridge.
+touch -t 202001010000 "$root"/lingxia-sdk/apple/Sources/generated/*/*/*.swift
+ensure_swift_bridge "$root" 2>/dev/null || fail "a stale bridge must be regenerated"
+[[ $(wc -l <"$FAKE_CARGO_LOG") -eq 3 ]] || fail "cargo must run for a stale bridge"
+ensure_swift_bridge "$root" 2>/dev/null || fail "a regenerated bridge must succeed"
+[[ $(wc -l <"$FAKE_CARGO_LOG") -eq 3 ]] || fail "cargo must not run again once regenerated"
+
 # A build that writes nothing is an error, not a later SwiftPM failure.
 rm -rf "$root/lingxia-sdk"
 if FAKE_CARGO_WRITES=0 ensure_swift_bridge "$root" 2>"$work/err"; then
@@ -64,7 +71,7 @@ grep -q "did not generate the Swift bridge" "$work/err" || fail "the failure mus
 # The Runner install script generates it before its Swift build.
 installer="$repo_root/tools/lingxia-runner/macos/install-local-runner.sh"
 generate_at=$(grep -n '^ensure_swift_bridge "\$ROOT_DIR"' "$installer" | cut -d: -f1)
-build_at=$(grep -n '"\$LINGXIA_BIN" build$' "$installer" | cut -d: -f1)
+build_at=$(grep -n '"\$LINGXIA_BIN" build\( \|$\)' "$installer" | cut -d: -f1)
 [[ -n "$generate_at" && -n "$build_at" && "$generate_at" -lt "$build_at" ]] ||
   fail "install-local-runner.sh must generate the Swift bridge before building the Runner"
 
