@@ -503,12 +503,21 @@ mod mac {
         // reaches the view under its first point.
         let mut cursor = continued.and_then(|held| held.cursor);
         let began = continued.map_or(started, |held| held.began);
+        // A scroll event carries whole points: post the path's rounded travel so a slow drag
+        // moves as far as a quick one instead of truncating every step to nothing.
+        let whole = |(x, y): (f64, f64), (cx, cy): (f64, f64)| ((x - cx).round(), (y - cy).round());
+        let mut posted = continued
+            .and_then(|held| held.cursor.map(|cursor| whole(held.last, cursor)))
+            .unwrap_or((0.0, 0.0));
         for GesturePoint { x, y, at_ms } in points {
             let due = started + Duration::from_secs_f64(at_ms / 1000.0);
             tokio::time::sleep_until(due.into()).await;
             let (x, y) = (origin.0 + x * scale.0, origin.1 + y * scale.1);
             let previous = last.replace((x, y));
             let (cx, cy) = *cursor.get_or_insert((x, y));
+            let travel = whole((x, y), (cx, cy));
+            let (dx, dy) = (travel.0 - posted.0, travel.1 - posted.1);
+            posted = travel;
             let sent = on_main(move || match (input, previous) {
                 (GestureInput::Mouse, None) => post_mouse(window, x, y, Mouse::Down).map(|_| true),
                 (GestureInput::Mouse, Some(_)) => {
@@ -516,14 +525,14 @@ mod mac {
                 }
                 // A trackpad sends nothing for fingers that rest or have not moved.
                 (_, None) => Ok(false),
-                (_, Some((px, py))) if (px, py) == (x, y) => Ok(false),
-                (_, Some((px, py))) => {
+                _ if (dx, dy) == (0.0, 0.0) => Ok(false),
+                _ => {
                     let phase = if continued.is_none() && events == 0 {
                         BEGAN
                     } else {
                         CHANGED
                     };
-                    post_scroll(window, cx, cy, x - px, y - py, Scroll::Phase(phase)).map(|_| true)
+                    post_scroll(window, cx, cy, dx, dy, Scroll::Phase(phase)).map(|_| true)
                 }
             })
             .await?;
@@ -618,8 +627,13 @@ mod mac {
         let (mut vx, mut vy) = velocity;
         let mut events = 0;
         let mut phase = 1;
+        // Travel not yet posted: events carry whole points.
+        let (mut rx, mut ry) = (0.0, 0.0);
         while (vx * FRAME).hypot(vy * FRAME) >= 0.5 && events < 240 {
-            let (dx, dy) = (vx * FRAME, vy * FRAME);
+            rx += vx * FRAME;
+            ry += vy * FRAME;
+            let (dx, dy) = (rx.trunc(), ry.trunc());
+            (rx, ry) = (rx - dx, ry - dy);
             let current = phase;
             on_main(move || post_scroll(window, at.0, at.1, dx, dy, Scroll::Momentum(current)))
                 .await?;
