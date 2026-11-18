@@ -10,7 +10,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | Variant | Applies to |
 | --- | --- |
 | `placeholder:` | editors; `text-*` color only |
-| `backdrop:` | `<dialog>` only; styles its scrim |
+| `backdrop:` | `<dialog>` only; styles its scrim, which fades in and out on the dialog's own timing; `backdrop:starting:`/`backdrop:exit:` (paint only) and `backdrop:duration-*`/`ease-*`/`delay-*` change that |
 | `first:` | any element |
 | `last:` | any element |
 | `only:` | any element |

@@ -1119,7 +1119,22 @@
       if (result.disabled && !result.disabled[key2] && base[key2]) result.disabled[key2] = base[key2];
     }
     const backdrop2 = own2.filter((rule) => rule.when?.state === "backdrop");
-    if (backdrop2.length) result.backdrop = cascade(backdrop2);
+    if (backdrop2.length) {
+      const plainBackdrop = backdrop2.filter((rule) => !rule.when.presence);
+      const backdropBase = cascade(plainBackdrop);
+      result.backdrop = { base: backdropBase };
+      const motion = Object.assign({}, ...plainBackdrop.map((rule) => rule.motion ?? {}));
+      const timing = {
+        ...motion.duration !== void 0 ? { durationMs: motion.duration } : {},
+        ...motion.delay !== void 0 ? { delayMs: motion.delay } : {},
+        ...motion.easing !== void 0 ? { easing: copy(motion.easing) } : {}
+      };
+      if (Object.keys(timing).length) result.backdrop.timing = timing;
+      for (const presence of ["starting", "exit"]) {
+        const extra = backdrop2.filter((rule) => rule.when.presence === presence);
+        if (extra.length) result.backdrop[presence] = changed(cascade([...plainBackdrop, ...extra]), backdropBase);
+      }
+    }
     const children = matched.filter((rule) => rule.when?.children);
     if (children.length) result.children = cascade(children);
     const every = matched.filter((rule) => rule.when?.every);
@@ -1133,6 +1148,7 @@
   var panelMark = Symbol("top-layer panel");
   var dragClose = Symbol("drag close");
   var scrimMark = Symbol("drag scrim");
+  var presenceStyle = Symbol("backdrop presence");
   var popoverScope = Symbol("popover scope");
   var popoverTags = /* @__PURE__ */ new Set(["view"]);
   var closers = /* @__PURE__ */ new Set(["any", "closerequest", "none"]);
@@ -1196,7 +1212,15 @@
       paddingBottom: Math.max(0, insets.bottom - (env.keyboard?.height ?? 0))
     };
   }
-  var backdropFade = { opacity: 1, transition: { properties: ["opacity"], durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] } };
+  var backdropTiming = { durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] };
+  function backdropOf(classes) {
+    const own2 = classes?.base?.transition;
+    const timing = { ...own2 && typeof own2 === "object" ? { durationMs: own2.durationMs, delayMs: own2.delayMs, easing: own2.easing } : backdropTiming, ...classes?.backdrop?.timing };
+    return {
+      style: { opacity: 1, backgroundColor: "scrim", transition: { properties: ["opacity"], ...timing }, ...classes?.backdrop?.base },
+      presence: { starting: { opacity: 0, ...classes?.backdrop?.starting }, exit: { opacity: 0, ...classes?.backdrop?.exit } }
+    };
+  }
   var popoverProps = ["open", "onToggle", "onCloseRequest", "closeAfter", "anchor"];
   function expand(tag, props, children, identity, parent) {
     if (props[panelMark]) return void 0;
@@ -1221,7 +1245,7 @@
     const close = () => onClose?.();
     collected().entries.push({ identity, kind: "dialog", sequence: opened.get(identity), close: closedby === "none" ? null : close });
     const env = envOf(render.view);
-    const backdrop2 = { ...backdropFade, backgroundColor: "scrim", ...resolveClasses(props.className, env)?.backdrop };
+    const backdrop2 = backdropOf(resolveClasses(props.className, env));
     const testId = props["data-testid"];
     return {
       node: layer(
@@ -1234,7 +1258,8 @@
           onClick: closedby === "any" ? close : () => {
           },
           ...rest.drag !== void 0 ? { [scrimMark]: true } : {},
-          style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, ...backdrop2 }
+          [presenceStyle]: backdrop2.presence,
+          style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, ...backdrop2.style }
         }),
         h("dialog", { ...rest, key: "panel", [panelMark]: true, [popoverScope]: parent.popovers ?? [], ...closedby === "none" ? {} : { [dragClose]: close }, style: { ...placement(rest, env), ...rest.style } }, ...children)
       ),
@@ -3935,6 +3960,12 @@
     }
     state("starting", "startingStyle", true);
     state("exit", "exitStyle", true);
+    const presence = props[presenceStyle];
+    if (presence) for (const [name, wire] of [["starting", "startingStyle"], ["exit", "exitStyle"]]) {
+      if (!presence[name] || !Object.keys(presence[name]).length) continue;
+      paintOnly(`backdrop:${name}`, tag, presence[name]);
+      states2[wire] = lowerStyle(tag, presence[name], env, { fontSize: typography.fontSize }).fields;
+    }
     state("focusWithin", "focusWithinStyle", true);
     state("groupActive", "groupPressedStyle", true);
     if (classes?.backdrop && tag !== "dialog") throw Error(`UI_STYLE: backdrop: styles a <dialog>'s backdrop, not <${tag}>`);

@@ -14,6 +14,8 @@ export const panelMark = Symbol('top-layer panel');
 export const dragClose = Symbol('drag close');
 /** Marks a backdrop that fades with how much of its dragged dialog is on screen. */
 export const scrimMark = Symbol('drag scrim');
+/** The `{ starting, exit }` paint a dialog's backdrop enters from and leaves toward. */
+export const presenceStyle = Symbol('backdrop presence');
 /** The popover ids a node sits inside, innermost last. */
 export const popoverScope = Symbol('popover scope');
 
@@ -77,7 +79,18 @@ function clearOfBars(env) {
     paddingBottom: Math.max(0, insets.bottom - (env.keyboard?.height ?? 0)) };
 }
 
-const backdropFade = { opacity: 1, transition: { properties: ['opacity'], durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] } };
+const backdropTiming = { durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] };
+
+// The backdrop fades in and out on the dialog's own transition timing, so it leaves when the
+// panel's exit ends; `backdrop:` classes override its look, timing and presence.
+function backdropOf(classes) {
+  const own = classes?.base?.transition;
+  const timing = { ...(own && typeof own === 'object' ? { durationMs: own.durationMs, delayMs: own.delayMs, easing: own.easing } : backdropTiming), ...classes?.backdrop?.timing };
+  return {
+    style: { opacity: 1, backgroundColor: 'scrim', transition: { properties: ['opacity'], ...timing }, ...classes?.backdrop?.base },
+    presence: { starting: { opacity: 0, ...classes?.backdrop?.starting }, exit: { opacity: 0, ...classes?.backdrop?.exit } },
+  };
+}
 
 /**
  * `<dialog>` and popovers expand to a top-layer box holding a backdrop and the panel; `null`
@@ -107,13 +120,13 @@ function dialog(props, children, identity, parent) {
   const close = () => onClose?.();
   collected().entries.push({ identity, kind: 'dialog', sequence: opened.get(identity), close: closedby === 'none' ? null : close });
   const env = envOf(render.view);
-  const backdrop = { ...backdropFade, backgroundColor: 'scrim', ...resolveClasses(props.className, env)?.backdrop };
+  const backdrop = backdropOf(resolveClasses(props.className, env));
   const testId = props['data-testid'];
   return {
     node: layer(identity, env,
       h('button', { key: 'backdrop', 'aria-hidden': true, 'data-testid': testId && `${testId}-backdrop`, onClick: closedby === 'any' ? close : () => {},
-        ...(rest.drag !== undefined ? { [scrimMark]: true } : {}),
-        style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, ...backdrop } }),
+        ...(rest.drag !== undefined ? { [scrimMark]: true } : {}), [presenceStyle]: backdrop.presence,
+        style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, ...backdrop.style } }),
       h('dialog', { ...rest, key: 'panel', [panelMark]: true, [popoverScope]: parent.popovers ?? [], ...(closedby === 'none' ? {} : { [dragClose]: close }), style: { ...placement(rest, env), ...rest.style } }, ...children)),
     finish: result => { result.wire.push(['topLayer', 1]); },
   };

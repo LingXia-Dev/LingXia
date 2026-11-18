@@ -223,7 +223,20 @@ export function resolveClasses(className, env = {}) {
   }
   // `backdrop:` styles a dialog's backdrop on its own, not as a delta of the dialog.
   const backdrop = own.filter(rule => rule.when?.state === 'backdrop');
-  if (backdrop.length) result.backdrop = cascade(backdrop);
+  if (backdrop.length) {
+    const plainBackdrop = backdrop.filter(rule => !rule.when.presence);
+    const backdropBase = cascade(plainBackdrop);
+    result.backdrop = { base: backdropBase };
+    // Bare duration-*/ease-*/delay-* retime the backdrop's default fade.
+    const motion = Object.assign({}, ...plainBackdrop.map(rule => rule.motion ?? {}));
+    const timing = { ...(motion.duration !== undefined ? { durationMs: motion.duration } : {}), ...(motion.delay !== undefined ? { delayMs: motion.delay } : {}),
+      ...(motion.easing !== undefined ? { easing: copy(motion.easing) } : {}) };
+    if (Object.keys(timing).length) result.backdrop.timing = timing;
+    for (const presence of ['starting', 'exit']) {
+      const extra = backdrop.filter(rule => rule.when.presence === presence);
+      if (extra.length) result.backdrop[presence] = changed(cascade([...plainBackdrop, ...extra]), backdropBase);
+    }
+  }
   const children = matched.filter(rule => rule.when?.children);
   if (children.length) result.children = cascade(children);
   const every = matched.filter(rule => rule.when?.every);

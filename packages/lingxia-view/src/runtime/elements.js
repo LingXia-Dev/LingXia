@@ -13,7 +13,7 @@ import { fieldOptions, field as fieldIds, ignorableFields } from '../generated/w
 import * as check from './validate.js';
 import { defaultSeries } from '../style/color.js';
 import { keyPositions } from './keys.js';
-import { expand, invokerHandler, interestTrigger, popoverScope, dragClose, scrimMark } from './toplayer.js';
+import { expand, invokerHandler, interestTrigger, popoverScope, dragClose, scrimMark, presenceStyle } from './toplayer.js';
 import { rangeSlider, thumbMark } from './range.js';
 import { recall, enter, leave, remember } from './memo.js';
 import { isProvider, provide } from './context.js';
@@ -266,6 +266,13 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
   // Presence: the paint an element enters from and leaves toward, with its own transition.
   state('starting', 'startingStyle', true);
   state('exit', 'exitStyle', true);
+  // A dialog's backdrop takes its presence from the dialog's `backdrop:` classes and defaults.
+  const presence = props[presenceStyle];
+  if (presence) for (const [name, wire] of [['starting', 'startingStyle'], ['exit', 'exitStyle']]) {
+    if (!presence[name] || !Object.keys(presence[name]).length) continue;
+    paintOnly(`backdrop:${name}`, tag, presence[name]);
+    states[wire] = lowerStyle(tag, presence[name], env, { fontSize: typography.fontSize }).fields;
+  }
   state('focusWithin', 'focusWithinStyle', true);
   state('groupActive', 'groupPressedStyle', true);
   if (classes?.backdrop && tag !== 'dialog') throw Error(`UI_STYLE: backdrop: styles a <dialog>'s backdrop, not <${tag}>`);

@@ -930,6 +930,8 @@ function selectorParts(selector) {
     return { name, part: part[1], ...(checked ? { checked: true } : {}), ...(state[1] ? { state: state[1] === 'focus-visible' ? 'focusVisible' : state[1] } : {}) };
   }
   if (rest === '::backdrop') return { name, state: 'backdrop' };
+  // `backdrop:exit:` (or `exit:backdrop:`): the values a dialog's backdrop leaves toward.
+  if (rest === '::backdrop:where(.lx-exit)' || rest === ':where(.lx-exit)::backdrop') return { name, state: 'backdrop', presence: 'exit' };
   let remaining = rest, structure, data, has;
   // `data-*` matches the element's own data-* props, resolved at render like a media query.
   const attribute = remaining.match(/^\[data-([a-z][a-z0-9-]*)(?:="([^"\\]*)")?\]/);
@@ -1040,11 +1042,12 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
     try {
       if (target.error) unsupported(target.error);
       const { hoverMedia, starting, ...media } = conditions(rule);
-      if (starting && target.state) unsupported('starting: with another state variant');
-      if (starting) target.state = 'starting';
+      if (starting && target.state && (target.state !== 'backdrop' || target.presence)) unsupported('starting: with another state variant');
+      if (starting && target.state === 'backdrop') target.presence = 'starting';
+      else if (starting) target.state = 'starting';
       if (hoverMedia && target.state !== 'hover') unsupported('(hover: hover) outside a hover variant');
       if (target.part && (starting || media.reducedMotion !== undefined)) unsupported(`${target.part}: with starting: or motion-*`);
-      const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.part ? { part: target.part } : {}), ...(target.checked ? { checked: true } : {}), ...(target.children ? { children: true } : {}), ...(target.every ? { every: true } : {}),
+      const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.presence ? { presence: target.presence } : {}), ...(target.part ? { part: target.part } : {}), ...(target.checked ? { checked: true } : {}), ...(target.children ? { children: true } : {}), ...(target.every ? { every: true } : {}),
         ...(target.direction ? { direction: target.direction } : {}), ...(target.structure ? { structure: target.structure } : {}), ...(target.data ? { data: target.data } : {}), ...(target.indeterminate ? { indeterminate: true } : {}) };
       const lower = vars => {
         const result = declarations(rule.nodes, vars, root);

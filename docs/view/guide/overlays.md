@@ -58,7 +58,10 @@ export function render() {
 - **A closed one renders nothing**, so `useLocal` state inside it starts over at the next open. Keep what
   must survive (a draft, a scroll position) in state declared outside it.
 - `starting:` and `exit:` styles animate the open and close, as in [Motion](motion.md#enter-and-exit).
-  A dialog's backdrop is styled with `backdrop:` (`bg-scrim` by default).
+  A dialog's backdrop is styled with `backdrop:` (`bg-scrim` by default). It fades in and leaves with
+  the dialog, over the dialog's own `duration-*` and `ease-*` (200 ms otherwise), so it stays until
+  the panel's exit ends. `backdrop:starting:`, `backdrop:exit:` and `backdrop:duration-*`/`ease-*`
+  change how it enters and leaves.
 - At most 16 are open at once ([limits](../reference/limits.md)); another stays closed with a
   `UI_BUDGET` warning and calls no `onClose` or `onToggle`.
 
