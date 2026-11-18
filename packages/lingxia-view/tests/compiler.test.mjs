@@ -121,6 +121,37 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
   });
 });
 
+test('a box that scales or rotates may not hold an editor, scroll or slider; entering or leaving it only warns', async () => {
+  await project({ 'page.tsx': `export function render(view) {
+  return <view className="hover:scale-105">
+    <view className="translate-x-2">{view.data.on && <input aria-label="Name"/>}</view>
+    <view className="animate-spin"><slider aria-label="Volume" bind={view.data.v}/></view>
+    <slider aria-label="Level" className="rotate-90 thumb:scale-110" bind={view.data.v}/>
+    <view className="scale-100 rotate-0 translate-y-1"><input aria-label="Plain"/></view>
+    <view className="scale-95"><text>No editor</text></view>
+  </view>;
+}` }, async (root, build) => {
+    const message = (await build().catch(error => error)).message;
+    for (const pattern of [
+      /page.tsx:2:\d+: UI_TRANSFORM: hover:scale-105 scales a box holding an <input> \(line 3\); editors, scrolls and sliders cannot rotate or scale/,
+      /page.tsx:4:\d+: UI_TRANSFORM: animate-spin rotates a box holding a <slider> \(line 4\)/,
+      /page.tsx:5:\d+: UI_TRANSFORM: rotate-90 rotates a <slider>;/,
+    ]) assert.match(message, pattern);
+    assert.match(message, /3 authoring problems/);
+  });
+  await project({ 'page.tsx': `export function render(view) {
+  return <view>
+    <view className="starting:scale-95 translate-x-2"><input aria-label="Name"/></view>
+    <view className="exit:rotate-12"><scroll><text>A</text></scroll></view>
+  </view>;
+}` }, async (root, build) => {
+    const transform = (await build()).warnings.filter(line => line.includes('UI_TRANSFORM'));
+    assert.equal(transform.length, 2, transform.join('\n'));
+    assert.match(transform[0], /page.tsx:3:\d+: UI_TRANSFORM: starting:scale-95 scales a box holding an <input> \(line 3\) as it enters; only its translation moves/);
+    assert.match(transform[1], /page.tsx:4:\d+: UI_TRANSFORM: exit:rotate-12 rotates a box holding a <scroll> \(line 4\) as it leaves/);
+  });
+});
+
 test('a part names the controls that draw it', async () => {
   await project({ 'page.tsx': `export function render() {
   return <view className="thumb:size-4">

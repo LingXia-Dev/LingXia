@@ -6,6 +6,7 @@ import { stabilizeClosures, volatileComponent, ownDeclarations } from './stable-
 import { spliceInserts, insertionMapComment } from './insertion-map.mjs';
 import { staticStyleWarnings } from './static-style.mjs';
 import { inertControlWarnings } from './inert-controls.mjs';
+import { transformedHolderProblems } from './transformed-holders.mjs';
 import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
 import { compileUtilities, tailwindWarm } from './tailwind.mjs';
@@ -374,7 +375,7 @@ async function packageTokens(root, packages, problems) {
  * Compiles GPU pages. `pages` are page source paths relative to `root`, the pages of an lxapp whose
  * `lxapp.json` declares `"renderer": "gpu"`. Output is `<base>.js` beside a copy of the page config,
  * when the page has one; a page config naming a renderer is refused.
- * Returns the `UI_PERF`, `UI_STYLE_STATIC` and `UI_INERT` warnings (also printed; they never stop the build), whether Tailwind ran
+ * Returns the `UI_PERF`, `UI_STYLE_STATIC`, `UI_INERT` and entering/leaving `UI_TRANSFORM` warnings (also printed; they never stop the build), whether Tailwind ran
  * warm, and how many files were analysed afresh.
  */
 /**
@@ -471,6 +472,9 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
         for (const problem of new Set(found.flatMap(rule => classProblems(rule, name, tag, suggestions, grid, focusable)))) problems.push(`${location}: ${problem}`);
       }
     }
+    const ownFile = file => !file.fileName.includes(`${sep}node_modules${sep}`);
+    const transformed = transformedHolderProblems(sourceFiles, checker, rulesByName, ownFile);
+    problems.push(...transformed.errors);
     if (problems.length) {
       const lines = report(problems.map(line => packageRelative(root, line)), rel);
       throw Error(`${page}: ${lines.count} authoring problem${lines.count === 1 ? '' : 's'}\n${lines.text}`);
@@ -481,8 +485,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       warnings.push(...lines.text.split('\n'));
       console.warn(`${page}: ${lines.count} performance warning${lines.count === 1 ? '' : 's'}\n${lines.text}`);
     }
-    const own = sourceFiles.filter(file => !file.fileName.includes(`${sep}node_modules${sep}`));
-    const inert = inertControlWarnings(own);
+    const own = sourceFiles.filter(ownFile);
+    const inert = [...inertControlWarnings(own), ...transformed.warnings];
     if (inert.length) {
       const lines = report(inert.map(line => packageRelative(root, line)), rel);
       warnings.push(...lines.text.split('\n'));

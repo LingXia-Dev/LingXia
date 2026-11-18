@@ -41,10 +41,22 @@ pack's `spring` sets the bounce of `ease-spring`.
 Some changes land at once instead of animating:
 
 - an element seen for the first time, unless it has `starting:` values (see below);
-- a scale or rotation of a subtree that holds an editor, a `<scroll>` or a `<slider>` (its translation animates);
 - a gradient background;
 - a shadow on an element with unequal corner radii;
 - a transform to `scale-0`, which paints nothing until it lands.
+
+An editor, a `<scroll>` or a `<slider>` cannot be scaled or rotated, nor can a box that holds one,
+at rest, in a state or by a keyframe animation; the build names the class and the element it holds.
+Translate it, or transform a sibling:
+
+```tsx error UI_TRANSFORM
+export function render() {
+  return <page><view className="hover:scale-105"><input aria-label="Name" /></view></page>;
+}
+```
+
+Entering or leaving (`starting:`, `exit:`), such a box moves only by its translation; the build
+warns.
 
 Layout does not animate per frame. A transition of padding, margin, gap, insets or font size is
 refused, naming the alternatives:

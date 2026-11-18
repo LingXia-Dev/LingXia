@@ -80,7 +80,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_TEST_ID` | native | An invalid `data-testid` reached the native decoder. |
 | `UI_TEXT` | runtime, native | A `<span>`/`<link>` outside `<text>`, a bad link label, or too many runs. |
 | `UI_TIMEOUT` | native | View code exceeded its time budget; the page needs a reload. |
-| `UI_TRANSFORM` | native | A transform the element cannot take (rotate/scale on editors, scrolls, sliders). |
+| `UI_TRANSFORM` | build, native | A transform the element cannot take (rotate/scale on editors, scrolls, sliders). |
 | `UI_TRANSITION` | native | An invalid transition definition. |
 | `UI_VECTOR` | runtime, native | Invalid vector paths, gradients or viewBox. |
 | `UI_VIDEO` | runtime, native | Invalid `<video>` source. |

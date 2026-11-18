@@ -49,8 +49,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   (`checked:track:bg-success`, `track:w-11 track:h-6`),
   `space-*`/`divide-*`. `data-*`, `has-*`, `focus-within:`, `group-active:`. `*:`, `**:`, `in-*:`, other `group-*:`, `peer-*:` fail naming the TS-side form.
 - `translate`/`rotate`/`scale`/`origin` are static and state variants may set them; skew and 3D fail.
-  `transition-*`/`animate-*` animate paint and transforms only; scaled or rotated editors/scrolls/sliders,
-  gradients and `scale-0` jump. `starting:`/`exit:` animate enter and removal; `transition-layout` animates position.
+  `transition-*`/`animate-*` animate paint and transforms only; gradients and `scale-0` jump. A box that is or
+  holds an editor/scroll/slider may only translate (build error; on `starting:`/`exit:` a warning). `starting:`/`exit:` animate enter and removal; `transition-layout` animates position.
   `ease-spring`, `ease-spring-bouncy` or `ease-[spring(0.4)]` time a transition by a spring; `duration-*` stays the knob.
 - Utilities that would draw nothing (filters but `blur-*`, radial masks, text shadows, cursors, outlines) fail naming what to use.
 - In `lingxia dev`, saving View code of GPU pages swaps those pages in place, keeping `useLocal`, scroll
