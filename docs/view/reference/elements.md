@@ -381,8 +381,11 @@ Children: none. Not allowed inside a pressable control (`UI_BUTTON`).
 | `src` | `string` |  |
 | `web` | `WebView` |  |
 | `aria-label` | `string` | yes |
+| `handlesDrags` | `boolean` |  |
 | `onFullscreenChange` | `(event: { readonly fullscreen: boolean }) => void` |  |
 | `onLoad` | `(event: WebViewLoad) => void` |  |
 | `onMessage` | `(message: WebViewMessage) => void` |  |
 | `onBlocked` | `(event: WebViewBlocked) => void` |  |
 | `onError` | `(error: WebViewError) => void` |  |
+
+`handlesDrags`: the web page handles its own drags (a map, a canvas); a drag starting on it never passes to the page. Off by default.

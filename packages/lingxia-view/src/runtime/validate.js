@@ -163,6 +163,7 @@ export function video(props) {
 export function webview(props) {
   if (props.src !== undefined && !source(props.src)) throw Error('UI_WEBVIEW: invalid source');
   label(props.accessibilityLabel, 'UI_WEBVIEW', true);
+  if (props.handlesDrags !== undefined && typeof props.handlesDrags !== 'boolean') throw Error('UI_WEBVIEW: handlesDrags takes a boolean');
   for (const name of ['onFullscreenChange', 'onLoad', 'onMessage', 'onBlocked', 'onError'])
     if (props[name] !== undefined && typeof props[name] !== 'function') throw Error(`UI_WEBVIEW: ${name} takes a function`);
 }

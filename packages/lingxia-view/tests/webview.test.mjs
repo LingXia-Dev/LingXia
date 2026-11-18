@@ -26,6 +26,15 @@ test('compiler requires aria-label on <webview>, rejects nesting inside controls
   );
 });
 
+test('handlesDrags reaches the wire only when set, and takes a boolean', () => {
+  reset();
+  const web = props => by(decode(describe(() => h('webview', { src: 'https://example.com', 'aria-label': 'Map', 'data-testid': 'w', ...props }), {})), 'w').props;
+  assert.equal(web({ handlesDrags: true }).webHandlesDrags, 1);
+  assert.equal(web({ handlesDrags: false }).webHandlesDrags, undefined);
+  assert.equal(web({}).webHandlesDrags, undefined);
+  assert.throws(() => web({ handlesDrags: 'yes' }), /UI_WEBVIEW: handlesDrags takes a boolean/);
+});
+
 test('runtime validates <webview> and useWebView props and refuses children or pressable ancestors', () => {
   reset();
   assert.throws(() => describe(() => h('webview', { 'aria-label': 'Map' }), {}), /UI_WEBVIEW: a <webview> needs src, or a web handle/);

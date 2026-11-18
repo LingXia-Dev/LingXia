@@ -83,12 +83,18 @@ async function elements(schema) {
     const props = [...Object.entries(element.component?.props ?? {}), ...own];
     if (props.length) out.push(table(['Prop', 'Type', 'Required'], props.map(([prop, entry]) => [code(prop), code(entry.type), entry.required ? 'yes' : ''])), '');
     else out.push('No element-specific props.', '');
+    if (propNotes[name]) out.push(propNotes[name], '');
   }
   return out.join('\n');
 }
 
 // The name an author writes: `<List>` for the element behind that component.
 const shown = (schema, name) => schema.elements[name]?.component?.name ?? name;
+
+// What a prop does where its type does not say it.
+const propNotes = {
+  webview: '`handlesDrags`: the web page handles its own drags (a map, a canvas); a drag starting on it never passes to the page. Off by default.',
+};
 
 // ---- styles ---------------------------------------------------------------------------
 

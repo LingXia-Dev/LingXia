@@ -166,6 +166,7 @@ export function resolveWebView(props, identity, parent, wire, on) {
   latestLabel.set(session, props.accessibilityLabel);
   wire('webSrc', src);
   wire('webSession', session);
+  if (props.handlesDrags) wire('webHandlesDrags', 1);
   if (parent.inDialog && bareSession === undefined) shownWebInDialog(session);
   if (props.onFullscreenChange !== undefined) {
     const handlers = render.candidate.webFullscreenHandlers ??= new Map();

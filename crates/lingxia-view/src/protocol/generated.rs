@@ -298,6 +298,7 @@ pub mod field {
     pub const WEB_SRC: usize = 260;
     pub const WEB_SESSION: usize = 261;
     pub const ON_WEB_EVENT: usize = 262;
+    pub const WEB_HANDLES_DRAGS: usize = 263;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video", "webview"];
@@ -567,6 +568,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("src", "web-source"),
     ("session", "web-session"),
     ("onWebEvent", "handle"),
+    ("handlesDrags", "flag"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -1036,6 +1038,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
+    FieldAdmission { tags: Some(&[tag::WEBVIEW]), parent: None },
     FieldAdmission { tags: Some(&[tag::WEBVIEW]), parent: None },
     FieldAdmission { tags: Some(&[tag::WEBVIEW]), parent: None },
     FieldAdmission { tags: Some(&[tag::WEBVIEW]), parent: None },
