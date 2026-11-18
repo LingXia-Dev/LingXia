@@ -50,8 +50,9 @@ export const comboboxRecipe = {
     base: 'size-4 shrink-0 text-muted',
   },
   popover: {
-    // As wide as the field once that is measured.
-    typeahead: 'w-72 max-w-[90vw] p-1 origin-top rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-95',
+    // As wide as the field once that is measured. It holds the suggestions' scroll, which the View never
+    // scales, so it slides 4 px out from the field instead of growing.
+    typeahead: 'w-72 max-w-[90vw] p-1 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:-translate-y-1',
   },
   sheet: {
     base: 'mt-auto mb-0 w-full max-w-[640px] max-h-[90vh] px-4 pt-2 gap-3 rounded-t-dialog border border-b-0 border-text/12 bg-surface-overlay shadow-modal transition duration-slow ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
