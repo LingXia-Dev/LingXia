@@ -6,7 +6,7 @@ export const dropdownMenuParts = {
   menu: 'view',
   items: 'view',
   item: 'button',
-  itemIcon: 'view',
+  itemIcon: 'vector',
   itemText: 'view',
   itemLabel: 'text',
   itemDescription: 'text',
@@ -43,7 +43,7 @@ export const dropdownMenuRecipe = {
     size: { sm: 'min-h-control-sm', md: 'min-h-control-md', lg: 'min-h-control-lg' } satisfies Record<ButtonSize, string>,
   },
   itemIcon: {
-    base: 'items-center justify-center',
+    base: 'size-4 shrink-0',
     variant: { default: 'text-muted', destructive: 'text-danger' } satisfies Record<DropdownMenuItemVariant, string>,
   },
   itemText: {

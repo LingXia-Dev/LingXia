@@ -41,6 +41,7 @@ export const doc: ComponentDoc = {
       'Set the colour on the icon or its container with a text colour class; the icon follows it.',
       'Use `sm` beside footnote text, `md` beside body text and in controls, `lg` on its own.',
       'Draw an icon the set lacks with `icon`, on a 24-unit grid with a stroke of the same weight.',
+      'Give a component\'s icon prop (`startIcon`, `icon`) a name; to change how a name draws inside components, replace it with `IconSetProvider`.',
     ],
     dont: [
       'Give an icon a label when text beside it says the same; it would be read twice.',

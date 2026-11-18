@@ -10,7 +10,6 @@ import { RadioGroup } from '@liulidesign/core/RadioGroup';
 import { Slider } from '@liulidesign/core/Slider';
 import { Switch } from '@liulidesign/core/Switch';
 
-const dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];
 const laptop: VectorPath[] = [{ d: 'M5 6.5h14v9H5zM3 18.5h18', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }];
 const phone: VectorPath[] = [{ d: 'M8 3.5h8a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1zM11 17.5h2', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }];
 
@@ -132,7 +131,7 @@ export function Content() {
                     <DropdownMenu
                       label={`${device.name} actions`}
                       isLabelHidden
-                      icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className="size-5" />}
+                      icon="more"
                       variant="ghost"
                       size="sm"
                       alignment="end"

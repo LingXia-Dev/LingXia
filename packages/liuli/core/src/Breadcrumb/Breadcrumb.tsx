@@ -25,7 +25,6 @@ export interface BreadcrumbProps {
   'data-testid'?: string;
 }
 
-const dots = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round' }] as const;
 
 /** Where a page sits: the levels above it, each a way back up. */
 export function Breadcrumb({ label, items, maxItems = 4, moreLabel, className, 'data-testid': testId }: BreadcrumbProps) {
@@ -51,7 +50,7 @@ export function Breadcrumb({ label, items, maxItems = 4, moreLabel, className, '
               <DropdownMenu
                 label={moreLabel}
                 isLabelHidden
-                icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className={r.more.icon} />}
+                icon="more"
                 variant="ghost"
                 size="sm"
                 className={r.more.base}

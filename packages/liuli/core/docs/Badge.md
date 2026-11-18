@@ -77,13 +77,11 @@ export function Hues() {
 ```tsx
 import { Badge } from '@liulidesign/core/Badge';
 
-const dot = [{ d: 'M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8z', fill: 'currentColor' }] as const;
-
 export function Sizes() {
   return (
     <view className="flex-row flex-wrap items-center gap-2">
       <Badge label="Small" size="sm" data-testid="small" />
-      <Badge label="Online" tone="success" startIcon={<vector paths={dot} viewBox={[0, 0, 24, 24]} className="size-full" />} />
+      <Badge label="Online" tone="success" startIcon="success" />
     </view>
   );
 }
@@ -126,7 +124,7 @@ export function InARow() {
 | `hue` | `Hue` |  | A category's colour, one of the theme's eight hues: a dot in the hue on its soft fill. For kinds of things (a project, a label), never a status. |
 | `label` (required) | `string` |  | The text, read as it is shown. Say the status in words: "Overdue", not a colour. |
 | `size` | `BadgeSize` | `'md'` |  |
-| `startIcon` | `Child` |  | Drawn before the label and hidden from assistive tech. |
+| `startIcon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "checklist" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "click" \| "clock" \| "close" \| "cloud" \| "collapse" \| "compass" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "layers" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "palette" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "rows" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "success" \| "tag" \| "template" \| "text-input" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  | An icon from the set, before the label; hidden from assistive tech. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
@@ -135,7 +133,7 @@ export function InARow() {
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
 | root | `<view>` | yes | The pill: tint or fill by tone and emphasis. |
-| icon | `<view>` | no | `startIcon`, hidden from assistive tech. |
+| icon | `<vector>` | no | `startIcon`, an icon from the set in use, hidden from assistive tech. |
 | dot | `<view>` | no | With `hue` and no icon: a dot in the hue, hidden from assistive tech. |
 | label | `<text>` | yes | The text; keep it to a word or two. |
 

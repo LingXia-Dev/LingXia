@@ -32,6 +32,5 @@ export const breadcrumbRecipe = {
   more: {
     // The button keeps its 32 px box for the finger and gives up the room beside its dots, so the chevrons sit evenly.
     base: '-mx-1',
-    icon: 'size-4',
   },
 } as const;

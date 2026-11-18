@@ -1,4 +1,4 @@
-import { useLocal, type VectorPath } from '@lingxia/view';
+import { useLocal } from '@lingxia/view';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -11,8 +11,6 @@ import {
 } from './DropdownMenu';
 import { Said, unused } from '../example';
 
-const dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];
-const trash: VectorPath[] = [{ d: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }];
 
 /** A labelled trigger; the menu lines up with its start edge. */
 export function Basic() {
@@ -40,7 +38,7 @@ export function More() {
           <DropdownMenu
             label="More actions"
             isLabelHidden
-            icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className="size-5" />}
+            icon="more"
             variant="ghost"
             alignment="end"
             data-testid="more"
@@ -51,7 +49,7 @@ export function More() {
             <DropdownMenuItem
               label="Delete"
               variant="destructive"
-              icon={<vector aria-hidden paths={trash} viewBox={[0, 0, 24, 24]} className="size-4" />}
+              icon="delete"
               onClick={() => removed.set(true)}
               data-testid="delete"
             />
@@ -75,7 +73,7 @@ export function InList() {
               <DropdownMenu
                 label={`${row} actions`}
                 isLabelHidden
-                icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className="size-5" />}
+                icon="more"
                 variant="ghost"
                 size="sm"
                 alignment="end"

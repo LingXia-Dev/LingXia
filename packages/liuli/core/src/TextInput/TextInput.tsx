@@ -1,6 +1,7 @@
 import { cx, useId, type AutoComplete, type Child, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
+import type { IconName } from '../Icon/Icon';
 import { describedBy } from '../internal/describedBy';
 import { Glyph } from '../internal/Glyph';
 import { spinner, spinnerBox } from '../internal/spinner';
@@ -51,8 +52,10 @@ export type TextInputProps = FieldOwnProps & TextInputBinding & TextInputClear &
   isReadOnly?: boolean;
   /** A spinner at the end of the box while the app checks or fetches the value; the field reports busy and stays editable. @default false */
   isLoading?: boolean;
-  /** An icon inside the box, before the text; drawn 16 px in the muted colour. Replaces the search magnifier. */
-  startIcon?: Child;
+  /** An icon from the set inside the box, before the text, 16 px in the muted colour. Replaces the search magnifier. */
+  startIcon?: IconName;
+  /** A node in the icon's place, such as a spinner; wins over `startIcon`. */
+  startContent?: Child;
   /** Fixed text inside the box before the value, as the app writes it: "$", "https://". Read with the description. */
   prefix?: string;
   /** Fixed text inside the box after the value: a unit such as "kg" or "%". Read with the description. */
@@ -72,7 +75,7 @@ export function TextInput(props: TextInputProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
     placeholder, type, inputMode, autoComplete, enterKeyHint, autoCapitalize, hasSpellCheck, hasAutoFocus = false, maxLength, isReadOnly = false, isLoading = false,
-    startIcon, prefix, suffix, onSubmit, className, controlClassName, 'data-testid': testId,
+    startIcon, startContent, prefix, suffix, onSubmit, className, controlClassName, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
   const text = props.bind ? props.bind.value : props.value;
@@ -81,7 +84,7 @@ export function TextInput(props: TextInputProps) {
   const isSearch = type === 'search';
   const editorType = isSearch ? undefined : type;
   const keyHint = enterKeyHint ?? (isSearch ? 'search' : undefined);
-  const leading = startIcon ?? (isSearch ? <Glyph name="search" className={r.searchIcon.base} /> : undefined);
+  const leading = startContent ?? (startIcon !== undefined || isSearch ? <Glyph name={startIcon ?? 'search'} className={r.searchIcon.base} /> : undefined);
   const clear = () => (props.bind ? props.bind.set('') : props.onChange(''));
   const inputClass = cx(r.input.base, r.input.size[size]);
   const id = useId();

@@ -476,9 +476,9 @@
         },
         {
           "name": "startIcon",
-          "type": "Child",
+          "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"checklist\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"click\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"compass\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"layers\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"palette\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"rows\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"success\" | \"tag\" | \"template\" | \"text-input\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
           "required": false,
-          "description": "Drawn before the label and hidden from assistive tech."
+          "description": "An icon from the set, before the label; hidden from assistive tech."
         },
         {
           "name": "className",
@@ -496,7 +496,7 @@
       "otherProps": {},
       "parts": {
         "root": "view",
-        "icon": "view",
+        "icon": "vector",
         "dot": "view",
         "label": "text"
       },
@@ -759,7 +759,7 @@
         {
           "name": "Sizes",
           "title": "Sizes and an icon",
-          "source": "import { Badge } from '@liulidesign/core/Badge';\n\nconst dot = [{ d: 'M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8z', fill: 'currentColor' }] as const;\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row flex-wrap items-center gap-2\">\n      <Badge label=\"Small\" size=\"sm\" data-testid=\"small\" />\n      <Badge label=\"Online\" tone=\"success\" startIcon={<vector paths={dot} viewBox={[0, 0, 24, 24]} className=\"size-full\" />} />\n    </view>\n  );\n}"
+          "source": "import { Badge } from '@liulidesign/core/Badge';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row flex-wrap items-center gap-2\">\n      <Badge label=\"Small\" size=\"sm\" data-testid=\"small\" />\n      <Badge label=\"Online\" tone=\"success\" startIcon=\"success\" />\n    </view>\n  );\n}"
         },
         {
           "name": "InARow",
@@ -6866,9 +6866,9 @@
         },
         {
           "name": "icon",
-          "type": "Child",
+          "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"checklist\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"click\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"compass\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"layers\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"palette\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"rows\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"success\" | \"tag\" | \"template\" | \"text-input\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
           "required": false,
-          "description": "An icon on the trigger, before the label."
+          "description": "An icon from the set, on the trigger before the label."
         },
         {
           "name": "hasChevron",
@@ -6964,9 +6964,9 @@
           },
           {
             "name": "icon",
-            "type": "Child",
+            "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"checklist\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"click\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"compass\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"layers\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"palette\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"rows\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"success\" | \"tag\" | \"template\" | \"text-input\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
             "required": false,
-            "description": "Drawn before the label; hidden from assistive tech."
+            "description": "An icon from the set, before the label; hidden from assistive tech."
           },
           {
             "name": "onClick",
@@ -7099,7 +7099,7 @@
         "menu": "view",
         "items": "view",
         "item": "button",
-        "itemIcon": "view",
+        "itemIcon": "vector",
         "itemText": "view",
         "itemLabel": "text",
         "itemDescription": "text",
@@ -7191,12 +7191,12 @@
         {
           "name": "More",
           "title": "Icon-only \"more\" menu on a row",
-          "source": "import { useLocal, type VectorPath } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Said, unused } from '../example';\n\nconst dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];\nconst trash: VectorPath[] = [{ d: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }];\n\n/** An icon-only \"more\" menu at the end of a row, aligned to the row's end edge. */\nexport function More() {\n  const removed = useLocal('removed', false);\n  return (\n    <Said>\n      {say => (\n        <view className=\"flex-row items-center gap-3\">\n          <text className=\"grow basis-0 text-body font-medium text-text\">{removed.value ? 'Removed' : 'Groceries'}</text>\n          <DropdownMenu\n            label=\"More actions\"\n            isLabelHidden\n            icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className=\"size-5\" />}\n            variant=\"ghost\"\n            alignment=\"end\"\n            data-testid=\"more\"\n          >\n            <DropdownMenuItem label=\"Rename\" onClick={() => say('Chose Rename')} />\n            <DropdownMenuItem label=\"Share\" onClick={unused} isDisabled />\n            <DropdownMenuDivider />\n            <DropdownMenuItem\n              label=\"Delete\"\n              variant=\"destructive\"\n              icon={<vector aria-hidden paths={trash} viewBox={[0, 0, 24, 24]} className=\"size-4\" />}\n              onClick={() => removed.set(true)}\n              data-testid=\"delete\"\n            />\n          </DropdownMenu>\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Said, unused } from '../example';\n\n/** An icon-only \"more\" menu at the end of a row, aligned to the row's end edge. */\nexport function More() {\n  const removed = useLocal('removed', false);\n  return (\n    <Said>\n      {say => (\n        <view className=\"flex-row items-center gap-3\">\n          <text className=\"grow basis-0 text-body font-medium text-text\">{removed.value ? 'Removed' : 'Groceries'}</text>\n          <DropdownMenu\n            label=\"More actions\"\n            isLabelHidden\n            icon=\"more\"\n            variant=\"ghost\"\n            alignment=\"end\"\n            data-testid=\"more\"\n          >\n            <DropdownMenuItem label=\"Rename\" onClick={() => say('Chose Rename')} />\n            <DropdownMenuItem label=\"Share\" onClick={unused} isDisabled />\n            <DropdownMenuDivider />\n            <DropdownMenuItem\n              label=\"Delete\"\n              variant=\"destructive\"\n              icon=\"delete\"\n              onClick={() => removed.set(true)}\n              data-testid=\"delete\"\n            />\n          </DropdownMenu>\n        </view>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "InList",
           "title": "A menu on every row",
-          "source": "import { type VectorPath } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Said } from '../example';\n\nconst dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];\n\n/** Rows that each carry a menu: every menu gets its own id, so no row needs one. */\nexport function InList() {\n  const rows = ['Inbox', 'Archive'];\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-2\">\n          {rows.map(row => (\n            <view key={row} className=\"flex-row items-center gap-3\">\n              <text className=\"grow basis-0 text-body text-text\">{row}</text>\n              <DropdownMenu\n                label={`${row} actions`}\n                isLabelHidden\n                icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className=\"size-5\" />}\n                variant=\"ghost\"\n                size=\"sm\"\n                alignment=\"end\"\n                data-testid={`menu-${row}`}\n              >\n                <DropdownMenuItem label=\"Open\" onClick={() => say(`Opened ${row}`)} />\n              </DropdownMenu>\n            </view>\n          ))}\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Said } from '../example';\n\n/** Rows that each carry a menu: every menu gets its own id, so no row needs one. */\nexport function InList() {\n  const rows = ['Inbox', 'Archive'];\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-2\">\n          {rows.map(row => (\n            <view key={row} className=\"flex-row items-center gap-3\">\n              <text className=\"grow basis-0 text-body text-text\">{row}</text>\n              <DropdownMenu\n                label={`${row} actions`}\n                isLabelHidden\n                icon=\"more\"\n                variant=\"ghost\"\n                size=\"sm\"\n                alignment=\"end\"\n                data-testid={`menu-${row}`}\n              >\n                <DropdownMenuItem label=\"Open\" onClick={() => say(`Opened ${row}`)} />\n              </DropdownMenu>\n            </view>\n          ))}\n        </view>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "Value",
@@ -8466,7 +8466,7 @@
         "IconSetProvider": [
           {
             "name": "icons",
-            "type": "Partial<Readonly<Record<\"info\" | \"success\" | \"warning\" | \"link\" | \"add\" | \"remove\" | \"close\" | \"check\" | \"edit\" | \"delete\" | \"copy\" | \"share\" | \"download\" | \"upload\" | \"refresh\" | \"search\" | \"filter\" | \"sort\" | \"more\" | \"more-vertical\" | \"menu\" | \"settings\" | \"send\" | \"save\" | \"undo\" | \"redo\" | \"external-link\" | \"attach\" | \"print\" | \"sign-in\" | \"sign-out\" | \"chevron-down\" | \"chevron-up\" | \"chevron-start\" | \"chevron-end\" | \"arrow-up\" | \"arrow-down\" | \"arrow-start\" | \"arrow-end\" | \"home\" | \"expand\" | \"collapse\" | \"error\" | \"help\" | \"cancel\" | \"add-circle\" | \"blocked\" | \"lock\" | \"unlock\" | \"visible\" | \"hidden\" | \"user\" | \"users\" | \"calendar\" | \"clock\" | \"mail\" | \"phone\" | \"message\" | \"notifications\" | \"notifications-off\" | \"star\" | \"heart\" | \"like\" | \"bookmark\" | \"tag\" | \"flag\" | \"location\" | \"image\" | \"camera\" | \"file\" | \"document\" | \"folder\" | \"cloud\" | \"globe\" | \"light\" | \"dark\" | \"cart\" | \"payment\" | \"chart\" | \"list\" | \"grid\" | \"play\" | \"pause\" | \"volume\" | \"mute\" | \"microphone\" | \"video\" | \"wifi\" | \"palette\" | \"click\" | \"text-input\" | \"checklist\" | \"compass\" | \"layers\" | \"rows\" | \"template\", IconDefinition>>>",
+            "type": "Partial<Readonly<Record<\"info\" | \"success\" | \"warning\" | \"add\" | \"remove\" | \"close\" | \"check\" | \"edit\" | \"delete\" | \"copy\" | \"share\" | \"download\" | \"upload\" | \"refresh\" | \"search\" | \"filter\" | \"sort\" | \"more\" | \"more-vertical\" | \"menu\" | \"settings\" | \"send\" | \"save\" | \"undo\" | \"redo\" | \"link\" | \"external-link\" | \"attach\" | \"print\" | \"sign-in\" | \"sign-out\" | \"chevron-down\" | \"chevron-up\" | \"chevron-start\" | \"chevron-end\" | \"arrow-up\" | \"arrow-down\" | \"arrow-start\" | \"arrow-end\" | \"home\" | \"expand\" | \"collapse\" | \"error\" | \"help\" | \"cancel\" | \"add-circle\" | \"blocked\" | \"lock\" | \"unlock\" | \"visible\" | \"hidden\" | \"user\" | \"users\" | \"calendar\" | \"clock\" | \"mail\" | \"phone\" | \"message\" | \"notifications\" | \"notifications-off\" | \"star\" | \"heart\" | \"like\" | \"bookmark\" | \"tag\" | \"flag\" | \"location\" | \"image\" | \"camera\" | \"file\" | \"document\" | \"folder\" | \"cloud\" | \"globe\" | \"light\" | \"dark\" | \"cart\" | \"payment\" | \"chart\" | \"list\" | \"grid\" | \"play\" | \"pause\" | \"volume\" | \"mute\" | \"microphone\" | \"video\" | \"wifi\" | \"palette\" | \"click\" | \"text-input\" | \"checklist\" | \"compass\" | \"layers\" | \"rows\" | \"template\", IconDefinition>>>",
             "required": true,
             "description": "The icons to draw for the names they cover; the rest stay as the default set draws them."
           },
@@ -12221,9 +12221,9 @@
         },
         {
           "name": "icon",
-          "type": "Child",
+          "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"checklist\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"click\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"compass\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"layers\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"palette\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"rows\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"success\" | \"tag\" | \"template\" | \"text-input\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
           "required": false,
-          "description": "An icon on the trigger, before the label."
+          "description": "An icon from the set, on the trigger before the label."
         },
         {
           "name": "variant",
@@ -16846,9 +16846,15 @@
         },
         {
           "name": "startIcon",
+          "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"checklist\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"click\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"compass\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"layers\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"palette\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"rows\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"success\" | \"tag\" | \"template\" | \"text-input\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
+          "required": false,
+          "description": "An icon from the set inside the box, before the text, 16 px in the muted colour. Replaces the search magnifier."
+        },
+        {
+          "name": "startContent",
           "type": "Child",
           "required": false,
-          "description": "An icon inside the box, before the text; drawn 16 px in the muted colour. Replaces the search magnifier."
+          "description": "A node in the icon's place, such as a spinner; wins over `startIcon`."
         },
         {
           "name": "prefix",

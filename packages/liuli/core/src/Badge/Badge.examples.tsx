@@ -44,13 +44,11 @@ export function Hues() {
   );
 }
 
-const dot = [{ d: 'M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8z', fill: 'currentColor' }] as const;
-
 export function Sizes() {
   return (
     <view className="flex-row flex-wrap items-center gap-2">
       <Badge label="Small" size="sm" data-testid="small" />
-      <Badge label="Online" tone="success" startIcon={<vector paths={dot} viewBox={[0, 0, 24, 24]} className="size-full" />} />
+      <Badge label="Online" tone="success" startIcon="success" />
     </view>
   );
 }

@@ -2,7 +2,6 @@ import { cx, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { DropdownMenu, DropdownMenuCheckboxItem } from '../DropdownMenu/DropdownMenu';
 import { Field, type FieldOwnProps } from '../Field/Field';
-import { Glyph } from '../internal/Glyph';
 import { Token } from '../Token/Token';
 import { multiSelectRecipe as r } from './MultiSelect.recipe';
 
@@ -98,7 +97,7 @@ export function MultiSelect(props: MultiSelectProps) {
           <DropdownMenu
             label={addLabel}
             isLabelHidden
-            icon={<Glyph name="add" />}
+            icon="add"
             variant="ghost"
             size="sm"
             alignment="end"

@@ -14,7 +14,7 @@ export const doc: ComponentDoc = {
   recipe: { map: 'textInputRecipe', parts: 'textInputParts' },
   anatomy: [
     { part: 'box', required: true, description: 'The bordered box; it takes the focus colour while the editor has focus and the status colour otherwise.' },
-    { part: 'icon', required: false, description: '`startIcon`, or the magnifier when `type` is `search`; 16 px, muted, hidden from assistive tech.' },
+    { part: 'icon', required: false, description: '`startIcon` by name, or the magnifier when `type` is `search`, or `startContent` (a node such as a spinner); 16 px, muted, hidden from assistive tech.' },
     { part: 'input', required: true, description: 'The editor; it fills the box height so taps above and below the text land in it.' },
     { part: 'clear', required: false, description: 'Empties the text; shown while there is text and `hasClear` is on.' },
   ],

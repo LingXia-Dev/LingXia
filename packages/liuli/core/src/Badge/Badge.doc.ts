@@ -15,7 +15,7 @@ export const doc: ComponentDoc = {
   recipe: { map: 'badgeRecipe', parts: 'badgeParts' },
   anatomy: [
     { part: 'root', required: true, description: 'The pill: tint or fill by tone and emphasis.' },
-    { part: 'icon', required: false, description: '`startIcon`, hidden from assistive tech.' },
+    { part: 'icon', required: false, description: '`startIcon`, an icon from the set in use, hidden from assistive tech.' },
     { part: 'dot', required: false, description: 'With `hue` and no icon: a dot in the hue, hidden from assistive tech.' },
     { part: 'label', required: true, description: 'The text; keep it to a word or two.' },
   ],

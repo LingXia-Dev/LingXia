@@ -1,5 +1,7 @@
-import { cx, type Child } from '@lingxia/view';
+import { cx } from '@lingxia/view';
 import type { Hue } from '../hue';
+import type { IconName } from '../Icon/Icon';
+import { Glyph } from '../internal/Glyph';
 import { badgeRecipe as r } from './Badge.recipe';
 
 export type BadgeStatusTone = 'accent' | 'info' | 'success' | 'warning' | 'danger';
@@ -32,8 +34,8 @@ export type BadgeProps = BadgeLook & {
   label: string;
   /** @default 'md' */
   size?: BadgeSize;
-  /** Drawn before the label and hidden from assistive tech. */
-  startIcon?: Child;
+  /** An icon from the set, before the label; hidden from assistive tech. */
+  startIcon?: IconName;
   className?: string;
   'data-testid'?: string;
 };
@@ -49,7 +51,7 @@ export function Badge(props: BadgeProps) {
       : props.emphasis === 'solid' ? r.root.solid[props.tone] : r.root.soft[props.tone];
   return (
     <view data-testid={testId} className={cx(r.root.base, r.root.size[size], look, className)}>
-      {startIcon !== undefined && <view aria-hidden className={cx(r.icon.base, r.icon.size[size], hue !== undefined && r.icon.hue[hue])}>{startIcon}</view>}
+      {startIcon !== undefined && <Glyph name={startIcon} className={cx(r.icon.base, r.icon.size[size], hue !== undefined && r.icon.hue[hue])} />}
       {startIcon === undefined && hue !== undefined && <view aria-hidden className={cx(r.dot.base, r.dot.size[size], r.dot.hue[hue])} />}
       <text className={cx(r.label.base, r.label.size[size])}>{label}</text>
     </view>

@@ -22,7 +22,8 @@ test('Solid: fill with its on- role', async () => {
 test('Sizes: heights 20 and 24; the icon is hidden', async () => {
   const screen = await renderExample('Badge/Badge', 'Sizes');
   assert.equal(screen.getByTestId('small').props.height, 20);
-  const icon = screen.queryAll(node => node.props.accessibilityHidden && node.tag !== 'vector');
+  // The icon is drawn from the set by its name, and not read.
+  const icon = screen.queryAll(node => node.tag === 'vector' && node.props.accessibilityHidden);
   assert.equal(icon.length, 1);
 });
 

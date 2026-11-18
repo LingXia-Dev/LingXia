@@ -1,6 +1,8 @@
 import { cx, useId, type Child } from '@lingxia/view';
 import type { ButtonSize, ButtonVariant } from '../Button/Button';
 import { buttonRecipe as b } from '../Button/Button.recipe';
+import type { IconName } from '../Icon/Icon';
+import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { popoverRecipe as r } from './Popover.recipe';
 
@@ -17,8 +19,8 @@ export interface PopoverProps {
   children: Child;
   /** Draws only `icon` on a square trigger; `label` stays the name. @default false */
   isLabelHidden?: boolean;
-  /** An icon on the trigger, before the label. */
-  icon?: Child;
+  /** An icon from the set, on the trigger before the label. */
+  icon?: IconName;
   /** The trigger's look, from Button. @default 'secondary' */
   variant?: ButtonVariant;
   /** @default 'md' */
@@ -79,7 +81,7 @@ export function Popover({
         data-testid={testId}
         className={cx(b.root.base, b.root.variant[variant], b.root.disabled[variant], isLabelHidden ? b.root.square[size] : b.root.size[size], className)}
       >
-        {icon !== undefined && <view aria-hidden className={b.icon.base}>{icon}</view>}
+        {icon !== undefined && <Glyph name={icon} className={b.glyph.size[size]} />}
         {!isLabelHidden && <text className={cx(b.label.base, b.label.weight[variant], b.label.size[size])}>{label}</text>}
       </button>
       <LayerContext.Provider value="overlay">

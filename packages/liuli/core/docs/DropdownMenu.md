@@ -37,12 +37,9 @@ export function Basic() {
 ### Icon-only "more" menu on a row
 
 ```tsx
-import { useLocal, type VectorPath } from '@lingxia/view';
+import { useLocal } from '@lingxia/view';
 import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
 import { Said, unused } from '../example';
-
-const dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];
-const trash: VectorPath[] = [{ d: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }];
 
 /** An icon-only "more" menu at the end of a row, aligned to the row's end edge. */
 export function More() {
@@ -55,7 +52,7 @@ export function More() {
           <DropdownMenu
             label="More actions"
             isLabelHidden
-            icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className="size-5" />}
+            icon="more"
             variant="ghost"
             alignment="end"
             data-testid="more"
@@ -66,7 +63,7 @@ export function More() {
             <DropdownMenuItem
               label="Delete"
               variant="destructive"
-              icon={<vector aria-hidden paths={trash} viewBox={[0, 0, 24, 24]} className="size-4" />}
+              icon="delete"
               onClick={() => removed.set(true)}
               data-testid="delete"
             />
@@ -81,11 +78,8 @@ export function More() {
 ### A menu on every row
 
 ```tsx
-import { type VectorPath } from '@lingxia/view';
 import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
 import { Said } from '../example';
-
-const dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];
 
 /** Rows that each carry a menu: every menu gets its own id, so no row needs one. */
 export function InList() {
@@ -100,7 +94,7 @@ export function InList() {
               <DropdownMenu
                 label={`${row} actions`}
                 isLabelHidden
-                icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className="size-5" />}
+                icon="more"
                 variant="ghost"
                 size="sm"
                 alignment="end"
@@ -234,7 +228,7 @@ export function Submenu() {
 | `label` (required) | `string` |  | The trigger's text, the trigger's accessible name and the menu's accessible name. |
 | `value` | `string` |  | For a menu that sets a value: the current choice, drawn on the trigger in place of `label` and read after it as the trigger's description (label "Appearance", value "System"). |
 | `isLabelHidden` | `boolean` | `false` | Draws only `icon` on a square trigger; `label` stays the name. |
-| `icon` | `Child` |  | An icon on the trigger, before the label. |
+| `icon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "checklist" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "click" \| "clock" \| "close" \| "cloud" \| "collapse" \| "compass" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "layers" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "palette" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "rows" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "success" \| "tag" \| "template" \| "text-input" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  | An icon from the set, on the trigger before the label. |
 | `hasChevron` | `boolean` |  | A down chevron after the label. Defaults to shown unless the label is hidden. |
 | `variant` | `ButtonVariant` | `'secondary'` | The trigger's look, from Button. |
 | `size` | `ButtonSize` | `'md'` | The trigger's and the items' height. |
@@ -254,7 +248,7 @@ export function Submenu() {
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | The item's text and its accessible name. |
 | `description` | `string` |  | A second line, read as the item's description. |
-| `icon` | `Child` |  | Drawn before the label; hidden from assistive tech. |
+| `icon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "checklist" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "click" \| "clock" \| "close" \| "cloud" \| "collapse" \| "compass" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "layers" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "palette" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "rows" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "success" \| "tag" \| "template" \| "text-input" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  | An icon from the set, before the label; hidden from assistive tech. |
 | `onClick` (required) | `() => void` |  | Runs on choice; the menu then closes. |
 | `isDisabled` | `boolean` | `false` |  |
 | `variant` | `DropdownMenuItemVariant` | `'default'` | `destructive` draws the label and the icon in the danger role. |

@@ -62,7 +62,7 @@ export function SearchField(props: SearchFieldProps) {
     placeholder,
     hasClear: true,
     clearLabel,
-    startIcon: isLoading ? <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} /> : undefined,
+    startContent: isLoading ? <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} /> : undefined,
     onSubmit,
     hasAutoFocus,
     size,

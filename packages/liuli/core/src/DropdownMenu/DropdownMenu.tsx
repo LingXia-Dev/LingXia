@@ -1,6 +1,7 @@
 import { createContext, cx, useContext, useId, useLocal, useView, type Child } from '@lingxia/view';
 import type { ButtonSize, ButtonVariant } from '../Button/Button';
 import { buttonRecipe as b } from '../Button/Button.recipe';
+import type { IconName } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { dropdownMenuRecipe as r } from './DropdownMenu.recipe';
 
@@ -18,8 +19,8 @@ export interface DropdownMenuProps {
   value?: string;
   /** Draws only `icon` on a square trigger; `label` stays the name. @default false */
   isLabelHidden?: boolean;
-  /** An icon on the trigger, before the label. */
-  icon?: Child;
+  /** An icon from the set, on the trigger before the label. */
+  icon?: IconName;
   /** A down chevron after the label. Defaults to shown unless the label is hidden. */
   hasChevron?: boolean;
   /** The trigger's look, from Button. @default 'secondary' */
@@ -53,8 +54,8 @@ export interface DropdownMenuItemProps {
   label: string;
   /** A second line, read as the item's description. */
   description?: string;
-  /** Drawn before the label; hidden from assistive tech. */
-  icon?: Child;
+  /** An icon from the set, before the label; hidden from assistive tech. */
+  icon?: IconName;
   /** Runs on choice; the menu then closes. */
   onClick: () => void;
   /** @default false */
@@ -159,7 +160,7 @@ export function DropdownMenu({
         data-testid={testId}
         className={cx(b.root.base, b.root.variant[variant], b.root.disabled[variant], isLabelHidden ? b.root.square[size] : b.root.size[size], className)}
       >
-        {icon !== undefined && <view aria-hidden className={b.icon.base}>{icon}</view>}
+        {icon !== undefined && <Glyph name={icon} className={b.glyph.size[size]} />}
         {!isLabelHidden && <text id={value !== undefined ? valueId : undefined} className={cx(b.label.base, b.label.weight[variant], b.label.size[size])}>{value ?? label}</text>}
         {hasChevron && <Glyph name="chevron-down" className={r.chevron.base} />}
       </button>
@@ -212,7 +213,7 @@ export function DropdownMenuItem({
       data-testid={testId}
       className={cx(r.item.base, r.item.size[size])}
     >
-      {icon !== undefined && <view aria-hidden className={cx(r.itemIcon.base, r.itemIcon.variant[variant])}>{icon}</view>}
+      {icon !== undefined && <Glyph name={icon} className={cx(r.itemIcon.base, r.itemIcon.variant[variant])} />}
       <view className={r.itemText.base}>
         <text className={cx(r.itemLabel.base, r.itemLabel.variant[variant])}>{label}</text>
         {description !== undefined && <text id={descriptionId} className={r.itemDescription.base}>{description}</text>}
@@ -305,8 +306,8 @@ function CheckableItem(props: {
 export interface DropdownMenuSubmenuProps {
   /** The item's text, and the submenu's accessible name. */
   label: string;
-  /** Drawn before the label; hidden from assistive tech. */
-  icon?: Child;
+  /** An icon from the set, before the label; hidden from assistive tech. */
+  icon?: IconName;
   /** The submenu's items. One level only: a submenu holds no submenu. */
   children: Child;
   /** @default false */
@@ -323,7 +324,7 @@ export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false,
   if (size === null) throw Error('DropdownMenuSubmenu: place it inside a DropdownMenu');
   const row = (
     <>
-      {icon !== undefined && <view aria-hidden className={cx(r.itemIcon.base, r.itemIcon.variant.default)}>{icon}</view>}
+      {icon !== undefined && <Glyph name={icon} className={cx(r.itemIcon.base, r.itemIcon.variant.default)} />}
       <view className={r.itemText.base}>
         <text className={r.itemLabel.base}>{label}</text>
       </view>
