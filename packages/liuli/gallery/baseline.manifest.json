@@ -1,5 +1,5 @@
 {
-  "accepted": "2026-11-16",
+  "accepted": "2026-11-18",
   "presets": [
     "iphone-15-pro",
     "desktop-1280"
@@ -10,992 +10,992 @@
     "iphone-15-pro/avatar-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "2b56aaecf7b05bd1019972ccb0ad81655d878d1e2f8dd10fd29d432f976c3c87"
+      "sha256": "9d3c159ef3f0b2f3948410872ffe4508840f2e34f35b51c3795c9f9de850256e"
     },
     "iphone-15-pro/avatar-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "f339094af306dedc853ba35029df547d8531eadd03c212bde86ce28e8d057424"
+      "sha256": "073a4199e159478a84d0cb939e77131a1ea1325a4b089c6da6f371384e2c3765"
     },
     "iphone-15-pro/badge-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "68a0ce48897e25e130b84a09a88aadbc7c6524275af8330948dbd1b972b29be2"
+      "sha256": "060d564a7b7631664306bff65c25217e1e3771bddd35a7593b185d61f327d4b5"
     },
     "iphone-15-pro/badge-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "c6325c644ab84b370321bd9b8485a0860744e6d129649ecd7b5aa8cff48cd74b"
+      "sha256": "77c76c7d961c08efa8e54ec667de3cff453774aeca4c2de3e4f29a160cde50bd"
     },
     "iphone-15-pro/banner-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "b46843954bed24c23337ee057ce06952cb9318ff68c7b89ca97a2d4a3bfe3606"
+      "sha256": "6584d83c07b71726f611b73f5cb4957523c1fdae1409dad5c5858dca1e198db2"
     },
     "iphone-15-pro/banner-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "78da30eaebdb7947ae293c97456fe3e049062ee98cf51ec059ae25e862485d18"
+      "sha256": "565c149ddeaa03ddd2d576dc213991a051ff5c257bb6c576d9967dd8b1050fae"
     },
     "iphone-15-pro/bar-chart-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "1618d19ff3e1e99e4ce4099dd211567e2e429c6ba88bb05ebfec0ed9688cd618"
+      "sha256": "47ed431ca49c499e2557cc3f8d3e3caa9a9e16f3da03e958a19fd9dd9633cd80"
     },
     "iphone-15-pro/bar-chart-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "3b9e656ab0a3889428f13adb290cc0b35601413f1b7219d56bf49688f44f3d75"
+      "sha256": "f638e5af0fc12c13f2d3944c9634e82364b2c53bf37e53802ce7c69b9fa7bed5"
     },
     "iphone-15-pro/bottom-sheet-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "912953f3fab3d23816d25d1a03d7e2332fe4685dbaf780d6c223aa163e5ea69b"
+      "sha256": "2bf42481d3470fad864c7baec5a121645f564579891999fad221bddc34137d98"
     },
     "iphone-15-pro/bottom-sheet-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "1f987ec2d89ebee7fbf1854c7556cefbee715516d6f72121173e08584c64ce51"
+      "sha256": "783ba0b4a1ed8ecb8dddd610cd69343cd7797b567e0e264fa3c2579505109001"
     },
     "iphone-15-pro/breadcrumb-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "a7a247e386be0bb82cab20d49a8245a9025a4882a6dd9dda5a90a1e51ae5ee1d"
+      "sha256": "5564ce7c9524b46eabd6f1b83ea4b03939bc17466ce7295c5e3c144fa43bb099"
     },
     "iphone-15-pro/breadcrumb-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "cfd64a91e60c8f8ba061022918cfaa88c48720dbef68ef48aefd34ddb35bf473"
+      "sha256": "ba17521e05d6dbfe377cac5972efcd9a5e1481edb043e6b52818117418d4d19b"
     },
     "iphone-15-pro/button-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "5c1e63d0611bb1296b06a5fb3076c2b7853915d798966c7e10dd5bcf0c337a63"
+      "sha256": "2175dcbbbcaad908b1bfeff0a2f3c510e678cfdf54920bda5c65a1b937940f1d"
     },
     "iphone-15-pro/button-group-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "47bb57cdc4959240249b492697b8ade1e746ad454ff02b9818f85e2770e92cf2"
+      "sha256": "7c3faa1f0b17a897b7038a3960d7691714223425c871a99c45cb5f08e18951d1"
     },
     "iphone-15-pro/button-group-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "a0f9488882f35b116d83e9b1a118c9868d88c74fdaf128027ba1d192f93aba68"
+      "sha256": "e60eb1a9be32f268322964148575b290b2a5c525ec1f4610cabafe4cec0db8fb"
     },
     "iphone-15-pro/button-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "e8bc50fa4115d1981d4ab7b646cc9df0acebe293a6984d45081217fb682abe8d"
+      "sha256": "aa05d72a81a18481116cc8c51d76f2c8fb980183b9a3c7725785e830a39b42a9"
     },
     "iphone-15-pro/calendar-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "5f98421a356d593c23a72181380848021ded7e6df46d3ec4925b77618b4592a3"
+      "sha256": "479c9cf5519ae33b6b983666df3405400470144221d4d693d86f7b71c65ae150"
     },
     "iphone-15-pro/calendar-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "d95744064f61190f4c39a9daae218547a6c27e22007fa024ed4b8af1e2c01aa1"
+      "sha256": "f599eef91f7c597f21527d04133b1b628687aa37d01f27ee852e273b1c87f670"
     },
     "iphone-15-pro/card-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "35f16adf75a0697bf567600f2f2ad248138c186a48d37a794e8c13c1b4266a94"
+      "sha256": "da812430bad7fda542a335aa784a883894e3cb86246e135c750353e735d40bfd"
     },
     "iphone-15-pro/card-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "7747272a79be6da478c21ecfbba070589c7b6936d384d9f3d8de6918c305a461"
+      "sha256": "0bbfb7267218338167d5be0bfba07a00922aefebc0d75bf4bb1497e30ae0e53d"
     },
     "iphone-15-pro/category-actions-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "e9b0476046d9ae4f8f660de27783ed67c609e6480c76424b4f3daff2a68e6c95"
+      "sha256": "8c7552ad893c859a1a537133af673f67e08aed375eb77ec35f8c3f8091e013a0"
     },
     "iphone-15-pro/category-actions-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "ae3eed516d5eb0f5a9a931a7967795340ecebdf00b677f3c5b8e0428d16d3cd9"
+      "sha256": "32f65285837418b9ad31b3608ccc08c0e0e04c72bac912a60b56fa2bdc352649"
     },
     "iphone-15-pro/category-charts-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "f26d76f087b1f610655f26f096d38037d1931e6b1d71998c00d10e3ed37817dd"
+      "sha256": "c50153532d7a157649fb35aa2ffded67c422124044a173376a6ffa338c1345b9"
     },
     "iphone-15-pro/category-charts-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "0c17a1a255cd4458b8a0143df04762c620fed471d00e3375a21428eb7e99c9f0"
+      "sha256": "3c64783179ef7e2660462c97937df896cab05ce9f1ac63d4901dd1cea6d20933"
     },
     "iphone-15-pro/category-content-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "3bdaab115f834c910e4490712de78bc11b6e8da6bd74d85a9e0989c7368e61f7"
+      "sha256": "78d4b84f299a30cf0808f0de260cae04c75f1dcbd90c5472a6f5c4b1719bb711"
     },
     "iphone-15-pro/category-content-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "7bd305b0dac91157c4e081c40f0631723b179ea06257000a498cdf9e2567747e"
+      "sha256": "06de0c8f105843b13c1d43e5405ae5cb6ad7a8cb4efc35f271daf3d3f9aa3ed0"
     },
     "iphone-15-pro/category-feedback-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "909ec67cda9f1df18a72c075b531b4e750b2f6b6b691e6d6b625253b083b5bef"
+      "sha256": "5c612f12b9f78c7ad61299fed195066279b79fd88061a3c12442e656be7c3513"
     },
     "iphone-15-pro/category-feedback-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "8379a3bb327ac3963a2b351df3114a2ad8f0e5eae0376018df3a927f4117c7d2"
+      "sha256": "9e269805f701120dd4bd360408e2d07576380631178e6d02ffc4b1a7e0bee929"
     },
     "iphone-15-pro/category-foundations-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "2f9684f2f0a6288115316f62944f0961e76f79bf6caef8b996b8a2c81bc0348c"
+      "sha256": "20a8fa98b1a6d64bc725d0d71593ae91002314a797e545560b23efc592308285"
     },
     "iphone-15-pro/category-foundations-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "f83bb99b5c723eb321e2b9decda96d85e01c78838f0bf909d7e4d294806e6a89"
+      "sha256": "97bd4ffb5672b16196491f55f2716c33a155c41d5a517946e80c873bfebc7616"
     },
     "iphone-15-pro/category-inputs-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "412d60b8df8f4613d7ea2a1c335b03858d99faa9ba52a02b9b12ee0951d968f0"
+      "sha256": "0a53708516dfdc9ba25f3fa32678f8a3bdeec08bbb1b602b01cea42a173124fe"
     },
     "iphone-15-pro/category-inputs-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "1bb5bc52751bbc4f59158cdf0ccacdd0d58bf9b9c307baa884862cad12c7c2d3"
+      "sha256": "c7afc031635d6a926b0ed365d64cd49e152929309bef54c501c0b9121e91fc65"
     },
     "iphone-15-pro/category-navigation-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "06b94ceec4fd19abeeef5c20dc89335cd8938ff8a75967339f7a929338aee130"
+      "sha256": "8d2e3435de47f3d44d9c03aa726c63f404560505bfb071ee5b8a5c461f247293"
     },
     "iphone-15-pro/category-navigation-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "cc49e5fe702811ba4461efe9621d768a0b1a4e6d2b4ee53cb7c4a2434c7e5577"
+      "sha256": "968668cf4a098c018770e4705e95aee9054986ec80255c84a370f61207d58aca"
     },
     "iphone-15-pro/category-overlays-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "0935a63120b91db64e51cadb8e4ac90e647709ce69fce0cb22721f6ac6597c48"
+      "sha256": "8b5bc17ca7646cfd05a2327c5ce91f83fde5226cbebae4b967c635421b81dde0"
     },
     "iphone-15-pro/category-overlays-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "e9bf41586ba34cadf6481e31c221ff64f86af87017f95c3ff0a1e1dc7463cacc"
+      "sha256": "3898a270489db2e98464660e1ffbf232f526969f5da259812e8640f95e388161"
     },
     "iphone-15-pro/category-patterns-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "507ba216adcf24193924d4bd3c55427577a9d3b069348989e954f768901ad373"
+      "sha256": "20272d179e5d2ac0952d9513bebaf74779da5662132792fdeda8a1a12c3142e4"
     },
     "iphone-15-pro/category-patterns-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "0a7cd52e991c897da6c71e1c9a2e8e1f1816e182d55d834df77c618dca5a98b6"
+      "sha256": "e9192231e6532d87a9ddb5f4e07b0dd25e2f83f52260f0eedc2a7c7d69ab8a1a"
     },
     "iphone-15-pro/category-selection-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "e293559eb28520b91b125f08832ba69644e6d859107d7f0c401ad1fbe95f13b3"
+      "sha256": "64449e4078afa1aacc859951c95a69559b48a689f89017d0f216b5b2246bfd2f"
     },
     "iphone-15-pro/category-selection-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "665bf13c900bc8869e52514c4622d068b1dcc08e1f558cb327ec651633d5a489"
+      "sha256": "901a4eb3eb4396e001b19a152bd3b8dd028d67e7b4cb8aef81cf967acf7365ea"
     },
     "iphone-15-pro/chart-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "42770b9b4cf66c8f071b0aea755f769f3a01fcdaf2348fa9e82040c3a275d6ec"
+      "sha256": "d89acf3d552a7529d56f44ce810b3221fa5ef2a2bd5dcfead77448a6b63a19e4"
     },
     "iphone-15-pro/chart-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "f5f8d1ccd9ef4d3272868136bcbd12d1bfdf8d869569c493dbd455843b84da59"
+      "sha256": "889cc711074d9e6bf06eedef3e9f40605c289e2069824bb23b08b85bfad28202"
     },
     "iphone-15-pro/checkbox-input-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "a63a2f74c9f12d28fdd804583fa8718ae7c68a591f30fcbaec122d7f09ecd166"
+      "sha256": "2c89709150f595b2e3b5f66db5d9cb56e42e3957916ccab2b7f2fef85ba08d09"
     },
     "iphone-15-pro/checkbox-input-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "98f2e2b8497d5e331afbbfab89fc5df01dd713331bf41c4653db2877247cd6be"
+      "sha256": "b0b53af84760b3c51c2de14d877a93ad4f50e7e5352f68ee74b11106692de556"
     },
     "iphone-15-pro/checkbox-list-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "b631e8ccb4f79dcb093c56fefc6b9b0a9658af0348141ee33a377b2ff5e77f3c"
+      "sha256": "76b9951cffbe25e75693dd67602d5f41e85208dc52a026470a132484f78bfd4d"
     },
     "iphone-15-pro/checkbox-list-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "47dbbe81bc1fd4e817126be9924d55cab3a9d197935bbfd10b2e6b152d6b5380"
+      "sha256": "a3be4e944a01d68519377d3c7cca20f5ce784c5f42be586e28b7a7407c1148cd"
     },
     "iphone-15-pro/circular-progress-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "b8b8644a65a1b345e4dcd356640fc59c4ea17a6f6c9fb65f98bb79342a08206f"
+      "sha256": "1a10ee707d9932fcab58d89c115acc42f28fa213f71403c16b3bec2216289923"
     },
     "iphone-15-pro/circular-progress-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "e96e895b94bac45995579865da2f415e6d41d669b5933c145515f6b2403ec5e0"
+      "sha256": "0bc3a0c4578bfbd40487c6e264188ce6bc963978c6c1761246b9a7c2ed30a98e"
     },
     "iphone-15-pro/code-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "d63c0019d09154160324e86ccd970e28e04c0ed3a0e30aee734bce3541385bfc"
+      "sha256": "49efe8d51c6c614febb569dd76ec2d5d9f77b280c775824ef5935d0ea45ce6dd"
     },
     "iphone-15-pro/code-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "e9288bec529c5ba5e4ab44e2acc38e780925d366ae76dec62b44265ccf62e873"
+      "sha256": "55abc8d2a6748041eaa42ef4c9b44d79c4589d4852c7b9c4655a1280a92e2ed0"
     },
     "iphone-15-pro/colour-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "c96995f5268dea6bfc0b2e5752120feab3ecfb18c296737a819c346b16d79cef"
+      "sha256": "eb2c44497d950357490213d38a80fc3eb742cde4de02b78471e37f5f23e7d4b4"
     },
     "iphone-15-pro/colour-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "76703655183147f01e7d9e573697d185d84781c6037f86b1d1f5ef653f464a5c"
+      "sha256": "6510f7b2784ace762250bd2c8ff2dafd88bc9f027cf616cd43f83a477095e8ba"
     },
     "iphone-15-pro/combobox-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "e0c30c04f4388a4acbf7f453839315915434386f0049fddec58fde5d49753c1d"
+      "sha256": "37da8393c32d06164c1eb17bc4362d52ae49f559c8600c69a65247ce0fddd5d0"
     },
     "iphone-15-pro/combobox-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "be89a3b981c09dc8dc6d709133aea8a81fe3f32b2b61ecf46303dd232e2db790"
+      "sha256": "23c725cc1e197c5534b124242daae31c8f6a22a6a4d2400206e486b78829eaad"
     },
     "iphone-15-pro/command-palette-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "32e2ddac86ffd61d6191a86d96702d57e235690c88fb52e940cc16c143775aca"
+      "sha256": "42a6b5aa1adc970e05c305b0a338829dcf941bd73df99a6bbd330dccc3e3d10c"
     },
     "iphone-15-pro/command-palette-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "e45db11f36ed7b491960269a461e2a8172a5b396673636d609500c4b358feea0"
+      "sha256": "5ce949eeb5aef769fffbb49506d1f9314740781ca7e689efb8c79511e15b68df"
     },
     "iphone-15-pro/composer-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "b4c012c23c602a32b671192fdae37380f08be862dd640802c0a3e43eae51c431"
+      "sha256": "abe87d97028d58bc15cd9e5cde3eee8031614357b3c0c908cdc016ddbfa995e0"
     },
     "iphone-15-pro/composer-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "c3e32feabdc56bce09e8c4126510b473a65c23178b6e4a083ff9f9c0d715f526"
+      "sha256": "253e121e8a9654797c96ce559be5eafa701fa37b917c60608e165195cc818ba5"
     },
     "iphone-15-pro/context-menu-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "fcdeeeb21cb08679b1cfb2ed2e5977310d15dd6b1d79a0a56a633c43cc930924"
+      "sha256": "2e39a34e3a47d0ed81f599cbe8a3e02acc6c6b493a56f1b70a58d87fec2dbdae"
     },
     "iphone-15-pro/context-menu-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "85d68c375a8ee54fd497fa4e0f7c40c0f6b331c5e2ea75098de005ca9b90f08a"
+      "sha256": "6f03be59c8732b602ecd17e1404d72624c65dde74d23dea58b9484d058531bd4"
     },
     "iphone-15-pro/conversation-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "1e57ef1917918f5f6ea2c26cb50afccadce08e3ceaddab95beda9fc80363b727"
+      "sha256": "c79bd34cd7d35e0e40feae7066f153ba9b9235a3704d5b6632818c500ff61844"
     },
     "iphone-15-pro/conversation-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "351cee7bc05a37b72961b51c3d7a988e4aac78552c0daf3b50b13e7006f370d9"
+      "sha256": "8cdfa4645c0dc804a4c208c3a4698b85b6da49c069eb3fdf9886bd5855ac1585"
     },
     "iphone-15-pro/dashboard-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "7f7ede081f4704a4912e8fbea7a27b0b963e06373b15848c4b07b7ca199bb29c"
+      "sha256": "7e415c65b34ef7aaa5c59ad3d3519b30fc5ce60c1e28c889d299cbf3e58f612f"
     },
     "iphone-15-pro/dashboard-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "6f9d191f676e72a10a4a56ddbe7a474e960997bebb6d736e19a7378fb35763f3"
+      "sha256": "8953981d743ae911b27d09fc998228d0dfad50b2782b2a5258d11ba53b11412b"
     },
     "iphone-15-pro/date-input-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "56a501be871483b75f54f2dd13658eccb47493138eed1c02f899f9778d62d03f"
+      "sha256": "a92f044170e218233010c4ef26c6cb79c0900c544c24243273066484cced7d8e"
     },
     "iphone-15-pro/date-input-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "2e3135593ce736f53a871c01a8bf1bf8631427a953fe41278211c1796d1f8052"
+      "sha256": "2787fe3df8315d9e2886d56ae274120bafd8ecfa1eb78ecb401bc73503988341"
     },
     "iphone-15-pro/date-range-input-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "d8c02dd2b6846ab7a55777fdccef0810fb48508ff7d9f4b4d34c8363f80a5979"
+      "sha256": "d56da5e2db878e90e5ab353c32de06283f785bafb8cf315c5bb1a8b4d9e6d062"
     },
     "iphone-15-pro/date-range-input-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "26dfb9e03f82f0d1dcc26344dbf43574d3cc7ab3bb169737076c7ba368546040"
+      "sha256": "6a2e44865b1cc28f8b94240e09bbf60ab35c239f8987996c6d8cab79732fc8e9"
     },
     "iphone-15-pro/date-time-input-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "7a1e21401db963cb6085be1ac22190cbd9988d1cb2955fc57fcf8d9205e55c32"
+      "sha256": "57cec0e2049b72ee6e79bb69f1745cfe925fd0151d1ad503108825fc61b0424c"
     },
     "iphone-15-pro/date-time-input-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "965b12d7e7fb592b63781ec174ab08672902577d115378bb236302c3472529cd"
+      "sha256": "511e2e3cfada9ea2b1f71280c02ef2b4d916d81ef9491413e0050e36fbeeeed0"
     },
     "iphone-15-pro/details-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "bac93ecd16f4b58764d18c5e646368ea11d38d7b38cf9ab9c723407a6a595bc1"
+      "sha256": "8d2885d2ce460322ff00518ac2baa6b46131806d4bd9f8491f425492186e0969"
     },
     "iphone-15-pro/details-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "ec2a2b3d1cec86cc8c23817a3a39ecf189d60eec5f66328b00050d8f1ebcd850"
+      "sha256": "88b654349e82e939eca56143406fb37fb4c0b77ec2018136a981ed85cb19d788"
     },
     "iphone-15-pro/dialog-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "a4983ec0e67025792df472e2f8978b1b8178e38f5bb1cb0c0075404d95f6e07c"
+      "sha256": "12b3d6ec61b7485205383d33500d1d1c23e0fd9c05f385513b2c6b82ed566c99"
     },
     "iphone-15-pro/dialog-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "f406d0306b70ed0f1a7c74aa7883a3911140c44903544fcd358cda5c4b263603"
+      "sha256": "2758543e3821eaf4348b30a01a2e727773a48e7ae2cf92c7b973191d859072bd"
     },
     "iphone-15-pro/divider-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "aeca73c49d6ae292c590ac0c40ffd87443199053ce76ab751d64316b932def12"
+      "sha256": "231cfb595009da1ac804ee153fb4ceef1491283e8372fe4c04e7ce9f409f46ce"
     },
     "iphone-15-pro/divider-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "70ec6c1e6ac0880b484b3c841bcef9d78aa68a7a21e857dd5b7cb5312212fd3b"
+      "sha256": "a9638b9a20d906438f0bafd2102001063104255547411ff5e0ade2c22ec49361"
     },
     "iphone-15-pro/drawer-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "54ebca007bdc58ab739708716c13d4973a51e724da9b2ce293ad550d1a8aaf3b"
+      "sha256": "6a4746d6030233aa254cda45b388538386ec8f47d0423a2925c7820a38cf8fbe"
     },
     "iphone-15-pro/drawer-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "3f20fad7c261e34aaceaf06f4062b345d107781bb554b682b6e14396bff24b3a"
+      "sha256": "d0388930199f29b40cdc7ffdab7562576f238947b2d1991df8bc79a33e924c6c"
     },
     "iphone-15-pro/dropdown-menu-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "728900817c30bf64255d31ea45220a4bcb061c6f4392d8c458055afdd203148b"
+      "sha256": "8efbc1a1287c699ed49d512872fb003dfc49bfa350d3dfa3dc5bfa943ad6c7b3"
     },
     "iphone-15-pro/dropdown-menu-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "8461595091c52eaf8c75565497c47bdbcdc296ad62b05f21d4e1c38e49573b43"
+      "sha256": "72706f047e55690bb9936f58925dc8ddd535bd65f80ecdaaa164482c8277c9f2"
     },
     "iphone-15-pro/elevation-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "1059c14079559540d58aca601eacae4a891094d10e47cdb318db5bd14a353df7"
+      "sha256": "39ebcd96ac487c59289b69f19072138d0129d4038d4de46e074987c4427308d9"
     },
     "iphone-15-pro/elevation-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "07dc756e5233936e798127954936512de499c2f2cdc22e2911340eac6639fed0"
+      "sha256": "a12fb818593a0f09659cdbadbcbf24b69e09bfec89c5b351d4aed463b8603616"
     },
     "iphone-15-pro/empty-state-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "9956f9e0aafcfb36b780c75ff71b10bab58622eb3c45f4794ebfff576453f771"
+      "sha256": "f1af3859900e9c0e88a2e0e9fc6f553d83ac0f1cfbf9866306ae6d96ad892139"
     },
     "iphone-15-pro/empty-state-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "12b472f2086c2c4c1c4656f5be2d8ab03c6682cd38afba3c50ccf4729c1046a3"
+      "sha256": "a6d88cb08afabb8e3568bf4601250cee355e738fabea824ccb884dc9e4f0e493"
     },
     "iphone-15-pro/field-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "7e01c7c0f08a0cb9c7c81c6e8a677aca6385982828dab827481bda6ddfa75d33"
+      "sha256": "f29cd7fcf4600a70ffe83a2da1643e782a04e73fb079559addd08ac0dfa1c64f"
     },
     "iphone-15-pro/field-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "d1e800a61ec6cc4e579bef02fb67d92482d6d4cf444050bd5dafca7efe379f69"
+      "sha256": "68f4825f6b3204b13f2866b199abd24fb581bf5d95fae94c7f5cd5de92f9510c"
     },
     "iphone-15-pro/file-input-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "72b930e1e06e3dbbbf9143c680b6b50e2d34f3d35471642722360d496df7c069"
+      "sha256": "dcc8d24afd795fb18e9a29ee76c71e94b08c4faf9c9d319fba3cc667a1f6ff23"
     },
     "iphone-15-pro/file-input-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "199761e02362ca49e38e624da04f6f22c0770763e4fc8bf65eba8792c148df4b"
+      "sha256": "d3c6d46901f1eb3d9f8e0a1d011db6ddc661fde476f9ab3faf2a7da1c8a8c85e"
     },
     "iphone-15-pro/form-layout-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "bc3c9961364c1bad73836f527b1f35237fc73a03cbd63acff5367ca12d8f78d9"
+      "sha256": "7ed037ca41d86724ff94a9228d0c22aa44fd61b623c86acb24b58957e2f841ff"
     },
     "iphone-15-pro/form-layout-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "24ddd97843e0201d77b56169b756e47010368b455bebd8e9566a282f8b8eac4c"
+      "sha256": "1fc95c003686427233d16f42ed19cfd34891d47ee69f451c23c336709369c566"
     },
     "iphone-15-pro/home-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "91378795508af52e8e1922cf8cb650daff3100ffd250b290193b01d77a77447d"
+      "sha256": "7d6fde1af0afadbe318583cbc9773b00cd2ac94ef2b89ec28d527822037f6010"
     },
     "iphone-15-pro/home-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "3edf04c157ad2c43b0907f6f2119336ca20690c7edf4b7873da9f0f1c153ad54"
+      "sha256": "2a86fc6751679ae8881dc7a52e4e9c68bb1e4f1dc3c4d82a6d1ce4febaffdd0d"
     },
     "iphone-15-pro/hover-card-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "f9fea1f8e7ad9f108acd92ab42228a974e7763957b251ccc4070e5b06bec527c"
+      "sha256": "d0506bbb74963e8f13d33353432855c7cc610baefd784dafcc6e0d7b99946086"
     },
     "iphone-15-pro/hover-card-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "5ab9fc82400645caffc256c4d16105a94f0669c24dd8aaeecd85384662d4561d"
+      "sha256": "3ae496c2d2c97525984057be9c586d3df38c245d280411319a0659fdb0f79899"
     },
     "iphone-15-pro/icon-button-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "f3e892cdb2755491c2721c79c726babfa5c85791c735936002094ab497e8a41b"
+      "sha256": "58c74783ea95ee16400218ca8ab8a610b50e149eacd73d19cfe01d825f5ab190"
     },
     "iphone-15-pro/icon-button-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "a9e82d89bdeba496da62fe21817b4e02242c04103c38a5f55e481da2223ef131"
+      "sha256": "756edea954ef3b569ad521a6c8117074e284beb157587258f405400ebb22c2a4"
     },
     "iphone-15-pro/icon-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "15ae45ec297fa86789356e216144a8b865e7c9793d44de2cc13849afc8c15620"
+      "sha256": "ad5c8bd5f3b107227d6895271d590bb562445aa074d7b4b13f84c0397fba61e5"
     },
     "iphone-15-pro/icon-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "dfa20802da2e45b9df5564e64d95506f5307dfc0afee794d0f818da46837d220"
+      "sha256": "32d4e46137b8abe0d637589f84f3a87f603118e0a6c06859cb42b823edfdc75a"
     },
     "iphone-15-pro/item-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "7d644f303d58c9066904e0d3de5aef5f48a4b7b703236f8552b993a7bcbf89b9"
+      "sha256": "c9ea03da9d18b90a12bdc3defc990a42deee34a2898daea4e6868d7553c878d1"
     },
     "iphone-15-pro/item-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "3eb829a6c5f6230099e001c9775ae925094933861ca9e7eae8a399d142fdc427"
+      "sha256": "77546ff30184657c9b64011d974c8b5e424bf8bbd6a3622b0c0c649dd5721cef"
     },
     "iphone-15-pro/kbd-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "0334b0d072577130dbfc4c56534acde23c37c1d3f15d82ebfaba92ca3d81a580"
+      "sha256": "96206e6211012ed07f8e4960c848596095904ed6c84ca20a75fcfc7a8f1c97aa"
     },
     "iphone-15-pro/kbd-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "c57512595ae59acbebf2fa5f9bead3e26eaf6135820929d4bdc56c34291bb69f"
+      "sha256": "2b754746e2296659a28c08247702abb406bd2b5a7012df69c8787a0ab2a241ac"
     },
     "iphone-15-pro/lightbox-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "1d81fdcabeedafd4b432d7fa8b75355d3d5afc14876c022b1a421e6d1844f841"
+      "sha256": "49ad9b4cafb027e5c512e15428dbdc6644b4ce153847baff6a153ee241274881"
     },
     "iphone-15-pro/lightbox-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "4ed3e821967f01b6d4b34c85bd2c0dca3f301c01cec2ffdbeb3bc2c4fc76df65"
+      "sha256": "9f3ff706d91d9c546c3f5de3f435117e738dca34aacd8ec1c2742e2c7c7e2f2b"
     },
     "iphone-15-pro/line-chart-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "a5d7464a63658ee8a2a94ba88bfd4047ee4ed40dc80b00ffe77e153e038da9e5"
+      "sha256": "bc2924570cb3094c5fb967f3700744551acdee1910f19aba9cecbf30da9f7d2c"
     },
     "iphone-15-pro/line-chart-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "cae1ec0097b48a8f6a221319e6bdb0c88a6ada532630093087262d97c6530cf9"
+      "sha256": "11c9b54f6e99234e8f34b5a78d8cbd770b8a0e0ee50c080a2b0e45a842946bc4"
     },
     "iphone-15-pro/link-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "b6445cf9e0acd3aef04a1509b3abe67723d325b9869302dce473adf6b6a21ef8"
+      "sha256": "78fac3170ed477985e0a38f08c37bac73395a2e31eced5d2999e85031345af11"
     },
     "iphone-15-pro/link-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "0e441e6bbd9854f733387bdac93d97a632bcc24000f585dcbb764c9725ed946f"
+      "sha256": "78c5b222e5c265670ed8f6b1fbb4132319c9ce09f955db18faf7078ccc866e89"
     },
     "iphone-15-pro/list-detail-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "36e70ad108abfd66464bc37ed01c1a6e878f2b6afceebfb8017d345142f5c1c8"
+      "sha256": "6ffeb3d9e5c434ee2e9fc1e3aeb8eb4fd11dd3cc7af47e26d13d2a0cde85e819"
     },
     "iphone-15-pro/list-detail-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "da206241d08dc216ab5cdf28d858680c076e6eee30290ecc22ef5ff72ca23b22"
+      "sha256": "4f83c679528c03ff6b8167337ba4dce6fb45ee5fe334dac79055632837e5fbba"
     },
     "iphone-15-pro/list-input-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "3a90ee98f535239476cbf4992ae4a4476135f69035b0d859ed4499a29326b9da"
+      "sha256": "4fb0e2f5ac9b1c7a8de0774faec8965fd2d1366e56770739a6db8023499a9090"
     },
     "iphone-15-pro/list-input-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "bba604c69c77b7cf5c77e3443d0c0fea70ef111e1b74fc3499c12be56bc4ec0b"
+      "sha256": "afe13feb9cbf33c736fb62d27b6d05f354f9da0f7c56a946045fc6f3a9474651"
     },
     "iphone-15-pro/markdown-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "2de2c5e5b541405ea51344d0b7410dcf3a09c6e164b6bccc0fbdc4ebf2ce5c2c"
+      "sha256": "23f5e7e1fbd4865fbb969bebceb38d8f12f583d5f622d8dd6fe900ac8cbd395c"
     },
     "iphone-15-pro/markdown-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "0ea4d017962ed48af697d0d5309801bfc41ab5b8da1010955b0f7a196c154357"
+      "sha256": "f60fdb6e5aeddfa3f7602ebab0fabcae27616131444782bd26ae6dbea36b9f72"
     },
     "iphone-15-pro/message-bubble-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "b759cdaa7fa2c6fceb7232817880e2eb4495efe1c9bb018029575305a5bfff61"
+      "sha256": "49e10555210866770c6b0bdcadf96f79d134011ce6ae0ff894828248ec3c91c6"
     },
     "iphone-15-pro/message-bubble-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "ea1a525a9b43648a5616dee5c00b1763b479b6243b32c159d3736b72e5a76286"
+      "sha256": "7f244ba1e6eb3e6b378f075d2c3657d3004a7c7d64d05da181a48d6bfc466747"
     },
     "iphone-15-pro/metadata-list-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "777092614b5e8199e367b2444e82a92f81cf87e9156896bfb3af08e91f9966db"
+      "sha256": "af42738a03b4cfe124a3f7340ca4cb350cf1037c789ec18bedcb64c75800341c"
     },
     "iphone-15-pro/metadata-list-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "0574d5f046116244178db233705a5f4d03d8750194e284d1dedc9ead261d4398"
+      "sha256": "93cc57c7359cbd79fdd273922b3082dc982f1798b3b1cb66ebd6f64354f19c9b"
     },
     "iphone-15-pro/multi-select-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "8bb2993f85c19392cf69c7fa0ebe0acb75e213ffe9332a7bbec10745a0a91179"
+      "sha256": "de86cf2f94d71fcc54cf7d2e5aa34c8340fe7ef38c82c737abb6ce267063cd32"
     },
     "iphone-15-pro/multi-select-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "1c9f0b2713d48b3d9a0846eb4490e59eb1c61b3605dcb9e82578b1bc497022c0"
+      "sha256": "7818094a21c17a1c4997684fd5f7cd41110d85c9a5c381c909d649240750adb8"
     },
     "iphone-15-pro/nav-list-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "815b33a416e80331d144babb61ec5077a3bd4e63b6046742304dd586fecb69f9"
+      "sha256": "721b168f39912489b6858511b6d023c7b9102ea3eac90ada927122ddfed9de61"
     },
     "iphone-15-pro/nav-list-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "fa181968a881abaab4528bd42a547b5d06eb239282d708cbd130a24cbd2a3724"
+      "sha256": "803aed346c692bfcbe21f1581f1b16f371cce2ca4d77870ca6feda15583dff9a"
     },
     "iphone-15-pro/number-input-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "57f3bdd59e4a57d5412acf81a1b49910dd7e5a2f0c036483a70d196a0b40f135"
+      "sha256": "2aabae4d3a1a38a351089b81126b6e291fcccd369e6a8693fe02b358a66988fe"
     },
     "iphone-15-pro/number-input-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "fa92cba0ec99162f185e9b7ed4a54c0f5221f005cd50d480003cc258462977a7"
+      "sha256": "faf4eda3df73fdf7d409552e66e50136dc42c39bef94d44b6d406495c352686d"
     },
     "iphone-15-pro/page-control-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "6c293e59c96269f79284999cc026cac23edbfb325519c536bab97f744dd1820d"
+      "sha256": "eae098f9e3623f09ae705e4f86cb2a6d9545c80b4dfcc95c4e5eef8d50c1ca50"
     },
     "iphone-15-pro/page-control-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "7cc911a15465226b217889a26ab6f6b83049a8dc49c7108f59bccb7c024c75d4"
+      "sha256": "e81908cbc8db277c6ad18037fb6488ba96cbd484246deff6b5c8279123dde7de"
     },
     "iphone-15-pro/pagination-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "febc6c07309187be4d1d4c6d9433f1b9dd29c37bc7f948e2bf98ed9613418f7e"
+      "sha256": "a747f92ec1a251d31b73381088b1746f3d7ace33fe02e318fdb7bdc93cab5507"
     },
     "iphone-15-pro/pagination-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "cd3f46201d2af8a2bfa835dbc9376d44306195fa7850e8b86c50714425ee62ca"
+      "sha256": "121b1f6a65fe1729dcfdb83c085d28be7b618c9ba8e6514e6d5f5edf8d4959ed"
     },
     "iphone-15-pro/pie-chart-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "2321969141b0d3ed0dc78e64d6d2e746fcfd4a999d672c079255150fc9c8b780"
+      "sha256": "544c6ec2d8f7c3ae400b3f3c8b94b10a4248f74c8e499f8d458f0e9506d74a81"
     },
     "iphone-15-pro/pie-chart-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "fef71434691b0ddd6aca1e635dee7157d6493877849f694f14560349b924b8d4"
+      "sha256": "cb7d7a13dae9b37fac511926da729acfe19658a320ed0d98ebadfcd4a4da3157"
     },
     "iphone-15-pro/playground-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "94e0b088a3e9499cab951fc284a765b4c67db35e9d31474d9fcaf5d7209dd724"
+      "sha256": "4f88c1a58eba17acd85954569b7aed0fde5009cffa3418db0f0c9191312d1a55"
     },
     "iphone-15-pro/playground-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "8073359a289b0e17028906bb0eb9f32f9061b024e390a19d4bbc248b0223f966"
+      "sha256": "faed3e91ef7f8fc4c40656338964651e6641d5f5cfbcf1d6a42b7a6aa7bcab0d"
     },
     "iphone-15-pro/popover-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "043776ee8dd7fdd48f4a1a5df1c12af1513248a01bff761b5577865ddfae498f"
+      "sha256": "f3443e48aba76e3bfb2958903b711b2c73a8d2241808ea3ab6633254b321aeef"
     },
     "iphone-15-pro/popover-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "d873fd372fecb297e7173bd15cf80d215f6632b0fe5c0ea1f28e683f198dad11"
+      "sha256": "3b067e8c5a2c2c88b039eb1e1aa0b33228fff515fc2dade5c94b0e58f2f8245a"
     },
     "iphone-15-pro/progress-bar-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "8dd6c7dcf0fe68b476247bc3a9bc3eabccf85827a9612661b26fbaeb2c307a5f"
+      "sha256": "8df3c48faf71a98a992d9289bd3b80aa4f0c364b25c13713ee6820524670ac24"
     },
     "iphone-15-pro/progress-bar-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "b51cca7f34af90eb8775a299e3b5b2434e08aa190f76029c913838b517a8e5db"
+      "sha256": "2d897fdefdcbf243b1cab9b7bbd71f1e6c69dcd110151ce08b1d2283a07603ee"
     },
     "iphone-15-pro/radio-group-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "b011342f83145d495ff8b158f506426a9b12f810304814027149f8426f4a0411"
+      "sha256": "2e9a795c4ed496642e79dcc8b9d7c129cdd465e776a0a8f0a469d3db14a01658"
     },
     "iphone-15-pro/radio-group-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "cc5446dfcd91d2affc533fc0136430ac908d8f5f104eac56a6671dae7f1de286"
+      "sha256": "a2d25f86f336beedc3c876de1b0819387910e3866ee07f43a0fd109984003464"
     },
     "iphone-15-pro/search-field-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "fee0138b75e983b919a0abcd06722ea8c155cc4e10c0437aff79822f8f1df2ed"
+      "sha256": "460495e3cf39990119f18897d15195469454ec264e62f04494f41eb595e70d23"
     },
     "iphone-15-pro/search-field-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "96644dd4469aef508c10d9d6ad5acfb0d91be0d15c38ba0ff1174a55dd2ab4ae"
+      "sha256": "d3a27edc32d6d686ebf0d18ef21ed805a60a521c61b3acfe59e798f956f4fc62"
     },
     "iphone-15-pro/section-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "267e2ebabc089c55736f0e64427b731dd5bf32557f5dafe38a804ee95aa3deec"
+      "sha256": "abf22cf0bfee08adf39c7ec86c10c6d808f1cec5fd6e425b341979d643c4ccad"
     },
     "iphone-15-pro/section-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "84ca8c46c380ce119fb6b09f69626ac02abccf21d795f20fead4fe58dda991e7"
+      "sha256": "dbe522fbc2ee5618f13d621bf02409e6579a4e5519113e296a3f65f83092c90d"
     },
     "iphone-15-pro/segmented-control-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "f5e7b98efd435aa5b9e4c8309e3d4ce088a0f2a20bd4066dfe02c3dad1339a62"
+      "sha256": "d8e04ef846c05d517230d9e16f7029cd84ef6f5017ef1b839d6766412fde2796"
     },
     "iphone-15-pro/segmented-control-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "d549f6042722e13583aca01166ef964a41be93d650d44c4c9991d88eb367c30e"
+      "sha256": "001e2e8b258c3e99f44263a194312b09ce805331dad0296978423a3aa16e6f85"
     },
     "iphone-15-pro/select-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "56b6183a09f1210a0980c1effffcc38497dc7555c17b2ca363a415bb38d64fcc"
+      "sha256": "b8913306a27e489209f17ec3faf0adb3a5bc0a9c7782686b9386a34dad801bbf"
     },
     "iphone-15-pro/select-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "6d29e9e7d565e47f7d49ffcafe30574a9d21e7dd922efd383ac023f169b28adc"
+      "sha256": "10ac34c4ac0beb78953a87d7fa4d04049e6ad749afaee0beb874e76ecb20119d"
     },
     "iphone-15-pro/settings-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "218b3b3e6c06842d4637759bd1fdc24293be31bfcdd1cb75c2fdea6e4994ebb8"
+      "sha256": "326c5279af354887e1e7d1268a5579467ded7f02c2e8fadf14b251fe1dd05bdc"
     },
     "iphone-15-pro/settings-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "14aa94c6fc2ef7f159582cfbaae85db012981195223831507e69eb79e628a115"
+      "sha256": "5ae8bf99266331ffed9193bcdeeb9012bd72e0c9ef69a7fa553a19bd2e02aeb7"
     },
     "iphone-15-pro/shape-and-spacing-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "7c6383b507b2cf5bee93b54519caaf44bce6b0c790309e27bff0655ca4333281"
+      "sha256": "e810e42d9c992f90a2eb87a36218badc3ebcad896456e1ca5d1f16dcb0a770ad"
     },
     "iphone-15-pro/shape-and-spacing-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "e1624c861662dd03230dd9302b45784f848dd916ef063ab4518d078ee6234f9c"
+      "sha256": "8698f26316babc9500e64217d7a72a6c2505593754df15d64d8061344c703ac4"
     },
     "iphone-15-pro/sign-in-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "8d99f5fa7768c783ee4f234603c64a97a78cabf2b679596a944a2a45130b78bc"
+      "sha256": "448297812f9f5619b7c94953ca4c9e90b1b1be3614d7f9699b7043711f9a7b72"
     },
     "iphone-15-pro/sign-in-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "d9e4fb217d6928f5397d5081b03070e570c0085e2a32a4f3148b5ae0aa3d02a6"
+      "sha256": "6e530cd0f28a4687850e6b393b79fe426bbeaab39fe2e50b8d26b700adadd60b"
     },
     "iphone-15-pro/slider-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "e91509546f91d53520d5fd392eacb7548a5066b86b9209e8f24967718c7ad649"
+      "sha256": "b4f749166d69f905df3d2cac82992d578cd704b543dc6a87d08a76c7e9156b07"
     },
     "iphone-15-pro/slider-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "b79e4f3885b13ba4d46af13fdc5923ade80ec3ce60fca32af1246ad222866d86"
+      "sha256": "45dff0974910d2d064508bb573f5d1ea7e85f6a3b856b5057e0a6e7a4e988350"
     },
     "iphone-15-pro/sparkline-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "e25499d30111a352d0f5f536adf047bbe82db6b6ebda7c48d67d4a96650c9eea"
+      "sha256": "48e6d2eb243073ae3fb87221ce052bdeda266b2cd6743ac759946bb612e68355"
     },
     "iphone-15-pro/sparkline-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "4a7caf6b5a785d3722c006e8a0cce9ac3698adb01b00e6dab8ea25fb5581c14c"
+      "sha256": "47bc5aed340bfa64412464e0abc8ff4a974c51e38ccfdf04fe6df976993bf8ee"
     },
     "iphone-15-pro/split-view-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "1968e89a750242c179135c85ce1ff96fca84d4269c409da784111bb5378962d3"
+      "sha256": "8cc1de87343d671a0b92a8b90790ab96f2a03184f05d0dee622ff9c8b21d4f31"
     },
     "iphone-15-pro/split-view-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "31eb0a07a2fde5c31a33fea2b8d31976522ae2f116e1044b15a2cf8669a84cfa"
+      "sha256": "48803a783dc3edad56da14eef4a9d91ef8c2e357c8042542889099474b050345"
     },
     "iphone-15-pro/stat-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "83f0a7988549499e0a0ce219da5230d5fa1c1eb76a3211c374ec0b86e3231cc4"
+      "sha256": "d1778d502495968b50d7d717c8e53b0d7b19e9eab0cb46f849745c5815d511f2"
     },
     "iphone-15-pro/stat-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "36abfd68ee5754915e7b14c647733e14f0be9e8452ae7fbf0955d607a64cf2d8"
+      "sha256": "5acf8fb6f51834639b0945cda9c5ecfe0d6e8ad9bcc41b36d429c1195fcc75a8"
     },
     "iphone-15-pro/status-dot-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "aa7ff239fc98f4b23ea1e81025b811310d1ae28474da22060c41120ce1b08ef7"
+      "sha256": "3737c434ebdd1d7b3147d76d6da0c43f8ece8649bd98731eee6d6b828ad0c6b8"
     },
     "iphone-15-pro/status-dot-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "92bdadd4571a0e81221f27a30d431de6dedd1f520b8df879490e2392c03d2d79"
+      "sha256": "808f7994908d8e6fd506faa2647cb1a6d90ce513462b8bc024bdcc40ea6ae885"
     },
     "iphone-15-pro/stepper-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "87e06e3283e5b4df1523ed8df64006ceb5ea9a44702bf6299b44155fc2ebdd5b"
+      "sha256": "60a77988a06b6938583facb8766f220ae76aba1a01dd3165dc61019b11c0e953"
     },
     "iphone-15-pro/stepper-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "ec2dae677842cf1a18f07a9f38f12667d9ff8e784c0a3d1b623e607003927db4"
+      "sha256": "758fcd35854798c08e5fa05e377ec6968d88baa16a75a5c3451c542866d1cb93"
     },
     "iphone-15-pro/switch-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "6a045000953cbb17a8395b896fd0dcdf1d3dadcbb31dd550506a5c65a6a9b7f9"
+      "sha256": "895de7704e66bb4dc31eadab17b9b31cac33e4e26d6949115013b25a4190820f"
     },
     "iphone-15-pro/switch-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "c1ca0b37533564065bf196a84ace53ce7fba19726f5116786b5717f9ce1fbbb5"
+      "sha256": "69326f2142f760730d9b293cf935bae08bca0c780be759ff494d1350ed69c273"
     },
     "iphone-15-pro/table-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "d29bb2059f0812bc44c4c7b3111f5c6728cb9352466c83caff99ddd589ccb775"
+      "sha256": "0848415b0be6dc8fcf1691d724516dc7cb67c5eb1fe4b737a4c13fdaaf376792"
     },
     "iphone-15-pro/table-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "c825503b6bb5a76b64298bec0a325ff56bff01c6576958302aa02fa567685823"
+      "sha256": "e7d180292c99536eec6658d4d84c3e4d9a8cca56458a6195ab569199044ccaf8"
     },
     "iphone-15-pro/tabs-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "b66e15719076469741bec9815af67d87c27dc75fc00a0624f9fb52be0bb27511"
+      "sha256": "2eb90647cf658f85eab8b0bb15b9921553f9834f9a099ada9b94bd2a6dd49435"
     },
     "iphone-15-pro/tabs-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "257db6ab8d7451f30bc8e045c3324fde20948a93dba57862badf79249ae28a90"
+      "sha256": "3208cbe786a4ed1d478a3f8a2bd9972f32d60b0b78be089f0613947a532966a4"
     },
     "iphone-15-pro/text-area-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "d6fe0f4ba34e9c4db2954bb437d53c606854dd2cd9f02ad5db8a258f97abe2df"
+      "sha256": "6f59ee0c5281f18601ef6b5004e678ddc15da09aed5ceb77b2831bf44c9fe57d"
     },
     "iphone-15-pro/text-area-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "ea3c09a854412c4e715fd3779d3a9c654c2ac19edaed7fbea814c34d3352652e"
+      "sha256": "50b02730016fa5c65e70baa10efe04a20395243ede94493ab7e0936922e35aee"
     },
     "iphone-15-pro/text-input-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "954611db12788a98ab51e8d23c74e917ca42ff801fb2e275c56ae9864e515789"
+      "sha256": "ab930cd5ee475ecd3707a085ec3723f3d27731c205741b70affbd515079bf481"
     },
     "iphone-15-pro/text-input-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "73554bff09c7eb9293cf2dfbb6dabfe0185580f0c33bcbe577390c2ad71b66f7"
+      "sha256": "bccd623bff629aa5b404ca836e6dfe68f5af033489e27802b9a089b5496174fe"
     },
     "iphone-15-pro/thumbnail-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "5532f09cc481fbdb6cc0889412e979768b80e3e2b520a57f71803652a505164f"
+      "sha256": "6b8aa7a0a963ccfefad998c96f5259a7dfb0e06774769152878c57798a8e6537"
     },
     "iphone-15-pro/thumbnail-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "d5a4d01422326be14ab36228a7d492a9b4dda89e6968a5aa3ae5ba31385f542f"
+      "sha256": "4f359fb177ebab28c0cdcc1583dc51cb1135bf07b6901df4633312b42f45f0bc"
     },
     "iphone-15-pro/time-input-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "c9149ab588fddbcf5636df91ec83631fe77610854f32a7577ba5bb7d7cd6ad68"
+      "sha256": "dbc526e298f988e4cb27d29aedb42f649cdadea3cae9335d6d2d3adcdcf84f77"
     },
     "iphone-15-pro/time-input-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "aa43426430bfd60ce0bed07ca3ee660f5d9c14ee1026d934a56a59b2cbe2e6ff"
+      "sha256": "501c57fccc7a4931ff07bd21502de63b9f1e0dcd0eff822a80bdffc2ee390361"
     },
     "iphone-15-pro/timer-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "14e0bc9267ed1306b9042abe6d9e15fc4af76f4e001e9849d4028ff1105a3fc6"
+      "sha256": "70ec5141ecbbe55f7f398da98c520f2e3a352ceb2e7291ebf157d9bc1dd51578"
     },
     "iphone-15-pro/timer-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "a2f2b9bb998b55b04f286f529ebba9c713d919d4e1ca4d934a6a0d0f3884d072"
+      "sha256": "b32df34eaad15387e58031a47191ede551507f5cc6c7aa42b1b088c97e5db7ba"
     },
     "iphone-15-pro/timestamp-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "d30d6e1cc4d2e2f7d5cf63ed9fa6fa7fd5c28f193ce2fcbefc6dce3c654f8bd1"
+      "sha256": "4a4b4234e84b8f8f4b8f41a2bfc05f03b3d381accee05ecb360fa50da87160e5"
     },
     "iphone-15-pro/timestamp-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "8d85eb55d8c085bd2a07ea9e299fcff8723fbcad903b6f668ce1f9cefa9da01f"
+      "sha256": "aa9c3f9f0e2fdfc4e3acd8f7c5344c4e4c0616f3ad6e80667683869367c0639b"
     },
     "iphone-15-pro/toast-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "8ab9aa02437b833b408f991f788e85343ab0db5b3d52eea5f098c9491eb9d87b"
+      "sha256": "084129049e1c79e5efd9cdd9b32008a9b80b97cb8e9a32129e55647ff00142d0"
     },
     "iphone-15-pro/toast-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "5da68789c922a803b29c0cac9cf1db46bc57bee64bd9c3a1e7ab29bb7456d120"
+      "sha256": "dc9eb06438c54df2d427cacc13d5a3e3a52f3a42d62ebe4c5f9ac0cfb4572849"
     },
     "iphone-15-pro/toggle-button-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "4de28f8a8d0f57e49abb2a245043c67ada4fa5f0c530f545e5f04edb99a2ab6c"
+      "sha256": "6a0b8a668b7698f0ae23115ef4fce85da1e696aa40d5cb741aac6a16490961b9"
     },
     "iphone-15-pro/toggle-button-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "d79972592de8ce01f32916ddea03ccbd85a74c73a6762ab4c8ae015994eb4df7"
+      "sha256": "bf28259c5cd567503628414f588fdec58331d65ebeed0f7c8f46cfdf41381cad"
     },
     "iphone-15-pro/token-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "5af9e3bcd6993a8feab33d6d56c7c926e5e7fa1bc04eb927ee3e619fc65f3336"
+      "sha256": "d85de529b8c505555b7b8026c60a71ed8d219faedfba6ff72727b9151f25d500"
     },
     "iphone-15-pro/token-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "ec463b64567f5796ae8c37cce76e5f29f0ccbdc2d8a3c8edea3771079898dbb7"
+      "sha256": "f8259adb9ed0f0dec3ab509f8bca5294452b41fae97efa295e50619b8f142109"
     },
     "iphone-15-pro/tooltip-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "4ed688c3829870851e4e7f08297451318515498c1b57df36494e77b5c82f9a4b"
+      "sha256": "6f59ccf099922b2a13b5aac227d561de385cb49db17c676b65e7ae6658347717"
     },
     "iphone-15-pro/tooltip-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "5345d6bb63c8f318710ee29d3c7dc240917ec091e914e67eb97c34a14eb9abf0"
+      "sha256": "526f78f4c107fb14ab3abda4028e221d0d60297d6b88f0f00acde50c106d525f"
     },
     "iphone-15-pro/tour-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "fe6b6034e93a70ba470613fcd0665ed8e4d4d6eefb503eceb9b1b741bf397aee"
+      "sha256": "a7fbdf6ae135d358e941e4a650465e6cd3ed251e23d13d4234e01f3457c60591"
     },
     "iphone-15-pro/tour-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "f7c98512199392fce9a87c771002073bf6419d9a5cb08097f9adf7b596b3ed0f"
+      "sha256": "640a6d2b5190a9da1d28f026efb84ba81cb0d56c913c3465a9623ea110833475"
     },
     "iphone-15-pro/tree-list-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "a44b7f7705b84eb625ae3773752bd25c79a552bd006485038460c21e13ac9053"
+      "sha256": "d18170e36e22785647b46e2c76c8ad1643bc63c2183ec754461fd80c2347bf44"
     },
     "iphone-15-pro/tree-list-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "8314d565e716559a278a292cd35862cd547fb81938ccb45cfbc48cd547c8ea06"
+      "sha256": "995c7d5867a0cc043dfe49c4b60bc4876293eb900729fbe7dd9e2bb2c9a1bd6e"
     },
     "iphone-15-pro/typography-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "c5c6b9d947b9012633d1a9caa05e6b127201da64c47c76bf70ba1c39e149af39"
+      "sha256": "894dbbd7c60a1980dad00453d696ba30d48b51e4d029ede4c2050096b90c5d4a"
     },
     "iphone-15-pro/typography-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "faf3d4d909fe1ad2066c08c19c02629d8c9c24cad85748791f7cf0d934598582"
+      "sha256": "ecc4c788b9ba8e08250c61931bb895c321b4908c96fcce577f6e5adbc69bfb38"
     },
     "iphone-15-pro/uploads-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "8e2220798d6695e09161c4d837adf64d43c2cdbb6206570fe26402e2af0bda3d"
+      "sha256": "f6fedd13e4c0aa54c524dc0167aeca0f2ced4d9cb3722ea3f8237d9eac24db57"
     },
     "iphone-15-pro/uploads-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "49f06efc83fa5750aee014b8abf1532b76ec3ed7d941bd984dd46df1be16a37d"
+      "sha256": "e19efefc145778738e09f4ff56436705d56be3891175d9926b331c2f9f00c195"
     },
     "desktop-1280/avatar-dark.png": {
       "width": 2536,
@@ -1120,22 +1120,22 @@
     "desktop-1280/category-content-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "954fa26c19a3d937fd725f2371271c2901a441d2f8b4a6da42fe4031c480d534"
+      "sha256": "31ba2cf6d849b2092585fa6f2be4376b7134c5fb0a275bd1d352f04251e8fd91"
     },
     "desktop-1280/category-content-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "47a0a9215ff72c3cd0c8653a8671c52b8d6e810670283ea2691b877127d977ab"
+      "sha256": "2fea150b53b499dc77b9da0027d73b0f695f229c9337252dcf88c31bb5f8906b"
     },
     "desktop-1280/category-feedback-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "309a8dd9bc5af8846fb4fa52778f593b7360d89b0376dd4a0f65f3aa1282bd98"
+      "sha256": "731614424d7dd35262a192951ea03db4b1e00985e9afb2c6e8d092ed22b39923"
     },
     "desktop-1280/category-feedback-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "9ada48baf20f6561da12669b688722c5d1e733287a18e9bb8a27effed30bd4e9"
+      "sha256": "e78355a40b6059bf0b53c85445184c162e15747ef7b2020ab796cd1deddc11e5"
     },
     "desktop-1280/category-foundations-dark.png": {
       "width": 2536,
@@ -1150,22 +1150,22 @@
     "desktop-1280/category-inputs-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "faef4872fc902cd37aee4b03b5d3c82f451997d187ed711222d8018c706dc00e"
+      "sha256": "d0f7f45c4c099b279d20c26b5db2d4d1ba88d8aff0d4be7f2dc8c1914cbc0865"
     },
     "desktop-1280/category-inputs-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "8188083f2af536449c2681fc61f8f4bafcdce83b9918c8df2613060ca65b47d9"
+      "sha256": "3ea9507997a818ac49887b455a9168d6a51c29f8a3329260d58c189396139c5b"
     },
     "desktop-1280/category-navigation-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "7dc3368564c8f802c8a9fb3d011f4bfe57678657e783d6d24d9fd93826b452b9"
+      "sha256": "e9047e4f28e6fd08d28cd61b1701a1083fdaebcbee5379c4d053cb1c11ff66cc"
     },
     "desktop-1280/category-navigation-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "e3b2987bcd9bffb8f23d41e908fc7ed6998d6b4dfa9f395f80405e80411aca22"
+      "sha256": "312da1b9934775c83378c07ed0244af6d5bd10489dc615e8adcf78f0cb6694b3"
     },
     "desktop-1280/category-overlays-dark.png": {
       "width": 2536,
@@ -1320,12 +1320,12 @@
     "desktop-1280/date-input-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "c6c8264593fc5fddddb5009cf739ec4acf80537328b066ecb7a33a605c4fe157"
+      "sha256": "72d7934418f7102f8761eb1eb65894614b847884ffab06845e1c1247eebeb9f8"
     },
     "desktop-1280/date-input-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "40fe8cbb3efdacc0b5f9171dab5f25a0d34d012caa8f0128177c900b80cb468c"
+      "sha256": "43c02513b795b887a9518b735233076773f8b19651061d03ebc33d06025be2b4"
     },
     "desktop-1280/date-range-input-dark.png": {
       "width": 2536,
@@ -1340,12 +1340,12 @@
     "desktop-1280/date-time-input-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "e348bfe16ced173f69e6906dbfdfbda6be15da13725a41d67f192607335831f6"
+      "sha256": "7c1d617ac7f9fc2010106ce87ace0585695563691a3267d424c7d12ed65acd29"
     },
     "desktop-1280/date-time-input-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "73710180e77b2c4a172413a61617ca7c41eeb0d74c73c5d1fa9493425e037ce3"
+      "sha256": "50e6688a6cda752abb9b4bf1bf9b8e44109fe865846f2034a779ad2797647f2d"
     },
     "desktop-1280/details-dark.png": {
       "width": 2536,
@@ -1540,12 +1540,12 @@
     "desktop-1280/list-detail-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "f3ab8323d93292e3c7100ec3e15033c65fc0a8520d5076c047beadfd0074fc7e"
+      "sha256": "42eda63b691461dc3c9c3930fe2a24ea650fc7dc4f3170a948ad5e70c8b01fa1"
     },
     "desktop-1280/list-detail-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "b8e11d75bfe13d4be3aa86791ce754600f917c6b107a838a34d07fe71050be7d"
+      "sha256": "ed6b74444911a57809a70d766c7954818c21bdaff433194472abd86fe4ffe9df"
     },
     "desktop-1280/list-input-dark.png": {
       "width": 2536,
@@ -1740,22 +1740,22 @@
     "desktop-1280/shape-and-spacing-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "fe5c30747ca9e108519cde00c7430d517eca9967e95f991a2e180c973c0ac702"
+      "sha256": "0c646278698ded604f8641f33bd36e9d1d977a92b0b3261b2bccbd93a09f4092"
     },
     "desktop-1280/shape-and-spacing-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "917ca37a0e5a116a1847072a5eddfebd0f4a7758283c2be1abfb1b925c4e5148"
+      "sha256": "fe88e6181fd1a2870cfea8317d32f651e73cab714bc40bd5f808d5e345cb2336"
     },
     "desktop-1280/sign-in-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "192d75610bb5c06a0d3ef837c871b61d96a6c3e02e5af64f6fdb1b070b786dd4"
+      "sha256": "4ea4d88318739667c30c33f9bb518f8e8a129efe903f17efaa89ffdfec3331ca"
     },
     "desktop-1280/sign-in-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "ab0df41c145a440a8aac7982c60b19e7c2b6ff0bc1d7fb8b5c096dd53edd0b86"
+      "sha256": "b42d6ca3ee8d4bdd77826e5ef10ea8e84f90510cf8fcd87090af2440c394b102"
     },
     "desktop-1280/slider-dark.png": {
       "width": 2536,
@@ -1780,12 +1780,12 @@
     "desktop-1280/split-view-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "384bbbea4b54b87a0decebdf862fcb024d5d7f3ff85dff7c1e833388d0ac2d0a"
+      "sha256": "e130d0953eb0d7ebf951b6d5830490570f9d4cfa9e3798993f3df31d60b3320f"
     },
     "desktop-1280/split-view-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "e38030b127e9ad2c161c87eca6a87f3f1a8fb4ba8bdc6903b13e0518f59fdafe"
+      "sha256": "e4eb5211184f424650ac1eb8c972889e39fa469d68ef0285163970d0185e1b48"
     },
     "desktop-1280/stat-dark.png": {
       "width": 2536,
