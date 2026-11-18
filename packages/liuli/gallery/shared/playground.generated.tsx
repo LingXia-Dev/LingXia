@@ -163,7 +163,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "text"
       },
       {
-        "name": "isDefaultCollapsed",
+        "name": "isDefaultOpen",
         "required": false,
         "kind": "boolean"
       },

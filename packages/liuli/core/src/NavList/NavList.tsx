@@ -30,8 +30,8 @@ export interface NavListProps {
   value: string | null;
   /** Runs with the value of a row chosen by a tap, a click or Enter. */
   onChange: (value: string) => void;
-  /** Sections closed at first, by id; after that each remembers its own state. @default [] */
-  defaultClosed?: readonly string[];
+  /** Sections open at first, by id; leave it out to open every section. After that each remembers its own state. */
+  defaultOpenSections?: readonly string[];
   className?: string;
   /** On the list; each row gets `<testid>-<value>`, each section heading `<testid>-section-<id>`. */
   'data-testid'?: string;
@@ -42,8 +42,8 @@ export interface NavListProps {
  * End go to the ends; a section heading opens and closes its rows, and the current row sits on an
  * accent wash.
  */
-export function NavList({ label, sections, value, onChange, defaultClosed = [], className, 'data-testid': testId }: NavListProps) {
-  const closed = useLocal<readonly string[]>('closed', defaultClosed);
+export function NavList({ label, sections, value, onChange, defaultOpenSections, className, 'data-testid': testId }: NavListProps) {
+  const closed = useLocal<readonly string[]>('closed', defaultOpenSections === undefined ? [] : sections.filter(section => !defaultOpenSections.includes(section.id)).map(section => section.id));
   const baseId = useId();
   const rowId = (row: string) => `${baseId}-${row}`;
   const isShown = value !== null && sections.some(section => (section.title === undefined || !closed.value.includes(section.id)) && section.items.some(item => item.value === value));

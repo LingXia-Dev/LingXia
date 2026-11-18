@@ -54,12 +54,12 @@ const library = [
   { id: 'feedback', title: 'Feedback', items: [{ value: 'badge', label: 'Badge' }, { value: 'toast', label: 'Toast' }] },
 ] as const;
 
-/** Sections that start closed; each remembers being opened. */
+/** Only the section in use starts open; each remembers being opened. */
 export function Closed() {
   const current = useLocal<string>('current', 'text-input');
   return (
     <view className="md:max-w-[264px]">
-      <NavList label="Components" sections={library} value={current.value} onChange={next => current.set(next)} defaultClosed={['feedback']} data-testid="library" />
+      <NavList label="Components" sections={library} value={current.value} onChange={next => current.set(next)} defaultOpenSections={['inputs']} data-testid="library" />
     </view>
   );
 }
@@ -73,7 +73,7 @@ export function Closed() {
 | `sections` (required) | `readonly NavListSection[]` |  | The rows, in sections. |
 | `value` (required) | `string \| null` |  | The current row's value, or `null` when none is current. |
 | `onChange` (required) | `(value: string) => void` |  | Runs with the value of a row chosen by a tap, a click or Enter. |
-| `defaultClosed` | `readonly string[]` | `[]` | Sections closed at first, by id; after that each remembers its own state. |
+| `defaultOpenSections` | `readonly string[]` |  | Sections open at first, by id; leave it out to open every section. After that each remembers its own state. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the list; each row gets `<testid>-<value>`, each section heading `<testid>-section-<id>`. |
 
@@ -102,7 +102,7 @@ export function Closed() {
 - Pattern: tree.
 - Name: label.
 - Description: none.
-- States: selected (from value); expanded (from sections, closed by a press on the heading or by defaultClosed); disabled (from items[].isDisabled).
+- States: selected (from value); expanded (from sections, open as `defaultOpenSections` lists them, then by a press on the heading); disabled (from items[].isDisabled).
 - Tab: Into the list, on the current row; again, out of it..
 - Up, Down: The previous or next row or heading..
 - Home, End: The first or last row..
@@ -124,7 +124,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 ## Guidance
 
 - Do: Keep it beside the content it switches, and show the chosen place in that content at once.
-- Do: Use sections with titles for long lists, and close the rarely used ones with `defaultClosed`.
+- Do: Use sections with titles for long lists, and open only the ones in use with `defaultOpenSections`.
 - Do: Keep labels to a word or two; the column is narrow.
 - Don't: Use it for actions; it chooses where to look, a Button or a menu does things.
 - Don't: Use it for a few peers on one page; that is Tabs.

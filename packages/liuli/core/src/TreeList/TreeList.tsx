@@ -1,4 +1,4 @@
-import { cx, useLocal, type Local } from '@lingxia/view';
+import { cx, useLocal } from '@lingxia/view';
 import type { IconName } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { treeListRecipe as r } from './TreeList.recipe';
@@ -25,10 +25,12 @@ export interface TreeListProps {
   value: string | null;
   /** Runs with the id of the row that was pressed; a branch is selected and toggled by the same press. */
   onChange: (id: string) => void;
-  /** A View-local cell holding the ids of the open branches, to read or set them from outside. */
-  expanded?: Local<readonly string[]>;
-  /** The branches open at first, when `expanded` is not given. @default [] */
-  defaultExpanded?: readonly string[];
+  /** The ids of the open branches, to hold them outside; pass `onOpenBranchesChange` with it. */
+  openBranches?: readonly string[];
+  /** Runs with the open branches' ids after a press opens or closes one. */
+  onOpenBranchesChange?: (ids: readonly string[]) => void;
+  /** The branches open at first, when `openBranches` is not given. @default [] */
+  defaultOpenBranches?: readonly string[];
   className?: string;
   'data-testid'?: string;
 }
@@ -36,13 +38,17 @@ export interface TreeListProps {
 type Level = 1 | 2 | 3 | 4 | 5 | 6;
 
 /** Things inside things: folders, an outline, a file tree. Branches open in place. */
-export function TreeList({ label, nodes, value, onChange, expanded, defaultExpanded = [], className, 'data-testid': testId }: TreeListProps) {
-  const local = useLocal<readonly string[]>('expanded', defaultExpanded);
-  const open = expanded ?? local;
-  const toggle = (id: string) => open.set(open.value.includes(id) ? open.value.filter(each => each !== id) : [...open.value, id]);
+export function TreeList({ label, nodes, value, onChange, openBranches, onOpenBranchesChange, defaultOpenBranches = [], className, 'data-testid': testId }: TreeListProps) {
+  const local = useLocal<readonly string[]>('open', defaultOpenBranches);
+  const shown = openBranches ?? local.value;
+  const toggle = (id: string) => {
+    const next = shown.includes(id) ? shown.filter(each => each !== id) : [...shown, id];
+    if (openBranches === undefined) local.set(next);
+    onOpenBranchesChange?.(next);
+  };
   const rows = (list: readonly TreeNode[], depth: number): JSX.Element[] => list.flatMap(node => {
     const isBranch = node.children !== undefined;
-    const isOpen = isBranch && open.value.includes(node.id);
+    const isOpen = isBranch && shown.includes(node.id);
     const isSelected = node.id === value;
     const row = (
       <button

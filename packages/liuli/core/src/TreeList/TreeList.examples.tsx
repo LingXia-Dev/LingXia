@@ -27,7 +27,7 @@ export function Folders() {
   const current = useLocal<string | null>('current', 'coast');
   return (
     <view className="gap-2">
-      <TreeList label="Folders" nodes={folders} value={current.value} onChange={id => current.set(id)} defaultExpanded={['notes', 'travel']} data-testid="folders" />
+      <TreeList label="Folders" nodes={folders} value={current.value} onChange={id => current.set(id)} defaultOpenBranches={['notes', 'travel']} data-testid="folders" />
       <text role="status" className="text-footnote text-muted">{`Current: ${current.value}`}</text>
     </view>
   );
@@ -46,7 +46,7 @@ const outline: TreeNode[] = [
 export function Outline() {
   const current = useLocal<string | null>('section', 'layout');
   const open = useLocal<readonly string[]>('open', ['setup', 'first']);
-  return <TreeList label="Contents" nodes={outline} value={current.value} onChange={id => current.set(id)} expanded={open} data-testid="outline" />;
+  return <TreeList label="Contents" nodes={outline} value={current.value} onChange={id => current.set(id)} openBranches={open.value} onOpenBranchesChange={next => open.set(next)} data-testid="outline" />;
 }
 
 /** The home tile. */
@@ -57,7 +57,7 @@ export function Specimen() {
       nodes={[{ id: 'a', label: 'Notes', children: [{ id: 'b', label: 'Travel' }] }]}
       value="b"
       onChange={unused}
-      defaultExpanded={['a']}
+      defaultOpenBranches={['a']}
       className="w-full"
     />
   );

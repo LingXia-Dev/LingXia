@@ -86,7 +86,7 @@ export function Collapsible() {
           action={{ label: 'See the schedule', onClick: () => say('Opened the schedule') }}
           isCollapsible
           toggleLabel="Details"
-          isDefaultCollapsed
+          isDefaultOpen={false}
           data-testid="maintenance"
         />
       )}

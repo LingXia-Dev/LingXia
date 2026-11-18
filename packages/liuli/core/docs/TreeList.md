@@ -43,7 +43,7 @@ export function Folders() {
   const current = useLocal<string | null>('current', 'coast');
   return (
     <view className="gap-2">
-      <TreeList label="Folders" nodes={folders} value={current.value} onChange={id => current.set(id)} defaultExpanded={['notes', 'travel']} data-testid="folders" />
+      <TreeList label="Folders" nodes={folders} value={current.value} onChange={id => current.set(id)} defaultOpenBranches={['notes', 'travel']} data-testid="folders" />
       <text role="status" className="text-footnote text-muted">{`Current: ${current.value}`}</text>
     </view>
   );
@@ -69,7 +69,7 @@ const outline: TreeNode[] = [
 export function Outline() {
   const current = useLocal<string | null>('section', 'layout');
   const open = useLocal<readonly string[]>('open', ['setup', 'first']);
-  return <TreeList label="Contents" nodes={outline} value={current.value} onChange={id => current.set(id)} expanded={open} data-testid="outline" />;
+  return <TreeList label="Contents" nodes={outline} value={current.value} onChange={id => current.set(id)} openBranches={open.value} onOpenBranchesChange={next => open.set(next)} data-testid="outline" />;
 }
 ```
 
@@ -81,8 +81,9 @@ export function Outline() {
 | `nodes` (required) | `readonly TreeNode[]` |  |  |
 | `value` (required) | `string \| null` |  | The selected node's id, or null. |
 | `onChange` (required) | `(id: string) => void` |  | Runs with the id of the row that was pressed; a branch is selected and toggled by the same press. |
-| `expanded` | `Local<readonly string[]>` |  | A View-local cell holding the ids of the open branches, to read or set them from outside. |
-| `defaultExpanded` | `readonly string[]` | `[]` | The branches open at first, when `expanded` is not given. |
+| `openBranches` | `readonly string[]` |  | The ids of the open branches, to hold them outside; pass `onOpenBranchesChange` with it. |
+| `onOpenBranchesChange` | `((ids: readonly string[]) => void)` |  | Runs with the open branches' ids after a press opens or closes one. |
+| `defaultOpenBranches` | `readonly string[]` | `[]` | The branches open at first, when `openBranches` is not given. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
@@ -109,7 +110,7 @@ export function Outline() {
 - Pattern: tree.
 - Name: label.
 - Description: none.
-- States: expanded (from expanded, or defaultExpanded and the rows opened since); selected (from value); disabled (from isDisabled on a node).
+- States: expanded (from openBranches, or defaultOpenBranches and the rows opened since); selected (from value); disabled (from isDisabled on a node).
 - Up and Down: Move between the rows in view.
 - Right: Opens a closed branch; on an open one, moves to its first child (Left, right to left).
 - Left: Closes an open branch; on any other row, moves to its parent (Right, right to left).

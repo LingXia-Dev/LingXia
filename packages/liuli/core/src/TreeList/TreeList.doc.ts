@@ -25,7 +25,7 @@ export const doc: ComponentDoc = {
     name: 'label',
     description: [],
     states: [
-      { state: 'expanded', from: 'expanded, or defaultExpanded and the rows opened since' },
+      { state: 'expanded', from: 'openBranches, or defaultOpenBranches and the rows opened since' },
       { state: 'selected', from: 'value' },
       { state: 'disabled', from: 'isDisabled on a node' },
     ],

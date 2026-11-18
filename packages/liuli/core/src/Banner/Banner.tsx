@@ -22,10 +22,10 @@ export type BannerCollapse =
       isCollapsible: true;
       /** The chevron button's name: "Details". Read with whether it is open. */
       toggleLabel: string;
-      /** Whether it starts folded. @default false */
-      isDefaultCollapsed?: boolean;
+      /** Whether it starts unfolded. @default true */
+      isDefaultOpen?: boolean;
     }
-  | { isCollapsible?: false; toggleLabel?: never; isDefaultCollapsed?: never };
+  | { isCollapsible?: false; toggleLabel?: never; isDefaultOpen?: never };
 
 export type BannerProps = BannerDismiss & BannerCollapse & {
   /** The point, in a few words. */
@@ -44,9 +44,9 @@ export type BannerProps = BannerDismiss & BannerCollapse & {
  * A message in the page's flow about the page or the account: a sync problem, a trial ending, a
  * change that saved. It stays until resolved or dismissed; it is not a toast.
  */
-export function Banner({ title, message, tone = 'info', action, onDismiss, dismissLabel, isCollapsible = false, toggleLabel, isDefaultCollapsed = false, className, 'data-testid': testId }: BannerProps) {
-  const collapsed = useLocal('collapsed', isDefaultCollapsed);
-  const isOpen = !isCollapsible || !collapsed.value;
+export function Banner({ title, message, tone = 'info', action, onDismiss, dismissLabel, isCollapsible = false, toggleLabel, isDefaultOpen = true, className, 'data-testid': testId }: BannerProps) {
+  const open = useLocal('open', isDefaultOpen);
+  const isOpen = !isCollapsible || open.value;
   const hasEnd = onDismiss !== undefined || isCollapsible;
   return (
     <view
@@ -66,7 +66,7 @@ export function Banner({ title, message, tone = 'info', action, onDismiss, dismi
         <button
           aria-label={toggleLabel}
           aria-expanded={isOpen}
-          onClick={() => collapsed.set(!collapsed.value)}
+          onClick={() => open.set(!open.value)}
           data-testid={testId && `${testId}-toggle`}
           className={r.dismiss.base}
         >

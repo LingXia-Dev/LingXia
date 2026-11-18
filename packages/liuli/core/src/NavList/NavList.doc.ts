@@ -29,7 +29,7 @@ export const doc: ComponentDoc = {
     description: [],
     states: [
       { state: 'selected', from: 'value' },
-      { state: 'expanded', from: 'sections, closed by a press on the heading or by defaultClosed' },
+      { state: 'expanded', from: 'sections, open as `defaultOpenSections` lists them, then by a press on the heading' },
       { state: 'disabled', from: 'items[].isDisabled' },
     ],
     keyboard: [
@@ -54,7 +54,7 @@ export const doc: ComponentDoc = {
   guidance: {
     do: [
       'Keep it beside the content it switches, and show the chosen place in that content at once.',
-      'Use sections with titles for long lists, and close the rarely used ones with `defaultClosed`.',
+      'Use sections with titles for long lists, and open only the ones in use with `defaultOpenSections`.',
       'Keep labels to a word or two; the column is narrow.',
     ],
     dont: [

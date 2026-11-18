@@ -51,7 +51,7 @@ test('Sidebar: a disabled row takes no press', async () => {
   assert.equal(archive.props.onClick, undefined);
 });
 
-test('Closed: a section in defaultClosed starts closed and opens on a press', async () => {
+test('Closed: a section left out of defaultOpenSections starts closed and opens on a press', async () => {
   const screen = await renderExample('NavList/NavList', 'Closed');
   assert.equal(screen.getByTestId('library-section-feedback').props.stateExpanded, 0);
   assert.equal(screen.queryAll(node => node.testId === 'library-badge').length, 0);

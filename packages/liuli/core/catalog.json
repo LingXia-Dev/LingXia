@@ -906,11 +906,11 @@
           "description": "The chevron button's name: \"Details\". Read with whether it is open."
         },
         {
-          "name": "isDefaultCollapsed",
+          "name": "isDefaultOpen",
           "type": "boolean",
           "required": false,
-          "description": "Whether it starts folded.",
-          "default": "false"
+          "description": "Whether it starts unfolded.",
+          "default": "true"
         },
         {
           "name": "title",
@@ -1043,7 +1043,7 @@
         {
           "name": "Collapsible",
           "title": "Folded to its title",
-          "source": "import { Said } from '../example';\nimport { Banner } from '@liulidesign/core/Banner';\n\n/** Folded to its title until someone wants the rest: for a notice that stays for days. */\nexport function Collapsible() {\n  return (\n    <Said>\n      {say => (\n        <Banner\n          tone=\"warning\"\n          title=\"Scheduled maintenance on Sunday\"\n          message=\"Sync pauses from 02:00 to 04:00 UTC. Notes you write then are kept on this device and sent when it ends.\"\n          action={{ label: 'See the schedule', onClick: () => say('Opened the schedule') }}\n          isCollapsible\n          toggleLabel=\"Details\"\n          isDefaultCollapsed\n          data-testid=\"maintenance\"\n        />\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Banner } from '@liulidesign/core/Banner';\n\n/** Folded to its title until someone wants the rest: for a notice that stays for days. */\nexport function Collapsible() {\n  return (\n    <Said>\n      {say => (\n        <Banner\n          tone=\"warning\"\n          title=\"Scheduled maintenance on Sunday\"\n          message=\"Sync pauses from 02:00 to 04:00 UTC. Notes you write then are kept on this device and sent when it ends.\"\n          action={{ label: 'See the schedule', onClick: () => say('Opened the schedule') }}\n          isCollapsible\n          toggleLabel=\"Details\"\n          isDefaultOpen={false}\n          data-testid=\"maintenance\"\n        />\n      )}\n    </Said>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -11203,11 +11203,10 @@
           "description": "Runs with the value of a row chosen by a tap, a click or Enter."
         },
         {
-          "name": "defaultClosed",
+          "name": "defaultOpenSections",
           "type": "readonly string[]",
           "required": false,
-          "description": "Sections closed at first, by id; after that each remembers its own state.",
-          "default": "[]"
+          "description": "Sections open at first, by id; leave it out to open every section. After that each remembers its own state."
         },
         {
           "name": "className",
@@ -11244,7 +11243,7 @@
           },
           {
             "state": "expanded",
-            "from": "sections, closed by a press on the heading or by defaultClosed"
+            "from": "sections, open as `defaultOpenSections` lists them, then by a press on the heading"
           },
           {
             "state": "disabled",
@@ -11319,7 +11318,7 @@
         {
           "name": "Closed",
           "title": "A section that starts closed",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\n\nconst library = [\n  { id: 'inputs', title: 'Inputs', items: [{ value: 'text-input', label: 'TextInput' }, { value: 'date-input', label: 'DateInput' }] },\n  { id: 'feedback', title: 'Feedback', items: [{ value: 'badge', label: 'Badge' }, { value: 'toast', label: 'Toast' }] },\n] as const;\n\n/** Sections that start closed; each remembers being opened. */\nexport function Closed() {\n  const current = useLocal<string>('current', 'text-input');\n  return (\n    <view className=\"md:max-w-[264px]\">\n      <NavList label=\"Components\" sections={library} value={current.value} onChange={next => current.set(next)} defaultClosed={['feedback']} data-testid=\"library\" />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\n\nconst library = [\n  { id: 'inputs', title: 'Inputs', items: [{ value: 'text-input', label: 'TextInput' }, { value: 'date-input', label: 'DateInput' }] },\n  { id: 'feedback', title: 'Feedback', items: [{ value: 'badge', label: 'Badge' }, { value: 'toast', label: 'Toast' }] },\n] as const;\n\n/** Only the section in use starts open; each remembers being opened. */\nexport function Closed() {\n  const current = useLocal<string>('current', 'text-input');\n  return (\n    <view className=\"md:max-w-[264px]\">\n      <NavList label=\"Components\" sections={library} value={current.value} onChange={next => current.set(next)} defaultOpenSections={['inputs']} data-testid=\"library\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -19279,16 +19278,22 @@
           "description": "Runs with the id of the row that was pressed; a branch is selected and toggled by the same press."
         },
         {
-          "name": "expanded",
-          "type": "Local<readonly string[]>",
-          "required": false,
-          "description": "A View-local cell holding the ids of the open branches, to read or set them from outside."
-        },
-        {
-          "name": "defaultExpanded",
+          "name": "openBranches",
           "type": "readonly string[]",
           "required": false,
-          "description": "The branches open at first, when `expanded` is not given.",
+          "description": "The ids of the open branches, to hold them outside; pass `onOpenBranchesChange` with it."
+        },
+        {
+          "name": "onOpenBranchesChange",
+          "type": "((ids: readonly string[]) => void)",
+          "required": false,
+          "description": "Runs with the open branches' ids after a press opens or closes one."
+        },
+        {
+          "name": "defaultOpenBranches",
+          "type": "readonly string[]",
+          "required": false,
+          "description": "The branches open at first, when `openBranches` is not given.",
           "default": "[]"
         },
         {
@@ -19321,7 +19326,7 @@
         "states": [
           {
             "state": "expanded",
-            "from": "expanded, or defaultExpanded and the rows opened since"
+            "from": "openBranches, or defaultOpenBranches and the rows opened since"
           },
           {
             "state": "selected",
@@ -19389,12 +19394,12 @@
         {
           "name": "Folders",
           "title": "Folders and notes",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { TreeList, type TreeNode } from '@liulidesign/core/TreeList';\n\nconst folders: TreeNode[] = [\n  {\n    id: 'notes', label: 'Notes', icon: 'folder', endText: '48',\n    children: [\n      { id: 'travel', label: 'Travel', icon: 'folder', endText: '12', children: [\n        { id: 'coast', label: 'Trip to the coast', icon: 'file' },\n        { id: 'lisbon', label: 'Lisbon in March', icon: 'file' },\n      ] },\n      { id: 'recipes', label: 'Recipes', icon: 'folder', endText: '9', children: [\n        { id: 'bread', label: 'Weekend bread', icon: 'file' },\n      ] },\n      { id: 'reading', label: 'Reading list', icon: 'file' },\n    ],\n  },\n  { id: 'shared', label: 'Shared with me', icon: 'users', endText: '6', children: [\n    { id: 'plan', label: 'Q3 plan', icon: 'file' },\n  ] },\n  { id: 'archive', label: 'Archive', icon: 'folder', isDisabled: true },\n];\n\n/** Folders with their notes: a branch opens in place, and the row that was pressed is the current one. */\nexport function Folders() {\n  const current = useLocal<string | null>('current', 'coast');\n  return (\n    <view className=\"gap-2\">\n      <TreeList label=\"Folders\" nodes={folders} value={current.value} onChange={id => current.set(id)} defaultExpanded={['notes', 'travel']} data-testid=\"folders\" />\n      <text role=\"status\" className=\"text-footnote text-muted\">{`Current: ${current.value}`}</text>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TreeList, type TreeNode } from '@liulidesign/core/TreeList';\n\nconst folders: TreeNode[] = [\n  {\n    id: 'notes', label: 'Notes', icon: 'folder', endText: '48',\n    children: [\n      { id: 'travel', label: 'Travel', icon: 'folder', endText: '12', children: [\n        { id: 'coast', label: 'Trip to the coast', icon: 'file' },\n        { id: 'lisbon', label: 'Lisbon in March', icon: 'file' },\n      ] },\n      { id: 'recipes', label: 'Recipes', icon: 'folder', endText: '9', children: [\n        { id: 'bread', label: 'Weekend bread', icon: 'file' },\n      ] },\n      { id: 'reading', label: 'Reading list', icon: 'file' },\n    ],\n  },\n  { id: 'shared', label: 'Shared with me', icon: 'users', endText: '6', children: [\n    { id: 'plan', label: 'Q3 plan', icon: 'file' },\n  ] },\n  { id: 'archive', label: 'Archive', icon: 'folder', isDisabled: true },\n];\n\n/** Folders with their notes: a branch opens in place, and the row that was pressed is the current one. */\nexport function Folders() {\n  const current = useLocal<string | null>('current', 'coast');\n  return (\n    <view className=\"gap-2\">\n      <TreeList label=\"Folders\" nodes={folders} value={current.value} onChange={id => current.set(id)} defaultOpenBranches={['notes', 'travel']} data-testid=\"folders\" />\n      <text role=\"status\" className=\"text-footnote text-muted\">{`Current: ${current.value}`}</text>\n    </view>\n  );\n}"
         },
         {
           "name": "Outline",
           "title": "An outline, opened from outside",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { TreeList, type TreeNode } from '@liulidesign/core/TreeList';\n\nconst outline: TreeNode[] = [\n  { id: 'intro', label: 'Introduction' },\n  { id: 'setup', label: 'Setting up', children: [\n    { id: 'install', label: 'Install' },\n    { id: 'first', label: 'Your first page', children: [{ id: 'layout', label: 'Layout' }, { id: 'state', label: 'State' }] },\n  ] },\n  { id: 'publish', label: 'Publishing' },\n];\n\n/** An outline without icons, opened from outside. */\nexport function Outline() {\n  const current = useLocal<string | null>('section', 'layout');\n  const open = useLocal<readonly string[]>('open', ['setup', 'first']);\n  return <TreeList label=\"Contents\" nodes={outline} value={current.value} onChange={id => current.set(id)} expanded={open} data-testid=\"outline\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TreeList, type TreeNode } from '@liulidesign/core/TreeList';\n\nconst outline: TreeNode[] = [\n  { id: 'intro', label: 'Introduction' },\n  { id: 'setup', label: 'Setting up', children: [\n    { id: 'install', label: 'Install' },\n    { id: 'first', label: 'Your first page', children: [{ id: 'layout', label: 'Layout' }, { id: 'state', label: 'State' }] },\n  ] },\n  { id: 'publish', label: 'Publishing' },\n];\n\n/** An outline without icons, opened from outside. */\nexport function Outline() {\n  const current = useLocal<string | null>('section', 'layout');\n  const open = useLocal<readonly string[]>('open', ['setup', 'first']);\n  return <TreeList label=\"Contents\" nodes={outline} value={current.value} onChange={id => current.set(id)} openBranches={open.value} onOpenBranchesChange={next => open.set(next)} data-testid=\"outline\" />;\n}"
         }
       ],
       "gaps": [],

@@ -31,12 +31,12 @@ const library = [
   { id: 'feedback', title: 'Feedback', items: [{ value: 'badge', label: 'Badge' }, { value: 'toast', label: 'Toast' }] },
 ] as const;
 
-/** Sections that start closed; each remembers being opened. */
+/** Only the section in use starts open; each remembers being opened. */
 export function Closed() {
   const current = useLocal<string>('current', 'text-input');
   return (
     <view className="md:max-w-[264px]">
-      <NavList label="Components" sections={library} value={current.value} onChange={next => current.set(next)} defaultClosed={['feedback']} data-testid="library" />
+      <NavList label="Components" sections={library} value={current.value} onChange={next => current.set(next)} defaultOpenSections={['inputs']} data-testid="library" />
     </view>
   );
 }

@@ -101,7 +101,7 @@ export function Collapsible() {
           action={{ label: 'See the schedule', onClick: () => say('Opened the schedule') }}
           isCollapsible
           toggleLabel="Details"
-          isDefaultCollapsed
+          isDefaultOpen={false}
           data-testid="maintenance"
         />
       )}
@@ -118,7 +118,7 @@ export function Collapsible() {
 | `dismissLabel` | `string` |  | The dismiss button's name: "Dismiss". |
 | `isCollapsible` | `boolean` | `false` | Folds the message and the action under the title, behind a chevron button. |
 | `toggleLabel` | `string` |  | The chevron button's name: "Details". Read with whether it is open. |
-| `isDefaultCollapsed` | `boolean` | `false` | Whether it starts folded. |
+| `isDefaultOpen` | `boolean` | `true` | Whether it starts unfolded. |
 | `title` (required) | `string` |  | The point, in a few words. |
 | `message` | `string` |  | What it means or what to do, in a sentence. |
 | `tone` | `BannerTone` | `'info'` |  |
