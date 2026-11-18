@@ -39,7 +39,7 @@ export function Welcome() {
           <view className="flex-row items-center gap-2">
             <view id="tour-new"><Button label="New note" variant="primary" startIcon="add" onClick={() => say('Created a note')} /></view>
             <view id="tour-search" className="grow basis-0 min-w-0">
-              <SearchField label="Search notes" value={query.value} onChange={query.set} placeholder="Search" clearLabel="Clear" />
+              <SearchField label="Search notes" isLabelHidden value={query.value} onChange={query.set} placeholder="Search" clearLabel="Clear" />
             </view>
           </view>
           <view className="flex-row items-center justify-between gap-3">

@@ -37,9 +37,9 @@ export function Compact() {
 export function Spinners() {
   return (
     <view className="flex-row items-center gap-4">
-      <Spinner label="Loading" size="sm" />
-      <Spinner label="Loading messages" data-testid="spinner" />
-      <Spinner label="Loading" size="lg" />
+      <Spinner label="Loading" isLabelHidden size="sm" />
+      <Spinner label="Loading messages" isLabelHidden data-testid="spinner" />
+      <Spinner label="Loading" isLabelHidden size="lg" />
     </view>
   );
 }
@@ -48,7 +48,7 @@ export function Spinners() {
 export function LoadingMessage() {
   return (
     <view className="items-center py-6">
-      <Spinner label="Loading your notes" isLabelShown size="lg" data-testid="loading-notes" />
+      <Spinner label="Loading your notes" size="lg" data-testid="loading-notes" />
     </view>
   );
 }
@@ -58,7 +58,7 @@ export function Specimen() {
   return (
     <view className="flex-row items-center gap-3">
       <ProgressBar label="Uploading" isLabelHidden value={62} className="w-20" />
-      <Spinner label="Loading" size="sm" />
+      <Spinner label="Loading" isLabelHidden size="sm" />
     </view>
   );
 }
@@ -104,10 +104,10 @@ export function SpinnerTones() {
   return (
     <view className="gap-3">
       <view className="h-36 items-center justify-center rounded-container bg-media">
-        <Spinner label="Loading the video" size="xl" tone="on-media" data-testid="on-media" />
+        <Spinner label="Loading the video" isLabelHidden size="xl" tone="on-media" data-testid="on-media" />
       </view>
       <view className="flex-row items-center gap-2">
-        <Spinner label="Checking for updates" size="sm" tone="muted" data-testid="quiet" />
+        <Spinner label="Checking for updates" isLabelHidden size="sm" tone="muted" data-testid="quiet" />
         <text className="text-footnote text-muted">Checking for updates</text>
       </view>
     </view>

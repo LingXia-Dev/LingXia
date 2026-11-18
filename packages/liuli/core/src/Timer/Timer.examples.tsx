@@ -7,7 +7,7 @@ export function Countdown() {
   const left = useLocal('left', 125);
   return (
     <view className="items-start gap-3">
-      <Timer seconds={left.value} size="lg" aria-label={`${Math.floor(left.value / 60)} minutes ${left.value % 60} seconds left`} data-testid="countdown" />
+      <Timer seconds={left.value} size="lg" label={`${Math.floor(left.value / 60)} minutes ${left.value % 60} seconds left`} data-testid="countdown" />
       <view className="flex-row gap-2">
         <Button label="Skip 15 seconds" onClick={() => left.set(Math.max(0, left.value - 15))} data-testid="skip" />
         <Button label="Reset" variant="ghost" onClick={() => left.set(125)} />

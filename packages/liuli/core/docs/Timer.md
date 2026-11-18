@@ -24,7 +24,7 @@ export function Countdown() {
   const left = useLocal('left', 125);
   return (
     <view className="items-start gap-3">
-      <Timer seconds={left.value} size="lg" aria-label={`${Math.floor(left.value / 60)} minutes ${left.value % 60} seconds left`} data-testid="countdown" />
+      <Timer seconds={left.value} size="lg" label={`${Math.floor(left.value / 60)} minutes ${left.value % 60} seconds left`} data-testid="countdown" />
       <view className="flex-row gap-2">
         <Button label="Skip 15 seconds" onClick={() => left.set(Math.max(0, left.value - 15))} data-testid="skip" />
         <Button label="Reset" variant="ghost" onClick={() => left.set(125)} />
@@ -61,7 +61,7 @@ export function Inline() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `seconds` (required) | `number` |  | The time to show, in seconds: what is left of a countdown, or what has passed. The app counts; Timer draws. |
-| `aria-label` | `string` |  | How it is read: "2 minutes 5 seconds left". Without it the digits are read as written. |
+| `label` | `string` |  | How it is read: "2 minutes 5 seconds left". Without it the digits are read as written. |
 | `hasHours` | `boolean` | `false` | Always shows hours, as `0:02:05`. Otherwise hours appear from one hour on. |
 | `size` | `TimerSize` | `'md'` |  |
 | `className` | `string` |  |  |
@@ -83,10 +83,10 @@ export function Inline() {
 ## Accessibility
 
 - Pattern: none.
-- Name: aria-label.
+- Name: label.
 - Description: none.
 - Press target: .
-- Give `aria-label` in words: "2 minutes 5 seconds left". Digits alone are read as a time of day by some screen readers.
+- Give `label` in words: "2 minutes 5 seconds left". Digits alone are read as a time of day by some screen readers.
 - It is not a live region: a countdown read every second is noise. Announce what matters, such as the last ten seconds, with a status of your own.
 
 | Contrast | Pair | Minimum | Light | Dark |

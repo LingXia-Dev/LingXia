@@ -4471,7 +4471,7 @@
           "default": "false"
         },
         {
-          "name": "emptyText",
+          "name": "emptyLabel",
           "type": "string",
           "required": true,
           "description": "Shown when nothing matches: \"No commands match\"."
@@ -4566,7 +4566,7 @@
         {
           "name": "Commands",
           "title": "Commands and places",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { CommandPalette, type CommandGroup } from '@liulidesign/core/CommandPalette';\n\nconst groups: CommandGroup[] = [\n  { label: 'Go to', items: [\n    { id: 'all', label: 'All notes', icon: 'file', endText: 'G then A' },\n    { id: 'shared', label: 'Shared with me', icon: 'users', endText: 'G then S' },\n    { id: 'archive', label: 'Archive', icon: 'folder' },\n    { id: 'settings', label: 'Settings', icon: 'settings', description: 'Account, appearance, sync' },\n  ] },\n  { label: 'Actions', items: [\n    { id: 'new', label: 'New note', icon: 'add', endText: 'Ctrl N' },\n    { id: 'share', label: 'Share this note', icon: 'share' },\n    { id: 'export', label: 'Export as PDF', icon: 'upload', isDisabled: true },\n  ] },\n];\n\n/** Opened from a button here; an app also opens it from its own shortcut. Type to narrow, arrows to move, Return to run. */\nexport function Commands() {\n  const open = useLocal('open', false);\n  const ran = useLocal('ran', '');\n  return (\n    <view className=\"items-start gap-2\">\n      <Button label=\"Search commands\" startIcon=\"search\" onClick={() => open.set(true)} data-testid=\"palette-open\" />\n      {ran.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{`Last run: ${ran.value}`}</text>}\n      <CommandPalette\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Search commands\"\n        placeholder=\"Type a command or a place\"\n        groups={groups}\n        onSelect={id => ran.set(id)}\n        emptyText=\"No commands match\"\n        data-testid=\"palette\"\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { CommandPalette, type CommandGroup } from '@liulidesign/core/CommandPalette';\n\nconst groups: CommandGroup[] = [\n  { label: 'Go to', items: [\n    { id: 'all', label: 'All notes', icon: 'file', endText: 'G then A' },\n    { id: 'shared', label: 'Shared with me', icon: 'users', endText: 'G then S' },\n    { id: 'archive', label: 'Archive', icon: 'folder' },\n    { id: 'settings', label: 'Settings', icon: 'settings', description: 'Account, appearance, sync' },\n  ] },\n  { label: 'Actions', items: [\n    { id: 'new', label: 'New note', icon: 'add', endText: 'Ctrl N' },\n    { id: 'share', label: 'Share this note', icon: 'share' },\n    { id: 'export', label: 'Export as PDF', icon: 'upload', isDisabled: true },\n  ] },\n];\n\n/** Opened from a button here; an app also opens it from its own shortcut. Type to narrow, arrows to move, Return to run. */\nexport function Commands() {\n  const open = useLocal('open', false);\n  const ran = useLocal('ran', '');\n  return (\n    <view className=\"items-start gap-2\">\n      <Button label=\"Search commands\" startIcon=\"search\" onClick={() => open.set(true)} data-testid=\"palette-open\" />\n      {ran.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{`Last run: ${ran.value}`}</text>}\n      <CommandPalette\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Search commands\"\n        placeholder=\"Type a command or a place\"\n        groups={groups}\n        onSelect={id => ran.set(id)}\n        emptyLabel=\"No commands match\"\n        data-testid=\"palette\"\n      />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -9395,7 +9395,7 @@
           "description": "The keys of one shortcut, in the order they are held: `['Ctrl', 'K']`. Each is drawn as a key cap."
         },
         {
-          "name": "aria-label",
+          "name": "label",
           "type": "string",
           "required": false,
           "description": "How the shortcut is read: \"Control K\". Without it the keys are read as written."
@@ -9428,7 +9428,7 @@
       },
       "accessibility": {
         "pattern": null,
-        "name": "aria-label",
+        "name": "label",
         "description": [],
         "states": [],
         "keyboard": [],
@@ -9444,7 +9444,7 @@
           }
         ],
         "notes": [
-          "With `aria-label` the shortcut is read once, as the label says: \"Control K\". Give it whenever a key is short for a word.",
+          "With `label` the shortcut is read once, as the label says: \"Control K\". Give it whenever a key is short for a word.",
           "Without it each key is read as written, which suits keys that are words: \"Enter\".",
           "It takes no focus and no press."
         ]
@@ -9453,7 +9453,7 @@
         {
           "name": "Shortcuts",
           "title": "A list of shortcuts",
-          "source": "import { Kbd } from '@liulidesign/core/Kbd';\n\nconst shortcuts = [\n  { key: 'search', label: 'Search notes', keys: ['Ctrl', 'K'], spoken: 'Control K' },\n  { key: 'new', label: 'New note', keys: ['Ctrl', 'N'], spoken: 'Control N' },\n  { key: 'archive', label: 'Move to archive', keys: ['Ctrl', 'Shift', 'A'], spoken: 'Control Shift A' },\n  { key: 'close', label: 'Close the panel', keys: ['Esc'], spoken: 'Escape' },\n] as const;\n\n/** A list of shortcuts: what each does, and its keys at the end of the row. */\nexport function Shortcuts() {\n  return (\n    <view className=\"gap-3\">\n      {shortcuts.map(shortcut => (\n        <view key={shortcut.key} className=\"flex-row items-center justify-between gap-4\">\n          <text className=\"text-body text-text\">{shortcut.label}</text>\n          <Kbd keys={shortcut.keys} aria-label={shortcut.spoken} data-testid={shortcut.key} />\n        </view>\n      ))}\n    </view>\n  );\n}"
+          "source": "import { Kbd } from '@liulidesign/core/Kbd';\n\nconst shortcuts = [\n  { key: 'search', label: 'Search notes', keys: ['Ctrl', 'K'], spoken: 'Control K' },\n  { key: 'new', label: 'New note', keys: ['Ctrl', 'N'], spoken: 'Control N' },\n  { key: 'archive', label: 'Move to archive', keys: ['Ctrl', 'Shift', 'A'], spoken: 'Control Shift A' },\n  { key: 'close', label: 'Close the panel', keys: ['Esc'], spoken: 'Escape' },\n] as const;\n\n/** A list of shortcuts: what each does, and its keys at the end of the row. */\nexport function Shortcuts() {\n  return (\n    <view className=\"gap-3\">\n      {shortcuts.map(shortcut => (\n        <view key={shortcut.key} className=\"flex-row items-center justify-between gap-4\">\n          <text className=\"text-body text-text\">{shortcut.label}</text>\n          <Kbd keys={shortcut.keys} label={shortcut.spoken} data-testid={shortcut.key} />\n        </view>\n      ))}\n    </view>\n  );\n}"
         },
         {
           "name": "Hint",
@@ -9706,12 +9706,6 @@
           "description": "Called when the link is pressed. The app opens the page or the address."
         },
         {
-          "name": "aria-label",
-          "type": "string",
-          "required": false,
-          "description": "Replaces the label for assistive tech when the words alone are not enough out of their sentence."
-        },
-        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -9769,7 +9763,7 @@
           }
         ],
         "notes": [
-          "It is read as a link, by its label. Write the label so it makes sense out of its sentence, or give `aria-label`.",
+          "It is read as a link, by its label. Write the label so it makes sense out of its sentence: \"the March invoice\", not \"here\".",
           "The underline tells it from the text around it without colour.",
           "A link in a line of text is as tall as the line; a finger press that misses goes to the nearest link within reach.",
           "A disabled link is read as unavailable and takes no press."
@@ -12521,13 +12515,13 @@
             "name": "label",
             "type": "string",
             "required": true,
-            "description": "The accessible name: what is loading. Drawn only with `isLabelShown`."
+            "description": "The accessible name: what is loading, drawn under the ring unless `isLabelHidden`."
           },
           {
-            "name": "isLabelShown",
+            "name": "isLabelHidden",
             "type": "boolean",
             "required": false,
-            "description": "Draws the label under the ring, centred: for a page, a panel or a list that is loading and has room to say what.",
+            "description": "Draws the ring alone, the label read only: for a spinner inside a control or a row. Leave the label shown for a page, a panel or a list that has room to say what.",
             "default": "false"
           },
           {
@@ -12683,12 +12677,12 @@
         {
           "name": "Spinners",
           "title": "Spinner sizes",
-          "source": "import { Spinner } from '@liulidesign/core/ProgressBar';\n\nexport function Spinners() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <Spinner label=\"Loading\" size=\"sm\" />\n      <Spinner label=\"Loading messages\" data-testid=\"spinner\" />\n      <Spinner label=\"Loading\" size=\"lg\" />\n    </view>\n  );\n}"
+          "source": "import { Spinner } from '@liulidesign/core/ProgressBar';\n\nexport function Spinners() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <Spinner label=\"Loading\" isLabelHidden size=\"sm\" />\n      <Spinner label=\"Loading messages\" isLabelHidden data-testid=\"spinner\" />\n      <Spinner label=\"Loading\" isLabelHidden size=\"lg\" />\n    </view>\n  );\n}"
         },
         {
           "name": "LoadingMessage",
           "title": "A spinner that says what is loading",
-          "source": "import { Spinner } from '@liulidesign/core/ProgressBar';\n\n/** A whole panel that is loading says what, under the ring. */\nexport function LoadingMessage() {\n  return (\n    <view className=\"items-center py-6\">\n      <Spinner label=\"Loading your notes\" isLabelShown size=\"lg\" data-testid=\"loading-notes\" />\n    </view>\n  );\n}"
+          "source": "import { Spinner } from '@liulidesign/core/ProgressBar';\n\n/** A whole panel that is loading says what, under the ring. */\nexport function LoadingMessage() {\n  return (\n    <view className=\"items-center py-6\">\n      <Spinner label=\"Loading your notes\" size=\"lg\" data-testid=\"loading-notes\" />\n    </view>\n  );\n}"
         },
         {
           "name": "Tones",
@@ -12698,7 +12692,7 @@
         {
           "name": "SpinnerTones",
           "title": "A spinner over media, and a quiet one",
-          "source": "import { Spinner } from '@liulidesign/core/ProgressBar';\n\n/** Over a picture that is still loading, and beside quiet text. */\nexport function SpinnerTones() {\n  return (\n    <view className=\"gap-3\">\n      <view className=\"h-36 items-center justify-center rounded-container bg-media\">\n        <Spinner label=\"Loading the video\" size=\"xl\" tone=\"on-media\" data-testid=\"on-media\" />\n      </view>\n      <view className=\"flex-row items-center gap-2\">\n        <Spinner label=\"Checking for updates\" size=\"sm\" tone=\"muted\" data-testid=\"quiet\" />\n        <text className=\"text-footnote text-muted\">Checking for updates</text>\n      </view>\n    </view>\n  );\n}"
+          "source": "import { Spinner } from '@liulidesign/core/ProgressBar';\n\n/** Over a picture that is still loading, and beside quiet text. */\nexport function SpinnerTones() {\n  return (\n    <view className=\"gap-3\">\n      <view className=\"h-36 items-center justify-center rounded-container bg-media\">\n        <Spinner label=\"Loading the video\" isLabelHidden size=\"xl\" tone=\"on-media\" data-testid=\"on-media\" />\n      </view>\n      <view className=\"flex-row items-center gap-2\">\n        <Spinner label=\"Checking for updates\" isLabelHidden size=\"sm\" tone=\"muted\" data-testid=\"quiet\" />\n        <text className=\"text-footnote text-muted\">Checking for updates</text>\n      </view>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -13190,13 +13184,13 @@
           "name": "label",
           "type": "string",
           "required": true,
-          "description": "The accessible name: what is searched (\"Search notes\"). Drawn only with `isLabelShown`."
+          "description": "The accessible name: what is searched (\"Search notes\"), drawn above the field unless `isLabelHidden`."
         },
         {
-          "name": "isLabelShown",
+          "name": "isLabelHidden",
           "type": "boolean",
           "required": false,
-          "description": "Draws the label above the field. A search field at the top of a list is usually named by its placeholder's place alone.",
+          "description": "Reads the label without drawing it: a search field at the top of a list is usually named by its place and placeholder alone.",
           "default": "false"
         },
         {
@@ -13351,22 +13345,22 @@
         {
           "name": "Notes",
           "title": "A list that narrows as you type",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\nconst notes = ['Budget for Q3', 'Kitchen plans', 'Reading list', 'Recipes to try', 'Trip to Lisbon', 'Weekly review'];\n\n/** The list under the field narrows as you type, and the line between them says how many are left. */\nexport function Notes() {\n  const query = useLocal('query', '');\n  const text = query.value.trim().toLowerCase();\n  const found = notes.filter(note => note.toLowerCase().includes(text));\n  return (\n    <view className=\"gap-3\">\n      <SearchField\n        label=\"Search notes\"\n        placeholder=\"Search notes\"\n        clearLabel=\"Clear search\"\n        bind={query}\n        resultsLabel={text === '' ? undefined : found.length === 0 ? 'No notes match' : `${found.length} of ${notes.length} notes`}\n        data-testid=\"notes\"\n      />\n      <ItemList label=\"Notes\">\n        {found.map(note => <Item key={note} label={note} />)}\n      </ItemList>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\nconst notes = ['Budget for Q3', 'Kitchen plans', 'Reading list', 'Recipes to try', 'Trip to Lisbon', 'Weekly review'];\n\n/** The list under the field narrows as you type, and the line between them says how many are left. */\nexport function Notes() {\n  const query = useLocal('query', '');\n  const text = query.value.trim().toLowerCase();\n  const found = notes.filter(note => note.toLowerCase().includes(text));\n  return (\n    <view className=\"gap-3\">\n      <SearchField\n        label=\"Search notes\"\n        isLabelHidden\n        placeholder=\"Search notes\"\n        clearLabel=\"Clear search\"\n        bind={query}\n        resultsLabel={text === '' ? undefined : found.length === 0 ? 'No notes match' : `${found.length} of ${notes.length} notes`}\n        data-testid=\"notes\"\n      />\n      <ItemList label=\"Notes\">\n        {found.map(note => <Item key={note} label={note} />)}\n      </ItemList>\n    </view>\n  );\n}"
         },
         {
           "name": "Loading",
           "title": "While a search runs",
-          "source": "import { Held } from '../example';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\n/** While a search runs elsewhere, the magnifier gives way to a spinner. */\nexport function Loading() {\n  return <Held value=\"lamp\">{(query, set) => <SearchField label=\"Search the catalogue\" placeholder=\"Search the catalogue\" clearLabel=\"Clear search\" value={query} onChange={set} isLoading resultsLabel=\"Searching\" data-testid=\"catalogue\" />}</Held>;\n}"
+          "source": "import { Held } from '../example';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\n/** While a search runs elsewhere, the magnifier gives way to a spinner. */\nexport function Loading() {\n  return <Held value=\"lamp\">{(query, set) => <SearchField label=\"Search the catalogue\" isLabelHidden placeholder=\"Search the catalogue\" clearLabel=\"Clear search\" value={query} onChange={set} isLoading resultsLabel=\"Searching\" data-testid=\"catalogue\" />}</Held>;\n}"
         },
         {
           "name": "Labelled",
           "title": "With its label shown",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\n/** With a label above, where the field is one of several on a form. */\nexport function Labelled() {\n  const query = useLocal('order', '');\n  return <SearchField label=\"Find an order\" isLabelShown placeholder=\"Order number or name\" clearLabel=\"Clear\" bind={query} data-testid=\"order\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\n/** With a label above, where the field is one of several on a form. */\nexport function Labelled() {\n  const query = useLocal('order', '');\n  return <SearchField label=\"Find an order\" placeholder=\"Order number or name\" clearLabel=\"Clear\" bind={query} data-testid=\"order\" />;\n}"
         },
         {
           "name": "Sizes",
           "title": "Sizes",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\nexport function Sizes() {\n  const query = useLocal('sized', '');\n  return (\n    <view className=\"gap-3\">\n      <SearchField label=\"Search, small\" placeholder=\"Small\" clearLabel=\"Clear\" size=\"sm\" bind={query} data-testid=\"small\" />\n      <SearchField label=\"Search, medium\" placeholder=\"Medium\" clearLabel=\"Clear\" bind={query} />\n      <SearchField label=\"Search, large\" placeholder=\"Large\" clearLabel=\"Clear\" size=\"lg\" bind={query} data-testid=\"large\" />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\nexport function Sizes() {\n  const query = useLocal('sized', '');\n  return (\n    <view className=\"gap-3\">\n      <SearchField label=\"Search, small\" isLabelHidden placeholder=\"Small\" clearLabel=\"Clear\" size=\"sm\" bind={query} data-testid=\"small\" />\n      <SearchField label=\"Search, medium\" isLabelHidden placeholder=\"Medium\" clearLabel=\"Clear\" bind={query} />\n      <SearchField label=\"Search, large\" isLabelHidden placeholder=\"Large\" clearLabel=\"Clear\" size=\"lg\" bind={query} data-testid=\"large\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -17692,7 +17686,7 @@
           "description": "The time to show, in seconds: what is left of a countdown, or what has passed. The app counts; Timer draws."
         },
         {
-          "name": "aria-label",
+          "name": "label",
           "type": "string",
           "required": false,
           "description": "How it is read: \"2 minutes 5 seconds left\". Without it the digits are read as written."
@@ -17730,7 +17724,7 @@
       },
       "accessibility": {
         "pattern": null,
-        "name": "aria-label",
+        "name": "label",
         "description": [],
         "states": [],
         "keyboard": [],
@@ -17754,7 +17748,7 @@
           }
         ],
         "notes": [
-          "Give `aria-label` in words: \"2 minutes 5 seconds left\". Digits alone are read as a time of day by some screen readers.",
+          "Give `label` in words: \"2 minutes 5 seconds left\". Digits alone are read as a time of day by some screen readers.",
           "It is not a live region: a countdown read every second is noise. Announce what matters, such as the last ten seconds, with a status of your own."
         ]
       },
@@ -17762,7 +17756,7 @@
         {
           "name": "Countdown",
           "title": "A countdown",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Timer } from '@liulidesign/core/Timer';\n\n/** A countdown the app runs: here each press takes fifteen seconds off. */\nexport function Countdown() {\n  const left = useLocal('left', 125);\n  return (\n    <view className=\"items-start gap-3\">\n      <Timer seconds={left.value} size=\"lg\" aria-label={`${Math.floor(left.value / 60)} minutes ${left.value % 60} seconds left`} data-testid=\"countdown\" />\n      <view className=\"flex-row gap-2\">\n        <Button label=\"Skip 15 seconds\" onClick={() => left.set(Math.max(0, left.value - 15))} data-testid=\"skip\" />\n        <Button label=\"Reset\" variant=\"ghost\" onClick={() => left.set(125)} />\n      </view>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Timer } from '@liulidesign/core/Timer';\n\n/** A countdown the app runs: here each press takes fifteen seconds off. */\nexport function Countdown() {\n  const left = useLocal('left', 125);\n  return (\n    <view className=\"items-start gap-3\">\n      <Timer seconds={left.value} size=\"lg\" label={`${Math.floor(left.value / 60)} minutes ${left.value % 60} seconds left`} data-testid=\"countdown\" />\n      <view className=\"flex-row gap-2\">\n        <Button label=\"Skip 15 seconds\" onClick={() => left.set(Math.max(0, left.value - 15))} data-testid=\"skip\" />\n        <Button label=\"Reset\" variant=\"ghost\" onClick={() => left.set(125)} />\n      </view>\n    </view>\n  );\n}"
         },
         {
           "name": "Inline",
@@ -19191,7 +19185,7 @@
         {
           "name": "Welcome",
           "title": "Three steps",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { Tour, type TourStep } from '@liulidesign/core/Tour';\n\nconst steps: TourStep[] = [\n  { target: 'tour-new', targetLabel: 'The New note button', title: 'Start a note', text: 'A note opens ready to type, and saves as you go.' },\n  { target: 'tour-search', targetLabel: 'The search field', title: 'Find anything', text: 'Search reads every note, list and photo.' },\n  { target: 'tour-share', targetLabel: 'The Share button', title: 'Share what you choose', text: 'A note is private until you invite someone.', placement: 'top' },\n];\n\n/** Three things on a small screen, shown one at a time; the tour can be skipped or stepped back. */\nexport function Welcome() {\n  const step = useLocal<number | null>('step', null);\n  const query = useLocal('query', '');\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-4\">\n          <view className=\"flex-row items-center gap-2\">\n            <view id=\"tour-new\"><Button label=\"New note\" variant=\"primary\" startIcon=\"add\" onClick={() => say('Created a note')} /></view>\n            <view id=\"tour-search\" className=\"grow basis-0 min-w-0\">\n              <SearchField label=\"Search notes\" value={query.value} onChange={query.set} placeholder=\"Search\" clearLabel=\"Clear\" />\n            </view>\n          </view>\n          <view className=\"flex-row items-center justify-between gap-3\">\n            <text className=\"text-body text-text\">Trip to the coast</text>\n            <view id=\"tour-share\"><IconButton label=\"Share\" icon=\"share\" onClick={() => say('Shared Trip to the coast')} /></view>\n          </view>\n          <Button label=\"Show me around\" width=\"content\" onClick={() => step.set(0)} data-testid=\"tour-start\" />\n          {step.value !== null && <text role=\"status\" className=\"text-footnote text-muted\">{`On step ${step.value + 1}`}</text>}\n          <Tour\n            steps={steps}\n            step={step.value}\n            onStepChange={next => step.set(next)}\n            nextLabel=\"Next\"\n            backLabel=\"Back\"\n            skipLabel=\"Skip\"\n            doneLabel=\"Done\"\n            stepLabel={(at, count) => `${at + 1} of ${count}`}\n            data-testid=\"tour\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { Tour, type TourStep } from '@liulidesign/core/Tour';\n\nconst steps: TourStep[] = [\n  { target: 'tour-new', targetLabel: 'The New note button', title: 'Start a note', text: 'A note opens ready to type, and saves as you go.' },\n  { target: 'tour-search', targetLabel: 'The search field', title: 'Find anything', text: 'Search reads every note, list and photo.' },\n  { target: 'tour-share', targetLabel: 'The Share button', title: 'Share what you choose', text: 'A note is private until you invite someone.', placement: 'top' },\n];\n\n/** Three things on a small screen, shown one at a time; the tour can be skipped or stepped back. */\nexport function Welcome() {\n  const step = useLocal<number | null>('step', null);\n  const query = useLocal('query', '');\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-4\">\n          <view className=\"flex-row items-center gap-2\">\n            <view id=\"tour-new\"><Button label=\"New note\" variant=\"primary\" startIcon=\"add\" onClick={() => say('Created a note')} /></view>\n            <view id=\"tour-search\" className=\"grow basis-0 min-w-0\">\n              <SearchField label=\"Search notes\" isLabelHidden value={query.value} onChange={query.set} placeholder=\"Search\" clearLabel=\"Clear\" />\n            </view>\n          </view>\n          <view className=\"flex-row items-center justify-between gap-3\">\n            <text className=\"text-body text-text\">Trip to the coast</text>\n            <view id=\"tour-share\"><IconButton label=\"Share\" icon=\"share\" onClick={() => say('Shared Trip to the coast')} /></view>\n          </view>\n          <Button label=\"Show me around\" width=\"content\" onClick={() => step.set(0)} data-testid=\"tour-start\" />\n          {step.value !== null && <text role=\"status\" className=\"text-footnote text-muted\">{`On step ${step.value + 1}`}</text>}\n          <Tour\n            steps={steps}\n            step={step.value}\n            onStepChange={next => step.set(next)}\n            nextLabel=\"Next\"\n            backLabel=\"Back\"\n            skipLabel=\"Skip\"\n            doneLabel=\"Done\"\n            stepLabel={(at, count) => `${at + 1} of ${count}`}\n            data-testid=\"tour\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
         }
       ],
       "gaps": [],

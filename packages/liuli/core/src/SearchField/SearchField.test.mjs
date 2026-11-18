@@ -54,7 +54,7 @@ test('states: a result kept for assistive tech stays out of sight; disabled take
   assert.equal(textOf(results(filled, 'filled')), '1 of 6 notes');
   const hidden = await renderPage(`
     import { SearchField } from '@liulidesign/core/SearchField';
-    export function render() { return <page><SearchField label="Search" clearLabel="Clear" value="a" onChange={() => {}} resultsLabel="4 results" isResultsLabelHidden data-testid="quiet" /></page>; }
+    export function render() { return <page><SearchField label="Search" isLabelHidden clearLabel="Clear" value="a" onChange={() => {}} resultsLabel="4 results" isResultsLabelHidden data-testid="quiet" /></page>; }
   `);
   const line = results(hidden, 'quiet');
   assert.deepEqual([textOf(line), line.props.opacity, line.props.role], ['4 results', 0, 'status'], 'read, not drawn');

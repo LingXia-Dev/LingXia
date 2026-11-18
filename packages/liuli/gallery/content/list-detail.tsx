@@ -139,7 +139,7 @@ export function Content() {
 
   const list = (selected?: string) => (
     <view className="gap-3">
-      <SearchField label="Search requests" value={query.value} onChange={query.set} placeholder="Search" clearLabel="Clear" resultsLabel={`${shown.length} of ${all.length} requests`} isResultsLabelHidden data-testid="search" />
+      <SearchField label="Search requests" isLabelHidden value={query.value} onChange={query.set} placeholder="Search" clearLabel="Clear" resultsLabel={`${shown.length} of ${all.length} requests`} isResultsLabelHidden data-testid="search" />
       {shown.length > 0
         ? <ItemList label="Requests">{shown.map(request => <Row key={request.id} request={request} isUnread={isNew(request)} isSelected={selected === undefined ? undefined : request.id === selected} onOpen={() => show(request.id)} />)}</ItemList>
         : <EmptyState title="No requests match" description="Try a name, a team or a word from the subject." size="sm" />}

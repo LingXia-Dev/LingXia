@@ -14,7 +14,7 @@ export function Shortcuts() {
       {shortcuts.map(shortcut => (
         <view key={shortcut.key} className="flex-row items-center justify-between gap-4">
           <text className="text-body text-text">{shortcut.label}</text>
-          <Kbd keys={shortcut.keys} aria-label={shortcut.spoken} data-testid={shortcut.key} />
+          <Kbd keys={shortcut.keys} label={shortcut.spoken} data-testid={shortcut.key} />
         </view>
       ))}
     </view>
@@ -39,5 +39,5 @@ export function Hint() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Kbd keys={['Ctrl', 'K']} size="md" aria-label="Control K" />;
+  return <Kbd keys={['Ctrl', 'K']} size="md" label="Control K" />;
 }

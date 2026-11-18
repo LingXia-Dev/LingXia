@@ -72,9 +72,9 @@ import { Spinner } from '@liulidesign/core/ProgressBar';
 export function Spinners() {
   return (
     <view className="flex-row items-center gap-4">
-      <Spinner label="Loading" size="sm" />
-      <Spinner label="Loading messages" data-testid="spinner" />
-      <Spinner label="Loading" size="lg" />
+      <Spinner label="Loading" isLabelHidden size="sm" />
+      <Spinner label="Loading messages" isLabelHidden data-testid="spinner" />
+      <Spinner label="Loading" isLabelHidden size="lg" />
     </view>
   );
 }
@@ -89,7 +89,7 @@ import { Spinner } from '@liulidesign/core/ProgressBar';
 export function LoadingMessage() {
   return (
     <view className="items-center py-6">
-      <Spinner label="Loading your notes" isLabelShown size="lg" data-testid="loading-notes" />
+      <Spinner label="Loading your notes" size="lg" data-testid="loading-notes" />
     </view>
   );
 }
@@ -122,10 +122,10 @@ export function SpinnerTones() {
   return (
     <view className="gap-3">
       <view className="h-36 items-center justify-center rounded-container bg-media">
-        <Spinner label="Loading the video" size="xl" tone="on-media" data-testid="on-media" />
+        <Spinner label="Loading the video" isLabelHidden size="xl" tone="on-media" data-testid="on-media" />
       </view>
       <view className="flex-row items-center gap-2">
-        <Spinner label="Checking for updates" size="sm" tone="muted" data-testid="quiet" />
+        <Spinner label="Checking for updates" isLabelHidden size="sm" tone="muted" data-testid="quiet" />
         <text className="text-footnote text-muted">Checking for updates</text>
       </view>
     </view>
@@ -151,8 +151,8 @@ export function SpinnerTones() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `label` (required) | `string` |  | The accessible name: what is loading. Drawn only with `isLabelShown`. |
-| `isLabelShown` | `boolean` | `false` | Draws the label under the ring, centred: for a page, a panel or a list that is loading and has room to say what. |
+| `label` (required) | `string` |  | The accessible name: what is loading, drawn under the ring unless `isLabelHidden`. |
+| `isLabelHidden` | `boolean` | `false` | Draws the ring alone, the label read only: for a spinner inside a control or a row. Leave the label shown for a page, a panel or a list that has room to say what. |
 | `size` | `SpinnerSize` | `'md'` | 16, 24, 32 or 48 px; `xl` for a whole page or a media frame that is loading. |
 | `tone` | `SpinnerTone` | `'accent'` |  |
 | `className` | `string` |  |  |
@@ -166,7 +166,7 @@ export function SpinnerTones() {
 | track | `<view>` | yes | The bar itself, and the element assistive tech reports as a progress bar. |
 | fill | `<view>` | yes | The amount done, as a share of the track width; a sweeping segment while the amount is unknown. |
 | spinner | `<vector>` | no | Spinner's spinning arc. |
-| loading | `<view>` | no | A Spinner with `isLabelShown`: the ring over its label, centred; the words are drawn only, the name is read once. |
+| loading | `<view>` | no | A Spinner with its label shown: the ring over its label, centred; the words are drawn only, the name is read once. |
 
 ## What an app may override
 

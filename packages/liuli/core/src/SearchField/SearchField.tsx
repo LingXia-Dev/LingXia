@@ -21,10 +21,10 @@ export type SearchFieldBinding =
     };
 
 export type SearchFieldProps = SearchFieldBinding & {
-  /** The accessible name: what is searched ("Search notes"). Drawn only with `isLabelShown`. */
+  /** The accessible name: what is searched ("Search notes"), drawn above the field unless `isLabelHidden`. */
   label: string;
-  /** Draws the label above the field. A search field at the top of a list is usually named by its placeholder's place alone. @default false */
-  isLabelShown?: boolean;
+  /** Reads the label without drawing it: a search field at the top of a list is usually named by its place and placeholder alone. @default false */
+  isLabelHidden?: boolean;
   /** A hint shown while empty: "Search notes". */
   placeholder?: string;
   /** The clear button's accessible name: "Clear search". The button shows while there is text. */
@@ -51,13 +51,13 @@ export type SearchFieldProps = SearchFieldBinding & {
 /** A field for searching what is on the page: a magnifier, the text, a clear button, and a line that says what was found. */
 export function SearchField(props: SearchFieldProps) {
   const {
-    label, isLabelShown = false, placeholder, clearLabel, resultsLabel, isResultsLabelHidden = false, isLoading = false, onSubmit,
+    label, isLabelHidden = false, placeholder, clearLabel, resultsLabel, isResultsLabelHidden = false, isLoading = false, onSubmit,
     hasAutoFocus = false, size: ownSize, isDisabled = false, className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
   const shared = {
     label,
-    isLabelHidden: !isLabelShown,
+    isLabelHidden,
     type: 'search',
     placeholder,
     hasClear: true,

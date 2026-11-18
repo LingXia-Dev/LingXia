@@ -74,7 +74,6 @@ export function Disabled() {
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | The linked words. They say where the link goes: "terms of service", never "here". |
 | `onClick` | `(() => void)` |  | Called when the link is pressed. The app opens the page or the address. |
-| `aria-label` | `string` |  | Replaces the label for assistive tech when the words alone are not enough out of their sentence. |
 | `isDisabled` | `boolean` | `false` | Takes no press, is drawn faint and is read as unavailable. |
 | `data-testid` | `string` |  |  |
 
@@ -100,7 +99,7 @@ export function Disabled() {
 - Tab: Moves to the link.
 - Enter: Follows it.
 - Press target: .
-- It is read as a link, by its label. Write the label so it makes sense out of its sentence, or give `aria-label`.
+- It is read as a link, by its label. Write the label so it makes sense out of its sentence: "the March invoice", not "here".
 - The underline tells it from the text around it without colour.
 - A link in a line of text is as tall as the line; a finger press that misses goes to the nearest link within reach.
 - A disabled link is read as unavailable and takes no press.

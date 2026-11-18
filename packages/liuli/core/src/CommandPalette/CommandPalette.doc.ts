@@ -18,7 +18,7 @@ export const doc: ComponentDoc = {
     { part: 'list', required: false, description: 'The results: a listbox that scrolls.' },
     { part: 'group', required: false, description: 'A named group with its quiet heading.' },
     { part: 'option', required: false, description: 'One result: icon, label, a second line, and quiet text at the end.' },
-    { part: 'note', required: false, description: '`emptyText`, when nothing matches.' },
+    { part: 'note', required: false, description: '`emptyLabel`, when nothing matches.' },
   ],
   accessibility: {
     pattern: 'dialog',

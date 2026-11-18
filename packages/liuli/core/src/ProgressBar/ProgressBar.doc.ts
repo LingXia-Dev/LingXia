@@ -19,7 +19,7 @@ export const doc: ComponentDoc = {
     { part: 'track', required: true, description: 'The bar itself, and the element assistive tech reports as a progress bar.' },
     { part: 'fill', required: true, description: 'The amount done, as a share of the track width; a sweeping segment while the amount is unknown.' },
     { part: 'spinner', required: false, description: "Spinner's spinning arc." },
-    { part: 'loading', required: false, description: 'A Spinner with `isLabelShown`: the ring over its label, centred; the words are drawn only, the name is read once.' },
+    { part: 'loading', required: false, description: 'A Spinner with its label shown: the ring over its label, centred; the words are drawn only, the name is read once.' },
   ],
   accessibility: {
     pattern: null,

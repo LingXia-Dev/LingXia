@@ -35,6 +35,14 @@ test('names: the props of every component are read', () => {
   assert.ok(props.size >= components.length, `${props.size} props types for ${components.length} components`);
 });
 
+test('rule 3: a label is hidden by `isLabelHidden`; there is no `isLabelShown`', () => {
+  assert.deepEqual(offenders(name => /LabelShown$/.test(name)), []);
+});
+
 test('rule 2: what opens takes `isOpen`/`onOpenChange` and starts by `isDefaultOpen`; a set of open rows is `open<Rows>`/`onOpen<Rows>Change`/`defaultOpen<Rows>`', () => {
   assert.deepEqual(offenders(name => /Collapsed|Expanded|^defaultClosed$|^expanded$|^isExpanded$|^collapsed$/.test(name)), []);
+});
+
+test('rule 4: every accessible name is `label`, and empty copy is `emptyLabel`; no component takes `aria-label`', () => {
+  assert.deepEqual(offenders(name => name === 'aria-label' || /^empty(Text|Message)$/.test(name)), []);
 });

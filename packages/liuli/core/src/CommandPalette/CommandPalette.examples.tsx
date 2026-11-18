@@ -32,7 +32,7 @@ export function Commands() {
         placeholder="Type a command or a place"
         groups={groups}
         onSelect={id => ran.set(id)}
-        emptyText="No commands match"
+        emptyLabel="No commands match"
         data-testid="palette"
       />
     </view>

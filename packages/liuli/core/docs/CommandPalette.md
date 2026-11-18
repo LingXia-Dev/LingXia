@@ -48,7 +48,7 @@ export function Commands() {
         placeholder="Type a command or a place"
         groups={groups}
         onSelect={id => ran.set(id)}
-        emptyText="No commands match"
+        emptyLabel="No commands match"
         data-testid="palette"
       />
     </view>
@@ -68,7 +68,7 @@ export function Commands() {
 | `onSelect` (required) | `(id: string) => void` |  | Runs with the chosen item\'s id; the palette then closes. |
 | `onQueryChange` | `((query: string) => void)` |  | Hands filtering to the app: called with the text as it is typed, and `groups` is shown as given. For results fetched from Logic. |
 | `isLoading` | `boolean` | `false` | Shows a spinner in the search line while the app fetches. |
-| `emptyText` (required) | `string` |  | Shown when nothing matches: "No commands match". |
+| `emptyLabel` (required) | `string` |  | Shown when nothing matches: "No commands match". |
 | `data-testid` | `string` |  |  |
 
 ## Anatomy
@@ -80,7 +80,7 @@ export function Commands() {
 | list | `<scroll>` | no | The results: a listbox that scrolls. |
 | group | `<view>` | no | A named group with its quiet heading. |
 | option | `<button>` | no | One result: icon, label, a second line, and quiet text at the end. |
-| note | `<text>` | no | `emptyText`, when nothing matches. |
+| note | `<text>` | no | `emptyLabel`, when nothing matches. |
 
 ## What an app may override
 

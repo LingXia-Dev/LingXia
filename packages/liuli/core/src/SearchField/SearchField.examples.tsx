@@ -14,6 +14,7 @@ export function Notes() {
     <view className="gap-3">
       <SearchField
         label="Search notes"
+        isLabelHidden
         placeholder="Search notes"
         clearLabel="Clear search"
         bind={query}
@@ -29,43 +30,43 @@ export function Notes() {
 
 /** While a search runs elsewhere, the magnifier gives way to a spinner. */
 export function Loading() {
-  return <Held value="lamp">{(query, set) => <SearchField label="Search the catalogue" placeholder="Search the catalogue" clearLabel="Clear search" value={query} onChange={set} isLoading resultsLabel="Searching" data-testid="catalogue" />}</Held>;
+  return <Held value="lamp">{(query, set) => <SearchField label="Search the catalogue" isLabelHidden placeholder="Search the catalogue" clearLabel="Clear search" value={query} onChange={set} isLoading resultsLabel="Searching" data-testid="catalogue" />}</Held>;
 }
 
 /** With a label above, where the field is one of several on a form. */
 export function Labelled() {
   const query = useLocal('order', '');
-  return <SearchField label="Find an order" isLabelShown placeholder="Order number or name" clearLabel="Clear" bind={query} data-testid="order" />;
+  return <SearchField label="Find an order" placeholder="Order number or name" clearLabel="Clear" bind={query} data-testid="order" />;
 }
 
 export function Sizes() {
   const query = useLocal('sized', '');
   return (
     <view className="gap-3">
-      <SearchField label="Search, small" placeholder="Small" clearLabel="Clear" size="sm" bind={query} data-testid="small" />
-      <SearchField label="Search, medium" placeholder="Medium" clearLabel="Clear" bind={query} />
-      <SearchField label="Search, large" placeholder="Large" clearLabel="Clear" size="lg" bind={query} data-testid="large" />
+      <SearchField label="Search, small" isLabelHidden placeholder="Small" clearLabel="Clear" size="sm" bind={query} data-testid="small" />
+      <SearchField label="Search, medium" isLabelHidden placeholder="Medium" clearLabel="Clear" bind={query} />
+      <SearchField label="Search, large" isLabelHidden placeholder="Large" clearLabel="Clear" size="lg" bind={query} data-testid="large" />
     </view>
   );
 }
 
 export function StateEmpty() {
-  return <Held value="">{(query, set) => <SearchField label="Search notes" placeholder="Search notes" clearLabel="Clear search" value={query} onChange={set} />}</Held>;
+  return <Held value="">{(query, set) => <SearchField label="Search notes" isLabelHidden placeholder="Search notes" clearLabel="Clear search" value={query} onChange={set} />}</Held>;
 }
 
 export function StateFilled() {
-  return <Held value="lisbon">{(query, set) => <SearchField label="Search notes" placeholder="Search notes" clearLabel="Clear search" value={query} onChange={set} resultsLabel={query === 'lisbon' ? '1 of 6 notes' : undefined} data-testid="filled" />}</Held>;
+  return <Held value="lisbon">{(query, set) => <SearchField label="Search notes" isLabelHidden placeholder="Search notes" clearLabel="Clear search" value={query} onChange={set} resultsLabel={query === 'lisbon' ? '1 of 6 notes' : undefined} data-testid="filled" />}</Held>;
 }
 
 export function StateNothing() {
-  return <Held value="zebra">{(query, set) => <SearchField label="Search notes" placeholder="Search notes" clearLabel="Clear search" value={query} onChange={set} resultsLabel={query === 'zebra' ? 'No notes match' : undefined} />}</Held>;
+  return <Held value="zebra">{(query, set) => <SearchField label="Search notes" isLabelHidden placeholder="Search notes" clearLabel="Clear search" value={query} onChange={set} resultsLabel={query === 'zebra' ? 'No notes match' : undefined} />}</Held>;
 }
 
 export function StateDisabled() {
-  return <SearchField label="Search notes" placeholder="Search notes" clearLabel="Clear search" value="" onChange={unused} isDisabled data-testid="disabled" />;
+  return <SearchField label="Search notes" isLabelHidden placeholder="Search notes" clearLabel="Clear search" value="" onChange={unused} isDisabled data-testid="disabled" />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <SearchField label="Search" placeholder="Search" clearLabel="Clear" value="" onChange={unused} size="sm" className="w-32" />;
+  return <SearchField label="Search" isLabelHidden placeholder="Search" clearLabel="Clear" value="" onChange={unused} size="sm" className="w-32" />;
 }

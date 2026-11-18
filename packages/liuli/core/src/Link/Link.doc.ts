@@ -28,7 +28,7 @@ export const doc: ComponentDoc = {
       { what: 'link on the page', pair: ['accent', 'canvas'], minimum: '4.5:1' },
     ],
     notes: [
-      'It is read as a link, by its label. Write the label so it makes sense out of its sentence, or give `aria-label`.',
+      'It is read as a link, by its label. Write the label so it makes sense out of its sentence: "the March invoice", not "here".',
       'The underline tells it from the text around it without colour.',
       'A link in a line of text is as tall as the line; a finger press that misses goes to the nearest link within reach.',
       'A disabled link is read as unavailable and takes no press.',

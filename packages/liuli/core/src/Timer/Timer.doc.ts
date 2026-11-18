@@ -15,7 +15,7 @@ export const doc: ComponentDoc = {
   anatomy: [{ part: 'root', required: true, description: 'The digits; muted once the time is zero.' }],
   accessibility: {
     pattern: null,
-    name: 'aria-label',
+    name: 'label',
     description: [],
     states: [],
     keyboard: [],
@@ -25,7 +25,7 @@ export const doc: ComponentDoc = {
       { what: 'digits at zero', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
     ],
     notes: [
-      'Give `aria-label` in words: "2 minutes 5 seconds left". Digits alone are read as a time of day by some screen readers.',
+      'Give `label` in words: "2 minutes 5 seconds left". Digits alone are read as a time of day by some screen readers.',
       'It is not a live region: a countdown read every second is noise. Announce what matters, such as the last ten seconds, with a status of your own.',
     ],
   },

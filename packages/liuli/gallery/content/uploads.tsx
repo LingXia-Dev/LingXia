@@ -77,7 +77,7 @@ export function Content() {
               <view className="gap-3">
                 <Heading name="Interview.mov" detail="1.4 GB" />
                 <view className="flex-row items-center gap-2">
-                  <Spinner label="Waiting" size="sm" />
+                  <Spinner label="Waiting" isLabelHidden size="sm" />
                   <text className="text-footnote text-muted">Waiting for Wi-Fi</text>
                 </view>
               </view>

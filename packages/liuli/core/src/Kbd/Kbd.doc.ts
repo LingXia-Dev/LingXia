@@ -19,7 +19,7 @@ export const doc: ComponentDoc = {
   ],
   accessibility: {
     pattern: null,
-    name: 'aria-label',
+    name: 'label',
     description: [],
     states: [],
     keyboard: [],
@@ -28,7 +28,7 @@ export const doc: ComponentDoc = {
       { what: 'key', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
     ],
     notes: [
-      'With `aria-label` the shortcut is read once, as the label says: "Control K". Give it whenever a key is short for a word.',
+      'With `label` the shortcut is read once, as the label says: "Control K". Give it whenever a key is short for a word.',
       'Without it each key is read as written, which suits keys that are words: "Enter".',
       'It takes no focus and no press.',
     ],

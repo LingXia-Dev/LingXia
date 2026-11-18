@@ -40,7 +40,7 @@ export interface CommandPaletteProps {
   /** Shows a spinner in the search line while the app fetches. @default false */
   isLoading?: boolean;
   /** Shown when nothing matches: "No commands match". */
-  emptyText: string;
+  emptyLabel: string;
   'data-testid'?: string;
 }
 
@@ -68,7 +68,7 @@ function filtered(groups: readonly CommandGroup[], typed: string): readonly Comm
 }
 
 /** Type to find a command or a place, and run it from the keyboard. */
-export function CommandPalette({ isOpen, onOpenChange, label, placeholder, groups, onSelect, onQueryChange, isLoading = false, emptyText, 'data-testid': testId }: CommandPaletteProps) {
+export function CommandPalette({ isOpen, onOpenChange, label, placeholder, groups, onSelect, onQueryChange, isLoading = false, emptyLabel, 'data-testid': testId }: CommandPaletteProps) {
   const listId = useId();
   const query = useLocal('query', '');
   const active = useLocal('active', 0);
@@ -127,7 +127,7 @@ export function CommandPalette({ isOpen, onOpenChange, label, placeholder, group
         {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />}
       </view>
       {flat.length === 0 ? (
-        <text role="status" className={r.note.base}>{emptyText}</text>
+        <text role="status" className={r.note.base}>{emptyLabel}</text>
       ) : (
         <scroll className={r.list.base}>
           <view id={listId} role="listbox" aria-label={label} className={r.group.base}>

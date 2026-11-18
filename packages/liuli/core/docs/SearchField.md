@@ -30,6 +30,7 @@ export function Notes() {
     <view className="gap-3">
       <SearchField
         label="Search notes"
+        isLabelHidden
         placeholder="Search notes"
         clearLabel="Clear search"
         bind={query}
@@ -52,7 +53,7 @@ import { SearchField } from '@liulidesign/core/SearchField';
 
 /** While a search runs elsewhere, the magnifier gives way to a spinner. */
 export function Loading() {
-  return <Held value="lamp">{(query, set) => <SearchField label="Search the catalogue" placeholder="Search the catalogue" clearLabel="Clear search" value={query} onChange={set} isLoading resultsLabel="Searching" data-testid="catalogue" />}</Held>;
+  return <Held value="lamp">{(query, set) => <SearchField label="Search the catalogue" isLabelHidden placeholder="Search the catalogue" clearLabel="Clear search" value={query} onChange={set} isLoading resultsLabel="Searching" data-testid="catalogue" />}</Held>;
 }
 ```
 
@@ -65,7 +66,7 @@ import { SearchField } from '@liulidesign/core/SearchField';
 /** With a label above, where the field is one of several on a form. */
 export function Labelled() {
   const query = useLocal('order', '');
-  return <SearchField label="Find an order" isLabelShown placeholder="Order number or name" clearLabel="Clear" bind={query} data-testid="order" />;
+  return <SearchField label="Find an order" placeholder="Order number or name" clearLabel="Clear" bind={query} data-testid="order" />;
 }
 ```
 
@@ -79,9 +80,9 @@ export function Sizes() {
   const query = useLocal('sized', '');
   return (
     <view className="gap-3">
-      <SearchField label="Search, small" placeholder="Small" clearLabel="Clear" size="sm" bind={query} data-testid="small" />
-      <SearchField label="Search, medium" placeholder="Medium" clearLabel="Clear" bind={query} />
-      <SearchField label="Search, large" placeholder="Large" clearLabel="Clear" size="lg" bind={query} data-testid="large" />
+      <SearchField label="Search, small" isLabelHidden placeholder="Small" clearLabel="Clear" size="sm" bind={query} data-testid="small" />
+      <SearchField label="Search, medium" isLabelHidden placeholder="Medium" clearLabel="Clear" bind={query} />
+      <SearchField label="Search, large" isLabelHidden placeholder="Large" clearLabel="Clear" size="lg" bind={query} data-testid="large" />
     </view>
   );
 }
@@ -94,8 +95,8 @@ export function Sizes() {
 | `bind` | `Local<string>` |  | A View-local cell the field reads and writes; use it or `value` with `onChange`. |
 | `value` | `string` |  | The search text; pass `onChange` with it. |
 | `onChange` | `((value: string) => void)` |  | Runs with each change of the text. |
-| `label` (required) | `string` |  | The accessible name: what is searched ("Search notes"). Drawn only with `isLabelShown`. |
-| `isLabelShown` | `boolean` | `false` | Draws the label above the field. A search field at the top of a list is usually named by its placeholder's place alone. |
+| `label` (required) | `string` |  | The accessible name: what is searched ("Search notes"), drawn above the field unless `isLabelHidden`. |
+| `isLabelHidden` | `boolean` | `false` | Reads the label without drawing it: a search field at the top of a list is usually named by its place and placeholder alone. |
 | `placeholder` | `string` |  | A hint shown while empty: "Search notes". |
 | `clearLabel` (required) | `string` |  | The clear button's accessible name: "Clear search". The button shows while there is text. |
 | `resultsLabel` | `string` |  | What the search found, as the app words it: "12 notes", "No notes match". Announced when it changes. |

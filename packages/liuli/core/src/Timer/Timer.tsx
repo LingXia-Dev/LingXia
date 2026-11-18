@@ -7,7 +7,7 @@ export interface TimerProps {
   /** The time to show, in seconds: what is left of a countdown, or what has passed. The app counts; Timer draws. */
   seconds: number;
   /** How it is read: "2 minutes 5 seconds left". Without it the digits are read as written. */
-  'aria-label'?: string;
+  label?: string;
   /** Always shows hours, as `0:02:05`. Otherwise hours appear from one hour on. @default false */
   hasHours?: boolean;
   /** @default 'md' */
@@ -26,9 +26,9 @@ export function formatTimer(seconds: number, hasHours = false): string {
 }
 
 /** A length of time in steady digits: a countdown, a recording, a workout. */
-export function Timer({ seconds, 'aria-label': ariaLabel, hasHours = false, size = 'md', className, 'data-testid': testId }: TimerProps) {
+export function Timer({ seconds, label, hasHours = false, size = 'md', className, 'data-testid': testId }: TimerProps) {
   return (
-    <text data-testid={testId} aria-label={ariaLabel} className={cx(r.root.base, r.root.size[size], seconds <= 0 && r.root.done, className)}>
+    <text data-testid={testId} aria-label={label} className={cx(r.root.base, r.root.size[size], seconds <= 0 && r.root.done, className)}>
       {formatTimer(seconds, hasHours)}
     </text>
   );

@@ -461,6 +461,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "number"
       },
       {
+        "name": "label",
+        "required": false,
+        "kind": "text"
+      },
+      {
         "name": "hasHours",
         "required": false,
         "kind": "boolean"

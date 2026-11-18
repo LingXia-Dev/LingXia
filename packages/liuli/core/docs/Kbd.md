@@ -31,7 +31,7 @@ export function Shortcuts() {
       {shortcuts.map(shortcut => (
         <view key={shortcut.key} className="flex-row items-center justify-between gap-4">
           <text className="text-body text-text">{shortcut.label}</text>
-          <Kbd keys={shortcut.keys} aria-label={shortcut.spoken} data-testid={shortcut.key} />
+          <Kbd keys={shortcut.keys} label={shortcut.spoken} data-testid={shortcut.key} />
         </view>
       ))}
     </view>
@@ -66,7 +66,7 @@ export function Hint() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `keys` (required) | `readonly string[]` |  | The keys of one shortcut, in the order they are held: `['Ctrl', 'K']`. Each is drawn as a key cap. |
-| `aria-label` | `string` |  | How the shortcut is read: "Control K". Without it the keys are read as written. |
+| `label` | `string` |  | How the shortcut is read: "Control K". Without it the keys are read as written. |
 | `size` | `KbdSize` | `'sm'` |  |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
@@ -89,10 +89,10 @@ export function Hint() {
 ## Accessibility
 
 - Pattern: none.
-- Name: aria-label.
+- Name: label.
 - Description: none.
 - Press target: .
-- With `aria-label` the shortcut is read once, as the label says: "Control K". Give it whenever a key is short for a word.
+- With `label` the shortcut is read once, as the label says: "Control K". Give it whenever a key is short for a word.
 - Without it each key is read as written, which suits keys that are words: "Enter".
 - It takes no focus and no press.
 

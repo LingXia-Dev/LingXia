@@ -37,7 +37,7 @@ test('exports: a page imports from the root and from a second component\'s own p
 import { ItemList } from '@liulidesign/core/ItemList';
 import { Item } from '@liulidesign/core/Item';
 export function render() {
-  return <page><Badge label="New" /><Spinner label="Loading" /><ItemList label="Rows"><Item label="One" data-testid="one" /></ItemList></page>;
+  return <page><Badge label="New" /><Spinner label="Loading" isLabelHidden /><ItemList label="Rows"><Item label="One" data-testid="one" /></ItemList></page>;
 }
 `);
   assert.ok(screen.getByTestId('one'));
