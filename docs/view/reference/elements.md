@@ -21,7 +21,7 @@ Styles each element accepts are in [styles.md](styles.md).
 | `"aria-valuemax"` | `number` |  |
 | `"aria-valuetext"` | `string` |  |
 | `"aria-activedescendant"` | `string` | On an `<input>` or `<textarea>`: the id of the option the editor's keys point at while focus stays in the text; a screen reader hears that option as it changes. |
-| `"aria-controls"` | `string` | With `role="combobox"`: the id of the list it opens, and `"list"` when typing filters that list. Checked, not reported to assistive tech yet. |
+| `"aria-controls"` | `string` | With `role="combobox"`: the ids (1..8, space-separated) of the list it opens, and `"list"` when typing filters that list. Assistive tech and automation read both; an id that names no element is left out. |
 | `"aria-autocomplete"` | `"list" \| "none"` |  |
 | `"aria-hidden"` | `boolean` | Removes the node and its subtree from accessibility. |
 | `"aria-live"` | `"off" \| "polite" \| "assertive"` | Announce changes; `alert` is assertive and `status` polite unless set. |
@@ -118,6 +118,7 @@ Children: any elements and text. Not allowed inside a pressable control (`UI_BUT
 | `box` | `Box` |  |
 | `onReachStart` | `() => void` |  |
 | `onReachEnd` | `() => void` |  |
+| `onScrollEdge` | `(event: ScrollEdgeEvent) => void` |  |
 | `bind` | `Local<number>` |  |
 
 ## `<List>`
@@ -135,6 +136,7 @@ A component from `@lingxia/view`, rendered as the `list` element.
 | `anchor` | `"end" \| { index: number; align: "start" \| "end"; seq?: number; duration?: number }` |  |
 | `onReachStart` | `() => void` |  |
 | `onReachEnd` | `() => void` |  |
+| `onScrollEdge` | `(event: ScrollEdgeEvent) => void` |  |
 | `aria-label` | `string` |  |
 
 ## `<image>`

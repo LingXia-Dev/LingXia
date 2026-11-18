@@ -574,6 +574,10 @@ public final class GpuFrame {
         public Boolean invalid() { if (json.isNull("invalid")) return null; return json.optBoolean("invalid"); }
         /** `required`: bool? */
         public Boolean required() { if (json.isNull("required")) return null; return json.optBoolean("required"); }
+        /** `controls`: u32[]? */
+        public long[] controls() { return (long[]) GpuFrame.array(json.optJSONArray("controls"), 1, "long"); }
+        /** `autocomplete`: string? */
+        public String autocomplete() { return json.isNull("autocomplete") ? null : json.optString("autocomplete", null); }
     }
 
     public static final class SemanticRange {
@@ -1088,6 +1092,10 @@ public final class GpuFrame {
         public Boolean required() { if (json.isNull("required")) return null; return json.optBoolean("required"); }
         /** `description`: string? */
         public String description() { return json.isNull("description") ? null : json.optString("description", null); }
+        /** `controls`: string[]? */
+        public String[] controls() { return (String[]) GpuFrame.array(json.optJSONArray("controls"), 1, "String"); }
+        /** `autocomplete`: string? */
+        public String autocomplete() { return json.isNull("autocomplete") ? null : json.optString("autocomplete", null); }
         /** `level`: u8? */
         public Long level() { if (json.isNull("level")) return null; return json.optLong("level"); }
         /** `value`: any? */

@@ -392,6 +392,8 @@ export interface GpuFrameSemanticNode {
   description?: string | null;
   invalid?: boolean | null;
   required?: boolean | null;
+  controls?: number[] | null;
+  autocomplete?: string | null;
 }
 
 /** `SemanticRange` in the frame contract. */
@@ -671,6 +673,8 @@ export interface GpuFrameAutomationTreeNode {
   invalid?: boolean | null;
   required?: boolean | null;
   description?: string | null;
+  controls?: string[] | null;
+  autocomplete?: string | null;
   level?: number | null;
   value?: Object | null;
   scroll?: number[] | null;

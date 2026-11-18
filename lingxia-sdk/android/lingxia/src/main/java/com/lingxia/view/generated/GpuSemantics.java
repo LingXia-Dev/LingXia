@@ -65,4 +65,6 @@ public final class GpuSemantics {
     public static final String KEY_DESCRIPTION = "description";
     public static final String KEY_INVALID = "invalid";
     public static final String KEY_REQUIRED = "required";
+    public static final String KEY_CONTROLS = "controls";
+    public static final String KEY_AUTOCOMPLETE = "autocomplete";
 }

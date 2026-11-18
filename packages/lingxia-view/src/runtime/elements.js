@@ -724,6 +724,14 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     if (typeof props[name] !== 'function') throw Error(`UI_PROP: ${name}`);
     on(name, props[name]);
   }
+  if ((tag === 'scroll' || tag === 'list') && props.onScrollEdge !== undefined) {
+    const { onScrollEdge } = props;
+    if (typeof onScrollEdge !== 'function') throw Error('UI_PROP: onScrollEdge takes a function');
+    on('onScrollEdge', payload => {
+      const { edge, at } = JSON.parse(payload);
+      if ((edge === 'start' || edge === 'end') && typeof at === 'boolean') onScrollEdge(Object.freeze({ edge, at }));
+    }, 'text');
+  }
   if (tag === 'list') {
     check.listKeys(props);
     result.list = listState(props, identity, direction, parent.contexts);
@@ -876,8 +884,15 @@ function semantics(tag, props, wire) {
   }
   if (props['aria-controls'] !== undefined || props['aria-autocomplete'] !== undefined) {
     if (role !== 'combobox') throw Error('UI_PROP: aria-controls and aria-autocomplete belong on role="combobox"');
-    if (props['aria-controls'] !== undefined) idOf('aria-controls');
-    if (props['aria-autocomplete'] !== undefined && !['list', 'none'].includes(props['aria-autocomplete'])) throw Error('UI_PROP: aria-autocomplete is "list" or "none"');
+    if (props['aria-controls'] !== undefined) {
+      const ids = typeof props['aria-controls'] === 'string' ? props['aria-controls'].trim().split(/\s+/) : [];
+      if (!ids.length || ids.length > 8 || ids.some(id => !id || id.length > 256)) throw Error('UI_ID: aria-controls lists 1..8 element ids');
+      wire('ariaControls', ids.join(' '));
+    }
+    if (props['aria-autocomplete'] !== undefined) {
+      if (!['list', 'none'].includes(props['aria-autocomplete'])) throw Error('UI_PROP: aria-autocomplete is "list" or "none"');
+      wire('ariaAutocomplete', props['aria-autocomplete']);
+    }
   }
   if (headingLevel !== undefined) {
     if (role !== 'heading' || !Number.isInteger(headingLevel) || headingLevel < 1 || headingLevel > 6)

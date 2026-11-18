@@ -17,6 +17,10 @@ test('a combobox input names its active option; a combobox button says what is c
   assert.equal(byId(nodes, 'q').props.ariaActiveDescendant, 'opt-1');
   assert.equal(byId(nodes, 'c').props.role, 'combobox');
   assert.equal(byId(nodes, 'c').props.ariaValueText, 'Kenya');
+  assert.deepEqual([byId(nodes, 'q').props.ariaControls, byId(nodes, 'q').props.ariaAutocomplete], ['list', 'list'], 'both reach the wire');
+  assert.deepEqual([byId(nodes, 'c').props.ariaControls, byId(nodes, 'c').props.ariaAutocomplete], ['list', undefined]);
+  const many = byId(render(() => h('page', {}, h('input', { value: '', role: 'combobox', 'aria-controls': ' recent  results ', 'aria-label': 'Search', 'data-testid': 'm' }))), 'm');
+  assert.equal(many.props.ariaControls, 'recent results');
 });
 
 test('a spinbutton is a number input with a value; inputMode may pick the number keyboard beside type="number"', () => {
@@ -40,4 +44,6 @@ test('the new roles and their properties refuse the wrong element and the wrong 
   refuses(() => h('input', { value: '', 'aria-label': 'A', 'aria-activedescendant': 'two words' }), /UI_ID: aria-activedescendant names an element id/);
   refuses(() => h('input', { value: '', 'aria-label': 'A', 'aria-controls': 'list' }), /UI_PROP: aria-controls and aria-autocomplete belong on role="combobox"/);
   refuses(() => h('input', { value: '', 'aria-label': 'A', role: 'combobox', 'aria-autocomplete': 'inline' }), /UI_PROP: aria-autocomplete is "list" or "none"/);
+  refuses(() => h('input', { value: '', 'aria-label': 'A', role: 'combobox', 'aria-controls': ' ' }), /UI_ID: aria-controls lists 1..8 element ids/);
+  refuses(() => h('input', { value: '', 'aria-label': 'A', role: 'combobox', 'aria-controls': 'a b c d e f g h i' }), /UI_ID: aria-controls lists 1..8 element ids/);
 });

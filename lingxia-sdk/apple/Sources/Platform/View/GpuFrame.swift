@@ -562,6 +562,8 @@ public struct GpuFrameSemanticNode: Decodable, Sendable {
     public let description: String?
     public let invalid: Bool?
     public let required: Bool?
+    public let controls: [UInt32]?
+    public let autocomplete: String?
 
     enum CodingKeys: String, CodingKey {
         case id = "id"
@@ -597,6 +599,8 @@ public struct GpuFrameSemanticNode: Decodable, Sendable {
         case description = "description"
         case invalid = "invalid"
         case required = "required"
+        case controls = "controls"
+        case autocomplete = "autocomplete"
     }
 }
 
@@ -1113,6 +1117,8 @@ public struct GpuFrameAutomationTreeNode: Decodable, Sendable {
     public let invalid: Bool?
     public let required: Bool?
     public let description: String?
+    public let controls: [String]?
+    public let autocomplete: String?
     public let level: UInt8?
     public let value: GpuJSON?
     public let scroll: [Float]?
@@ -1135,6 +1141,8 @@ public struct GpuFrameAutomationTreeNode: Decodable, Sendable {
         case invalid = "invalid"
         case required = "required"
         case description = "description"
+        case controls = "controls"
+        case autocomplete = "autocomplete"
         case level = "level"
         case value = "value"
         case scroll = "scroll"

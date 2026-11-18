@@ -37,7 +37,7 @@ export interface Props {
   "aria-valuenow"?: number; "aria-valuemin"?: number; "aria-valuemax"?: number; "aria-valuetext"?: string;
   /** On an `<input>` or `<textarea>`: the id of the option the editor's keys point at while focus stays in the text; a screen reader hears that option as it changes. */
   "aria-activedescendant"?: string;
-  /** With `role="combobox"`: the id of the list it opens, and `"list"` when typing filters that list. Checked, not reported to assistive tech yet. */
+  /** With `role="combobox"`: the ids (1..8, space-separated) of the list it opens, and `"list"` when typing filters that list. Assistive tech and automation read both; an id that names no element is left out. */
   "aria-controls"?: string; "aria-autocomplete"?: "list" | "none";
   /** Removes the node and its subtree from accessibility. */
   "aria-hidden"?: boolean;
@@ -227,6 +227,8 @@ export interface PointerEvent {
 export type EditorKeys = Partial<Record<"ArrowUp" | "ArrowDown" | "Enter" | "Escape" | "Home" | "End" | "PageUp" | "PageDown", () => void>>;
 /** An element's laid-out content box, inside its padding and border, in points. */
 export interface BoxSize { readonly width: number; readonly height: number }
+/** A scroll or list reached (`at: true`) or left an edge. Fires once per change, and on mount with the edges its content starts at: both when the content fits. */
+export interface ScrollEdgeEvent { readonly edge: "start" | "end"; readonly at: boolean }
 /** The size of the element that takes this handle as `box`; `null` until its first layout, then one render behind a change. */
 export interface Box { readonly value: BoxSize | null }
 export declare function useBox(name: string): Box;

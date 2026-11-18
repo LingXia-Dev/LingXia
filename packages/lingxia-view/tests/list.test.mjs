@@ -200,6 +200,20 @@ test('a render that throws leaves its own error for native once, and the next re
  assert.equal(takeThrown(),'');
 });
 
+test('onScrollEdge hands a scroll or list the edge it reached or left',()=>{
+ reset();const seen=[];
+ for(const tag of ['scroll',listTag]){
+  const props=tag==='scroll'?{onScrollEdge:e=>seen.push(e)}:{count:3,onScrollEdge:e=>seen.push(e),row:i=>h('text',{},String(i))};
+  const output=records(prepare(()=>h(tag,props),{},tag==='scroll'?undefined:window(0,3)));commit();
+  const edge=output[0].fields.get('onScrollEdge');
+  assert.equal(dispatch(edge,'{"edge":"end","at":false}'),true);
+  dispatch(edge,'{"edge":"middle","at":true}');
+ }
+ assert.deepEqual(seen,[{edge:'end',at:false},{edge:'end',at:false}],'an unknown edge is dropped');
+ assert.ok(Object.isFrozen(seen[0]));
+ assert.throws(()=>prepare(()=>h('scroll',{onScrollEdge:1}),{}),/UI_PROP: onScrollEdge takes a function/);
+});
+
 test('reach callbacks are retained handles and never run during candidate preparation',()=>{
  reset();let starts=0,ends=0;
  const page=()=>h(listTag,{count:1000,onReachStart:()=>starts++,onReachEnd:()=>ends++,row:i=>h('text',{},String(i))});

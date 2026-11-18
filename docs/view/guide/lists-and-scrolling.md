@@ -61,6 +61,9 @@ export function render() {
 - The scroll position belongs to the scroll's identity and survives re-renders.
 - `onReachStart` / `onReachEnd` fire once each time the content arrives at that edge, after the frame that
   shows it, and again only after it has left the edge. Use them to load more.
+- `onScrollEdge({ edge, at })` fires when the content reaches (`at: true`) or leaves an edge, on the
+  frame that shows it, and once on mount with the edges it starts at (both when the content fits).
+  Use it for state that follows the position: a header shadow, a "back to top" button.
 - In RTL a horizontal scroll starts at its inline start (the right edge) and advances leftward.
 - A gesture moves the innermost scroll under the finger on its axis; leftover distance passes to the next
   ancestor on the same axis. `overscroll-contain` or `overscroll-none` keeps it in this scroll.
@@ -89,7 +92,7 @@ created by index as they approach the viewport and dropped when they leave it.
 | `renderItem(item, index)` | the row element |
 | `getItemHeight(item, index)` | optional fixed row height; rows are measured otherwise |
 | `anchor` | where to move the position (below) |
-| `onReachStart`, `onReachEnd` | edge arrivals, as on `<scroll>` |
+| `onReachStart`, `onReachEnd`, `onScrollEdge` | edge arrivals and departures, as on `<scroll>` |
 
 `gap-*` separates rows; padding pads the whole list. Lists scroll vertically only. Rows are their
 item's sibling index for `first:`, `last:`, `odd:` and `even:`, counted over the whole list.

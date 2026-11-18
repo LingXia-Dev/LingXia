@@ -299,6 +299,9 @@ pub mod field {
     pub const WEB_SESSION: usize = 261;
     pub const ON_WEB_EVENT: usize = 262;
     pub const WEB_HANDLES_DRAGS: usize = 263;
+    pub const ON_SCROLL_EDGE: usize = 264;
+    pub const ARIA_CONTROLS: usize = 265;
+    pub const ARIA_AUTOCOMPLETE: usize = 266;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video", "webview"];
@@ -569,6 +572,9 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("session", "web-session"),
     ("onWebEvent", "handle"),
     ("handlesDrags", "flag"),
+    ("onScrollEdge", "handle"),
+    ("ariaControls", "element-ids"),
+    ("ariaAutocomplete", "auto-complete-mode"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -606,6 +612,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "anchor-area" => Some(&["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top", "inline-end span-block-end", "inline-end span-block-start", "inline-end", "inline-start span-block-end", "inline-start span-block-start", "inline-start"]),
         "live-region" => Some(&["off", "polite", "assertive"]),
         "input-keyboard" => Some(&["text", "number", "email", "phone", "search", "date", "time"]),
+        "auto-complete-mode" => Some(&["none", "list"]),
         "auto-complete" => Some(&["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"]),
         "enter-key-hint" => Some(&["enter", "done", "go", "next", "previous", "search", "send"]),
         "auto-capitalize" => Some(&["none", "sentences", "words", "characters"]),
@@ -1042,4 +1049,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::WEBVIEW]), parent: None },
     FieldAdmission { tags: Some(&[tag::WEBVIEW]), parent: None },
     FieldAdmission { tags: Some(&[tag::WEBVIEW]), parent: None },
+    FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::BUTTON]), parent: None },
 ];
