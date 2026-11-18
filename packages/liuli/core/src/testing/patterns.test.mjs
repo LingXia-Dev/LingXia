@@ -86,6 +86,18 @@ test('list and detail: every request opens its record', async () => {
   }
 });
 
+// A long record never hides the decision: it sits under the record's scroll, not at its end.
+test('list and detail: the record\'s actions stay outside its scroll and act on it', async () => {
+  const screen = await open('list-detail');
+  screen.press(screen.getByTestId('request-r-218'));
+  await settle();
+  const actions = screen.getByTestId('requests-actions');
+  const inScroll = node => node.parent && (node.parent.tag === 'scroll' || inScroll(node.parent));
+  assert.ok(!inScroll(actions), 'the actions are not in the content\'s scroll');
+  screen.press(screen.getByTestId('approve'));
+  assert.equal(screen.getByTestId('approve').props.enabled, 0, 'an approved request cannot be approved again');
+});
+
 // The messages are a windowed list, which lays out only on a device: the gallery spec CONVERSATION-001
 // sends, fails and sends again there. Here, what needs no layout.
 test('conversation: the send button wakes with a draft, and sending empties it', async () => {

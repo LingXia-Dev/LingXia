@@ -63,6 +63,7 @@ export function Workspace() {
 | --- | --- | --- | --- |
 | `sidebar` (required) | `Child` |  | The sidebar's content, usually a NavList; it scrolls on its own. |
 | `children` (required) | `Child` |  | The content beside it; it scrolls on its own. |
+| `contentActions` | `Child` |  | Actions on what the content shows, such as Approve: a row under the content, outside its scroll, so they stay in view. |
 | `sidebarLabel` (required) | `string` |  | Names the sidebar for assistive tech: "Components". |
 | `contentLabel` (required) | `string` |  | Names the content: the open page's title. |
 | `pane` | `SplitViewPane` | `'sidebar'` | On a compact screen one pane shows at a time: which. A regular screen shows both and ignores it. |
@@ -86,6 +87,7 @@ export function Workspace() {
 | scroll | `<scroll>` | yes | In each pane, so the two scroll apart. |
 | sidebarInner | `<view>` | yes | The sidebar's padding. |
 | contentInner | `<view>` | yes | The content's padding and cap, held to the start of its pane. |
+| actions | `<view>` | no | With `contentActions`: a row under the content's scroll, behind a hairline, that stays in view. |
 
 ## What an app may override
 
@@ -114,6 +116,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Name the back button for where it leads with `backLabel` when the sidebar's label does not say it.
 - Do: Update `contentLabel` with the open page's title.
 - Do: Use `contentWidth="prose"` for reading and `wide` for examples or tables.
+- Do: Put the actions on the open record in `contentActions`, so a long record never hides them.
 - Don't: Put it inside a `<scroll>`; it scrolls each pane itself and must fill its page.
 - Don't: Put a second sidebar in the content; nest a NavList section instead.
 

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
 
 const wide = { env: { sizeClass: 'regular', viewport: { width: 1024, height: 768 } } };
 const phone = { env: { sizeClass: 'compact', viewport: { width: 393, height: 852 } } };
@@ -51,4 +51,18 @@ test('Workspace, compact: the sidebar alone, at the full width, then the content
   screen.press(screen.getByTestId('workspace-back'));
   assert.ok(screen.getByTestId('workspace-sidebar'), 'back shows the list again');
   assert.equal(screen.getByTestId('workspace-nav-launch').props.stateSelected, 1, 'the place chosen is still the current one');
+});
+
+test('contentActions: a row of the content pane after its scroll, in both forms', async () => {
+  const page = linked => `import { SplitView } from ${JSON.stringify(`${linked}/src/SplitView/SplitView`)};
+export function render() {
+  return <page><SplitView sidebar={<text>List</text>} sidebarLabel="List" contentLabel="Record" pane="content" contentActions={<button aria-label="Approve" onClick={() => {}}><text>Approve</text></button>} data-testid="split"><text>Record</text></SplitView></page>;
+}
+`;
+  for (const form of [wide, phone]) {
+    const screen = await renderPage(page, form);
+    const content = screen.getByTestId('split-content');
+    const kinds = content.children.map(node => node.tag === 'scroll' ? 'scroll' : node.testId);
+    assert.deepEqual(kinds.slice(-2), ['scroll', 'split-actions'], `${form.env.sizeClass}: the actions follow the scroll`);
+  }
 });

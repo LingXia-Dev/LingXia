@@ -73,7 +73,7 @@ function Row({ request, isUnread, isSelected, onOpen }: { request: Request; isUn
 }
 
 /** The record: who asked, what for, and what can be done about it. */
-function Detail({ request, onDecide }: { request: Request; onDecide: (status: Request['status']) => void }) {
+function Detail({ request }: { request: Request }) {
   return (
     // Keyed by the request, so one record's line does not stay under the next.
     <Said key={request.id}>
@@ -111,10 +111,6 @@ function Detail({ request, onDecide }: { request: Request; onDecide: (status: Re
               data-testid="details"
             />
           </Section>
-          <view className="flex-row items-center gap-2 pt-1">
-            <Button label="Approve" variant="primary" isDisabled={request.status === 'Approved'} onClick={() => onDecide('Approved')} data-testid="approve" />
-            <Button label="Ask a question" onClick={() => onDecide('In review')} data-testid="ask" />
-          </view>
         </view>
       )}
     </Said>
@@ -161,11 +157,18 @@ export function Content() {
       sidebarWidth={340}
       contentKey={current?.id}
       contentWidth="prose"
+      // The decision stays in view under a record of any length.
+      contentActions={current ? (
+        <>
+          <Button label="Approve" variant="primary" isDisabled={current.status === 'Approved'} onClick={() => decide('Approved')} data-testid="approve" />
+          <Button label="Ask a question" onClick={() => decide('In review')} data-testid="ask" />
+        </>
+      ) : undefined}
       // On a phone the panes bring the page gutter themselves.
       className={isWide ? undefined : '-mx-4'}
       data-testid="requests"
     >
-      {current ? <Detail request={current} onDecide={decide} /> : <EmptyState title="No request selected" description="Choose a request from the list." />}
+      {current ? <Detail request={current} /> : <EmptyState title="No request selected" description="Choose a request from the list." />}
     </SplitView>
   );
 

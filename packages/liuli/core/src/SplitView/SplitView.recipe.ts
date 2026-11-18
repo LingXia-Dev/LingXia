@@ -9,6 +9,7 @@ export const splitViewParts = {
   scroll: 'scroll',
   sidebarInner: 'view',
   contentInner: 'view',
+  actions: 'view',
 } as const;
 
 /**
@@ -62,5 +63,11 @@ export const splitViewRecipe = {
     regular: 'ps-10 pe-8 pt-6 pb-12 gap-8',
     compact: 'px-4 pt-2 pb-8 gap-6',
     width: { prose: 'max-w-[784px]', wide: 'max-w-[1024px]', full: '' } satisfies Record<SplitViewContentWidth, string>,
+  },
+  /** The content's actions, under its scroll behind a hairline, starting on the content's own edge. */
+  actions: {
+    base: 'flex-row flex-wrap items-center gap-2 border-t border-text/8 bg-canvas',
+    regular: 'ps-10 pe-8 py-3',
+    compact: 'px-4 pt-3 pb-1',
   },
 } as const;

@@ -13,6 +13,8 @@ export interface SplitViewProps {
   sidebar: Child;
   /** The content beside it; it scrolls on its own. */
   children: Child;
+  /** Actions on what the content shows, such as Approve: a row under the content, outside its scroll, so they stay in view. */
+  contentActions?: Child;
   /** Names the sidebar for assistive tech: "Components". */
   sidebarLabel: string;
   /** Names the content: the open page's title. */
@@ -40,7 +42,7 @@ export interface SplitViewProps {
  * put it straight in a `<page>`, without a scroll around it.
  */
 export function SplitView({
-  sidebar, children, sidebarLabel, contentLabel, pane = 'sidebar', onBack, backLabel, sidebarWidth = 264, contentKey, contentWidth = 'wide', className, 'data-testid': testId,
+  sidebar, children, contentActions, sidebarLabel, contentLabel, pane = 'sidebar', onBack, backLabel, sidebarWidth = 264, contentKey, contentWidth = 'wide', className, 'data-testid': testId,
 }: SplitViewProps) {
   const { env } = useView();
   const wentBack = useLocal('went-back', false);
@@ -61,6 +63,7 @@ export function SplitView({
             <scroll key={contentKey} className={r.scroll.base}>
               <view className={cx(r.contentInner.base, r.contentInner.compact)}>{children}</view>
             </scroll>
+            {contentActions !== undefined && <view className={cx(r.actions.base, r.actions.compact)} data-testid={testId && `${testId}-actions`}>{contentActions}</view>}
           </view>
         )}
       </view>
@@ -77,6 +80,7 @@ export function SplitView({
         <scroll key={contentKey} className={r.scroll.base}>
           <view className={cx(r.contentInner.base, r.contentInner.regular, r.contentInner.width[contentWidth])}>{children}</view>
         </scroll>
+        {contentActions !== undefined && <view className={cx(r.actions.base, r.actions.regular)} data-testid={testId && `${testId}-actions`}>{contentActions}</view>}
       </view>
     </view>
   );

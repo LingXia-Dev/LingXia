@@ -14676,6 +14676,12 @@
           "description": "The content beside it; it scrolls on its own."
         },
         {
+          "name": "contentActions",
+          "type": "Child",
+          "required": false,
+          "description": "Actions on what the content shows, such as Approve: a row under the content, outside its scroll, so they stay in view."
+        },
+        {
           "name": "sidebarLabel",
           "type": "string",
           "required": true,
@@ -14749,7 +14755,8 @@
         "back": "view",
         "scroll": "scroll",
         "sidebarInner": "view",
-        "contentInner": "view"
+        "contentInner": "view",
+        "actions": "view"
       },
       "accessibility": {
         "pattern": null,

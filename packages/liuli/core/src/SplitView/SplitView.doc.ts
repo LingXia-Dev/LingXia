@@ -23,6 +23,7 @@ export const doc: ComponentDoc = {
     { part: 'scroll', required: true, description: 'In each pane, so the two scroll apart.' },
     { part: 'sidebarInner', required: true, description: 'The sidebar\'s padding.' },
     { part: 'contentInner', required: true, description: 'The content\'s padding and cap, held to the start of its pane.' },
+    { part: 'actions', required: false, description: 'With `contentActions`: a row under the content\'s scroll, behind a hairline, that stays in view.' },
   ],
   accessibility: {
     pattern: null,
@@ -43,6 +44,7 @@ export const doc: ComponentDoc = {
       'Name the back button for where it leads with `backLabel` when the sidebar\'s label does not say it.',
       'Update `contentLabel` with the open page\'s title.',
       'Use `contentWidth="prose"` for reading and `wide` for examples or tables.',
+      'Put the actions on the open record in `contentActions`, so a long record never hides them.',
     ],
     dont: [
       'Put it inside a `<scroll>`; it scrolls each pane itself and must fill its page.',
