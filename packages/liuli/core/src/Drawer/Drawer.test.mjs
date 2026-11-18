@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import { renderExample } from '../testing/harness.mjs';
 
 const dialogs = screen => screen.queryAll(node => node.tag === 'dialog');
-const timing = node => { const { durationMs, easing } = JSON.parse(node.props.transition); return { durationMs, easing }; };
+// The scrim fades in from nothing and back out to it on the panel's own timing.
+const presence = node => { const { durationMs, easing } = JSON.parse(node.props.transition); return { durationMs, easing, enters: node.props.startingStyle !== undefined, leaves: node.props.exitStyle !== undefined }; };
+const timing = node => { const { durationMs, easing } = JSON.parse(node.props.transition); return { durationMs, easing, enters: true, leaves: true }; };
 
-test('Filters: the scrim keeps the drawer\'s timing, so the two leave together', async () => {
+test('Filters: the scrim arrives and leaves with the drawer, on its timing', async () => {
   const screen = await renderExample('Drawer/Drawer', 'Filters');
   screen.press(screen.getByTestId('filters-open'));
-  assert.deepEqual(timing(screen.getByTestId('filters-backdrop')), timing(screen.getByTestId('filters')));
+  assert.deepEqual(presence(screen.getByTestId('filters-backdrop')), timing(screen.getByTestId('filters')));
 });
 
 test('Filters: closed renders nothing; open, a dialog named by its title on the end edge, the height of the screen', async () => {

@@ -20,12 +20,14 @@ test('Country: the field is a button named by its label, with the placeholder un
   assert.equal(panel(screen, 'country').length, 0, 'closed, nothing of the panel is rendered');
 });
 
-const timing = node => { const { durationMs, easing } = JSON.parse(node.props.transition); return { durationMs, easing }; };
+// The scrim fades in from nothing and back out to it on the panel's own timing.
+const presence = node => { const { durationMs, easing } = JSON.parse(node.props.transition); return { durationMs, easing, enters: node.props.startingStyle !== undefined, leaves: node.props.exitStyle !== undefined }; };
+const timing = node => { const { durationMs, easing } = JSON.parse(node.props.transition); return { durationMs, easing, enters: true, leaves: true }; };
 
-test('Country, on touch: the scrim keeps the sheet\'s timing, so the two leave together', async () => {
+test('Country, on touch: the scrim arrives and leaves with the sheet, on its timing', async () => {
   const screen = await renderExample('Combobox/Combobox', 'Country');
   screen.press(screen.getByTestId('country'));
-  assert.deepEqual(timing(screen.getByTestId('country-panel-backdrop')), timing(panel(screen, 'country')[0]));
+  assert.deepEqual(presence(screen.getByTestId('country-panel-backdrop')), timing(panel(screen, 'country')[0]));
 });
 
 test('Country, on touch: a sheet titled by the label; typing narrows the list; an option chooses and closes', async () => {

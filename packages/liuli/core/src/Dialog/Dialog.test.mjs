@@ -4,6 +4,15 @@ import { textOf } from '@lingxia/view/testing';
 import { described, renderExample } from '../testing/harness.mjs';
 
 const dialogs = screen => screen.queryAll(node => node.tag === 'dialog');
+// The scrim fades in from nothing and back out to it on the panel's own timing.
+const presence = node => { const { durationMs, easing } = JSON.parse(node.props.transition); return { durationMs, easing, enters: node.props.startingStyle !== undefined, leaves: node.props.exitStyle !== undefined }; };
+const timing = node => { const { durationMs, easing } = JSON.parse(node.props.transition); return { durationMs, easing, enters: true, leaves: true }; };
+
+test('Confirm: the scrim arrives and leaves with the dialog, on its timing', async () => {
+  const screen = await renderExample('Dialog/Dialog', 'Confirm');
+  screen.press(screen.getByTestId('confirm-open'));
+  assert.deepEqual(presence(screen.getByTestId('confirm-dialog-backdrop')), timing(screen.getByTestId('confirm-dialog')));
+});
 
 test('Confirm: closed renders nothing; open, an alert dialog named by its title and described by its text', async () => {
   const screen = await renderExample('Dialog/Dialog', 'Confirm');
