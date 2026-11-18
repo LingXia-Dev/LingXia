@@ -75,6 +75,7 @@ export function Content() {
           type="email"
           autoComplete="email"
           placeholder="ana@example.com"
+          size="lg"
           isRequired
           hasRequiredMark={false}
           status={status(errors.email)}
@@ -84,6 +85,7 @@ export function Content() {
           bind={password}
           label="Password"
           type="password"
+          size="lg"
           isRequired
           hasRequiredMark={false}
           description="At least 8 characters."
@@ -95,6 +97,7 @@ export function Content() {
           value={remember.value}
           onChange={next => remember.set(next)}
           label="Remember me"
+          size="lg"
           description="On this device only."
           data-testid="remember"
         />
