@@ -22,6 +22,9 @@ function passwordError(password: string) {
   return undefined;
 }
 
+// The form keeps a phone's column on wider windows rather than stretching to the page.
+const column = 'w-full gap-8 md:max-w-[400px] md:self-center';
+
 export function Content() {
   const { actions } = useView() as View<Actions>;
   const email = useLocal('email', '');
@@ -43,7 +46,7 @@ export function Content() {
 
   if (signedIn.value)
     return (
-      <>
+      <view className={column}>
         <Card padding="lg">
           <view className="gap-4">
             <view className="flex-row items-center justify-between gap-3">
@@ -59,11 +62,11 @@ export function Content() {
             />
           </view>
         </Card>
-      </>
+      </view>
     );
 
   return (
-    <>
+    <view className={column}>
       <view className="gap-1.5 pt-2">
         <text role="heading" headingLevel={1} className="text-display font-semibold tracking-tight text-text">Welcome back</text>
         <text className="text-body text-muted">Sign in to sync your notes across devices.</text>
@@ -110,6 +113,6 @@ export function Content() {
         New to Notes? <Link label="Create an account" onClick={() => last.set('Opened Create an account')} data-testid="create" />
       </text>
       {last.value !== '' && <text role="status" className="text-center text-footnote text-muted">{last.value}</text>}
-    </>
+    </view>
   );
 }
