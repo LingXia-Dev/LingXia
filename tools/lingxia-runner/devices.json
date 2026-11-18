@@ -17,7 +17,13 @@
         "width": 210,
         "height": 30,
         "cornerRadius": 15,
-        "statusBarHeight": 44
+        "statusBarHeight": 50
+      },
+      "chrome": {
+        "host": "ios",
+        "safeArea": { "portrait": [50, 0, 34, 0], "landscape": [0, 50, 21, 50] },
+        "navigationBar": 44,
+        "tabBar": 64
       }
     },
     {
@@ -37,6 +43,12 @@
         "height": 30,
         "cornerRadius": 15,
         "statusBarHeight": 47
+      },
+      "chrome": {
+        "host": "ios",
+        "safeArea": { "portrait": [47, 0, 34, 0], "landscape": [0, 47, 21, 47] },
+        "navigationBar": 44,
+        "tabBar": 64
       }
     },
     {
@@ -56,6 +68,12 @@
         "height": 37,
         "cornerRadius": 18.5,
         "statusBarHeight": 54
+      },
+      "chrome": {
+        "host": "ios",
+        "safeArea": { "portrait": [59, 0, 34, 0], "landscape": [0, 59, 21, 59] },
+        "navigationBar": 44,
+        "tabBar": 64
       }
     },
     {
@@ -74,7 +92,13 @@
         "width": 210,
         "height": 30,
         "cornerRadius": 15,
-        "statusBarHeight": 44
+        "statusBarHeight": 48
+      },
+      "chrome": {
+        "host": "ios",
+        "safeArea": { "portrait": [48, 0, 34, 0], "landscape": [0, 48, 21, 48] },
+        "navigationBar": 44,
+        "tabBar": 64
       }
     },
     {
@@ -94,6 +118,12 @@
         "height": 37,
         "cornerRadius": 18.5,
         "statusBarHeight": 54
+      },
+      "chrome": {
+        "host": "ios",
+        "safeArea": { "portrait": [59, 0, 34, 0], "landscape": [0, 59, 21, 59] },
+        "navigationBar": 44,
+        "tabBar": 64
       }
     },
     {

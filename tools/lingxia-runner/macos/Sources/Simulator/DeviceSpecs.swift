@@ -54,6 +54,12 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     public let outerRadius: CGFloat
     public let screenRadius: CGFloat
     public let notchSpec: iPhoneNotchSpec
+    /// What the device's host gives a page, in device points; nil for a shape the surface
+    /// shell hosts.
+    public let chrome: DeviceChrome?
+    /// Window points per device point: below 1 once shrunk to fit a short screen. The skin
+    /// draws the chrome at this; the page is told the device's own.
+    public var fit: CGFloat = 1
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -67,6 +73,7 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         case outerRadius
         case screenRadius
         case notchSpec = "notch"
+        case chrome
     }
 
     public static var iPhoneSE: MobileDeviceSize { device(id: "iphone-se") }
@@ -164,7 +171,9 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
             bezelWidth: bezelWidth,
             outerRadius: outerRadius,
             screenRadius: screenRadius,
-            notchSpec: targetNotchSpec
+            notchSpec: targetNotchSpec,
+            chrome: chrome,
+            fit: fit
         )
     }
 
@@ -185,9 +194,25 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
             bezelWidth: (bezelWidth * scale).rounded(),
             outerRadius: outerRadius * scale,
             screenRadius: screenRadius * scale,
-            notchSpec: notchSpec.scaled(by: scale)
+            notchSpec: notchSpec.scaled(by: scale),
+            chrome: chrome,
+            fit: fit * scale
         )
     }
+
+    /// The safe area in this orientation, in device points.
+    public var safeArea: DeviceChrome.Insets {
+        guard let chrome else {
+            return DeviceChrome.Insets(top: notchSpec.statusBarHeight / fit, right: 0, bottom: 0, left: 0)
+        }
+        return orientation == .landscape ? chrome.landscapeSafeArea : chrome.portraitSafeArea
+    }
+
+    /// The host's navigation bar, in device points.
+    public var navigationBarHeight: CGFloat { chrome?.navigationBar ?? DeviceChrome.iOSNavigationBar }
+
+    /// The host's tab bar along an edge, in device points.
+    public var tabBarHeight: CGFloat { chrome?.tabBar ?? DeviceChrome.iOSTabBar }
 
     private static func device(id: String) -> MobileDeviceSize {
         guard let device = allCases.first(where: { $0.id == id }) else {
@@ -208,6 +233,41 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
             fatalError("Invalid runner devices.json: \(error)")
         }
     }()
+}
+
+/// A device's system insets and its host's bars, in device points, as the host app on that
+/// device gives them to a page: iOS presets take `LxAppTheme`'s navigation bar and the tab bar
+/// the Apple FFI declares.
+public struct DeviceChrome: Equatable, Hashable, Decodable, Sendable {
+    public struct Insets: Equatable, Hashable, Sendable {
+        public let top: CGFloat
+        public let right: CGFloat
+        public let bottom: CGFloat
+        public let left: CGFloat
+    }
+
+    private struct SafeAreas: Equatable, Hashable, Decodable, Sendable {
+        /// `[top, right, bottom, left]`.
+        let portrait: [CGFloat]
+        let landscape: [CGFloat]
+    }
+
+    static let iOSNavigationBar: CGFloat = 44
+    static let iOSTabBar: CGFloat = 64
+
+    /// The platform whose host the bars follow (`ios`).
+    public let host: String
+    private let safeArea: SafeAreas
+    public let navigationBar: CGFloat
+    public let tabBar: CGFloat
+
+    public var portraitSafeArea: Insets { Self.insets(safeArea.portrait) }
+    public var landscapeSafeArea: Insets { Self.insets(safeArea.landscape) }
+
+    private static func insets(_ edges: [CGFloat]) -> Insets {
+        let edge = { (index: Int) in index < edges.count ? edges[index] : 0 }
+        return Insets(top: edge(0), right: edge(1), bottom: edge(2), left: edge(3))
+    }
 }
 
 /// iPhone notch specifications for accurate system status bar simulation.

@@ -28,11 +28,20 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
     public struct Layout {
         @MainActor public static var currentNotchSpec: iPhoneNotchSpec = .iPhoneSE
+        /// The selected device as laid out: oriented and shrunk to fit the screen.
+        @MainActor public static var currentDevice: MobileDeviceSize?
 
+        /// The strip above the navigation bar: the device's safe-area top, where its host puts
+        /// the bar, drawn at the skin's fit.
         @MainActor public static var systemStatusBarHeight: CGFloat {
-            return currentNotchSpec.statusBarHeight
+            guard let device = currentDevice else { return currentNotchSpec.statusBarHeight }
+            return device.safeArea.top * device.fit
         }
-        public static let navBarHeight: CGFloat = 40
+        /// The host's navigation bar at the skin's fit.
+        @MainActor public static var navBarHeight: CGFloat {
+            guard let device = currentDevice else { return DeviceChrome.iOSNavigationBar }
+            return device.navigationBarHeight * device.fit
+        }
         // Matches the iOS capsule (LxAppCapsuleButtons): 2 buttons, 32 tall.
         public static let capsuleContainerWidth: CGFloat = 84
         public static let capsuleContainerHeight: CGFloat = 32
@@ -93,6 +102,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     private var systemStatusBar: NSView?
     private var statusBarHeightConstraint: NSLayoutConstraint?
     private var navigationBar: NSView?
+    private var navigationBarHeightConstraint: NSLayoutConstraint?
+    private var capsuleTopConstraint: NSLayoutConstraint?
     /// Our own window refits in flight: their animation steps are not a requested resize.
     private var refitting = 0
     /// A refit answering a requested resize lands at once, so the next request (an automation
@@ -214,6 +225,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     public static func setWindowSize(_ deviceSize: MobileDeviceSize) {
         currentDeviceSize = deviceSize
         Layout.currentNotchSpec = layoutDevice().notchSpec
+        Layout.currentDevice = layoutDevice()
     }
 
     /// The selected device shrunk to fit the screen; everything lays out 1:1 at
@@ -491,6 +503,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         
         // Setup constraints
         let statusBarHeight = statusBar.heightAnchor.constraint(equalToConstant: Layout.systemStatusBarHeight)
+        let navBarHeight = navBar.heightAnchor.constraint(equalToConstant: Layout.navBarHeight)
         NSLayoutConstraint.activate([
             statusBar.topAnchor.constraint(equalTo: phoneContent.topAnchor),
             statusBar.leadingAnchor.constraint(equalTo: phoneContent.leadingAnchor),
@@ -500,12 +513,13 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             navBar.topAnchor.constraint(equalTo: statusBar.bottomAnchor),
             navBar.leadingAnchor.constraint(equalTo: phoneContent.leadingAnchor),
             navBar.trailingAnchor.constraint(equalTo: phoneContent.trailingAnchor),
-            navBar.heightAnchor.constraint(equalToConstant: Layout.navBarHeight)
+            navBarHeight
         ])
 
         self.systemStatusBar = statusBar
         self.statusBarHeightConstraint = statusBarHeight
         self.navigationBar = navBar
+        self.navigationBarHeightConstraint = navBarHeight
         
         // Setup floating capsule buttons
         setupFloatingCapsuleButtons(in: phoneContent)
@@ -814,9 +828,11 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         capsuleContainer.addSubview(divider)
         capsuleContainer.addSubview(closeButton)
 
-        let navBarCenterOffset = Layout.systemStatusBarHeight + (Layout.navBarHeight - Layout.capsuleContainerHeight) / 2
+        let capsuleTop = capsuleContainer.topAnchor.constraint(
+            equalTo: contentView.topAnchor, constant: Self.capsuleTop())
+        capsuleTopConstraint = capsuleTop
         NSLayoutConstraint.activate([
-            capsuleContainer.topAnchor.constraint(equalTo: contentView.topAnchor, constant: navBarCenterOffset),
+            capsuleTop,
             capsuleContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Layout.capsuleTrailingMargin),
             capsuleContainer.widthAnchor.constraint(equalToConstant: Layout.capsuleContainerWidth),
             capsuleContainer.heightAnchor.constraint(equalToConstant: Layout.capsuleContainerHeight)
@@ -929,6 +945,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         appliedScale = scale
         let layout = Self.currentDeviceSize.scaled(by: scale)
         Layout.currentNotchSpec = layout.notchSpec
+        Layout.currentDevice = layout
 
         // Resize window (preserve devtools panel if open).
         let devToolsWidth = isDevToolsVisible ? Self.devToolsPanelWidth : 0
@@ -1019,7 +1036,14 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     
     private func updateStatusBarConstraints() {
         statusBarHeightConstraint?.constant = Layout.systemStatusBarHeight
+        navigationBarHeightConstraint?.constant = Layout.navBarHeight
+        capsuleTopConstraint?.constant = Self.capsuleTop()
         systemStatusBar?.needsLayout = true
+    }
+
+    /// The capsule centred on the navigation bar, as the iOS host places it.
+    private static func capsuleTop() -> CGFloat {
+        Layout.systemStatusBarHeight + (Layout.navBarHeight - Layout.capsuleContainerHeight) / 2
     }
     
     private func applyInitialNavigationConfiguration() {
