@@ -14,12 +14,14 @@ spec('a page on each phone preset measures and renders as the device does', {
   try {
     for (const preset of presets.filter(preset => preset.group === 'phone')) {
       await device.set({ id: preset.id, landscape: false });
+      // An Android or HarmonyOS phone's viewport is its pixels over its density: compare to a hundredth.
+      const hundredths = (values: number[]) => values.map(value => Math.round(value * 100) / 100);
       await expect.poll(async () => {
         const { width, height } = await view.viewport();
-        return [width, height];
-      }, { message: `${preset.id} lays the page out in its own viewport` }).toEqual([preset.width, preset.height]);
+        return hundredths([width, height]);
+      }, { message: `${preset.id} lays the page out in its own viewport` }).toEqual(hundredths([preset.width, preset.height]));
       // A screenshot is the last presented frame: the first at the new size follows the layout.
-      const pixels = [preset.width * preset.pixelRatio, preset.height * preset.pixelRatio];
+      const pixels = [Math.round(preset.width * preset.pixelRatio), Math.round(preset.height * preset.pixelRatio)];
       const size = async () => {
         const shot = await view.screenshot();
         return [shot.width, shot.height];
@@ -33,14 +35,29 @@ spec('a page on each phone preset measures and renders as the device does', {
   }
 });
 
-// What the iOS host gives a page on each phone, in points: the safe-area top its navigation bar
-// sits below (the status bar is shorter on Dynamic Island phones), the 44 pt bar, the 64 pt tab
-// bar, the 34 pt home indicator; in landscape the sensor housing's side and a 21 pt indicator.
-const SAFE_TOP: Record<string, number> = {
-  'iphone-13-mini': 50, 'iphone-13-pro': 47, 'iphone-15-pro': 59, 'iphone-11': 48, 'iphone-15-pro-max': 59,
+// What each phone's host gives a page, in points: the device's safe area `[top, right, bottom,
+// left]` in portrait and landscape, below the top of which the host draws its 44-point navigation
+// bar, and the host's tab bar, whose reach above the bottom edge differs by host. The Android and
+// HarmonyOS safe areas marked `provisional` in devices.json are not yet read off the phones.
+type Edges = [number, number, number, number];
+const PHONES: Record<string, { host: 'ios' | 'android' | 'harmony'; portrait: Edges; landscape: Edges }> = {
+  'iphone-13-mini': { host: 'ios', portrait: [50, 0, 34, 0], landscape: [0, 50, 21, 50] },
+  'iphone-13-pro': { host: 'ios', portrait: [47, 0, 34, 0], landscape: [0, 47, 21, 47] },
+  'iphone-15-pro': { host: 'ios', portrait: [59, 0, 34, 0], landscape: [0, 59, 21, 59] },
+  'iphone-11': { host: 'ios', portrait: [48, 0, 34, 0], landscape: [0, 48, 21, 48] },
+  'iphone-15-pro-max': { host: 'ios', portrait: [59, 0, 34, 0], landscape: [0, 59, 21, 59] },
+  'huawei-nova-13': { host: 'harmony', portrait: [39, 0, 28, 0], landscape: [0, 0, 28, 39] },
+  'pixel-3': { host: 'android', portrait: [24, 0, 48, 0], landscape: [24, 48, 0, 0] },
+  'redmi-9': { host: 'android', portrait: [30, 0, 16, 0], landscape: [0, 0, 16, 30] },
 };
 const NAVIGATION_BAR = 44;
-const TAB_BAR = 64;
+/** The tab bar's reach above the bottom edge: iOS draws its 64 to the edge, Android stacks its 64
+ * on the system bar, HarmonyOS grows its 72 to clear the gesture zone. */
+const TAB_BAR_REACH = {
+  ios: () => 64,
+  android: (bottom: number) => 64 + bottom,
+  harmony: (bottom: number) => 72 + Math.max(0, Math.max(12, bottom - 6) - 12),
+};
 
 // Insets come from the preset alone: the same numbers on a 1x monitor with the phone at full
 // size as on a Retina laptop that shrinks it to fit, so this spec passes on both unchanged.
@@ -53,20 +70,22 @@ spec('a page on each phone preset gets the safe area and bars its device gives i
   const before = await device.get();
   if (before.group !== 'phone') return t.skip('a desktop or tablet preset: changing to a phone restarts Logic');
   const root = t.app.view.testId('view-index');
+  // A density of 2.75 carries points through pixels: compare to a hundredth.
+  const hundredths = (values: number[]) => values.map(value => Math.round(value * 100) / 100);
   const read = async () => {
     const edges = ['top', 'right', 'bottom', 'left'] as const;
-    const of = async (kind: string) => Promise.all(edges.map(async edge => Number(await root.getAttribute(`data-${kind}-${edge}`))));
+    const of = async (kind: string) => hundredths(await Promise.all(edges.map(async edge => Number(await root.getAttribute(`data-${kind}-${edge}`)))));
     return { safe: await of('safe'), insets: await of('inset') };
   };
   try {
     for (const preset of presets.filter(preset => preset.group === 'phone')) {
-      const top = SAFE_TOP[preset.id];
-      expect(top, `${preset.id} has a pinned safe area`).toBeDefined();
+      const phone = PHONES[preset.id];
+      expect(phone, `${preset.id} has a pinned safe area`).toBeDefined();
       for (const landscape of [false, true]) {
         await device.set({ id: preset.id, landscape });
-        const want = landscape
-          ? { safe: [0, top, 21, top], insets: [NAVIGATION_BAR, top, TAB_BAR, top] }
-          : { safe: [top, 0, 34, 0], insets: [top + NAVIGATION_BAR, 0, TAB_BAR, 0] };
+        const safe = landscape ? phone.landscape : phone.portrait;
+        const reach = TAB_BAR_REACH[phone.host](safe[2]);
+        const want = { safe, insets: [safe[0] + NAVIGATION_BAR, safe[1], Math.max(safe[2], reach), safe[3]] };
         await expect.poll(read, { message: `${preset.id} ${landscape ? 'landscape' : 'portrait'}: [top, right, bottom, left]` }).toEqual(want);
       }
     }

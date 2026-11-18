@@ -83,8 +83,10 @@ pub(crate) struct DevicePreset {
     #[serde(rename = "browserProfile")]
     browser_profile: BrowserProfile,
     pub(crate) name: String,
-    pub(crate) width: i32,
-    pub(crate) height: i32,
+    /// Points; an Android or HarmonyOS phone's are fractional (pixels over density). This
+    /// Runner lays the screen out in whole points.
+    pub(crate) width: f32,
+    pub(crate) height: f32,
     #[serde(rename = "pixelRatio")]
     pub(crate) pixel_ratio: f32,
     #[serde(rename = "bezelWidth")]
@@ -182,7 +184,7 @@ pub(crate) fn is_phone(index: usize) -> bool {
 }
 
 pub(crate) fn device_label(preset: &DevicePreset) -> String {
-    format!("{}\t{} x {}", preset.name, preset.width, preset.height)
+    format!("{}\t{} x {}", preset.name, preset.width.round(), preset.height.round())
 }
 
 /// Status-bar text/glyph color, contrasting the shell chrome it sits over so
@@ -212,6 +214,7 @@ pub(crate) fn frame_spec(index: usize, landscape: bool, capsule: bool) -> Window
     } else {
         (preset.width, preset.height)
     };
+    let (screen_width, screen_height) = (screen_width.round() as i32, screen_height.round() as i32);
     WindowsDeviceFrame {
         screen_width,
         screen_height,
@@ -301,8 +304,8 @@ mod tests {
         let preset = &presets()[index];
         let frame = frame_spec(index, true, true);
 
-        assert_eq!(frame.screen_width, preset.height);
-        assert_eq!(frame.screen_height, preset.width);
+        assert_eq!(frame.screen_width, preset.height.round() as i32);
+        assert_eq!(frame.screen_height, preset.width.round() as i32);
         assert_eq!(frame.bezel_width, preset.bezel_width.max(0));
         assert_eq!(frame.outer_corner_radius, preset.outer_radius);
     }

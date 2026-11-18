@@ -32,6 +32,11 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     private var currentTopMargin: CGFloat = 0
     private var tabBarConstraints: [NSLayoutConstraint] = []
     private var tabBarTopConstraint: NSLayoutConstraint?
+    private var tabBarBottomConstraint: NSLayoutConstraint?
+    /// The system bar along the bottom edge of an Android or HarmonyOS phone: a plain strip
+    /// with the gesture handle, over the page.
+    private var systemBar: SystemBarView?
+    private var systemBarHeight: NSLayoutConstraint?
     private var webViewEdgeConstraints: [NSLayoutConstraint] = []
     
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
@@ -89,8 +94,54 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
 
     public override func viewDidLayout() {
         super.viewDidLayout()
+        placeSystemBar()
         reportSurfaceMetrics()
         simulateGpuPhone()
+    }
+
+    /// The oriented device, as the page is told it.
+    private var simulatedDevice: MobileDeviceSize {
+        let app = RunnerApp.shared
+        return app.selectedDeviceSize.oriented(app.deviceOrientation)
+    }
+
+    /// Window points between the screen's bottom edge and the host's tab bar.
+    private func tabBarLift() -> CGFloat {
+        simulatedDevice.tabBarLift * displayScale
+    }
+
+    /// Draws the bottom system bar of a device whose host does not cover it with its own, and
+    /// keeps the tab bar above it; no-op once in place.
+    private func placeSystemBar() {
+        let device = simulatedDevice
+        let lift = tabBarLift()
+        if let bottom = tabBarBottomConstraint, bottom.constant != -lift {
+            bottom.constant = -lift
+        }
+        let height = device.drawsSystemBar ? device.safeArea.bottom * displayScale : 0
+        guard height > 0 else {
+            systemBar?.isHidden = true
+            return
+        }
+        if systemBar == nil {
+            let bar = SystemBarView()
+            bar.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(bar, positioned: .above, relativeTo: nil)
+            let constraint = bar.heightAnchor.constraint(equalToConstant: height)
+            NSLayoutConstraint.activate([
+                bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                bar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                constraint,
+            ])
+            systemBar = bar
+            systemBarHeight = constraint
+        }
+        systemBar?.isHidden = false
+        if systemBarHeight?.constant != height { systemBarHeight?.constant = height }
+        if let bar = systemBar, view.subviews.last !== bar {
+            view.addSubview(bar, positioned: .above, relativeTo: nil)
+        }
     }
 
     /// Keep the adaptive surface context aligned with the selected device frame.
@@ -122,8 +173,10 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     
     private func setupTabBarConstraints(tabBar: NSView, config: RunnerTabBarConfig) {
         // The device's host bar, as the page is told it, drawn at the skin's fit.
-        let device = RunnerApp.shared.selectedDeviceSize
-        let dimension = (device.chrome == nil ? CGFloat(config.dimension) : device.tabBarHeight) * displayScale
+        let device = simulatedDevice
+        let dimension = device.chrome == nil
+            ? CGFloat(config.dimension) * displayScale
+            : (device.tabBarHeight + device.tabBarGrowth) * displayScale
         NSLayoutConstraint.deactivate(tabBarConstraints)
         tabBarConstraints = createTabBarConstraints(tabBar: tabBar, position: config.position, dimension: dimension)
         NSLayoutConstraint.activate(tabBarConstraints)
@@ -138,13 +191,16 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         switch position {
         case 0: // bottom
             tabBarTopConstraint = nil
+            let bottom = tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -tabBarLift())
+            tabBarBottomConstraint = bottom
             return [
                 tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                bottom,
                 tabBar.heightAnchor.constraint(equalToConstant: dimension)
             ]
         case 1: // left
+            tabBarBottomConstraint = nil
             let top = tabBar.topAnchor.constraint(equalTo: view.topAnchor, constant: currentTopMargin)
             tabBarTopConstraint = top
             return [
@@ -154,6 +210,7 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
                 tabBar.widthAnchor.constraint(equalToConstant: dimension)
             ]
         case 2: // right
+            tabBarBottomConstraint = nil
             let top = tabBar.topAnchor.constraint(equalTo: view.topAnchor, constant: currentTopMargin)
             tabBarTopConstraint = top
             return [
@@ -326,8 +383,7 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     /// points: what that device's host gives a page, whatever screen or fit the skin is drawn at.
     private func simulateGpuPhone() {
         guard let page = activeGpuView, view.bounds.width > 0 else { return }
-        let app = RunnerApp.shared
-        let device = app.selectedDeviceSize.oriented(app.deviceOrientation)
+        let device = simulatedDevice
         let safe = device.safeArea
         // The host's navigation bar sits below the safe-area top.
         let chromeTop = currentTopMargin > 0 ? safe.top + device.navigationBarHeight : 0
@@ -335,7 +391,7 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         // A dialog hides the bar but the page keeps its padding, as an iOS page raised over its bars does.
         if tabBarView != nil, let config = tabBarConfig,
            config.is_visible, config.position == 0 {
-            chromeBottom = device.tabBarHeight
+            chromeBottom = device.tabBarReach
         }
         LingxiaRunnerSPI.GpuPage.simulate(
             page,
@@ -479,5 +535,45 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
             object: nil,
             userInfo: ["appId": appId, "path": path]
         )
+    }
+}
+
+/// A phone's bottom system bar: the gesture handle on a plain strip, nothing branded.
+final class SystemBarView: NSView {
+    private let handle = NSView()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        handle.wantsLayer = true
+        handle.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(handle)
+        NSLayoutConstraint.activate([
+            handle.centerXAnchor.constraint(equalTo: centerXAnchor),
+            handle.centerYAnchor.constraint(equalTo: centerYAnchor),
+            handle.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.3),
+            handle.heightAnchor.constraint(equalToConstant: 4),
+        ])
+        updateColors()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateColors()
+    }
+
+    // The bar takes no input: the page and its scrolls run under it, as on the phone.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func layout() {
+        super.layout()
+        handle.layer?.cornerRadius = handle.bounds.height / 2
+    }
+
+    private func updateColors() {
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        handle.layer?.backgroundColor = (dark ? NSColor.white : NSColor.black).withAlphaComponent(0.6).cgColor
     }
 }

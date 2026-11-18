@@ -214,6 +214,27 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     /// The host's tab bar along an edge, in device points.
     public var tabBarHeight: CGFloat { chrome?.tabBar ?? DeviceChrome.iOSTabBar }
 
+    /// Device points between the screen's bottom edge and the host's tab bar: the Android host
+    /// stacks the bar on the system navigation bar; the others draw it to the edge.
+    public var tabBarLift: CGFloat {
+        chrome?.host == "android" ? safeArea.bottom : 0
+    }
+
+    /// Device points the host's tab bar grows by to clear the gesture zone: the HarmonyOS
+    /// host's `tabBarExtraBottomHeight` (TabBar.ets).
+    public var tabBarGrowth: CGFloat {
+        chrome?.host == "harmony" ? max(0, max(12, safeArea.bottom - 6) - 12) : 0
+    }
+
+    /// The tab bar's reach above the screen's bottom edge, as the page measures it.
+    public var tabBarReach: CGFloat { tabBarLift + tabBarHeight + tabBarGrowth }
+
+    /// The skin draws the system bar along the bottom edge itself: on Android and HarmonyOS
+    /// phones; an iPhone's home indicator is left to the page.
+    public var drawsSystemBar: Bool {
+        chrome?.host == "android" || chrome?.host == "harmony"
+    }
+
     private static func device(id: String) -> MobileDeviceSize {
         guard let device = allCases.first(where: { $0.id == id }) else {
             fatalError("Missing runner device preset: \(id)")
@@ -236,8 +257,9 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
 }
 
 /// A device's system insets and its host's bars, in device points, as the host app on that
-/// device gives them to a page: iOS presets take `LxAppTheme`'s navigation bar and the tab bar
-/// the Apple FFI declares.
+/// device gives them to a page. The bars are the host's own constants: iOS `LxAppTheme` and the
+/// Apple FFI's tab bar; Android `LxAppActivity` and its FFI; HarmonyOS `NavigationBar.ets` and
+/// its FFI. `provisional` in the JSON names the device metrics not yet read off the device.
 public struct DeviceChrome: Equatable, Hashable, Decodable, Sendable {
     public struct Insets: Equatable, Hashable, Sendable {
         public let top: CGFloat
@@ -255,7 +277,7 @@ public struct DeviceChrome: Equatable, Hashable, Decodable, Sendable {
     static let iOSNavigationBar: CGFloat = 44
     static let iOSTabBar: CGFloat = 64
 
-    /// The platform whose host the bars follow (`ios`).
+    /// The platform whose host the bars follow: `ios`, `android` or `harmony`.
     public let host: String
     private let safeArea: SafeAreas
     public let navigationBar: CGFloat

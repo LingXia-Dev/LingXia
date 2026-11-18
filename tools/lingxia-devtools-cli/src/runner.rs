@@ -181,8 +181,8 @@ fn print_presets(data: &Value) {
         let id = preset.get("id").and_then(Value::as_str).unwrap_or("-");
         let name = preset.get("name").and_then(Value::as_str).unwrap_or("");
         let group = preset.get("group").and_then(Value::as_str).unwrap_or("");
-        let width = preset.get("width").and_then(Value::as_u64).unwrap_or(0);
-        let height = preset.get("height").and_then(Value::as_u64).unwrap_or(0);
+        let width = points(preset, "width");
+        let height = points(preset, "height");
         let current = preset
             .get("current")
             .and_then(Value::as_bool)
@@ -196,6 +196,16 @@ fn print_presets(data: &Value) {
             pixel_ratio(preset),
             id
         );
+    }
+}
+
+/// A length in points: whole when it is, else to one decimal (an Android phone's 392.7).
+fn points(data: &Value, key: &str) -> String {
+    let value = data.get(key).and_then(Value::as_f64).unwrap_or(0.0);
+    if value.fract().abs() < 1e-6 {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.1}")
     }
 }
 
@@ -216,8 +226,8 @@ fn describe_state(data: &Value) -> Result<String> {
     }
     let name = data.get("name").and_then(Value::as_str).unwrap_or("");
     let id = data.get("id").and_then(Value::as_str).unwrap_or("-");
-    let width = data.get("width").and_then(Value::as_u64).unwrap_or(0);
-    let height = data.get("height").and_then(Value::as_u64).unwrap_or(0);
+    let width = points(data, "width");
+    let height = points(data, "height");
     let landscape = data
         .get("landscape")
         .and_then(Value::as_bool)

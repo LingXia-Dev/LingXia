@@ -56,10 +56,20 @@ struct RunnerDevicePreset {
     id: String,
     group: String,
     name: String,
-    width: u32,
-    height: u32,
+    /// Points; an Android or HarmonyOS phone's are fractional (pixels over density).
+    width: f64,
+    height: f64,
     #[serde(rename = "pixelRatio")]
     pixel_ratio: f32,
+}
+
+/// A length in points, whole when it is, else to one decimal.
+fn points(value: f64) -> String {
+    if value.fract().abs() < 1e-6 {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.1}")
+    }
 }
 
 pub(super) fn print_runner_devices() -> Result<()> {
@@ -106,8 +116,8 @@ fn render_runner_devices() -> Result<String> {
             "  {:id_width$}  {:group_width$}  {:>4} x {:<4}  {:5}  {}{}\n",
             device.id,
             device.group,
-            device.width,
-            device.height,
+            points(device.width),
+            points(device.height),
             format!("@{}x", device.pixel_ratio),
             device.name,
             marker,

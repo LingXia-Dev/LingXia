@@ -117,10 +117,10 @@ pub struct DeviceEntry {
     pub name: String,
     /// Form-factor group ("phone" | "tablet" | "desktop").
     pub group: String,
-    /// Logical width in points.
-    pub width: u32,
+    /// Logical width in points; fractional where the device's pixels over its density are.
+    pub width: f64,
     /// Logical height in points.
-    pub height: u32,
+    pub height: f64,
     /// Device pixels per point: a GPU page renders at it, so its screenshot is
     /// `width * pixel_ratio` by `height * pixel_ratio` pixels.
     #[serde(rename = "pixelRatio", default = "one")]
@@ -147,9 +147,9 @@ pub struct DeviceState {
     /// Form-factor group.
     pub group: String,
     /// Logical width in points (accounts for orientation).
-    pub width: u32,
+    pub width: f64,
     /// Logical height in points (accounts for orientation).
-    pub height: u32,
+    pub height: f64,
     /// Device pixels per point.
     #[serde(rename = "pixelRatio", default = "one")]
     pub pixel_ratio: f32,

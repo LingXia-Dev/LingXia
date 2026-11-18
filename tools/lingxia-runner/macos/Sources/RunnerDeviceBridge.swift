@@ -5,8 +5,8 @@ private struct RunnerDeviceEntryPayload: Encodable, Sendable {
     let id: String
     let name: String
     let group: String
-    let width: Int
-    let height: Int
+    let width: Double
+    let height: Double
     let pixelRatio: Double
     let current: Bool
 }
@@ -15,8 +15,8 @@ private struct RunnerDeviceStatePayload: Encodable, Sendable {
     let id: String
     let name: String
     let group: String
-    let width: Int
-    let height: Int
+    let width: Double
+    let height: Double
     let pixelRatio: Double
     let landscape: Bool
     let appearance: String
@@ -32,8 +32,8 @@ private func deviceEntries() -> [RunnerDeviceEntryPayload] {
             id: device.id,
             name: device.name,
             group: device.group,
-            width: Int(device.width),
-            height: Int(device.height),
+            width: Double(device.width),
+            height: Double(device.height),
             pixelRatio: Double(device.pixelRatio),
             current: device.id == current
         )
@@ -48,8 +48,8 @@ private func deviceState() -> RunnerDeviceStatePayload {
         id: selected.id,
         name: selected.name,
         group: selected.group,
-        width: Int(effective.width),
-        height: Int(effective.height),
+        width: Double(effective.width),
+        height: Double(effective.height),
         pixelRatio: Double(selected.pixelRatio),
         landscape: RunnerApp.shared.deviceOrientation == .landscape,
         appearance: RunnerApp.shared.simulatedAppearance.rawValue,

@@ -127,6 +127,84 @@
       }
     },
     {
+      "id": "huawei-nova-13",
+      "group": "phone",
+      "browserProfile": "phone",
+      "name": "Huawei nova 13",
+      "width": 361.3333333333333,
+      "height": 804,
+      "pixelRatio": 3,
+      "bezelWidth": 4,
+      "bezelColor": 1315860,
+      "outerRadius": 40,
+      "screenRadius": 36,
+      "notch": {
+        "width": 0,
+        "height": 0,
+        "cornerRadius": 0,
+        "statusBarHeight": 39
+      },
+      "chrome": {
+        "host": "harmony",
+        "safeArea": { "portrait": [39, 0, 28, 0], "landscape": [0, 0, 28, 39] },
+        "navigationBar": 44,
+        "tabBar": 72,
+        "provisional": ["safeArea.portrait.top", "safeArea.landscape", "tabBarReach", "screenRadius"]
+      }
+    },
+    {
+      "id": "pixel-3",
+      "group": "phone",
+      "browserProfile": "phone",
+      "name": "Google Pixel 3",
+      "width": 392.72727272727275,
+      "height": 785.4545454545455,
+      "pixelRatio": 2.75,
+      "bezelWidth": 4,
+      "bezelColor": 1315860,
+      "outerRadius": 24,
+      "screenRadius": 20,
+      "notch": {
+        "width": 0,
+        "height": 0,
+        "cornerRadius": 0,
+        "statusBarHeight": 24
+      },
+      "chrome": {
+        "host": "android",
+        "safeArea": { "portrait": [24, 0, 48, 0], "landscape": [24, 48, 0, 0] },
+        "navigationBar": 44,
+        "tabBar": 64,
+        "provisional": ["safeArea.portrait.top", "safeArea.landscape", "screenRadius"]
+      }
+    },
+    {
+      "id": "redmi-9",
+      "group": "phone",
+      "browserProfile": "phone",
+      "name": "Redmi 9",
+      "width": 392.72727272727275,
+      "height": 850.9090909090909,
+      "pixelRatio": 2.75,
+      "bezelWidth": 4,
+      "bezelColor": 1315860,
+      "outerRadius": 28,
+      "screenRadius": 24,
+      "notch": {
+        "width": 0,
+        "height": 0,
+        "cornerRadius": 0,
+        "statusBarHeight": 30
+      },
+      "chrome": {
+        "host": "android",
+        "safeArea": { "portrait": [30, 0, 16, 0], "landscape": [0, 0, 16, 30] },
+        "navigationBar": 44,
+        "tabBar": 64,
+        "provisional": ["safeArea.portrait.top", "safeArea.landscape", "screenRadius"]
+      }
+    },
+    {
       "id": "ipad",
       "group": "tablet",
       "browserProfile": "tablet",
