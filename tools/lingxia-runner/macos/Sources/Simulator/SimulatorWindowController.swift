@@ -37,6 +37,12 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             guard let device = currentDevice else { return currentNotchSpec.statusBarHeight }
             return device.safeArea.top * device.fit
         }
+        /// The row the clock and battery sit in: the device's own status bar, shorter than the
+        /// safe-area top on Dynamic Island phones.
+        @MainActor public static var statusRowHeight: CGFloat {
+            let row = currentNotchSpec.statusBarHeight
+            return row > 0 ? min(row, systemStatusBarHeight) : systemStatusBarHeight
+        }
         /// The host's navigation bar at the skin's fit.
         @MainActor public static var navBarHeight: CGFloat {
             guard let device = currentDevice else { return DeviceChrome.iOSNavigationBar }
@@ -101,6 +107,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     private var viewController: SimulatorViewController?
     private var systemStatusBar: NSView?
     private var statusBarHeightConstraint: NSLayoutConstraint?
+    private var statusRowHeightConstraint: NSLayoutConstraint?
     private var navigationBar: NSView?
     private var navigationBarHeightConstraint: NSLayoutConstraint?
     private var capsuleTopConstraint: NSLayoutConstraint?
@@ -600,16 +607,23 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         statusBar.addSubview(notch)
         self.notchView = notch
 
-        // Constraints
+        let row = NSLayoutGuide()
+        statusBar.addLayoutGuide(row)
+        let rowHeight = row.heightAnchor.constraint(equalToConstant: Layout.statusRowHeight)
+        statusRowHeightConstraint = rowHeight
+
         NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: statusBar.topAnchor),
+            rowHeight,
+
             time.leadingAnchor.constraint(equalTo: statusBar.leadingAnchor, constant: Layout.statusBarSideMargin),
-            time.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
+            time.centerYAnchor.constraint(equalTo: row.centerYAnchor),
 
             battery.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor, constant: -Layout.statusBarSideMargin),
-            battery.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
+            battery.centerYAnchor.constraint(equalTo: row.centerYAnchor),
 
             signal.trailingAnchor.constraint(equalTo: battery.leadingAnchor, constant: -8),
-            signal.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
+            signal.centerYAnchor.constraint(equalTo: row.centerYAnchor),
 
             notch.leadingAnchor.constraint(equalTo: statusBar.leadingAnchor),
             notch.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor),
@@ -1036,6 +1050,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     
     private func updateStatusBarConstraints() {
         statusBarHeightConstraint?.constant = Layout.systemStatusBarHeight
+        statusRowHeightConstraint?.constant = Layout.statusRowHeight
         navigationBarHeightConstraint?.constant = Layout.navBarHeight
         capsuleTopConstraint?.constant = Self.capsuleTop()
         systemStatusBar?.needsLayout = true
