@@ -15,6 +15,16 @@ test('a number out of range fails naming the property, the value and the range',
   rejects({ width: NaN }, /UI_STYLE_VALUE: width takes a number from 0 to 16384; got NaN$/m);
 });
 
+test('any refused value names what the property takes and what it got', () => {
+  rejects({ opacity: 1.5 }, /UI_STYLE_VALUE: opacity takes a number from 0 to 1; got 1\.5$/m);
+  rejects({ zIndex: 2.5 }, /UI_STYLE_VALUE: zIndex takes a whole number from -10000 to 10000; got 2\.5$/m);
+  rejects({ alignItems: 'middle' }, /UI_STYLE_VALUE: alignItems takes one of .*center.*; got "middle"$/m);
+  rejects({ rotate: '45deg' }, /UI_STYLE_VALUE: rotate takes degrees from -36000 to 36000; got "45deg"$/m);
+  rejects({ lineClamp: 0 }, /UI_STYLE_VALUE: lineClamp takes a whole number of lines from 1 to 1024; got 0$/m, 'text');
+  rejects({ objectFit: 'stretch' }, /UI_STYLE_VALUE: objectFit takes cover, contain or fill; got "stretch"$/m, 'image');
+  rejects({ gridColumn: '1 / 2 / 3' }, /UI_STYLE_VALUE: gridColumn takes start \/ end; got "1 \/ 2 \/ 3"$/m);
+});
+
 test('dimensions lower lengths, percentages, viewport units and sizing keywords', () => {
   assert.equal(style({ width: 100 }).width, 100);
   for (const name of ['width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight']) {

@@ -70,15 +70,15 @@ export function admitStyle(tag, style) {
   }
 }
 
-function invalid(name) { throw Error(`UI_STYLE_VALUE: ${name}`); }
+// Names what the property takes and what it got: a bad value usually comes from data, far from the style.
+function invalid(name, value, takes) {
+  const got = typeof value === 'number' ? String(value) : (JSON.stringify(value) ?? typeof value).slice(0, 40);
+  throw Error(`UI_STYLE_VALUE: ${name} takes ${takes}; got ${got}`);
+}
 
-// Names the value and the range: a number out of range usually comes from data, far from the style.
 function length(name, value, { signed = false, max = 16384 } = {}) {
   const min = signed ? -max : 0;
-  if (!finite(value) || value > max || value < min) {
-    const got = typeof value === 'number' ? String(value) : (JSON.stringify(value) ?? typeof value).slice(0, 40);
-    throw Error(`UI_STYLE_VALUE: ${name} takes a number from ${min} to ${max}; got ${got}`);
-  }
+  if (!finite(value) || value > max || value < min) invalid(name, value, `a number from ${min} to ${max}`);
   return value;
 }
 
@@ -86,7 +86,7 @@ function dimension(name, value, env, out, key) {
   const ch = typeof value === 'string' && value.match(/^(\d+(?:\.\d+)?)ch$/);
   if (ch) {
     // Widths only: a `ch` is the advance of the element's own `0`, which only the host can shape.
-    if (!['width', 'minWidth', 'maxWidth'].includes(key)) invalid(name);
+    if (!['width', 'minWidth', 'maxWidth'].includes(key)) invalid(name, value, 'points, a percentage or vw/vh; ch sizes widths only');
     out[`${key}Ch`] = length(name, Number(ch[1]), { max: 4096 });
     return;
   }
@@ -97,7 +97,7 @@ function dimension(name, value, env, out, key) {
     const extent = viewport[2] === 'vw'
       ? env?.viewport?.width - (insets.left ?? 0) - (insets.right ?? 0)
       : env?.viewport?.height - (insets.top ?? 0) - Math.max(insets.bottom ?? 0, keyboard);
-    if (!finite(extent)) invalid(name);
+    if (!finite(extent)) invalid(name, value, 'vw/vh only once the page has a viewport');
     out[key] = length(name, extent * Number(viewport[1]) / 100);
   } else if (percent(value) !== undefined) out[`${key}Percent`] = length(name, percent(value));
   else if (value === 'auto' && key === 'height') out.heightAuto = 1;
@@ -113,25 +113,25 @@ const safeBits = { justify: 1, align: 2, alignSelf: 4, alignContent: 8, justifyI
 function aligned(name, key, value, names, safe) {
   if (typeof value === 'string' && value.startsWith('safe ')) {
     value = value.slice(5);
-    if (!['center', 'end', 'flex-end'].includes(value)) invalid(name);
+    if (!['center', 'end', 'flex-end'].includes(value)) invalid(name, `safe ${value}`, 'safe center, safe end or safe flex-end');
     safe.bits |= safeBits[key];
   }
   return option(name, key, names[value] ?? value);
 }
 
 function option(name, key, value) {
-  if (!fieldOptions[key]?.includes(value)) invalid(name);
+  if (!fieldOptions[key]?.includes(value)) invalid(name, value, `one of ${fieldOptions[key]?.join(', ')}`);
   return value;
 }
 
 // A generic, or a face the theme declared with `@font-face` before its generic fallback.
 const generics = { 'sans-serif': 'sans', monospace: 'mono', serif: 'serif' };
 function family(name, value) {
-  if (typeof value !== 'string') invalid(name);
+  if (typeof value !== 'string') invalid(name, value, 'a family name');
   const parts = value.split(',').map(part => part.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
   if (parts.length === 1 && generics[parts[0]]) return generics[parts[0]];
   const [face, fallback = 'sans-serif'] = parts;
-  if (parts.length > 2 || !generics[fallback] || Object.values(generics).includes(face)) invalid(name);
+  if (parts.length > 2 || !generics[fallback] || Object.values(generics).includes(face)) invalid(name, value, 'sans-serif, serif, monospace, or one @font-face family before one of them');
   if (!declaredFamily(face)) throw Error(`UI_FONT: ${face} is not declared with @font-face in the page's theme`);
   return `${face},${generics[fallback]}`;
 }
@@ -139,22 +139,22 @@ function family(name, value) {
 function backdrop(name, value) {
   if (value === 'none') return [0, 1];
   const match = typeof value === 'string' && value.trim().match(/^(?:blur\((\d+(?:\.\d+)?)px\))?\s*(?:saturate\((\d+(?:\.\d+)?)(%?)\))?$/);
-  if (!match || (match[1] === undefined && match[2] === undefined)) invalid(name);
+  if (!match || (match[1] === undefined && match[2] === undefined)) invalid(name, value, 'none, blur(<px>) and/or saturate(<n>)');
   const blur = match[1] === undefined ? 0 : Number(match[1]);
   const saturation = match[2] === undefined ? 1 : Number(match[2]) / (match[3] ? 100 : 1);
-  if (blur > 64 || saturation > 16) invalid(name);
+  if (blur > 64 || saturation > 16) invalid(name, value, 'a blur up to 64px and a saturation up to 16');
   return [blur, saturation];
 }
 
 // Track lists are parsed natively; here they only need a bounded, function-only alphabet.
 function tracks(name, value) {
-  if (typeof value !== 'string' || value.length > 1024 || !/^[a-z0-9\s().,%-]+$/.test(value)) invalid(name);
+  if (typeof value !== 'string' || value.length > 1024 || !/^[a-z0-9\s().,%-]+$/.test(value)) invalid(name, value, 'a track list such as repeat(3, 1fr) or 120px 1fr');
   return value.trim().replace(/\s+/g, ' ');
 }
 
 function gridEdge(name, value) {
   const text = typeof value === 'number' ? String(value) : typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
-  if (!/^(?:auto|-?[1-9]\d?|span [1-9]\d?)$/.test(text)) invalid(name);
+  if (!/^(?:auto|-?[1-9]\d?|span [1-9]\d?)$/.test(text)) invalid(name, value, 'auto, a line from -99 to 99 (not 0), or span 1 to 99');
   return text;
 }
 
@@ -165,7 +165,7 @@ function gridLine(name, value, lines) {
   else if (name.endsWith('End')) line.end = gridEdge(name, value);
   else {
     const parts = String(value).split('/');
-    if (parts.length > 2) invalid(name);
+    if (parts.length > 2) invalid(name, value, 'start / end');
     line.shorthand = [gridEdge(name, parts[0]), parts[1] === undefined ? 'auto' : gridEdge(name, parts[1])];
   }
 }
@@ -177,14 +177,14 @@ const translateLength = value => finite(value) ? Math.abs(value) <= 16384
 function transformPart(name, value, out) {
   const pair = check => {
     const parts = Array.isArray(value) ? value : [value, name === 'scale' ? value : 0];
-    if (parts.length !== 2 || !parts.every(check)) invalid(name);
+    if (parts.length !== 2 || !parts.every(check)) invalid(name, value, name === 'scale' ? 'a factor or [x, y], each up to 1000' : 'points or a percentage, or [x, y] of them, up to 16384 points or 1000%');
     return [...parts];
   };
   if (name === 'translate') out.translate = pair(translateLength);
   else if (name === 'scale') out.scale = pair(v => finite(v) && Math.abs(v) <= 1000);
-  else if (name === 'rotate') { if (!finite(value) || Math.abs(value) > 36000) invalid(name); out.rotate = value; }
+  else if (name === 'rotate') { if (!finite(value) || Math.abs(value) > 36000) invalid(name, value, 'degrees from -36000 to 36000'); out.rotate = value; }
   else {
-    if (!Array.isArray(value) || value.length !== 2 || !value.every(v => finite(v) && Math.abs(v) <= 16)) invalid(name);
+    if (!Array.isArray(value) || value.length !== 2 || !value.every(v => finite(v) && Math.abs(v) <= 16)) invalid(name, value, '[x, y] as box fractions from -16 to 16');
     out.origin = [...value];
   }
 }
@@ -195,7 +195,7 @@ function numericVariant(name, value) {
   if (value === 'normal') return value;
   const tokens = typeof value === 'string' ? value.trim().split(/\s+/) : [];
   const picked = numericGroups.map(group => tokens.filter(token => group.includes(token)));
-  if (!tokens.length || picked.some(group => group.length > 1) || picked.flat().length !== tokens.length) invalid(name);
+  if (!tokens.length || picked.some(group => group.length > 1) || picked.flat().length !== tokens.length) invalid(name, value, `normal, or at most one of each of ${numericGroups.map(group => group.join('/')).join(', ')}`);
   return picked.flat().join(' ');
 }
 
@@ -249,17 +249,17 @@ function objectPosition(value) {
   const fraction = part => {
     if (part === 'center') return 0.5;
     const match = /^(-?(?:\d*\.)?\d+)%$/.exec(part);
-    if (!match || Math.abs(Number(match[1])) > 1600) invalid('objectPosition');
+    if (!match || Math.abs(Number(match[1])) > 1600) invalid('objectPosition', part, 'center, left/right/top/bottom or a percentage up to 1600%');
     return Number(match[1]) / 100;
   };
   if (parts.length === 1) {
     const [part] = parts;
     return part in vertical ? [0.5, vertical[part]] : [part in horizontal ? horizontal[part] : fraction(part), 0.5];
   }
-  if (parts.length !== 2) invalid('objectPosition');
+  if (parts.length !== 2) invalid('objectPosition', value, 'one or two positions');
   let [x, y] = parts;
   if (x in vertical || y in horizontal) [x, y] = [y, x];
-  if (x in vertical || y in horizontal) invalid('objectPosition');
+  if (x in vertical || y in horizontal) invalid('objectPosition', value, 'one horizontal and one vertical position');
   return [x in horizontal ? horizontal[x] : fraction(x), y in vertical ? vertical[y] : fraction(y)];
 }
 
@@ -267,7 +267,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
   admitStyle(tag, style);
   const out = {};
   const fontSize = style.fontSize === undefined ? inherited.fontSize : length('fontSize', style.fontSize);
-  if (style.fontSize !== undefined && style.fontSize <= 0) invalid('fontSize');
+  if (style.fontSize !== undefined && style.fontSize <= 0) invalid('fontSize', style.fontSize, 'a number above 0');
   let lineHeight = inherited.lineHeight;
   const transform = {}, lines = {}, safe = { bits: 0 };
   const names = Object.keys(style).sort((a, b) => Number(shorthand(b)) - Number(shorthand(a)));
@@ -290,7 +290,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
         for (const side of [key].flat()) out[side] = value;
         break;
       case 'z-index':
-        if (!Number.isInteger(value) || Math.abs(value) > 10000) invalid(name);
+        if (!Number.isInteger(value) || Math.abs(value) > 10000) invalid(name, value, 'a whole number from -10000 to 10000');
         out[key] = value; break;
       case 'grid-template':
         if (Number.isInteger(value) && value >= 1 && value <= limits.gridTracks) out[key] = `repeat(${value}, minmax(0, 1fr))`;
@@ -300,18 +300,18 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'grid-flow': out[key] = option(name, key, typeof value === 'string' ? value.trim().replace(/\s+/, '-') : value); break;
       case 'grid-line': gridLine(name, value, lines); break;
       case 'order':
-        if (!Number.isInteger(value) || Math.abs(value) > 10000) invalid(name);
+        if (!Number.isInteger(value) || Math.abs(value) > 10000) invalid(name, value, 'a whole number from -10000 to 10000');
         out[key] = value; break;
       case 'align-content': out[key] = aligned(name, key, value, justification, safe); break;
       case 'line-clamp':
-        if (!Number.isInteger(value) || value < 1 || value > 1024) invalid(name);
+        if (!Number.isInteger(value) || value < 1 || value > 1024) invalid(name, value, 'a whole number of lines from 1 to 1024');
         out[key] = value; break;
       case 'number': out[key] = length(name, value); break;
-      case 'opacity': if (!finite(value) || value < 0 || value > 1) invalid(name); out[key] = value; break;
+      case 'opacity': if (!finite(value) || value < 0 || value > 1) invalid(name, value, 'a number from 0 to 1'); out[key] = value; break;
       case 'font-size': out[key] = fontSize; break;
-      case 'font-weight': if (!finite(value) || value < 1 || value > 1000) invalid(name); out[key] = value; break;
+      case 'font-weight': if (!finite(value) || value < 1 || value > 1000) invalid(name, value, 'a number from 1 to 1000'); out[key] = value; break;
       case 'color': {
-        if (typeof value !== 'string' || !value) invalid(name);
+        if (typeof value !== 'string' || !value) invalid(name, value, 'a colour');
         const problem = wireColorProblem(value, name);
         if (problem) throw Error(problem);
         out[key] = value === 'transparent' ? '#00000000' : value;
@@ -328,13 +328,13 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'filter': {
         if (value === 'none') { out[key] = 0; break; }
         const blur = typeof value === 'string' && value.trim().match(/^blur\((\d+(?:\.\d+)?)px\)$/);
-        if (!blur || Number(blur[1]) > 64) invalid(name);
+        if (!blur || Number(blur[1]) > 64) invalid(name, value, 'none or blur(<px>) up to 64px');
         out[key] = Number(blur[1]);
         break;
       }
       case 'aspect-ratio':
         if (value === 'auto') break;
-        if (!finite(value) || value <= 0 || value > 10000) invalid(name);
+        if (!finite(value) || value <= 0 || value > 10000) invalid(name, value, 'auto or a ratio above 0 up to 10000');
         out[key] = value; break;
       case 'font-variant-numeric': out[key] = numericVariant(name, value); break;
       case 'basis':
@@ -354,7 +354,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'line-height':
         if (typeof value === 'string' && /^\d+(?:\.\d+)?px$/.test(value)) lineHeight = length(name, Number(value.slice(0, -2)));
         else if (finite(value) && value > 0 && value <= 64) lineHeight = { multiplier: value };
-        else invalid(name);
+        else invalid(name, value, 'a multiplier above 0 up to 64, or <n>px');
         break;
       case 'letter-spacing': {
         const em = typeof value === 'string' && value.match(/^(-?\d+(?:\.\d+)?)em$/);
@@ -363,11 +363,11 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
         break;
       }
       case 'scroll-axis':
-        if (value !== 'auto' || (style.overflowX !== undefined && style.overflowY !== undefined)) invalid(name);
+        if (value !== 'auto' || (style.overflowX !== undefined && style.overflowY !== undefined)) invalid(name, value, 'auto, on one axis only');
         out[key] = name === 'overflowX' ? 'horizontal' : 'vertical';
         break;
       case 'fit':
-        if (!(tag === 'vector' ? ['contain', 'fill'] : ['cover', 'contain', 'fill']).includes(value)) invalid(name);
+        if (!(tag === 'vector' ? ['contain', 'fill'] : ['cover', 'contain', 'fill']).includes(value)) invalid(name, value, tag === 'vector' ? 'contain or fill' : 'cover, contain or fill');
         out[key] = value; break;
       case 'object-position':
         out[key] = JSON.stringify(objectPosition(value)); break;
@@ -387,7 +387,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
   // A multiplier recomputes against each node's font size; pixels inherit natively.
   if (style.lineHeight !== undefined || typeof lineHeight === 'object') {
     const pixels = typeof lineHeight === 'object' ? fontSize * lineHeight.multiplier : lineHeight;
-    if (!(pixels > 0 && pixels <= 16384)) invalid('lineHeight');
+    if (!(pixels > 0 && pixels <= 16384)) invalid('lineHeight', pixels, 'a height above 0 up to 16384 points');
     out.lineHeight = pixels;
   }
   return { fields: out, typography: { fontSize, lineHeight } };
@@ -395,8 +395,8 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
 
 // A slider part as `[field, value, …]` pairs; sizes are plain points, as the part has no box to resolve against.
 function partRecord(name, value, env) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) invalid(name);
-  for (const key of ['width', 'height']) if (value[key] !== undefined && !(finite(value[key]) && value[key] >= 0 && value[key] <= 1024)) invalid(`${name}.${key}`);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) invalid(name, value, 'a style object');
+  for (const key of ['width', 'height']) if (value[key] !== undefined && !(finite(value[key]) && value[key] >= 0 && value[key] <= 1024)) invalid(`${name}.${key}`, value[key], 'a number from 0 to 1024');
   const pairs = [];
   for (const [key, lowered] of Object.entries(lowerStyle('view', value, env).fields))
     pairs.push(field[key], (key === 'boxShadow' || key === 'ring') && lowered !== 'none' ? JSON.stringify(lowered) : lowered);
