@@ -145,6 +145,10 @@ pub use lxapp::{
 pub use native_authority::NativeControlPlaneAuthority;
 pub use native_component::{NativeComponentHost, register_native_component_host};
 pub use page::config::{OrientationConfig, PageOrientation, PageRenderer};
+pub use page::embedded_document::{
+    BlockedLoad, BlockedLoadHandler, BlockedReason, EmbedDocumentMessage, EmbeddedDocument,
+    EmbeddedDocumentOptions, EmbeddedErrorCode, EmbeddedSourceError, OpenEmbeddedError,
+};
 pub use page::{
     GpuActionSheet, GpuBridgeError, GpuModal, GpuPageView, GpuPageViewFactory, GpuPatchOp,
     GpuStateSignal, GpuStateWrite, GpuToast, GpuUiRequest, GpuVideoCommand, GpuVideoRequest,

@@ -241,6 +241,13 @@ impl LxAppConfig {
                     page.path
                 )));
             }
+            if !lingxia_webview::WebTag::is_page_path(&page.path) {
+                return Err(serde_json::Error::custom(format!(
+                    r#""pages" entry path must not contain {:?}: {:?}"#,
+                    lingxia_webview::WebTag::CHILD_MARKER,
+                    page.path
+                )));
+            }
         }
 
         for (plugin_name, plugin) in &mut self.plugins {
@@ -372,6 +379,9 @@ mod tests {
         });
         assert!(LxAppConfig::from_value(outside.clone()).is_ok());
         outside["pages"][0]["path"] = serde_json::json!("../outside.js");
+        assert!(LxAppConfig::from_value(outside.clone()).is_err());
+        // Reserved for the WebViews a page owns.
+        outside["pages"][0]["path"] = serde_json::json!("pages/~child~/index.js");
         assert!(LxAppConfig::from_value(outside).is_err());
     }
 

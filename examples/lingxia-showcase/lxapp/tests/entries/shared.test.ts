@@ -27,6 +27,7 @@ import '@lingxia/test/showcase/pages/surface-port.test.js';
 import '@lingxia/test/showcase/pages/video-playback.test.js';
 import '@lingxia/test/showcase/pages/media-swiper.test.js';
 import '@lingxia/test/showcase/pages/media-swiper-video.test.js';
+import '@lingxia/test/showcase/pages/embedded-document.test.js';
 import '@lingxia/test/showcase/pages/media-info.test.js';
 import '@lingxia/test/showcase/pages/channel.test.js';
 import '@lingxia/test/showcase/pages/cloud.test.js';

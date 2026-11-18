@@ -101,6 +101,10 @@
       "path": "pages/bridge-repro/index"
     },
     {
+      "name": "spec-embedded",
+      "path": "pages/spec-embedded/index"
+    },
+    {
       "name": "leaveGuard",
       "path": "pages/leaveguard/index"
     }

@@ -8,6 +8,7 @@ import '@lingxia/test/showcase/pages/clipboard.test.js';
 import '@lingxia/test/showcase/pages/cloud.test.js';
 import '@lingxia/test/showcase/pages/components.test.js';
 import '@lingxia/test/showcase/pages/device.test.js';
+import '@lingxia/test/showcase/pages/embedded-document.test.js';
 import '@lingxia/test/showcase/pages/home.test.js';
 import '@lingxia/test/showcase/pages/host-chrome.test.js';
 import '@lingxia/test/showcase/pages/leave-guard.test.js';

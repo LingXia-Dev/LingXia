@@ -23,6 +23,8 @@ use tokio::sync::{mpsc, oneshot};
 mod macros;
 
 mod device;
+#[cfg(feature = "automation")]
+mod embedded_document_probe;
 mod navigation;
 mod navigator;
 
@@ -1548,6 +1550,8 @@ pub fn register_builtin_routes() {
     REGISTERED.get_or_init(|| {
         device::register_all();
         navigation::register_all();
+        #[cfg(feature = "automation")]
+        embedded_document_probe::register_all();
         navigator::register_all();
     });
 }

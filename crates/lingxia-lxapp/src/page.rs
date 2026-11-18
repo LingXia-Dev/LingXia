@@ -1,5 +1,6 @@
 pub(crate) mod config;
 pub(crate) mod definition;
+pub(crate) mod embedded_document;
 pub(crate) mod runtime;
 #[rustfmt::skip]
 pub(crate) mod view_limits;
@@ -195,6 +196,9 @@ pub(crate) struct PageInstanceInner {
     /// Native WebView was reclaimed to free memory. Logic, `data`, and the
     /// instance stay; [`PageInstance::ensure_live_webview`] recreates the view.
     discarded: AtomicBool,
+    /// Third-party documents this page shows, by node id.
+    embedded_documents:
+        Mutex<std::collections::HashMap<String, embedded_document::EmbeddedDocument>>,
     /// The attached GPU View holds a module instance no connection has used yet.
     gpu_module_fresh: AtomicBool,
     webview_create_in_flight: AtomicBool,
@@ -547,9 +551,15 @@ impl PageInstance {
         // Every WebView-owning page gets a per-instance tag: two instances of
         // one route never share registry keys, and platform-side state bound
         // to the tag string dies with its instance.
+        // The child marker is reserved for WebViews a page owns. The manifest
+        // rejects it in page paths; an unresolved URL is not let through either.
         let webtag = WebTag::new(
             &appid,
-            &format!("{path}#{}", id.as_str()),
+            &format!(
+                "{}#{}",
+                path.replace(WebTag::CHILD_MARKER, "~"),
+                id.as_str()
+            ),
             Some(lxapp.session.id),
         );
         let bridge_nonce = Self::generate_bridge_nonce();
@@ -579,6 +589,7 @@ impl PageInstance {
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
             discarded: AtomicBool::new(false),
+            embedded_documents: Mutex::new(std::collections::HashMap::new()),
             gpu_module_fresh: AtomicBool::new(false),
             webview_create_in_flight: AtomicBool::new(true),
             initial_setup_succeeded: AtomicBool::new(false),
@@ -637,6 +648,7 @@ impl PageInstance {
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
             discarded: AtomicBool::new(false),
+            embedded_documents: Mutex::new(std::collections::HashMap::new()),
             gpu_module_fresh: AtomicBool::new(false),
             webview_create_in_flight: AtomicBool::new(false),
             initial_setup_succeeded: AtomicBool::new(false),
@@ -2967,6 +2979,7 @@ impl Drop for PageInstanceInner {
     fn drop(&mut self) {
         // Native components mounted by this page (if any) go down with it.
         crate::native_component::notify_page_destroyed(self.webtag.key());
+        embedded_document::destroy_all(&self.embedded_documents);
 
         // Destroy WebView if it exists
         let detached = self.view.lock().ok().and_then(|mut view| view.take());

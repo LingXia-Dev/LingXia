@@ -387,36 +387,49 @@ impl LxApp {
     /// script or stylesheet served without one is decoded as Latin-1 and every
     /// non-ASCII string in it renders as mojibake — the localized strings in an
     /// lxapp's own JS being the obvious casualty.
-    fn infer_mime_type(path: &str) -> &'static str {
-        if path.ends_with(".js") {
+    pub(crate) fn infer_mime_type(path: &str) -> &'static str {
+        let lower = path.to_ascii_lowercase();
+        if lower.ends_with(".html") || lower.ends_with(".htm") {
+            "text/html; charset=utf-8"
+        } else if lower.ends_with(".xhtml") {
+            "application/xhtml+xml; charset=utf-8"
+        } else if lower.ends_with(".js") || lower.ends_with(".mjs") {
             "application/javascript; charset=utf-8"
-        } else if path.ends_with(".css") {
+        } else if lower.ends_with(".css") {
             "text/css; charset=utf-8"
-        } else if path.ends_with(".png") {
+        } else if lower.ends_with(".txt") {
+            "text/plain; charset=utf-8"
+        } else if lower.ends_with(".xml") {
+            "application/xml; charset=utf-8"
+        } else if lower.ends_with(".png") {
             "image/png"
-        } else if path.ends_with(".jpg") || path.ends_with(".jpeg") {
+        } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
             "image/jpeg"
-        } else if path.ends_with(".gif") {
+        } else if lower.ends_with(".gif") {
             "image/gif"
-        } else if path.ends_with(".svg") {
+        } else if lower.ends_with(".svg") {
             "image/svg+xml; charset=utf-8"
-        } else if path.ends_with(".webp") {
+        } else if lower.ends_with(".webp") {
             "image/webp"
-        } else if path.ends_with(".ico") {
+        } else if lower.ends_with(".ico") {
             "image/x-icon"
-        } else if path.ends_with(".json") {
+        } else if lower.ends_with(".json") {
             "application/json; charset=utf-8"
-        } else if path.ends_with(".woff") {
+        } else if lower.ends_with(".wasm") {
+            "application/wasm"
+        } else if lower.ends_with(".pdf") {
+            "application/pdf"
+        } else if lower.ends_with(".woff") {
             "font/woff"
-        } else if path.ends_with(".woff2") {
+        } else if lower.ends_with(".woff2") {
             "font/woff2"
-        } else if path.ends_with(".ttf") {
+        } else if lower.ends_with(".ttf") {
             "font/ttf"
-        } else if path.ends_with(".mp3") {
+        } else if lower.ends_with(".mp3") {
             "audio/mpeg"
-        } else if path.ends_with(".wav") {
+        } else if lower.ends_with(".wav") {
             "audio/wav"
-        } else if path.ends_with(".mp4") {
+        } else if lower.ends_with(".mp4") {
             "video/mp4"
         } else {
             "application/octet-stream"

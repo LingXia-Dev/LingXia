@@ -192,6 +192,7 @@ export struct LxAppContainer {
   @State navbarRefreshKey: number = 0  // Force NavigationBar refresh when data changes
   @State appearanceDark: boolean = false
   @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
+  @State private childWebViewComponents: Map<string, webview.WebviewController> = new Map()
   @Watch('onCurrentPage') @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of WebView keys for ForEach
   /** GPU pages by webtag; they take a page's place where a WebView would. */
@@ -875,6 +876,12 @@ export struct LxAppContainer {
 
     switch (action) {
       case 'create':
+        if (info.webtag.indexOf('~child~') >= 0) {
+          if (this.isNonGpuChildWebView(info)) {
+            this.childWebViewComponents.set(info.webtag, info.controller);
+          }
+          break;
+        }
         if (this.isActiveSurfaceWebView(info)) {
           hilog.info(DOMAIN, TAG, `Surface WebView is owned by SurfaceManager: ${info.webtag}`);
           break;
@@ -900,6 +907,10 @@ export struct LxAppContainer {
         }
         break;
       case 'destroy':
+        if (info.webtag.indexOf('~child~') >= 0) {
+          this.childWebViewComponents.delete(info.webtag);
+          break;
+        }
         if (this.isActiveSurfaceWebView(info) && this.webViewComponents.get(info.webtag) === undefined) {
           hilog.info(DOMAIN, TAG, `Surface WebView destroyed outside container: ${info.webtag}`);
           break;
@@ -1330,6 +1341,21 @@ export struct LxAppContainer {
       ForEach(this.getRenderableWebEntries(), (entry: RenderableWebEntry) => {
         this.buildWebViewComponent(entry.webTag, entry.controller)
       }, (entry: RenderableWebEntry) => `${entry.webTag}@${entry.generation}`)
+      ForEach(this.getRenderableChildWebEntries(), (entry: RenderableWebEntry) => {
+        LingXiaWebView({
+          webTag: entry.webTag,
+          controller: entry.controller,
+          appearanceDark: this.appearanceDark,
+          renderVisibility: Visibility.Hidden,
+          renderWidth: 1,
+          renderHeight: 1,
+          renderHitTest: HitTestMode.None
+        })
+          .width(1)
+          .height(1)
+          .opacity(0)
+          .hitTestBehavior(HitTestMode.None)
+      }, (entry: RenderableWebEntry) => `child:${entry.webTag}@${entry.generation}`)
       // A float's GPU page is mounted by its sub-window; one XComponent per page.
       ForEach(Array.from(this.gpuPages.values())
         .filter((page: GpuPageModel) => !LxAppSurface.isSurfacePageWebView(this.appId, page.webTag)),
@@ -2665,6 +2691,26 @@ export struct LxAppContainer {
       // navigateTo. Inactive pages are parked offscreen, never unmounted —
       // remounting binds the controller to a fresh empty browser (src '')
       // that the runtime won't reload.
+      entries.push({ webTag: tag, controller: controller, generation: getWebviewGeneration(tag) });
+    });
+    return entries;
+  }
+
+  private isNonGpuChildWebView(info: WebViewInfo): boolean {
+    const marker = info.webtag.indexOf('~child~');
+    if (marker < 0) {
+      return false;
+    }
+    const prefix = info.webtag.substring(0, marker);
+    const rest = info.webtag.substring(marker + 7);
+    const sessionIdx = rest.indexOf('#');
+    const parentWebTag = sessionIdx >= 0 ? (prefix + rest.substring(sessionIdx)) : prefix;
+    return GpuPages.byWebTag(parentWebTag) === undefined;
+  }
+
+  private getRenderableChildWebEntries(): RenderableWebEntry[] {
+    const entries: RenderableWebEntry[] = [];
+    this.childWebViewComponents.forEach((controller, tag) => {
       entries.push({ webTag: tag, controller: controller, generation: getWebviewGeneration(tag) });
     });
     return entries;

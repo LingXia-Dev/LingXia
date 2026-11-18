@@ -5,6 +5,7 @@
     "flows/browser-control-navigation.test.ts": "drives the desktop built-in browser, which this mobile-first mirror does not host",
     "pages/bridge.test.ts": "drives the WebView page bridge (window.LingXiaBridge); a GPU page has none",
     "pages/components.test.ts": "the GPU showcase has no components page",
+    "pages/embedded-document.test.ts": "drives the React showcase's embedded-document WebView page; the GPU <webview> component has its own specs in tests/webview.test.ts",
     "pages/native-components.test.ts": "WebView native components (video, map, input overlays) have no GPU page",
     "pages/navigator.test.ts": "the GPU showcase has no navigator page",
     "pages/render.test.ts": "waits for each page's WebView document and compares the React showcase's page list",

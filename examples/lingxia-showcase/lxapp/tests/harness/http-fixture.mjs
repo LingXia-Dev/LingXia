@@ -288,6 +288,19 @@ export function createFixtureServer() {
         return;
       }
 
+      // A response a WebView would download rather than show.
+      if (route.startsWith('/attachment/')) {
+        const name = decodeURIComponent(route.slice('/attachment/'.length));
+        const payload = body(64);
+        response.writeHead(200, {
+          'content-type': 'application/octet-stream',
+          'content-disposition': `attachment; filename="${name}"`,
+          'content-length': payload.length,
+        });
+        response.end(payload);
+        return;
+      }
+
       if (route === '/browser/files') {
         json(200, { files: uploadFiles() });
         return;
