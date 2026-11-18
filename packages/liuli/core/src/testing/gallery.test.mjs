@@ -86,3 +86,28 @@ test('gallery home: a table of contents in three groups, each row with its icon,
   const catalog = readFileSync(resolve(gallery, 'shared/catalog.generated.ts'), 'utf8');
   assert.equal(/export const newest|"(since|status)":/.test(catalog), false, 'the catalog carries no dates or statuses');
 });
+
+test('gallery motion: each control plays what its caption says', async () => {
+  const screen = await render(resolve(gallery, 'pages/motion/index.tsx'), {}, { root: gallery });
+  const said = text => screen.queryAll(node => node.text === text).length > 0;
+  const motion = node => JSON.parse(node.props.transition);
+  const named = label => screen.queryAll(node => node.props.accessibilityLabel === label && node.tag !== 'text')[0];
+  // Press: the fill eases out in 150 ms.
+  assert.equal(motion(screen.getByTestId('press-primary')).durationMs, 150);
+  screen.press(screen.getByTestId('press-primary'));
+  assert.ok(said('Saved'));
+  // Enter: a replay mounts the panel anew, which starts from its starting style again.
+  const panel = screen.getByTestId('enter-panel');
+  assert.deepEqual([motion(panel).durationMs, Boolean(panel.props.startingStyle)], [200, true]);
+  screen.press(screen.getByTestId('replay-enter'));
+  assert.notEqual(screen.getByTestId('enter-panel').key, panel.key);
+  // Dialog: opens, and an action closes it.
+  screen.press(screen.getByTestId('open-dialog'));
+  assert.ok(said('Turn on backups?'));
+  screen.press(named('Turn on'));
+  assert.ok(!said('Turn on backups?'));
+  // Menu: opens and its item answers.
+  screen.press(screen.getByTestId('open-menu'));
+  screen.press(named('Rename'));
+  assert.ok(said('Chose Rename'));
+});
