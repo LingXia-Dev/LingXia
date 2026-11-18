@@ -16,9 +16,9 @@ export function Spending() {
   const part = useLocal<string | null>('part', null);
   return (
     <PieChart
-      data={spending}
-      name="category"
-      value="amount"
+      rows={spending}
+      nameField="category"
+      valueField="amount"
       label="Spending by category"
       title="Spending"
       description="October"
@@ -26,8 +26,8 @@ export function Spending() {
       formatShare={percent}
       totalLabel="Total"
       summarize={summarize}
-      selectedKey={part.value}
-      onSelect={part.set}
+      value={part.value}
+      onChange={part.set}
       data-testid="spending"
     />
   );
@@ -37,7 +37,7 @@ const storage = [{ kind: 'Photos', gb: 38 }, { kind: 'Apps', gb: 21 }, { kind: '
 const gigabytes = (value: number) => `${value} GB`;
 
 export function Solid() {
-  return <PieChart data={storage} name="kind" value="gb" label="Storage by kind" title="Storage" variant="pie" formatValue={gigabytes} formatShare={percent} summarize={summarize} data-testid="storage" />;
+  return <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind" title="Storage" variant="pie" formatValue={gigabytes} formatShare={percent} summarize={summarize} data-testid="storage" />;
 }
 
 const languages = [
@@ -49,9 +49,9 @@ const languages = [
 export function Merged() {
   return (
     <PieChart
-      data={languages}
-      name="language"
-      value="readers"
+      rows={languages}
+      nameField="language"
+      valueField="readers"
       label="Readers by language"
       title="Readers by language"
       formatValue={grouped}
@@ -68,33 +68,33 @@ export function Merged() {
 export function Sizes() {
   return (
     <view className="gap-6">
-      <PieChart data={storage} name="kind" value="gb" label="Storage by kind, small" size="sm" formatValue={gigabytes} totalLabel="Used" legend="none" />
-      <PieChart data={storage} name="kind" value="gb" label="Storage by kind, large" size="lg" formatValue={gigabytes} totalLabel="Used" legend="none" />
+      <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind, small" size="sm" formatValue={gigabytes} totalLabel="Used" legend="none" />
+      <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind, large" size="lg" formatValue={gigabytes} totalLabel="Used" legend="none" />
     </view>
   );
 }
 
 export function StateSelected() {
-  return <PieChart data={storage} name="kind" value="gb" label="Storage by kind" size="sm" formatValue={gigabytes} totalLabel="Used" selectedKey="Apps" legend="none" data-testid="selected" />;
+  return <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind" size="sm" formatValue={gigabytes} totalLabel="Used" value="Apps" legend="none" data-testid="selected" />;
 }
 
 export function StateWhole() {
-  return <PieChart data={storage.slice(0, 1)} name="kind" value="gb" label="Storage by kind" size="sm" formatValue={gigabytes} totalLabel="Used" legend="none" data-testid="whole" />;
+  return <PieChart rows={storage.slice(0, 1)} nameField="kind" valueField="gb" label="Storage by kind" size="sm" formatValue={gigabytes} totalLabel="Used" legend="none" data-testid="whole" />;
 }
 
 export function StateLoading() {
-  return <PieChart data={[]} name="kind" value="gb" label="Storage by kind" title="Storage" description="By kind of file" size="sm" isLoading data-testid="loading" />;
+  return <PieChart rows={[]} nameField="kind" valueField="gb" label="Storage by kind" title="Storage" description="By kind of file" size="sm" isLoading data-testid="loading" />;
 }
 
 export function StateEmpty() {
-  return <PieChart data={[]} name="kind" value="gb" label="Storage by kind" title="Storage" description="By kind of file" size="sm" emptyLabel="Nothing stored yet" emptyHint="Files you upload are counted here." data-testid="empty" />;
+  return <PieChart rows={[]} nameField="kind" valueField="gb" label="Storage by kind" title="Storage" description="By kind of file" size="sm" emptyLabel="Nothing stored yet" emptyHint="Files you upload are counted here." data-testid="empty" />;
 }
 
 export function StateError() {
-  return <Held value={true}>{(hasFailed, set) => <PieChart data={storage} name="kind" value="gb" label="Storage by kind" title="Storage" description="By kind of file" size="sm" error={hasFailed ? "Storage could not be read." : undefined} onRetry={() => set(false)} retryLabel="Try again" data-testid="error" />}</Held>;
+  return <Held value={true}>{(hasFailed, set) => <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind" title="Storage" description="By kind of file" size="sm" error={hasFailed ? "Storage could not be read." : undefined} onRetry={() => set(false)} retryLabel="Try again" data-testid="error" />}</Held>;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <PieChart data={storage} name="kind" value="gb" label="Storage" size="xs" legend="none" className="w-28 self-center" />;
+  return <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage" size="xs" legend="none" className="w-28 self-center" />;
 }

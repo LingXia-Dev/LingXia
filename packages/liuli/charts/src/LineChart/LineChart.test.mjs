@@ -74,7 +74,7 @@ test('the scale fits the data: an area from zero stops just past its highest val
   const page = props => `
     import { LineChart } from '@liulidesign/charts/LineChart';
     const rows = [4120, 3980, 4460, 4710, 5240, 6130, 5380].map((v, index) => ({ t: 'd' + index, v }));
-    export function render() { return <page><LineChart data={rows} x="t" y="v" label="Chart" hasArea xLabels="none" ${props} /></page>; }
+    export function render() { return <page><LineChart rows={rows} x="t" y="v" label="Chart" hasArea xLabels="none" ${props} /></page>; }
   `;
   const scaleOf = screen => screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1)[0].parent.parent.children[0];
   const medium = scaleOf(await renderPage(page('')));
@@ -89,7 +89,7 @@ test('hasScale off fits the data exactly; the smallest size is bare; several ser
   const page = props => `
     import { LineChart } from '@liulidesign/charts/LineChart';
     const rows = [{ t: 'a', v: 3, w: 40 }, { t: 'b', v: 7, w: 20 }, { t: 'c', v: 5, w: 30 }];
-    export function render() { return <page><LineChart data={rows} x="t" label="Chart" ${props} /></page>; }
+    export function render() { return <page><LineChart rows={rows} x="t" label="Chart" ${props} /></page>; }
   `;
   const texts = screen => screen.queryAll(node => node.tag === 'text' && node.props.role !== 'listitem' && node.props.opacity !== 0).map(node => node.text);
   const bare = await renderPage(page('y="v" hasScale={false}'));
@@ -192,7 +192,7 @@ test('category labels: every label that fits is written under its point; a narro
   const page = (count, props = '') => `
     import { LineChart } from '@liulidesign/charts/LineChart';
     const rows = Array.from({ length: ${count} }, (_, index) => ({ t: 'Day ' + (index + 1), v: index }));
-    export function render() { return <page><LineChart data={rows} x="t" y="v" label="Chart" ${props} /></page>; }
+    export function render() { return <page><LineChart rows={rows} x="t" y="v" label="Chart" ${props} /></page>; }
   `;
   const labels = screen => screen.queryAll(node => node.tag === 'text' && node.props.fontSize === 12 && node.props.opacity !== 0);
   const measure = (screen, width, tick) => {
@@ -231,7 +231,7 @@ test('a long series is reduced to 240 points and read by its summary alone', asy
     import { LineChart } from '@liulidesign/charts/LineChart';
     import { summarize } from '@liulidesign/charts/summary/en';
     const rows = Array.from({ length: 1000 }, (_, index) => ({ t: String(index), v: index === 500 ? 999 : index % 20 }));
-    export function render() { return <page><LineChart data={rows} x="t" y="v" label="Load" summarize={summarize} data-testid="load" /></page>; }
+    export function render() { return <page><LineChart rows={rows} x="t" y="v" label="Load" summarize={summarize} data-testid="load" /></page>; }
   `);
   const [line] = drawing(screen).paths;
   assert.equal(points(line.d).length, 240);
@@ -245,7 +245,7 @@ test('isSmooth: between two readings the curve never leaves their heights, howev
     import { LineChart } from '@liulidesign/charts/LineChart';
     const rows = Array.from({ length: 30 }, (_, index) => ({ t: String(index), v: Math.round(1800 + index * 46 + ((index * 53) % 17) * 38 - (index % 7 > 4 ? 520 : 0)) }));
     rows[11].v = rows[10].v; rows[20].v = 0; rows[21].v = 6000;
-    export function render() { return <page><LineChart data={rows} x="t" y="v" label="Visits" isSmooth hasScale={false} hasEndDot={false} /></page>; }
+    export function render() { return <page><LineChart rows={rows} x="t" y="v" label="Visits" isSmooth hasScale={false} hasEndDot={false} /></page>; }
   `);
   const [line] = drawing(screen).paths;
   const segments = [...line.d.matchAll(/C([^C]+)/g)].map(match => points(match[1]));
@@ -283,7 +283,7 @@ test('a scale in the hundred thousands lays out with small numbers: no size take
   const screen = await renderPage(`
     import { LineChart } from '@liulidesign/charts/LineChart';
     const rows = [98400, 91200, 104800, 109300, 118700, 112400, 121900, 117600, 126300, 134800, 141200].map((revenue, index) => ({ month: String(index + 1), revenue }));
-    export function render() { return <page><LineChart data={rows} x="month" y="revenue" label="Revenue by month" hasArea isSmooth data-testid="year" /></page>; }
+    export function render() { return <page><LineChart rows={rows} x="month" y="revenue" label="Revenue by month" hasArea isSmooth data-testid="year" /></page>; }
   `);
   const grows = screen.queryAll(node => node.tag !== 'vector' && node.props.grow !== undefined).map(node => node.props.grow);
   assert.ok(grows.length > 4, 'the scale and the end figure are placed by flex shares');

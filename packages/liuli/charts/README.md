@@ -65,12 +65,12 @@ import { summarize } from '@liulidesign/charts/summary/en';
 
 const rows = [{ day: 'Mon', orders: 132 }, { day: 'Tue', orders: 148 }, { day: 'Wed', orders: 121 }];
 
-<BarChart data={rows} x="day" y="orders" label="Orders by weekday" summarize={summarize}
-  selectedKey={day.value} onSelect={day.set} />
+<BarChart rows={rows} x="day" y="orders" label="Orders by weekday" summarize={summarize}
+  value={day.value} onChange={day.set} />
 ```
 
 `y` is one field, or a list of `{ field, label }` series. Rows are identified by `keyField` (by
-default the category), which is what `selectedKey` holds. `formatValue` turns numbers into text.
+default the category), which is what `value` holds. `formatValue` turns numbers into text.
 
 ## Conventions, beyond core's
 

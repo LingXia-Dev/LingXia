@@ -9,12 +9,12 @@ export type PieChartVariant = 'donut' | 'pie';
 
 export interface PieChartProps {
   /** The rows, one per part, in the order drawn clockwise from the top. Parts without a positive number are left out. */
-  data: readonly ChartRow[];
+  rows: readonly ChartRow[];
   /** The field that names each part: "category". */
-  name: string;
+  nameField: string;
   /** The field that holds each part's amount. */
-  value: string;
-  /** The field that identifies a row across updates and in `selectedKey`. By default `name`. */
+  valueField: string;
+  /** The field that identifies a row across updates and in `value`. By default `nameField`. */
   keyField?: string;
   /** The chart's accessible name: "Spending by category". */
   label: string;
@@ -39,9 +39,9 @@ export interface PieChartProps {
   /** The legend's accessible name; by default the chart's `label`. */
   legendLabel?: string;
   /** The chosen part's key; its slice grows a little and keeps its colour, the rest step back. */
-  selectedKey?: string | null;
+  value?: string | null;
   /** Makes each legend row a button; runs with its part's key, or `null` when the chosen one is pressed again. */
-  onSelect?: (key: string | null) => void;
+  onChange?: (key: string | null) => void;
   /** @default 'md' */
   size?: ChartSize;
   /** @default false */
@@ -71,8 +71,8 @@ export const otherKey = '__other';
 
 /** Parts of one whole, as a ring with the total in its hole and the parts listed under it. */
 export function PieChart({
-  data, name, value, keyField, label, title, description, formatValue: format, formatShare, summarize, variant = 'donut', totalLabel,
-  otherLabel, maxParts = 5, legend = 'bottom', legendLabel, selectedKey, onSelect, size = 'md',
+  rows: data, nameField: name, valueField: value, keyField, label, title, description, formatValue: format, formatShare, summarize, variant = 'donut', totalLabel,
+  otherLabel, maxParts = 5, legend = 'bottom', legendLabel, value: selectedKey, onChange: onSelect, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: PieChartProps) {
   const formatValue = format ?? plain;
@@ -131,7 +131,7 @@ export function PieChart({
           items={parts.map(part => ({
             key: part.key, label: part.name, color: part.color, value: formatValue(part.amount), detail: formatShare?.(part.amount / total),
           }))}
-          selectedKey={selectedKey}
+          value={selectedKey}
           onItemPress={onSelect && (key => onSelect(key === selectedKey ? null : key))}
           data-testid={testId === undefined ? undefined : `${testId}-legend`}
         />

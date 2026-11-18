@@ -13,7 +13,7 @@ const kilos = (value: number) => `${value.toFixed(1)} kg`;
 export function Weight() {
   return (
     <LineChart
-      data={weight}
+      rows={weight}
       x="week"
       y="kg"
       label="Weight by week"
@@ -31,7 +31,7 @@ const visits = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Se
 
 /** An area is an amount, so it is measured from zero. */
 export function Area() {
-  return <LineChart data={visits} x="day" y="visits" label="Visits by day in September" title="Visits" description="September" hasArea summarize={summarize} data-testid="visits" />;
+  return <LineChart rows={visits} x="day" y="visits" label="Visits by day in September" title="Visits" description="September" hasArea summarize={summarize} data-testid="visits" />;
 }
 
 const day = [
@@ -43,7 +43,7 @@ const degrees = (value: number) => `${value.toFixed(1)}°`;
 
 /** Smoothing suits a quantity that changes gradually; the curve passes through every reading and never beyond one. */
 export function Smooth() {
-  return <LineChart data={day} x="hour" y="c" label="Temperature through the day" title="Temperature" description="Today" isSmooth formatValue={degrees} summarize={summarize} data-testid="day" />;
+  return <LineChart rows={day} x="hour" y="c" label="Temperature through the day" title="Temperature" description="Today" isSmooth formatValue={degrees} summarize={summarize} data-testid="day" />;
 }
 
 const plans = [
@@ -57,7 +57,7 @@ export function Series() {
   const hidden = useLocal<readonly string[]>('hidden', []);
   return (
     <LineChart
-      data={plans}
+      rows={plans}
       x="month"
       y={series}
       label="Accounts by plan and month"
@@ -73,7 +73,7 @@ export function Series() {
 /** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */
 export function Selected() {
   const month = useLocal<string | null>('month', 'Apr');
-  return <LineChart data={plans} x="month" y={series} label="Accounts by plan and month" selectedKey={month.value} onSelect={month.set} legend="none" size="sm" data-testid="picked" />;
+  return <LineChart rows={plans} x="month" y={series} label="Accounts by plan and month" value={month.value} onChange={month.set} legend="none" size="sm" data-testid="picked" />;
 }
 
 const readings = [
@@ -83,35 +83,35 @@ const readings = [
 
 /** Hours without a reading are gaps, never zeros. */
 export function Gaps() {
-  return <LineChart data={readings} x="hour" y="c" label="Temperature by hour" title="Temperature" formatValue={degrees} summarize={summarize} data-testid="temperature" />;
+  return <LineChart rows={readings} x="hour" y="c" label="Temperature by hour" title="Temperature" formatValue={degrees} summarize={summarize} data-testid="temperature" />;
 }
 
 export function Sizes() {
   return (
     <view className="gap-6">
-      <LineChart data={weight} x="week" y="kg" label="Weight by week, small" size="sm" xLabels="none" />
-      <LineChart data={weight} x="week" y="kg" label="Weight by week, large" size="lg" />
+      <LineChart rows={weight} x="week" y="kg" label="Weight by week, small" size="sm" xLabels="none" />
+      <LineChart rows={weight} x="week" y="kg" label="Weight by week, large" size="lg" />
     </view>
   );
 }
 
 export function StateLoading() {
-  return <LineChart data={[]} x="week" y="kg" label="Weight by week" title="Weight" size="sm" isLoading data-testid="loading" />;
+  return <LineChart rows={[]} x="week" y="kg" label="Weight by week" title="Weight" size="sm" isLoading data-testid="loading" />;
 }
 
 export function StateEmpty() {
-  return <LineChart data={[]} x="week" y="kg" label="Weight by week" title="Weight" size="sm" emptyLabel="No weigh-ins yet" emptyHint="Add one to start the line." data-testid="empty" />;
+  return <LineChart rows={[]} x="week" y="kg" label="Weight by week" title="Weight" size="sm" emptyLabel="No weigh-ins yet" emptyHint="Add one to start the line." data-testid="empty" />;
 }
 
 export function StateError() {
-  return <Held value={true}>{(hasFailed, set) => <LineChart data={weight} x="week" y="kg" label="Weight by week" title="Weight" size="sm" error={hasFailed ? "Weigh-ins could not be loaded." : undefined} onRetry={() => set(false)} retryLabel="Try again" data-testid="error" />}</Held>;
+  return <Held value={true}>{(hasFailed, set) => <LineChart rows={weight} x="week" y="kg" label="Weight by week" title="Weight" size="sm" error={hasFailed ? "Weigh-ins could not be loaded." : undefined} onRetry={() => set(false)} retryLabel="Try again" data-testid="error" />}</Held>;
 }
 
 export function StateSingle() {
-  return <LineChart data={weight.slice(0, 1)} x="week" y="kg" label="Weight by week" title="Weight" size="sm" data-testid="single" />;
+  return <LineChart rows={weight.slice(0, 1)} x="week" y="kg" label="Weight by week" title="Weight" size="sm" data-testid="single" />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <LineChart data={weight} x="week" y="kg" label="Weight" size="xs" isSmooth xLabels="none" className="w-28 self-center" />;
+  return <LineChart rows={weight} x="week" y="kg" label="Weight" size="xs" isSmooth xLabels="none" className="w-28 self-center" />;
 }

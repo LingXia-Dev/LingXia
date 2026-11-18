@@ -6,12 +6,13 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 // Liuli's naming rules, held over every exported `*Props` so a retired name cannot come back.
-const src = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const components = readdirSync(src, { withFileTypes: true }).filter(entry => entry.isDirectory() && /^[A-Z]/.test(entry.name)).map(entry => entry.name);
+const roots = [resolve(dirname(fileURLToPath(import.meta.url)), '..'), resolve(dirname(fileURLToPath(import.meta.url)), '../../../charts/src')];
+const components = roots.flatMap(src => readdirSync(src, { withFileTypes: true })
+  .filter(entry => entry.isDirectory() && /^[A-Z]/.test(entry.name)).map(entry => ({ src, name: entry.name })));
 
 /** Every exported `*Props` type's own property names, by `Component.PropsName`. */
 const props = new Map();
-for (const name of components) {
+for (const { src, name } of components) {
   const file = join(src, name, `${name}.tsx`);
   let text;
   try { text = readFileSync(file, 'utf8'); } catch { continue; }

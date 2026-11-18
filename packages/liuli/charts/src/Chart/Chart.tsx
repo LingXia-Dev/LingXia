@@ -195,7 +195,7 @@ export interface ChartLegendProps {
   /** `line` draws each swatch as a stroke with the entry's dash. @default 'square' */
   mark?: 'square' | 'line';
   /** The entry shown as chosen. Lists only. */
-  selectedKey?: string | null;
+  value?: string | null;
   /** Makes each entry a button and runs with its key. */
   onItemPress?: (key: string) => void;
   /** What a pressed entry means to assistive tech: `selected` picks one, `shown` toggles a series. @default 'selected' */
@@ -208,7 +208,7 @@ const lineBox = [0, 0, 16, 4] as const;
 
 /** The names of a chart's series or parts, each beside a swatch of its mark, in Liuli type. */
 export function ChartLegend({
-  label, items, variant = 'inline', mark = 'square', selectedKey, onItemPress, pressedState = 'selected', className, 'data-testid': testId,
+  label, items, variant = 'inline', mark = 'square', value: selectedKey, onItemPress, pressedState = 'selected', className, 'data-testid': testId,
 }: ChartLegendProps) {
   return (
     <view role="list" aria-label={label} data-testid={testId} className={cx(r.legend.variant[variant], className)}>

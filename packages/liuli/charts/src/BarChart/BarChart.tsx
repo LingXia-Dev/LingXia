@@ -12,12 +12,12 @@ export type BarChartValueLabels = 'auto' | 'always' | 'none';
 
 export interface BarChartProps {
   /** The rows, one per category, in the order drawn. */
-  data: readonly ChartRow[];
+  rows: readonly ChartRow[];
   /** The field that names each category: "month". */
   x: string;
   /** The field that holds the number, or several series to draw side by side in each category. */
   y: string | readonly ChartSeries[];
-  /** The field that identifies a row across updates and in `selectedKey`. By default `x`. */
+  /** The field that identifies a row across updates and in `value`. By default `x`. */
   keyField?: string;
   /** The chart's accessible name: "Orders by weekday". */
   label: string;
@@ -43,12 +43,12 @@ export interface BarChartProps {
   /** The legend's accessible name; by default the chart's `label`. */
   legendLabel?: string;
   /** The chosen row's key; its bars keep their colour and the rest step back. */
-  selectedKey?: string | null;
+  value?: string | null;
   /**
    * Makes each category a button, up to 36 of them; runs with its key, or `null` when the chosen
    * one is pressed again. A drag across the bars chooses each it passes.
    */
-  onSelect?: (key: string | null) => void;
+  onChange?: (key: string | null) => void;
   /** Series fields not drawn at present. @default [] */
   hiddenSeries?: readonly string[];
   /** Makes each legend entry a button that shows or hides its series. */
@@ -124,8 +124,8 @@ function barPaths(
 
 /** Amounts by category, as bars that stand on a zero line. */
 export function BarChart({
-  data, x, y, keyField, label, title, description, formatValue: format, summarize, xLabels, valueLabels = 'auto', legend = 'bottom', legendLabel,
-  selectedKey, onSelect, hiddenSeries = [], onHiddenSeriesChange, domainMin, domainMax, size = 'md',
+  rows: data, x, y, keyField, label, title, description, formatValue: format, summarize, xLabels, valueLabels = 'auto', legend = 'bottom', legendLabel,
+  value: selectedKey, onChange: onSelect, hiddenSeries = [], onHiddenSeriesChange, domainMin, domainMax, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: BarChartProps) {
   const formatValue = format ?? plain;

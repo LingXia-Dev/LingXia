@@ -17,7 +17,7 @@ const page = (props, rows) => `
   import { BarChart } from '@liulidesign/charts/BarChart';
   const rows = ${rows};
   const money = value => '$' + value;
-  export function render() { return <page><BarChart data={rows} x="k" y="v" label="Chart" data-testid="chart" ${props} /></page>; }
+  export function render() { return <page><BarChart rows={rows} x="k" y="v" label="Chart" data-testid="chart" ${props} /></page>; }
 `;
 const many = (length, value = 'index + 1') => `Array.from({ length: ${length} }, (_, index) => ({ k: String(index), v: ${value}, w: ${length} - index }))`;
 
@@ -140,7 +140,7 @@ test('a chart costs one element per bar and a fixed handful more, however many b
   const [ten, sixty] = [await sized(10), await sized(60)];
   assert.equal(sixty - ten, 50, 'fifty more bars, fifty more elements');
   assert.ok(sixty <= 60 + 19, `${sixty} elements for 60 bars`);
-  assert.ok(await sized(60, 'onSelect={() => {}} selectedKey="7"') <= 60 + 23, 'a choice adds one drawing and the readout');
+  assert.ok(await sized(60, 'onChange={() => {}} value="7"') <= 60 + 23, 'a choice adds one drawing and the readout');
   const eight = await sized(8);
   assert.ok(eight <= 8 * 5 + 17, `${eight} elements for 8 bars with their figures`);
   const grouped = count((await renderPage(page('', many(60)).replace('y="v"', 'y={[{ field: "v", label: "V" }, { field: "w", label: "W" }]}'))).getByTestId('chart'));
@@ -154,7 +154,7 @@ test('a theme change or an unrelated render draws the same outlines', async () =
     const rows = ${many(12)};
     export function render() {
       const tick = useLocal('tick', 0);
-      return <page><BarChart data={rows} x="k" y="v" label="Chart" data-testid="chart" /><button data-testid="again" onClick={() => tick.set(tick.value + 1)}>{String(tick.value)}</button></page>;
+      return <page><BarChart rows={rows} x="k" y="v" label="Chart" data-testid="chart" /><button data-testid="again" onClick={() => tick.set(tick.value + 1)}>{String(tick.value)}</button></page>;
     }
   `);
   const source = () => find(screen.getByTestId('chart'), node => node.tag === 'vector')[0].props.vectorSource;
@@ -192,14 +192,14 @@ test('the top of the scale is the next round number, and a signed chart writes b
 
 test('the readout stays where values are not on the marks: grouped bars, many bars, and a line chart with a chosen row', async () => {
   const readout = screen => screen.queryAll(node => node.props.role === 'status');
-  const empty = await renderPage(page('onSelect={() => {}}', many(9)));
+  const empty = await renderPage(page('onChange={() => {}}', many(9)));
   assert.equal(readout(empty).length, 1);
   assert.equal(readout(empty)[0].props.minHeight, 18, 'the line keeps its height, so choosing does not move the plot');
   assert.equal(textOf(readout(empty)[0]), '');
-  assert.equal(textOf(readout(await renderPage(page('selectedKey="4" formatValue={money}', many(9))))[0]), '4$5');
-  const grouped = await renderPage(page('selectedKey="1"', many(9)).replace('y="v"', 'y={[{ field: "v", label: "V" }, { field: "w", label: "W" }]}'));
+  assert.equal(textOf(readout(await renderPage(page('value="4" formatValue={money}', many(9))))[0]), '4$5');
+  const grouped = await renderPage(page('value="1"', many(9)).replace('y="v"', 'y={[{ field: "v", label: "V" }, { field: "w", label: "W" }]}'));
   assert.equal(textOf(readout(grouped)[0]), '1V2W8');
-  assert.equal(readout(await renderPage(page('selectedKey="4" valueLabels="always"', many(9)))).length, 0, 'figures forced onto nine bars: no readout');
+  assert.equal(readout(await renderPage(page('value="4" valueLabels="always"', many(9)))).length, 0, 'figures forced onto nine bars: no readout');
   assert.equal(textOf(readout(await renderExample('LineChart/LineChart', 'Selected'))[0]), 'AprFree492Team171Pro88');
 });
 
@@ -234,7 +234,7 @@ test('Orders: a drag across the bars chooses each it passes; a press that stays 
 });
 
 test('past 36 categories the plot is one stop that a drag, a tap, the arrow keys and a screen reader move through', async () => {
-  const source = page('onSelect={day.set} selectedKey={day.value}', many(40))
+  const source = page('onChange={day.set} value={day.value}', many(40))
     .replace("import { BarChart }", "import { useLocal } from '@lingxia/view';\n  import { BarChart }")
     .replace('export function render() {', 'export function render() { const day = useLocal("day", null);');
   const screen = await renderPage(source);
@@ -275,7 +275,7 @@ test('category labels: every label once the row shows they fit, each under its b
 });
 
 test('past 36 categories the bars are a list, not buttons; a row without a number draws no bar', async () => {
-  const screen = await renderPage(page('onSelect={() => {}}', many(40, 'index === 3 ? null : index + 1')));
+  const screen = await renderPage(page('onChange={() => {}}', many(40, 'index === 3 ? null : index + 1')));
   assert.equal(screen.queryAll(node => node.tag === 'button').length, 0);
   const items = screen.queryAll(node => node.props.role === 'listitem');
   assert.equal(items.length, 40);
@@ -298,7 +298,7 @@ test('bars in the hundred thousands, and below zero, lay out with small numbers'
   const screen = await renderPage(`
     import { BarChart } from '@liulidesign/charts/BarChart';
     const rows = [{ k: 'a', v: 98400 }, { k: 'b', v: -41200 }, { k: 'c', v: 141200 }];
-    export function render() { return <page><BarChart data={rows} x="k" y="v" label="Result by unit" valueLabels="always" data-testid="big" /></page>; }
+    export function render() { return <page><BarChart rows={rows} x="k" y="v" label="Result by unit" valueLabels="always" data-testid="big" /></page>; }
   `);
   const grows = screen.queryAll(node => node.tag !== 'vector' && node.props.grow !== undefined).map(node => node.props.grow);
   assert.ok(grows.length >= 2, 'regions and figures are placed by flex shares');

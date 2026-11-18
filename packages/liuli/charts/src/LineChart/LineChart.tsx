@@ -11,12 +11,12 @@ export type LineChartLabels = 'fit' | 'ends' | 'none';
 
 export interface LineChartProps {
   /** The rows, one per point in time, oldest first. */
-  data: readonly ChartRow[];
+  rows: readonly ChartRow[];
   /** The field that names each point: "month". */
   x: string;
   /** The field that holds the number, or up to five series drawn as separate lines. A row without a number is a gap. */
   y: string | readonly ChartSeries[];
-  /** The field that identifies a row across updates and in `selectedKey`. By default `x`. */
+  /** The field that identifies a row across updates and in `value`. By default `x`. */
   keyField?: string;
   /** The chart's accessible name: "Weight by week". */
   label: string;
@@ -49,12 +49,12 @@ export interface LineChartProps {
   /** The legend's accessible name; by default the chart's `label`. */
   legendLabel?: string;
   /** The row to mark with a rule and a dot on each line, and to read out above the plot. */
-  selectedKey?: string | null;
+  value?: string | null;
   /**
    * Makes the plot a scrubber: a finger dragged across it, a tap, a mouse moving over it and the
    * arrow keys choose the nearest row and run this with its key; a mouse leaving runs it with `null`.
    */
-  onSelect?: (key: string | null) => void;
+  onChange?: (key: string | null) => void;
   /** Series fields not drawn at present. @default [] */
   hiddenSeries?: readonly string[];
   /** Makes each legend entry a button that shows or hides its series. */
@@ -95,8 +95,8 @@ const maxRead = 60;
 
 /** A number over time, as a line that fits its data, or as an area measured from zero. */
 export function LineChart({
-  data, x, y, keyField, label, title, description, formatValue: format, summarize, isSmooth = false, hasArea = false, hasEndDot = true,
-  hasScale, hasEndLabel = false, xLabels, legend = 'bottom', legendLabel, selectedKey, onSelect, hiddenSeries = [], onHiddenSeriesChange,
+  rows: data, x, y, keyField, label, title, description, formatValue: format, summarize, isSmooth = false, hasArea = false, hasEndDot = true,
+  hasScale, hasEndLabel = false, xLabels, legend = 'bottom', legendLabel, value: selectedKey, onChange: onSelect, hiddenSeries = [], onHiddenSeriesChange,
   domainMin, domainMax, size = 'md', isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: LineChartProps) {
   const formatValue = format ?? plain;

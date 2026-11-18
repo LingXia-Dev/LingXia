@@ -29,7 +29,7 @@ export const doc: ComponentDoc = {
     pattern: null,
     name: 'label',
     description: [],
-    states: [{ state: 'busy', from: 'isLoading' }, { state: 'pressed', from: 'ChartLegend selectedKey, or an entry that is shown' }],
+    states: [{ state: 'busy', from: 'isLoading' }, { state: 'pressed', from: 'ChartLegend value, or an entry that is shown' }],
     keyboard: [{ keys: 'Tab, Enter or Space', effect: 'Reach a legend entry that is a button, and press it' }],
     target: { md: 36 },
     contrast: [

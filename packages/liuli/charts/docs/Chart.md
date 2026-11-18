@@ -162,7 +162,7 @@ export function Readout() {
 | `items` (required) | `readonly ChartLegendItem[]` |  |  |
 | `variant` | `ChartLegendVariant` | `'inline'` | `inline` wraps entries on a line; `list` gives each entry a row with its figures. |
 | `mark` | `"line" \| "square"` | `'square'` | `line` draws each swatch as a stroke with the entry's dash. |
-| `selectedKey` | `string \| null` |  | The entry shown as chosen. Lists only. |
+| `value` | `string \| null` |  | The entry shown as chosen. Lists only. |
 | `onItemPress` | `((key: string) => void)` |  | Makes each entry a button and runs with its key. |
 | `pressedState` | `"selected" \| "shown"` | `'selected'` | What a pressed entry means to assistive tech: `selected` picks one, `shown` toggles a series. |
 | `className` | `string` |  |  |
@@ -203,7 +203,7 @@ export function Readout() {
 - Pattern: none.
 - Name: label.
 - Description: none.
-- States: busy (from isLoading); pressed (from ChartLegend selectedKey, or an entry that is shown).
+- States: busy (from isLoading); pressed (from ChartLegend value, or an entry that is shown).
 - Tab, Enter or Space: Reach a legend entry that is a button, and press it.
 - Press target: md 36 px.
 - A group named by `label`, read in order: the title when it differs from the name, the description, the summary, the readout, the marks, the legend.

@@ -29,15 +29,15 @@ export function Orders() {
   const day = useLocal<string | null>('day', null);
   return (
     <BarChart
-      data={week}
+      rows={week}
       x="day"
       y="orders"
       label="Orders by weekday"
       title="Orders"
       description="This week"
       summarize={summarize}
-      selectedKey={day.value}
-      onSelect={day.set}
+      value={day.value}
+      onChange={day.set}
       data-testid="orders"
     />
   );
@@ -62,7 +62,7 @@ export function Grouped() {
   const hidden = useLocal<readonly string[]>('hidden', []);
   return (
     <BarChart
-      data={channels}
+      rows={channels}
       x="quarter"
       y={[{ field: 'online', label: 'Online' }, { field: 'store', label: 'In store' }]}
       label="Sales by quarter and channel"
@@ -91,7 +91,7 @@ const cash = [
 
 /** Values on both sides of zero stand on one line. */
 export function Signed() {
-  return <BarChart data={cash} x="month" y="net" label="Net cash flow by month" title="Net cash flow" formatValue={thousands} summarize={summarize} data-testid="cash" />;
+  return <BarChart rows={cash} x="month" y="net" label="Net cash flow by month" title="Net cash flow" formatValue={thousands} summarize={summarize} data-testid="cash" />;
 }
 ```
 
@@ -106,7 +106,7 @@ const days = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Jun`
 /** Thirty bars at phone width: the bars narrow, and only the first and last are labelled. */
 export function Month() {
   const day = useLocal<string | null>('day', '14 Jun');
-  return <BarChart data={days} x="day" y="steps" label="Steps by day in June" title="Steps" description="June" selectedKey={day.value} onSelect={day.set} data-testid="steps" />;
+  return <BarChart rows={days} x="day" y="steps" label="Steps by day in June" title="Steps" description="June" value={day.value} onChange={day.set} data-testid="steps" />;
 }
 ```
 
@@ -114,10 +114,10 @@ export function Month() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `data` (required) | `readonly Readonly<Record<string, ChartDatum>>[]` |  | The rows, one per category, in the order drawn. |
+| `rows` (required) | `readonly Readonly<Record<string, ChartDatum>>[]` |  | The rows, one per category, in the order drawn. |
 | `x` (required) | `string` |  | The field that names each category: "month". |
 | `y` (required) | `string \| readonly ChartSeries[]` |  | The field that holds the number, or several series to draw side by side in each category. |
-| `keyField` | `string` |  | The field that identifies a row across updates and in `selectedKey`. By default `x`. |
+| `keyField` | `string` |  | The field that identifies a row across updates and in `value`. By default `x`. |
 | `label` (required) | `string` |  | The chart's accessible name: "Orders by weekday". |
 | `title` | `string` |  |  |
 | `description` | `string` |  |  |
@@ -127,8 +127,8 @@ export function Month() {
 | `valueLabels` | `BarChartValueLabels` | `'auto'` | How the chart shows its scale. `auto` writes each value over its bar up to eight bars of one series, and otherwise the top of the scale, a round number, above the plot; `always` writes every value; `none` shows neither. |
 | `legend` | `ChartLegendPosition` | `'bottom'` | Shown when there is more than one series. |
 | `legendLabel` | `string` |  | The legend's accessible name; by default the chart's `label`. |
-| `selectedKey` | `string \| null` |  | The chosen row's key; its bars keep their colour and the rest step back. |
-| `onSelect` | `((key: string \| null) => void)` |  | Makes each category a button, up to 36 of them; runs with its key, or `null` when the chosen one is pressed again. A drag across the bars chooses each it passes. |
+| `value` | `string \| null` |  | The chosen row's key; its bars keep their colour and the rest step back. |
+| `onChange` | `((key: string \| null) => void)` |  | Makes each category a button, up to 36 of them; runs with its key, or `null` when the chosen one is pressed again. A drag across the bars chooses each it passes. |
 | `hiddenSeries` | `readonly string[]` | `[]` | Series fields not drawn at present. |
 | `onHiddenSeriesChange` | `((fields: readonly string[]) => void)` |  | Makes each legend entry a button that shows or hides its series. |
 | `domainMin` | `number` |  | Widens the value range downward; zero is always in range. |
@@ -168,17 +168,17 @@ export function Month() {
 - Pattern: none.
 - Name: label.
 - Description: none.
-- States: pressed (from selectedKey); busy (from isLoading).
+- States: pressed (from value); busy (from isLoading).
 - Tab: Moves through the categories when they can be pressed.
 - Enter or Space: Chooses the category, or lets it go.
-- Left and Right: Past 36 categories, with `onSelect`, on the plot: chooses the previous or next category.
-- Each category is read as its name and values: "Thu: 163", or "Q3: Online $55k, In store $33k". With `onSelect` each is a button that reports pressed; without it the plot is a list.
+- Left and Right: Past 36 categories, with `onChange`, on the plot: chooses the previous or next category.
+- Each category is read as its name and values: "Thu: 163", or "Q3: Online $55k, In store $33k". With `onChange` each is a button that reports pressed; without it the plot is a list.
 - With `summarize`, a sentence with the range, the lowest and highest values and the trend is read before the bars.
 - Choosing a category is reported as pressed on its button. Where the bars carry no figures (grouped bars, more than eight bars) a readout line above the plot shows the chosen category and announces it; where every bar carries its value there is no readout line.
 - Figures over the bars and the scale label are hidden from assistive tech: each category already reads its values.
 - The chosen category keeps its colour and the others step back to 30%, which is not a contrast claim: the pressed state and the readout say which is chosen.
 - A category's press target is its full-height slot, as wide as the plot divided by the number of categories: 41 px for seven bars at 360 pt, under 10 px for thirty. Past 36 categories the bars are not buttons.
-- With `onSelect`, a finger dragged across the bars chooses each it passes, and a vertical drag that starts on the chart still scrolls the page. Past 36 categories the plot is one keyboard stop instead: a tap chooses the bar it lifts on, and Left and Right or a screen reader's adjust step through the categories.
+- With `onChange`, a finger dragged across the bars chooses each it passes, and a vertical drag that starts on the chart still scrolls the page. Past 36 categories the plot is one keyboard stop instead: a tap chooses the bar it lifts on, and Left and Right or a screen reader's adjust step through the categories.
 - The zero line is a quiet rule with no contrast minimum: the bars' own feet show where zero is.
 - A chart is one element per category and about a dozen more, whatever the number of bars; the bars themselves are two to four drawings.
 - Series in a group differ by colour and by position, and the legend lists them in the order drawn.

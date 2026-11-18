@@ -25,7 +25,7 @@
       ],
       "props": [
         {
-          "name": "data",
+          "name": "rows",
           "type": "readonly Readonly<Record<string, ChartDatum>>[]",
           "required": true,
           "description": "The rows, one per category, in the order drawn."
@@ -46,7 +46,7 @@
           "name": "keyField",
           "type": "string",
           "required": false,
-          "description": "The field that identifies a row across updates and in `selectedKey`. By default `x`."
+          "description": "The field that identifies a row across updates and in `value`. By default `x`."
         },
         {
           "name": "label",
@@ -106,13 +106,13 @@
           "description": "The legend's accessible name; by default the chart's `label`."
         },
         {
-          "name": "selectedKey",
+          "name": "value",
           "type": "string | null",
           "required": false,
           "description": "The chosen row's key; its bars keep their colour and the rest step back."
         },
         {
-          "name": "onSelect",
+          "name": "onChange",
           "type": "((key: string | null) => void)",
           "required": false,
           "description": "Makes each category a button, up to 36 of them; runs with its key, or `null` when the chosen one is pressed again. A drag across the bars chooses each it passes."
@@ -222,7 +222,7 @@
         "states": [
           {
             "state": "pressed",
-            "from": "selectedKey"
+            "from": "value"
           },
           {
             "state": "busy",
@@ -240,7 +240,7 @@
           },
           {
             "keys": "Left and Right",
-            "effect": "Past 36 categories, with `onSelect`, on the plot: chooses the previous or next category"
+            "effect": "Past 36 categories, with `onChange`, on the plot: chooses the previous or next category"
           }
         ],
         "contrast": [
@@ -342,13 +342,13 @@
           }
         ],
         "notes": [
-          "Each category is read as its name and values: \"Thu: 163\", or \"Q3: Online $55k, In store $33k\". With `onSelect` each is a button that reports pressed; without it the plot is a list.",
+          "Each category is read as its name and values: \"Thu: 163\", or \"Q3: Online $55k, In store $33k\". With `onChange` each is a button that reports pressed; without it the plot is a list.",
           "With `summarize`, a sentence with the range, the lowest and highest values and the trend is read before the bars.",
           "Choosing a category is reported as pressed on its button. Where the bars carry no figures (grouped bars, more than eight bars) a readout line above the plot shows the chosen category and announces it; where every bar carries its value there is no readout line.",
           "Figures over the bars and the scale label are hidden from assistive tech: each category already reads its values.",
           "The chosen category keeps its colour and the others step back to 30%, which is not a contrast claim: the pressed state and the readout say which is chosen.",
           "A category's press target is its full-height slot, as wide as the plot divided by the number of categories: 41 px for seven bars at 360 pt, under 10 px for thirty. Past 36 categories the bars are not buttons.",
-          "With `onSelect`, a finger dragged across the bars chooses each it passes, and a vertical drag that starts on the chart still scrolls the page. Past 36 categories the plot is one keyboard stop instead: a tap chooses the bar it lifts on, and Left and Right or a screen reader's adjust step through the categories.",
+          "With `onChange`, a finger dragged across the bars chooses each it passes, and a vertical drag that starts on the chart still scrolls the page. Past 36 categories the plot is one keyboard stop instead: a tap chooses the bar it lifts on, and Left and Right or a screen reader's adjust step through the categories.",
           "The zero line is a quiet rule with no contrast minimum: the bars' own feet show where zero is.",
           "A chart is one element per category and about a dozen more, whatever the number of bars; the bars themselves are two to four drawings.",
           "Series in a group differ by colour and by position, and the legend lists them in the order drawn."
@@ -358,22 +358,22 @@
         {
           "name": "Orders",
           "title": "One series, with selection",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst week = [\n  { day: 'Mon', orders: 132 }, { day: 'Tue', orders: 148 }, { day: 'Wed', orders: 121 }, { day: 'Thu', orders: 163 },\n  { day: 'Fri', orders: 187 }, { day: 'Sat', orders: 96 }, { day: 'Sun', orders: 74 },\n];\n\n/** Tap a bar to choose it, or drag across the bars; tap the chosen bar again to let go. */\nexport function Orders() {\n  const day = useLocal<string | null>('day', null);\n  return (\n    <BarChart\n      data={week}\n      x=\"day\"\n      y=\"orders\"\n      label=\"Orders by weekday\"\n      title=\"Orders\"\n      description=\"This week\"\n      summarize={summarize}\n      selectedKey={day.value}\n      onSelect={day.set}\n      data-testid=\"orders\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst week = [\n  { day: 'Mon', orders: 132 }, { day: 'Tue', orders: 148 }, { day: 'Wed', orders: 121 }, { day: 'Thu', orders: 163 },\n  { day: 'Fri', orders: 187 }, { day: 'Sat', orders: 96 }, { day: 'Sun', orders: 74 },\n];\n\n/** Tap a bar to choose it, or drag across the bars; tap the chosen bar again to let go. */\nexport function Orders() {\n  const day = useLocal<string | null>('day', null);\n  return (\n    <BarChart\n      rows={week}\n      x=\"day\"\n      y=\"orders\"\n      label=\"Orders by weekday\"\n      title=\"Orders\"\n      description=\"This week\"\n      summarize={summarize}\n      value={day.value}\n      onChange={day.set}\n      data-testid=\"orders\"\n    />\n  );\n}"
         },
         {
           "name": "Grouped",
           "title": "Two series, with a legend that hides them",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst channels = [\n  { quarter: 'Q1', online: 42, store: 31 }, { quarter: 'Q2', online: 48, store: 29 },\n  { quarter: 'Q3', online: 55, store: 33 }, { quarter: 'Q4', online: 67, store: 38 },\n];\nconst thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;\n\n/** Two series side by side; the legend shows and hides each. */\nexport function Grouped() {\n  const hidden = useLocal<readonly string[]>('hidden', []);\n  return (\n    <BarChart\n      data={channels}\n      x=\"quarter\"\n      y={[{ field: 'online', label: 'Online' }, { field: 'store', label: 'In store' }]}\n      label=\"Sales by quarter and channel\"\n      title=\"Sales by channel\"\n      formatValue={thousands}\n      summarize={summarize}\n      hiddenSeries={hidden.value}\n      onHiddenSeriesChange={hidden.set}\n      data-testid=\"channels\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst channels = [\n  { quarter: 'Q1', online: 42, store: 31 }, { quarter: 'Q2', online: 48, store: 29 },\n  { quarter: 'Q3', online: 55, store: 33 }, { quarter: 'Q4', online: 67, store: 38 },\n];\nconst thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;\n\n/** Two series side by side; the legend shows and hides each. */\nexport function Grouped() {\n  const hidden = useLocal<readonly string[]>('hidden', []);\n  return (\n    <BarChart\n      rows={channels}\n      x=\"quarter\"\n      y={[{ field: 'online', label: 'Online' }, { field: 'store', label: 'In store' }]}\n      label=\"Sales by quarter and channel\"\n      title=\"Sales by channel\"\n      formatValue={thousands}\n      summarize={summarize}\n      hiddenSeries={hidden.value}\n      onHiddenSeriesChange={hidden.set}\n      data-testid=\"channels\"\n    />\n  );\n}"
         },
         {
           "name": "Signed",
           "title": "Values above and below zero",
-          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;\nconst cash = [\n  { month: 'Jan', net: 12 }, { month: 'Feb', net: -5 }, { month: 'Mar', net: 8 }, { month: 'Apr', net: -11 },\n  { month: 'May', net: 3 }, { month: 'Jun', net: 15 },\n];\n\n/** Values on both sides of zero stand on one line. */\nexport function Signed() {\n  return <BarChart data={cash} x=\"month\" y=\"net\" label=\"Net cash flow by month\" title=\"Net cash flow\" formatValue={thousands} summarize={summarize} data-testid=\"cash\" />;\n}"
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;\nconst cash = [\n  { month: 'Jan', net: 12 }, { month: 'Feb', net: -5 }, { month: 'Mar', net: 8 }, { month: 'Apr', net: -11 },\n  { month: 'May', net: 3 }, { month: 'Jun', net: 15 },\n];\n\n/** Values on both sides of zero stand on one line. */\nexport function Signed() {\n  return <BarChart rows={cash} x=\"month\" y=\"net\" label=\"Net cash flow by month\" title=\"Net cash flow\" formatValue={thousands} summarize={summarize} data-testid=\"cash\" />;\n}"
         },
         {
           "name": "Month",
           "title": "Thirty bars",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst days = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Jun`, steps: 4200 + ((index * 37) % 11) * 610 + (index % 7 === 5 ? 3800 : 0) }));\n\n/** Thirty bars at phone width: the bars narrow, and only the first and last are labelled. */\nexport function Month() {\n  const day = useLocal<string | null>('day', '14 Jun');\n  return <BarChart data={days} x=\"day\" y=\"steps\" label=\"Steps by day in June\" title=\"Steps\" description=\"June\" selectedKey={day.value} onSelect={day.set} data-testid=\"steps\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst days = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Jun`, steps: 4200 + ((index * 37) % 11) * 610 + (index % 7 === 5 ? 3800 : 0) }));\n\n/** Thirty bars at phone width: the bars narrow, and only the first and last are labelled. */\nexport function Month() {\n  const day = useLocal<string | null>('day', '14 Jun');\n  return <BarChart rows={days} x=\"day\" y=\"steps\" label=\"Steps by day in June\" title=\"Steps\" description=\"June\" value={day.value} onChange={day.set} data-testid=\"steps\" />;\n}"
         }
       ],
       "gaps": [
@@ -657,7 +657,7 @@
             "default": "'square'"
           },
           {
-            "name": "selectedKey",
+            "name": "value",
             "type": "string | null",
             "required": false,
             "description": "The entry shown as chosen. Lists only."
@@ -752,7 +752,7 @@
           },
           {
             "state": "pressed",
-            "from": "ChartLegend selectedKey, or an entry that is shown"
+            "from": "ChartLegend value, or an entry that is shown"
           }
         ],
         "keyboard": [
@@ -1024,7 +1024,7 @@
       ],
       "props": [
         {
-          "name": "data",
+          "name": "rows",
           "type": "readonly Readonly<Record<string, ChartDatum>>[]",
           "required": true,
           "description": "The rows, one per point in time, oldest first."
@@ -1045,7 +1045,7 @@
           "name": "keyField",
           "type": "string",
           "required": false,
-          "description": "The field that identifies a row across updates and in `selectedKey`. By default `x`."
+          "description": "The field that identifies a row across updates and in `value`. By default `x`."
         },
         {
           "name": "label",
@@ -1131,13 +1131,13 @@
           "description": "The legend's accessible name; by default the chart's `label`."
         },
         {
-          "name": "selectedKey",
+          "name": "value",
           "type": "string | null",
           "required": false,
           "description": "The row to mark with a rule and a dot on each line, and to read out above the plot."
         },
         {
-          "name": "onSelect",
+          "name": "onChange",
           "type": "((key: string | null) => void)",
           "required": false,
           "description": "Makes the plot a scrubber: a finger dragged across it, a tap, a mouse moving over it and the arrow keys choose the nearest row and run this with its key; a mouse leaving runs it with `null`."
@@ -1252,7 +1252,7 @@
         "keyboard": [
           {
             "keys": "Left and Right",
-            "effect": "With `onSelect`, on the plot: chooses the previous or next row"
+            "effect": "With `onChange`, on the plot: chooses the previous or next row"
           }
         ],
         "contrast": [
@@ -1335,8 +1335,8 @@
           "The second to fifth lines are dashed, each differently, and the legend draws the same dash, so series survive without colour.",
           "The scale and the end figure are hidden from assistive tech: the same numbers are in the summary and the list.",
           "The fill under an area, the hairlines and the rule on the chosen row are decoration with no contrast minimum.",
-          "The lines are one drawing whatever the number of points, rebuilt only for a new `data` array or encoding; the chosen row's rule and dots are a second, small drawing, so a scrub never redraws the lines.",
-          "With `onSelect` the plot is one keyboard stop named by `label`: Left and Right, and a screen reader's adjust, step through the rows, each read as \"Apr: Free 492, Team 171, Pro 88\". With nothing chosen it rests on the latest row.",
+          "The lines are one drawing whatever the number of points, rebuilt only for a new `rows` array or encoding; the chosen row's rule and dots are a second, small drawing, so a scrub never redraws the lines.",
+          "With `onChange` the plot is one keyboard stop named by `label`: Left and Right, and a screen reader's adjust, step through the rows, each read as \"Apr: Free 492, Team 171, Pro 88\". With nothing chosen it rests on the latest row.",
           "A finger chooses once it moves sideways or lifts, never as it lands, so a vertical drag that starts on the chart scrolls the page. A mouse chooses as it moves over the plot and clears as it leaves.",
           "The chosen row is shown in the readout line above the plot, which is announced; the line keeps its height when nothing is chosen."
         ]
@@ -1345,32 +1345,32 @@
         {
           "name": "Weight",
           "title": "A line that fits its data",
-          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst weight = [\n  { week: '6 Oct', kg: 72.4 }, { week: '13 Oct', kg: 72.1 }, { week: '20 Oct', kg: 72.3 }, { week: '27 Oct', kg: 71.6 },\n  { week: '3 Nov', kg: 71.2 }, { week: '10 Nov', kg: 71.4 }, { week: '17 Nov', kg: 70.8 }, { week: '24 Nov', kg: 70.5 },\n];\nconst kilos = (value: number) => `${value.toFixed(1)} kg`;\n\n/** A line fits its data: two kilos of change fill the plot. */\nexport function Weight() {\n  return (\n    <LineChart\n      data={weight}\n      x=\"week\"\n      y=\"kg\"\n      label=\"Weight by week\"\n      title=\"Weight\"\n      description=\"Last 8 weeks\"\n      formatValue={kilos}\n      summarize={summarize}\n      hasEndLabel\n      data-testid=\"weight\"\n    />\n  );\n}"
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst weight = [\n  { week: '6 Oct', kg: 72.4 }, { week: '13 Oct', kg: 72.1 }, { week: '20 Oct', kg: 72.3 }, { week: '27 Oct', kg: 71.6 },\n  { week: '3 Nov', kg: 71.2 }, { week: '10 Nov', kg: 71.4 }, { week: '17 Nov', kg: 70.8 }, { week: '24 Nov', kg: 70.5 },\n];\nconst kilos = (value: number) => `${value.toFixed(1)} kg`;\n\n/** A line fits its data: two kilos of change fill the plot. */\nexport function Weight() {\n  return (\n    <LineChart\n      rows={weight}\n      x=\"week\"\n      y=\"kg\"\n      label=\"Weight by week\"\n      title=\"Weight\"\n      description=\"Last 8 weeks\"\n      formatValue={kilos}\n      summarize={summarize}\n      hasEndLabel\n      data-testid=\"weight\"\n    />\n  );\n}"
         },
         {
           "name": "Area",
           "title": "An area, from zero",
-          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst visits = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Sep`, visits: Math.round(1800 + index * 46 + ((index * 53) % 17) * 38 - (index % 7 > 4 ? 520 : 0)) }));\nconst day = [\n  { hour: '00:00', c: 11.2 }, { hour: '02:00', c: 10.4 }, { hour: '04:00', c: 9.8 }, { hour: '06:00', c: 10.1 }, { hour: '08:00', c: 12.6 },\n  { hour: '10:00', c: 15.9 }, { hour: '12:00', c: 18.7 }, { hour: '14:00', c: 20.3 }, { hour: '16:00', c: 19.6 }, { hour: '18:00', c: 17.0 },\n  { hour: '20:00', c: 14.4 }, { hour: '22:00', c: 12.5 },\n];\n\n/** An area is an amount, so it is measured from zero. */\nexport function Area() {\n  return <LineChart data={visits} x=\"day\" y=\"visits\" label=\"Visits by day in September\" title=\"Visits\" description=\"September\" hasArea summarize={summarize} data-testid=\"visits\" />;\n}"
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst visits = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Sep`, visits: Math.round(1800 + index * 46 + ((index * 53) % 17) * 38 - (index % 7 > 4 ? 520 : 0)) }));\nconst day = [\n  { hour: '00:00', c: 11.2 }, { hour: '02:00', c: 10.4 }, { hour: '04:00', c: 9.8 }, { hour: '06:00', c: 10.1 }, { hour: '08:00', c: 12.6 },\n  { hour: '10:00', c: 15.9 }, { hour: '12:00', c: 18.7 }, { hour: '14:00', c: 20.3 }, { hour: '16:00', c: 19.6 }, { hour: '18:00', c: 17.0 },\n  { hour: '20:00', c: 14.4 }, { hour: '22:00', c: 12.5 },\n];\n\n/** An area is an amount, so it is measured from zero. */\nexport function Area() {\n  return <LineChart rows={visits} x=\"day\" y=\"visits\" label=\"Visits by day in September\" title=\"Visits\" description=\"September\" hasArea summarize={summarize} data-testid=\"visits\" />;\n}"
         },
         {
           "name": "Smooth",
           "title": "A smoothed line",
-          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst day = [\n  { hour: '00:00', c: 11.2 }, { hour: '02:00', c: 10.4 }, { hour: '04:00', c: 9.8 }, { hour: '06:00', c: 10.1 }, { hour: '08:00', c: 12.6 },\n  { hour: '10:00', c: 15.9 }, { hour: '12:00', c: 18.7 }, { hour: '14:00', c: 20.3 }, { hour: '16:00', c: 19.6 }, { hour: '18:00', c: 17.0 },\n  { hour: '20:00', c: 14.4 }, { hour: '22:00', c: 12.5 },\n];\nconst degrees = (value: number) => `${value.toFixed(1)}°`;\n\n/** Smoothing suits a quantity that changes gradually; the curve passes through every reading and never beyond one. */\nexport function Smooth() {\n  return <LineChart data={day} x=\"hour\" y=\"c\" label=\"Temperature through the day\" title=\"Temperature\" description=\"Today\" isSmooth formatValue={degrees} summarize={summarize} data-testid=\"day\" />;\n}"
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst day = [\n  { hour: '00:00', c: 11.2 }, { hour: '02:00', c: 10.4 }, { hour: '04:00', c: 9.8 }, { hour: '06:00', c: 10.1 }, { hour: '08:00', c: 12.6 },\n  { hour: '10:00', c: 15.9 }, { hour: '12:00', c: 18.7 }, { hour: '14:00', c: 20.3 }, { hour: '16:00', c: 19.6 }, { hour: '18:00', c: 17.0 },\n  { hour: '20:00', c: 14.4 }, { hour: '22:00', c: 12.5 },\n];\nconst degrees = (value: number) => `${value.toFixed(1)}°`;\n\n/** Smoothing suits a quantity that changes gradually; the curve passes through every reading and never beyond one. */\nexport function Smooth() {\n  return <LineChart rows={day} x=\"hour\" y=\"c\" label=\"Temperature through the day\" title=\"Temperature\" description=\"Today\" isSmooth formatValue={degrees} summarize={summarize} data-testid=\"day\" />;\n}"
         },
         {
           "name": "Series",
           "title": "Three series, with a legend that hides them",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** Three lines told apart by dash as well as colour; the legend shows and hides each. */\nexport function Series() {\n  const hidden = useLocal<readonly string[]>('hidden', []);\n  return (\n    <LineChart\n      data={plans}\n      x=\"month\"\n      y={series}\n      label=\"Accounts by plan and month\"\n      title=\"Accounts by plan\"\n      summarize={summarize}\n      hiddenSeries={hidden.value}\n      onHiddenSeriesChange={hidden.set}\n      data-testid=\"plans\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** Three lines told apart by dash as well as colour; the legend shows and hides each. */\nexport function Series() {\n  const hidden = useLocal<readonly string[]>('hidden', []);\n  return (\n    <LineChart\n      rows={plans}\n      x=\"month\"\n      y={series}\n      label=\"Accounts by plan and month\"\n      title=\"Accounts by plan\"\n      summarize={summarize}\n      hiddenSeries={hidden.value}\n      onHiddenSeriesChange={hidden.set}\n      data-testid=\"plans\"\n    />\n  );\n}"
         },
         {
           "name": "Selected",
           "title": "Scrubbing chooses a row",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */\nexport function Selected() {\n  const month = useLocal<string | null>('month', 'Apr');\n  return <LineChart data={plans} x=\"month\" y={series} label=\"Accounts by plan and month\" selectedKey={month.value} onSelect={month.set} legend=\"none\" size=\"sm\" data-testid=\"picked\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */\nexport function Selected() {\n  const month = useLocal<string | null>('month', 'Apr');\n  return <LineChart rows={plans} x=\"month\" y={series} label=\"Accounts by plan and month\" value={month.value} onChange={month.set} legend=\"none\" size=\"sm\" data-testid=\"picked\" />;\n}"
         },
         {
           "name": "Gaps",
           "title": "Missing readings",
-          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst degrees = (value: number) => `${value.toFixed(1)}°`;\nconst readings = [\n  { hour: '06:00', c: 14.2 }, { hour: '07:00', c: 15.1 }, { hour: '08:00', c: null }, { hour: '09:00', c: null }, { hour: '10:00', c: 19.4 },\n  { hour: '11:00', c: 20.8 }, { hour: '12:00', c: 22.1 }, { hour: '13:00', c: null }, { hour: '14:00', c: 23.0 }, { hour: '15:00', c: 22.4 },\n];\n\n/** Hours without a reading are gaps, never zeros. */\nexport function Gaps() {\n  return <LineChart data={readings} x=\"hour\" y=\"c\" label=\"Temperature by hour\" title=\"Temperature\" formatValue={degrees} summarize={summarize} data-testid=\"temperature\" />;\n}"
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst degrees = (value: number) => `${value.toFixed(1)}°`;\nconst readings = [\n  { hour: '06:00', c: 14.2 }, { hour: '07:00', c: 15.1 }, { hour: '08:00', c: null }, { hour: '09:00', c: null }, { hour: '10:00', c: 19.4 },\n  { hour: '11:00', c: 20.8 }, { hour: '12:00', c: 22.1 }, { hour: '13:00', c: null }, { hour: '14:00', c: 23.0 }, { hour: '15:00', c: 22.4 },\n];\n\n/** Hours without a reading are gaps, never zeros. */\nexport function Gaps() {\n  return <LineChart rows={readings} x=\"hour\" y=\"c\" label=\"Temperature by hour\" title=\"Temperature\" formatValue={degrees} summarize={summarize} data-testid=\"temperature\" />;\n}"
         }
       ],
       "gaps": [
@@ -1382,7 +1382,7 @@
         {
           "missing": "Fitted labels and scrubbing on a host built before `useBox` and `onPointer`.",
           "needs": "a newer host",
-          "today": "The first and last category; `selectedKey` set by the app."
+          "today": "The first and last category; `value` set by the app."
         },
         {
           "missing": "A window to zoom and pan a long series.",
@@ -1507,19 +1507,19 @@
       ],
       "props": [
         {
-          "name": "data",
+          "name": "rows",
           "type": "readonly Readonly<Record<string, ChartDatum>>[]",
           "required": true,
           "description": "The rows, one per part, in the order drawn clockwise from the top. Parts without a positive number are left out."
         },
         {
-          "name": "name",
+          "name": "nameField",
           "type": "string",
           "required": true,
           "description": "The field that names each part: \"category\"."
         },
         {
-          "name": "value",
+          "name": "valueField",
           "type": "string",
           "required": true,
           "description": "The field that holds each part's amount."
@@ -1528,7 +1528,7 @@
           "name": "keyField",
           "type": "string",
           "required": false,
-          "description": "The field that identifies a row across updates and in `selectedKey`. By default `name`."
+          "description": "The field that identifies a row across updates and in `value`. By default `nameField`."
         },
         {
           "name": "label",
@@ -1606,13 +1606,13 @@
           "description": "The legend's accessible name; by default the chart's `label`."
         },
         {
-          "name": "selectedKey",
+          "name": "value",
           "type": "string | null",
           "required": false,
           "description": "The chosen part's key; its slice grows a little and keeps its colour, the rest step back."
         },
         {
-          "name": "onSelect",
+          "name": "onChange",
           "type": "((key: string | null) => void)",
           "required": false,
           "description": "Makes each legend row a button; runs with its part's key, or `null` when the chosen one is pressed again."
@@ -1689,7 +1689,7 @@
         "states": [
           {
             "state": "pressed",
-            "from": "selectedKey"
+            "from": "value"
           },
           {
             "state": "busy",
@@ -1800,29 +1800,29 @@
           }
         ],
         "notes": [
-          "The legend is the reading: a list where each part is its name, amount and share. With `onSelect` each row is a button that reports pressed.",
+          "The legend is the reading: a list where each part is its name, amount and share. With `onChange` each row is a button that reports pressed.",
           "With `summarize`, a sentence with the number of parts, the total, and the largest and smallest part is read first.",
           "The hole is a status region: choosing a part announces its name and amount.",
           "Slices are told apart by colour and by their order, which the legend repeats from the top clockwise; the gap between slices keeps neighbours apart without relying on hue.",
           "A legend row is 36 px tall and as wide as the chart.",
-          "The ring is one drawing, rebuilt only for a new `data` array, encoding or chosen part; the legend is five elements per part."
+          "The ring is one drawing, rebuilt only for a new `rows` array, encoding or chosen part; the legend is five elements per part."
         ]
       },
       "examples": [
         {
           "name": "Spending",
           "title": "A ring with the total, selected through its legend",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst spending = [\n  { category: 'Rent', amount: 1450 }, { category: 'Food', amount: 620 }, { category: 'Transport', amount: 210 },\n  { category: 'Leisure', amount: 180 }, { category: 'Savings', amount: 400 },\n];\nconst dollars = (value: number) => `$${grouped(value)}`;\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\n\n/** A row in the legend chooses its part; the hole then shows that part in place of the total. */\nexport function Spending() {\n  const part = useLocal<string | null>('part', null);\n  return (\n    <PieChart\n      data={spending}\n      name=\"category\"\n      value=\"amount\"\n      label=\"Spending by category\"\n      title=\"Spending\"\n      description=\"October\"\n      formatValue={dollars}\n      formatShare={percent}\n      totalLabel=\"Total\"\n      summarize={summarize}\n      selectedKey={part.value}\n      onSelect={part.set}\n      data-testid=\"spending\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst spending = [\n  { category: 'Rent', amount: 1450 }, { category: 'Food', amount: 620 }, { category: 'Transport', amount: 210 },\n  { category: 'Leisure', amount: 180 }, { category: 'Savings', amount: 400 },\n];\nconst dollars = (value: number) => `$${grouped(value)}`;\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\n\n/** A row in the legend chooses its part; the hole then shows that part in place of the total. */\nexport function Spending() {\n  const part = useLocal<string | null>('part', null);\n  return (\n    <PieChart\n      rows={spending}\n      nameField=\"category\"\n      valueField=\"amount\"\n      label=\"Spending by category\"\n      title=\"Spending\"\n      description=\"October\"\n      formatValue={dollars}\n      formatShare={percent}\n      totalLabel=\"Total\"\n      summarize={summarize}\n      value={part.value}\n      onChange={part.set}\n      data-testid=\"spending\"\n    />\n  );\n}"
         },
         {
           "name": "Solid",
           "title": "A solid pie",
-          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\nconst storage = [{ kind: 'Photos', gb: 38 }, { kind: 'Apps', gb: 21 }, { kind: 'Messages', gb: 9 }, { kind: 'Free', gb: 60 }];\nconst gigabytes = (value: number) => `${value} GB`;\n\nexport function Solid() {\n  return <PieChart data={storage} name=\"kind\" value=\"gb\" label=\"Storage by kind\" title=\"Storage\" variant=\"pie\" formatValue={gigabytes} formatShare={percent} summarize={summarize} data-testid=\"storage\" />;\n}"
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\nconst storage = [{ kind: 'Photos', gb: 38 }, { kind: 'Apps', gb: 21 }, { kind: 'Messages', gb: 9 }, { kind: 'Free', gb: 60 }];\nconst gigabytes = (value: number) => `${value} GB`;\n\nexport function Solid() {\n  return <PieChart rows={storage} nameField=\"kind\" valueField=\"gb\" label=\"Storage by kind\" title=\"Storage\" variant=\"pie\" formatValue={gigabytes} formatShare={percent} summarize={summarize} data-testid=\"storage\" />;\n}"
         },
         {
           "name": "Merged",
           "title": "Many parts, the small ones gathered",
-          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst grouped = (value: number) => String(value).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\nconst languages = [\n  { language: 'English', readers: 4210 }, { language: 'Spanish', readers: 1870 }, { language: 'Chinese', readers: 1540 }, { language: 'Hindi', readers: 960 },\n  { language: 'French', readers: 610 }, { language: 'German', readers: 480 }, { language: 'Japanese', readers: 350 }, { language: 'Korean', readers: 190 },\n];\n\n/** Eight parts are too many to tell apart: the four largest keep a slice, the rest share one. */\nexport function Merged() {\n  return (\n    <PieChart\n      data={languages}\n      name=\"language\"\n      value=\"readers\"\n      label=\"Readers by language\"\n      title=\"Readers by language\"\n      formatValue={grouped}\n      formatShare={percent}\n      otherLabel=\"Other\"\n      maxParts={4}\n      totalLabel=\"Readers\"\n      summarize={summarize}\n      data-testid=\"languages\"\n    />\n  );\n}"
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst grouped = (value: number) => String(value).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\nconst languages = [\n  { language: 'English', readers: 4210 }, { language: 'Spanish', readers: 1870 }, { language: 'Chinese', readers: 1540 }, { language: 'Hindi', readers: 960 },\n  { language: 'French', readers: 610 }, { language: 'German', readers: 480 }, { language: 'Japanese', readers: 350 }, { language: 'Korean', readers: 190 },\n];\n\n/** Eight parts are too many to tell apart: the four largest keep a slice, the rest share one. */\nexport function Merged() {\n  return (\n    <PieChart\n      rows={languages}\n      nameField=\"language\"\n      valueField=\"readers\"\n      label=\"Readers by language\"\n      title=\"Readers by language\"\n      formatValue={grouped}\n      formatShare={percent}\n      otherLabel=\"Other\"\n      maxParts={4}\n      totalLabel=\"Readers\"\n      summarize={summarize}\n      data-testid=\"languages\"\n    />\n  );\n}"
         }
       ],
       "gaps": [

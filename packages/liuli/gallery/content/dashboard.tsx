@@ -104,7 +104,7 @@ export function Content() {
       <view className={isWide ? 'grid grid-cols-[2fr_1fr] gap-3' : 'gap-3'}>
         <Card>
           <LineChart
-            data={rows}
+            rows={rows}
             x="label"
             y="revenue"
             label="Revenue by day"
@@ -114,13 +114,13 @@ export function Content() {
             summarize={summarize}
             hasArea
             isSmooth={period.value !== 'week'}
-            selectedKey={day.value}
-            onSelect={day.set}
+            value={day.value}
+            onChange={day.set}
             data-testid="revenue-chart"
           />
         </Card>
         <Card>
-          <BarChart data={channels} x="channel" y="orders" label="Orders by channel" title="Orders by channel" description={span[period.value]} formatValue={value => grouped(value)} summarize={summarize} size={isWide ? 'md' : 'sm'} data-testid="channels" />
+          <BarChart rows={channels} x="channel" y="orders" label="Orders by channel" title="Orders by channel" description={span[period.value]} formatValue={value => grouped(value)} summarize={summarize} size={isWide ? 'md' : 'sm'} data-testid="channels" />
         </Card>
       </view>
 

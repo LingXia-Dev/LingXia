@@ -22,7 +22,7 @@ export const doc: ComponentDoc = {
     pattern: null,
     name: 'label',
     description: [],
-    states: [{ state: 'pressed', from: 'selectedKey' }, { state: 'busy', from: 'isLoading' }],
+    states: [{ state: 'pressed', from: 'value' }, { state: 'busy', from: 'isLoading' }],
     keyboard: [
       { keys: 'Tab', effect: 'Moves through the legend rows when they can be pressed' },
       { keys: 'Enter or Space', effect: 'Chooses the part, or lets it go' },
@@ -42,12 +42,12 @@ export const doc: ComponentDoc = {
       { what: 'a merged remainder slice, straight on the page', pair: ['line-strong', 'canvas'], minimum: '3:1' },
     ],
     notes: [
-      'The legend is the reading: a list where each part is its name, amount and share. With `onSelect` each row is a button that reports pressed.',
+      'The legend is the reading: a list where each part is its name, amount and share. With `onChange` each row is a button that reports pressed.',
       'With `summarize`, a sentence with the number of parts, the total, and the largest and smallest part is read first.',
       'The hole is a status region: choosing a part announces its name and amount.',
       'Slices are told apart by colour and by their order, which the legend repeats from the top clockwise; the gap between slices keeps neighbours apart without relying on hue.',
       'A legend row is 36 px tall and as wide as the chart.',
-      'The ring is one drawing, rebuilt only for a new `data` array, encoding or chosen part; the legend is five elements per part.',
+      'The ring is one drawing, rebuilt only for a new `rows` array, encoding or chosen part; the legend is five elements per part.',
     ],
   },
   guidance: {

@@ -28,7 +28,7 @@ const kilos = (value: number) => `${value.toFixed(1)} kg`;
 export function Weight() {
   return (
     <LineChart
-      data={weight}
+      rows={weight}
       x="week"
       y="kg"
       label="Weight by week"
@@ -58,7 +58,7 @@ const day = [
 
 /** An area is an amount, so it is measured from zero. */
 export function Area() {
-  return <LineChart data={visits} x="day" y="visits" label="Visits by day in September" title="Visits" description="September" hasArea summarize={summarize} data-testid="visits" />;
+  return <LineChart rows={visits} x="day" y="visits" label="Visits by day in September" title="Visits" description="September" hasArea summarize={summarize} data-testid="visits" />;
 }
 ```
 
@@ -77,7 +77,7 @@ const degrees = (value: number) => `${value.toFixed(1)}°`;
 
 /** Smoothing suits a quantity that changes gradually; the curve passes through every reading and never beyond one. */
 export function Smooth() {
-  return <LineChart data={day} x="hour" y="c" label="Temperature through the day" title="Temperature" description="Today" isSmooth formatValue={degrees} summarize={summarize} data-testid="day" />;
+  return <LineChart rows={day} x="hour" y="c" label="Temperature through the day" title="Temperature" description="Today" isSmooth formatValue={degrees} summarize={summarize} data-testid="day" />;
 }
 ```
 
@@ -99,7 +99,7 @@ export function Series() {
   const hidden = useLocal<readonly string[]>('hidden', []);
   return (
     <LineChart
-      data={plans}
+      rows={plans}
       x="month"
       y={series}
       label="Accounts by plan and month"
@@ -128,7 +128,7 @@ const series = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team'
 /** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */
 export function Selected() {
   const month = useLocal<string | null>('month', 'Apr');
-  return <LineChart data={plans} x="month" y={series} label="Accounts by plan and month" selectedKey={month.value} onSelect={month.set} legend="none" size="sm" data-testid="picked" />;
+  return <LineChart rows={plans} x="month" y={series} label="Accounts by plan and month" value={month.value} onChange={month.set} legend="none" size="sm" data-testid="picked" />;
 }
 ```
 
@@ -146,7 +146,7 @@ const readings = [
 
 /** Hours without a reading are gaps, never zeros. */
 export function Gaps() {
-  return <LineChart data={readings} x="hour" y="c" label="Temperature by hour" title="Temperature" formatValue={degrees} summarize={summarize} data-testid="temperature" />;
+  return <LineChart rows={readings} x="hour" y="c" label="Temperature by hour" title="Temperature" formatValue={degrees} summarize={summarize} data-testid="temperature" />;
 }
 ```
 
@@ -154,10 +154,10 @@ export function Gaps() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `data` (required) | `readonly Readonly<Record<string, ChartDatum>>[]` |  | The rows, one per point in time, oldest first. |
+| `rows` (required) | `readonly Readonly<Record<string, ChartDatum>>[]` |  | The rows, one per point in time, oldest first. |
 | `x` (required) | `string` |  | The field that names each point: "month". |
 | `y` (required) | `string \| readonly ChartSeries[]` |  | The field that holds the number, or up to five series drawn as separate lines. A row without a number is a gap. |
-| `keyField` | `string` |  | The field that identifies a row across updates and in `selectedKey`. By default `x`. |
+| `keyField` | `string` |  | The field that identifies a row across updates and in `value`. By default `x`. |
 | `label` (required) | `string` |  | The chart's accessible name: "Weight by week". |
 | `title` | `string` |  |  |
 | `description` | `string` |  |  |
@@ -171,8 +171,8 @@ export function Gaps() {
 | `xLabels` | `LineChartLabels` |  | Category labels under the plot: `fit` writes as many as fit side by side, each under its point; `ends` the first and last. By default `fit`, except at the `xs` size. |
 | `legend` | `ChartLegendPosition` | `'bottom'` | Shown when there is more than one series. |
 | `legendLabel` | `string` |  | The legend's accessible name; by default the chart's `label`. |
-| `selectedKey` | `string \| null` |  | The row to mark with a rule and a dot on each line, and to read out above the plot. |
-| `onSelect` | `((key: string \| null) => void)` |  | Makes the plot a scrubber: a finger dragged across it, a tap, a mouse moving over it and the arrow keys choose the nearest row and run this with its key; a mouse leaving runs it with `null`. |
+| `value` | `string \| null` |  | The row to mark with a rule and a dot on each line, and to read out above the plot. |
+| `onChange` | `((key: string \| null) => void)` |  | Makes the plot a scrubber: a finger dragged across it, a tap, a mouse moving over it and the arrow keys choose the nearest row and run this with its key; a mouse leaving runs it with `null`. |
 | `hiddenSeries` | `readonly string[]` | `[]` | Series fields not drawn at present. |
 | `onHiddenSeriesChange` | `((fields: readonly string[]) => void)` |  | Makes each legend entry a button that shows or hides its series. |
 | `domainMin` | `number` |  | Widens the value range downward. A line fits its data; an area starts from zero. |
@@ -212,14 +212,14 @@ export function Gaps() {
 - Name: label.
 - Description: none.
 - States: busy (from isLoading).
-- Left and Right: With `onSelect`, on the plot: chooses the previous or next row.
+- Left and Right: With `onChange`, on the plot: chooses the previous or next row.
 - With `summarize`, a sentence per series with its range, lowest and highest values and trend is read first.
 - Then every row is read as a list item: "3 Nov: 71.2 kg", or "Apr: Free 492, Team 171, Pro 88". Past 60 rows only the summary is read.
 - The second to fifth lines are dashed, each differently, and the legend draws the same dash, so series survive without colour.
 - The scale and the end figure are hidden from assistive tech: the same numbers are in the summary and the list.
 - The fill under an area, the hairlines and the rule on the chosen row are decoration with no contrast minimum.
-- The lines are one drawing whatever the number of points, rebuilt only for a new `data` array or encoding; the chosen row's rule and dots are a second, small drawing, so a scrub never redraws the lines.
-- With `onSelect` the plot is one keyboard stop named by `label`: Left and Right, and a screen reader's adjust, step through the rows, each read as "Apr: Free 492, Team 171, Pro 88". With nothing chosen it rests on the latest row.
+- The lines are one drawing whatever the number of points, rebuilt only for a new `rows` array or encoding; the chosen row's rule and dots are a second, small drawing, so a scrub never redraws the lines.
+- With `onChange` the plot is one keyboard stop named by `label`: Left and Right, and a screen reader's adjust, step through the rows, each read as "Apr: Free 492, Team 171, Pro 88". With nothing chosen it rests on the latest row.
 - A finger chooses once it moves sideways or lifts, never as it lands, so a vertical drag that starts on the chart scrolls the page. A mouse chooses as it moves over the plot and clears as it leaves.
 - The chosen row is shown in the readout line above the plot, which is announced; the line keeps its height when nothing is chosen.
 
@@ -253,7 +253,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
 | A tooltip beside the chosen point. | nothing from the View | A rule and dots on the chosen row, and its values in the readout line above the plot, where a finger does not cover them. |
-| Fitted labels and scrubbing on a host built before `useBox` and `onPointer`. | a newer host | The first and last category; `selectedKey` set by the app. |
+| Fitted labels and scrubbing on a host built before `useBox` and `onPointer`. | a newer host | The first and last category; `value` set by the app. |
 | A window to zoom and pan a long series. | pointer coordinates on an element (`onPointer`) | Pass the rows of the period to show. |
 | Lines that draw in and move between data. | animation of vector geometry | New data is drawn at once. |
 | Marker shapes per series. | a laid-out box's size, readable in render (`useBox`) | Dashes; a shape drawn in a stretched drawing would be distorted. |

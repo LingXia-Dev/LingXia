@@ -31,9 +31,9 @@ export function Spending() {
   const part = useLocal<string | null>('part', null);
   return (
     <PieChart
-      data={spending}
-      name="category"
-      value="amount"
+      rows={spending}
+      nameField="category"
+      valueField="amount"
       label="Spending by category"
       title="Spending"
       description="October"
@@ -41,8 +41,8 @@ export function Spending() {
       formatShare={percent}
       totalLabel="Total"
       summarize={summarize}
-      selectedKey={part.value}
-      onSelect={part.set}
+      value={part.value}
+      onChange={part.set}
       data-testid="spending"
     />
   );
@@ -60,7 +60,7 @@ const storage = [{ kind: 'Photos', gb: 38 }, { kind: 'Apps', gb: 21 }, { kind: '
 const gigabytes = (value: number) => `${value} GB`;
 
 export function Solid() {
-  return <PieChart data={storage} name="kind" value="gb" label="Storage by kind" title="Storage" variant="pie" formatValue={gigabytes} formatShare={percent} summarize={summarize} data-testid="storage" />;
+  return <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind" title="Storage" variant="pie" formatValue={gigabytes} formatShare={percent} summarize={summarize} data-testid="storage" />;
 }
 ```
 
@@ -81,9 +81,9 @@ const languages = [
 export function Merged() {
   return (
     <PieChart
-      data={languages}
-      name="language"
-      value="readers"
+      rows={languages}
+      nameField="language"
+      valueField="readers"
       label="Readers by language"
       title="Readers by language"
       formatValue={grouped}
@@ -102,10 +102,10 @@ export function Merged() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `data` (required) | `readonly Readonly<Record<string, ChartDatum>>[]` |  | The rows, one per part, in the order drawn clockwise from the top. Parts without a positive number are left out. |
-| `name` (required) | `string` |  | The field that names each part: "category". |
-| `value` (required) | `string` |  | The field that holds each part's amount. |
-| `keyField` | `string` |  | The field that identifies a row across updates and in `selectedKey`. By default `name`. |
+| `rows` (required) | `readonly Readonly<Record<string, ChartDatum>>[]` |  | The rows, one per part, in the order drawn clockwise from the top. Parts without a positive number are left out. |
+| `nameField` (required) | `string` |  | The field that names each part: "category". |
+| `valueField` (required) | `string` |  | The field that holds each part's amount. |
+| `keyField` | `string` |  | The field that identifies a row across updates and in `value`. By default `nameField`. |
 | `label` (required) | `string` |  | The chart's accessible name: "Spending by category". |
 | `title` | `string` |  |  |
 | `description` | `string` |  |  |
@@ -118,8 +118,8 @@ export function Merged() {
 | `maxParts` | `number` | `5` | How many parts keep their own slice when `otherLabel` is set. |
 | `legend` | `ChartLegendPosition` | `'bottom'` | The legend lists each part with its amount and share. |
 | `legendLabel` | `string` |  | The legend's accessible name; by default the chart's `label`. |
-| `selectedKey` | `string \| null` |  | The chosen part's key; its slice grows a little and keeps its colour, the rest step back. |
-| `onSelect` | `((key: string \| null) => void)` |  | Makes each legend row a button; runs with its part's key, or `null` when the chosen one is pressed again. |
+| `value` | `string \| null` |  | The chosen part's key; its slice grows a little and keeps its colour, the rest step back. |
+| `onChange` | `((key: string \| null) => void)` |  | Makes each legend row a button; runs with its part's key, or `null` when the chosen one is pressed again. |
 | `size` | `ChartSize` | `'md'` |  |
 | `isLoading` | `boolean` | `false` |  |
 | `error` | `string` |  |  |
@@ -150,16 +150,16 @@ export function Merged() {
 - Pattern: none.
 - Name: label.
 - Description: none.
-- States: pressed (from selectedKey); busy (from isLoading).
+- States: pressed (from value); busy (from isLoading).
 - Tab: Moves through the legend rows when they can be pressed.
 - Enter or Space: Chooses the part, or lets it go.
 - Press target: md 36 px.
-- The legend is the reading: a list where each part is its name, amount and share. With `onSelect` each row is a button that reports pressed.
+- The legend is the reading: a list where each part is its name, amount and share. With `onChange` each row is a button that reports pressed.
 - With `summarize`, a sentence with the number of parts, the total, and the largest and smallest part is read first.
 - The hole is a status region: choosing a part announces its name and amount.
 - Slices are told apart by colour and by their order, which the legend repeats from the top clockwise; the gap between slices keeps neighbours apart without relying on hue.
 - A legend row is 36 px tall and as wide as the chart.
-- The ring is one drawing, rebuilt only for a new `data` array, encoding or chosen part; the legend is five elements per part.
+- The ring is one drawing, rebuilt only for a new `rows` array, encoding or chosen part; the legend is five elements per part.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |

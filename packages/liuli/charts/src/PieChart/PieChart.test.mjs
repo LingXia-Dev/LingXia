@@ -63,7 +63,7 @@ test('Solid: every slice is cut back from its neighbours, so the gaps show whate
   }
 });
 
-test('Solid: slices meet short of the centre, no hole text, and the legend rows are not buttons without onSelect', async () => {
+test('Solid: slices meet short of the centre, no hole text, and the legend rows are not buttons without onChange', async () => {
   const screen = await renderExample('PieChart/PieChart', 'Solid');
   const paths = slices(screen);
   assert.equal(paths.length, 4);
@@ -86,7 +86,7 @@ test('parts without a positive amount are left out; without otherLabel every par
   const screen = await renderPage(`
     import { PieChart } from '@liulidesign/charts/PieChart';
     const rows = [{ k: 'a', v: 3 }, { k: 'b', v: 0 }, { k: 'c', v: null }, { k: 'd', v: 1 }, { k: 'e', v: 1 }, { k: 'f', v: 1 }, { k: 'g', v: 1 }, { k: 'h', v: 1 }];
-    export function render() { return <page><PieChart data={rows} name="k" value="v" label="Parts" data-testid="pie" /></page>; }
+    export function render() { return <page><PieChart rows={rows} nameField="k" valueField="v" label="Parts" data-testid="pie" /></page>; }
   `);
   assert.equal(slices(screen).length, 6);
   assert.deepEqual(screen.getByTestId('pie-legend').children.map(textOf), ['a3', 'd1', 'e1', 'f1', 'g1', 'h1']);

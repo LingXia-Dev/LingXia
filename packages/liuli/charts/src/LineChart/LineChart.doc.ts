@@ -28,7 +28,7 @@ export const doc: ComponentDoc = {
     description: [],
     states: [{ state: 'busy', from: 'isLoading' }],
     keyboard: [
-      { keys: 'Left and Right', effect: 'With `onSelect`, on the plot: chooses the previous or next row' },
+      { keys: 'Left and Right', effect: 'With `onChange`, on the plot: chooses the previous or next row' },
     ],
     contrast: [
       { what: 'first mark colour', pair: ['chart-1', 'surface'], minimum: '3:1' },
@@ -47,8 +47,8 @@ export const doc: ComponentDoc = {
       'The second to fifth lines are dashed, each differently, and the legend draws the same dash, so series survive without colour.',
       'The scale and the end figure are hidden from assistive tech: the same numbers are in the summary and the list.',
       'The fill under an area, the hairlines and the rule on the chosen row are decoration with no contrast minimum.',
-      'The lines are one drawing whatever the number of points, rebuilt only for a new `data` array or encoding; the chosen row\'s rule and dots are a second, small drawing, so a scrub never redraws the lines.',
-      'With `onSelect` the plot is one keyboard stop named by `label`: Left and Right, and a screen reader\'s adjust, step through the rows, each read as "Apr: Free 492, Team 171, Pro 88". With nothing chosen it rests on the latest row.',
+      'The lines are one drawing whatever the number of points, rebuilt only for a new `rows` array or encoding; the chosen row\'s rule and dots are a second, small drawing, so a scrub never redraws the lines.',
+      'With `onChange` the plot is one keyboard stop named by `label`: Left and Right, and a screen reader\'s adjust, step through the rows, each read as "Apr: Free 492, Team 171, Pro 88". With nothing chosen it rests on the latest row.',
       'A finger chooses once it moves sideways or lifts, never as it lands, so a vertical drag that starts on the chart scrolls the page. A mouse chooses as it moves over the plot and clears as it leaves.',
       'The chosen row is shown in the readout line above the plot, which is announced; the line keeps its height when nothing is chosen.',
     ],
@@ -77,7 +77,7 @@ export const doc: ComponentDoc = {
   ],
   gaps: [
     { missing: 'A tooltip beside the chosen point.', needs: 'nothing from the View', today: 'A rule and dots on the chosen row, and its values in the readout line above the plot, where a finger does not cover them.' },
-    { missing: 'Fitted labels and scrubbing on a host built before `useBox` and `onPointer`.', needs: 'a newer host', today: 'The first and last category; `selectedKey` set by the app.' },
+    { missing: 'Fitted labels and scrubbing on a host built before `useBox` and `onPointer`.', needs: 'a newer host', today: 'The first and last category; `value` set by the app.' },
     { missing: 'A window to zoom and pan a long series.', needs: 'pointer coordinates on an element (`onPointer`)', today: 'Pass the rows of the period to show.' },
     { missing: 'Lines that draw in and move between data.', needs: 'animation of vector geometry', today: 'New data is drawn at once.' },
     { missing: 'Marker shapes per series.', needs: 'a laid-out box\'s size, readable in render (`useBox`)', today: 'Dashes; a shape drawn in a stretched drawing would be distorted.' },

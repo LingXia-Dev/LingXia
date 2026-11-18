@@ -13,15 +13,15 @@ export function Orders() {
   const day = useLocal<string | null>('day', null);
   return (
     <BarChart
-      data={week}
+      rows={week}
       x="day"
       y="orders"
       label="Orders by weekday"
       title="Orders"
       description="This week"
       summarize={summarize}
-      selectedKey={day.value}
-      onSelect={day.set}
+      value={day.value}
+      onChange={day.set}
       data-testid="orders"
     />
   );
@@ -38,7 +38,7 @@ export function Grouped() {
   const hidden = useLocal<readonly string[]>('hidden', []);
   return (
     <BarChart
-      data={channels}
+      rows={channels}
       x="quarter"
       y={[{ field: 'online', label: 'Online' }, { field: 'store', label: 'In store' }]}
       label="Sales by quarter and channel"
@@ -59,7 +59,7 @@ const cash = [
 
 /** Values on both sides of zero stand on one line. */
 export function Signed() {
-  return <BarChart data={cash} x="month" y="net" label="Net cash flow by month" title="Net cash flow" formatValue={thousands} summarize={summarize} data-testid="cash" />;
+  return <BarChart rows={cash} x="month" y="net" label="Net cash flow by month" title="Net cash flow" formatValue={thousands} summarize={summarize} data-testid="cash" />;
 }
 
 const days = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Jun`, steps: 4200 + ((index * 37) % 11) * 610 + (index % 7 === 5 ? 3800 : 0) }));
@@ -67,35 +67,35 @@ const days = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Jun`
 /** Thirty bars at phone width: the bars narrow, and only the first and last are labelled. */
 export function Month() {
   const day = useLocal<string | null>('day', '14 Jun');
-  return <BarChart data={days} x="day" y="steps" label="Steps by day in June" title="Steps" description="June" selectedKey={day.value} onSelect={day.set} data-testid="steps" />;
+  return <BarChart rows={days} x="day" y="steps" label="Steps by day in June" title="Steps" description="June" value={day.value} onChange={day.set} data-testid="steps" />;
 }
 
 export function Sizes() {
   return (
     <view className="gap-6">
-      <BarChart data={week} x="day" y="orders" label="Orders by weekday, small" size="sm" xLabels="none" />
-      <BarChart data={week} x="day" y="orders" label="Orders by weekday, large" size="lg" />
+      <BarChart rows={week} x="day" y="orders" label="Orders by weekday, small" size="sm" xLabels="none" />
+      <BarChart rows={week} x="day" y="orders" label="Orders by weekday, large" size="lg" />
     </view>
   );
 }
 
 export function StateSelected() {
-  return <BarChart data={week} x="day" y="orders" label="Orders by weekday" size="sm" selectedKey="Fri" data-testid="selected" />;
+  return <BarChart rows={week} x="day" y="orders" label="Orders by weekday" size="sm" value="Fri" data-testid="selected" />;
 }
 
 export function StateLoading() {
-  return <BarChart data={[]} x="day" y="orders" label="Orders by weekday" title="Orders" size="sm" isLoading data-testid="loading" />;
+  return <BarChart rows={[]} x="day" y="orders" label="Orders by weekday" title="Orders" size="sm" isLoading data-testid="loading" />;
 }
 
 export function StateEmpty() {
-  return <BarChart data={[]} x="day" y="orders" label="Orders by weekday" title="Orders" size="sm" emptyLabel="No orders this week" emptyHint="New orders show here as they come in." data-testid="empty" />;
+  return <BarChart rows={[]} x="day" y="orders" label="Orders by weekday" title="Orders" size="sm" emptyLabel="No orders this week" emptyHint="New orders show here as they come in." data-testid="empty" />;
 }
 
 export function StateError() {
-  return <Held value={true}>{(hasFailed, set) => <BarChart data={week} x="day" y="orders" label="Orders by weekday" title="Orders" size="sm" error={hasFailed ? "Orders could not be loaded." : undefined} onRetry={() => set(false)} retryLabel="Try again" data-testid="error" />}</Held>;
+  return <Held value={true}>{(hasFailed, set) => <BarChart rows={week} x="day" y="orders" label="Orders by weekday" title="Orders" size="sm" error={hasFailed ? "Orders could not be loaded." : undefined} onRetry={() => set(false)} retryLabel="Try again" data-testid="error" />}</Held>;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <BarChart data={week} x="day" y="orders" label="Orders" size="xs" xLabels="none" className="w-28 self-center" />;
+  return <BarChart rows={week} x="day" y="orders" label="Orders" size="xs" xLabels="none" className="w-28 self-center" />;
 }
