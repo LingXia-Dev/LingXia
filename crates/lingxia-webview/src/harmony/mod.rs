@@ -6,8 +6,9 @@ mod webview;
 pub use display::{DisplayAwake, keep_display_awake};
 pub(crate) use webview::apply_http_proxy;
 pub use webview::{
-    WebViewInner, check_navigation_policy, complete_pending_screenshot_request,
-    notify_webview_state, on_document_commit, on_download_start, on_file_chooser_requested,
-    on_load_error, on_page_begin, on_page_end, on_render_exited, webview_controller_created,
+    WebViewInner, check_navigation_policy, check_new_window_policy, check_web_permission_policy,
+    complete_pending_screenshot_request, notify_webview_state, on_document_commit,
+    on_download_start, on_file_chooser_requested, on_load_error, on_page_begin, on_page_end,
+    on_render_exited, on_web_fullscreen_changed, webview_controller_created,
     webview_controller_destroyed,
 };

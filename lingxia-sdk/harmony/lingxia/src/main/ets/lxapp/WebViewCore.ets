@@ -11,6 +11,7 @@ import {
   onDownloadStart as hostOnDownloadStart,
   onLoadError as hostOnLoadError,
   onNavigationPolicy as hostOnNavigationPolicy,
+  onNewWindowPolicy as hostOnNewWindowPolicy,
   onScreenshotResult as hostOnScreenshotResult,
   onWebviewControllerCreated as hostOnWebviewControllerCreated,
   onWebviewControllerDestroyed as hostOnWebviewControllerDestroyed,
@@ -49,8 +50,11 @@ const TAG = 'LingXia.WebView';
  * and arrives in the create-options token; this side reads it and holds none.
  */
 export interface ProfileRules {
+  embedMailbox: boolean;
   jsDialogs: boolean;
+  newWindowsWithoutHandler: boolean;
   downloads: boolean;
+  reportsBlockedDownloads: boolean;
   siteStorage: boolean;
   scrollbars: boolean;
   provenDocumentBinding: boolean;
@@ -61,6 +65,7 @@ export interface EffectiveWebViewCreateOptions {
   profile: string;
   rules: ProfileRules;
   dataMode: string;
+  hasNewWindowHandler: boolean;
   hasDownloadHandler: boolean;
   hasFileChooserHandler: boolean;
   surfaceOwned: boolean;
@@ -105,8 +110,11 @@ export interface WebViewHostHooks {
 }
 
 interface RawProfileRules {
+  embed_mailbox?: boolean;
   js_dialogs?: boolean;
+  new_windows_without_handler?: boolean;
   downloads?: boolean;
+  reports_blocked_downloads?: boolean;
   site_storage?: boolean;
   scrollbars?: boolean;
   proven_document_binding?: boolean;
@@ -116,6 +124,7 @@ interface RawOptionsToken {
   profile?: string;
   rules?: RawProfileRules;
   data_mode?: string;
+  has_new_window_handler?: boolean;
   has_download_handler?: boolean;
   has_file_chooser_handler?: boolean;
   surface_owned?: boolean;
@@ -195,8 +204,11 @@ function bindDefaultHostHooksIfNeeded(): void {
 // Options of a WebView this side does not know: nothing is permitted.
 function unconfiguredOptions(): EffectiveWebViewCreateOptions {
   const rules: ProfileRules = {
+    embedMailbox: false,
     jsDialogs: false,
+    newWindowsWithoutHandler: false,
     downloads: false,
+    reportsBlockedDownloads: false,
     siteStorage: false,
     scrollbars: false,
     provenDocumentBinding: false
@@ -205,6 +217,7 @@ function unconfiguredOptions(): EffectiveWebViewCreateOptions {
     profile: '',
     rules,
     dataMode: DATA_MODE_PROFILE_DEFAULT,
+    hasNewWindowHandler: false,
     hasDownloadHandler: false,
     hasFileChooserHandler: false,
     surfaceOwned: false
@@ -216,19 +229,34 @@ function decodeProfileRules(raw?: RawProfileRules): ProfileRules | undefined {
   if (!raw) {
     return undefined;
   }
+  const embedMailbox = raw.embed_mailbox;
   const jsDialogs = raw.js_dialogs;
+  const newWindowsWithoutHandler = raw.new_windows_without_handler;
   const downloads = raw.downloads;
+  const reportsBlockedDownloads = raw.reports_blocked_downloads;
   const siteStorage = raw.site_storage;
   const scrollbars = raw.scrollbars;
   const provenDocumentBinding = raw.proven_document_binding;
-  if (typeof jsDialogs !== 'boolean'
+  if (typeof embedMailbox !== 'boolean'
+    || typeof jsDialogs !== 'boolean'
+    || typeof newWindowsWithoutHandler !== 'boolean'
     || typeof downloads !== 'boolean'
+    || typeof reportsBlockedDownloads !== 'boolean'
     || typeof siteStorage !== 'boolean'
     || typeof scrollbars !== 'boolean'
     || typeof provenDocumentBinding !== 'boolean') {
     return undefined;
   }
-  const rules: ProfileRules = { jsDialogs, downloads, siteStorage, scrollbars, provenDocumentBinding };
+  const rules: ProfileRules = {
+    embedMailbox,
+    jsDialogs,
+    newWindowsWithoutHandler,
+    downloads,
+    reportsBlockedDownloads,
+    siteStorage,
+    scrollbars,
+    provenDocumentBinding
+  };
   return rules;
 }
 
@@ -290,6 +318,7 @@ function normalizeDecodedOptions(raw: Object): EffectiveWebViewCreateOptions | u
     normalized.dataMode = dataMode;
   }
 
+  normalized.hasNewWindowHandler = data.has_new_window_handler === true;
   normalized.hasDownloadHandler = data.has_download_handler === true;
   normalized.hasFileChooserHandler = data.has_file_chooser_handler === true;
   normalized.surfaceOwned = data.surface_owned === true;
@@ -316,6 +345,7 @@ function decodeOptionsToken(optionsToken?: string): EffectiveWebViewCreateOption
 function optionsEqual(a: EffectiveWebViewCreateOptions, b: EffectiveWebViewCreateOptions): boolean {
   return a.profile === b.profile
     && a.dataMode === b.dataMode
+    && a.hasNewWindowHandler === b.hasNewWindowHandler
     && a.hasDownloadHandler === b.hasDownloadHandler
     && a.hasFileChooserHandler === b.hasFileChooserHandler
     && a.surfaceOwned === b.surfaceOwned;
@@ -378,6 +408,7 @@ export class WebViewManager {
 
   // Map to store WebView info for UI management
   private static webViewInfos: Map<string, WebViewInfo> = new Map();
+  private static fullScreenExitHandlers: Map<string, FullScreenExitHandler> = new Map();
 
   // Multiple callbacks for UI component management
   private static uiCallbacks: Set<(action: string, info: WebViewInfo) => void> = new Set();
@@ -688,6 +719,7 @@ export class WebViewManager {
     WebViewManager.documentLoads.delete(logicalTag);
     WebViewManager.documentBegins.delete(logicalTag);
     WebViewManager.documentEnds.delete(logicalTag);
+    WebViewManager.fullScreenExitHandlers.delete(logicalTag);
     WebViewManager.uiCallbacks.forEach(callback => {
       try {
         callback('destroy', webViewInfo);
@@ -753,6 +785,31 @@ export class WebViewManager {
       return true;
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to load URL in WebView ${webtag}: ${error}`);
+      return false;
+    }
+  }
+
+  static setFullScreenExitHandler(webtag: string, handler: FullScreenExitHandler | null): void {
+    const logicalTag = WebViewManager.resolveLogicalTag(webtag);
+    if (handler) {
+      WebViewManager.fullScreenExitHandlers.set(logicalTag, handler);
+    } else {
+      WebViewManager.fullScreenExitHandlers.delete(logicalTag);
+    }
+  }
+
+  static exitFullScreen(webtag: string): boolean {
+    const logicalTag = WebViewManager.resolveLogicalTag(webtag);
+    const handler = WebViewManager.fullScreenExitHandlers.get(logicalTag);
+    if (!handler) {
+      return false;
+    }
+    WebViewManager.fullScreenExitHandlers.delete(logicalTag);
+    try {
+      handler.exitFullScreen();
+      return true;
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, `exitFullScreen failed for ${webtag}: ${error}`);
       return false;
     }
   }
@@ -1217,7 +1274,9 @@ export function handleWebViewDownloadStart(
 ): void {
   bindDefaultHostHooksIfNeeded();
   const options = getWebViewCreateOptions(webtag);
-  if (!options.rules.downloads || options.hasDownloadHandler !== true) {
+  // Either way the creator is only told; ArkWeb performs no download itself.
+  if ((!options.rules.downloads && !options.rules.reportsBlockedDownloads)
+    || options.hasDownloadHandler !== true) {
     return;
   }
 
@@ -1287,4 +1346,37 @@ export function setUserAgentOverride(webtag: string, mode: string, userAgent: st
  */
 export function captureScreenshot(webtag: string, requestIdStr: string): boolean {
   return WebViewManager.captureScreenshot(webtag, requestIdStr);
+}
+
+export function supportsWebViewNewWindows(webtag: string): boolean {
+  const options = getWebViewCreateOptions(webtag);
+  return options.rules.newWindowsWithoutHandler || options.hasNewWindowHandler;
+}
+
+export function handleWebViewNewWindowPolicy(
+  webtag: string,
+  nativeViewToken: string,
+  url: string
+): number {
+  const target = url.trim();
+  if (target.length === 0 || !supportsWebViewNewWindows(webtag)) {
+    return 0;
+  }
+  try {
+    return hostOnNewWindowPolicy(webtag, nativeViewToken, target);
+  } catch (error) {
+    hilog.error(DOMAIN, TAG, `onNewWindowPolicy failed for ${webtag}: ${error}`);
+    return 0;
+  }
+}
+
+export function registerFullScreenExitHandler(
+  webtag: string,
+  handler: FullScreenExitHandler | null
+): void {
+  WebViewManager.setFullScreenExitHandler(webtag, handler);
+}
+
+export function exitWebFullscreen(webtag: string): boolean {
+  return WebViewManager.exitFullScreen(webtag);
 }

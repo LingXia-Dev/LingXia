@@ -114,6 +114,29 @@ pub(crate) fn build_async_eval_body(src: &str, resolve_call: Option<&str>) -> St
     )
 }
 
+/// The synchronous form of [`build_async_eval_body`], for a page with no
+/// bridge to carry a later result: the script's own completion value is the
+/// `{ok, value | error}` envelope, read by the platform's evaluate callback.
+/// A Promise is not awaited.
+#[cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
+pub(crate) fn build_sync_eval_script(src: &str) -> String {
+    let inner = if looks_like_function_body(src) {
+        format!("(function () {{ {src} }})()")
+    } else {
+        format!("({src})")
+    };
+    format!(
+        "(function () {{ \
+           try {{ \
+             var __lxV = {inner}; \
+             return JSON.stringify({{ok:true, value: __lxV === undefined ? null : __lxV}}); \
+           }} catch (e) {{ \
+             return JSON.stringify({{ok:false, error: String(e && e.stack ? e.stack : e)}}); \
+           }} \
+         }})()"
+    )
+}
+
 pub(crate) fn parse_wrapped_eval_result(raw: &str) -> Result<Value, WebViewScriptError> {
     let envelope: EvalEnvelope = serde_json::from_str(raw).map_err(|err| {
         WebViewScriptError::Platform(format!(
@@ -143,6 +166,20 @@ pub(crate) fn build_helper_invocation(expr: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sync_eval_script_returns_the_envelope_and_awaits_nothing() {
+        let expression = build_sync_eval_script("1 + 1");
+        assert!(expression.contains("var __lxV = (1 + 1);"));
+        let body = build_sync_eval_script("const x = 1; return x;");
+        assert!(body.contains("var __lxV = (function () { const x = 1; return x; })();"));
+        for script in [expression, body] {
+            assert!(script.contains("return JSON.stringify({ok:true"));
+            assert!(script.contains("return JSON.stringify({ok:false"));
+            assert!(!script.contains("await"));
+            assert!(!script.contains("LingXiaProxy"));
+        }
+    }
 
     #[test]
     fn async_eval_body_expression_uses_await() {

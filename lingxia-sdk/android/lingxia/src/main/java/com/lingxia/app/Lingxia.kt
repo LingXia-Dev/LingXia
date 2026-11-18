@@ -228,6 +228,17 @@ object Lingxia {
             }
 
             com.lingxia.webview.LingXiaWebView.setApplicationContext(ctx)
+            com.lingxia.webview.LingXiaWebView.setWebPermissionDelegate { perms, callback ->
+                val hostActivity = LxApp.getCurrentActivity()?.takeUnless { it.isFinishing || it.isDestroyed }
+                    ?: lastResumedActivity?.takeUnless { it.isFinishing || it.isDestroyed }
+                if (hostActivity == null) {
+                    callback.onReceiveValue(false)
+                } else {
+                    PermissionManager.ensurePermissions(hostActivity, perms) { granted ->
+                        callback.onReceiveValue(granted)
+                    }
+                }
+            }
 
             // Same tablet breakpoint as NavigationBar. Set before init so the
             // first tab-bar snapshot already uses the pad strip capacity.

@@ -158,7 +158,7 @@ fn install_url_surface_bridge() {
         let url_callback = request.url_callback;
         let app_id = request.app_id.clone();
         let session_id = request.owner_session_id;
-        let session = lingxia_webview::WebViewBuilder::browser(webtag)
+        let session = lingxia_webview::WebViewBuilder::browser_tab(webtag)
             .data_mode(data_mode)
             .on_navigation(move |request| url_surface_navigation_policy(url_callback, &request.url))
             .on_new_window(move |url| {

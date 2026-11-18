@@ -5,11 +5,13 @@ use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
 use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::call_arkts;
 use crate::harmony_document::{DocumentCommit, HarmonyDocumentAuthority, PageBegin};
-use crate::input_helper::{build_async_eval_body, new_eval_token, parse_wrapped_eval_result};
+use crate::input_helper::{
+    build_async_eval_body, build_sync_eval_script, new_eval_token, parse_wrapped_eval_result,
+};
 use crate::traits::{
     DocumentBinding, DocumentGeneration, DocumentOutboundGate, FileChooserRequest,
-    FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy, WebMessageSource,
-    WebMessageTransport,
+    FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy, NewWindowPolicy,
+    WebMessageSource, WebMessageTransport,
 };
 use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, WebTag,
@@ -287,6 +289,46 @@ fn complete_pending_eval_request(request_id: u64, token: &str, result: Result<St
     }
 }
 
+fn complete_pending_sync_eval_request(request_id: u64, result: Result<String, String>) {
+    if let Ok(mut pending) = pending_eval_requests().lock()
+        && let Some(entry) = pending.remove(&request_id)
+    {
+        let message = match result {
+            Ok(value) => PendingEvalResponse::Success(value),
+            Err(error) => PendingEvalResponse::Failure(error),
+        };
+        let _ = entry.sender.send(message);
+    }
+}
+
+unsafe extern "C" fn on_sync_eval_callback(
+    _web_tag: *const c_char,
+    data: *const ArkWeb_JavaScriptBridgeData,
+    user_data: *mut c_void,
+) {
+    let request_id = user_data as usize as u64;
+    if request_id == 0 {
+        return;
+    }
+    let raw = unsafe { data.as_ref().and_then(extract_string_from_bridge_data) };
+    let decoded = raw.and_then(|value| {
+        if let Ok(unquoted) = serde_json::from_str::<String>(&value) {
+            Some(unquoted)
+        } else if value.starts_with('{') {
+            Some(value)
+        } else {
+            None
+        }
+    });
+    match decoded {
+        Some(envelope) => complete_pending_sync_eval_request(request_id, Ok(envelope)),
+        None => complete_pending_sync_eval_request(
+            request_id,
+            Err("JavaScript evaluation produced no result".to_string()),
+        ),
+    }
+}
+
 fn fail_pending_eval_requests_for_webtag(webtag: &WebTag) {
     if let Ok(mut pending) = pending_eval_requests().lock() {
         let matching = pending
@@ -310,8 +352,11 @@ struct WebMessagePorts {
     native_message_callback_token: Option<u64>,
     console_port: Option<*mut ArkWeb_WebMessagePort>,
     console_message_callback_token: Option<u64>,
+    embed_port: Option<*mut ArkWeb_WebMessagePort>,
+    embed_message_callback_token: Option<u64>,
     webview_native_port: Option<*mut ArkWeb_WebMessagePort>,
     webview_console_port: Option<*mut ArkWeb_WebMessagePort>,
+    webview_embed_port: Option<*mut ArkWeb_WebMessagePort>,
 }
 
 // ArkWeb retains `user_data` beyond the Rust call that registers a callback.
@@ -475,9 +520,11 @@ pub struct WebViewInner {
     /// of tearing down the successor registered under the same tag.
     native_generation: String,
     native_view_id: NativeWebViewId,
+    has_bridge: bool,
     /// ArkWeb-facing tag for controller operations (may include `#session` suffix).
     ark_webtag: Mutex<String>,
     ports: Mutex<WebMessagePorts>,
+    embed_origin: Mutex<Option<(DocumentGeneration, String)>>,
     pending_port_requests: Mutex<(bool, bool)>,
     document_authority: HarmonyDocumentAuthority,
     /// Condition variable for message port readiness (avoids busy-wait)
@@ -508,6 +555,7 @@ unsafe impl Sync for WebViewInner {}
 pub enum PortType {
     Console,
     Message,
+    Embed,
 }
 
 type WebMessageCallback =
@@ -518,6 +566,7 @@ impl std::fmt::Display for PortType {
         match self {
             PortType::Console => write!(f, "ConsolePort"),
             PortType::Message => write!(f, "MessagePort"),
+            PortType::Embed => write!(f, "EmbedPort"),
         }
     }
 }
@@ -566,8 +615,11 @@ pub fn webview_controller_created(
     }
 
     // Register JS proxy when ArkTS notifies controller created (page UI attached)
-    // This binds the proxy into the actual page JS world.
-    if let Err(e) = register_proxy_for_webtag(&webtag, webview.native_view_id()) {
+    // This binds the proxy into the actual page JS world. A profile without
+    // the bridge transport gets no proxy: no page script reaches the bridge.
+    if !webview.effective_options().rules().bridge_transport {
+        log::info!("No LingXiaProxy for {}: profile has no bridge", webtag_str);
+    } else if let Err(e) = register_proxy_for_webtag(&webtag, webview.native_view_id()) {
         log::warn!(
             "Failed to register LingXiaProxy at created-ack for {}: {}",
             webtag_str,
@@ -1080,8 +1132,10 @@ impl WebViewInner {
             webtag: webtag.clone(),
             native_generation: native_generation.clone(),
             native_view_id,
+            has_bridge: effective_options.rules().bridge_transport,
             ark_webtag: Mutex::new(webtag.as_str().to_string()),
             ports: Mutex::new(WebMessagePorts::default()),
+            embed_origin: Mutex::new(None),
             pending_port_requests: Mutex::new((false, false)),
             document_authority: HarmonyDocumentAuthority::default(),
             port_ready_signal: (Mutex::new(false), Condvar::new()),
@@ -1184,6 +1238,7 @@ impl WebViewInner {
             &self.pending_port_requests,
             "harmony.pending_port_requests.cleanup",
         ) = (false, false);
+        *lock_or_recover(&self.embed_origin, "harmony.embed_origin.cleanup") = None;
         self.set_port_ready(false);
         self.with_ports(|ports| {
             ports.document_generation = None;
@@ -1191,6 +1246,9 @@ impl WebViewInner {
                 unbind_message_callback(token);
             }
             if let Some(token) = ports.console_message_callback_token.take() {
+                unbind_message_callback(token);
+            }
+            if let Some(token) = ports.embed_message_callback_token.take() {
                 unbind_message_callback(token);
             }
         });
@@ -1241,6 +1299,19 @@ impl WebViewInner {
                         close_fn(port, webtag_cstr.as_ptr());
                         cleanup_count += 1;
                     }
+
+                    if let Some(port) = ports.embed_port.take()
+                        && let Some(close_fn) = port_api.close
+                    {
+                        close_fn(port, webtag_cstr.as_ptr());
+                        cleanup_count += 1;
+                    }
+                    if let Some(port) = ports.webview_embed_port.take()
+                        && let Some(close_fn) = port_api.close
+                    {
+                        close_fn(port, webtag_cstr.as_ptr());
+                        cleanup_count += 1;
+                    }
                 });
 
                 if cleanup_count > 0 {
@@ -1276,19 +1347,46 @@ impl WebViewInner {
 
             // Use borrow() instead of take() - we need to keep the port reference
             let ports = self.ports_snapshot();
-            let (port_opt, message, port_name) = match port_type {
+            let (port_opt, message, port_name, target_origin) = match port_type {
                 PortType::Console => (
                     ports.webview_console_port,
                     "LingXia-console-init",
                     "console",
+                    "*".to_string(),
                 ),
-                PortType::Message => (ports.webview_native_port, "LingXia-port-init", "message"),
+                PortType::Message => (
+                    ports.webview_native_port,
+                    "LingXia-port-init",
+                    "message",
+                    "*".to_string(),
+                ),
+                PortType::Embed => {
+                    let target = lock_or_recover(&self.embed_origin, "harmony.embed_origin.send")
+                        .as_ref()
+                        .and_then(|(doc_gen, origin)| {
+                            (Some(*doc_gen) == ports.document_generation).then_some(origin)
+                        })
+                        .map(|origin| {
+                            if origin.starts_with("lx://") {
+                                "*".to_string()
+                            } else {
+                                origin.clone()
+                            }
+                        })
+                        .unwrap_or_else(|| "*".to_string());
+                    (
+                        ports.webview_embed_port,
+                        crate::embed_mailbox::HARMONY_EMBED_PORT_INIT,
+                        "embed",
+                        target,
+                    )
+                }
             };
 
             if let Some(webview_port) = port_opt {
                 // Prepare stable CStrings for the call duration
                 let msg_cstr = cstring_from_str("port_init_message", message)?;
-                let target_cstr = cstring_from_str("port_target", "*")?;
+                let target_cstr = cstring_from_str("port_target", &target_origin)?;
 
                 // Create a mutable copy of the port pointer for the API call
                 let mut port_array = [webview_port];
@@ -1368,6 +1466,33 @@ impl WebViewController for WebViewInner {
                     sender: tx,
                 },
             );
+
+        if !self.has_bridge {
+            let script = build_sync_eval_script(js);
+            if let Err(err) = self.dispatch_javascript_with_callback(&script, request_id) {
+                if let Ok(mut pending) = pending_eval_requests().lock() {
+                    pending.remove(&request_id);
+                }
+                return Err(WebViewScriptError::Platform(format!(
+                    "Harmony sync runJavaScript dispatch failed: {err:?}"
+                )));
+            }
+            return match timeout(EVAL_TIMEOUT, rx).await {
+                Ok(Ok(PendingEvalResponse::Success(envelope))) => {
+                    parse_wrapped_eval_result(&envelope)
+                }
+                Ok(Ok(PendingEvalResponse::Failure(err))) => Err(WebViewScriptError::Platform(err)),
+                Ok(Ok(PendingEvalResponse::Destroyed)) | Ok(Err(_)) => {
+                    Err(WebViewScriptError::Destroyed)
+                }
+                Err(_) => {
+                    if let Ok(mut pending) = pending_eval_requests().lock() {
+                        pending.remove(&request_id);
+                    }
+                    Err(WebViewScriptError::Timeout)
+                }
+            };
+        }
 
         let request_id_json = serde_json::to_string(&request_id.to_string()).map_err(|err| {
             WebViewScriptError::Platform(format!("Failed to encode eval request id: {err}"))
@@ -1634,6 +1759,7 @@ impl WebViewInner {
         match port_type {
             PortType::Console => pending.0 = true,
             PortType::Message => pending.1 = true,
+            PortType::Embed => {}
         }
     }
 
@@ -1865,6 +1991,46 @@ impl WebViewInner {
                 ))
             }
         }
+    }
+
+    fn dispatch_javascript_with_callback(
+        &self,
+        js: &str,
+        request_id: u64,
+    ) -> Result<(), WebViewError> {
+        unsafe {
+            let ark_webtag = self.ark_webtag_string();
+            let web_tag_cstr = cstring_from_str("ark_webtag", &ark_webtag)?;
+            let controller_api =
+                OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_CONTROLLER);
+            if controller_api.is_null() {
+                return Err(WebViewError::WebView(
+                    "Failed to get Controller API".to_string(),
+                ));
+            }
+            let controller = &*(controller_api as *const ArkWeb_ControllerAPI);
+            let js_cstr = cstring_from_str("evaluate_javascript.js", js)?;
+            let js_object = ArkWeb_JavaScriptObject {
+                buffer: js_cstr.as_ptr().cast(),
+                size: js.len(),
+                callback: Some(on_sync_eval_callback),
+                userData: request_id as usize as *mut c_void,
+            };
+
+            if let Some(run_js) = controller.runJavaScript {
+                run_js(web_tag_cstr.as_ptr(), &js_object);
+                Ok(())
+            } else {
+                Err(WebViewError::WebView(
+                    "runJavaScript function not available".to_string(),
+                ))
+            }
+        }
+    }
+
+    pub(crate) fn exit_web_fullscreen(&self) {
+        let ark_tag = self.ark_webtag_string();
+        let _ = call_arkts("exitWebFullscreen", &[&ark_tag]);
     }
 }
 
@@ -2190,6 +2356,23 @@ pub fn on_document_commit(
     if !fulfilled {
         return false;
     }
+    if webview.effective_options().rules().embed_mailbox
+        && let Some(origin) = crate::embed_mailbox::canonical_origin(&committed.public_url)
+    {
+        *lock_or_recover(&webview.inner.embed_origin, "harmony.embed_origin.commit") =
+            Some((generation, origin));
+        if let Err(error) = setup_webmessage_port_for_webtag(
+            &webtag,
+            webview.native_view_id(),
+            generation,
+            PortType::Embed,
+            on_embed_message_received,
+        )
+        .and_then(|()| webview.inner.send_port_unchecked(PortType::Embed))
+        {
+            log::warn!("Harmony embed mailbox setup at commit failed for {webtag}: {error}");
+        }
+    }
     if crate::webview::platform_console_delivery(
         webview.effective_options().profile,
         crate::webview::PlatformConsoleBackend::Harmony,
@@ -2390,6 +2573,18 @@ fn setup_webmessage_port_for_webtag(
                     ports.console_port = Some(port1);
                     ports.webview_console_port = Some(port2);
                     ports.console_message_callback_token = Some(callback_token);
+                }
+                PortType::Embed => {
+                    if let (Some(old), Some(close_fn)) = (ports.embed_port.take(), close) {
+                        close_fn(old, webtag_cstr.as_ptr());
+                    }
+                    if let Some(token) = ports.embed_message_callback_token.take() {
+                        unbind_message_callback(token);
+                    }
+                    ports.webview_embed_port.take();
+                    ports.embed_port = Some(port1);
+                    ports.webview_embed_port = Some(port2);
+                    ports.embed_message_callback_token = Some(callback_token);
                 }
             }
             ports.document_generation = Some(document_generation);
@@ -2627,6 +2822,116 @@ pub fn check_navigation_policy(
     false
 }
 
+/// Evaluate `window.open` / `target="_blank"`. Returns `1` for `LoadInSelf`, `0` for `Cancel`.
+pub fn check_new_window_policy(webtag_str: &str, native_view_token: &str, url: &str) -> i32 {
+    let webtag = WebTag::from(webtag_str);
+    let Some(webview) = webview_for_native_generation(&webtag, native_view_token) else {
+        return 0;
+    };
+    match webview.handle_new_window(url) {
+        NewWindowPolicy::LoadInSelf => 1,
+        NewWindowPolicy::Cancel => 0,
+    }
+}
+
+pub fn on_web_fullscreen_changed(
+    webtag_str: &str,
+    native_view_token: &str,
+    fullscreen: bool,
+) -> bool {
+    let webtag = WebTag::from(webtag_str);
+    let Some(webview) = webview_for_native_generation(&webtag, native_view_token) else {
+        return false;
+    };
+    webview.handle_fullscreen_change(fullscreen);
+    true
+}
+
+pub fn check_web_permission_policy(
+    webtag_str: &str,
+    native_view_token: &str,
+    origin: &str,
+) -> bool {
+    let webtag = WebTag::from(webtag_str);
+    let Some(webview) = webview_for_native_generation(&webtag, native_view_token) else {
+        return false;
+    };
+    webview.check_permission_origin(origin, None)
+}
+
+extern "C" fn on_embed_message_received(
+    web_tag: *const c_char,
+    port: *mut ArkWeb_WebMessagePort,
+    message: *mut ArkWeb_WebMessage,
+    user_data: *mut c_void,
+) {
+    let Some(binding) = binding_for_message_callback(user_data) else {
+        return;
+    };
+    if binding.port_type != PortType::Embed || web_tag.is_null() || message.is_null() {
+        return;
+    }
+    let Ok(webtag_str) = (unsafe { CStr::from_ptr(web_tag).to_str() }) else {
+        return;
+    };
+    let full_webtag = WebTag::from(webtag_str);
+    let Some(webview) = find_webview_by_native_view_id(&full_webtag, binding.native_view_id) else {
+        return;
+    };
+    let callback_is_current = webview.inner.with_ports(|ports| {
+        ports.document_generation == Some(binding.document_generation)
+            && ports.embed_port == Some(port)
+            && ports.embed_message_callback_token == Some(user_data as usize as u64)
+    });
+    if !callback_is_current
+        || !webview
+            .inner
+            .document_authority
+            .is_current_generation(binding.document_generation)
+    {
+        return;
+    }
+    let Some(origin) = lock_or_recover(&webview.inner.embed_origin, "harmony.embed_origin.recv")
+        .as_ref()
+        .and_then(|(doc_gen, origin)| {
+            (*doc_gen == binding.document_generation).then(|| origin.clone())
+        })
+    else {
+        return;
+    };
+
+    unsafe {
+        let message_api =
+            OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_WEB_MESSAGE);
+        if message_api.is_null() {
+            return;
+        }
+        let api = &*(message_api as *const ArkWeb_WebMessageAPI);
+        let Some(get_data) = api.getData else {
+            return;
+        };
+        let mut data_length: usize = 0;
+        let data_ptr = get_data(message, &mut data_length);
+        if data_ptr.is_null() || data_length == 0 {
+            return;
+        }
+        if data_length > crate::embed_mailbox::MAX_EMBED_WIRE_BYTES + 1 {
+            webview.reject_oversized_web_message();
+            return;
+        }
+        let data_slice = std::slice::from_raw_parts(data_ptr as *const u8, data_length);
+        let Ok(msg_str) = std::str::from_utf8(data_slice) else {
+            return;
+        };
+        let trimmed = msg_str.trim_end_matches('\0');
+        if trimmed.len() > crate::embed_mailbox::MAX_EMBED_WIRE_BYTES {
+            webview.reject_oversized_web_message();
+            return;
+        }
+        webview.dispatch_embed_wire(trimmed, &origin);
+    }
+}
+
 pub fn on_download_start(
     webtag_str: &str,
     native_view_token: &str,
@@ -2642,7 +2947,7 @@ pub fn on_download_start(
     };
 
     // Strict/lxapp pages should not trigger in-webview download flows.
-    if !webview.effective_options().rules().downloads {
+    if !webview.effective_options().rules().intercepts_downloads() {
         return false;
     }
 

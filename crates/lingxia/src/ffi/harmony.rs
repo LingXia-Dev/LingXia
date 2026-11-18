@@ -1121,6 +1121,29 @@ pub fn on_navigation_policy(
 }
 
 #[napi]
+pub fn on_new_window_policy(webtag: String, native_view_token: String, url: String) -> i32 {
+    webview_harmony::check_new_window_policy(&webtag, &native_view_token, &url)
+}
+
+#[napi]
+pub fn on_web_fullscreen_changed(
+    webtag: String,
+    native_view_token: String,
+    fullscreen: bool,
+) -> bool {
+    webview_harmony::on_web_fullscreen_changed(&webtag, &native_view_token, fullscreen)
+}
+
+#[napi]
+pub fn check_web_permission_policy(
+    webtag: String,
+    native_view_token: String,
+    origin: String,
+) -> bool {
+    webview_harmony::check_web_permission_policy(&webtag, &native_view_token, &origin)
+}
+
+#[napi]
 pub fn on_download_start(
     webtag: String,
     native_view_token: String,

@@ -531,6 +531,14 @@ pub(crate) fn register_event_handlers(
                         return Ok(());
                     };
                     if !webview.has_download_handler() {
+                        // A blocked download is cancelled even with nobody to tell.
+                        if webview
+                            .effective_options()
+                            .rules()
+                            .reports_blocked_downloads
+                        {
+                            args.SetCancel(true)?;
+                        }
                         return Ok(());
                     }
 

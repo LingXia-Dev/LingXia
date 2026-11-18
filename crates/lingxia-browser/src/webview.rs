@@ -744,7 +744,7 @@ pub(crate) fn browser_create_webview(
         console_rate_limiter: std::sync::Mutex::new(ConsoleRateLimiter::default()),
     });
     let delegate_for_navigation = delegate.clone();
-    let session = WebViewBuilder::browser(webtag)
+    let session = WebViewBuilder::browser_tab(webtag)
         .data_mode(data_mode)
         .delegate(delegate.clone())
         .on_scheme("lx", move |req| {

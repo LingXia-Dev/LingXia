@@ -1367,18 +1367,31 @@ define_class!(
             if should_perform_download
                 && let Some(managed_webview) =
                     current_native_callback_webview(webtag, self.ivars().native_view_id)
-                && managed_webview.effective_options().rules().downloads
             {
-                self.ivars()
-                    .pending_browser_download_url
-                    .replace(Some(url.clone()));
-                log::info!(
-                    "Apple decidePolicy mark browser download webtag={} url={}",
-                    webtag,
-                    url
-                );
-                allow_navigation();
-                return;
+                let rules = managed_webview.effective_options().rules();
+                if rules.downloads {
+                    self.ivars()
+                        .pending_browser_download_url
+                        .replace(Some(url.clone()));
+                    log::info!(
+                        "Apple decidePolicy mark browser download webtag={} url={}",
+                        webtag,
+                        url
+                    );
+                    allow_navigation();
+                    return;
+                }
+                if rules.reports_blocked_downloads {
+                    // Cancelled before the request is made.
+                    log::info!(
+                        "Apple decidePolicy blocked download webtag={} url={}",
+                        webtag,
+                        url
+                    );
+                    managed_webview.report_blocked_download(&url);
+                    cancel_navigation();
+                    return;
+                }
             }
 
             // Check closure-based navigation handler first
@@ -1478,8 +1491,8 @@ define_class!(
                 return;
             };
 
-            // Strict/lxapp pages never trigger in-webview download handling.
-            if !managed_webview.effective_options().rules().downloads {
+            let rules = managed_webview.effective_options().rules();
+            if !rules.intercepts_downloads() {
                 allow_navigation();
                 return;
             }
@@ -1512,7 +1525,14 @@ define_class!(
                 return;
             }
 
-            if managed_webview.effective_options().has_download_handler {
+            if !rules.downloads {
+                log::info!(
+                    "Apple blocked download webtag={} url={}",
+                    webtag,
+                    request.url
+                );
+                managed_webview.report_blocked_download(&request.url);
+            } else if managed_webview.effective_options().has_download_handler {
                 managed_webview.handle_download(request.clone());
                 log::info!(
                     "Apple download request dispatched webtag={} url={}",
@@ -1527,7 +1547,7 @@ define_class!(
                 );
             }
 
-            // Browser default policy: always cancel in-webview navigation for downloads.
+            // A download never proceeds as an in-webview navigation.
             cancel_navigation();
         }
     }
@@ -1750,7 +1770,11 @@ define_class!(
                                         );
                                         match policy {
                                             NewWindowPolicy::LoadInSelf => {
-                                                if url.len() >= "http://".len()
+                                                if wv
+                                                    .effective_options()
+                                                    .rules()
+                                                    .new_window_https_upgrade
+                                                    && url.len() >= "http://".len()
                                                     && url[..7].eq_ignore_ascii_case("http://")
                                                 {
                                                     let upgraded = format!("https://{}", &url[7..]);
@@ -1765,7 +1789,7 @@ define_class!(
                                                             requestWithURL: upgraded_url_obj
                                                         ];
                                                         if !upgraded_request.is_null() {
-                                                            let _: () = msg_send![webview, loadRequest: upgraded_request];
+                                                            let _: *mut AnyObject = msg_send![webview, loadRequest: upgraded_request];
                                                             log::info!(
                                                                 "Apple new-window upgraded http->https webtag={} from={} to={}",
                                                                 webtag,
@@ -1773,7 +1797,7 @@ define_class!(
                                                                 upgraded
                                                             );
                                                         } else {
-                                                            let _: () = msg_send![webview, loadRequest: request];
+                                                            let _: *mut AnyObject = msg_send![webview, loadRequest: request];
                                                             log::warn!(
                                                                 "Apple new-window failed to build upgraded request, fallback original webtag={} url={}",
                                                                 webtag,
@@ -1781,7 +1805,7 @@ define_class!(
                                                             );
                                                         }
                                                     } else {
-                                                        let _: () = msg_send![webview, loadRequest: request];
+                                                        let _: *mut AnyObject = msg_send![webview, loadRequest: request];
                                                         log::warn!(
                                                             "Apple new-window failed to build upgraded URL, fallback original webtag={} url={}",
                                                             webtag,
@@ -1789,7 +1813,7 @@ define_class!(
                                                         );
                                                     }
                                                 } else {
-                                                    let _: () =
+                                                    let _: *mut AnyObject =
                                                         msg_send![webview, loadRequest: request];
                                                     log::info!(
                                                         "Apple new-window loaded in self webtag={} url={}",
@@ -1817,7 +1841,8 @@ define_class!(
                                             .to_ascii_lowercase();
                                         let is_web = scheme == "http" || scheme == "https";
                                         if is_browser_tab && is_web {
-                                            let _: () = msg_send![webview, loadRequest: request];
+                                            let _: *mut AnyObject =
+                                                msg_send![webview, loadRequest: request];
                                             log::info!(
                                                 "Apple new-window loaded in self (no handler) webtag={} url={}",
                                                 webtag,
@@ -2095,6 +2120,63 @@ define_class!(
                 );
                 complete_open_panel_request(completion_ptr, std::ptr::null_mut());
                 return;
+            }
+        }
+
+        #[unsafe(method(webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:))]
+        fn request_media_capture_permission(
+            &self,
+            _webview: *mut AnyObject,
+            origin: *mut AnyObject,
+            frame: *mut AnyObject,
+            _capture_type: objc2::ffi::NSInteger,
+            decision_handler: *mut AnyObject,
+        ) {
+            // WKPermissionDecision: 0 = Prompt, 1 = Grant, 2 = Deny
+            let decide = |decision: objc2::ffi::NSInteger| {
+                let handler: &Block<dyn Fn(objc2::ffi::NSInteger)> =
+                    unsafe { &*(decision_handler as *const Block<dyn Fn(objc2::ffi::NSInteger)>) };
+                handler.call((decision,));
+            };
+            let Some(webview) = self.current_webview() else {
+                decide(2);
+                return;
+            };
+            if !webview.effective_options().rules().embed_mailbox {
+                // Keep default WebKit prompt behavior for browser/strict profiles.
+                decide(0);
+                return;
+            }
+            if origin.is_null() || frame.is_null() {
+                decide(2);
+                return;
+            }
+            let (is_main_frame, origin_str) = unsafe {
+                let frame_ref = &*(frame as *const objc2_web_kit::WKFrameInfo);
+                let origin_ref = &*(origin as *const objc2_web_kit::WKSecurityOrigin);
+                let sec = format!(
+                    "{}://{}:{}",
+                    origin_ref.protocol(),
+                    origin_ref.host(),
+                    origin_ref.port()
+                );
+                let url = frame_ref
+                    .request()
+                    .URL()
+                    .and_then(|url| url.absoluteString())
+                    .map(|url| url.to_string());
+                let resolved = crate::embed_mailbox::canonical_origin(&sec)
+                    .or_else(|| {
+                        url.as_deref()
+                            .and_then(crate::embed_mailbox::canonical_origin)
+                    })
+                    .unwrap_or_default();
+                (frame_ref.isMainFrame(), resolved)
+            };
+            if webview.check_permission_origin(&origin_str, Some(is_main_frame)) {
+                decide(1);
+            } else {
+                decide(2);
             }
         }
     }
@@ -2484,11 +2566,17 @@ impl WebViewInner {
                 apply_proxy_to_default_store(&default_store, Some(&proxy), false)?;
             }
 
-            // Register the framework-owned Apple bridge scheme plus app custom schemes.
+            // The framework-owned Apple bridge scheme, where the profile has a
+            // bridge, plus the creator's schemes.
             let webtag = WebTag::new(appid, path, session_id);
-            let mut schemes_to_register = vec![APPLE_INTERNAL_SCHEME.to_string()];
+            let mut schemes_to_register = Vec::new();
+            if rules.bridge_transport {
+                schemes_to_register.push(APPLE_INTERNAL_SCHEME.to_string());
+            }
             if effective_options.registered_schemes.is_empty() {
-                schemes_to_register.push("lx".to_string());
+                if rules.default_lx_scheme {
+                    schemes_to_register.push("lx".to_string());
+                }
             } else {
                 // Only register non-standard schemes with WKURLSchemeHandler
                 // (http/https are handled via navigation delegate, not scheme handler).
@@ -2785,9 +2873,10 @@ impl WebViewInner {
             }
 
             // Without the native console hook, automation reads the console
-            // from the in-page recorder.
+            // from the in-page recorder. A page with no bridge is not ours to
+            // instrument.
             #[cfg(all(feature = "webview-input", target_os = "macos"))]
-            if !rules.native_console {
+            if !rules.native_console && rules.bridge_transport {
                 let recorder = NSString::from_str(crate::page_console::PAGE_CONSOLE_RECORDER);
                 let recorder_script: *mut AnyObject = msg_send![user_script_class, alloc];
                 let recorder_script: *mut AnyObject = msg_send![recorder_script,
@@ -2870,7 +2959,22 @@ impl WebViewInner {
             // Register message handlers with userContentController (like Swift version)
             let lingxia_name = NSString::from_str("LingXia");
             let lifecycle_name = NSString::from_str("LingXiaLifecycle");
-            let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*lingxia_name];
+            // The bridge's only way in: without it no page script reaches it.
+            if rules.bridge_transport {
+                let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*lingxia_name];
+            }
+            if rules.embed_mailbox {
+                let embed_name = NSString::from_str(crate::embed_mailbox::APPLE_EMBED_HANDLER);
+                let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*embed_name];
+                let embed_js = NSString::from_str(crate::embed_mailbox::APPLE_BOOTSTRAP_SCRIPT);
+                let embed_script: *mut AnyObject = msg_send![user_script_class, alloc];
+                let embed_script: *mut AnyObject = msg_send![embed_script,
+                    initWithSource: &*embed_js,
+                    injectionTime: injection_time,
+                    forMainFrameOnly: true];
+                let _: () = msg_send![user_content_controller, addUserScript: embed_script];
+                let _ = Retained::from_raw(embed_script);
+            }
             if rules.native_console {
                 let console_name = NSString::from_str("LingXiaConsole");
                 let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*console_name];
@@ -4872,6 +4976,15 @@ define_class!(
             message: *mut AnyObject,
         ) {
             unsafe {
+                // Get message name to determine handler type before applying byte caps.
+                let name: *mut AnyObject = msg_send![message, name];
+                let handler_name = if !name.is_null() {
+                    let ns_string = &*(name as *const NSString);
+                    ns_string.to_string()
+                } else {
+                    "unknown".to_string()
+                };
+
                 // Get message body
                 let body: *mut AnyObject = msg_send![message, body];
 
@@ -4880,7 +4993,13 @@ define_class!(
                         msg_send![body, isKindOfClass: objc2::class!(NSString)];
                     if is_string.as_bool() {
                         let ns_string = &*(body as *const NSString);
-                        if !crate::webview::web_message_bytes_within_limit(ns_string.len()) {
+                        let within_limit =
+                            if handler_name == crate::embed_mailbox::APPLE_EMBED_HANDLER {
+                                ns_string.len() <= crate::embed_mailbox::MAX_EMBED_WIRE_BYTES
+                            } else {
+                                crate::webview::web_message_bytes_within_limit(ns_string.len())
+                            };
+                        if !within_limit {
                             self.reject_oversized_message();
                             return;
                         }
@@ -4897,20 +5016,28 @@ define_class!(
                     return;
                 };
 
-                // Get message name to determine handler type
-                let name: *mut AnyObject = msg_send![message, name];
-                let handler_name = if !name.is_null() {
-                    let ns_string = &*(name as *const NSString);
-                    ns_string.to_string()
-                } else {
-                    "unknown".to_string()
-                };
-
                 // Route to appropriate handler based on name (like Swift version)
                 match handler_name.as_str() {
                     "LingXia" => {
                         let (frame, source) = apple_message_frame_and_source(message);
                         self.handle_bridge_message(message_string, frame, source);
+                    }
+                    crate::embed_mailbox::APPLE_EMBED_HANDLER => {
+                        let (frame, source) = apple_message_frame_and_source(message);
+                        if frame == WebMessageFrame::TopLevel
+                            && let Some(webview) = self.current_webview()
+                        {
+                            let raw_origin = source
+                                .reported_origin()
+                                .and_then(crate::embed_mailbox::canonical_origin)
+                                .or_else(|| {
+                                    source
+                                        .reported_url()
+                                        .and_then(crate::embed_mailbox::canonical_origin)
+                                })
+                                .unwrap_or_default();
+                            webview.dispatch_embed_wire(&message_string, &raw_origin);
+                        }
                     }
                     "LingXiaConsole" => {
                         self.handle_console_message(message_string);

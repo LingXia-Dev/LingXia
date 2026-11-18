@@ -28,7 +28,8 @@ import {
   loadData,
   clearBrowsingData,
   setUserAgentOverride,
-  captureScreenshot
+  captureScreenshot,
+  exitWebFullscreen
 } from '../lxapp/WebViewBridge';
 import { captureAppScreenshot } from './AppScreenshot';
 import { setKeepScreenOn } from './DisplayAwake';
@@ -273,6 +274,10 @@ class NativeBridge {
     // WebView screenshot (returns true on dispatch; bytes flow back asynchronously)
     this.register('captureScreenshot', (webtag: string, requestIdStr: string) => {
       return captureScreenshot(webtag, requestIdStr);
+    });
+
+    this.register('exitWebFullscreen', (webtag: string) => {
+      return exitWebFullscreen(webtag);
     });
 
     // App/window screenshot — entire host window contents, not a single WebView.

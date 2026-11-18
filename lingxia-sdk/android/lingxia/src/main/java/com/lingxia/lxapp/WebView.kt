@@ -59,12 +59,12 @@ internal class WebView(context: Context) : LingXiaWebView(context) {
 
     override fun initializeWebView(appId: String, path: String, sessionId: Long) {
         super.initializeWebView(appId, path, sessionId)
-        if (usesStrictSecurityProfile()) {
-            // Register before strict lxapp content loads; arbitrary browser pages
-            // must never receive the native-component JavaScript interface.
+        if (allowsNativeComponentBridge()) {
+            // Register before app_page content loads; arbitrary browser or embedded
+            // pages must never receive the native-component JavaScript interface.
             NativeBridge.registerJsInterface(this)
             // LxApp pages are native surfaces; overlay bars would look like a
-            // webpage. Browser-profile WebViews keep the system bars.
+            // webpage. Browser-tab WebViews keep the system bars.
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
         }

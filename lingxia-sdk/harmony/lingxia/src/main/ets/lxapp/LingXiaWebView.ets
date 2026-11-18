@@ -23,20 +23,77 @@ import {
   handleWebViewDownloadStart,
   handleWebViewLoadError,
   handleWebViewNavigationPolicy,
+  handleWebViewNewWindowPolicy,
   isEphemeralDataMode,
   notifyWebViewControllerAttached,
   profileRules,
+  registerFullScreenExitHandler,
+  supportsWebViewNewWindows,
   WebViewManager
 } from './WebViewBridge';
 import { ProfileRules } from './WebViewCore';
 import { NativeComponentEmbedManager } from './NativeComponents/NativeComponentEmbed';
 import { setEmbedController, teardownEmbedManager } from './NativeComponents/NativeBridgeInternal';
 import { Lingxia } from '../app/Lingxia';
-import { urlCallbackDispatch } from 'liblingxia.so';
+import { PermissionManager } from '../app/PermissionManager';
+import {
+  checkWebPermissionPolicy,
+  notifyWebViewState,
+  onWebFullscreenChanged,
+  urlCallbackDispatch
+} from 'liblingxia.so';
 import { isExternalWindowUrl } from './APIs/surface/SurfaceUrlPolicy';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
+
+const EMBED_BOOTSTRAP_SCRIPT: string =
+  '(function(){\n'
+  + '  if (window !== window.top) return;\n'
+  + '  var port = null, early = [];\n'
+  + '  window.addEventListener(\'message\', function onInit(ev) {\n'
+  + '    if (ev && ev.data === \'LingXia-embed-port\' && ev.ports && ev.ports.length === 1) {\n'
+  + '      ev.stopImmediatePropagation();\n'
+  + '      window.removeEventListener(\'message\', onInit, true);\n'
+  + '      port = ev.ports[0];\n'
+  + '      for (var i = 0; i < early.length; i++) {\n'
+  + '        try { port.postMessage(early[i]); } catch (_) {}\n'
+  + '      }\n'
+  + '      early.length = 0;\n'
+  + '    }\n'
+  + '  }, true);\n'
+  + '  function sendWire(w) {\n'
+  + '    if (port) { port.postMessage(w); }\n'
+  + '    else if (early.length < 128) { early.push(w); }\n'
+  + '  }\n'
+  + '  var p = location.protocol;\n'
+  + '  if (p !== \'https:\' && p !== \'http:\' && p !== \'lx:\') return;\n'
+  + '  if (Object.prototype.hasOwnProperty.call(window, \'lingxia\')) return;\n'
+  + '  var enc = typeof TextEncoder === \'function\' ? new TextEncoder() : null;\n'
+  + '  function utf8Len(s) {\n'
+  + '    if (enc) return enc.encode(s).length;\n'
+  + '    return unescape(encodeURIComponent(s)).length;\n'
+  + '  }\n'
+  + '  var api = Object.freeze({\n'
+  + '    postMessage: function(data, options) {\n'
+  + '      if (options !== undefined && options !== null && typeof options !== \'object\') {\n'
+  + '        throw new TypeError(\'window.lingxia.postMessage: options must be an object\');\n'
+  + '      }\n'
+  + '      var queue = !!(options && options.queue === true);\n'
+  + '      var raw = JSON.stringify(data);\n'
+  + '      if (typeof raw !== \'string\') {\n'
+  + '        throw new TypeError(\'window.lingxia.postMessage: data must be JSON-serializable\');\n'
+  + '      }\n'
+  + '      if (utf8Len(raw) > 65536) {\n'
+  + '        throw new RangeError(\'window.lingxia.postMessage: payload exceeds 65536 UTF-8 bytes\');\n'
+  + '      }\n'
+  + '      sendWire((queue ? \'1\' : \'0\') + raw);\n'
+  + '    }\n'
+  + '  });\n'
+  + '  try {\n'
+  + '    Object.defineProperty(window, \'lingxia\', { value: api, configurable: false, enumerable: true, writable: false });\n'
+  + '  } catch (_) {}\n'
+  + '})();\n';
 
 // Layout snapshot for same-level NodeContainer
 interface NodeLayoutState {
@@ -71,6 +128,7 @@ export struct LingXiaWebView {
   @Prop renderZIndex: number = 0
   @Prop renderHitTest: HitTestMode = HitTestMode.Default
   @Prop appearanceDark: boolean = false
+  @Prop syncRender: boolean = false
   /// URL-callback (login) surfaces: target=_blank / window.open leave the
   /// sheet in place and hand http(s) to the system browser.
   @Prop openNewWindowExternally: boolean = false
@@ -129,6 +187,17 @@ export struct LingXiaWebView {
     return profileRules(this.webTag);
   }
 
+  private documentStartScripts(): Array<ScriptItem> {
+    if (!this.rules().embedMailbox) {
+      return [];
+    }
+    const item: ScriptItem = {
+      script: EMBED_BOOTSTRAP_SCRIPT,
+      scriptRules: ['*']
+    };
+    return [item];
+  }
+
   /** The same document: equal URLs once any fragment is dropped, never about:blank. */
   private isSameDocumentUrl(started: string, finished: string): boolean {
     if (!started || !finished) {
@@ -155,20 +224,48 @@ export struct LingXiaWebView {
     );
   }
 
+  private pushWebViewState(titleOverride?: string): void {
+    try {
+      const gen = WebViewManager.getGenerationForController(this.webTag, this.controller);
+      if (!gen) {
+        return;
+      }
+      notifyWebViewState(
+        this.webTag,
+        gen,
+        this.controller.getUrl() ?? '',
+        titleOverride ?? (this.controller.getTitle() ?? ''),
+        this.controller.accessBackward(),
+        this.controller.accessForward()
+      );
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, `notifyWebViewState failed for ${this.webTag}: ${error}`);
+    }
+  }
+
   @Builder
   private buildManagedWeb(): void {
-    Web({ src: '', controller: this.controller, incognitoMode: isEphemeralDataMode(this.webTag) })
+    Web({
+      src: '',
+      controller: this.controller,
+      renderMode: this.syncRender ? RenderMode.SYNC_RENDER : RenderMode.ASYNC_RENDER,
+      incognitoMode: isEphemeralDataMode(this.webTag)
+    })
       .darkMode(this.appearanceDark ? WebDarkMode.On : WebDarkMode.Off)
       // Form controls are web-rendered (lx-input is a real <input> in the
       // page); RESIZE_CONTENT lets ArkWeb shrink the page and scroll the
       // focused editable above the IME — engine-owned keyboard avoidance,
       // replacing the removed native-embed input's manual position sync.
       .keyboardAvoidMode(WebKeyboardAvoidMode.RESIZE_CONTENT)
-      .multiWindowAccess(this.openNewWindowExternally)
-      .allowWindowOpenMethod(this.openNewWindowExternally)
+      .javaScriptOnDocumentStart(this.documentStartScripts())
+      .multiWindowAccess(this.openNewWindowExternally || supportsWebViewNewWindows(this.webTag))
+      .allowWindowOpenMethod(this.openNewWindowExternally || supportsWebViewNewWindows(this.webTag))
       .onWindowNew((event) => {
-        if (!this.openNewWindowExternally || !event ||
-          !WebViewManager.getGenerationForController(this.webTag, this.controller)) {
+        const token = WebViewManager.getGenerationForController(this.webTag, this.controller);
+        if (!event || !token) {
+          return;
+        }
+        if (!this.openNewWindowExternally && !supportsWebViewNewWindows(this.webTag)) {
           return;
         }
         try {
@@ -177,12 +274,102 @@ export struct LingXiaWebView {
           hilog.warn(DOMAIN, TAG, `onWindowNew: setWebController(null) failed: ${error}`);
         }
         const targetUrl = String(event.targetUrl ?? '').trim();
-        if (urlCallbackDispatch(targetUrl)) {
+        if (this.openNewWindowExternally) {
+          if (urlCallbackDispatch(targetUrl)) {
+            return;
+          }
+          if (isExternalWindowUrl(targetUrl)) {
+            Lingxia.launchWithUrl(targetUrl);
+          }
           return;
         }
-        if (isExternalWindowUrl(targetUrl)) {
-          Lingxia.launchWithUrl(targetUrl);
+        if (handleWebViewNewWindowPolicy(this.webTag, token, targetUrl) === 1) {
+          WebViewManager.loadUrl(this.webTag, targetUrl);
         }
+      })
+      .onFullScreenEnter((event) => {
+        if (!this.rules().embedMailbox || !event) {
+          return;
+        }
+        const token = WebViewManager.getGenerationForController(this.webTag, this.controller);
+        if (!token) {
+          return;
+        }
+        registerFullScreenExitHandler(this.webTag, event.handler);
+        onWebFullscreenChanged(this.webTag, token, true);
+      })
+      .onFullScreenExit(() => {
+        if (!this.rules().embedMailbox) {
+          return;
+        }
+        registerFullScreenExitHandler(this.webTag, null);
+        const token = WebViewManager.getGenerationForController(this.webTag, this.controller);
+        if (token) {
+          onWebFullscreenChanged(this.webTag, token, false);
+        }
+      })
+      .onGeolocationShow((event) => {
+        if (!event) {
+          return;
+        }
+        const token = WebViewManager.getGenerationForController(this.webTag, this.controller);
+        if (!this.rules().embedMailbox || !token || !event.origin
+          || !checkWebPermissionPolicy(this.webTag, token, event.origin)) {
+          event.geolocation.invoke(event.origin ?? '', false, false);
+          return;
+        }
+        PermissionManager.ensureLocationAccess()
+          .then((granted: boolean) => {
+            event.geolocation.invoke(event.origin, granted, false);
+          })
+          .catch(() => {
+            event.geolocation.invoke(event.origin, false, false);
+          });
+      })
+      .onPermissionRequest((event) => {
+        if (!event || !event.request) {
+          return;
+        }
+        const req = event.request;
+        const token = WebViewManager.getGenerationForController(this.webTag, this.controller);
+        const origin = req.getOrigin() ?? '';
+        if (!this.rules().embedMailbox || !token || !origin
+          || !checkWebPermissionPolicy(this.webTag, token, origin)) {
+          req.deny();
+          return;
+        }
+        const requested = req.getAccessibleResource() ?? [];
+        const grantList: Array<string> = [];
+        let needCamera = false;
+        let needMic = false;
+        for (let i = 0; i < requested.length; i++) {
+          const item = requested[i];
+          if (item === 'TYPE_VIDEO_CAPTURE') {
+            needCamera = true;
+            grantList.push(item);
+          } else if (item === 'TYPE_AUDIO_CAPTURE') {
+            needMic = true;
+            grantList.push(item);
+          }
+        }
+        if (grantList.length === 0) {
+          req.deny();
+          return;
+        }
+        const checkPromise = needCamera
+          ? PermissionManager.ensureCameraAccess(needMic)
+          : PermissionManager.ensureMicrophoneAccess();
+        checkPromise
+          .then((granted: boolean) => {
+            if (granted) {
+              req.grant(grantList);
+            } else {
+              req.deny();
+            }
+          })
+          .catch(() => {
+            req.deny();
+          });
       })
       .onLoadIntercept((event) => {
         if (event && event.data) {
@@ -254,6 +441,14 @@ export struct LingXiaWebView {
         // without a bridge.
         this.commitDocument(this.pageBeginUrl || (this.controller.getUrl() ?? ''));
       })
+      .onTitleReceive((event) => {
+        if (event?.title) {
+          this.pushWebViewState(event.title);
+        }
+      })
+      .onRefreshAccessedHistory(() => {
+        this.pushWebViewState();
+      })
       .onPageEnd((event) => {
         // lxapp fallback when ArkWeb never delivers onPageVisible, for the
         // document this begin started only: not after a main-frame error, not
@@ -267,6 +462,7 @@ export struct LingXiaWebView {
           && this.isSameDocumentUrl(this.pageBeginUrl, event?.url ?? '')) {
           this.commitDocument(this.pageBeginUrl);
         }
+        this.pushWebViewState();
         WebViewManager.pageEnd(
           this.webTag,
           this.controller,

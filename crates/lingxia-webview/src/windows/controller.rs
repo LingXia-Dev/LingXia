@@ -1233,8 +1233,12 @@ pub(crate) fn run_ui_thread_inner(
         configure_context_menu(&webview, &env, &webtag, &effective_options)?;
         // lxapp pages (non-relaxed) get the runtime-owned selection/copy baseline;
         // browser tabs render arbitrary external pages and must not be restyled.
-        let inject_platform_baseline = effective_options.rules().platform_baseline;
-        install_document_scripts(&webview, inject_platform_baseline)?;
+        // The document scripts are the bridge's page half; a profile without
+        // the bridge transport gets none of them.
+        if effective_options.rules().bridge_transport {
+            let inject_platform_baseline = effective_options.rules().platform_baseline;
+            install_document_scripts(&webview, inject_platform_baseline)?;
+        }
         let memory_pages = Arc::new(Mutex::new(HashMap::new()));
         let document_authority = Arc::new(document::WindowsDocumentAuthority::default());
         register_event_handlers(

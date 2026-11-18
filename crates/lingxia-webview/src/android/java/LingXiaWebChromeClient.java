@@ -215,6 +215,53 @@ public class LingXiaWebChromeClient extends WebChromeClient {
         return webView.openFileChooser(filePathCallback, fileChooserParams);
     }
 
+    @Override
+    public void onShowCustomView(android.view.View view, CustomViewCallback callback) {
+        LingXiaWebView webView = webViewRef.get();
+        if (webView != null && webView.supportsEmbedFeatures()) {
+            webView.handleShowCustomView(view, callback);
+            return;
+        }
+        super.onShowCustomView(view, callback);
+    }
+
+    @Override
+    public void onHideCustomView() {
+        LingXiaWebView webView = webViewRef.get();
+        if (webView != null && webView.supportsEmbedFeatures()) {
+            webView.handleHideCustomView();
+            return;
+        }
+        super.onHideCustomView();
+    }
+
+    @Override
+    public void onGeolocationPermissionsShowPrompt(
+        String origin,
+        android.webkit.GeolocationPermissions.Callback callback
+    ) {
+        LingXiaWebView webView = webViewRef.get();
+        if (webView != null && webView.supportsEmbedFeatures()) {
+            webView.handleGeolocationPermission(origin, callback);
+            return;
+        }
+        if (callback != null) {
+            callback.invoke(origin, false, false);
+        }
+    }
+
+    @Override
+    public void onPermissionRequest(android.webkit.PermissionRequest request) {
+        LingXiaWebView webView = webViewRef.get();
+        if (webView != null && webView.supportsEmbedFeatures()) {
+            webView.handleMediaPermission(request);
+            return;
+        }
+        if (request != null) {
+            request.deny();
+        }
+    }
+
     private static boolean isUsableNewWindowUrl(String rawUrl) {
         if (rawUrl == null) {
             return false;

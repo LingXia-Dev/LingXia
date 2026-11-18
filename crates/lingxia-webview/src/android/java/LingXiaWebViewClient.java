@@ -63,16 +63,15 @@ public class LingXiaWebViewClient extends WebViewClient {
         if (webView != null) {
             webView.setPageLoaded(true);
             webView.resetViewport();
-            webView.pushWebViewState();
             // Chromium skips onPageCommitVisible for a covered, zero-size or
-            // off-screen WebView (splash, preloaded tab). A strict document
-            // then binds from the finished load of the URL it started; the
-            // browser profile keeps requiring visible-commit proof, and API
-            // 21/22 have no commit evidence at all. This must precede the
-            // finish below: Rust retires the pending commit on finish.
+            // off-screen WebView (splash, preloaded tab, below-the-fold slot).
+            // Commit must precede both pushWebViewState (DocumentCommitted
+            // resets document-scoped title/favicon in the normalizer) and
+            // notifyPageFinished (which retires the pending commit).
             if (DocumentCommitCallbackPolicy.canBindDocument(Build.VERSION.SDK_INT)) {
                 webView.commitTopLevelDocumentOnFinish(url);
             }
+            webView.pushWebViewState();
             // A fast native HTML load can finish before Chromium reports its
             // visible commit. Retiring the native load now would discard its
             // attestation. Keep requiring the real visible-commit callback.

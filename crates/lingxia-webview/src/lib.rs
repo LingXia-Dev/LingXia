@@ -82,6 +82,7 @@ pub enum LogLevel {
     Error,
 }
 
+mod embed_mailbox;
 mod error_page;
 /// Typed delegate events: correlated navigation lifecycle, observable state
 /// snapshots, and the canonical derived-state folds.
@@ -125,6 +126,7 @@ mod windows_document;
 
 // Public exports
 // WebViewError and LogLevel are defined above
+pub use embed_mailbox::{EmbedWebMessage, canonical_origin};
 pub use error_page::{LoadErrorPage, render_load_error_page};
 pub use events::{
     NavigationCancellationReason, NavigationEvent, NavigationId, NavigationOutcome,
@@ -144,9 +146,10 @@ pub use traits::{
     WebViewCookieSetRequest, WebViewDelegate, WebViewInputController,
 };
 pub use webview::{
-    BrowserWebViewBuilder, ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig,
-    StrictWebViewBuilder, TrustedDataLoadReservation, WebTag, WebView, WebViewBuilder,
-    WebViewCreateStage, WebViewDataMode, WebViewEvent, WebViewEventSubscription, WebViewSession,
+    AppPageWebViewBuilder, BrowserTabWebViewBuilder, EmbeddedWebViewBuilder, ProxyActivation,
+    ProxyApplyReport, ProxyApplyStatus, ProxyConfig, TrustedDataLoadReservation, WebTag, WebView,
+    WebViewBuilder, WebViewCreateStage, WebViewDataMode, WebViewEvent, WebViewEventSubscription,
+    WebViewSession,
 };
 
 /// Global website-data operations for privacy surfaces: usage counts,
@@ -285,9 +288,10 @@ pub mod platform {
     #[cfg(all(target_os = "linux", target_env = "ohos"))]
     pub mod harmony {
         pub use crate::harmony::{
-            DisplayAwake, check_navigation_policy, complete_pending_screenshot_request,
-            keep_display_awake, notify_webview_state, on_document_commit,
-            on_file_chooser_requested, on_page_begin, on_page_end, on_render_exited,
+            DisplayAwake, check_navigation_policy, check_new_window_policy,
+            check_web_permission_policy, complete_pending_screenshot_request, keep_display_awake,
+            notify_webview_state, on_document_commit, on_file_chooser_requested, on_page_begin,
+            on_page_end, on_render_exited, on_web_fullscreen_changed,
             schemehandler::register_custom_schemes, tsfn, webview_controller_created,
             webview_controller_destroyed,
         };

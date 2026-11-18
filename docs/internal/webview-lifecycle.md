@@ -29,11 +29,12 @@ Five ideas explain almost everything below:
    load content, and tear down. It does **not** know about hosts, `openURL`,
    tabs, or pages. All policy (where an external link goes, what `lx://` means,
    how a tab is created) lives in the **callbacks the creator supplies**.
-2. **The security profile is the real boundary, not the platform type.** Two
-   profiles — `StrictDefault` (lxapp pages) and `BrowserRelaxed` (browser tabs) —
-   decide data-store persistence, whether downloads/dialogs are allowed, and
-   whether top-level `https://` is intercepted. Reason about a WebView by its
-   profile, never by `WKWebView` vs Android `WebView` vs ArkWeb `Web`.
+2. **The security profile is the real boundary, not the platform type.** Three
+   profiles — `AppPage` (lxapp pages), `BrowserTab` (browser tabs), and
+   `Embedded` (embedded `<webview>` documents) — decide bridge installation,
+   data-store persistence, whether downloads/dialogs are allowed, and whether
+   top-level `https://` is intercepted. Reason about a WebView by its profile,
+   never by `WKWebView` vs Android `WebView` vs ArkWeb `Web`.
 3. **`PageInstance` is the unit of app lifecycle.** It wraps a `Page` (which
    holds the `WebView`) and adds identity, ownership, presentation, and a
    disposal policy. App-page lifecycle events (`onLoad`/`onShow`/`onReady`/
@@ -64,9 +65,11 @@ named — the type that implements `WebViewDelegate` and drives lifecycle is
 
 | Doc term | Real type / symbol | Notes |
 | --- | --- | --- |
-| Profile | `SecurityProfile::{StrictDefault, BrowserRelaxed}` | `pub(crate)`; chosen via the builder, not named by callers |
-| Builder | `WebViewBuilder::strict(tag)` / `::browser(tag)` | Returns `StrictWebViewBuilder` / `BrowserWebViewBuilder` |
+| Profile | `SecurityProfile::{AppPage, BrowserTab, Embedded}` | `pub(crate)`; chosen via the builder, not named by callers |
+| Builder | `WebViewBuilder::app_page(tag)` / `::browser_tab(tag)` / `::embedded(tag)` | Returns `AppPageWebViewBuilder` / `BrowserTabWebViewBuilder` / `EmbeddedWebViewBuilder` |
 | WebTag | `WebTag(String)` | Newtype over a string `appid:path[#session]`; **construct with `WebTag::new(appid, path, session_id)`**, not as a tuple |
+| Page tag | `appid:route#instance#session` | The path part is the page's route and its instance id |
+| Child tag | `appid:route#instance~child~node#session` | A WebView a page owns. **Built only by `WebTag::child(node_id)`, parsed only by `WebTag::child_parts()`**; `node` is 1-64 of `[A-Za-z0-9_-]` |
 | Effective options | `EffectiveWebViewCreateOptions` | Records profile, registered scheme **names**, and handler/delegate **presence** (booleans) |
 | Page | `PageInstance` (wraps `Page`) | `PageInstance` is the lifecycle/identity unit |
 | Page id | `PageInstanceId(String)` | UUID v4 |
@@ -99,9 +102,9 @@ and campaigns retain their existing presentation and timing.
 
 ## WebView Profiles
 
-Every WebView is created under one of two security profiles. The profile
-determines navigation policy, storage, and whether app-page lifecycle events
-fire.
+Every WebView is created under one of three security profiles. The profile
+determines what the page can reach, navigation policy, storage, and whether
+app-page lifecycle events fire.
 
 What a profile permits is one table, `SecurityProfile::rules()`
 (`lingxia-webview/src/profile_rules.rs`). Backends read its fields and never
@@ -111,8 +114,75 @@ copy: a new rule or profile is added in that one `match`.
 
 | Profile | Builder | Content | Navigation policy | Page lifecycle |
 | --- | --- | --- | --- | --- |
-| `StrictDefault` | `WebViewBuilder::strict(tag)` | LxApp pages served via the `lx://` scheme | Creator-registered scheme handlers serve `lx`; the creator navigation handler decides everything else (lxapp policy: allow `lx`/`data`/`blob`, cancel the rest — see below) | Full `onLoad` → `onShow` → `onReady` → `onHide` → `onUnload` |
-| `BrowserRelaxed` | `WebViewBuilder::browser(tag)` | External URLs (`https://`), browser internal pages via `lingxia://` | Normal web URLs load in-WebView; the creator's navigation/new-window/download/file-chooser handlers route the rest. No `https` interception | Only browser internal pages (headless `Page` bound via `BrowserTabDelegate`) |
+| `AppPage` | `WebViewBuilder::app_page(tag)` | LxApp pages served via the `lx://` scheme | Creator-registered scheme handlers serve `lx`; the creator navigation handler decides everything else (lxapp policy: allow `lx`/`data`/`blob`, cancel the rest — see below) | Full `onLoad` → `onShow` → `onReady` → `onHide` → `onUnload` |
+| `BrowserTab` | `WebViewBuilder::browser_tab(tag)` | External URLs (`https://`), browser internal pages via `lingxia://` | Normal web URLs load in-WebView; the creator's navigation/new-window/download/file-chooser handlers route the rest. No `https` interception | Only browser internal pages (headless `Page` bound via `BrowserTabDelegate`) |
+| `Embedded` | `WebViewBuilder::embedded(tag)` | A third-party document shown inside an lxapp page | The creator's navigation handler decides every load and is required; a new window goes to the creator's new-window handler, which by default loads it in place | None: it is part of its page, never a page |
+
+### The three profiles, rule by rule
+
+This table is `SecurityProfile::rules()` read aloud; when they disagree the
+code is right and this table is the bug.
+
+| Rule | AppPage | BrowserTab | Embedded |
+| --- | --- | --- | --- |
+| lxapp bridge transport in the page (`LingXia` handler and `lx-apple` on Apple; `LingXiaProxy` and the message port on Android and Harmony; `LingXiaProxy` and web messages on Windows) | yes | yes, admission decided downstream per message | **none** |
+| One-way `window.lingxia.postMessage` mailbox | no | no | **yes** (main frame only, `<= 64 KiB` JSON) |
+| Native-component bridge | yes | no | no |
+| `lx` scheme | served by default | served by default | only what the creator registers |
+| Console | native hook to the delegate | bound bridge envelope only | not captured |
+| Baseline stylesheet and platform classes | injected | no | no |
+| `alert` / `confirm` / `prompt` | answered without UI | shown | answered without UI |
+| New window | creator's handler, else dropped | opens; creator's handler routes it | always the creator's handler (default: load in place, then the navigation handler) |
+| `http` new window loaded in place (Apple) | rewritten to `https` | rewritten to `https` | loaded as the handler judged it |
+| Navigation handler | optional | optional | required, creation fails without it |
+| Download | never intercepted | cancelled as a navigation and handed to the creator's handler with the full request | never: cancelled, and `on_download_blocked` gets the URL only |
+| Website data | discarded with the view | persistent, shared by browser tabs | discarded with the view |
+| DOM storage and databases (Android, Harmony) | off | on | on |
+| Proxy | not applied | applied, or creation fails | applied, or creation fails |
+| Browser user-agent tokens (iPhone) | no | yes | yes |
+| Scroll bars (Android, Harmony) | hidden | drawn | hidden |
+| Context menu (Windows) | editing items | full | editing items |
+| Document binding (Android, Harmony) | bound on commit or finish | bound on proven visible commit, port minted once | no port exists |
+
+The embedded profile's gate is that the transports are **not installed**, one
+gate per backend. The other two install them and rely on downstream admission
+(see `trusted-control-plane.md`); that is not enough for a document nobody
+vouches for. What stays reachable from an embedded page and is not a bridge:
+on Apple the `LingXiaLifecycle` handler, which accepts the one string
+`bfcache-restored` and carries nothing to the lxapp.
+
+### Child tags and embedded documents
+
+`~child~` (`WebTag::CHILD_MARKER`) is reserved in the path part of a tag. A
+manifest page path that contains it is rejected (`LxAppConfig::validate`), and
+`PageInstance::new` never lets it into a page's tag, so a child tag cannot
+collide with a page's. A child tag has no page instance id
+(`page_instance_id()` is `None`): nothing that resolves pages can resolve it.
+The platform sides receive it as the usual three parts and rebuild the same
+string.
+
+A page's embedded documents live in `lingxia-lxapp/src/page/embedded_document.rs`:
+`PageInstance::open_embedded_document(node, url, options)` creates the WebView
+under the child tag with the embedded profile, `embedded_document(node)` looks
+it up, `close_embedded_document(node)` destroys it, and the page instance takes
+every one down with itself. Each top-level load is judged there, the first one
+included: `https` to a host the lxapp trusts (`is_domain_allowed`), optionally
+narrowed by the caller's host list; a dev session also admits `http`. A new
+window is judged by the same rule in the new-window handler and then loaded in
+place, because a load the host starts itself does not reach the navigation
+handler on Android. Subframes and subresources are not judged.
+
+The only caller today is the test-only `embeddedDocumentProbe.*` route family
+(`lingxia-lxapp/src/host/embedded_document_probe.rs`): compiled only with the
+`automation` feature, refused outside a dev session, audience
+`AppSessionOnly`, scoped to the calling page's View.
+
+Embedded-profile limits today:
+- Harmony returns script-evaluation results through `LingXiaProxy`, so an
+  embedded document's evaluations cannot return a value there.
+- Harmony routes new windows in ArkTS (`openNewWindowExternally`) for every
+  profile; the creator's new-window handler is not consulted.
+- Data is ephemeral everywhere; a per-lxapp partition is not implemented.
 
 > **The core layer does not route to a host by itself.** There is no built-in
 > `lx`/`data`/`blob` allowlist and no `openURL` forwarding inside
@@ -125,27 +195,37 @@ copy: a new rule or profile is added in that one `match`.
 > external URL, edit that handler in `lingxia-lxapp/src/page.rs`; it applies
 > to every platform at once.
 
-`StrictDefault` policy (what the core actually enforces):
+`AppPage` policy (what the core actually enforces):
 - Non-persistent data store (Apple `WKWebsiteDataStore::nonPersistentDataStore`).
-- A download handler is rejected at build time unless the profile is browser, so
-  strict pages have no in-WebView download flow.
+- A download handler is rejected at build time unless the profile is `BrowserTab`, so
+  lxapp pages have no in-WebView download flow.
 - Navigation policy is enforced by the navigation handler `lingxia-lxapp`
   registers (`page.rs`): `lx`/`data`/`blob` → allow; `about:` → silently
   cancelled; **everything else** (https/http, `tel:`, `mailto:`, …) → forwarded
   to the host via `open_url(…, External)` and the navigation cancelled. The
-  host decides what to do with the URL; nothing external ever loads in a strict
+  host decides what to do with the URL; nothing external ever loads in an `AppPage`
   WebView.
-  Never browse the web in a strict WebView: storage, download, file-chooser
-  and external-navigation policy exist only in `BrowserRelaxed`.
+  Never browse the web in an `AppPage` WebView: storage, download, file-chooser
+  and external-navigation policy exist only in `BrowserTab`.
 - Apple-only extra layer: the navigation delegate has an
   `intercept_https_navigation` flag that can offer top-level `https://` to a
   registered `https` scheme handler. For lxapp pages this path is **dead
-  code** — the navigation handler above cancels https first, and strict pages
+  code** — the navigation handler above cancels https first, and lxapp pages
   register no `https` scheme handler. Harmony (`onLoadIntercept` →
   `check_navigation_policy`) and Android (`shouldOverrideUrlLoading` →
   `handleNavigationPolicy`) route only through the navigation handler.
 
-`BrowserRelaxed` policy:
+`Embedded` policy:
+- No lxapp bridge of any kind and no default `lx`; only a top-level one-way
+  `window.lingxia.postMessage` mailbox is installed, and the creator registers
+  the schemes the document may read and its handler decides file by file.
+- Nothing downloads. Android cancels through its download listener, Apple in
+  the navigation delegate (an `<a download>` before the request is made, an
+  attachment or undisplayable response when its headers arrive), Harmony in
+  `onDownloadStart`, Windows in `DownloadStarting`.
+- `WebViewDataMode::Ephemeral` and `surface_owned` are fixed by the builder.
+
+`BrowserTab` policy:
 - Default persistent data store.
 - Downloads (`on_download`), file chooser, and JS dialogs are available.
 - New windows are routed to the creator's new-window handler (`lingxia-browser`
@@ -160,12 +240,13 @@ by who creates the instance and which profile is used.
 
 | Kind | Created by | Profile | Content | Delegate | Page lifecycle |
 | --- | --- | --- | --- | --- | --- |
-| LxApp page | `LxApp` via `get_or_create_page()` / `create_page_instance()` | `StrictDefault` | Page HTML via `lx://` | `PageInstance` | Full |
-| Surface (page target) | `LxApp::open_surface()` → `create_page_instance()` | `StrictDefault` | Page HTML via `lx://`, presented in overlay or window | `PageInstance` (isolated) | Full |
-| Surface (URL target) | `LxApp::open_surface()` → platform `present_surface()` | Platform-managed; no Rust `WebView` | External URL passed as `SurfaceContent::Url` | None (Rust side) | None |
-| Browser tab (external URL) | `lingxia-browser` | `BrowserRelaxed` | External `https://` URL | `BrowserTabDelegate` | None |
-| Browser tab (internal page) | `lingxia-browser` | `BrowserRelaxed` | Browser shell UI via `lingxia://` | `BrowserTabDelegate` → headless `Page` | Full (headless page only) |
-| Host-attached page | SDK container (Apple `LxAppHostView`) | An existing strict page WebView reparented into the host's view hierarchy | LxApp page | The page's existing `PageInstance` | Full (attachment triggers `onPageShow`) |
+| LxApp page | `LxApp` via `get_or_create_page()` / `create_page_instance()` | `AppPage` | Page HTML via `lx://` | `PageInstance` | Full |
+| Surface (page target) | `LxApp::open_surface()` → `create_page_instance()` | `AppPage` | Page HTML via `lx://`, presented in overlay or window | `PageInstance` (isolated) | Full |
+| Surface (URL target) | `LxApp::open_surface()` → platform `present_surface()` | Platform-managed (or `BrowserTab` on Windows) | External URL passed as `SurfaceContent::Url` | None (Rust side) | None |
+| Browser tab (external URL) | `lingxia-browser` | `BrowserTab` | External `https://` URL | `BrowserTabDelegate` | None |
+| Browser tab (internal page) | `lingxia-browser` | `BrowserTab` | Browser shell UI via `lingxia://` | `BrowserTabDelegate` → headless `Page` | Full (headless page only) |
+| Embedded `<webview>` | `PageInstance::open_embedded_document_typed()` | `Embedded` | Trusted `https://` URL or single-file `lx://` | `EmbeddedWebViewDelegate` | None |
+| Host-attached page | SDK container (Apple `LxAppHostView`) | An existing `AppPage` WebView reparented into the host's view hierarchy | LxApp page | The page's existing `PageInstance` | Full (attachment triggers `onPageShow`) |
 
 ## PageInstance
 
@@ -337,7 +418,7 @@ On top of that, the lxapp layer wires the WebView to an owner and marks
 readiness (`mark_webview_ready()` / `wait_webview_ready()` live in
 `lingxia-lxapp`, not the core):
 
-1. **Requested**: `WebViewBuilder::{strict,browser}(tag).…​.create()`.
+1. **Requested**: `WebViewBuilder::{app_page,browser_tab,embedded}(tag).…​.create()`.
 2. **Native created / registered**: backend creates the native controller and
    `register_webview()` inserts the `Arc<WebView>` into the global map.
 3. **Wired to owner**:
@@ -383,7 +464,7 @@ Creation:
 
 1. Resolve the target (name or path) to a configured page path with extension.
 2. Build `WebTag::new(appid, path, session_id)`.
-3. `WebViewBuilder::strict(tag).…​.create()`, await readiness in a background task.
+3. `WebViewBuilder::app_page(tag).…​.create()`, await readiness in a background task.
 4. On success: `attach_webview()`, run setup (create `PageSvc` with ack,
    `load_html()`), `mark_webview_ready()`.
 5. Register the `PageInstance` in the LxApp maps.
@@ -406,7 +487,7 @@ Surfaces are secondary presentation targets (overlays, windows) opened via
    - **Page target** (`PageSurfaceTarget::Page`): calls `create_page_instance()`
      with `PageOwner::Page(current_page_instance_id)` and a `PresentationKind`
      derived from `SurfaceKind`. Creates an **isolated** instance — a full
-     `StrictDefault` WebView with complete page lifecycle — with a 30-second
+     `AppPage` WebView with complete page lifecycle — with a 30-second
      dispose TTL.
    - **URL target** (`PageSurfaceTarget::Url`): no Rust WebView. The URL is
      passed as `SurfaceContent::Url { url }` to the platform's
@@ -480,13 +561,13 @@ pass through any WebView).
 
 ## Browser Tab WebView
 
-Browser tabs are managed by `lingxia-browser`, use the `BrowserRelaxed` profile,
+Browser tabs are managed by `lingxia-browser`, use the `BrowserTab` profile,
 and support normal web navigation.
 
 Creation:
 
 1. Allocate a tab id and a browser-tab path; build the webtag.
-2. `WebViewBuilder::browser(tag)`, delegate `BrowserTabDelegate`.
+2. `WebViewBuilder::browser_tab(tag)`, delegate `BrowserTabDelegate`.
 3. Register handlers:
    - `lx://` — routes back to the owning LxApp context.
    - `lingxia://` — serves browser internal pages from the browser shell webui bundle.
@@ -721,11 +802,13 @@ invalidate the main document or restart its session.
    schemes — it is **not** hardcoded here). Also installs the navigation delegate
    and the script message handlers named `LingXia` and `LingXiaConsole`.
 3. Profile policy:
-   - `StrictDefault`: non-persistent `WKWebsiteDataStore`; the navigation
+   - `AppPage`: non-persistent `WKWebsiteDataStore`; the navigation
      delegate additionally carries an Apple-only `intercept_https_navigation`
      flag (unused by lxapp pages in practice — the navigation handler cancels
      https before it applies).
-   - `BrowserRelaxed`: default persistent data store.
+   - `BrowserTab`: default persistent data store.
+   - `Embedded`: non-persistent `WKWebsiteDataStore`; no lxapp bridge, only
+     the main-frame `LingXiaEmbed` mailbox.
 4. `create_and_register_sync()` wraps with `Arc<WebView>`, registers in the
    global map, fulfills the oneshot.
 
@@ -1083,7 +1166,7 @@ sequenceDiagram
   participant SDK as Platform SDK/UI
 
   LxApp->>Page: new(WebTag::new(...), setup_callback)
-  Page->>Core: WebViewBuilder::strict(tag).create()
+  Page->>Core: WebViewBuilder::app_page(tag).create()
   Core->>Backend: WebViewInner::create(...)
   Backend->>Core: register_webview(Arc<WebView>)
   Backend-->>Page: oneshot Ok(webview)
@@ -1169,7 +1252,7 @@ sequenceDiagram
 
   Policy->>Browser: reactivate(tab_id)
   Browser->>Browser: new create token + restore data mode
-  Browser->>Core: WebViewBuilder::browser(tag).create()
+  Browser->>Core: WebViewBuilder::browser_tab(tag).create()
   Core->>Backend: create replacement WebView
   Backend-->>Browser: ready
   Browser->>Backend: reload retained URL
@@ -1185,7 +1268,7 @@ sequenceDiagram
   participant SDK as Platform Browser UI
   participant Page as Headless Page (internal/startup only)
 
-  Browser->>Core: WebViewBuilder::browser(tag).create()
+  Browser->>Core: WebViewBuilder::browser_tab(tag).create()
   Core->>Backend: WebViewInner::create(...)
   Backend->>Core: register_webview(Arc<WebView>)
   Backend-->>Browser: oneshot Ok(webview)

@@ -1161,6 +1161,88 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleNewWindowPo
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onEmbedMessage(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    native_view_id: jlong,
+    origin: JString,
+    wire: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let origin: String = origin.try_to_string(env)?;
+        let wire: String = wire.try_to_string(env)?;
+        let session_id = (session_id > 0).then_some(session_id as u64);
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "embed message") else {
+            return Ok(());
+        };
+        let webtag = WebTag::new(&appid, &path, session_id);
+        if let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) {
+            webview.dispatch_embed_wire(&wire, &origin);
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onWebFullscreenChanged(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    native_view_id: jlong,
+    fullscreen: jboolean,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let session_id = (session_id > 0).then_some(session_id as u64);
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "web fullscreen") else {
+            return Ok(());
+        };
+        let webtag = WebTag::new(&appid, &path, session_id);
+        if let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) {
+            webview.handle_fullscreen_change(fullscreen);
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_checkWebPermissionPolicy(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    native_view_id: jlong,
+    origin: JString,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let origin: String = origin.try_to_string(env)?;
+        let session_id = (session_id > 0).then_some(session_id as u64);
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "web permission") else {
+            return Ok(false);
+        };
+        let webtag = WebTag::new(&appid, &path, session_id);
+        if let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) {
+            return Ok(webview.check_permission_origin(&origin, None));
+        }
+        Ok(false)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
     mut env: EnvUnowned,
     _this: JObject,

@@ -575,6 +575,24 @@ declare module 'liblingxia.so' {
     isMainFrame: boolean
   ): boolean;
 
+  export function onNewWindowPolicy(
+    webtag: string,
+    nativeViewToken: string,
+    url: string
+  ): number;
+
+  export function onWebFullscreenChanged(
+    webtag: string,
+    nativeViewToken: string,
+    fullscreen: boolean
+  ): boolean;
+
+  export function checkWebPermissionPolicy(
+    webtag: string,
+    nativeViewToken: string,
+    origin: string
+  ): boolean;
+
   /**
    * Forward Web download-start event to native layer.
    */

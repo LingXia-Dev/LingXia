@@ -92,9 +92,13 @@ pub(crate) fn configure_settings(
             .map_err(|err| {
                 WebViewError::WebView(format!("SetAreDefaultContextMenusEnabled failed: {err}"))
             })?;
-        settings.SetIsWebMessageEnabled(true).map_err(|err| {
-            WebViewError::WebView(format!("SetIsWebMessageEnabled failed: {err}"))
-        })?;
+        // Off, `chrome.webview.postMessage` does not exist in the page.
+        let web_messages = effective_options.rules().bridge_transport;
+        settings
+            .SetIsWebMessageEnabled(web_messages)
+            .map_err(|err| {
+                WebViewError::WebView(format!("SetIsWebMessageEnabled failed: {err}"))
+            })?;
         settings
             .SetIsStatusBarEnabled(false)
             .map_err(|err| WebViewError::WebView(format!("SetIsStatusBarEnabled failed: {err}")))?;

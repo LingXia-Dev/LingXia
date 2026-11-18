@@ -856,7 +856,7 @@ impl PageInstance {
         let isolated = self.inner.isolated;
         let webtag = self.webtag();
 
-        let session = WebViewBuilder::strict(webtag)
+        let session = WebViewBuilder::app_page(webtag)
             .surface_owned(isolated)
             .delegate(Arc::new(self.clone()))
             .on_scheme("lx", move |req| {

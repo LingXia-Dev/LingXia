@@ -528,12 +528,16 @@ where
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum SecurityProfile {
-    StrictDefault,
-    BrowserRelaxed,
+    /// An lxapp page served from its bundle.
+    AppPage,
+    /// A browser tab showing arbitrary sites.
+    BrowserTab,
+    /// A third-party document shown inside an lxapp page.
+    Embedded,
 }
 
 /// Native console hooks are safe only for fixed-origin lxapp pages. A
-/// BrowserRelaxed WebView can contain arbitrary external content, so its
+/// BrowserTab WebView can contain arbitrary external content, so its
 /// BrowserControl document must use the V3-bound main message transport.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PlatformConsoleBackend {
@@ -584,6 +588,9 @@ pub(crate) type FileChooserFuture =
     Pin<Box<dyn Future<Output = FileChooserResponse> + Send + 'static>>;
 pub(crate) type FileChooserHandler =
     Box<dyn Fn(FileChooserRequest) -> FileChooserFuture + Send + Sync>;
+pub(crate) type EmbedMessageHandler = Box<dyn Fn(crate::EmbedWebMessage) + Send + Sync>;
+pub(crate) type FullscreenHandler = Box<dyn Fn(bool) + Send + Sync>;
+pub(crate) type PermissionOriginHandler = Box<dyn Fn(&str, Option<bool>) -> bool + Send + Sync>;
 
 /// Internal WebView creation options.
 pub(crate) struct WebViewCreateOptions {
@@ -594,6 +601,9 @@ pub(crate) struct WebViewCreateOptions {
     pub(crate) new_window_handler: Option<NewWindowHandler>,
     pub(crate) download_handler: Option<DownloadHandler>,
     pub(crate) file_chooser_handler: Option<FileChooserHandler>,
+    pub(crate) embed_message_handler: Option<EmbedMessageHandler>,
+    pub(crate) fullscreen_handler: Option<FullscreenHandler>,
+    pub(crate) permission_origin_handler: Option<PermissionOriginHandler>,
     pub(crate) delegate: Option<Arc<dyn WebViewDelegate>>,
     /// The webview belongs to a surface, not the app's page container; the
     /// platform shell must not adopt it into stack-page presentation.
@@ -765,36 +775,63 @@ pub(crate) struct EffectiveWebViewCreateOptions {
 
 impl Default for WebViewCreateOptions {
     fn default() -> Self {
-        Self::strict()
+        Self::app_page()
     }
 }
 
 impl WebViewCreateOptions {
-    fn strict() -> Self {
+    fn app_page() -> Self {
         Self {
-            profile: SecurityProfile::StrictDefault,
+            profile: SecurityProfile::AppPage,
             data_mode: WebViewDataMode::ProfileDefault,
             scheme_handlers: HashMap::new(),
             navigation_handler: None,
             new_window_handler: None,
             download_handler: None,
             file_chooser_handler: None,
+            embed_message_handler: None,
+            fullscreen_handler: None,
+            permission_origin_handler: None,
             delegate: None,
             surface_owned: false,
         }
     }
 
-    fn browser() -> Self {
+    fn browser_tab() -> Self {
         Self {
-            profile: SecurityProfile::BrowserRelaxed,
+            profile: SecurityProfile::BrowserTab,
             data_mode: WebViewDataMode::ProfileDefault,
             scheme_handlers: HashMap::new(),
             navigation_handler: None,
             new_window_handler: None,
             download_handler: None,
             file_chooser_handler: None,
+            embed_message_handler: None,
+            fullscreen_handler: None,
+            permission_origin_handler: None,
             delegate: None,
             surface_owned: false,
+        }
+    }
+
+    fn embedded() -> Self {
+        Self {
+            profile: SecurityProfile::Embedded,
+            // Android and Harmony key website-data lifetime on the data mode.
+            data_mode: WebViewDataMode::Ephemeral,
+            scheme_handlers: HashMap::new(),
+            navigation_handler: None,
+            // A new window never opens beside the page: it loads in place,
+            // where the navigation handler judges it like any other load.
+            new_window_handler: Some(Box::new(|_| NewWindowPolicy::LoadInSelf)),
+            download_handler: None,
+            file_chooser_handler: None,
+            embed_message_handler: None,
+            fullscreen_handler: None,
+            permission_origin_handler: None,
+            delegate: None,
+            // It lives inside a page and is never a stack page of its own.
+            surface_owned: true,
         }
     }
 
@@ -858,8 +895,8 @@ impl WebViewCreateOptions {
     /// The handler runs synchronously on the platform callback thread. Keep it fast and
     /// spawn background work onto your runtime inside the closure.
     ///
-    /// This callback is only valid for browser profile.
-    /// Public API: `WebViewBuilder::browser(webtag).on_download(...).create()`.
+    /// This callback is only valid for browser_tab profile.
+    /// Public API: `WebViewBuilder::browser_tab(webtag).on_download(...).create()`.
     /// In this mode, download requests are routed to the callback path instead of in-WebView
     /// download UI.
     fn on_download<F>(mut self, handler: F) -> Self
@@ -876,6 +913,30 @@ impl WebViewCreateOptions {
         Fut: Future<Output = FileChooserResponse> + Send + 'static,
     {
         self.file_chooser_handler = Some(Box::new(move |request| Box::pin(handler(request))));
+        self
+    }
+
+    fn on_embed_message<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(crate::EmbedWebMessage) + Send + Sync + 'static,
+    {
+        self.embed_message_handler = Some(Box::new(handler));
+        self
+    }
+
+    fn on_fullscreen<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(bool) + Send + Sync + 'static,
+    {
+        self.fullscreen_handler = Some(Box::new(handler));
+        self
+    }
+
+    fn on_permission_origin<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(&str, Option<bool>) -> bool + Send + Sync + 'static,
+    {
+        self.permission_origin_handler = Some(Box::new(handler));
         self
     }
 
@@ -897,9 +958,15 @@ impl WebViewCreateOptions {
     pub(crate) fn normalize(
         self,
     ) -> Result<(EffectiveWebViewCreateOptions, PendingCallbacks), WebViewError> {
-        if !self.profile.rules().downloads && self.download_handler.is_some() {
+        let rules = self.profile.rules();
+        if !rules.intercepts_downloads() && self.download_handler.is_some() {
             return Err(WebViewError::InvalidCreateOptions(
-                "download callback is only supported in browser profile; use WebViewBuilder::browser(webtag).on_download(...).create()".to_string(),
+                "download callback is only supported in browser_tab profile; use WebViewBuilder::browser_tab(webtag).on_download(...).create()".to_string(),
+            ));
+        }
+        if rules.requires_navigation_handler && self.navigation_handler.is_none() {
+            return Err(WebViewError::InvalidCreateOptions(
+                "an embedded document needs a navigation handler; use WebViewBuilder::embedded(webtag).on_navigation(...).create()".to_string(),
             ));
         }
         if self.scheme_handlers.contains_key(APPLE_INTERNAL_SCHEME) {
@@ -927,6 +994,9 @@ impl WebViewCreateOptions {
             new_window_handler: self.new_window_handler,
             download_handler: self.download_handler,
             file_chooser_handler: self.file_chooser_handler,
+            embed_message_handler: self.embed_message_handler,
+            fullscreen_handler: self.fullscreen_handler,
+            permission_origin_handler: self.permission_origin_handler,
             delegate: self.delegate,
         };
         Ok((effective, pending))
@@ -936,45 +1006,67 @@ impl WebViewCreateOptions {
 /// Entry point for mode-specific WebView creation.
 ///
 /// Typical usage:
-/// - Strict lxapp page:
-///   `WebViewBuilder::strict(tag).on_scheme(...).on_navigation(...).create()`
-/// - Browser page:
-///   `WebViewBuilder::browser(tag).on_new_window(...).on_download(...).create()`
+/// - LxApp page:
+///   `WebViewBuilder::app_page(tag).on_scheme(...).on_navigation(...).create()`
+/// - Browser tab:
+///   `WebViewBuilder::browser_tab(tag).on_new_window(...).on_download(...).create()`
+/// - Third-party document inside an lxapp page:
+///   `WebViewBuilder::embedded(tag).on_navigation(...).create()`
 pub struct WebViewBuilder;
 
 #[must_use = "call .create() to start WebView creation"]
-pub struct StrictWebViewBuilder {
+pub struct AppPageWebViewBuilder {
     webtag: WebTag,
     options: WebViewCreateOptions,
 }
 
 #[must_use = "call .create() to start WebView creation"]
-pub struct BrowserWebViewBuilder {
+pub struct BrowserTabWebViewBuilder {
+    webtag: WebTag,
+    options: WebViewCreateOptions,
+}
+
+/// Builder for a third-party document shown inside an lxapp page.
+///
+/// The page it loads is not trusted: it gets no lxapp bridge, no
+/// native-component bridge, no console capture, no JS dialogs, no downloads
+/// and no default `lx` scheme. Its data is discarded with the view.
+#[must_use = "call .create() to start WebView creation"]
+pub struct EmbeddedWebViewBuilder {
     webtag: WebTag,
     options: WebViewCreateOptions,
 }
 
 impl WebViewBuilder {
-    /// Start a strict-profile WebView builder.
+    /// Start an lxapp-page WebView builder.
     #[must_use = "call .create() to start WebView creation"]
-    pub fn strict(webtag: WebTag) -> StrictWebViewBuilder {
-        StrictWebViewBuilder {
+    pub fn app_page(webtag: WebTag) -> AppPageWebViewBuilder {
+        AppPageWebViewBuilder {
             webtag,
-            options: WebViewCreateOptions::strict(),
+            options: WebViewCreateOptions::app_page(),
         }
     }
 
-    /// Start a browser-profile WebView builder.
+    /// Start a browser-tab WebView builder.
     #[must_use = "call .create() to start WebView creation"]
-    pub fn browser(webtag: WebTag) -> BrowserWebViewBuilder {
-        BrowserWebViewBuilder {
+    pub fn browser_tab(webtag: WebTag) -> BrowserTabWebViewBuilder {
+        BrowserTabWebViewBuilder {
             webtag,
-            options: WebViewCreateOptions::browser(),
+            options: WebViewCreateOptions::browser_tab(),
+        }
+    }
+
+    /// Start a builder for a third-party document inside an lxapp page.
+    #[must_use = "call .create() to start WebView creation"]
+    pub fn embedded(webtag: WebTag) -> EmbeddedWebViewBuilder {
+        EmbeddedWebViewBuilder {
+            webtag,
+            options: WebViewCreateOptions::embedded(),
         }
     }
 }
 
-impl StrictWebViewBuilder {
+impl AppPageWebViewBuilder {
     /// Bind a `WebViewDelegate` during creation.
     ///
     /// This is the only supported way to configure delegate callbacks.
@@ -1052,7 +1144,7 @@ impl StrictWebViewBuilder {
     }
 }
 
-impl BrowserWebViewBuilder {
+impl BrowserTabWebViewBuilder {
     /// Bind a `WebViewDelegate` during creation.
     ///
     /// This is the only supported way to configure delegate callbacks.
@@ -1135,6 +1227,105 @@ impl BrowserWebViewBuilder {
     }
 }
 
+impl EmbeddedWebViewBuilder {
+    /// Bind a `WebViewDelegate` during creation.
+    pub fn delegate(mut self, delegate: Arc<dyn WebViewDelegate>) -> Self {
+        self.options = self.options.delegate(delegate);
+        self
+    }
+
+    /// Serve a custom scheme to the document. Nothing is served by default,
+    /// `lx` included: the handler decides which files this document may read.
+    pub fn on_scheme<F, Fut>(mut self, scheme: &str, handler: F) -> Self
+    where
+        F: Fn(http::Request<Vec<u8>>) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
+    {
+        self.options = self.options.on_scheme(scheme, handler);
+        self
+    }
+
+    /// Decide every navigation. Required: creation fails without it.
+    pub fn on_navigation<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(&NavigationRequest) -> NavigationPolicy + Send + Sync + 'static,
+    {
+        self.options = self.options.on_navigation(handler);
+        self
+    }
+
+    /// Decide what `target="_blank"` and `window.open()` do. Without a
+    /// handler the URL loads in place, through the navigation handler.
+    pub fn on_new_window<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(&str) -> NewWindowPolicy + Send + Sync + 'static,
+    {
+        self.options = self.options.on_new_window(handler);
+        self
+    }
+
+    /// Learn the URL of a response that would have downloaded. It is
+    /// cancelled whether or not a handler is registered.
+    ///
+    /// The callback runs on the platform callback thread; keep it fast.
+    pub fn on_download_blocked<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(&str) + Send + Sync + 'static,
+    {
+        self.options = self
+            .options
+            .on_download(move |request| handler(&request.url));
+        self
+    }
+
+    pub fn on_file_chooser<F, Fut>(mut self, handler: F) -> Self
+    where
+        F: Fn(FileChooserRequest) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = FileChooserResponse> + Send + 'static,
+    {
+        self.options = self.options.on_file_chooser(handler);
+        self
+    }
+
+    /// Receive validated messages sent via `window.lingxia.postMessage(data, options?)`.
+    pub fn on_embed_message<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(crate::EmbedWebMessage) + Send + Sync + 'static,
+    {
+        self.options = self.options.on_embed_message(handler);
+        self
+    }
+
+    /// Observe web-initiated fullscreen transitions (`requestFullscreen` / `exitFullscreen`).
+    pub fn on_fullscreen<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(bool) + Send + Sync + 'static,
+    {
+        self.options = self.options.on_fullscreen(handler);
+        self
+    }
+
+    /// Decide whether a web permission request (`origin`, `is_main_frame`) may
+    /// proceed to the lxapp's OS permission prompt.
+    pub fn on_permission_origin<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(&str, Option<bool>) -> bool + Send + Sync + 'static,
+    {
+        self.options = self.options.on_permission_origin(handler);
+        self
+    }
+
+    /// Create the WebView session.
+    ///
+    /// Re-creating with the same `webtag` follows strict rules:
+    /// - Different options => creation fails.
+    /// - Same options but new callback registrations => creation fails.
+    /// - Same options and no callbacks => existing instance is reused.
+    pub fn create(self) -> WebViewSession {
+        create_webview_session(self.webtag, self.options)
+    }
+}
+
 /// Pending callbacks extracted from internal option normalization.
 /// Stored between session creation and `register_webview` installation.
 pub(crate) struct PendingCallbacks {
@@ -1143,6 +1334,9 @@ pub(crate) struct PendingCallbacks {
     pub(crate) new_window_handler: Option<NewWindowHandler>,
     pub(crate) download_handler: Option<DownloadHandler>,
     pub(crate) file_chooser_handler: Option<FileChooserHandler>,
+    pub(crate) embed_message_handler: Option<EmbedMessageHandler>,
+    pub(crate) fullscreen_handler: Option<FullscreenHandler>,
+    pub(crate) permission_origin_handler: Option<PermissionOriginHandler>,
     pub(crate) delegate: Option<Arc<dyn WebViewDelegate>>,
 }
 
@@ -1153,6 +1347,9 @@ impl PendingCallbacks {
             || self.new_window_handler.is_some()
             || self.download_handler.is_some()
             || self.file_chooser_handler.is_some()
+            || self.embed_message_handler.is_some()
+            || self.fullscreen_handler.is_some()
+            || self.permission_origin_handler.is_some()
             || self.delegate.is_some()
     }
 }
@@ -1170,6 +1367,9 @@ pub struct WebView {
     new_window_handler: RwLock<Option<NewWindowHandler>>,
     download_handler: RwLock<Option<DownloadHandler>>,
     file_chooser_handler: RwLock<Option<FileChooserHandler>>,
+    embed_message_handler: RwLock<Option<EmbedMessageHandler>>,
+    fullscreen_handler: RwLock<Option<FullscreenHandler>>,
+    permission_origin_handler: RwLock<Option<PermissionOriginHandler>>,
     message_ingress: Arc<WebMessageIngress>,
 }
 
@@ -1344,6 +1544,9 @@ impl WebView {
             new_window_handler: RwLock::new(None),
             download_handler: RwLock::new(None),
             file_chooser_handler: RwLock::new(None),
+            embed_message_handler: RwLock::new(None),
+            fullscreen_handler: RwLock::new(None),
+            permission_origin_handler: RwLock::new(None),
             message_ingress: Arc::new(WebMessageIngress::default()),
         }
     }
@@ -1623,6 +1826,15 @@ impl WebView {
         if let Ok(mut guard) = self.delegate.write() {
             *guard = None;
         }
+        if let Ok(mut guard) = self.embed_message_handler.write() {
+            *guard = None;
+        }
+        if let Ok(mut guard) = self.fullscreen_handler.write() {
+            *guard = None;
+        }
+        if let Ok(mut guard) = self.permission_origin_handler.write() {
+            *guard = None;
+        }
     }
 
     /// Install all pending callbacks into this WebView (called once during creation).
@@ -1652,6 +1864,21 @@ impl WebView {
         }
         if let Some(handler) = callbacks.file_chooser_handler
             && let Ok(mut guard) = self.file_chooser_handler.write()
+        {
+            *guard = Some(handler);
+        }
+        if let Some(handler) = callbacks.embed_message_handler
+            && let Ok(mut guard) = self.embed_message_handler.write()
+        {
+            *guard = Some(handler);
+        }
+        if let Some(handler) = callbacks.fullscreen_handler
+            && let Ok(mut guard) = self.fullscreen_handler.write()
+        {
+            *guard = Some(handler);
+        }
+        if let Some(handler) = callbacks.permission_origin_handler
+            && let Ok(mut guard) = self.permission_origin_handler.write()
         {
             *guard = Some(handler);
         }
@@ -1758,6 +1985,22 @@ impl WebView {
         }
     }
 
+    /// Tell the creator a response that would have downloaded was cancelled.
+    /// Only the URL leaves: nothing the creator could fetch it with.
+    #[cfg_attr(not(any(target_os = "ios", target_os = "macos")), allow(dead_code))]
+    pub(crate) fn report_blocked_download(&self, url: &str) {
+        self.handle_download(DownloadRequest {
+            url: url.to_string(),
+            user_agent: None,
+            content_disposition: None,
+            mime_type: None,
+            content_length: None,
+            suggested_filename: None,
+            source_page_url: None,
+            cookie: None,
+        });
+    }
+
     // Consulted only by the Windows download-event path.
     #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     pub(crate) fn has_download_handler(&self) -> bool {
@@ -1788,6 +2031,70 @@ impl WebView {
         };
         let handler = guard.as_ref()?;
         Some(handler(request))
+    }
+
+    /// Deliver a validated wire payload from the embedded-document mailbox.
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
+    pub(crate) fn dispatch_embed_wire(&self, raw_wire: &str, raw_origin: &str) {
+        if !self.effective_options.rules().embed_mailbox {
+            return;
+        }
+        match crate::embed_mailbox::parse_wire_frame(raw_wire) {
+            Some(crate::embed_mailbox::EmbedWireFrame::Message { json, queued }) => {
+                let Some(origin) = crate::embed_mailbox::canonical_origin(raw_origin) else {
+                    return;
+                };
+                if let Ok(guard) = self.embed_message_handler.read()
+                    && let Some(handler) = guard.as_ref()
+                {
+                    handler(crate::EmbedWebMessage {
+                        json,
+                        queued,
+                        origin,
+                    });
+                }
+            }
+            Some(crate::embed_mailbox::EmbedWireFrame::Fullscreen(fullscreen)) => {
+                self.handle_fullscreen_change(fullscreen);
+            }
+            None => {}
+        }
+    }
+
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
+    pub(crate) fn handle_fullscreen_change(&self, fullscreen: bool) {
+        if let Ok(guard) = self.fullscreen_handler.read()
+            && let Some(handler) = guard.as_ref()
+        {
+            handler(fullscreen);
+        }
+    }
+
+    /// Whether a web permission request for `origin` may proceed to the OS prompt.
+    pub fn check_permission_origin(&self, origin: &str, is_main_frame: Option<bool>) -> bool {
+        if let Ok(guard) = self.permission_origin_handler.read()
+            && let Some(handler) = guard.as_ref()
+        {
+            return handler(origin, is_main_frame);
+        }
+        false
+    }
+
+    /// Exit any active DOM / platform element fullscreen inside the document.
+    pub fn exit_fullscreen(&self) -> Result<(), WebViewError> {
+        #[cfg(target_os = "android")]
+        self.inner.exit_web_fullscreen();
+        #[cfg(all(target_os = "linux", target_env = "ohos"))]
+        self.inner.exit_web_fullscreen();
+        self.inner.exec_js(
+            "try { \
+               if (document.fullscreenElement && typeof document.exitFullscreen === 'function') { \
+                 document.exitFullscreen().catch(function(){}); \
+               } else if (document.webkitFullscreenElement && typeof document.webkitExitFullscreen === 'function') { \
+                 document.webkitExitFullscreen(); \
+               } \
+             } catch (_) {}",
+        )
     }
 
     /// Get platform-specific pointer for interop (Apple platforms only)
@@ -3087,6 +3394,66 @@ impl std::fmt::Display for WebTag {
 }
 
 impl WebTag {
+    /// Reserved in the path part of a tag: it joins a page's path to the id
+    /// of a WebView that page owns. No page path may contain it, so a child
+    /// tag can never be mistaken for a page's.
+    pub const CHILD_MARKER: &'static str = "~child~";
+
+    /// Whether `path` may name a page: it must not carry the child marker.
+    pub fn is_page_path(path: &str) -> bool {
+        !path.contains(Self::CHILD_MARKER)
+    }
+
+    /// The tag of a WebView owned by this page:
+    /// `appid:path~child~node[#session]`. `None` when this tag is itself a
+    /// child, or `node_id` is not 1-64 characters of `[A-Za-z0-9_-]`.
+    pub fn child(&self, node_id: &str) -> Option<WebTag> {
+        if !Self::is_child_node_id(node_id) || self.0.contains(Self::CHILD_MARKER) {
+            return None;
+        }
+        let (page, session) = self.split_session();
+        let mut tag = format!("{page}{}{node_id}", Self::CHILD_MARKER);
+        if let Some(session) = session {
+            tag.push('#');
+            tag.push_str(session);
+        }
+        Some(Self(tag))
+    }
+
+    /// The owning page's tag and the node id, when this is a child tag.
+    pub fn child_parts(&self) -> Option<(WebTag, &str)> {
+        let (owner, session) = self.split_session();
+        let (page, node_id) = owner.split_once(Self::CHILD_MARKER)?;
+        if !Self::is_child_node_id(node_id) {
+            return None;
+        }
+        let mut tag = page.to_string();
+        if let Some(session) = session {
+            tag.push('#');
+            tag.push_str(session);
+        }
+        Some((Self(tag), node_id))
+    }
+
+    fn is_child_node_id(node_id: &str) -> bool {
+        (1..=64).contains(&node_id.len())
+            && node_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+    }
+
+    // The tag without its `#session` suffix, and the suffix's digits.
+    fn split_session(&self) -> (&str, Option<&str>) {
+        match self.0.rsplit_once('#') {
+            Some((head, session))
+                if !session.is_empty() && session.bytes().all(|byte| byte.is_ascii_digit()) =>
+            {
+                (head, Some(session))
+            }
+            _ => (&self.0, None),
+        }
+    }
+
     pub fn new(appid: &str, path: &str, session_id: Option<u64>) -> Self {
         let mut tag = format!("{}:{}", appid, path);
         if let Some(session) = session_id {
@@ -3130,6 +3497,10 @@ impl WebTag {
     /// The page-instance segment of a page tag (`appid:route#instance#session`);
     /// `None` for a tag that names no page instance.
     pub fn page_instance_id(&self) -> Option<&str> {
+        // A child WebView is not a page instance.
+        if self.0.contains(Self::CHILD_MARKER) {
+            return None;
+        }
         let (_, route_with_suffix) = self.0.split_once(':')?;
         let mut segments = route_with_suffix.rsplitn(3, '#');
         let _session = segments.next()?;
@@ -3543,9 +3914,9 @@ mod tests {
         web_message_utf16_units_within_limit,
     };
     use crate::{
-        ContextualSchemeRequest, DocumentBinding, IncomingWebMessage, NativeWebViewId,
-        SchemeOutcome, SchemeRequestFrame, WebMessageContext, WebMessageFrame, WebMessageSource,
-        WebMessageTransport,
+        ContextualSchemeRequest, DocumentBinding, DownloadRequest, IncomingWebMessage,
+        NativeWebViewId, NavigationPolicy, NewWindowPolicy, SchemeOutcome, SchemeRequestFrame,
+        WebMessageContext, WebMessageFrame, WebMessageSource, WebMessageTransport, WebViewError,
     };
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex, mpsc};
@@ -3595,26 +3966,29 @@ mod tests {
 
     fn assert_browser_console_is_bound(backend: PlatformConsoleBackend) {
         assert_eq!(
-            platform_console_delivery(SecurityProfile::BrowserRelaxed, backend),
+            platform_console_delivery(SecurityProfile::BrowserTab, backend),
             PlatformConsoleDelivery::RequiredV3Envelope
         );
         assert_eq!(
-            platform_console_delivery(SecurityProfile::StrictDefault, backend),
+            platform_console_delivery(SecurityProfile::AppPage, backend),
             PlatformConsoleDelivery::DirectDelegate
         );
     }
 
-    // The Java and ArkTS decoders reject any other spelling.
     #[test]
     fn profile_and_data_mode_token_names_are_stable() {
         let name = |value: serde_json::Value| value.as_str().map(str::to_owned);
         assert_eq!(
-            name(serde_json::to_value(SecurityProfile::StrictDefault).unwrap()).as_deref(),
-            Some("strict_default")
+            name(serde_json::to_value(SecurityProfile::AppPage).unwrap()).as_deref(),
+            Some("app_page")
         );
         assert_eq!(
-            name(serde_json::to_value(SecurityProfile::BrowserRelaxed).unwrap()).as_deref(),
-            Some("browser_relaxed")
+            name(serde_json::to_value(SecurityProfile::BrowserTab).unwrap()).as_deref(),
+            Some("browser_tab")
+        );
+        assert_eq!(
+            name(serde_json::to_value(SecurityProfile::Embedded).unwrap()).as_deref(),
+            Some("embedded")
         );
         assert_eq!(
             name(serde_json::to_value(super::WebViewDataMode::ProfileDefault).unwrap()).as_deref(),
@@ -3721,8 +4095,115 @@ mod tests {
     }
 
     #[test]
+    fn child_tag_round_trips_and_is_not_a_page() {
+        let page = WebTag::new("app", "pages/map/index#3f2a", Some(7));
+        let child = page.child("node-12").unwrap();
+        assert_eq!(child.as_str(), "app:pages/map/index#3f2a~child~node-12#7");
+        assert_eq!(child.session_id(), Some(7));
+        assert_eq!(child.extract_appid(), "app");
+        assert_eq!(child.page_instance_id(), None);
+        assert_eq!(page.page_instance_id(), Some("3f2a"));
+        let (owner, node_id) = child.child_parts().unwrap();
+        assert_eq!(owner, page);
+        assert_eq!(node_id, "node-12");
+        // The platform sides rebuild the tag from its three parts.
+        assert_eq!(WebTag::new("app", &child.key_path(), Some(7)), child);
+
+        let sessionless = WebTag::new("app", "pages/map/index", None);
+        let child = sessionless.child("a").unwrap();
+        assert_eq!(child.as_str(), "app:pages/map/index~child~a");
+        assert_eq!(child.child_parts().unwrap().0, sessionless);
+    }
+
+    #[test]
+    fn child_tag_accepts_only_its_one_form() {
+        let page = WebTag::new("app", "pages/map/index#3f2a", Some(7));
+        assert_eq!(page.child_parts(), None);
+        let too_long = "x".repeat(65);
+        for bad in [
+            "",
+            "a b",
+            "a#b",
+            "a~child~b",
+            "a/b",
+            "a:b",
+            too_long.as_str(),
+        ] {
+            assert_eq!(page.child(bad), None, "{bad:?}");
+        }
+        // A child owns no children.
+        assert_eq!(page.child("a").unwrap().child("b"), None);
+        for bad in [
+            "app:pages/map~child~#7",
+            "app:pages/map~child~a b#7",
+            "app:pages/map~child~a~child~b#7",
+            "app:pages/map~child~a#b#7",
+        ] {
+            assert_eq!(WebTag::from(bad).child_parts(), None, "{bad}");
+        }
+        assert!(WebTag::is_page_path("pages/map/index"));
+        assert!(!WebTag::is_page_path("pages/~child~/index"));
+    }
+
+    #[test]
+    fn embedded_document_needs_a_navigation_handler() {
+        let error = WebViewCreateOptions::embedded().normalize().err();
+        assert!(matches!(error, Some(WebViewError::InvalidCreateOptions(_))));
+    }
+
+    #[test]
+    fn embedded_defaults_are_the_restricted_ones() {
+        let (options, callbacks) = WebViewCreateOptions::embedded()
+            .on_navigation(|_| NavigationPolicy::Cancel)
+            .normalize()
+            .unwrap();
+        assert_eq!(options.profile, SecurityProfile::Embedded);
+        assert_eq!(options.data_mode, super::WebViewDataMode::Ephemeral);
+        assert!(options.surface_owned);
+        assert!(options.registered_schemes.is_empty());
+        assert!(!options.has_download_handler);
+        // A new window loads in place unless the creator says otherwise.
+        let new_window = callbacks.new_window_handler.unwrap();
+        assert_eq!(
+            new_window("https://example.com/"),
+            NewWindowPolicy::LoadInSelf
+        );
+    }
+
+    #[test]
+    fn embedded_document_reports_a_blocked_download_by_url_only() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        let builder = super::WebViewBuilder::embedded(WebTag::new("app", "pages/a", None))
+            .on_navigation(|_| NavigationPolicy::Allow)
+            .on_download_blocked(move |url| sink.lock().unwrap().push(url.to_string()));
+        let (options, callbacks) = builder.options.normalize().unwrap();
+        assert!(options.has_download_handler);
+        (callbacks.download_handler.unwrap())(DownloadRequest {
+            url: "https://example.com/report.pdf".to_string(),
+            user_agent: Some("agent".to_string()),
+            content_disposition: Some("attachment".to_string()),
+            mime_type: None,
+            content_length: None,
+            suggested_filename: None,
+            source_page_url: None,
+            cookie: Some("session=secret".to_string()),
+        });
+        assert_eq!(*seen.lock().unwrap(), ["https://example.com/report.pdf"]);
+    }
+
+    #[test]
+    fn app_page_profile_still_rejects_a_download_handler() {
+        let error = WebViewCreateOptions::app_page()
+            .on_download(|_| {})
+            .normalize()
+            .err();
+        assert!(matches!(error, Some(WebViewError::InvalidCreateOptions(_))));
+    }
+
+    #[test]
     fn legacy_scheme_handler_runs_from_contextual_ingress() {
-        let options = WebViewCreateOptions::strict().on_scheme("lx", |request| async move {
+        let options = WebViewCreateOptions::app_page().on_scheme("lx", |request| async move {
             assert_eq!(request.uri(), "lx://app/index.html");
             SchemeOutcome::PassThrough
         });
@@ -4154,7 +4635,7 @@ mod tests {
         let signals = WebViewSessionSignals::new();
         let session = signals.subscribe(webtag.clone());
         replace_session_signals(&webtag, signals.clone());
-        let (options, _) = WebViewCreateOptions::strict().normalize().unwrap();
+        let (options, _) = WebViewCreateOptions::app_page().normalize().unwrap();
         let request_id = crate::android_create::register(
             WebViewCreateSender::new(webtag.clone(), signals.clone()),
             options,

@@ -17,15 +17,18 @@ import java.nio.charset.StandardCharsets;
 @RunWith(RobolectricTestRunner.class)
 public final class CreateOptionsTokenTest {
     private static final String[] RULES = {
+        "bridge_transport",
+        "embed_mailbox",
+        "native_component_bridge",
         "native_console",
         "js_dialogs",
         "new_windows_without_handler",
         "downloads",
+        "reports_blocked_downloads",
         "site_storage",
         "proxy",
         "scrollbars",
         "proven_document_binding",
-        "native_component_bridge",
     };
 
     private static JSONObject rules(boolean value) throws Exception {
@@ -69,6 +72,9 @@ public final class CreateOptionsTokenTest {
         assertFalse(options.rules.scrollbars);
         assertFalse(options.rules.provenDocumentBinding);
         assertFalse(options.rules.nativeComponentBridge);
+        assertFalse(options.rules.bridgeTransport);
+        assertFalse(options.rules.embedMailbox);
+        assertFalse(options.rules.reportsBlockedDownloads);
     }
 
     @Test
@@ -77,12 +83,12 @@ public final class CreateOptionsTokenTest {
             JSONObject rules = rules(true);
             rules.remove(name);
             assertThrows(name, IllegalArgumentException.class,
-                    () -> decode(options("strict_default", rules)));
+                    () -> decode(options("app_page", rules)));
         }
         assertThrows(IllegalArgumentException.class,
-                () -> decode(options("strict_default", rules(true).put("downloads", "true"))));
+                () -> decode(options("app_page", rules(true).put("downloads", "true"))));
         assertThrows(IllegalArgumentException.class,
-                () -> decode(new JSONObject().put("profile", "strict_default")));
+                () -> decode(new JSONObject().put("profile", "app_page")));
     }
 
     @Test
@@ -94,7 +100,7 @@ public final class CreateOptionsTokenTest {
     @Test
     public void rejects_an_unknown_data_mode_instead_of_the_persistent_default() throws Exception {
         assertThrows(IllegalArgumentException.class,
-                () -> decode(options("browser_relaxed", rules(true)).put("data_mode", "partitioned")));
+                () -> decode(options("browser_tab", rules(true)).put("data_mode", "partitioned")));
     }
 
     @Test
@@ -110,6 +116,7 @@ public final class CreateOptionsTokenTest {
         ProfileRules none = LingXiaWebView.CreateOptions.unconfigured().rules;
         assertFalse(none.nativeConsole || none.jsDialogs || none.newWindowsWithoutHandler
                 || none.downloads || none.siteStorage || none.proxy || none.scrollbars
-                || none.provenDocumentBinding || none.nativeComponentBridge);
+                || none.provenDocumentBinding || none.nativeComponentBridge
+                || none.bridgeTransport || none.embedMailbox || none.reportsBlockedDownloads);
     }
 }

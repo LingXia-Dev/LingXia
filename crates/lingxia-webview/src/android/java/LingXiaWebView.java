@@ -27,8 +27,10 @@ import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
 import androidx.webkit.Profile;
 import androidx.webkit.ProfileStore;
+import androidx.webkit.ScriptHandler;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
+import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -92,6 +94,68 @@ public class LingXiaWebView extends WebView {
     private static volatile boolean sHttpProxyEnabled = false;
     private final ConcurrentHashMap<Long, ValueCallback<android.net.Uri[]>> pendingFileChoosers =
             new ConcurrentHashMap<>();
+    private static final String EMBED_BRIDGE_NAME = "__LingXiaEmbedBridge";
+    private static final int MAX_EMBED_WIRE_CHARS = 1 + 65536;
+    private static final String EMBED_BOOTSTRAP_SCRIPT =
+            "(function(){\n"
+            + "  var b = window.__LingXiaEmbedBridge;\n"
+            + "  try { delete window.__LingXiaEmbedBridge; } catch (_) {}\n"
+            + "  if (window !== window.top || !b || typeof b.postMessage !== 'function') return;\n"
+            + "  var sendWire = b.postMessage.bind(b);\n"
+            + "  var p = location.protocol;\n"
+            + "  if (p !== 'https:' && p !== 'http:' && p !== 'lx:') return;\n"
+            + "  if (Object.prototype.hasOwnProperty.call(window, 'lingxia')) return;\n"
+            + "  var enc = typeof TextEncoder === 'function' ? new TextEncoder() : null;\n"
+            + "  function utf8Len(s) {\n"
+            + "    if (enc) return enc.encode(s).length;\n"
+            + "    return unescape(encodeURIComponent(s)).length;\n"
+            + "  }\n"
+            + "  var api = Object.freeze({\n"
+            + "    postMessage: function(data, options) {\n"
+            + "      if (options !== undefined && options !== null && typeof options !== 'object') {\n"
+            + "        throw new TypeError('window.lingxia.postMessage: options must be an object');\n"
+            + "      }\n"
+            + "      var queue = !!(options && options.queue === true);\n"
+            + "      var raw = JSON.stringify(data);\n"
+            + "      if (typeof raw !== 'string') {\n"
+            + "        throw new TypeError('window.lingxia.postMessage: data must be JSON-serializable');\n"
+            + "      }\n"
+            + "      if (utf8Len(raw) > 65536) {\n"
+            + "        throw new RangeError('window.lingxia.postMessage: payload exceeds 65536 UTF-8 bytes');\n"
+            + "      }\n"
+            + "      sendWire((queue ? '1' : '0') + raw);\n"
+            + "    }\n"
+            + "  });\n"
+            + "  try {\n"
+            + "    Object.defineProperty(window, 'lingxia', { value: api, configurable: false, enumerable: true, writable: false });\n"
+            + "  } catch (_) {}\n"
+            + "})();\n";
+    private ScriptHandler embedScriptHandler;
+    private boolean embedListenerInstalled;
+    private WebChromeClient.CustomViewCallback activeCustomViewCallback;
+    private View activeCustomView;
+    private CustomViewListener customViewListener;
+    private static volatile WebPermissionDelegate sWebPermissionDelegate;
+
+    public interface CustomViewListener {
+        void onShowCustomView(View view);
+        void onHideCustomView();
+    }
+
+    public interface WebPermissionDelegate {
+        void requestPermissions(String[] androidPermissions, ValueCallback<Boolean> callback);
+    }
+
+    public static void setWebPermissionDelegate(WebPermissionDelegate delegate) {
+        sWebPermissionDelegate = delegate;
+    }
+
+    public void setCustomViewListener(CustomViewListener listener) {
+        this.customViewListener = listener;
+        if (listener != null && this.activeCustomView != null) {
+            listener.onShowCustomView(this.activeCustomView);
+        }
+    }
 
     public static class WebResourceResponseData {
         public final String mimeType;
@@ -321,8 +385,8 @@ public class LingXiaWebView extends WebView {
         return rules().nativeConsole;
     }
 
-    /** True for the one profile that may reach the native-component interface. */
-    public boolean usesStrictSecurityProfile() {
+    /** True when this WebView's profile permits the native-component JS interface. */
+    public boolean allowsNativeComponentBridge() {
         return rules().nativeComponentBridge;
     }
 
@@ -363,7 +427,17 @@ public class LingXiaWebView extends WebView {
             return false;
         }
         String lower = url.toLowerCase(Locale.ROOT);
-        return lower.startsWith("http://") || lower.startsWith("https://");
+        if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
+            return false;
+        }
+        String host = android.net.Uri.parse(url).getHost();
+        if (host != null) {
+            String hostLower = host.toLowerCase(Locale.ROOT);
+            if ("lx-local.invalid".equals(hostLower) || hostLower.endsWith(".lx-local.invalid")) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static String applyHttpProxy(final String host, final int port, final String[] bypassRules) {
@@ -546,16 +620,31 @@ public class LingXiaWebView extends WebView {
             Log.w(TAG, "applyWebViewSettings failed, continuing with defaults", t);
         }
 
-        try {
-            setupJavaScriptInterface();
-        } catch (Throwable t) {
-            Log.w(TAG, "setupJavaScriptInterface failed, JS bridge may be unavailable", t);
+        setVerticalScrollBarEnabled(rules().scrollbars);
+        setHorizontalScrollBarEnabled(rules().scrollbars);
+
+        // Without the bridge transport the page gets neither LingXiaProxy nor
+        // a message port: no script in it can reach the bridge.
+        if (rules().bridgeTransport) {
+            try {
+                setupJavaScriptInterface();
+            } catch (Throwable t) {
+                Log.w(TAG, "setupJavaScriptInterface failed, JS bridge may be unavailable", t);
+            }
+
+            try {
+                maybeInitMessagePortBridge();
+            } catch (Throwable t) {
+                Log.w(TAG, "maybeInitMessagePortBridge failed", t);
+            }
         }
 
-        try {
-            maybeInitMessagePortBridge();
-        } catch (Throwable t) {
-            Log.w(TAG, "maybeInitMessagePortBridge failed", t);
+        if (rules().embedMailbox) {
+            try {
+                setupEmbedMailbox();
+            } catch (Throwable t) {
+                Log.w(TAG, "setupEmbedMailbox failed", t);
+            }
         }
 
         try {
@@ -1065,6 +1154,37 @@ public class LingXiaWebView extends WebView {
         }
     }
 
+    /**
+     * Evaluates a script in a page that has no bridge: the result returns
+     * through the platform callback, never through anything the page can see.
+     * The script must evaluate to a string; a Promise is not awaited.
+     */
+    void evaluateForResult(final long requestId, final String token, final String script) {
+        ensureMainThread(new Runnable() {
+            @Override
+            public void run() {
+                LingXiaWebView.super.evaluateJavascript(script, value -> {
+                    String result = null;
+                    try {
+                        // The callback hands over the value as JSON text.
+                        Object decoded = new org.json.JSONTokener(value).nextValue();
+                        if (decoded instanceof String) {
+                            result = (String) decoded;
+                        }
+                    } catch (Throwable ignored) {
+                        // Reported below as no result.
+                    }
+                    if (result != null) {
+                        onEvaluateJavascriptResult(requestId, token, result, "");
+                    } else {
+                        onEvaluateJavascriptResult(
+                                requestId, token, "", "JavaScript evaluation produced no result");
+                    }
+                });
+            }
+        });
+    }
+
     private void setupWebViewClients() {
         setWebChromeClient(new LingXiaWebChromeClient(this, rules().jsDialogs));
         setWebViewClient(new LingXiaWebViewClient(this));
@@ -1072,8 +1192,256 @@ public class LingXiaWebView extends WebView {
         Log.i(TAG, "WebView clients setup completed");
     }
 
+    private void setupEmbedMailbox() {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+                || !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            Log.i(TAG, "Embed mailbox unavailable on this WebView runtime");
+            return;
+        }
+        java.util.Set<String> allowAll = Collections.singleton("*");
+        WebViewCompat.addWebMessageListener(
+                this,
+                EMBED_BRIDGE_NAME,
+                allowAll,
+                (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
+                    if (!isMainFrame || message == null) {
+                        return;
+                    }
+                    String wire = message.getData();
+                    if (wire == null || wire.isEmpty()) {
+                        return;
+                    }
+                    if (wire.length() > MAX_EMBED_WIRE_CHARS) {
+                        rejectOversizedPostMessage();
+                        return;
+                    }
+                    String origin = sourceOrigin != null ? sourceOrigin.toString() : "";
+                    if (origin.isEmpty() || "null".equalsIgnoreCase(origin)) {
+                        String currentUrl = getUrl();
+                        if (currentUrl != null && currentUrl.startsWith("lx://")) {
+                            origin = currentUrl;
+                        }
+                    }
+                    try {
+                        onEmbedMessage(
+                                getAppId() != null ? getAppId() : "",
+                                getCurrentPath() != null ? getCurrentPath() : "",
+                                getSessionId(),
+                                getNativeViewId(),
+                                origin,
+                                wire
+                        );
+                    } catch (Throwable t) {
+                        Log.w(TAG, "Failed to forward embed message", t);
+                    }
+                }
+        );
+        embedListenerInstalled = true;
+        embedScriptHandler =
+                WebViewCompat.addDocumentStartJavaScript(this, EMBED_BOOTSTRAP_SCRIPT, allowAll);
+    }
+
+    private void cleanupEmbedMailbox() {
+        if (embedScriptHandler != null) {
+            try {
+                embedScriptHandler.remove();
+            } catch (Throwable ignored) {
+            }
+            embedScriptHandler = null;
+        }
+        if (embedListenerInstalled) {
+            embedListenerInstalled = false;
+            try {
+                WebViewCompat.removeWebMessageListener(this, EMBED_BRIDGE_NAME);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    boolean supportsEmbedFeatures() {
+        return rules().embedMailbox;
+    }
+
+    void handleShowCustomView(View view, WebChromeClient.CustomViewCallback callback) {
+        if (!supportsEmbedFeatures()) {
+            if (callback != null) {
+                callback.onCustomViewHidden();
+            }
+            return;
+        }
+        activeCustomView = view;
+        activeCustomViewCallback = callback;
+        if (customViewListener != null && view != null) {
+            customViewListener.onShowCustomView(view);
+        }
+        try {
+            onWebFullscreenChanged(
+                    getAppId() != null ? getAppId() : "",
+                    getCurrentPath() != null ? getCurrentPath() : "",
+                    getSessionId(),
+                    getNativeViewId(),
+                    true
+            );
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to report fullscreen enter", t);
+        }
+    }
+
+    void handleHideCustomView() {
+        if (activeCustomView == null && activeCustomViewCallback == null) {
+            return;
+        }
+        activeCustomView = null;
+        activeCustomViewCallback = null;
+        if (customViewListener != null) {
+            customViewListener.onHideCustomView();
+        }
+        try {
+            onWebFullscreenChanged(
+                    getAppId() != null ? getAppId() : "",
+                    getCurrentPath() != null ? getCurrentPath() : "",
+                    getSessionId(),
+                    getNativeViewId(),
+                    false
+            );
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to report fullscreen exit", t);
+        }
+    }
+
+    public void exitWebFullscreen() {
+        ensureMainThread(() -> {
+            WebChromeClient.CustomViewCallback cb = activeCustomViewCallback;
+            if (cb != null) {
+                try {
+                    cb.onCustomViewHidden();
+                } catch (Throwable ignored) {
+                }
+                handleHideCustomView();
+            }
+        });
+    }
+
+    void handleGeolocationPermission(
+            final String origin, final android.webkit.GeolocationPermissions.Callback callback) {
+        if (callback == null) {
+            return;
+        }
+        if (!supportsEmbedFeatures() || origin == null || origin.isEmpty()) {
+            callback.invoke(origin, false, false);
+            return;
+        }
+        boolean allowed = false;
+        try {
+            allowed = checkWebPermissionPolicy(
+                    getAppId() != null ? getAppId() : "",
+                    getCurrentPath() != null ? getCurrentPath() : "",
+                    getSessionId(),
+                    getNativeViewId(),
+                    origin
+            );
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to check geolocation policy", t);
+        }
+        if (!allowed) {
+            callback.invoke(origin, false, false);
+            return;
+        }
+        android.content.Context ctx = sApplicationContext != null ? sApplicationContext : getContext();
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                ctx, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            callback.invoke(origin, true, false);
+            return;
+        }
+        String[] perms = new String[] {
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION
+        };
+        requestAppPermissions(perms, granted -> {
+            boolean ok = Boolean.TRUE.equals(granted)
+                    || androidx.core.content.ContextCompat.checkSelfPermission(
+                            ctx, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                            == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            callback.invoke(origin, ok, false);
+        });
+    }
+
+    void handleMediaPermission(final android.webkit.PermissionRequest request) {
+        if (request == null) {
+            return;
+        }
+        if (!supportsEmbedFeatures() || request.getOrigin() == null) {
+            request.deny();
+            return;
+        }
+        String origin = request.getOrigin().toString();
+        boolean allowed = false;
+        try {
+            allowed = checkWebPermissionPolicy(
+                    getAppId() != null ? getAppId() : "",
+                    getCurrentPath() != null ? getCurrentPath() : "",
+                    getSessionId(),
+                    getNativeViewId(),
+                    origin
+            );
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to check media permission policy", t);
+        }
+        if (!allowed) {
+            request.deny();
+            return;
+        }
+        String[] resources = request.getResources();
+        if (resources == null || resources.length == 0) {
+            request.deny();
+            return;
+        }
+        java.util.List<String> grantResources = new java.util.ArrayList<>();
+        java.util.List<String> androidPerms = new java.util.ArrayList<>();
+        for (String res : resources) {
+            if (android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(res)) {
+                grantResources.add(res);
+                androidPerms.add(android.Manifest.permission.CAMERA);
+            } else if (android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(res)) {
+                grantResources.add(res);
+                androidPerms.add(android.Manifest.permission.RECORD_AUDIO);
+            }
+        }
+        if (grantResources.isEmpty()) {
+            request.deny();
+            return;
+        }
+        final String[] grantedArray = grantResources.toArray(new String[0]);
+        requestAppPermissions(androidPerms.toArray(new String[0]), granted -> {
+            if (Boolean.TRUE.equals(granted)) {
+                request.grant(grantedArray);
+            } else {
+                request.deny();
+            }
+        });
+    }
+
+    private void requestAppPermissions(String[] perms, ValueCallback<Boolean> callback) {
+        WebPermissionDelegate delegate = sWebPermissionDelegate;
+        if (delegate != null) {
+            delegate.requestPermissions(perms, callback);
+            return;
+        }
+        android.content.Context ctx = sApplicationContext != null ? sApplicationContext : getContext();
+        for (String perm : perms) {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, perm)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                callback.onReceiveValue(false);
+                return;
+            }
+        }
+        callback.onReceiveValue(true);
+    }
+
     private void setupDownloadSupport() {
-        if (!rules().downloads) {
+        // With a listener set, WebView cancels the load and only reports it.
+        if (!rules().downloads && !rules().reportsBlockedDownloads) {
             setDownloadListener(null);
             return;
         }
@@ -1091,15 +1459,18 @@ public class LingXiaWebView extends WebView {
                     return;
                 }
                 if (!hasDownloadHandler()) {
-                    Log.i(TAG, "Browser download suppressed without handler, url=" + url);
+                    Log.i(TAG, "Download suppressed without handler, url=" + url);
                     return;
                 }
 
+                // A blocked download is reported by URL; its cookies stay here.
                 String cookie = null;
-                try {
-                    cookie = CookieManager.getInstance().getCookie(url);
-                } catch (Throwable e) {
-                    Log.w(TAG, "Failed to read cookie for download URL: " + url, e);
+                if (rules().downloads) {
+                    try {
+                        cookie = CookieManager.getInstance().getCookie(url);
+                    } catch (Throwable e) {
+                        Log.w(TAG, "Failed to read cookie for download URL: " + url, e);
+                    }
                 }
 
                 try {
@@ -1495,6 +1866,9 @@ public class LingXiaWebView extends WebView {
                     stopLoading();
                     setWebViewClient(new WebViewClient());
                     setWebChromeClient(new WebChromeClient());
+                    cleanupEmbedMailbox();
+                    handleHideCustomView();
+                    customViewListener = null;
                     revokeDocumentTransport();
                     createPortMethod = null;
                     sendPortMethod = null;
@@ -1639,6 +2013,9 @@ public class LingXiaWebView extends WebView {
         boolean isMainFrame
     );
     native int handleNewWindowPolicy(String appId, String path, long sessionId, long nativeViewId, String url);
+    native void onEmbedMessage(String appId, String path, long sessionId, long nativeViewId, String origin, String wire);
+    native void onWebFullscreenChanged(String appId, String path, long sessionId, long nativeViewId, boolean fullscreen);
+    native boolean checkWebPermissionPolicy(String appId, String path, long sessionId, long nativeViewId, String origin);
     native void onFileChooserRequested(
         String appId,
         String path,

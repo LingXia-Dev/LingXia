@@ -4,6 +4,10 @@ import {
   handleWebViewDownloadStart as coreHandleWebViewDownloadStart,
   handleWebViewLoadError as coreHandleWebViewLoadError,
   handleWebViewNavigationPolicy as coreHandleWebViewNavigationPolicy,
+  handleWebViewNewWindowPolicy as coreHandleWebViewNewWindowPolicy,
+  supportsWebViewNewWindows as coreSupportsWebViewNewWindows,
+  registerFullScreenExitHandler as coreRegisterFullScreenExitHandler,
+  exitWebFullscreen as coreExitWebFullscreen,
   notifyWebViewControllerCreated as coreNotifyWebViewControllerAttached,
   notifyWebViewDocumentCommit as coreNotifyWebViewDocumentCommit,
   notifyWebViewPageBegin as coreNotifyWebViewPageBegin,
@@ -276,6 +280,29 @@ export function setUserAgentOverride(webtag: string, mode: string, userAgent: st
 
 export function captureScreenshot(webtag: string, requestIdStr: string): boolean {
   return WebViewManager.captureScreenshot(webtag, requestIdStr);
+}
+
+export function supportsWebViewNewWindows(webtag: string): boolean {
+  return coreSupportsWebViewNewWindows(webtag);
+}
+
+export function handleWebViewNewWindowPolicy(
+  webtag: string,
+  nativeViewToken: string,
+  url: string
+): number {
+  return coreHandleWebViewNewWindowPolicy(webtag, nativeViewToken, url);
+}
+
+export function registerFullScreenExitHandler(
+  webtag: string,
+  handler: FullScreenExitHandler | null
+): void {
+  coreRegisterFullScreenExitHandler(webtag, handler);
+}
+
+export function exitWebFullscreen(webtag: string): boolean {
+  return coreExitWebFullscreen(webtag);
 }
 
 export function getWebViewEmbedManager(webtag: string): NativeComponentEmbedManager {

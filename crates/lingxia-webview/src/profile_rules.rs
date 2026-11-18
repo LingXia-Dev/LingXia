@@ -12,8 +12,23 @@ use crate::webview::{EffectiveWebViewCreateOptions, SecurityProfile};
 /// inside the create-options token and read nothing else about the profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub(crate) struct ProfileRules {
+    /// The lxapp bridge transports are installed in the page: the `LingXia`
+    /// message handler and `lx-apple` scheme (Apple), `LingXiaProxy` and the
+    /// message port (Android, Harmony), `LingXiaProxy` and web messages
+    /// (Windows). Without them no page script can reach the bridge at all;
+    /// with them, admission is decided downstream per message.
+    pub(crate) bridge_transport: bool,
+    /// The one-way `window.lingxia.postMessage` mailbox is injected into
+    /// top-level embedded documents.
+    pub(crate) embed_mailbox: bool,
+    /// The native-component JavaScript interface is exposed (Android).
+    pub(crate) native_component_bridge: bool,
+    /// `lx` is served even when the creator registered no scheme (Apple).
+    /// Otherwise only the creator's schemes exist.
+    pub(crate) default_lx_scheme: bool,
     /// Console output reaches the delegate through the platform's console
-    /// hook. Otherwise it travels only in a document-bound bridge envelope.
+    /// hook. Otherwise it travels only in a document-bound bridge envelope,
+    /// and not at all without a bridge transport.
     pub(crate) native_console: bool,
     /// The runtime's baseline stylesheet and platform classes are injected.
     pub(crate) platform_baseline: bool,
@@ -22,8 +37,17 @@ pub(crate) struct ProfileRules {
     pub(crate) js_dialogs: bool,
     /// A new window may open with no creator handler registered.
     pub(crate) new_windows_without_handler: bool,
-    /// A response may become a download, handed to the creator's handler.
+    /// A new window loaded in place is rewritten from `http` to `https`
+    /// (Apple). Otherwise the creator's handler judged the URL it loads.
+    pub(crate) new_window_https_upgrade: bool,
+    /// Creation fails without a creator navigation handler.
+    pub(crate) requires_navigation_handler: bool,
+    /// A response may become a download: the navigation is cancelled and the
+    /// full request, cookies included, is handed to the creator to perform.
     pub(crate) downloads: bool,
+    /// A response that would download is cancelled, handler or not, and the
+    /// creator is told its URL and nothing it could fetch it with.
+    pub(crate) reports_blocked_downloads: bool,
     /// Website data defaults to the persistent store browser tabs share.
     /// Otherwise a view's data is discarded with it.
     pub(crate) persistent_data: bool,
@@ -44,19 +68,31 @@ pub(crate) struct ProfileRules {
     /// A document is bound to the bridge only on proof of its visible commit,
     /// and its port is minted once (Android, Harmony).
     pub(crate) proven_document_binding: bool,
-    /// The native-component JavaScript interface is exposed (Android).
-    pub(crate) native_component_bridge: bool,
+}
+
+impl ProfileRules {
+    /// A response that would download never proceeds in the WebView.
+    pub(crate) const fn intercepts_downloads(&self) -> bool {
+        self.downloads || self.reports_blocked_downloads
+    }
 }
 
 impl SecurityProfile {
     pub(crate) const fn rules(self) -> ProfileRules {
         match self {
-            SecurityProfile::StrictDefault => ProfileRules {
+            SecurityProfile::AppPage => ProfileRules {
+                bridge_transport: true,
+                embed_mailbox: false,
+                native_component_bridge: true,
+                default_lx_scheme: true,
                 native_console: true,
                 platform_baseline: true,
                 js_dialogs: false,
                 new_windows_without_handler: false,
+                new_window_https_upgrade: true,
+                requires_navigation_handler: false,
                 downloads: false,
+                reports_blocked_downloads: false,
                 persistent_data: false,
                 site_storage: false,
                 proxy: false,
@@ -65,14 +101,20 @@ impl SecurityProfile {
                 scrollbars: false,
                 full_context_menu: false,
                 proven_document_binding: false,
-                native_component_bridge: true,
             },
-            SecurityProfile::BrowserRelaxed => ProfileRules {
+            SecurityProfile::BrowserTab => ProfileRules {
+                bridge_transport: true,
+                embed_mailbox: false,
+                native_component_bridge: false,
+                default_lx_scheme: true,
                 native_console: false,
                 platform_baseline: false,
                 js_dialogs: true,
                 new_windows_without_handler: true,
+                new_window_https_upgrade: true,
+                requires_navigation_handler: false,
                 downloads: true,
+                reports_blocked_downloads: false,
                 persistent_data: true,
                 site_storage: true,
                 proxy: true,
@@ -81,7 +123,28 @@ impl SecurityProfile {
                 scrollbars: true,
                 full_context_menu: true,
                 proven_document_binding: true,
+            },
+            SecurityProfile::Embedded => ProfileRules {
+                bridge_transport: false,
+                embed_mailbox: true,
                 native_component_bridge: false,
+                default_lx_scheme: false,
+                native_console: false,
+                platform_baseline: false,
+                js_dialogs: false,
+                new_windows_without_handler: false,
+                new_window_https_upgrade: false,
+                requires_navigation_handler: true,
+                downloads: false,
+                reports_blocked_downloads: true,
+                persistent_data: false,
+                site_storage: true,
+                proxy: true,
+                browser_user_agent: true,
+                https_scheme_interception: false,
+                scrollbars: false,
+                full_context_menu: false,
+                proven_document_binding: false,
             },
         }
     }
@@ -133,15 +196,22 @@ mod tests {
     }
 
     #[test]
-    fn strict_rules_are_pinned() {
+    fn app_page_rules_are_pinned() {
         assert_eq!(
-            SecurityProfile::StrictDefault.rules(),
+            SecurityProfile::AppPage.rules(),
             ProfileRules {
+                bridge_transport: true,
+                embed_mailbox: false,
+                native_component_bridge: true,
+                default_lx_scheme: true,
                 native_console: true,
                 platform_baseline: true,
                 js_dialogs: false,
                 new_windows_without_handler: false,
+                new_window_https_upgrade: true,
+                requires_navigation_handler: false,
                 downloads: false,
+                reports_blocked_downloads: false,
                 persistent_data: false,
                 site_storage: false,
                 proxy: false,
@@ -150,21 +220,27 @@ mod tests {
                 scrollbars: false,
                 full_context_menu: false,
                 proven_document_binding: false,
-                native_component_bridge: true,
             }
         );
     }
 
     #[test]
-    fn browser_rules_are_pinned() {
+    fn browser_tab_rules_are_pinned() {
         assert_eq!(
-            SecurityProfile::BrowserRelaxed.rules(),
+            SecurityProfile::BrowserTab.rules(),
             ProfileRules {
+                bridge_transport: true,
+                embed_mailbox: false,
+                native_component_bridge: false,
+                default_lx_scheme: true,
                 native_console: false,
                 platform_baseline: false,
                 js_dialogs: true,
                 new_windows_without_handler: true,
+                new_window_https_upgrade: true,
+                requires_navigation_handler: false,
                 downloads: true,
+                reports_blocked_downloads: false,
                 persistent_data: true,
                 site_storage: true,
                 proxy: true,
@@ -173,19 +249,70 @@ mod tests {
                 scrollbars: true,
                 full_context_menu: true,
                 proven_document_binding: true,
-                native_component_bridge: false,
             }
         );
+    }
+
+    #[test]
+    fn embedded_rules_are_pinned() {
+        assert_eq!(
+            SecurityProfile::Embedded.rules(),
+            ProfileRules {
+                bridge_transport: false,
+                embed_mailbox: true,
+                native_component_bridge: false,
+                default_lx_scheme: false,
+                native_console: false,
+                platform_baseline: false,
+                js_dialogs: false,
+                new_windows_without_handler: false,
+                new_window_https_upgrade: false,
+                requires_navigation_handler: true,
+                downloads: false,
+                reports_blocked_downloads: true,
+                persistent_data: false,
+                site_storage: true,
+                proxy: true,
+                browser_user_agent: true,
+                https_scheme_interception: false,
+                scrollbars: false,
+                full_context_menu: false,
+                proven_document_binding: false,
+            }
+        );
+    }
+
+    // Whatever a later profile permits, a page without the bridge transport
+    // must not be handed the surfaces that assume one.
+    #[test]
+    fn no_profile_grants_bridge_surfaces_without_the_transport() {
+        for profile in [
+            SecurityProfile::AppPage,
+            SecurityProfile::BrowserTab,
+            SecurityProfile::Embedded,
+        ] {
+            let rules = profile.rules();
+            if !rules.bridge_transport {
+                assert!(!rules.native_component_bridge, "{profile:?}");
+                assert!(!rules.native_console, "{profile:?}");
+                assert!(!rules.platform_baseline, "{profile:?}");
+                assert!(!rules.proven_document_binding, "{profile:?}");
+            }
+            assert!(
+                !(rules.downloads && rules.reports_blocked_downloads),
+                "{profile:?}"
+            );
+        }
     }
 
     // The Java and ArkTS decoders reject a token that lacks any of these.
     #[test]
     fn platform_token_carries_the_options_and_every_rule() {
-        let json = options(SecurityProfile::BrowserRelaxed)
+        let json = options(SecurityProfile::BrowserTab)
             .platform_token_json()
             .unwrap();
         let token: serde_json::Value = serde_json::from_slice(&json).unwrap();
-        assert_eq!(token["profile"], "browser_relaxed");
+        assert_eq!(token["profile"], "browser_tab");
         assert_eq!(token["data_mode"], "profile_default");
         assert_eq!(token["has_download_handler"], false);
         let rules = token["rules"].as_object().unwrap();
@@ -194,18 +321,24 @@ mod tests {
         assert_eq!(
             names,
             [
+                "bridge_transport",
                 "browser_user_agent",
+                "default_lx_scheme",
                 "downloads",
+                "embed_mailbox",
                 "full_context_menu",
                 "https_scheme_interception",
                 "js_dialogs",
                 "native_component_bridge",
                 "native_console",
+                "new_window_https_upgrade",
                 "new_windows_without_handler",
                 "persistent_data",
                 "platform_baseline",
                 "proven_document_binding",
                 "proxy",
+                "reports_blocked_downloads",
+                "requires_navigation_handler",
                 "scrollbars",
                 "site_storage",
             ]

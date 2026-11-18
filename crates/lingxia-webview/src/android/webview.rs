@@ -371,6 +371,18 @@ impl WebViewInner {
             ))
         })
     }
+
+    pub(crate) fn exit_web_fullscreen(&self) {
+        let _ = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+            env.call_method(
+                self.get_java_webview(),
+                jni_str!("exitWebFullscreen"),
+                jni_sig!("()V"),
+                &[],
+            )?;
+            Ok(())
+        });
+    }
 }
 
 impl Drop for WebViewInner {
@@ -652,6 +664,57 @@ impl WebViewController for WebViewInner {
                     sender: tx,
                 },
             );
+
+        // Without the bridge transport there is no LingXiaProxy to carry the
+        // result: the script answers through the platform callback instead,
+        // synchronously, so nothing page-visible is involved.
+        let has_bridge =
+            crate::webview::find_webview_by_native_view_id(&self.webtag, self.native_view_id)
+                .is_none_or(|webview| webview.effective_options().rules().bridge_transport);
+        if !has_bridge {
+            let script = crate::input_helper::build_sync_eval_script(js);
+            // Reduced to a string here: the JNI error is not `Send`.
+            let dispatch_error = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+                let script_string = env.new_string(&script)?;
+                let token_string = env.new_string(&token)?;
+                env.call_method(
+                    self.get_java_webview(),
+                    jni_str!("evaluateForResult"),
+                    jni_sig!("(JLjava/lang/String;Ljava/lang/String;)V"),
+                    &[
+                        (request_id as i64).into(),
+                        (&token_string).into(),
+                        (&script_string).into(),
+                    ],
+                )?;
+                Ok(())
+            })
+            .err()
+            .map(|err| format!("{err:?}"));
+            if let Some(err) = dispatch_error {
+                if let Ok(mut pending) = pending_eval_requests().lock() {
+                    pending.remove(&request_id);
+                }
+                return Err(WebViewScriptError::Platform(format!(
+                    "Failed to dispatch Android JavaScript evaluation: {err}"
+                )));
+            }
+            return match timeout(EVAL_TIMEOUT, rx).await {
+                Ok(Ok(PendingEvalResponse::Success(envelope))) => {
+                    parse_wrapped_eval_result(&envelope)
+                }
+                Ok(Ok(PendingEvalResponse::Failure(err))) => Err(WebViewScriptError::Platform(err)),
+                Ok(Ok(PendingEvalResponse::Destroyed)) | Ok(Err(_)) => {
+                    Err(WebViewScriptError::Destroyed)
+                }
+                Err(_) => {
+                    if let Ok(mut pending) = pending_eval_requests().lock() {
+                        pending.remove(&request_id);
+                    }
+                    Err(WebViewScriptError::Timeout)
+                }
+            };
+        }
 
         let request_id_json = serde_json::to_string(&request_id.to_string()).map_err(|err| {
             WebViewScriptError::Platform(format!("Failed to encode eval request id: {err}"))

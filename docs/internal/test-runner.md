@@ -1051,7 +1051,7 @@ test: no test writes into its storage and app code has no test branch.
   `storage.redb`, `userdata`, `usercache` and `temp` under the profile's
   `live/` root; the bundle, fingermark and every shared store (`lxapps.redb`,
   downloads, settings) are unchanged. Page WebViews are already ephemeral
-  (`StrictDefault`); `BrowserRelaxed` tabs still share the Runner's store.
+  (`AppPage`); `BrowserTab` tabs still share the Runner's store.
 - Every switch is close → change → reopen (`with_app_closed`, serialized by
   one lock): retire the instance, wait for its `logic_contexts` to reach 0 so
   no redb handle is open, run the change, reopen with the captured open mode,
