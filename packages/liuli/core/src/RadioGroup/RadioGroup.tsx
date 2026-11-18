@@ -35,7 +35,7 @@ export type RadioGroupOrientation = 'vertical' | 'horizontal';
 
 export type RadioGroupProps = FieldOwnProps & RadioGroupBinding & {
   /** The choices, in order. */
-  options: readonly RadioOption[];
+  items: readonly RadioOption[];
   /** `list` stacks plain rows; `card` makes each option a bordered card, for plans and other choices with a second line. @default 'list' */
   variant?: RadioGroupVariant;
   /** `horizontal` sets two or three short options side by side; they wrap when the line is full. @default 'vertical' */
@@ -50,7 +50,7 @@ export type RadioGroupProps = FieldOwnProps & RadioGroupBinding & {
  * radio named by its label. One Tab stop: arrows move between options and choose on arrival.
  */
 export function RadioGroup(props: RadioGroupProps) {
-  const { options, variant = 'list', size: ownSize, isDisabled = false, status, className, orientation = 'vertical', 'data-testid': testId } = props;
+  const { items, variant = 'list', size: ownSize, isDisabled = false, status, className, orientation = 'vertical', 'data-testid': testId } = props;
   const size = useControlSize(ownSize);
   const id = useId();
   const chosen = props.bind ? props.bind.value : props.value;
@@ -71,7 +71,7 @@ export function RadioGroup(props: RadioGroupProps) {
           data-testid={testId}
           className={cx(r.group.base, orientation === 'horizontal' ? r.group.horizontal[variant] : r.group.variant[variant])}
         >
-          {options.map(option => {
+          {items.map(option => {
             const isChecked = option.value === chosen;
             const helpId = `${id}-${option.value}-help`;
             return (

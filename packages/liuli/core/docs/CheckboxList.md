@@ -29,7 +29,7 @@ export function Notifications() {
   const chosen = useLocal<readonly string[]>('topics', ['mentions']);
   return (
     <view className="gap-3">
-      <CheckboxList label="Notify me about" bind={chosen} options={topics} data-testid="topics" />
+      <CheckboxList label="Notify me about" bind={chosen} items={topics} data-testid="topics" />
       {chosen.value.length > 0 && <text role="status" data-testid="chosen" className="text-footnote text-muted">{chosen.value.join(', ')}</text>}
     </view>
   );
@@ -53,7 +53,7 @@ export function AtLeastOne() {
       description="We book a desk for each day you choose."
       isRequired
       bind={chosen}
-      options={days}
+      items={days}
       status={chosen.value.length === 0 ? { type: 'error', message: 'Choose at least one day.' } : undefined}
       data-testid="days"
     />
@@ -75,7 +75,7 @@ const toppings = [
 
 export function WithUnavailable() {
   const chosen = useLocal<readonly string[]>('toppings', ['olives']);
-  return <CheckboxList label="Toppings" bind={chosen} options={toppings} data-testid="toppings" />;
+  return <CheckboxList label="Toppings" bind={chosen} items={toppings} data-testid="toppings" />;
 }
 ```
 
@@ -90,8 +90,8 @@ export function Sizes() {
   const two = [{ value: 'a', label: 'First' }, { value: 'b', label: 'Second' }];
   return (
     <view className="grid grid-cols-2 gap-4">
-      <CheckboxList label="Small" size="sm" bind={chosen} options={two} data-testid="small" />
-      <CheckboxList label="Large" size="lg" bind={chosen} options={two} data-testid="large" />
+      <CheckboxList label="Small" size="sm" bind={chosen} items={two} data-testid="small" />
+      <CheckboxList label="Large" size="lg" bind={chosen} items={two} data-testid="large" />
     </view>
   );
 }
@@ -111,7 +111,7 @@ export function SelectAll() {
       bind={chosen}
       label="Folders to export"
       selectAllLabel="All folders"
-      options={[{ value: 'travel', label: 'Travel' }, { value: 'work', label: 'Work' }, { value: 'recipes', label: 'Recipes' }, { value: 'garden', label: 'Garden' }]}
+      items={[{ value: 'travel', label: 'Travel' }, { value: 'work', label: 'Work' }, { value: 'recipes', label: 'Recipes' }, { value: 'garden', label: 'Garden' }]}
       data-testid="export"
     />
   );
@@ -130,7 +130,7 @@ export function SelectAll() {
 | `description` | `string` |  | Help text under the question, read as the group's description. |
 | `status` | `FieldStatus` |  | A message about the group as a whole: "Choose at least one". |
 | `isRequired` | `boolean` | `false` | Marks the question with an asterisk. Validation is the app's. |
-| `options` (required) | `readonly CheckboxListOption[]` |  |  |
+| `items` (required) | `readonly CheckboxListOption[]` |  |  |
 | `selectAllLabel` | `string` |  | Adds a first box that chooses or clears every option, named by this text: "Select all". It shows a dash while some are chosen. |
 | `isDisabled` | `boolean` | `false` | Disables every option. |
 | `size` | `FieldSize` | `'md'` |  |

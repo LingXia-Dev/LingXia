@@ -8,7 +8,7 @@ Records in rows and fields in columns, under headings that stay in view. Status:
 import { Table } from '@liulidesign/core/Table';
 ```
 
-Table shows a set of records that share the same fields: invoices, members, files. Pass the records as `rows` and say which fields to show as `columns`; a column formats its value, sets its width and aligns numbers to the end edge so their digits line up. With `onRowClick` each row is one button that opens its record. With `maxHeight` the rows scroll under the headings. Where the columns would be too narrow to read, as with four of them on a phone, the table stacks: each record becomes a block with its first field and its number on one line and the other fields, each beside its heading, under them.
+Table shows a set of records that share the same fields: invoices, members, files. Pass the records as `rows` and say which fields to show as `columns`; a column formats its value, sets its width and aligns numbers to the end edge so their digits line up. With `onChange` each row is one button that opens its record. With `maxHeight` the rows scroll under the headings. Where the columns would be too narrow to read, as with four of them on a phone, the table stacks: each record becomes a block with its first field and its number on one line and the other fields, each beside its heading, under them.
 
 ## Examples
 
@@ -66,8 +66,8 @@ export function Pressable() {
       columns={[{ field: 'customer', header: 'Customer', width: '2fr' }, { field: 'status', header: 'Status', cell: status }, { field: 'amount', header: 'Amount', align: 'end', format: money }]}
       rows={invoices}
       keyField="id"
-      selectedKey={open.value}
-      onRowClick={open.set}
+      value={open.value}
+      onChange={open.set}
       data-testid="pressable"
     />
   );
@@ -167,13 +167,13 @@ export function MembersColumns() {
 | `label` (required) | `string` |  | The table's accessible name: "Invoices". |
 | `columns` (required) | `readonly TableColumn[]` |  |  |
 | `rows` (required) | `readonly Readonly<Record<string, TableValue>>[]` |  |  |
-| `keyField` | `string` |  | The field that identifies a row across updates, in `selectedKey` and in `onRowClick`. By default the first column's. |
+| `keyField` | `string` |  | The field that identifies a row across updates, in `value` and in `onChange`. By default the first column's. |
 | `layout` | `TableLayout` | `'auto'` |  |
 | `density` | `TableDensity` | `'comfortable'` |  |
 | `maxHeight` | `number` |  | Caps the rows' height in points: the rows scroll under a heading that stays. |
 | `isHeaderSticky` | `boolean` | `false` | Holds the heading at the top of the scroll the table sits in while its rows pass under it. The table must be inside a `<scroll>`; without `maxHeight`. |
-| `onRowClick` | `((key: string) => void)` |  | Makes each row one button; runs with its key. |
-| `selectedKey` | `string \| null` |  | The row drawn and read as selected. |
+| `onChange` | `((key: string) => void)` |  | Makes each row one button; runs with its key. |
+| `value` | `string \| null` |  | The row drawn and read as selected. |
 | `emptyLabel` | `string` |  | Shown in place of the rows when there are none: "No invoices yet". |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the table; a row is `<id>-<key>`. |
@@ -197,7 +197,7 @@ export function MembersColumns() {
 | header | `<view>` | yes | The row of headings; it stays above scrolling rows. |
 | heading | `<text>` | yes | One column's heading, in muted footnote type; cut short when its column is narrower. |
 | body | `<view>` | no | The rows, divided by hairlines; a scroll when `maxHeight` is set. |
-| row | `<view>` | no | One record: a grid of the same tracks as the headings. A `button` with `onRowClick`. |
+| row | `<view>` | no | One record: a grid of the same tracks as the headings. A `button` with `onChange`. |
 | cell | `<view>` | no | One field of one record; it wraps rather than truncating, except numbers. |
 | empty | `<text>` | no | `emptyLabel`, in place of the rows. |
 | block | `<view>` | no | Stacked: one record, in place of a row of cells. |
@@ -216,12 +216,12 @@ export function MembersColumns() {
 - Pattern: none.
 - Name: label.
 - Description: none.
-- States: selected (from selectedKey, on a pressable row).
-- Tab: With `onRowClick`: moves through the rows.
-- Enter or Space: With `onRowClick`: opens the row.
+- States: selected (from value, on a pressable row).
+- Tab: With `onChange`: moves through the rows.
+- Enter or Space: With `onChange`: opens the row.
 - Press target: sm 36 px, md 44 px.
 - The table is a grid named by `label`. Each cell is read with its column's heading, "Amount: $420.50", so the row of headings is not read on its own.
-- With `onRowClick` a row is one button read as all its cells in order, and reports selected when its key is `selectedKey`.
+- With `onChange` a row is one button read as all its cells in order, and reports selected when its key is `value`.
 - A cell drawn by `cell` is still read as its text, so a badge's meaning must be in the field's value or `format`.
 - Stacked or in columns, a record is read the same way: each field with its heading. Stacked, the heading row is not drawn, since every field is beside its own heading or leads the record.
 - `auto` stacks when a text column would be narrower than 88 points, or narrower than its longest value where that is shorter; the value's width is an estimate from its length, since text cannot be measured before layout.

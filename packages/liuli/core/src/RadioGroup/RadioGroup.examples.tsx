@@ -11,7 +11,7 @@ const deliveries = [
 /** Options with a second line each. */
 export function Delivery() {
   const delivery = useLocal<string | null>('delivery', 'standard');
-  return <RadioGroup bind={delivery} label="Delivery" options={deliveries} data-testid="delivery" />;
+  return <RadioGroup bind={delivery} label="Delivery" items={deliveries} data-testid="delivery" />;
 }
 
 const plans = [
@@ -23,7 +23,7 @@ const plans = [
 /** Each option a card: the whole card chooses it. */
 export function Plans() {
   const plan = useLocal<string | null>('plan', 'plus');
-  return <RadioGroup bind={plan} label="Plan" options={plans} variant="card" data-testid="plan" />;
+  return <RadioGroup bind={plan} label="Plan" items={plans} variant="card" data-testid="plan" />;
 }
 
 /** Short options, no second line. */
@@ -34,7 +34,7 @@ export function Plain() {
       bind={theme}
       label="Appearance"
       description="System follows the device."
-      options={[{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]}
+      items={[{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]}
       data-testid="appearance"
     />
   );
@@ -45,9 +45,9 @@ export function Sizes() {
   const options = [{ value: 'a', label: 'Chosen' }, { value: 'b', label: 'Not chosen' }];
   return (
     <view className="gap-5">
-      <RadioGroup bind={pick} label="Small" size="sm" options={options} />
-      <RadioGroup bind={pick} label="Medium" options={options} />
-      <RadioGroup bind={pick} label="Large" size="lg" options={options} />
+      <RadioGroup bind={pick} label="Small" size="sm" items={options} />
+      <RadioGroup bind={pick} label="Medium" items={options} />
+      <RadioGroup bind={pick} label="Large" size="lg" items={options} />
     </view>
   );
 }
@@ -61,7 +61,7 @@ export function Required() {
       label="Why are you leaving?"
       isRequired
       status={reason.value === null ? { type: 'error', message: 'Choose a reason.' } : undefined}
-      options={[{ value: 'price', label: 'It costs too much' }, { value: 'features', label: 'It is missing something I need' }, { value: 'other', label: 'Something else' }]}
+      items={[{ value: 'price', label: 'It costs too much' }, { value: 'features', label: 'It is missing something I need' }, { value: 'other', label: 'Something else' }]}
       data-testid="reason"
     />
   );
@@ -70,24 +70,24 @@ export function Required() {
 const pair = [{ value: 'monthly', label: 'Monthly' }, { value: 'yearly', label: 'Yearly' }];
 
 export function StateDefault() {
-  return <Held value={'monthly' as string | null}>{(billing, set) => <RadioGroup value={billing} onChange={set} label="Billing" options={pair} />}</Held>;
+  return <Held value={'monthly' as string | null}>{(billing, set) => <RadioGroup value={billing} onChange={set} label="Billing" items={pair} />}</Held>;
 }
 
 export function StateInvalid() {
-  return <Held value={null as string | null}>{(billing, set) => <RadioGroup value={billing} onChange={set} label="Billing" options={pair} status={billing === null ? { type: 'error', message: 'Choose one.' } : undefined} />}</Held>;
+  return <Held value={null as string | null}>{(billing, set) => <RadioGroup value={billing} onChange={set} label="Billing" items={pair} status={billing === null ? { type: 'error', message: 'Choose one.' } : undefined} />}</Held>;
 }
 
 export function StateDisabledOption() {
-  return <Held value={'monthly' as string | null}>{(billing, set) => <RadioGroup value={billing} onChange={set} label="Billing" options={[pair[0], { ...pair[1], isDisabled: true }]} />}</Held>;
+  return <Held value={'monthly' as string | null}>{(billing, set) => <RadioGroup value={billing} onChange={set} label="Billing" items={[pair[0], { ...pair[1], isDisabled: true }]} />}</Held>;
 }
 
 export function StateDisabled() {
-  return <RadioGroup value="monthly" onChange={unused} label="Billing" options={pair} isDisabled disabledMessage="Set by your team." />;
+  return <RadioGroup value="monthly" onChange={unused} label="Billing" items={pair} isDisabled disabledMessage="Set by your team." />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <RadioGroup value="a" onChange={unused} label="Plan" isLabelHidden size="sm" options={[{ value: 'a', label: 'Monthly' }, { value: 'b', label: 'Yearly' }]} />;
+  return <RadioGroup value="a" onChange={unused} label="Plan" isLabelHidden size="sm" items={[{ value: 'a', label: 'Monthly' }, { value: 'b', label: 'Yearly' }]} />;
 }
 
 /** Two short options side by side. */
@@ -98,7 +98,7 @@ export function Inline() {
       bind={billing}
       label="Billing"
       orientation="horizontal"
-      options={[{ value: 'monthly', label: 'Monthly' }, { value: 'yearly', label: 'Yearly' }]}
+      items={[{ value: 'monthly', label: 'Monthly' }, { value: 'yearly', label: 'Yearly' }]}
       description="Yearly saves two months."
       data-testid="billing"
     />

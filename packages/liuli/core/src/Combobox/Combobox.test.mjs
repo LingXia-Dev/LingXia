@@ -163,7 +163,7 @@ test('a long list shows fifty options and says there are more; loading shows a s
   const page = props => `
     import { Combobox } from '@liulidesign/core/Combobox';
     const options = Array.from({ length: 120 }, (_, index) => ({ value: String(index), label: 'Item ' + index }));
-    export function render() { return <page><Combobox label="Item" value="" onChange={() => {}} options={options} searchLabel="Search" emptyLabel="None" data-testid="item" ${props} /></page>; }
+    export function render() { return <page><Combobox label="Item" value="" onChange={() => {}} items={options} searchLabel="Search" emptyLabel="None" data-testid="item" ${props} /></page>; }
   `;
   const screen = await renderPage(page('moreLabel="Keep typing to see more"'));
   screen.press(screen.getByTestId('item'));

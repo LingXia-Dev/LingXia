@@ -177,7 +177,8 @@ function checkProps(node, report) {
     const name = member.name.getText().replace(/^['"]|['"]$/g, '');
     if (replacedProps.has(name)) report(member, 'props', `${name} is the primitive's name; Liuli uses is*/on*Change forms`);
     if (/^(left|right)[A-Z]/.test(name)) report(member, 'props', `${name}: use start/end`);
-    if (member.type?.kind === ts.SyntaxKind.BooleanKeyword && !/^(is|has)[A-Z]/.test(name))
+    // `value` is the one changing value's name whatever its type, a checked item's or a toggle's too.
+    if (member.type?.kind === ts.SyntaxKind.BooleanKeyword && name !== 'value' && !/^(is|has)[A-Z]/.test(name))
       report(member, 'props', `${name}: a boolean prop is named is* or has*`);
   }
 }

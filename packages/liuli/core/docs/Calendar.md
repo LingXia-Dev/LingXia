@@ -42,7 +42,7 @@ export function Stay() {
   const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });
   return (
     <view className="gap-2">
-      <Calendar label="Stay" locale={calendarEn} range={stay.value} onRangeChange={stay.set} min={today} today={today} data-testid="stay" />
+      <Calendar label="Stay" locale={calendarEn} isRange value={stay.value} onChange={stay.set} min={today} today={today} data-testid="stay" />
       <text role="status" className="px-2 text-footnote text-muted tabular-nums">{`${stay.value.start ?? ''} – ${stay.value.end ?? ''}`}</text>
     </view>
   );
@@ -86,10 +86,9 @@ export function Chinese() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `value` | `string \| null` |  | The chosen day, or `null`. |
-| `onChange` | `((value: string) => void)` |  | Runs with the pressed day. |
-| `range` | `CalendarRange` |  | The chosen span. A first press sets `start` and clears `end`; a second sets `end`, the earlier day first. |
-| `onRangeChange` | `((range: CalendarRange) => void)` |  |  |
+| `isRange` | `boolean` | `false` | Chooses one day. Chooses a span of days. |
+| `value` (required) | `string \| CalendarRange \| null` |  | The chosen day, or `null`. The chosen span. A first press sets `start` and clears `end`; a second sets `end`, the earlier day first. |
+| `onChange` (required) | `((value: string) => void) \| ((range: CalendarRange) => void)` |  | Runs with the pressed day. |
 | `label` (required) | `string` |  | Names the calendar for assistive tech: "Due date", "Stay". |
 | `locale` (required) | `CalendarLocale` |  |  |
 | `month` | `string` |  | The month shown, as `YYYY-MM`; pass it with `onMonthChange` to control it. By default the chosen day's month, else today's. |

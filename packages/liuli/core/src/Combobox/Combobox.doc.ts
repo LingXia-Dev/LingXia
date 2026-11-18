@@ -11,7 +11,7 @@ export const doc: ComponentDoc = {
     'the arrow keys move through it and Return chooses. With a finger the field is a button that opens a sheet from the bottom edge, with a search field over the list. ' +
     'Matching ignores case and looks in the label only: options whose label starts with what was typed come first, then those where a later word starts with it, ' +
     'then those that hold it inside a word, each group in the order the options were given. ' +
-    'With `onQueryChange` the app replaces that: Combobox reports each change to the search text and shows `options` as passed, so the app filters and orders them by its own rule or a server\'s. ' +
+    'With `onQueryChange` the app replaces that: Combobox reports each change to the search text and shows `items` as passed, so the app filters and orders them by its own rule or a server\'s. ' +
     'It takes Field\'s label, help text and status.',
   keywords: ['combobox', 'autocomplete', 'typeahead', 'searchable select', 'picker', 'filter', 'search select', 'lookup'],
   propsType: 'ComboboxProps',

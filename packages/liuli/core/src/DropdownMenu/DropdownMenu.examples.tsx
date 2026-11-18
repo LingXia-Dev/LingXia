@@ -168,8 +168,8 @@ export function Checkable() {
   const grouping = useLocal('grouping', 'Day');
   return (
     <DropdownMenu label="View" data-testid="view-menu">
-      <DropdownMenuCheckboxItem label="Show completed" isChecked={completed.value} onCheckedChange={next => completed.set(next)} data-testid="show-completed" />
-      <DropdownMenuCheckboxItem label="Show archived" isChecked={archived.value} onCheckedChange={next => archived.set(next)} data-testid="show-archived" />
+      <DropdownMenuCheckboxItem label="Show completed" value={completed.value} onChange={next => completed.set(next)} data-testid="show-completed" />
+      <DropdownMenuCheckboxItem label="Show archived" value={archived.value} onChange={next => archived.set(next)} data-testid="show-archived" />
       <DropdownMenuDivider />
       <DropdownMenuRadioGroup label="Group by" value={grouping.value} onChange={next => grouping.set(next)}>
         {['Day', 'Week', 'Month'].map(option => (
@@ -195,7 +195,7 @@ export function Grouped() {
       </DropdownMenuGroup>
       <DropdownMenuDivider />
       <DropdownMenuGroup label="Show">
-        <DropdownMenuCheckboxItem label="Completed" isChecked={completed.value} onCheckedChange={next => completed.set(next)} data-testid="show-done" />
+        <DropdownMenuCheckboxItem label="Completed" value={completed.value} onChange={next => completed.set(next)} data-testid="show-done" />
       </DropdownMenuGroup>
     </DropdownMenu>
   );

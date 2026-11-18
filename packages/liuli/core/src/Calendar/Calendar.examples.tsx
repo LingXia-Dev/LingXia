@@ -17,7 +17,7 @@ export function Stay() {
   const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });
   return (
     <view className="gap-2">
-      <Calendar label="Stay" locale={calendarEn} range={stay.value} onRangeChange={stay.set} min={today} today={today} data-testid="stay" />
+      <Calendar label="Stay" locale={calendarEn} isRange value={stay.value} onChange={stay.set} min={today} today={today} data-testid="stay" />
       <text role="status" className="px-2 text-footnote text-muted tabular-nums">{`${stay.value.start ?? ''} – ${stay.value.end ?? ''}`}</text>
     </view>
   );

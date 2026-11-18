@@ -34,7 +34,7 @@ export function Labels() {
     <MultiSelect
       bind={chosen}
       label="Labels"
-      options={labels}
+      items={labels}
       addLabel="Add a label"
       removeLabel={name => `Remove ${name}`}
       description="A note can carry several."
@@ -57,7 +57,7 @@ export function Empty() {
     <MultiSelect
       bind={chosen}
       label="Share with teams"
-      options={[{ value: 'design', label: 'Design' }, { value: 'eng', label: 'Engineering' }, { value: 'support', label: 'Support' }]}
+      items={[{ value: 'design', label: 'Design' }, { value: 'eng', label: 'Engineering' }, { value: 'support', label: 'Support' }]}
       placeholder="No teams yet"
       addLabel="Add a team"
       removeLabel={name => `Remove ${name}`}
@@ -87,7 +87,7 @@ export function Empty() {
 | `bind` | `Local<readonly string[]>` |  | A View-local cell holding the chosen values; use it or `value` with `onChange`. |
 | `value` | `readonly string[]` |  | The chosen options' values. |
 | `onChange` | `((value: readonly string[]) => void)` |  | Runs with the chosen values, in the options' order. |
-| `options` (required) | `readonly MultiSelectOption[]` |  | The choices, in order. |
+| `items` (required) | `readonly MultiSelectOption[]` |  | The choices, in order. |
 | `placeholder` | `string` |  | Shown in the box while nothing is chosen. |
 | `addLabel` (required) | `string` |  | The name of the button that opens the list: "Add a label". |
 | `removeLabel` (required) | `(label: string) => string` |  | Each token's remove button, named with what it removes: `label => \`Remove ${label}\``. |

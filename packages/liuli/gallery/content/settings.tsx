@@ -84,7 +84,7 @@ export function Content() {
 
       <view className="gap-2">
         <text role="heading" headingLevel={2} className="text-footnote font-medium text-muted">Plan</text>
-        <RadioGroup bind={plan} label="Plan" isLabelHidden options={plans} variant="card" data-testid="plan" />
+        <RadioGroup bind={plan} label="Plan" isLabelHidden items={plans} variant="card" data-testid="plan" />
       </view>
 
       <Group title="General">

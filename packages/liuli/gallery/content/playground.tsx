@@ -50,7 +50,7 @@ function Control({ control, value, onChange }: { control: PlaygroundControl; val
       // Segments carry no visible label of their own; this one matches the fields around it.
       <view className="gap-1.5">
         <text aria-hidden className="pb-0.5 text-caption font-medium text-text">{control.name}</text>
-        <SegmentedControl label={control.name} options={options} value={String(value)} onChange={onChange} size="sm" data-testid={testId} />
+        <SegmentedControl label={control.name} items={options} value={String(value)} onChange={onChange} size="sm" data-testid={testId} />
       </view>
     );
   return (
@@ -59,7 +59,7 @@ function Control({ control, value, onChange }: { control: PlaygroundControl; val
       value={typeof value === 'string' ? value : ''}
       onChange={next => onChange(next === '' ? undefined : next)}
       placeholder="Not set"
-      options={options}
+      items={options}
       size="sm"
       data-testid={testId}
     />
@@ -108,7 +108,7 @@ export function Content() {
       label="Component"
       isLabelHidden={!isWide}
       bind={chosen}
-      options={playgroundEntries.map(each => ({ value: each.name, label: each.name }))}
+      items={playgroundEntries.map(each => ({ value: each.name, label: each.name }))}
       data-testid="playground-component"
     />
   );

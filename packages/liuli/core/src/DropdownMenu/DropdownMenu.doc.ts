@@ -30,7 +30,7 @@ export const doc: ComponentDoc = {
     description: [],
     states: [
       { state: 'expanded', from: 'the trigger, while the menu is open (set by the View)' },
-      { state: 'checked', from: "a checkbox item's isChecked; a radio item matching its group's value" },
+      { state: 'checked', from: "a checkbox item's value; a radio item matching its group's value" },
       { state: 'disabled', from: "isDisabled; an item's isDisabled" },
     ],
     keyboard: [

@@ -8,7 +8,7 @@ One choice from a long list, found by typing: in the field itself with a keyboar
 import { Combobox } from '@liulidesign/core/Combobox';
 ```
 
-Combobox is a Select for lists too long to scan: countries, people, products. With a mouse and keyboard the field is the editor: typing narrows a list that hangs under it, the arrow keys move through it and Return chooses. With a finger the field is a button that opens a sheet from the bottom edge, with a search field over the list. Matching ignores case and looks in the label only: options whose label starts with what was typed come first, then those where a later word starts with it, then those that hold it inside a word, each group in the order the options were given. With `onQueryChange` the app replaces that: Combobox reports each change to the search text and shows `options` as passed, so the app filters and orders them by its own rule or a server's. It takes Field's label, help text and status.
+Combobox is a Select for lists too long to scan: countries, people, products. With a mouse and keyboard the field is the editor: typing narrows a list that hangs under it, the arrow keys move through it and Return chooses. With a finger the field is a button that opens a sheet from the bottom edge, with a search field over the list. Matching ignores case and looks in the label only: options whose label starts with what was typed come first, then those where a later word starts with it, then those that hold it inside a word, each group in the order the options were given. With `onQueryChange` the app replaces that: Combobox reports each change to the search text and shows `items` as passed, so the app filters and orders them by its own rule or a server's. It takes Field's label, help text and status.
 
 ## Examples
 
@@ -31,7 +31,7 @@ export function Country() {
     <Combobox
       label="Country"
       bind={country}
-      options={countries}
+      items={countries}
       placeholder="Choose a country"
       searchLabel="Search countries"
       searchPlaceholder="Search"
@@ -65,7 +65,7 @@ export function Assignee() {
       label="Assignee"
       description="They are notified when the task changes."
       bind={person}
-      options={people}
+      items={people}
       searchLabel="Search people"
       emptyLabel="Nobody by that name"
       data-testid="assignee"
@@ -97,7 +97,7 @@ export function OwnMatching() {
     <Combobox
       label="Airport"
       bind={airport}
-      options={airports.filter(each => each.label.toLowerCase().includes(text) || each.value.toLowerCase().includes(text))}
+      items={airports.filter(each => each.label.toLowerCase().includes(text) || each.value.toLowerCase().includes(text))}
       placeholder="City or code"
       searchLabel="Search airports"
       emptyLabel="No airport matches"
@@ -124,9 +124,9 @@ export function Sizes() {
   const value = useLocal('value', 'kenya');
   return (
     <view className="gap-3">
-      <Combobox label="Small" size="sm" bind={value} options={countries} searchLabel="Search countries" emptyLabel="No country matches" data-testid="small" />
-      <Combobox label="Medium" bind={value} options={countries} searchLabel="Search countries" emptyLabel="No country matches" />
-      <Combobox label="Large" size="lg" bind={value} options={countries} searchLabel="Search countries" emptyLabel="No country matches" data-testid="large" />
+      <Combobox label="Small" size="sm" bind={value} items={countries} searchLabel="Search countries" emptyLabel="No country matches" data-testid="small" />
+      <Combobox label="Medium" bind={value} items={countries} searchLabel="Search countries" emptyLabel="No country matches" />
+      <Combobox label="Large" size="lg" bind={value} items={countries} searchLabel="Search countries" emptyLabel="No country matches" data-testid="large" />
     </view>
   );
 }
@@ -151,7 +151,7 @@ export function Shipping() {
   const saved = useLocal('saved', '');
   return (
     <view className="gap-4">
-      <Combobox label="Ship to" bind={country} options={countries} searchLabel="Search countries" emptyLabel="No country matches" isRequired data-testid="ship-to" />
+      <Combobox label="Ship to" bind={country} items={countries} searchLabel="Search countries" emptyLabel="No country matches" isRequired data-testid="ship-to" />
       <Button label="Save address" variant="primary" width="content" onClick={() => saved.set(country.value)} data-testid="save-address" />
       {saved.value !== '' && <text role="status" data-testid="saved" className="text-footnote text-muted">{`Saved: ${saved.value}`}</text>}
     </view>
@@ -177,14 +177,14 @@ export function Shipping() {
 | `bind` | `Local<string>` |  | A View-local cell the combobox reads and writes; use it or `value` with `onChange`. |
 | `value` | `string` |  | The chosen option's value; `''` shows the placeholder. |
 | `onChange` | `((value: string) => void)` |  | Runs with the chosen option's value. |
-| `options` (required) | `readonly ComboboxOption[]` |  | The choices. By default the list shows those whose label contains what was typed, whatever its case. |
+| `items` (required) | `readonly ComboboxOption[]` |  | The choices. By default the list shows those whose label contains what was typed, whatever its case. |
 | `placeholder` | `string` |  | Shown in the box while nothing is chosen. |
 | `searchLabel` (required) | `string` |  | The search field's accessible name: "Search countries". |
 | `searchPlaceholder` | `string` |  | Shown in the search field while it is empty. |
 | `emptyLabel` (required) | `string` |  | Shown in place of the list when no option matches: "No country matches". |
 | `moreLabel` | `string` |  | Shown under the list when more than fifty options match: "Keep typing to see more". |
 | `closeLabel` | `string` |  | Names a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back. |
-| `onQueryChange` | `((query: string) => void)` |  | Runs with each change of the search text. With it the list shows `options` as given, so the app does the matching: by its own rule, or by asking a server. |
+| `onQueryChange` | `((query: string) => void)` |  | Runs with each change of the search text. With it the list shows `items` as given, so the app does the matching: by its own rule, or by asking a server. |
 | `isLoading` | `boolean` | `false` | Shows a spinner in place of the list while the app fetches options. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the trigger; the search field is `<id>-search`, an option `<id>-<value>`. |

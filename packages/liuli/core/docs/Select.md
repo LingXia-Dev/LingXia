@@ -35,7 +35,7 @@ export function Country() {
       label="Country"
       placeholder="Choose a country"
       description="Sets the currency and the tax on your invoices."
-      options={countries}
+      items={countries}
       data-testid="country"
     />
   );
@@ -58,7 +58,7 @@ export function Required() {
       label="Role"
       isRequired
       placeholder="Choose a role"
-      options={[{ value: 'viewer', label: 'Can view' }, { value: 'editor', label: 'Can edit' }, { value: 'owner', label: 'Owner', isDisabled: true }]}
+      items={[{ value: 'viewer', label: 'Can view' }, { value: 'editor', label: 'Can edit' }, { value: 'owner', label: 'Owner', isDisabled: true }]}
       status={tried.value && role.value === '' ? { type: 'error', message: 'Choose a role for the invite.' } : undefined}
       description="Only an owner can add another owner."
       data-testid="role"
@@ -78,9 +78,9 @@ export function Sizes() {
   const options = [{ value: 'cet', label: 'Central European Time' }, { value: 'utc', label: 'Coordinated Universal Time' }];
   return (
     <view className="gap-4">
-      <Select bind={zone} label="Small" size="sm" options={options} />
-      <Select bind={zone} label="Medium" options={options} />
-      <Select bind={zone} label="Large" size="lg" options={options} />
+      <Select bind={zone} label="Small" size="sm" items={options} />
+      <Select bind={zone} label="Medium" items={options} />
+      <Select bind={zone} label="Large" size="lg" items={options} />
     </view>
   );
 }
@@ -104,7 +104,7 @@ export function Sizes() {
 | `bind` | `Local<string>` |  | A View-local cell the select reads and writes; use it or `value` with `onChange`. |
 | `value` | `string` |  | The chosen option's value; `''` shows the placeholder. |
 | `onChange` | `((value: string) => void)` |  | Runs with the chosen option's value. |
-| `options` (required) | `readonly SelectOption[]` |  | The choices, in order; the platform shows them as a list or a menu. |
+| `items` (required) | `readonly SelectOption[]` |  | The choices, in order; the platform shows them as a list or a menu. |
 | `placeholder` | `string` |  | Shown in the box while nothing is chosen. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the select. |

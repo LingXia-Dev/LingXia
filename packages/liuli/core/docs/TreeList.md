@@ -43,7 +43,7 @@ export function Folders() {
   const current = useLocal<string | null>('current', 'coast');
   return (
     <view className="gap-2">
-      <TreeList label="Folders" nodes={folders} value={current.value} onChange={id => current.set(id)} defaultOpenBranches={['notes', 'travel']} data-testid="folders" />
+      <TreeList label="Folders" items={folders} value={current.value} onChange={id => current.set(id)} defaultOpenBranches={['notes', 'travel']} data-testid="folders" />
       <text role="status" className="text-footnote text-muted">{`Current: ${current.value}`}</text>
     </view>
   );
@@ -69,7 +69,7 @@ const outline: TreeNode[] = [
 export function Outline() {
   const current = useLocal<string | null>('section', 'layout');
   const open = useLocal<readonly string[]>('open', ['setup', 'first']);
-  return <TreeList label="Contents" nodes={outline} value={current.value} onChange={id => current.set(id)} openBranches={open.value} onOpenBranchesChange={next => open.set(next)} data-testid="outline" />;
+  return <TreeList label="Contents" items={outline} value={current.value} onChange={id => current.set(id)} openBranches={open.value} onOpenBranchesChange={next => open.set(next)} data-testid="outline" />;
 }
 ```
 
@@ -78,7 +78,7 @@ export function Outline() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | Names the tree for assistive tech: "Folders". |
-| `nodes` (required) | `readonly TreeNode[]` |  |  |
+| `items` (required) | `readonly TreeNode[]` |  |  |
 | `value` (required) | `string \| null` |  | The selected node's id, or null. |
 | `onChange` (required) | `(id: string) => void` |  | Runs with the id of the row that was pressed; a branch is selected and toggled by the same press. |
 | `openBranches` | `readonly string[]` |  | The ids of the open branches, to hold them outside; pass `onOpenBranchesChange` with it. |

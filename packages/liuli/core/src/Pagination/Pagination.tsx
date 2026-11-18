@@ -7,7 +7,7 @@ export interface PaginationProps {
   /** Names the control for assistive tech: "Pages", "Results pages". */
   label: string;
   /** The current page, from 1. */
-  page: number;
+  value: number;
   /** How many pages there are. */
   pageCount: number;
   /** Runs with the page chosen. */
@@ -42,7 +42,7 @@ const [arrows, pageWidth, gapWidth, between] = [88, 40, 24, 4];
 
 /** Moves through a long set a page at a time. */
 export function Pagination({
-  label, page, pageCount, onChange, pageLabel, previousLabel, nextLabel, siblings = 1, variant = 'auto', positionLabel, className, 'data-testid': testId,
+  label, value: page, pageCount, onChange, pageLabel, previousLabel, nextLabel, siblings = 1, variant = 'auto', positionLabel, className, 'data-testid': testId,
 }: PaginationProps) {
   const { env } = useView();
   // A row of page numbers needs a pointer's precision and room; a finger gets the arrows and the position.

@@ -50,7 +50,7 @@ function Sample({ id }: { id: string }) {
       {say => (
         <view className="gap-4">
           <Held value="Ana Lima">{(name, set) => <TextInput label="Name" value={name} onChange={set} data-testid={`${id}-name`} />}</Held>
-          <Held value="editor">{(role, set) => <Select label="Role" value={role} onChange={set} options={roles} data-testid={`${id}-role`} />}</Held>
+          <Held value="editor">{(role, set) => <Select label="Role" value={role} onChange={set} items={roles} data-testid={`${id}-role`} />}</Held>
           <ItemList label="Members">
             <Item label="Kai Chen" description="Editor" hasChevron onClick={() => say('Opened Kai Chen')} data-testid={`${id}-row`} />
             <Item label="Mira Patel" description="Viewer" hasChevron onClick={() => say('Opened Mira Patel')} />

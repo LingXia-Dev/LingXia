@@ -18,7 +18,7 @@ export function Labels() {
     <MultiSelect
       bind={chosen}
       label="Labels"
-      options={labels}
+      items={labels}
       addLabel="Add a label"
       removeLabel={name => `Remove ${name}`}
       description="A note can carry several."
@@ -34,7 +34,7 @@ export function Empty() {
     <MultiSelect
       bind={chosen}
       label="Share with teams"
-      options={[{ value: 'design', label: 'Design' }, { value: 'eng', label: 'Engineering' }, { value: 'support', label: 'Support' }]}
+      items={[{ value: 'design', label: 'Design' }, { value: 'eng', label: 'Engineering' }, { value: 'support', label: 'Support' }]}
       placeholder="No teams yet"
       addLabel="Add a team"
       removeLabel={name => `Remove ${name}`}
@@ -46,10 +46,10 @@ export function Empty() {
 }
 
 export function StateDisabled() {
-  return <MultiSelect value={['travel']} onChange={unused} label="Labels" options={labels} addLabel="Add a label" removeLabel={name => `Remove ${name}`} isDisabled disabledMessage="Labels are set by the owner." />;
+  return <MultiSelect value={['travel']} onChange={unused} label="Labels" items={labels} addLabel="Add a label" removeLabel={name => `Remove ${name}`} isDisabled disabledMessage="Labels are set by the owner." />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <MultiSelect value={['travel']} onChange={unused} label="Labels" isLabelHidden options={labels} addLabel="Add a label" removeLabel={name => `Remove ${name}`} className="w-36" />;
+  return <MultiSelect value={['travel']} onChange={unused} label="Labels" isLabelHidden items={labels} addLabel="Add a label" removeLabel={name => `Remove ${name}`} className="w-36" />;
 }

@@ -15,7 +15,7 @@ function Form({ id }: { id: string }) {
     <view>
       <TextInput label="Name" value="" onChange={() => {}} data-testid={id + '-name'} />
       <TextInput label="City" value="" onChange={() => {}} size="lg" data-testid={id + '-city'} />
-      <Select label="Country" value="" onChange={() => {}} options={[{ value: 'pt', label: 'Portugal' }]} data-testid={id + '-country'} />
+      <Select label="Country" value="" onChange={() => {}} items={[{ value: 'pt', label: 'Portugal' }]} data-testid={id + '-country'} />
       <ItemList label="Notes"><Item label="Trip to the coast" data-testid={id + '-row'} /></ItemList>
     </view>
   );

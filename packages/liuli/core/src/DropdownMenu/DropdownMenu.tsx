@@ -69,9 +69,9 @@ export interface DropdownMenuCheckboxItemProps {
   label: string;
   /** A second line, read as the item's description. */
   description?: string;
-  isChecked: boolean;
+  value: boolean;
   /** Runs with the new state; the menu stays open. */
-  onCheckedChange: (isChecked: boolean) => void;
+  onChange: (isChecked: boolean) => void;
   /** @default false */
   isDisabled?: boolean;
   'data-testid'?: string;
@@ -222,7 +222,7 @@ export function DropdownMenuItem({
 }
 
 /** An item that turns one option on or off, checked at its end. */
-export function DropdownMenuCheckboxItem({ label, description, isChecked, onCheckedChange, isDisabled = false, 'data-testid': testId }: DropdownMenuCheckboxItemProps) {
+export function DropdownMenuCheckboxItem({ label, description, value: isChecked, onChange: onCheckedChange, isDisabled = false, 'data-testid': testId }: DropdownMenuCheckboxItemProps) {
   return (
     <CheckableItem role="menuitemcheckbox" label={label} description={description} isChecked={isChecked} isDisabled={isDisabled}
       onClick={() => onCheckedChange(!isChecked)} testId={testId} owner="DropdownMenuCheckboxItem" />

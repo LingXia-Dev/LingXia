@@ -33,8 +33,8 @@ export function Welcome() {
           {step.value !== null && <text role="status" className="text-footnote text-muted">{`On step ${step.value + 1}`}</text>}
           <Tour
             steps={steps}
-            step={step.value}
-            onStepChange={next => step.set(next)}
+            value={step.value}
+            onChange={next => step.set(next)}
             nextLabel="Next"
             backLabel="Back"
             skipLabel="Skip"

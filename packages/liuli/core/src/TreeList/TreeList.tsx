@@ -20,7 +20,7 @@ export interface TreeNode {
 export interface TreeListProps {
   /** Names the tree for assistive tech: "Folders". */
   label: string;
-  nodes: readonly TreeNode[];
+  items: readonly TreeNode[];
   /** The selected node's id, or null. */
   value: string | null;
   /** Runs with the id of the row that was pressed; a branch is selected and toggled by the same press. */
@@ -38,7 +38,7 @@ export interface TreeListProps {
 type Level = 1 | 2 | 3 | 4 | 5 | 6;
 
 /** Things inside things: folders, an outline, a file tree. Branches open in place. */
-export function TreeList({ label, nodes, value, onChange, openBranches, onOpenBranchesChange, defaultOpenBranches = [], className, 'data-testid': testId }: TreeListProps) {
+export function TreeList({ label, items, value, onChange, openBranches, onOpenBranchesChange, defaultOpenBranches = [], className, 'data-testid': testId }: TreeListProps) {
   const local = useLocal<readonly string[]>('open', defaultOpenBranches);
   const shown = openBranches ?? local.value;
   const toggle = (id: string) => {
@@ -73,7 +73,7 @@ export function TreeList({ label, nodes, value, onChange, openBranches, onOpenBr
   });
   return (
     <view role="tree" aria-label={label} data-testid={testId} className={cx(r.root.base, className)}>
-      {rows(nodes, 1)}
+      {rows(items, 1)}
     </view>
   );
 }

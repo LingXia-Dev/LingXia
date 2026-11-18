@@ -88,7 +88,7 @@ export function Content() {
           label="Period"
           value={period.value}
           onChange={next => { period.set(next as Period); day.set(null); }}
-          options={[{ value: 'week', label: '7 days' }, { value: 'month', label: '30 days' }, { value: 'year', label: '2026' }]}
+          items={[{ value: 'week', label: '7 days' }, { value: 'month', label: '30 days' }, { value: 'year', label: '2026' }]}
           className={isWide ? 'w-80' : undefined}
           data-testid="period"
         />

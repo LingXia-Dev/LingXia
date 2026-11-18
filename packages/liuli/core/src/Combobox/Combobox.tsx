@@ -35,7 +35,7 @@ export type ComboboxBinding =
 
 export type ComboboxProps = FieldOwnProps & ComboboxBinding & {
   /** The choices. By default the list shows those whose label contains what was typed, whatever its case. */
-  options: readonly ComboboxOption[];
+  items: readonly ComboboxOption[];
   /** Shown in the box while nothing is chosen. */
   placeholder?: string;
   /** The search field's accessible name: "Search countries". */
@@ -49,7 +49,7 @@ export type ComboboxProps = FieldOwnProps & ComboboxBinding & {
   /** Names a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back. */
   closeLabel?: string;
   /**
-   * Runs with each change of the search text. With it the list shows `options` as given, so the
+   * Runs with each change of the search text. With it the list shows `items` as given, so the
    * app does the matching: by its own rule, or by asking a server.
    */
   onQueryChange?: (query: string) => void;
@@ -76,16 +76,16 @@ function rank(label: string, typed: string): number {
 }
 
 /** The options whose label holds what was typed, best match first, otherwise in the order given. */
-function ranked(options: readonly ComboboxOption[], typed: string): readonly ComboboxOption[] {
-  if (typed === '') return options;
+function ranked(items: readonly ComboboxOption[], typed: string): readonly ComboboxOption[] {
+  if (typed === '') return items;
   const tiers: ComboboxOption[][] = [[], [], []];
-  for (const option of options) tiers[rank(option.label, typed)]?.push(option);
+  for (const option of items) tiers[rank(option.label, typed)]?.push(option);
   return tiers.flat();
 }
 
 interface OptionsProps {
   label: string;
-  options: readonly ComboboxOption[];
+  items: readonly ComboboxOption[];
   current: string;
   size: FieldSize;
   testId?: string;
@@ -98,10 +98,10 @@ interface OptionsProps {
 const optionId = (listId: string, index: number) => `${listId}-${index}`;
 
 /** The options as a listbox; the chosen one carries a tick, the active one a wash. */
-function Options({ label, options, current, size, testId, onChoose, listId, active }: OptionsProps) {
+function Options({ label, items, current, size, testId, onChoose, listId, active }: OptionsProps) {
   return (
     <view id={listId} role="listbox" aria-label={label} className={r.list.box}>
-      {options.map((option, index) => (
+      {items.map((option, index) => (
         <button
           key={option.value}
           id={listId === undefined ? undefined : optionId(listId, index)}
@@ -125,7 +125,7 @@ function Options({ label, options, current, size, testId, onChoose, listId, acti
 
 interface PanelProps {
   label: string;
-  options: readonly ComboboxOption[];
+  items: readonly ComboboxOption[];
   current: string;
   size: FieldSize;
   searchLabel: string;
@@ -141,11 +141,11 @@ interface PanelProps {
 
 /** The sheet's search field and list. It lives inside the sheet, so what was typed is forgotten when that closes. */
 function ComboboxPanel({
-  label, options, current, size, searchLabel, searchPlaceholder, emptyLabel, moreLabel, onQueryChange, isLoading, listClass, testId, onChoose,
+  label, items, current, size, searchLabel, searchPlaceholder, emptyLabel, moreLabel, onQueryChange, isLoading, listClass, testId, onChoose,
 }: PanelProps) {
   const query = useLocal('query', '');
   const typed = query.value.trim().toLowerCase();
-  const matches = onQueryChange ? options : ranked(options, typed);
+  const matches = onQueryChange ? items : ranked(items, typed);
   const shown = matches.slice(0, maxShown);
   const first = shown.find(option => !option.isDisabled);
   return (
@@ -164,7 +164,7 @@ function ComboboxPanel({
           data-testid={testId && `${testId}-search`}
         />
         <scroll className={listClass}>
-          {!isLoading && shown.length > 0 && <Options label={label} options={shown} current={current} size={size} testId={testId} onChoose={onChoose} />}
+          {!isLoading && shown.length > 0 && <Options label={label} items={shown} current={current} size={size} testId={testId} onChoose={onChoose} />}
           {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />}
           {!isLoading && shown.length === 0 && <text role="status" className={r.note.base}>{emptyLabel}</text>}
           {!isLoading && matches.length > shown.length && moreLabel !== undefined && <text className={r.note.base}>{moreLabel}</text>}
@@ -180,7 +180,7 @@ const boxEdges = 26;
 interface TypeaheadProps {
   control: { 'aria-label': string; 'aria-describedby'?: string; 'aria-invalid'?: boolean; 'aria-required'?: boolean; disabled?: boolean };
   label: string;
-  options: readonly ComboboxOption[];
+  items: readonly ComboboxOption[];
   current: string;
   size: FieldSize;
   statusType?: 'error' | 'warning' | 'success';
@@ -199,7 +199,7 @@ interface TypeaheadProps {
  * under it while focus stays in the text; the arrow keys move through the list and Return chooses.
  */
 function ComboboxTypeahead({
-  control, label, options, current, size, statusType, isDisabled, placeholder, emptyLabel, moreLabel, onQueryChange, isLoading, testId, onChange,
+  control, label, items, current, size, statusType, isDisabled, placeholder, emptyLabel, moreLabel, onQueryChange, isLoading, testId, onChange,
 }: TypeaheadProps) {
   const id = useId();
   const [boxId, listId, panelId] = [`${id}-box`, `${id}-list`, `${id}-panel`];
@@ -208,9 +208,9 @@ function ComboboxTypeahead({
   // What was typed since the list opened; `null` while the box still shows the choice, when the list shows every option.
   const query = useLocal<string | null>('query', null);
   const active = useLocal('active', -1);
-  const chosen = options.find(option => option.value === current);
+  const chosen = items.find(option => option.value === current);
   const typed = (query.value ?? '').trim().toLowerCase();
-  const matches = onQueryChange || query.value === null ? options : ranked(options, typed);
+  const matches = onQueryChange || query.value === null ? items : ranked(items, typed);
   const shown = matches.slice(0, maxShown);
   const close = () => { open.set(false); query.set(null); active.set(-1); };
   const choose = (value: string) => { onChange(value); close(); };
@@ -274,7 +274,7 @@ function ComboboxTypeahead({
       >
         <LayerContext.Provider value="overlay">
           <scroll className={r.list.popover}>
-            {!isLoading && shown.length > 0 && <Options label={label} options={shown} current={current} size={size} testId={testId} onChoose={choose} listId={listId} active={active.value} />}
+            {!isLoading && shown.length > 0 && <Options label={label} items={shown} current={current} size={size} testId={testId} onChoose={choose} listId={listId} active={active.value} />}
             {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />}
             {!isLoading && shown.length === 0 && <text role="status" className={r.note.base}>{emptyLabel}</text>}
             {!isLoading && matches.length > shown.length && moreLabel !== undefined && <text className={r.note.base}>{moreLabel}</text>}
@@ -289,7 +289,7 @@ function ComboboxTypeahead({
 export function Combobox(props: ComboboxProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    options, placeholder, searchLabel, searchPlaceholder, emptyLabel, moreLabel, closeLabel, onQueryChange, isLoading = false,
+    items, placeholder, searchLabel, searchPlaceholder, emptyLabel, moreLabel, closeLabel, onQueryChange, isLoading = false,
     className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
@@ -300,7 +300,7 @@ export function Combobox(props: ComboboxProps) {
   const id = useId();
   const valueId = `${id}-value`;
   const current = props.bind ? props.bind.value : props.value;
-  const chosen = options.find(option => option.value === current);
+  const chosen = items.find(option => option.value === current);
   const choose = (value: string) => {
     if (props.bind) props.bind.set(value);
     else props.onChange(value);
@@ -325,7 +325,7 @@ export function Combobox(props: ComboboxProps) {
         <ComboboxTypeahead
           control={control}
           label={label}
-          options={options}
+          items={items}
           current={current}
           size={size}
           statusType={status?.type}
@@ -375,7 +375,7 @@ export function Combobox(props: ComboboxProps) {
             </view>
             <ComboboxPanel
               label={label}
-              options={options}
+              items={items}
               current={current}
               size={size}
               searchLabel={searchLabel}

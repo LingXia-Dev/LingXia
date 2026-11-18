@@ -27,7 +27,7 @@ const deliveries = [
 /** Options with a second line each. */
 export function Delivery() {
   const delivery = useLocal<string | null>('delivery', 'standard');
-  return <RadioGroup bind={delivery} label="Delivery" options={deliveries} data-testid="delivery" />;
+  return <RadioGroup bind={delivery} label="Delivery" items={deliveries} data-testid="delivery" />;
 }
 ```
 
@@ -46,7 +46,7 @@ const plans = [
 /** Each option a card: the whole card chooses it. */
 export function Plans() {
   const plan = useLocal<string | null>('plan', 'plus');
-  return <RadioGroup bind={plan} label="Plan" options={plans} variant="card" data-testid="plan" />;
+  return <RadioGroup bind={plan} label="Plan" items={plans} variant="card" data-testid="plan" />;
 }
 ```
 
@@ -64,7 +64,7 @@ export function Plain() {
       bind={theme}
       label="Appearance"
       description="System follows the device."
-      options={[{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]}
+      items={[{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]}
       data-testid="appearance"
     />
   );
@@ -86,7 +86,7 @@ export function Required() {
       label="Why are you leaving?"
       isRequired
       status={reason.value === null ? { type: 'error', message: 'Choose a reason.' } : undefined}
-      options={[{ value: 'price', label: 'It costs too much' }, { value: 'features', label: 'It is missing something I need' }, { value: 'other', label: 'Something else' }]}
+      items={[{ value: 'price', label: 'It costs too much' }, { value: 'features', label: 'It is missing something I need' }, { value: 'other', label: 'Something else' }]}
       data-testid="reason"
     />
   );
@@ -104,9 +104,9 @@ export function Sizes() {
   const options = [{ value: 'a', label: 'Chosen' }, { value: 'b', label: 'Not chosen' }];
   return (
     <view className="gap-5">
-      <RadioGroup bind={pick} label="Small" size="sm" options={options} />
-      <RadioGroup bind={pick} label="Medium" options={options} />
-      <RadioGroup bind={pick} label="Large" size="lg" options={options} />
+      <RadioGroup bind={pick} label="Small" size="sm" items={options} />
+      <RadioGroup bind={pick} label="Medium" items={options} />
+      <RadioGroup bind={pick} label="Large" size="lg" items={options} />
     </view>
   );
 }
@@ -126,7 +126,7 @@ export function Inline() {
       bind={billing}
       label="Billing"
       orientation="horizontal"
-      options={[{ value: 'monthly', label: 'Monthly' }, { value: 'yearly', label: 'Yearly' }]}
+      items={[{ value: 'monthly', label: 'Monthly' }, { value: 'yearly', label: 'Yearly' }]}
       description="Yearly saves two months."
       data-testid="billing"
     />
@@ -152,7 +152,7 @@ export function Inline() {
 | `bind` | `Local<string \| null>` |  | A View-local cell the group reads and writes; use it or `value` with `onChange`. |
 | `value` | `string \| null` |  | The chosen option's value; `null` while none is chosen. |
 | `onChange` | `((value: string) => void)` |  | Runs with the option chosen by a tap or by arrowing onto it. |
-| `options` (required) | `readonly RadioOption[]` |  | The choices, in order. |
+| `items` (required) | `readonly RadioOption[]` |  | The choices, in order. |
 | `variant` | `RadioGroupVariant` | `'list'` | `list` stacks plain rows; `card` makes each option a bordered card, for plans and other choices with a second line. |
 | `orientation` | `RadioGroupOrientation` | `'vertical'` | `horizontal` sets two or three short options side by side; they wrap when the line is full. |
 | `className` | `string` |  |  |

@@ -31,8 +31,8 @@ export function Stay() {
     <DateRangeInput
       label="Stay"
       description="Check-in from 3 pm, check-out by 11 am."
-      range={stay.value}
-      onRangeChange={stay.set}
+      value={stay.value}
+      onChange={stay.set}
       format={short}
       locale={calendarEn}
       today={today}
@@ -64,8 +64,8 @@ export function Empty() {
       label="Time off"
       placeholder="First and last day"
       isRequired
-      range={leave.value}
-      onRangeChange={leave.set}
+      value={leave.value}
+      onChange={leave.set}
       format={short}
       locale={calendarEn}
       today={today}
@@ -90,8 +90,8 @@ export function Empty() {
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
 | `size` | `FieldSize` | `'md'` |  |
-| `range` (required) | `CalendarRange` |  | The chosen span; both ends `null` shows the placeholder. |
-| `onRangeChange` (required) | `(range: CalendarRange) => void` |  | Runs with each press in the calendar: the first day alone, then the finished span. |
+| `value` (required) | `CalendarRange` |  | The chosen span; both ends `null` shows the placeholder. |
+| `onChange` (required) | `(range: CalendarRange) => void` |  | Runs with each press in the calendar: the first day alone, then the finished span. |
 | `format` (required) | `(date: string) => string` |  | Turns a day into the text the field shows: "18 Nov". The app formats dates. |
 | `locale` (required) | `CalendarLocale` |  | The calendar's words; see Calendar. |
 | `today` (required) | `string` |  | Today, from the page's Logic. |

@@ -9,7 +9,7 @@ export const doc: ComponentDoc = {
   description:
     'Table shows a set of records that share the same fields: invoices, members, files. Pass the records as `rows` and say which fields to show as `columns`; ' +
     'a column formats its value, sets its width and aligns numbers to the end edge so their digits line up. ' +
-    'With `onRowClick` each row is one button that opens its record. With `maxHeight` the rows scroll under the headings. ' +
+    'With `onChange` each row is one button that opens its record. With `maxHeight` the rows scroll under the headings. ' +
     'Where the columns would be too narrow to read, as with four of them on a phone, the table stacks: each record becomes a block with its first field and its number on one line and the other fields, each beside its heading, under them.',
   keywords: ['table', 'data table', 'grid', 'rows', 'columns', 'records', 'spreadsheet', 'data display'],
   propsType: 'TableProps',
@@ -20,7 +20,7 @@ export const doc: ComponentDoc = {
     { part: 'header', required: true, description: 'The row of headings; it stays above scrolling rows.' },
     { part: 'heading', required: true, description: 'One column\'s heading, in muted footnote type; cut short when its column is narrower.' },
     { part: 'body', required: false, description: 'The rows, divided by hairlines; a scroll when `maxHeight` is set.' },
-    { part: 'row', required: false, description: 'One record: a grid of the same tracks as the headings. A `button` with `onRowClick`.' },
+    { part: 'row', required: false, description: 'One record: a grid of the same tracks as the headings. A `button` with `onChange`.' },
     { part: 'cell', required: false, description: 'One field of one record; it wraps rather than truncating, except numbers.' },
     { part: 'empty', required: false, description: '`emptyLabel`, in place of the rows.' },
     { part: 'block', required: false, description: 'Stacked: one record, in place of a row of cells.' },
@@ -31,10 +31,10 @@ export const doc: ComponentDoc = {
     pattern: null,
     name: 'label',
     description: [],
-    states: [{ state: 'selected', from: 'selectedKey, on a pressable row' }],
+    states: [{ state: 'selected', from: 'value, on a pressable row' }],
     keyboard: [
-      { keys: 'Tab', effect: 'With `onRowClick`: moves through the rows' },
-      { keys: 'Enter or Space', effect: 'With `onRowClick`: opens the row' },
+      { keys: 'Tab', effect: 'With `onChange`: moves through the rows' },
+      { keys: 'Enter or Space', effect: 'With `onChange`: opens the row' },
     ],
     target: { sm: 36, md: 44 },
     contrast: [
@@ -44,7 +44,7 @@ export const doc: ComponentDoc = {
     ],
     notes: [
       'The table is a grid named by `label`. Each cell is read with its column\'s heading, "Amount: $420.50", so the row of headings is not read on its own.',
-      'With `onRowClick` a row is one button read as all its cells in order, and reports selected when its key is `selectedKey`.',
+      'With `onChange` a row is one button read as all its cells in order, and reports selected when its key is `value`.',
       'A cell drawn by `cell` is still read as its text, so a badge\'s meaning must be in the field\'s value or `format`.',
       'Stacked or in columns, a record is read the same way: each field with its heading. Stacked, the heading row is not drawn, since every field is beside its own heading or leads the record.',
       '`auto` stacks when a text column would be narrower than 88 points, or narrower than its longest value where that is shorter; the value\'s width is an estimate from its length, since text cannot be measured before layout.',

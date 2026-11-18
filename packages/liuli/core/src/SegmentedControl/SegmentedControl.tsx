@@ -31,7 +31,7 @@ export type SegmentedControlProps = SegmentedControlBinding & {
   /** Names the group for assistive tech: "Units", "Sort". */
   label: string;
   /** Two to five choices, in order; they share the row equally. */
-  options: readonly SegmentedOption[];
+  items: readonly SegmentedOption[];
   /** @default 'md' */
   size?: SegmentedControlSize;
   className?: string;
@@ -44,9 +44,9 @@ export type SegmentedControlProps = SegmentedControlBinding & {
  * stop, arrows move and choose on arrival. It sets a value; to switch what a panel shows, use Tabs.
  */
 export function SegmentedControl(props: SegmentedControlProps) {
-  const { label, options, size = 'md', className, 'data-testid': testId } = props;
+  const { label, items, size = 'md', className, 'data-testid': testId } = props;
   const chosen = props.bind ? props.bind.value : props.value;
-  const index = Math.max(0, options.findIndex(option => option.value === chosen));
+  const index = Math.max(0, items.findIndex(option => option.value === chosen));
   const choose = (value: string) => {
     if (value === chosen) return;
     if (props.bind) props.bind.set(value);
@@ -58,11 +58,11 @@ export function SegmentedControl(props: SegmentedControlProps) {
           right-to-left mirrors. */}
       <view aria-hidden className={r.track.base}>
         <view dir="ltr" className={r.track.inner}>
-          <view className={r.thumb.base} style={{ width: `${100 / Math.max(1, options.length)}%`, translate: [`${index * 100}%`, 0] }} />
+          <view className={r.thumb.base} style={{ width: `${100 / Math.max(1, items.length)}%`, translate: [`${index * 100}%`, 0] }} />
         </view>
       </view>
-      {options.map(option => {
-        const isChecked = option.value === options[index]?.value;
+      {items.map(option => {
+        const isChecked = option.value === items[index]?.value;
         return (
           <button
             key={option.value}

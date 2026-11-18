@@ -50,8 +50,8 @@ export function Welcome() {
           {step.value !== null && <text role="status" className="text-footnote text-muted">{`On step ${step.value + 1}`}</text>}
           <Tour
             steps={steps}
-            step={step.value}
-            onStepChange={next => step.set(next)}
+            value={step.value}
+            onChange={next => step.set(next)}
             nextLabel="Next"
             backLabel="Back"
             skipLabel="Skip"
@@ -71,8 +71,8 @@ export function Welcome() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `steps` (required) | `readonly TourStep[]` |  |  |
-| `step` (required) | `number \| null` |  | The step in view, from 0, or null while the tour is not running. The app holds it. |
-| `onStepChange` (required) | `(step: number \| null) => void` |  | Runs with the next step to show, and with null when the tour ends: finished, or skipped. |
+| `value` (required) | `number \| null` |  | The step in view, from 0, or null while the tour is not running. The app holds it. |
+| `onChange` (required) | `(step: number \| null) => void` |  | Runs with the next step to show, and with null when the tour ends: finished, or skipped. |
 | `onFinish` | `(() => void)` |  | Runs when the last step\'s button is pressed, before the tour ends. |
 | `nextLabel` (required) | `string` |  | "Next". |
 | `backLabel` (required) | `string` |  | "Back". |

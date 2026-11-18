@@ -43,7 +43,7 @@ export type CheckboxListProps = CheckboxListBinding & {
   status?: FieldStatus;
   /** Marks the question with an asterisk. Validation is the app's. @default false */
   isRequired?: boolean;
-  options: readonly CheckboxListOption[];
+  items: readonly CheckboxListOption[];
   /** Adds a first box that chooses or clears every option, named by this text: "Select all". It shows a dash while some are chosen. */
   selectAllLabel?: string;
   /** Disables every option. @default false */
@@ -58,7 +58,7 @@ export type CheckboxListProps = CheckboxListBinding & {
 /** Several on/off choices under one question, any number of which can be chosen. */
 export function CheckboxList(props: CheckboxListProps) {
   const {
-    label, isLabelHidden = false, description, status, isRequired = false, options, selectAllLabel, isDisabled = false, size: ownSize,
+    label, isLabelHidden = false, description, status, isRequired = false, items, selectAllLabel, isDisabled = false, size: ownSize,
     className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
@@ -67,15 +67,15 @@ export function CheckboxList(props: CheckboxListProps) {
   const chosen = props.bind ? props.bind.value : props.value;
   const toggle = (value: string, isOn: boolean) => {
     // Kept in the options' order, whatever order they were chosen in.
-    const next = options.map(option => option.value).filter(each => (each === value ? isOn : chosen.includes(each)));
+    const next = items.map(option => option.value).filter(each => (each === value ? isOn : chosen.includes(each)));
     if (props.bind) props.bind.set(next);
     else props.onChange(next);
   };
   // Options the list may change; a disabled one keeps its state through "all" and "none".
-  const free = options.filter(option => !option.isDisabled).map(option => option.value);
+  const free = items.filter(option => !option.isDisabled).map(option => option.value);
   const on = free.filter(value => chosen.includes(value)).length;
   const setAll = (isOn: boolean) => {
-    const next = options.map(option => option.value).filter(each => (free.includes(each) ? isOn : chosen.includes(each)));
+    const next = items.map(option => option.value).filter(each => (free.includes(each) ? isOn : chosen.includes(each)));
     if (props.bind) props.bind.set(next);
     else props.onChange(next);
   };
@@ -108,7 +108,7 @@ export function CheckboxList(props: CheckboxListProps) {
             data-testid={testId && `${testId}-all`}
           />
         )}
-        {options.map(option => (
+        {items.map(option => (
           <CheckboxInput
             key={option.value}
             label={option.label}

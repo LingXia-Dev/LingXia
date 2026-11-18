@@ -30,7 +30,7 @@ export function Address() {
           <FormSpan><TextInput label="Street and number" bind={street} isRequired hasRequiredMark={false} data-testid="street" /></FormSpan>
           <TextInput label="City" bind={city} isRequired hasRequiredMark={false} />
           <TextInput label="Postcode" bind={post} isRequired hasRequiredMark={false} />
-          <Select label="Country" bind={country} options={countries} />
+          <Select label="Country" bind={country} items={countries} />
           <FormSpan><TextArea label="Notes for the courier" optionalLabel="optional" bind={notes} /></FormSpan>
         </FormLayout>
       )}

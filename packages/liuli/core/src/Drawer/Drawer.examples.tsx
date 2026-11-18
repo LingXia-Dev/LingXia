@@ -26,12 +26,12 @@ export function Filters() {
           </>
         }
       >
-        <RadioGroup bind={sort} label="Sort by" options={[{ value: 'edited', label: 'Last edited' }, { value: 'created', label: 'Created' }, { value: 'title', label: 'Title' }]} />
+        <RadioGroup bind={sort} label="Sort by" items={[{ value: 'edited', label: 'Last edited' }, { value: 'created', label: 'Created' }, { value: 'title', label: 'Title' }]} />
         <CheckboxList
           label="Show"
           value={kinds.value}
           onChange={next => kinds.set(next)}
-          options={[{ value: 'notes', label: 'Notes' }, { value: 'lists', label: 'Lists' }, { value: 'photos', label: 'Photos' }, { value: 'archived', label: 'Archived' }]}
+          items={[{ value: 'notes', label: 'Notes' }, { value: 'lists', label: 'Lists' }, { value: 'photos', label: 'Photos' }, { value: 'archived', label: 'Archived' }]}
         />
       </Drawer>
     </view>

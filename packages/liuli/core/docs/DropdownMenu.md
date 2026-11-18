@@ -154,8 +154,8 @@ export function Checkable() {
   const grouping = useLocal('grouping', 'Day');
   return (
     <DropdownMenu label="View" data-testid="view-menu">
-      <DropdownMenuCheckboxItem label="Show completed" isChecked={completed.value} onCheckedChange={next => completed.set(next)} data-testid="show-completed" />
-      <DropdownMenuCheckboxItem label="Show archived" isChecked={archived.value} onCheckedChange={next => archived.set(next)} data-testid="show-archived" />
+      <DropdownMenuCheckboxItem label="Show completed" value={completed.value} onChange={next => completed.set(next)} data-testid="show-completed" />
+      <DropdownMenuCheckboxItem label="Show archived" value={archived.value} onChange={next => archived.set(next)} data-testid="show-archived" />
       <DropdownMenuDivider />
       <DropdownMenuRadioGroup label="Group by" value={grouping.value} onChange={next => grouping.set(next)}>
         {['Day', 'Week', 'Month'].map(option => (
@@ -188,7 +188,7 @@ export function Grouped() {
       </DropdownMenuGroup>
       <DropdownMenuDivider />
       <DropdownMenuGroup label="Show">
-        <DropdownMenuCheckboxItem label="Completed" isChecked={completed.value} onCheckedChange={next => completed.set(next)} data-testid="show-done" />
+        <DropdownMenuCheckboxItem label="Completed" value={completed.value} onChange={next => completed.set(next)} data-testid="show-done" />
       </DropdownMenuGroup>
     </DropdownMenu>
   );
@@ -266,8 +266,8 @@ export function Submenu() {
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | The item's text and its accessible name. |
 | `description` | `string` |  | A second line, read as the item's description. |
-| `isChecked` (required) | `boolean` |  |  |
-| `onCheckedChange` (required) | `(isChecked: boolean) => void` |  | Runs with the new state; the menu stays open. |
+| `value` (required) | `boolean` |  |  |
+| `onChange` (required) | `(isChecked: boolean) => void` |  | Runs with the new state; the menu stays open. |
 | `isDisabled` | `boolean` | `false` |  |
 | `data-testid` | `string` |  |  |
 
@@ -315,7 +315,7 @@ export function Submenu() {
 - Pattern: menuButton.
 - Name: label.
 - Description: none.
-- States: expanded (from the trigger, while the menu is open (set by the View)); checked (from a checkbox item's isChecked; a radio item matching its group's value); disabled (from isDisabled; an item's isDisabled).
+- States: expanded (from the trigger, while the menu is open (set by the View)); checked (from a checkbox item's value; a radio item matching its group's value); disabled (from isDisabled; an item's isDisabled).
 - Enter, Space on the trigger: opens the menu on its first item.
 - Up, Down: moves between items, wrapping.
 - Home, End: first and last item.

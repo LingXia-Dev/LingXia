@@ -43,6 +43,16 @@ test('rule 2: what opens takes `isOpen`/`onOpenChange` and starts by `isDefaultO
   assert.deepEqual(offenders(name => /Collapsed|Expanded|^defaultClosed$|^expanded$|^isExpanded$|^collapsed$/.test(name)), []);
 });
 
+// A table keeps `columns` and `rows`, two collections named for what they are.
+test('rule 5: a component\'s one collection is `items`', () => {
+  assert.deepEqual(offenders(name => ['options', 'nodes', 'choices', 'entries', 'data'].includes(name)), []);
+});
+
 test('rule 4: every accessible name is `label`, and empty copy is `emptyLabel`; no component takes `aria-label`', () => {
   assert.deepEqual(offenders(name => name === 'aria-label' || /^empty(Text|Message)$/.test(name)), []);
+});
+
+test('rule 1: the one value a person changes is `bind`, or `value` with `onChange`', () => {
+  const retired = ['selectedKey', 'current', 'page', 'range', 'isPressed', 'isChecked', 'onRowClick', 'onStepClick', 'selected', 'index'];
+  assert.deepEqual(offenders(name => retired.includes(name) || /^on(Range|Pressed|Checked|Step|Page|Index|Selection|Selected)Change$/.test(name)), []);
 });

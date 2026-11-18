@@ -13,7 +13,7 @@ export function Notifications() {
   const chosen = useLocal<readonly string[]>('topics', ['mentions']);
   return (
     <view className="gap-3">
-      <CheckboxList label="Notify me about" bind={chosen} options={topics} data-testid="topics" />
+      <CheckboxList label="Notify me about" bind={chosen} items={topics} data-testid="topics" />
       {chosen.value.length > 0 && <text role="status" data-testid="chosen" className="text-footnote text-muted">{chosen.value.join(', ')}</text>}
     </view>
   );
@@ -30,7 +30,7 @@ export function AtLeastOne() {
       description="We book a desk for each day you choose."
       isRequired
       bind={chosen}
-      options={days}
+      items={days}
       status={chosen.value.length === 0 ? { type: 'error', message: 'Choose at least one day.' } : undefined}
       data-testid="days"
     />
@@ -45,7 +45,7 @@ const toppings = [
 
 export function WithUnavailable() {
   const chosen = useLocal<readonly string[]>('toppings', ['olives']);
-  return <CheckboxList label="Toppings" bind={chosen} options={toppings} data-testid="toppings" />;
+  return <CheckboxList label="Toppings" bind={chosen} items={toppings} data-testid="toppings" />;
 }
 
 export function Sizes() {
@@ -53,19 +53,19 @@ export function Sizes() {
   const two = [{ value: 'a', label: 'First' }, { value: 'b', label: 'Second' }];
   return (
     <view className="grid grid-cols-2 gap-4">
-      <CheckboxList label="Small" size="sm" bind={chosen} options={two} data-testid="small" />
-      <CheckboxList label="Large" size="lg" bind={chosen} options={two} data-testid="large" />
+      <CheckboxList label="Small" size="sm" bind={chosen} items={two} data-testid="small" />
+      <CheckboxList label="Large" size="lg" bind={chosen} items={two} data-testid="large" />
     </view>
   );
 }
 
 export function StateDisabled() {
-  return <CheckboxList label="Notify me about" value={['mentions']} onChange={unused} options={topics.slice(0, 2)} isDisabled data-testid="disabled" />;
+  return <CheckboxList label="Notify me about" value={['mentions']} onChange={unused} items={topics.slice(0, 2)} isDisabled data-testid="disabled" />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <CheckboxList label="Days" isLabelHidden value={['a']} onChange={unused} options={[{ value: 'a', label: 'Mentions' }, { value: 'b', label: 'Comments' }]} size="sm" />;
+  return <CheckboxList label="Days" isLabelHidden value={['a']} onChange={unused} items={[{ value: 'a', label: 'Mentions' }, { value: 'b', label: 'Comments' }]} size="sm" />;
 }
 
 /** A box for all of them: checked when all are, a dash when some are. */
@@ -76,7 +76,7 @@ export function SelectAll() {
       bind={chosen}
       label="Folders to export"
       selectAllLabel="All folders"
-      options={[{ value: 'travel', label: 'Travel' }, { value: 'work', label: 'Work' }, { value: 'recipes', label: 'Recipes' }, { value: 'garden', label: 'Garden' }]}
+      items={[{ value: 'travel', label: 'Travel' }, { value: 'work', label: 'Work' }, { value: 'recipes', label: 'Recipes' }, { value: 'garden', label: 'Garden' }]}
       data-testid="export"
     />
   );

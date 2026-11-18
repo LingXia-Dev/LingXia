@@ -10,7 +10,7 @@ export function Units() {
     <view className="gap-3">
       <SegmentedControl
         label="Units"
-        options={[{ value: 'km', label: 'Kilometres' }, { value: 'mi', label: 'Miles' }]}
+        items={[{ value: 'km', label: 'Kilometres' }, { value: 'mi', label: 'Miles' }]}
         bind={unit}
         data-testid="units"
       />
@@ -34,7 +34,7 @@ export function Appearance() {
   return (
     <view className="flex-row items-center gap-4">
       <text className="grow basis-0 text-body text-text">Appearance</text>
-      <SegmentedControl label="Appearance" options={themes} value={theme.value} onChange={next => theme.set(next)} size="sm" className="w-56" data-testid="appearance" />
+      <SegmentedControl label="Appearance" items={themes} value={theme.value} onChange={next => theme.set(next)} size="sm" className="w-56" data-testid="appearance" />
     </view>
   );
 }
@@ -42,14 +42,14 @@ export function Appearance() {
 export function Sizes() {
   return (
     <view className="gap-3">
-      <Held value="light">{(theme, set) => <SegmentedControl label="Small" options={themes} value={theme} onChange={set} size="sm" />}</Held>
-      <Held value="light">{(theme, set) => <SegmentedControl label="Medium" options={themes} value={theme} onChange={set} />}</Held>
+      <Held value="light">{(theme, set) => <SegmentedControl label="Small" items={themes} value={theme} onChange={set} size="sm" />}</Held>
+      <Held value="light">{(theme, set) => <SegmentedControl label="Medium" items={themes} value={theme} onChange={set} />}</Held>
     </view>
   );
 }
 
 export function StateTwo() {
-  return <Held value="list">{(view, set) => <SegmentedControl label="View" options={[{ value: 'list', label: 'List' }, { value: 'grid', label: 'Grid' }]} value={view} onChange={set} />}</Held>;
+  return <Held value="list">{(view, set) => <SegmentedControl label="View" items={[{ value: 'list', label: 'List' }, { value: 'grid', label: 'Grid' }]} value={view} onChange={set} />}</Held>;
 }
 
 export function StateFive() {
@@ -58,7 +58,7 @@ export function StateFive() {
       {(rating, set) => (
         <SegmentedControl
           label="Rating"
-          options={['1', '2', '3', '4', '5'].map(value => ({ value, label: value }))}
+          items={['1', '2', '3', '4', '5'].map(value => ({ value, label: value }))}
           value={rating}
           onChange={set}
           size="sm"
@@ -74,7 +74,7 @@ export function StateDisabled() {
       {(quality, set) => (
         <SegmentedControl
           label="Quality"
-          options={[{ value: 'auto', label: 'Auto' }, { value: 'high', label: 'High' }, { value: 'max', label: 'Max', isDisabled: true }]}
+          items={[{ value: 'auto', label: 'Auto' }, { value: 'high', label: 'High' }, { value: 'max', label: 'Max', isDisabled: true }]}
           value={quality}
           onChange={set}
           size="sm"
@@ -87,5 +87,5 @@ export function StateDisabled() {
 
 /** The home tile: two short segments, so it fits a half tile at 360 pt. */
 export function Specimen() {
-  return <SegmentedControl label="Layout" options={[{ value: 'list', label: 'List' }, { value: 'grid', label: 'Grid' }]} value="list" onChange={unused} size="sm" className="w-32" />;
+  return <SegmentedControl label="Layout" items={[{ value: 'list', label: 'List' }, { value: 'grid', label: 'Grid' }]} value="list" onChange={unused} size="sm" className="w-32" />;
 }

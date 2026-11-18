@@ -33,8 +33,8 @@ export function Filters() {
   return (
     <view className="gap-3">
       <view role="group" aria-label="Filters" className="flex-row flex-wrap gap-2">
-        <ToggleButton label="Unread" size="sm" isPressed={unread.value} onPressedChange={next => unread.set(next)} data-testid="unread" />
-        <ToggleButton label="Starred" size="sm" isPressed={starred.value} onPressedChange={next => starred.set(next)} data-testid="starred" />
+        <ToggleButton label="Unread" size="sm" value={unread.value} onChange={next => unread.set(next)} data-testid="unread" />
+        <ToggleButton label="Starred" size="sm" value={starred.value} onChange={next => starred.set(next)} data-testid="starred" />
       </view>
       <text className="text-footnote text-muted" data-testid="count">{shown.length === 1 ? '1 note' : `${shown.length} notes`}</text>
     </view>
@@ -53,7 +53,7 @@ export function WordWrap() {
   const wrap = useLocal('wrap', true);
   return (
     <view className="gap-3">
-      <ToggleButton label="Wrap lines" isPressed={wrap.value} onPressedChange={next => wrap.set(next)} className="self-start" data-testid="wrap" />
+      <ToggleButton label="Wrap lines" value={wrap.value} onChange={next => wrap.set(next)} className="self-start" data-testid="wrap" />
       <text className={wrap.value ? 'text-body text-text' : 'text-body text-text truncate'} data-testid="sample">
         Every line of this note is long enough to reach past the edge of a phone held upright.
       </text>
@@ -71,9 +71,9 @@ import { ToggleButton } from '@liulidesign/core/ToggleButton';
 export function Sizes() {
   return (
     <view className="flex-row flex-wrap items-center gap-2">
-      <Held value={true}>{(isPressed, set) => <ToggleButton label="Small" size="sm" isPressed={isPressed} onPressedChange={set} />}</Held>
-      <Held value={true}>{(isPressed, set) => <ToggleButton label="Medium" isPressed={isPressed} onPressedChange={set} />}</Held>
-      <Held value={true}>{(isPressed, set) => <ToggleButton label="Large" size="lg" isPressed={isPressed} onPressedChange={set} />}</Held>
+      <Held value={true}>{(isPressed, set) => <ToggleButton label="Small" size="sm" value={isPressed} onChange={set} />}</Held>
+      <Held value={true}>{(isPressed, set) => <ToggleButton label="Medium" value={isPressed} onChange={set} />}</Held>
+      <Held value={true}>{(isPressed, set) => <ToggleButton label="Large" size="lg" value={isPressed} onChange={set} />}</Held>
     </view>
   );
 }
@@ -84,8 +84,8 @@ export function Sizes() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | The text and the accessible name; it stays the same on and off ("Unread", not "Show unread"/"Hide unread"). |
-| `isPressed` (required) | `boolean` |  | Whether it is on. |
-| `onPressedChange` (required) | `(isPressed: boolean) => void` |  | Runs with the new state on a press. |
+| `value` (required) | `boolean` |  | Whether it is on. |
+| `onChange` (required) | `(isPressed: boolean) => void` |  | Runs with the new state on a press. |
 | `size` | `ToggleButtonSize` | `'md'` |  |
 | `isDisabled` | `boolean` | `false` |  |
 | `className` | `string` |  |  |
@@ -110,7 +110,7 @@ export function Sizes() {
 - Pattern: toggleButton.
 - Name: label.
 - Description: none.
-- States: pressed (from isPressed); disabled (from isDisabled).
+- States: pressed (from value); disabled (from isDisabled).
 - Enter, Space: Turns it on or off..
 - Press target: sm 32 px, md 40 px, lg 48 px.
 - The state is read as pressed and drawn as the fill and the edge, never as the label's colour alone.

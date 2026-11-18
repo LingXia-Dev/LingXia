@@ -7,9 +7,9 @@ export interface ToggleButtonProps {
   /** The text and the accessible name; it stays the same on and off ("Unread", not "Show unread"/"Hide unread"). */
   label: string;
   /** Whether it is on. */
-  isPressed: boolean;
+  value: boolean;
   /** Runs with the new state on a press. */
-  onPressedChange: (isPressed: boolean) => void;
+  onChange: (isPressed: boolean) => void;
   /** @default 'md' */
   size?: ToggleButtonSize;
   /** @default false */
@@ -19,7 +19,7 @@ export interface ToggleButtonProps {
 }
 
 /** A button that turns one option on or off and shows which: a filter, a view option. */
-export function ToggleButton({ label, isPressed, onPressedChange, size = 'md', isDisabled = false, className, 'data-testid': testId }: ToggleButtonProps) {
+export function ToggleButton({ label, value: isPressed, onChange: onPressedChange, size = 'md', isDisabled = false, className, 'data-testid': testId }: ToggleButtonProps) {
   return (
     <button
       aria-label={label}

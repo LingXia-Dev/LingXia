@@ -19,9 +19,9 @@ export interface TourStep {
 export interface TourProps {
   steps: readonly TourStep[];
   /** The step in view, from 0, or null while the tour is not running. The app holds it. */
-  step: number | null;
+  value: number | null;
   /** Runs with the next step to show, and with null when the tour ends: finished, or skipped. */
-  onStepChange: (step: number | null) => void;
+  onChange: (step: number | null) => void;
   /** Runs when the last step\'s button is pressed, before the tour ends. */
   onFinish?: () => void;
   /** "Next". */
@@ -41,7 +41,7 @@ export interface TourProps {
 const areas = { bottom: 'bottom', top: 'top', end: 'inline-end', start: 'inline-start' } as const satisfies Record<TourPlacement, string>;
 
 /** A few callouts, one at a time, each pointing at something on the page. */
-export function Tour({ steps, step, onStepChange, onFinish, nextLabel, backLabel, skipLabel, doneLabel, stepLabel, 'data-testid': testId }: TourProps) {
+export function Tour({ steps, value: step, onChange: onStepChange, onFinish, nextLabel, backLabel, skipLabel, doneLabel, stepLabel, 'data-testid': testId }: TourProps) {
   const id = useId();
   const at = step === null ? null : Math.min(Math.max(0, step), steps.length - 1);
   const current = at === null ? undefined : steps[at];

@@ -26,19 +26,19 @@ export interface CalendarRange {
 
 export type CalendarSelection =
   | {
+      /** Chooses one day. @default false */
+      isRange?: false;
       /** The chosen day, or `null`. */
       value: CalendarDate | null;
       /** Runs with the pressed day. */
       onChange: (value: CalendarDate) => void;
-      range?: never;
-      onRangeChange?: never;
     }
   | {
+      /** Chooses a span of days. */
+      isRange: true;
       /** The chosen span. A first press sets `start` and clears `end`; a second sets `end`, the earlier day first. */
-      range: CalendarRange;
-      onRangeChange: (range: CalendarRange) => void;
-      value?: never;
-      onChange?: never;
+      value: CalendarRange;
+      onChange: (range: CalendarRange) => void;
     };
 
 export type CalendarProps = CalendarSelection & {
@@ -67,7 +67,7 @@ export const calendarWeekday = (date: CalendarDate) => weekdayOf(...parts(date))
 export function Calendar(props: CalendarProps) {
   const { label, locale, min, max, isDateDisabled, className, 'data-testid': testId } = props;
   const now = props.today;
-  const anchor = props.range ? props.range.start : props.value;
+  const anchor = props.isRange ? props.value.start : props.value;
   const own = useLocal('month', (isDate(anchor) ? anchor : now).slice(0, 7));
   const shown = props.month ?? own.value;
   const [year, month] = [Number(shown.slice(0, 4)), Number(shown.slice(5, 7))];
@@ -77,13 +77,13 @@ export function Calendar(props: CalendarProps) {
     own.set(next);
     props.onMonthChange?.(next);
   };
-  const [start, end] = props.range ? [props.range.start, props.range.end] : [props.value, props.value];
+  const [start, end] = props.isRange ? [props.value.start, props.value.end] : [props.value, props.value];
   const press = (date: CalendarDate) => {
-    if (!props.range) return props.onChange(date);
-    const { start: from, end: to } = props.range;
+    if (!props.isRange) return props.onChange(date);
+    const { start: from, end: to } = props.value;
     // A span in progress is finished, the earlier day first; a finished or empty one starts over.
-    if (from !== null && to === null) return props.onRangeChange(date < from ? { start: date, end: from } : { start: from, end: date });
-    return props.onRangeChange({ start: date, end: null });
+    if (from !== null && to === null) return props.onChange(date < from ? { start: date, end: from } : { start: from, end: date });
+    return props.onChange({ start: date, end: null });
   };
   const ordered = Array.from({ length: 7 }, (_, index) => locale.weekdays[(locale.firstDay + index) % 7]);
   const isOff = (date: CalendarDate) => (min !== undefined && date < min) || (max !== undefined && date > max) || isDateDisabled?.(date) === true;

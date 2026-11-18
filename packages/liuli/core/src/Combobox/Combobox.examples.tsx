@@ -16,7 +16,7 @@ export function Country() {
     <Combobox
       label="Country"
       bind={country}
-      options={countries}
+      items={countries}
       placeholder="Choose a country"
       searchLabel="Search countries"
       searchPlaceholder="Search"
@@ -43,7 +43,7 @@ export function Assignee() {
       label="Assignee"
       description="They are notified when the task changes."
       bind={person}
-      options={people}
+      items={people}
       searchLabel="Search people"
       emptyLabel="Nobody by that name"
       data-testid="assignee"
@@ -68,7 +68,7 @@ export function OwnMatching() {
     <Combobox
       label="Airport"
       bind={airport}
-      options={airports.filter(each => each.label.toLowerCase().includes(text) || each.value.toLowerCase().includes(text))}
+      items={airports.filter(each => each.label.toLowerCase().includes(text) || each.value.toLowerCase().includes(text))}
       placeholder="City or code"
       searchLabel="Search airports"
       emptyLabel="No airport matches"
@@ -82,19 +82,19 @@ export function Sizes() {
   const value = useLocal('value', 'kenya');
   return (
     <view className="gap-3">
-      <Combobox label="Small" size="sm" bind={value} options={countries} searchLabel="Search countries" emptyLabel="No country matches" data-testid="small" />
-      <Combobox label="Medium" bind={value} options={countries} searchLabel="Search countries" emptyLabel="No country matches" />
-      <Combobox label="Large" size="lg" bind={value} options={countries} searchLabel="Search countries" emptyLabel="No country matches" data-testid="large" />
+      <Combobox label="Small" size="sm" bind={value} items={countries} searchLabel="Search countries" emptyLabel="No country matches" data-testid="small" />
+      <Combobox label="Medium" bind={value} items={countries} searchLabel="Search countries" emptyLabel="No country matches" />
+      <Combobox label="Large" size="lg" bind={value} items={countries} searchLabel="Search countries" emptyLabel="No country matches" data-testid="large" />
     </view>
   );
 }
 
 export function StateEmpty() {
-  return <Held value="">{(country, set) => <Combobox label="Country" value={country} onChange={set} options={countries} placeholder="Choose a country" searchLabel="Search countries" emptyLabel="No country matches" />}</Held>;
+  return <Held value="">{(country, set) => <Combobox label="Country" value={country} onChange={set} items={countries} placeholder="Choose a country" searchLabel="Search countries" emptyLabel="No country matches" />}</Held>;
 }
 
 export function StateChosen() {
-  return <Held value="kenya">{(country, set) => <Combobox label="Country" value={country} onChange={set} options={countries} searchLabel="Search countries" emptyLabel="No country matches" data-testid="chosen" />}</Held>;
+  return <Held value="kenya">{(country, set) => <Combobox label="Country" value={country} onChange={set} items={countries} searchLabel="Search countries" emptyLabel="No country matches" data-testid="chosen" />}</Held>;
 }
 
 export function StateInvalid() {
@@ -105,7 +105,7 @@ export function StateInvalid() {
           label="Country"
           value={country}
           onChange={set}
-          options={countries}
+          items={countries}
           placeholder="Choose a country"
           status={country === '' ? { type: 'error', message: 'Choose where to ship to.' } : undefined}
           isRequired
@@ -119,7 +119,7 @@ export function StateInvalid() {
 }
 
 export function StateDisabled() {
-  return <Combobox label="Country" value="kenya" onChange={unused} options={countries} isDisabled searchLabel="Search countries" emptyLabel="No country matches" data-testid="disabled" />;
+  return <Combobox label="Country" value="kenya" onChange={unused} items={countries} isDisabled searchLabel="Search countries" emptyLabel="No country matches" data-testid="disabled" />;
 }
 
 /** In a form, beside the fields it belongs with. */
@@ -128,7 +128,7 @@ export function Shipping() {
   const saved = useLocal('saved', '');
   return (
     <view className="gap-4">
-      <Combobox label="Ship to" bind={country} options={countries} searchLabel="Search countries" emptyLabel="No country matches" isRequired data-testid="ship-to" />
+      <Combobox label="Ship to" bind={country} items={countries} searchLabel="Search countries" emptyLabel="No country matches" isRequired data-testid="ship-to" />
       <Button label="Save address" variant="primary" width="content" onClick={() => saved.set(country.value)} data-testid="save-address" />
       {saved.value !== '' && <text role="status" data-testid="saved" className="text-footnote text-muted">{`Saved: ${saved.value}`}</text>}
     </view>
@@ -137,5 +137,5 @@ export function Shipping() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Combobox label="Country" isLabelHidden value="kenya" onChange={unused} options={countries} size="sm" searchLabel="Search countries" emptyLabel="No country matches" className="w-32" />;
+  return <Combobox label="Country" isLabelHidden value="kenya" onChange={unused} items={countries} size="sm" searchLabel="Search countries" emptyLabel="No country matches" className="w-32" />;
 }

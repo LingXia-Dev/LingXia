@@ -36,7 +36,7 @@ export interface TableProps {
   label: string;
   columns: readonly TableColumn[];
   rows: readonly TableRow[];
-  /** The field that identifies a row across updates, in `selectedKey` and in `onRowClick`. By default the first column's. */
+  /** The field that identifies a row across updates, in `value` and in `onChange`. By default the first column's. */
   keyField?: string;
   /** @default 'auto' */
   layout?: TableLayout;
@@ -50,9 +50,9 @@ export interface TableProps {
    */
   isHeaderSticky?: boolean;
   /** Makes each row one button; runs with its key. */
-  onRowClick?: (key: string) => void;
+  onChange?: (key: string) => void;
   /** The row drawn and read as selected. */
-  selectedKey?: string | null;
+  value?: string | null;
   /** Shown in place of the rows when there are none: "No invoices yet". */
   emptyLabel?: string;
   className?: string;
@@ -80,7 +80,7 @@ const track = (column: TableColumn) => (typeof column.width === 'number' ? `${co
 
 /** Records in rows and fields in columns, under headings that stay in view. */
 export function Table({
-  label, columns, rows, keyField, layout = 'auto', density: ownDensity, maxHeight, isHeaderSticky = false, onRowClick, selectedKey, emptyLabel, className, 'data-testid': testId,
+  label, columns, rows, keyField, layout = 'auto', density: ownDensity, maxHeight, isHeaderSticky = false, onChange: onRowClick, value: selectedKey, emptyLabel, className, 'data-testid': testId,
 }: TableProps) {
   const screenDensity = useDensity();
   const density = ownDensity ?? screenDensity;

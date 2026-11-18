@@ -33,8 +33,8 @@ export function Pressable() {
       columns={[{ field: 'customer', header: 'Customer', width: '2fr' }, { field: 'status', header: 'Status', cell: status }, { field: 'amount', header: 'Amount', align: 'end', format: money }]}
       rows={invoices}
       keyField="id"
-      selectedKey={open.value}
-      onRowClick={open.set}
+      value={open.value}
+      onChange={open.set}
       data-testid="pressable"
     />
   );

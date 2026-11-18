@@ -26,7 +26,7 @@ export function Units() {
     <view className="gap-3">
       <SegmentedControl
         label="Units"
-        options={[{ value: 'km', label: 'Kilometres' }, { value: 'mi', label: 'Miles' }]}
+        items={[{ value: 'km', label: 'Kilometres' }, { value: 'mi', label: 'Miles' }]}
         bind={unit}
         data-testid="units"
       />
@@ -57,7 +57,7 @@ export function Appearance() {
   return (
     <view className="flex-row items-center gap-4">
       <text className="grow basis-0 text-body text-text">Appearance</text>
-      <SegmentedControl label="Appearance" options={themes} value={theme.value} onChange={next => theme.set(next)} size="sm" className="w-56" data-testid="appearance" />
+      <SegmentedControl label="Appearance" items={themes} value={theme.value} onChange={next => theme.set(next)} size="sm" className="w-56" data-testid="appearance" />
     </view>
   );
 }
@@ -78,8 +78,8 @@ const themes = [
 export function Sizes() {
   return (
     <view className="gap-3">
-      <Held value="light">{(theme, set) => <SegmentedControl label="Small" options={themes} value={theme} onChange={set} size="sm" />}</Held>
-      <Held value="light">{(theme, set) => <SegmentedControl label="Medium" options={themes} value={theme} onChange={set} />}</Held>
+      <Held value="light">{(theme, set) => <SegmentedControl label="Small" items={themes} value={theme} onChange={set} size="sm" />}</Held>
+      <Held value="light">{(theme, set) => <SegmentedControl label="Medium" items={themes} value={theme} onChange={set} />}</Held>
     </view>
   );
 }
@@ -93,7 +93,7 @@ export function Sizes() {
 | `value` | `string` |  | The chosen segment's value. |
 | `onChange` | `((value: string) => void)` |  | Runs with the segment chosen by a tap or by arrowing onto it. |
 | `label` (required) | `string` |  | Names the group for assistive tech: "Units", "Sort". |
-| `options` (required) | `readonly SegmentedOption[]` |  | Two to five choices, in order; they share the row equally. |
+| `items` (required) | `readonly SegmentedOption[]` |  | Two to five choices, in order; they share the row equally. |
 | `size` | `SegmentedControlSize` | `'md'` |  |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the group; each segment gets `<testid>-<value>`. |

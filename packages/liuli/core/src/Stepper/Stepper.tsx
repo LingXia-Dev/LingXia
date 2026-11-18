@@ -19,11 +19,11 @@ export interface StepperProps {
   /** The steps, in order. */
   steps: readonly StepperStep[];
   /** The index of the step in progress, from 0; `steps.length` when every step is done. */
-  current: number;
+  value: number;
   /** What a screen reader hears for a step's state: `{ done: 'Done', current: 'Current step', upcoming: 'Not started' }`. */
   stateLabels: Record<StepState, string>;
   /** Makes a finished step a button that goes back to it; runs with its index. */
-  onStepClick?: (index: number) => void;
+  onChange?: (index: number) => void;
   /** `horizontal` suits up to four short labels; `vertical` any number, with descriptions. @default 'vertical' */
   orientation?: StepperOrientation;
   className?: string;
@@ -31,7 +31,7 @@ export interface StepperProps {
 }
 
 /** Where someone is in a task with a known number of steps. */
-export function Stepper({ label, steps, current, stateLabels, onStepClick, orientation = 'vertical', className, 'data-testid': testId }: StepperProps) {
+export function Stepper({ label, steps, value: current, stateLabels, onChange: onStepClick, orientation = 'vertical', className, 'data-testid': testId }: StepperProps) {
   const isRow = orientation === 'horizontal';
   return (
     <view role="list" aria-label={label} data-testid={testId} className={cx(r.root.base, r.root.orientation[orientation], className)}>

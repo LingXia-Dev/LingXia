@@ -32,7 +32,7 @@ export type MultiSelectBinding =
 
 export type MultiSelectProps = FieldOwnProps & MultiSelectBinding & {
   /** The choices, in order. */
-  options: readonly MultiSelectOption[];
+  items: readonly MultiSelectOption[];
   /** Shown in the box while nothing is chosen. */
   placeholder?: string;
   /** The name of the button that opens the list: "Add a label". */
@@ -48,18 +48,18 @@ export type MultiSelectProps = FieldOwnProps & MultiSelectBinding & {
 export function MultiSelect(props: MultiSelectProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    options, placeholder, addLabel, removeLabel, className, 'data-testid': testId,
+    items, placeholder, addLabel, removeLabel, className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
   const chosen = props.bind ? props.bind.value : props.value;
   // Kept in the options' order, whatever order they were chosen in.
   const set = (next: readonly string[]) => {
-    const ordered = options.filter(option => next.includes(option.value)).map(option => option.value);
+    const ordered = items.filter(option => next.includes(option.value)).map(option => option.value);
     if (props.bind) props.bind.set(ordered);
     else props.onChange(ordered);
   };
   const toggle = (value: string, isOn: boolean) => set(isOn ? [...chosen, value] : chosen.filter(each => each !== value));
-  const shown = options.filter(option => chosen.includes(option.value));
+  const shown = items.filter(option => chosen.includes(option.value));
   return (
     <Field
       label={label}
@@ -106,13 +106,13 @@ export function MultiSelect(props: MultiSelectProps) {
             className={r.add.base}
             data-testid={testId && `${testId}-add`}
           >
-            {options.map(option => (
+            {items.map(option => (
               <DropdownMenuCheckboxItem
                 key={option.value}
                 label={option.label}
-                isChecked={chosen.includes(option.value)}
+                value={chosen.includes(option.value)}
                 isDisabled={option.isDisabled}
-                onCheckedChange={isOn => toggle(option.value, isOn)}
+                onChange={isOn => toggle(option.value, isOn)}
                 data-testid={testId && `${testId}-${option.value}`}
               />
             ))}

@@ -37,7 +37,7 @@ export function Phones() {
       rowKeys={phones.value.map(phone => phone.id)}
       renderRow={index => (
         <view className="flex-row gap-2">
-          <Select label={`Kind of phone ${index + 1}`} isLabelHidden options={kinds} value={phones.value[index].kind} onChange={kind => change(index, { kind })} className="w-28" />
+          <Select label={`Kind of phone ${index + 1}`} isLabelHidden items={kinds} value={phones.value[index].kind} onChange={kind => change(index, { kind })} className="w-28" />
           <TextInput label={`Phone ${index + 1}`} isLabelHidden type="tel" placeholder="Number" value={phones.value[index].number} onChange={number => change(index, { number })} className="grow basis-0" data-testid={`phone-${index + 1}`} />
         </view>
       )}

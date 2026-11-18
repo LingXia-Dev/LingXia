@@ -29,7 +29,7 @@ export type SelectBinding =
 
 export type SelectProps = FieldOwnProps & SelectBinding & {
   /** The choices, in order; the platform shows them as a list or a menu. */
-  options: readonly SelectOption[];
+  items: readonly SelectOption[];
   /** Shown in the box while nothing is chosen. */
   placeholder?: string;
   className?: string;
@@ -41,10 +41,10 @@ export type SelectProps = FieldOwnProps & SelectBinding & {
 export function Select(props: SelectProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    options, placeholder, className, 'data-testid': testId,
+    items, placeholder, className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
-  const choices = options.map(option => ({ value: option.value, label: option.label, disabled: option.isDisabled }));
+  const choices = items.map(option => ({ value: option.value, label: option.label, disabled: option.isDisabled }));
   const controlClass = cx(r.control.base, r.control.size[size], status && r.control.status[status.type]);
   return (
     <Field

@@ -9,9 +9,9 @@ import { dateRangeInputRecipe as r } from './DateRangeInput.recipe';
 
 export type DateRangeInputProps = FieldOwnProps & {
   /** The chosen span; both ends `null` shows the placeholder. */
-  range: CalendarRange;
+  value: CalendarRange;
   /** Runs with each press in the calendar: the first day alone, then the finished span. */
-  onRangeChange: (range: CalendarRange) => void;
+  onChange: (range: CalendarRange) => void;
   /** Turns a day into the text the field shows: "18 Nov". The app formats dates. */
   format: (date: CalendarDate) => string;
   /** The calendar's words; see Calendar. */
@@ -34,7 +34,7 @@ export type DateRangeInputProps = FieldOwnProps & {
 export function DateRangeInput(props: DateRangeInputProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    range, onRangeChange, format, locale, today, placeholder, min, max, isDateDisabled, closeLabel, className, 'data-testid': testId,
+    value: range, onChange: onRangeChange, format, locale, today, placeholder, min, max, isDateDisabled, closeLabel, className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
   const { env } = useView();
@@ -56,8 +56,9 @@ export function DateRangeInput(props: DateRangeInputProps) {
         label={label}
         locale={locale}
         today={today}
-        range={range}
-        onRangeChange={choose}
+        isRange
+        value={range}
+        onChange={choose}
         min={min}
         max={max}
         isDateDisabled={isDateDisabled}

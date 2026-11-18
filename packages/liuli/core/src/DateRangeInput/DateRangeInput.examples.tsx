@@ -15,8 +15,8 @@ export function Stay() {
     <DateRangeInput
       label="Stay"
       description="Check-in from 3 pm, check-out by 11 am."
-      range={stay.value}
-      onRangeChange={stay.set}
+      value={stay.value}
+      onChange={stay.set}
       format={short}
       locale={calendarEn}
       today={today}
@@ -35,8 +35,8 @@ export function Empty() {
       label="Time off"
       placeholder="First and last day"
       isRequired
-      range={leave.value}
-      onRangeChange={leave.set}
+      value={leave.value}
+      onChange={leave.set}
       format={short}
       locale={calendarEn}
       today={today}
@@ -50,14 +50,14 @@ const set = { start: '2026-12-01', end: '2026-12-05' };
 export function StateInvalid() {
   const stay = useLocal<CalendarRange>('taken', set);
   const isTaken = stay.value.start === set.start && stay.value.end === set.end;
-  return <DateRangeInput label="Stay" range={stay.value} onRangeChange={stay.set} format={short} locale={calendarEn} today={today} status={isTaken ? { type: 'error', message: 'These nights are taken.' } : undefined} data-testid="invalid" />;
+  return <DateRangeInput label="Stay" value={stay.value} onChange={stay.set} format={short} locale={calendarEn} today={today} status={isTaken ? { type: 'error', message: 'These nights are taken.' } : undefined} data-testid="invalid" />;
 }
 
 export function StateDisabled() {
-  return <DateRangeInput label="Stay" range={set} onRangeChange={unused} format={short} locale={calendarEn} today={today} isDisabled data-testid="disabled" />;
+  return <DateRangeInput label="Stay" value={set} onChange={unused} format={short} locale={calendarEn} today={today} isDisabled data-testid="disabled" />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <DateRangeInput label="Stay" isLabelHidden size="sm" range={set} onRangeChange={unused} format={short} locale={calendarEn} today={today} className="w-36" />;
+  return <DateRangeInput label="Stay" isLabelHidden size="sm" value={set} onChange={unused} format={short} locale={calendarEn} today={today} className="w-36" />;
 }
