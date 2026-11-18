@@ -4,7 +4,6 @@
 import { h } from './nodes.js';
 import { partitionClasses } from '../style/classes.js';
 import { slider as checkSlider } from './validate.js';
-import { field } from '../generated/wire.js';
 
 /** On a slider that is one thumb of a pair: `{ other, upper }`. */
 export const thumbMark = Symbol('slider thumb');
@@ -19,8 +18,6 @@ const over = { position: 'absolute', top: 0, left: 0, right: 0 };
 export function rangeSlider(props) {
   const { values, thumbLabels, onChange, onChangeEnd, onPressChange, className, style, min, max, step, disabled, key, id, role,
     'data-testid': testId, 'aria-label': ariaLabel, accessibilityLabel = ariaLabel, ...rest } = props;
-  // Without the host's part the two thumbs would cross and each draw its own track.
-  if (field.sliderThumb > (globalThis.__lingxiaViewHost?.maxField ?? Infinity)) throw Error('UI_COMPAT: a slider with two values needs a newer host; update the app');
   for (const name of ['value', 'bind', 'secondaryValue', 'aria-valuetext']) if (rest[name] !== undefined) throw Error(`UI_SLIDER: ${name} belongs to a slider with one value`);
   if (role !== undefined) throw Error('UI_SLIDER: a slider with two values is a group of two sliders; it takes no role');
   if (!Array.isArray(values) || values.length !== 2 || !values.every(value => typeof value === 'number' && Number.isFinite(value)) || values[0] > values[1])

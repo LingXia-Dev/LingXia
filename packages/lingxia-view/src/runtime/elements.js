@@ -31,7 +31,7 @@ const videoEvents = [['loadedmetadata', 'onLoadedMetadata'], ['play', 'onPlay'],
 const common = new Set(commonProps);
 const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy', invalid: 'stateInvalid', required: 'stateRequired', checked: 'stateChecked' };
 const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
-// An older host would refuse a field it lacks; an accessibility-only one is left out instead.
+// An older host would refuse a field it lacks; an accessibility-only (ignorable) one is left out instead.
 const ignorable = new Set(ignorableFields);
 const warned = new Set();
 function dropped(key) {
@@ -460,33 +460,31 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     const { onPointer, pointerAxis = 'both' } = props;
     if (typeof onPointer !== 'function') throw Error('UI_PROP: onPointer takes a function; pointerAxis goes with it');
     if (!pointerAxes.has(pointerAxis)) throw Error('UI_PROP: pointerAxis must be "x", "y" or "both"');
-    if (!dropped('onPointer')) {
-      on('onPointer', payload => onPointer(Object.freeze(JSON.parse(payload))), 'text');
-      if (pointerAxis !== 'both') wire('pointerAxis', pointerAxis);
-    }
+    on('onPointer', payload => onPointer(Object.freeze(JSON.parse(payload))), 'text');
+    if (pointerAxis !== 'both') wire('pointerAxis', pointerAxis);
   }
   // A grid that pages: PageUp and PageDown ask for the previous or next page (a calendar's month).
   if (props.onPage !== undefined) {
     if (tag !== 'view' || props.role !== 'grid') throw Error('UI_PROP: onPage belongs to a <view role="grid">');
     const { onPage } = props;
     if (typeof onPage !== 'function') throw Error('UI_PROP: onPage takes a function');
-    if (!dropped('onPage')) on('onPage', direction => onPage(direction), 'text');
+    on('onPage', direction => onPage(direction), 'text');
   }
   // A request for the element's own menu: a long press, a secondary click, the Menu key.
   if (props.onContextMenu !== undefined) {
     if (!['view', 'button', 'link', 'text'].includes(tag)) throw Error('UI_PROP: onContextMenu belongs to a <view>, <button>, <link> or <text>');
     const { onContextMenu } = props;
     if (typeof onContextMenu !== 'function') throw Error('UI_PROP: onContextMenu takes a function');
-    if (!dropped('onContextMenu')) on('onContextMenu', payload => onContextMenu(Object.freeze(JSON.parse(payload))), 'text');
+    on('onContextMenu', payload => onContextMenu(Object.freeze(JSON.parse(payload))), 'text');
   }
-  // The element's content box once laid out, and after each change; an older host never reports one.
+  // The element's content box once laid out, and after each change.
   if (props.onLayout !== undefined || props.box !== undefined) {
     if (!boxTags.has(tag)) throw Error('UI_PROP: onLayout and box belong to a <view>, <text>, <vector>, <plot> or <scroll>');
     const { onLayout } = props;
     if (onLayout !== undefined && typeof onLayout !== 'function') throw Error('UI_PROP: onLayout takes a function');
     const binding = props.box === undefined ? undefined : boxBinding(props.box);
     if (props.box !== undefined && !binding) throw Error('UI_PROP: box takes the handle useBox(name) returns');
-    if (!dropped('onLayout')) on('onLayout', payload => {
+    on('onLayout', payload => {
       const { width, height } = JSON.parse(payload);
       const size = { width, height }, held = binding?.value;
       if (binding && !(held && held.width === width && held.height === height)) binding.set(size);
@@ -570,7 +568,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
           return onPressChange?.(pressed);
         };
         // Kept while disabled: a press that a disable ends still reaches its current callback.
-        if (!dropped('onSliderPress')) result.handlers.push(['onSliderPress', handle(),
+        result.handlers.push(['onSliderPress', handle(),
           callbackOf(() => pressChange(identity, report), 'void', false, { identity, callback: report })]);
       }
       break;
@@ -617,16 +615,16 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         const map = props.onKeyDown, keys = map && typeof map === 'object' ? Object.keys(map) : null;
         if (!keys || !keys.length || keys.some(key => !editorKeys.has(key) || typeof map[key] !== 'function'))
           throw Error(`UI_INPUT: onKeyDown maps ${[...editorKeys].join(', ')} to functions`);
-        if (!disabled && !dropped('onKeyDown')) {
+        if (!disabled) {
           wire('keyMap', keys.join(' '));
           on('onKeyDown', key => { if (Object.hasOwn(map, key)) map[key](); }, 'text');
         }
       }
-      // The caret entered or left the editor; an older host reports neither.
+      // The caret entered or left the editor.
       for (const name of ['onFocus', 'onBlur']) {
         if (props[name] === undefined) continue;
         if (typeof props[name] !== 'function') throw Error(`UI_INPUT: ${name} takes a function`);
-        if (!disabled && !dropped(name)) on(name, props[name]);
+        if (!disabled) on(name, props[name]);
       }
       break;
     case 'select': {

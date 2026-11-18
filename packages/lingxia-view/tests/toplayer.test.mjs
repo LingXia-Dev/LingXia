@@ -400,13 +400,3 @@ test('closeAfter rides a manual popover\'s layer and its expiry closes it as a l
   ]) assert.throws(() => render(() => h('page', {}, bad())), /UI_PROP/);
 });
 
-test('an older host gets no closeAfter field, and the popover stays open until the page closes it', () => {
-  reset();
-  const previous = globalThis.__lingxiaViewHost;
-  globalThis.__lingxiaViewHost = { maxField: 236 };
-  try {
-    const nodes = render(() => h('page', {}, h('view', { id: 'toast', popover: 'manual', open: true, closeAfter: 4000, 'data-testid': 'toast' })));
-    const layer = nodes.find(node => node.children.includes(byId(nodes, 'toast')));
-    assert.equal(layer.props.closeAfter, undefined);
-  } finally { globalThis.__lingxiaViewHost = previous; }
-});

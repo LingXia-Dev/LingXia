@@ -5,7 +5,6 @@ import { tree, rendered, byTestId } from './support/wire.mjs';
 import { releasePress } from '../src/runtime/press.js';
 import { compileUtilities } from '../compiler/tailwind.mjs';
 import { configureClasses } from '../src/style/classes.js';
-import { field } from '../src/generated/wire.js';
 
 test('slider clamps and snaps numeric proposals including a partial final interval', () => {
   reset(); let calls = 0;
@@ -109,7 +108,4 @@ test('two values make a named group of two sliders over one track that cannot cr
   assert.throws(bad({ thumbLabels: undefined }), /UI_A11Y/);
   assert.throws(bad({ value: 3 }), /UI_SLIDER: value belongs/);
   assert.throws(bad({ 'aria-label': undefined }), /UI_A11Y/);
-  const previous = globalThis.__lingxiaViewHost;
-  globalThis.__lingxiaViewHost = { maxField: field.sliderThumb - 1 };
-  try { assert.throws(bad({}), /UI_COMPAT/); } finally { globalThis.__lingxiaViewHost = previous; }
 });

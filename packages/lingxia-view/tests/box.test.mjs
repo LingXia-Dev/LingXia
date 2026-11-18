@@ -60,15 +60,6 @@ test('onLayout and box refuse other elements and values', () => {
   assert.throws(() => prepare(() => { useBox(''); return h('page', {}); }, { env: {} }), /UI_PROP: useBox takes a name/);
 });
 
-test('an older host gets no onLayout field, and the box stays null', () => {
-  reset();
-  globalThis.__lingxiaViewHost = { maxField: 243 };
-  try {
-    const view = () => { const box = useBox('b'); return h('page', {}, h('view', { box, 'data-testid': 'v' })); };
-    assert.equal(byId(render(view), 'v').props.onLayout, undefined);
-  } finally { delete globalThis.__lingxiaViewHost; }
-});
-
 const page = `import { useBox } from '@lingxia/view';
 export function render() {
   const box = useBox('plot');

@@ -25,17 +25,11 @@ test('onFocus and onBlur are handlers on an input and a textarea; an editor with
   assert.equal(byId(nodes, 'c').props.onFocus, undefined);
 });
 
-test('a disabled editor and an older host get no focus handlers; a value that is not a function is refused', () => {
+test('a disabled editor gets no focus handlers; a value that is not a function is refused', () => {
   reset();
   const off = byId(render(() => h('page', {}, h('input', { value: '', disabled: true, onFocus() {}, 'aria-label': 'A', 'data-testid': 'a' }))), 'a');
   assert.equal(off.props.onFocus, undefined);
   assert.throws(() => prepare(() => h('page', {}, h('input', { value: '', onBlur: true, 'aria-label': 'A' })), { env: {} }), /UI_INPUT: onBlur takes a function/);
-  const previous = globalThis.__lingxiaViewHost;
-  globalThis.__lingxiaViewHost = { maxField: 246 };
-  try {
-    const old = byId(render(() => h('page', {}, h('input', { value: '', onFocus() {}, 'aria-label': 'A', 'data-testid': 'a' }))), 'a');
-    assert.equal(old.props.onFocus, undefined);
-  } finally { globalThis.__lingxiaViewHost = previous; }
 });
 
 test('readOnly travels as a flag only when true, and takes a boolean', () => {

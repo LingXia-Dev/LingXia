@@ -23,7 +23,7 @@ test('onKeyDown sends its keys as the capture set and calls the handler of the k
   assert.equal(byId(nodes, 'plain').props.onKeyDown, undefined);
 });
 
-test('onKeyDown takes only the eight keys mapped to functions; a disabled editor and an older host get no map', () => {
+test('onKeyDown takes only the eight keys mapped to functions; a disabled editor gets no map', () => {
   reset();
   const page = props => () => prepare(() => h('page', {}, h('input', { value: '', 'aria-label': 'A', ...props })), { env: {} });
   assert.throws(page({ onKeyDown: { Tab() {} } }), /UI_INPUT: onKeyDown maps ArrowUp, ArrowDown, Enter, Escape, Home, End, PageUp, PageDown to functions/);
@@ -32,11 +32,4 @@ test('onKeyDown takes only the eight keys mapped to functions; a disabled editor
   assert.throws(page({ onKeyDown() {} }), /UI_INPUT: onKeyDown maps/);
   const off = byId(render(() => h('page', {}, h('input', { value: '', disabled: true, 'aria-label': 'A', 'data-testid': 'a', onKeyDown: { Enter() {} } }))), 'a');
   assert.equal(off.props.keyMap, undefined);
-  const previous = globalThis.__lingxiaViewHost;
-  globalThis.__lingxiaViewHost = { maxField: 249 };
-  try {
-    const old = byId(render(() => h('page', {}, h('textarea', { value: '', 'aria-label': 'A', 'data-testid': 'a', onKeyDown: { Enter() {} } }))), 'a');
-    assert.equal(old.props.keyMap, undefined);
-    assert.equal(old.props.onKeyDown, undefined);
-  } finally { globalThis.__lingxiaViewHost = previous; }
 });

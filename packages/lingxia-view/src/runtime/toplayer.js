@@ -5,7 +5,6 @@ import { render, page } from './state.js';
 import { envOf } from './hooks.js';
 import { resolveClasses } from '../style/classes.js';
 import { limits } from '../generated/contract.js';
-import { field as fieldIds } from '../generated/wire.js';
 import { report } from './actions.js';
 
 /** Marks the panel a <dialog> or popover expands to, so resolution does not expand it again. */
@@ -172,11 +171,9 @@ function popover(tag, props, children, identity, parent) {
       // A manual popover is in the top layer but takes no close request; a hint takes Escape.
       result.wire.push(['topLayer', kind === 'manual' ? 2 : 1]);
       // The core closes a hint on a press elsewhere; it has no backdrop to take that press.
-      // A host older than the flag keeps hints open until their invoker or Escape closes them.
-      const host = globalThis.__lingxiaViewHost;
-      if (kind === 'hint' && !(host && fieldIds.hint > host.maxField)) result.wire.push(['hint', 1]);
-      // The host counts it down; an older host leaves the popover open until the page closes it.
-      if (closeAfter !== undefined && !(host && fieldIds.closeAfter > host.maxField)) result.wire.push(['closeAfter', closeAfter]);
+      if (kind === 'hint') result.wire.push(['hint', 1]);
+      // The host counts it down.
+      if (closeAfter !== undefined) result.wire.push(['closeAfter', closeAfter]);
       const panel = result.children.find(child => child.props?.key === 'panel');
       if (anchor && panel) panel.wire.push(['anchorTo', anchorName(id)]);
     },

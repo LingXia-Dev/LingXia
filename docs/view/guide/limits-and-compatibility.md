@@ -52,8 +52,9 @@ any of the page's code:
   hosts keep running old pages unchanged.
 - A host older than the page refuses it with `UI_COMPAT` instead of guessing at fields it does not know.
   Update the host app or SDK; the page itself is fine.
-- An older host that lacks only accessibility details, such as `aria-describedby`, `aria-invalid` or
-  `aria-required`, runs the page without them and logs one `UI_COMPAT` warning in a dev session.
+- An older host that lacks only accessibility details (`aria-describedby`, `aria-invalid`,
+  `aria-required`, `aria-activedescendant`) runs the page without them and logs one `UI_COMPAT`
+  warning in a dev session. Anything that changes layout, paint or behaviour needs the newer host.
 - The page needs an engine that can interrupt runaway View code. Every host that renders native pages
   has one.
 

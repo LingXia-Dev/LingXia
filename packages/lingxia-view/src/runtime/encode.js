@@ -11,7 +11,7 @@ import { finishTopLayerRow } from './toplayer.js';
 
 const structured = new Set(['backgroundGradient', 'boxShadow', 'ring', 'animation']);
 const encodeValue = (key, value) => structured.has(key) && value !== 'none' ? JSON.stringify(value) : value;
-// An older host refuses a style field it lacks; an ignorable one is left out, so it lays out as before.
+// An older host refuses a field it lacks; an ignorable (accessibility-only) one is left out.
 const ignorable = new Set(ignorableFields);
 const unknownToHost = key => ignorable.has(key) && field[key] > (globalThis.__lingxiaViewHost?.maxField ?? Infinity);
 

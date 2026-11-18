@@ -49,17 +49,6 @@ test('an onPointer element may report the value its handler steps; other element
     /UI_PROP: aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element/);
 });
 
-test('an older host gets neither field', () => {
-  reset();
-  const previous = globalThis.__lingxiaViewHost;
-  globalThis.__lingxiaViewHost = { maxField: 244 };
-  try {
-    const node = byId(render(() => h('page', {}, h('view', { onPointer() {}, pointerAxis: 'x', 'data-testid': 'v' }))), 'v');
-    assert.equal(node.props.onPointer, undefined);
-    assert.equal(node.props.pointerAxis, undefined);
-  } finally { globalThis.__lingxiaViewHost = previous; }
-});
-
 const page = `import { useLocal } from '@lingxia/view';
 export function render() {
   const at = useLocal('at', 'none');

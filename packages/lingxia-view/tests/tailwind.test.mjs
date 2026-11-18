@@ -4,7 +4,6 @@ import { compileUtilities } from '../compiler/tailwind.mjs';
 import { configureClasses, resolveClasses } from '../src/style/classes.js';
 import { describe, h, listTag, prepare, discard } from '../src/internal.js';
 import { rendered, decode, byText } from './support/wire.mjs';
-import { field } from '../src/generated/wire.js';
 
 // Tailwind rules lower to CSS-named style; rendering then lowers that to the native box.
 const classStyle = (name, env) => resolveClasses(name, env)?.base ?? {};
@@ -113,7 +112,7 @@ test('CSS grid utilities lower to tracks, placements, alignment and order; named
   assert.throws(() => classStyle('[grid-template-areas:"a_b"]'), /UI_CLASS/);
 });
 
-test('-safe alignment utilities keep the plain value and mark each property safe; an older host gets the plain value', async () => {
+test('-safe alignment utilities keep the plain value and mark each property safe', async () => {
   const names = ['justify-center-safe', 'justify-end-safe', 'items-center-safe', 'items-end-safe', 'self-center-safe', 'self-end-safe',
     'content-center-safe', 'content-end-safe', 'justify-items-center-safe', 'justify-items-end-safe', 'justify-self-center-safe',
     'justify-self-end-safe', 'place-items-center-safe', 'place-content-center-safe', 'place-self-center-safe', 'justify-center', 'grid'];
@@ -140,12 +139,6 @@ test('-safe alignment utilities keep the plain value and mark each property safe
   assert.equal(node('view', { className: 'justify-center-safe justify-center' }).alignSafe, undefined);
   assert.deepEqual([node('view', { style: { alignItems: 'safe flex-end' } }).align, node('view', { style: { alignItems: 'safe flex-end' } }).alignSafe], ['end', 2]);
   assert.throws(() => describe(() => h('view', { style: { justifyContent: 'safe space-between' } }), {}), /UI_STYLE_VALUE: justifyContent/);
-  const current = globalThis.__lingxiaViewHost;
-  globalThis.__lingxiaViewHost = { uiAbi: 1, maxField: field.alignSafe - 1, features: [] };
-  try {
-    const old = node('view', { className: 'justify-center-safe' });
-    assert.deepEqual([old.justify, old.alignSafe], ['center', undefined]);
-  } finally { globalThis.__lingxiaViewHost = current; }
 });
 
 test('*: places every child of a grid, so children overlap in one cell', async () => {
@@ -398,12 +391,6 @@ test('an underline takes a dotted or dashed style and its own colour; wavy and t
   assert.deepEqual([link.props.textDecorationStyle, link.props.textDecorationColor], ['dashed', 'danger'], 'a link styles its own underline');
   const errors = Object.fromEntries((await compileUtilities(new Set(['decoration-wavy', 'decoration-2', 'underline-offset-2']))).map(rule => [rule.name, rule.error?.message]));
   assert.deepEqual(errors, { 'decoration-wavy': 'text-decoration-style: wavy', 'decoration-2': 'text-decoration-thickness: 2px', 'underline-offset-2': 'text-underline-offset: 2px' });
-  const previous = globalThis.__lingxiaViewHost;
-  globalThis.__lingxiaViewHost = { maxField: field.textDecorationStyle - 1 };
-  try {
-    const older = node('text', { className: 'underline decoration-dotted decoration-accent/50' });
-    assert.deepEqual([older.textDecorationLine, older.textDecorationStyle, older.textDecorationColor], ['underline', undefined, undefined], 'an older host draws a plain underline');
-  } finally { globalThis.__lingxiaViewHost = previous; }
 });
 
 test('text utilities: transform, decoration, nowrap, alignment and families', async () => {
