@@ -58,7 +58,7 @@ export function SplitView({
         ) : (
           <view key="content" role="group" aria-label={contentLabel} data-testid={testId && `${testId}-content`} className={cx(r.pane.base, r.pane.content)}>
             <view className={r.back.base}>
-              <Button label={backLabel ?? sidebarLabel} startIcon="chevron-start" variant="ghost" size="sm" width="content" onClick={() => { wentBack.set(true); onBack?.(); }} data-testid={testId && `${testId}-back`} />
+              <Button label={backLabel ?? sidebarLabel} startIcon="chevron-start" variant="ghost" size="sm" width="content" className={r.back.button} onClick={() => { wentBack.set(true); onBack?.(); }} data-testid={testId && `${testId}-back`} />
             </view>
             <scroll key={contentKey} className={r.scroll.base}>
               <view className={cx(r.contentInner.base, r.contentInner.compact)}>{children}</view>

@@ -46,8 +46,11 @@ test('Workspace, compact: the sidebar alone, at the full width, then the content
   assert.equal(screen.queryAll(node => node.props.testId === 'workspace-sidebar').length, 0, 'the list gives way to the content');
   assert.equal(textOf(screen.getByTestId('workspace-title')), 'Spring launch');
   assert.equal(screen.getByTestId('workspace-back').props.accessibilityLabel, 'Mail');
-  // The chevron's stroke starts on the content's edge: 16 pt in, less the button's 13 pt and the glyph's 5.33 pt inset.
-  assert.equal(screen.getByTestId('workspace-back').parent.props.marginInlineStart, -2.33, 'a logical margin, so RTL mirrors it');
+  // The pill sits 8 pt in; the chevron's stroke still starts on the content's 16 pt edge.
+  const back = screen.getByTestId('workspace-back');
+  assert.equal(back.parent.props.paddingInlineStart, 8, 'the pill clears the pane edge; logical, so RTL mirrors it');
+  assert.equal(back.parent.props.paddingTop, 8);
+  assert.equal(back.props.paddingInlineStart, 1.67, 'the chevron still starts on the content edge');
   screen.press(screen.getByTestId('workspace-back'));
   assert.ok(screen.getByTestId('workspace-sidebar'), 'back shows the list again');
   assert.equal(screen.getByTestId('workspace-nav-launch').props.stateSelected, 1, 'the place chosen is still the current one');

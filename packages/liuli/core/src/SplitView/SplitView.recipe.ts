@@ -47,9 +47,10 @@ export const splitViewRecipe = {
   },
   /** Compact: the way back to the sidebar, over the content and outside its scroll. */
   back: {
-    // The content starts 16 pt in; the button's border and padding (13 pt) and the chevron's own
-    // inset in its box (a third of 16 pt) would start the stroke 2.33 pt further, so the row pulls it out.
-    base: 'flex-row pt-1 -ms-[2.33px]',
+    // The pressed pill keeps 8 pt clear of the pane's edges; the chevron's stroke still starts on the
+    // content's 16 pt edge: 8 + border 1 + padding 1.67 + the chevron's own inset in its box (5.33).
+    base: 'flex-row ps-2 pt-2',
+    button: 'ps-[1.67px]',
   },
   content: {
     base: 'grow shrink basis-0',
