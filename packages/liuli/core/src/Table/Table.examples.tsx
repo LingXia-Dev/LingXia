@@ -88,5 +88,6 @@ export function StateEmpty() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Table label="Invoices" columns={[{ field: 'customer', header: 'Customer' }, { field: 'amount', header: 'Amount', align: 'end', format: money }]} rows={invoices.slice(0, 2)} density="compact" />;
+  // Short values: a tile is too narrow for a name beside a price, and a table wraps its text rather than cutting it.
+  return <Table label="Cities by population" columns={[{ field: 'city', header: 'City' }, { field: 'people', header: 'Millions', align: 'end', format: value => Number(value).toFixed(1) }]} rows={cities.slice(0, 1)} density="compact" className="w-full" />;
 }
