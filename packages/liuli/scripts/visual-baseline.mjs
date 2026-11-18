@@ -15,6 +15,7 @@
 //   --presets <a,b>     only these size presets, for a capture and what is accepted from it
 //   --pages <a,b>       only these gallery pages, by name: a capture shoots them, a check compares
 //                       them, and an accept replaces them in the reference and keeps every other picture
+//   --except <a,b>      every gallery page but these, as if the rest were named with --pages
 //   --confirm <name>    with accept: the second capture to hold current against (default confirm)
 //
 // The pictures stay out of git (gallery/.baseline); gallery/baseline.manifest.json, which is
@@ -36,7 +37,10 @@ const root = join(gallery, '.baseline');
 const manifestPath = join(gallery, 'baseline.manifest.json');
 // A phone and a desk: the two forms every page has.
 const presets = option('presets')?.split(',') ?? ['iphone-15-pro', 'desktop-1280'];
-const named = option('pages')?.split(',');
+// `--except` names the pages left out, so every other page is named.
+const except = option('except')?.split(',');
+const named = option('pages')?.split(',')
+  ?? (except && JSON.parse(readFileSync(join(gallery, 'lxapp.json'), 'utf8')).pages.map(page => page.name).filter(page => !except.includes(page)));
 // A picture is `<page>-<theme>.png` under its preset.
 const ofNamed = name => !named || named.some(page => new RegExp(`/${page}-(light|dark)\\.png$`).test(name));
 // A pixel differs when any channel is further than this from the reference; a picture fails when
