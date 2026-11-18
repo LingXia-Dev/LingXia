@@ -26,7 +26,7 @@ function Enter() {
   const round = useLocal('round', 0);
   return (
     <view className="gap-4">
-      <view key={String(round.value)} data-testid="enter-panel" className="gap-0.5 rounded-container border border-text/12 bg-surface-overlay p-4 shadow-raised transition duration-200 ease-out starting:opacity-0 motion-safe:starting:scale-96">
+      <view key={String(round.value)} data-testid="enter-panel" className="gap-0.5 rounded-container border border-text/12 bg-surface-overlay p-4 shadow-raised transition duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-y-2">
         <text className="text-body font-medium text-text">Backup finished</text>
         <text className="text-footnote text-muted">3,214 notes are on this device and in the cloud.</text>
       </view>
@@ -80,23 +80,26 @@ export function Content() {
       <text className="text-body text-muted">
         Motion is short and eases out: it confirms a touch or shows where something came from, then gets out of the way.
       </text>
+      <text className="text-body text-muted">
+        What appears on its own, a dialog or a new panel, rises 8 px as it fades in, in duration-base (200 ms). What opens from something, a menu, a popover, a tooltip or suggestions, slides 4 px out from it as it fades, in duration-fast (150 ms); nothing that holds a scroll or a field scales.
+      </text>
       <PageSection title="Press">
         <Stage caption="The fill changes in 150 ms, ease-out. Press and hold to see it">
           <Press />
         </Stage>
       </PageSection>
       <PageSection title="Enter">
-        <Stage caption="Fades in and grows from 96% in 200 ms, ease-out">
+        <Stage caption="Fades in and rises 8 px in 200 ms (duration-base), ease-out">
           <Enter />
         </Stage>
       </PageSection>
       <PageSection title="Dialog">
-        <Stage caption="Enters like a panel and leaves the same way, 200 ms">
+        <Stage caption="Rises 8 px as it fades, and leaves the same way, in 200 ms (duration-base)">
           <DialogDemo />
         </Stage>
       </PageSection>
       <PageSection title="Menu">
-        <Stage caption="Grows from 95% toward its trigger in 150 ms">
+        <Stage caption="Slides 4 px out from its trigger as it fades, in 150 ms (duration-fast)">
           <Menu />
         </Stage>
       </PageSection>

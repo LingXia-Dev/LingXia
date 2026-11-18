@@ -21,8 +21,8 @@ export const tooltipRecipe = {
     size: { sm: 'size-4', md: 'size-5' } satisfies Record<TooltipSize, string>,
   },
   bubble: {
-    base: 'max-w-64 px-3 py-2 rounded-control bg-text shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-95',
-    offset: { bottom: 'mt-1 origin-top', top: 'mb-1 origin-bottom', end: 'ms-1', start: 'me-1' } satisfies Record<TooltipPlacement, string>,
+    base: 'max-w-64 px-3 py-2 rounded-control bg-text shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
+    offset: { bottom: 'mt-1 motion-safe:starting:-translate-y-1', top: 'mb-1 motion-safe:starting:translate-y-1', end: 'ms-1 motion-safe:starting:-translate-x-1 rtl:motion-safe:starting:translate-x-1', start: 'me-1 motion-safe:starting:translate-x-1 rtl:motion-safe:starting:-translate-x-1' } satisfies Record<TooltipPlacement, string>,
   },
   text: {
     base: 'text-footnote text-surface',

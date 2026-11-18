@@ -18,7 +18,9 @@ export const contextMenuRecipe = {
   /** Placed in its layer, never `fixed`: a fixed panel is not pressed through its own backdrop. */
   menu: {
     base: 'absolute transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
-    point: 'min-w-48 p-1 gap-0.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised motion-safe:starting:scale-95',
+    point: 'min-w-48 p-1 gap-0.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised',
+    /** It slides 4 px out from the point, downward or, in the lower part of the page, upward. */
+    from: { below: 'motion-safe:starting:-translate-y-1', above: 'motion-safe:starting:translate-y-1' },
     /** Docked, it covers the page: the scrim, and the sheet at its foot. Without `m-0` a popover centres itself. */
     docked: 'inset-0 m-0 justify-end',
   },
