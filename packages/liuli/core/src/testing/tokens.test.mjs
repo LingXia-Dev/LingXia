@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 // Liuli states the default theme pack's ramps so its names resolve without an app's generated
 // tokens. They are one source only while they are the pack's own values, which this proves.
 const css = readFileSync(new URL('../../tokens.css', import.meta.url), 'utf8');
+const names = JSON.parse(readFileSync(new URL('../../tokens.names.json', import.meta.url), 'utf8'));
 const pack = JSON.parse(readFileSync(new URL('../../../../../crates/lingxia-theme/packs/default.json', import.meta.url), 'utf8'));
 const token = name => {
   const found = css.match(new RegExp(`^\\s*--${name}:\\s*([^;]+);`, 'm'));
@@ -37,19 +38,29 @@ test('motion is the default pack\'s', () => {
   for (const [name, key] of [['standard', 'easing'], ['enter', 'enter'], ['exit', 'exit']]) assert.equal(token(`ease-${name}`), pack.motion[key], `ease-${name}`);
 });
 
-test('control heights are 8, 10 and 12 of the pack\'s spacing unit', () => {
-  for (const [size, units] of [['sm', 8], ['md', 10], ['lg', 12]]) assert.equal(points(token(`spacing-control-${size}`)), units * pack.space.unit, `control-${size}`);
+// tokens.names.json is the one statement of Liuli's names; `lingxia gen tokens --names` writes an
+// app's tokens from it, and tokens.css must say the same.
+test('control heights are the names map\'s units of the pack\'s spacing unit', () => {
+  for (const [size, units] of Object.entries(names.controlHeight)) assert.equal(points(token(`spacing-control-${size}`)), units * pack.space.unit, `control-${size}`);
 });
 
-test('Liuli\'s own names are steps of those ramps, never lengths of their own', () => {
-  const aliases = {
-    'text-caption': 'text-xs', 'text-footnote': 'text-sm', 'text-body': 'text-base', 'text-callout': 'text-lg', 'text-title': 'text-xl', 'text-display': 'text-3xl',
-    'radius-control': 'radius-lg', 'radius-container': 'radius-xl', 'radius-dialog': 'radius-2xl', 'radius-checkbox': 'radius-sm', 'radius-segment': 'radius-md',
-  };
-  for (const [name, step] of Object.entries(aliases)) {
-    assert.equal(token(name), `var(--${step})`, name);
-    if (name.startsWith('text-')) assert.equal(token(`${name}--line-height`), `var(--${step}--line-height)`, `${name} line height`);
+test('Liuli\'s own names are the names map\'s steps of those ramps, never lengths of their own', () => {
+  for (const [name, step] of Object.entries(names.type)) {
+    assert.ok(step in pack.type.scale, `text-${name}: the pack has no ${step}`);
+    assert.equal(token(`text-${name}`), `var(--text-${step})`, `text-${name}`);
+    assert.equal(token(`text-${name}--line-height`), `var(--text-${step}--line-height)`, `text-${name} line height`);
   }
+  for (const [name, step] of Object.entries(names.radius)) {
+    assert.ok(step in pack.shape.radius, `radius-${name}: the pack has no ${step}`);
+    assert.equal(token(`radius-${name}`), `var(--radius-${step})`, `radius-${name}`);
+  }
+});
+
+test('tokens.css names nothing the names map does not', () => {
+  const ramp = new Set([...Object.keys(pack.type.scale), ...Object.keys(pack.shape.radius)]);
+  const stated = [...css.matchAll(/^\s*--(text|radius)-([\w]+):/gm)].map(([, kind, name]) => [kind, name]).filter(([, name]) => !ramp.has(name));
+  const known = { text: names.type, radius: names.radius };
+  assert.deepEqual(stated.filter(([kind, name]) => !(name in known[kind])).map(([kind, name]) => `${kind}-${name}`), []);
 });
 
 test('every shadow layer is the theme\'s shadow role at an alpha', () => {

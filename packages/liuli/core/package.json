@@ -192,7 +192,8 @@
     "./package.json": "./package.json"
   },
   "lingxia": {
-    "tokens": "./tokens.css"
+    "tokens": "./tokens.css",
+    "names": "./tokens.names.json"
   },
   "scripts": {
     "test": "node --test \"src/**/*.test.mjs\"",

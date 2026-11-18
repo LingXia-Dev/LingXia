@@ -1,0 +1,5 @@
+{
+  "type": { "caption": "xs", "footnote": "sm", "body": "base", "callout": "lg", "title": "xl", "display": "3xl" },
+  "radius": { "checkbox": "sm", "segment": "md", "control": "lg", "container": "xl", "dialog": "2xl" },
+  "controlHeight": { "sm": 8, "md": 10, "lg": 12 }
+}
