@@ -1,4 +1,4 @@
-import { useBox, useLocal, useView } from '@lingxia/view';
+import { useLocal, useView } from '@lingxia/view';
 import { Avatar } from '@liulidesign/core/Avatar';
 import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
@@ -123,7 +123,6 @@ function Detail({ request, onDecide }: { request: Request; onDecide: (status: Re
 
 export function Content() {
   const { env } = useView();
-  const frame = useBox('frame');
   const query = useLocal('query', '');
   const open = useLocal<string | null>('open', null);
   const decided = useLocal<Record<string, Request['status']>>('decided', {});
@@ -134,8 +133,7 @@ export function Content() {
   const all = requests.map(request => ({ ...request, status: decided.value[request.id] ?? request.status }));
   const typed = query.value.trim().toLowerCase();
   const shown = all.filter(request => `${request.subject} ${request.from} ${request.team}`.toLowerCase().includes(typed));
-  // Two panes need room for a 320 px list and a readable record beside it.
-  const isWide = (frame.value?.width ?? (env.sizeClass === 'regular' ? 900 : 328)) >= 680;
+  const isWide = env.sizeClass === 'regular';
   // Side by side something is always open; on a phone the list is the first screen.
   const current = all.find(request => request.id === open.value) ?? (isWide ? shown[0] ?? null : null);
   // The record on show has been read, whether it was pressed or is the first one shown beside the list.
@@ -152,27 +150,35 @@ export function Content() {
     </view>
   );
 
+  const split = (
+    // SplitView decides the form: both panes on a regular screen, one at a time on a compact one.
+    <SplitView
+      sidebar={list(isWide ? current?.id : undefined)}
+      sidebarLabel="Requests"
+      contentLabel={current?.subject ?? 'Request'}
+      pane={current ? 'content' : 'sidebar'}
+      onBack={() => open.set(null)}
+      sidebarWidth={340}
+      contentKey={current?.id}
+      contentWidth="prose"
+      // On a phone the panes bring the page gutter themselves.
+      className={isWide ? undefined : '-mx-4'}
+      data-testid="requests"
+    >
+      {current ? <Detail request={current} onDecide={decide} /> : <EmptyState title="No request selected" description="Choose a request from the list." />}
+    </SplitView>
+  );
+
   return (
-    <view box={frame} className="gap-4">
-      {/* On a phone an open record's back row is the header: the place is named once. */}
+    <view className={isWide ? 'gap-4' : 'grow min-h-0 gap-2'}>
+      {/* On a phone an open record's back button is the header: the place is named once. */}
       {(isWide || !current) && (
         <view className="flex-row items-center justify-between gap-3">
           <text role="heading" headingLevel={1} className="text-title font-semibold tracking-tight text-text">Requests</text>
           {unread > 0 && <Badge label={`${unread} unread`} tone="accent" />}
         </view>
       )}
-      {isWide ? (
-        <view className="h-[560px] overflow-hidden rounded-container border border-text/12">
-          <SplitView sidebar={list(current?.id)} sidebarLabel="Requests" contentLabel={current?.subject ?? 'Request'} sidebarWidth={340} contentKey={current?.id} contentWidth="prose" data-testid="requests">
-            {current ? <Detail request={current} onDecide={decide} /> : <EmptyState title="No request selected" description="Choose a request from the list." />}
-          </SplitView>
-        </view>
-      ) : current ? (
-        <view className="gap-4">
-          <Button label="Requests" startIcon="chevron-start" variant="ghost" size="sm" width="content" onClick={() => open.set(null)} data-testid="back" />
-          <Detail request={current} onDecide={decide} />
-        </view>
-      ) : list()}
+      {isWide ? <view className="h-[560px] overflow-hidden rounded-container border border-text/12">{split}</view> : split}
     </view>
   );
 }

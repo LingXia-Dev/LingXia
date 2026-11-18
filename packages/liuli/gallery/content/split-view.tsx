@@ -5,7 +5,7 @@ import { Lead, PageSection, Stage } from '../shared/Layout';
 export function Content() {
   return (
     <>
-      <Lead text={"Use a split view for a workspace with a sidebar on a wide window."} bare>
+      <Lead text={"Use a split view for a workspace with a sidebar: both panes on a wide window, one at a time on a phone."} bare>
         <Workspace />
       </Lead>
     </>

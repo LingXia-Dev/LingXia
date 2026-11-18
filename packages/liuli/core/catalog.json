@@ -14651,8 +14651,8 @@
       "category": "content",
       "status": "preview",
       "since": "2026-11-14",
-      "summary": "A sidebar beside its content for a wide window, each scrolling on its own",
-      "description": "SplitView lays out a workspace: a fixed-width sidebar, usually a NavList, and the content it chooses beside it. Both sit on the canvas, parted by a hairline, and each pane scrolls on its own. The content is capped, so lines stay readable, and starts a fixed gutter from the sidebar: it reads from the sidebar outward, and a wider window adds room on the far side.",
+      "summary": "A sidebar beside its content, each scrolling on its own; one pane at a time on a phone",
+      "description": "SplitView lays out a workspace: a fixed-width sidebar, usually a NavList, and the content it chooses beside it. Both sit on the canvas, parted by a hairline, and each pane scrolls on its own. The content is capped, so lines stay readable, and starts a fixed gutter from the sidebar: it reads from the sidebar outward, and a wider window adds room on the far side. In the compact size class there is no room for two panes, so it shows one: the sidebar, then the content `pane` asks for, under a back button that leads to the sidebar again.",
       "keywords": [
         "split view",
         "sidebar layout",
@@ -14688,10 +14688,30 @@
           "description": "Names the content: the open page's title."
         },
         {
+          "name": "pane",
+          "type": "SplitViewPane",
+          "required": false,
+          "description": "On a compact screen one pane shows at a time: which. A regular screen shows both and ignores it.",
+          "default": "'sidebar'"
+        },
+        {
+          "name": "onBack",
+          "type": "(() => void)",
+          "required": false,
+          "description": "On a compact screen: the back button over the content was pressed; show the sidebar."
+        },
+        {
+          "name": "backLabel",
+          "type": "string",
+          "required": false,
+          "description": "The back button's label: where it leads.",
+          "default": "`sidebarLabel`"
+        },
+        {
           "name": "sidebarWidth",
           "type": "number",
           "required": false,
-          "description": "The sidebar's width in px.",
+          "description": "The sidebar's width in px, beside the content.",
           "default": "264"
         },
         {
@@ -14725,6 +14745,8 @@
         "root": "view",
         "sidebar": "view",
         "content": "view",
+        "pane": "view",
+        "back": "view",
         "scroll": "scroll",
         "sidebarInner": "view",
         "contentInner": "view"
@@ -14746,14 +14768,14 @@
         {
           "name": "Workspace",
           "title": "A mail workspace",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\nimport { SplitView } from '@liulidesign/core/SplitView';\n\nconst sections = [\n  { id: 'mail', items: [\n    { value: 'inbox', label: 'Inbox', endText: '12' },\n    { value: 'drafts', label: 'Drafts', endText: '3' },\n    { value: 'sent', label: 'Sent' },\n  ] },\n  { id: 'projects', title: 'Projects', items: [\n    { value: 'launch', label: 'Spring launch' },\n    { value: 'research', label: 'User research' },\n  ] },\n] as const;\nconst titles: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', launch: 'Spring launch', research: 'User research' };\n\n/** A mail workspace: the sidebar chooses a place, the content shows it at once. */\nexport function Workspace() {\n  const current = useLocal<string>('current', 'inbox');\n  const title = titles[current.value] ?? '';\n  return (\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <SplitView\n        sidebarLabel=\"Mail\"\n        contentLabel={title}\n        sidebarWidth={200}\n        contentKey={current.value}\n        sidebar={<NavList label=\"Mailboxes\" sections={sections} value={current.value} onChange={next => current.set(next)} data-testid=\"workspace-nav\" />}\n        data-testid=\"workspace\"\n      >\n        <text role=\"heading\" headingLevel={1} className=\"text-title font-semibold text-text\" data-testid=\"workspace-title\">{title}</text>\n        <text className=\"text-body text-muted\">The content pane scrolls on its own and keeps its gutter from the sidebar in a wide window.</text>\n      </SplitView>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\nimport { SplitView, type SplitViewPane } from '@liulidesign/core/SplitView';\n\nconst sections = [\n  { id: 'mail', items: [\n    { value: 'inbox', label: 'Inbox', endText: '12' },\n    { value: 'drafts', label: 'Drafts', endText: '3' },\n    { value: 'sent', label: 'Sent' },\n  ] },\n  { id: 'projects', title: 'Projects', items: [\n    { value: 'launch', label: 'Spring launch' },\n    { value: 'research', label: 'User research' },\n  ] },\n] as const;\nconst titles: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', launch: 'Spring launch', research: 'User research' };\n\n/** A mail workspace: the sidebar chooses a place, the content shows it at once; on a phone the place opens over the list, with a way back. */\nexport function Workspace() {\n  const current = useLocal<string>('current', 'inbox');\n  const pane = useLocal<SplitViewPane>('pane', 'sidebar');\n  const title = titles[current.value] ?? '';\n  return (\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <SplitView\n        sidebarLabel=\"Mail\"\n        contentLabel={title}\n        pane={pane.value}\n        onBack={() => pane.set('sidebar')}\n        sidebarWidth={200}\n        contentKey={current.value}\n        sidebar={<NavList label=\"Mailboxes\" sections={sections} value={current.value} onChange={next => { current.set(next); pane.set('content'); }} data-testid=\"workspace-nav\" />}\n        data-testid=\"workspace\"\n      >\n        <text role=\"heading\" headingLevel={1} className=\"text-title font-semibold text-text\" data-testid=\"workspace-title\">{title}</text>\n        <text className=\"text-body text-muted\">Each pane scrolls on its own. Beside the sidebar the content keeps a gutter from it; on a phone it takes the screen.</text>\n      </SplitView>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
         {
-          "missing": "A sidebar that collapses and slides over the content on a narrow window",
-          "needs": "Nothing in the View; planned in Liuli",
-          "today": "A fixed sidebar on wide windows; phones use pages"
+          "missing": "The system back gesture leading from the content to the sidebar on a compact screen",
+          "needs": "A back request from the host",
+          "today": "The back button leads back"
         },
         {
           "missing": "Dragging the hairline to resize the sidebar",
@@ -14783,7 +14805,7 @@
         "tagline": "Sidebar and content",
         "order": 5,
         "page": {
-          "lead": "Use a split view for a workspace with a sidebar on a wide window.",
+          "lead": "Use a split view for a workspace with a sidebar: both panes on a wide window, one at a time on a phone.",
           "stage": "bare",
           "hero": "Workspace"
         }

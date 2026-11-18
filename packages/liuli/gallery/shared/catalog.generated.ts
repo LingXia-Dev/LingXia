@@ -948,7 +948,7 @@ export const entries: GalleryEntry[] = [
     "name": "SplitView",
     "page": "split-view",
     "category": "content",
-    "summary": "A sidebar beside its content for a wide window, each scrolling on its own",
+    "summary": "A sidebar beside its content, each scrolling on its own; one pane at a time on a phone",
     "keywords": [
       "split view",
       "sidebar layout",

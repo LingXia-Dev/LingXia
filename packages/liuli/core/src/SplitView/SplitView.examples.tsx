@@ -1,7 +1,7 @@
 import { useLocal } from '@lingxia/view';
 import { unused } from '../example';
 import { NavList } from '../NavList/NavList';
-import { SplitView } from './SplitView';
+import { SplitView, type SplitViewPane } from './SplitView';
 
 const sections = [
   { id: 'mail', items: [
@@ -16,22 +16,25 @@ const sections = [
 ] as const;
 const titles: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', launch: 'Spring launch', research: 'User research' };
 
-/** A mail workspace: the sidebar chooses a place, the content shows it at once. */
+/** A mail workspace: the sidebar chooses a place, the content shows it at once; on a phone the place opens over the list, with a way back. */
 export function Workspace() {
   const current = useLocal<string>('current', 'inbox');
+  const pane = useLocal<SplitViewPane>('pane', 'sidebar');
   const title = titles[current.value] ?? '';
   return (
     <view className="h-[360px] overflow-hidden rounded-container border border-text/12">
       <SplitView
         sidebarLabel="Mail"
         contentLabel={title}
+        pane={pane.value}
+        onBack={() => pane.set('sidebar')}
         sidebarWidth={200}
         contentKey={current.value}
-        sidebar={<NavList label="Mailboxes" sections={sections} value={current.value} onChange={next => current.set(next)} data-testid="workspace-nav" />}
+        sidebar={<NavList label="Mailboxes" sections={sections} value={current.value} onChange={next => { current.set(next); pane.set('content'); }} data-testid="workspace-nav" />}
         data-testid="workspace"
       >
         <text role="heading" headingLevel={1} className="text-title font-semibold text-text" data-testid="workspace-title">{title}</text>
-        <text className="text-body text-muted">The content pane scrolls on its own and keeps its gutter from the sidebar in a wide window.</text>
+        <text className="text-body text-muted">Each pane scrolls on its own. Beside the sidebar the content keeps a gutter from it; on a phone it takes the screen.</text>
       </SplitView>
     </view>
   );
