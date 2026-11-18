@@ -3322,13 +3322,53 @@
     return `${hour % 12 || 12}${rest} ${hour < 12 ? words.am : words.pm}`;
   }
   function fieldText(kind, value, { seconds, language, hourCycle }) {
-    if (kind === "date") return { displayValue: value, sizeText: "0000-00-00" };
+    if (kind === "date") {
+      const format = dateFormat(language);
+      const date = parseDate(value);
+      const sizeText2 = [...new Set(Array.from({ length: 12 }, (_, month) => format({ year: 2e3, month: month + 1, day: 10 }).replace(/\d/g, "0")))].join("\n");
+      return { displayValue: date ? format(date) : value, sizeText: sizeText2 };
+    }
     const words = wordsFor(language);
     const time = parseTime(value);
     const shown = /:\d{2}:\d{2}$/.test(value) ? { ...time, second: Number(value.slice(-2)) } : time;
     const widest = (second) => [words.am, words.pm].map((period) => clockText({ hour: 12, minute: 0, second }, { am: period, pm: period }, hourCycle).replace(/\d/g, "0"));
     const sizeText = [...new Set(widest(seconds || shown?.second !== void 0 ? 0 : void 0))].join("\n");
     return { displayValue: shown ? clockText(shown, words, hourCycle) : value, sizeText };
+  }
+  var shortMonths = {
+    en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    fr: ["janv.", "f\xE9vr.", "mars", "avr.", "mai", "juin", "juil.", "ao\xFBt", "sept.", "oct.", "nov.", "d\xE9c."],
+    es: ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic"],
+    pt: ["jan.", "fev.", "mar.", "abr.", "mai.", "jun.", "jul.", "ago.", "set.", "out.", "nov.", "dez."],
+    ru: ["\u044F\u043D\u0432.", "\u0444\u0435\u0432\u0440.", "\u043C\u0430\u0440.", "\u0430\u043F\u0440.", "\u043C\u0430\u044F", "\u0438\u044E\u043D.", "\u0438\u044E\u043B.", "\u0430\u0432\u0433.", "\u0441\u0435\u043D\u0442.", "\u043E\u043A\u0442.", "\u043D\u043E\u044F\u0431.", "\u0434\u0435\u043A."]
+  };
+  var monthFirst = /* @__PURE__ */ new Set(["US", "CA", "PH"]);
+  function dateFormat(language) {
+    const parts2 = String(language ?? "").split(/[-_]/);
+    const lang = parts2[0].toLowerCase();
+    const region = parts2.slice(1).find((part) => /^[A-Za-z]{2}$|^\d{3}$/.test(part))?.toUpperCase();
+    switch (lang) {
+      case "zh":
+        return ({ year, month, day }) => `${year}\u5E74${month}\u6708${day}\u65E5`;
+      case "ja":
+        return ({ year, month, day }) => `${year}/${pad(month)}/${pad(day)}`;
+      case "ko":
+        return ({ year, month, day }) => `${year}. ${month}. ${day}.`;
+      case "de":
+        return ({ year, month, day }) => `${pad(day)}.${pad(month)}.${year}`;
+      case "fr":
+        return ({ year, month, day }) => `${day} ${shortMonths.fr[month - 1]} ${year}`;
+      case "es":
+        return ({ year, month, day }) => `${day} ${shortMonths.es[month - 1]} ${year}`;
+      case "pt":
+        return ({ year, month, day }) => `${day} de ${shortMonths.pt[month - 1]} de ${year}`;
+      case "ru":
+        return ({ year, month, day }) => `${day} ${shortMonths.ru[month - 1]} ${year} \u0433.`;
+      case "ar":
+        return ({ year, month, day }) => `${day}\u200F/${month}\u200F/${year}`;
+      default:
+        return lang === "en" && region !== void 0 && !monthFirst.has(region) ? ({ year, month, day }) => `${day} ${shortMonths.en[month - 1]} ${year}` : ({ year, month, day }) => `${shortMonths.en[month - 1]} ${day}, ${year}`;
+    }
   }
   function wordsFor(language) {
     return names2[String(language ?? "").split(/[-_]/)[0].toLowerCase()] ?? names2.en;

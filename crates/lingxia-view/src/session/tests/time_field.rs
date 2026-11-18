@@ -119,5 +119,14 @@ fn an_authored_wider_minimum_wins_and_dates_fit_too() {
         display.nodes[index].bounds[2] > 60.0,
         "a date field fits a full date"
     );
-    assert_eq!(spoken(&display, index), "2026-11-14");
+    assert_eq!(
+        display.nodes[index].input.as_ref().unwrap().value,
+        "2026-11-14",
+        "the page and automation see ISO"
+    );
+    assert_eq!(
+        spoken(&display, index),
+        "Nov 14, 2026",
+        "the screen reader reads the date the field shows"
+    );
 }

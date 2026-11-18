@@ -54,10 +54,17 @@ export function clockText({ hour, minute, second }, words, hourCycle) {
 
 /**
  * What a date or time field shows for its ISO value, and the widest text it can show in this
- * format, one candidate per line; digits in `sizeText` stand for any digit. Dates stay ISO for now.
+ * format, one candidate per line; digits in `sizeText` stand for any digit.
  */
 export function fieldText(kind, value, { seconds, language, hourCycle }) {
-  if (kind === 'date') return { displayValue: value, sizeText: '0000-00-00' };
+  if (kind === 'date') {
+    const format = dateFormat(language);
+    const date = parseDate(value);
+    // Every month's name with the widest day and year: the field is as wide as its widest value.
+    const sizeText = [...new Set(Array.from({ length: 12 }, (_, month) =>
+      format({ year: 2000, month: month + 1, day: 10 }).replace(/\d/g, '0')))].join('\n');
+    return { displayValue: date ? format(date) : value, sizeText };
+  }
   const words = wordsFor(language);
   const time = parseTime(value);
   const shown = /:\d{2}:\d{2}$/.test(value) ? { ...time, second: Number(value.slice(-2)) } : time;
@@ -65,6 +72,42 @@ export function fieldText(kind, value, { seconds, language, hourCycle }) {
     clockText({ hour: 12, minute: 0, second }, { am: period, pm: period }, hourCycle).replace(/\d/g, '0'));
   const sizeText = [...new Set(widest(seconds || shown?.second !== undefined ? 0 : undefined))].join('\n');
   return { displayValue: shown ? clockText(shown, words, hourCycle) : value, sizeText };
+}
+
+// Short month names for the date formats that spell the month.
+const shortMonths = {
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+  fr: ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'],
+  es: ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'],
+  pt: ['jan.', 'fev.', 'mar.', 'abr.', 'mai.', 'jun.', 'jul.', 'ago.', 'set.', 'out.', 'nov.', 'dez.'],
+  ru: ['янв.', 'февр.', 'мар.', 'апр.', 'мая', 'июн.', 'июл.', 'авг.', 'сент.', 'окт.', 'нояб.', 'дек.'],
+};
+// English puts the month first in these regions and the day first elsewhere.
+const monthFirst = new Set(['US', 'CA', 'PH']);
+
+/**
+ * A date as a field shows it in a BCP 47 language: the medium date its platforms show
+ * (`Nov 14, 2026`, `14 Nov 2026`, `2026年11月14日`, `14.11.2026`); English's for others.
+ */
+export function dateFormat(language) {
+  const parts = String(language ?? '').split(/[-_]/);
+  const lang = parts[0].toLowerCase();
+  const region = parts.slice(1).find(part => /^[A-Za-z]{2}$|^\d{3}$/.test(part))?.toUpperCase();
+  switch (lang) {
+    case 'zh': return ({ year, month, day }) => `${year}年${month}月${day}日`;
+    case 'ja': return ({ year, month, day }) => `${year}/${pad(month)}/${pad(day)}`;
+    case 'ko': return ({ year, month, day }) => `${year}. ${month}. ${day}.`;
+    case 'de': return ({ year, month, day }) => `${pad(day)}.${pad(month)}.${year}`;
+    case 'fr': return ({ year, month, day }) => `${day} ${shortMonths.fr[month - 1]} ${year}`;
+    case 'es': return ({ year, month, day }) => `${day} ${shortMonths.es[month - 1]} ${year}`;
+    case 'pt': return ({ year, month, day }) => `${day} de ${shortMonths.pt[month - 1]} de ${year}`;
+    case 'ru': return ({ year, month, day }) => `${day} ${shortMonths.ru[month - 1]} ${year} г.`;
+    case 'ar': return ({ year, month, day }) => `${day}\u200f/${month}\u200f/${year}`;
+    default:
+      return lang === 'en' && region !== undefined && !monthFirst.has(region)
+        ? ({ year, month, day }) => `${day} ${shortMonths.en[month - 1]} ${year}`
+        : ({ year, month, day }) => `${shortMonths.en[month - 1]} ${day}, ${year}`;
+  }
 }
 
 /** Picker words for a BCP 47 display language; English when it has no table. */

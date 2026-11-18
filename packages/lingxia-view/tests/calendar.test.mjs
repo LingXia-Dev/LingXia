@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, addMonths, monthGrid, moveDate, weekday, weekdayOrder, parseDate, parseTime, iso, wordsFor, minuteValues, hourValues, within } from '../src/runtime/calendar.js';
+import { addDays, addMonths, monthGrid, moveDate, weekday, weekdayOrder, parseDate, parseTime, iso, wordsFor, minuteValues, hourValues, within, dateFormat, fieldText } from '../src/runtime/calendar.js';
 
 test('day arithmetic crosses months, years and leap days', () => {
   assert.equal(iso(addDays({ year: 2024, month: 2, day: 28 }, 1)), '2024-02-29');
@@ -37,4 +37,16 @@ test('values parse strictly; bounds, steps and words follow the inputs', () => {
   assert.equal(hourValues('h12')[0], 12);
   assert.equal(wordsFor('zh-Hans-CN').done, '完成');
   assert.equal(wordsFor('sv-SE').done, 'Done');
+});
+
+test('a date field reads in the user\'s language and region, English where there is no table', () => {
+  const on = { year: 2026, month: 3, day: 5 };
+  const cases = {
+    'en-US': 'Mar 5, 2026', en: 'Mar 5, 2026', 'en-GB': '5 Mar 2026', 'en-AU': '5 Mar 2026',
+    'zh-Hans-CN': '2026年3月5日', ja: '2026/03/05', ko: '2026. 3. 5.', de: '05.03.2026',
+    fr: '5 mars 2026', es: '5 mar 2026', 'pt-BR': '5 de mar. de 2026', ru: '5 мар. 2026 г.',
+    ar: '5‏/3‏/2026', it: 'Mar 5, 2026', '': 'Mar 5, 2026',
+  };
+  for (const [language, want] of Object.entries(cases)) assert.equal(dateFormat(language)(on), want, language);
+  assert.deepEqual(fieldText('date', 'not a date', { language: 'en' }).displayValue, 'not a date', 'a value that is no date shows as given');
 });

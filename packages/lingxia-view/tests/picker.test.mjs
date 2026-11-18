@@ -168,13 +168,16 @@ test('a time field shows its ISO value in the user\'s clock and re-lowers when t
   assert.equal(field(nodes, 'at').inputValue, '13:05', 'the bound value stays ISO');
   assert.equal(field(nodes, 'at').displayValue, '1:05 PM');
   assert.equal(field(nodes, 'at').sizeText, '00:00 AM\n00:00 PM');
-  assert.equal(field(nodes, 'on').displayValue, '2026-11-14', 'a date stays ISO for now');
-  assert.equal(field(nodes, 'on').sizeText, '0000-00-00');
+  assert.equal(field(nodes, 'on').inputValue, '2026-11-14', 'the bound date stays ISO');
+  assert.equal(field(nodes, 'on').displayValue, 'Nov 14, 2026');
+  assert.equal(field(nodes, 'on').sizeText.split('\n').length, 12, 'every month name sizes the field');
   nodes = render(view, { hourCycle: 'h23', displayLanguage: 'en-US' });
   assert.equal(field(nodes, 'at').displayValue, '13:05');
   assert.equal(field(nodes, 'at').sizeText, '00:00');
   nodes = render(view, { hourCycle: 'h12', displayLanguage: 'zh-Hans-CN' });
   assert.equal(field(nodes, 'at').displayValue, '1:05 下午');
+  assert.equal(field(nodes, 'on').displayValue, '2026年11月14日');
+  assert.equal(field(nodes, 'on').sizeText, '0000年0月00日\n0000年00月00日');
   assert.equal(field(nodes, 'at').sizeText, '00:00 上午\n00:00 下午');
   nodes = render(() => h('input', { 'data-testid': 'at', type: 'time', value: '09:30:15', step: 1 }), { hourCycle: 'h12', displayLanguage: 'en-US' });
   assert.equal(field(nodes, 'at').displayValue, '9:30:15 AM');
