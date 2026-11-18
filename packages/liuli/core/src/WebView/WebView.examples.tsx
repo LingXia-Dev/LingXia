@@ -1,11 +1,9 @@
 import { useLocal, useWebView } from '@lingxia/view';
 import { Button } from '../Button/Button';
-import { WebView, type WebViewLabels } from './WebView';
+import { WebView } from './WebView';
 
-const labels: WebViewLabels = {
-  expand: 'Expand map',
-  close: 'Close map',
-};
+// A page bundled with the gallery, so the examples work offline; an app passes its own path or address.
+const map = 'public/web/map.html';
 
 /** An inline card with a corner expand button that opens the same document in a 70% bottom sheet. */
 export function ExpandableSheet() {
@@ -13,10 +11,11 @@ export function ExpandableSheet() {
   return (
     <view className="gap-2">
       <WebView
-        src={`https://example.com/map${hash.value}`}
+        src={`${map}${hash.value}`}
         label="Delivery area map"
-        labels={labels}
         expand="sheet"
+        expandLabel="Expand map"
+        closeLabel="Close map"
         data-testid="sheet-web"
       />
       <Button
@@ -37,12 +36,13 @@ export function FullScreenWithActions() {
   return (
     <WebView
       web={web}
-      src="https://example.com/picker"
+      src={`${map}#picker`}
       label="Pick a meeting point"
-      labels={labels}
       expand="full"
-      isExpanded={open.value}
-      onExpandedChange={next => open.set(next)}
+      expandLabel="Expand the map"
+      closeLabel="Close the map"
+      isOpen={open.value}
+      onOpenChange={next => open.set(next)}
       actions={<Button label="Confirm location" variant="primary" onClick={() => open.set(false)} data-testid="confirm" />}
       data-testid="full-web"
     />
@@ -51,5 +51,5 @@ export function FullScreenWithActions() {
 
 /** The home tile. */
 export function Specimen() {
-  return <WebView src="https://example.com/embed" label="Embedded page" className="w-28 h-16" />;
+  return <WebView src={`${map}#overview`} label="Delivery area map" className="w-28 h-16" />;
 }

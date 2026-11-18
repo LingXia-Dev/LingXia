@@ -17,12 +17,9 @@ WebView frames an untrusted or packaged HTML document (`<webview>`) and optional
 ```tsx
 import { useLocal } from '@lingxia/view';
 import { Button } from '@liulidesign/core/Button';
-import { WebView, type WebViewLabels } from '@liulidesign/core/WebView';
+import { WebView } from '@liulidesign/core/WebView';
 
-const labels: WebViewLabels = {
-  expand: 'Expand map',
-  close: 'Close map',
-};
+const map = 'public/web/map.html';
 
 /** An inline card with a corner expand button that opens the same document in a 70% bottom sheet. */
 export function ExpandableSheet() {
@@ -30,10 +27,11 @@ export function ExpandableSheet() {
   return (
     <view className="gap-2">
       <WebView
-        src={`https://example.com/map${hash.value}`}
+        src={`${map}${hash.value}`}
         label="Delivery area map"
-        labels={labels}
         expand="sheet"
+        expandLabel="Expand map"
+        closeLabel="Close map"
         data-testid="sheet-web"
       />
       <Button
@@ -53,12 +51,9 @@ export function ExpandableSheet() {
 ```tsx
 import { useLocal, useWebView } from '@lingxia/view';
 import { Button } from '@liulidesign/core/Button';
-import { WebView, type WebViewLabels } from '@liulidesign/core/WebView';
+import { WebView } from '@liulidesign/core/WebView';
 
-const labels: WebViewLabels = {
-  expand: 'Expand map',
-  close: 'Close map',
-};
+const map = 'public/web/map.html';
 
 /** Controlled full-screen expansion with a native confirmation footer below the web document. */
 export function FullScreenWithActions() {
@@ -67,12 +62,13 @@ export function FullScreenWithActions() {
   return (
     <WebView
       web={web}
-      src="https://example.com/picker"
+      src={`${map}#picker`}
       label="Pick a meeting point"
-      labels={labels}
       expand="full"
-      isExpanded={open.value}
-      onExpandedChange={next => open.set(next)}
+      expandLabel="Expand the map"
+      closeLabel="Close the map"
+      isOpen={open.value}
+      onOpenChange={next => open.set(next)}
       actions={<Button label="Confirm location" variant="primary" onClick={() => open.set(false)} data-testid="confirm" />}
       data-testid="full-web"
     />
@@ -84,15 +80,16 @@ export function FullScreenWithActions() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
+| `expand` | `"full" \| "none" \| "sheet"` | `'none'` | Stays inline. Adds an expand button over the frame that opens the same live document in a 70% `'sheet'` or a `'full'` dialog without reloading. |
+| `expandLabel` | `string` |  | The expand button's name: "Expand map". |
+| `closeLabel` | `string` |  | The close button's name in the expanded header: "Close map". |
+| `isOpen` | `boolean` |  | Whether the expanded sheet or dialog is open; leave it out to let the expand and close buttons own it. |
+| `onOpenChange` | `((isOpen: boolean) => void)` |  |  |
+| `dismissOn` | `DialogDismissOn` | `'any'` | Which requests close the expanded sheet or dialog (`'any'` includes a backdrop tap). |
+| `actions` | `Child` |  | Footer inside the expanded sheet or dialog, such as a confirmation bar under a map. |
 | `src` | `string` |  | Address or packaged path of the document. Optional when another `<webview>` already gave `web` a source. |
 | `web` | `WebView` |  | Shared `useWebView` handle; when omitted, `WebView` creates its own so expanding still keeps one live document. |
 | `label` (required) | `string` |  | What the embedded page shows, its accessible name and expanded heading. |
-| `labels` | `WebViewLabels` |  | Spoken names for the expand and close controls when `expand` is `'sheet'` or `'full'`. |
-| `expand` | `WebViewExpand` | `'none'` | Adds an expand button over the frame that opens the same live document in a 70% `'sheet'` or `'full'` dialog without reloading. |
-| `isExpanded` | `boolean` |  | Controlled expanded state; omit to let the expand and close controls manage it. |
-| `onExpandedChange` | `((isExpanded: boolean) => void)` |  | Runs when the expanded sheet or full-screen dialog opens or closes. |
-| `dismissOn` | `DialogDismissOn` | `'any'` | Which requests close the expanded sheet or dialog (`'any'` includes a backdrop tap). |
-| `actions` | `Child` |  | Footer inside the expanded sheet or dialog, such as a confirmation bar under a map. |
 | `onLoad` | `((event: WebViewLoad) => void)` |  | Runs when a top-level document finishes loading. |
 | `onMessage` | `((message: WebViewMessage) => void)` |  | Runs when the page calls `window.lingxia.postMessage`. |
 | `onBlocked` | `((event: WebViewBlocked) => void)` |  | Runs when the host blocks an off-origin or disallowed navigation. |
@@ -106,7 +103,7 @@ export function FullScreenWithActions() {
 | --- | --- | --- | --- |
 | root | `<view>` | yes | The rounded inline frame that clips the embedded document. |
 | webview | `<webview>` | yes | The inline `<webview>` surface. |
-| expand | `<button>` | no | Media-docked corner button shown when `expand` is `sheet` or `full`. |
+| expand | `<button>` | no | Media-docked corner button shown when `expand` is `sheet` or `full`, named by `expandLabel`. |
 | panel | `<dialog>` | no | The 70% bottom sheet or full-screen `<dialog>` shown while expanded. |
 | header | `<view>` | no | Header row in the expanded sheet or dialog with document title and close button. |
 | stage | `<webview>` | no | The expanded `<webview>` sharing the same `useWebView` session. |

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>Delivery area</title>
+  <!-- A bundled stand-in for a map page: the gallery's WebView examples load it, so they work offline. -->
+  <style>
+    :root {
+      color-scheme: light dark;
+      --land: #eef1f4; --block: #e2e6eb; --street: #ffffff; --park: #d4ead9; --water: #cfe0f3;
+      --area: rgba(64, 99, 230, 0.14); --area-line: #4063e6; --pin: #e5484d; --ink: #1c2230; --muted: #5c6577;
+      --chip: rgba(255, 255, 255, 0.92);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --land: #161b24; --block: #1e2430; --street: #2a3140; --park: #1d3227; --water: #1a2a40;
+        --area: rgba(114, 153, 255, 0.16); --area-line: #7299ff; --pin: #f06565; --ink: #e8ecf3; --muted: #9aa3b5;
+        --chip: rgba(30, 36, 48, 0.92);
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--land); font-family: system-ui, -apple-system, sans-serif; }
+    svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #map { transition: transform 300ms cubic-bezier(0, 0, 0.2, 1); transform-origin: 62% 44%; }
+    body.pin #map { transform: scale(2.2); }
+    .chip {
+      position: absolute; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+      padding: 6px 10px; border-radius: 999px; background: var(--chip); color: var(--ink);
+      font-size: 13px; line-height: 18px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+    }
+    .chip span { color: var(--muted); }
+    .cross { display: none; position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; }
+    body.picker .cross { display: block; }
+    body.picker .pin { display: none; }
+  </style>
+</head>
+<body>
+  <svg id="map" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <rect width="400" height="300" fill="var(--land)" />
+    <path d="M-10 230 C 80 200, 140 260, 230 225 S 360 190, 410 215 L 410 310 L -10 310 Z" fill="var(--water)" />
+    <rect x="34" y="34" width="90" height="62" rx="6" fill="var(--park)" />
+    <g fill="var(--block)">
+      <rect x="140" y="30" width="70" height="50" rx="3" /><rect x="222" y="30" width="80" height="50" rx="3" /><rect x="314" y="30" width="70" height="50" rx="3" />
+      <rect x="30" y="110" width="94" height="60" rx="3" /><rect x="140" y="96" width="70" height="74" rx="3" /><rect x="222" y="96" width="80" height="74" rx="3" />
+      <rect x="314" y="96" width="70" height="74" rx="3" /><rect x="140" y="182" width="70" height="24" rx="3" /><rect x="222" y="182" width="80" height="24" rx="3" />
+    </g>
+    <g stroke="var(--street)" stroke-width="9" stroke-linecap="round" fill="none">
+      <path d="M0 88 H400" /><path d="M0 176 H400" /><path d="M132 0 V215" /><path d="M216 0 V210" /><path d="M308 0 V200" />
+    </g>
+    <path d="M150 40 L330 46 L352 150 L240 196 L156 160 Z" fill="var(--area)" stroke="var(--area-line)" stroke-width="2" stroke-dasharray="6 5" />
+    <g class="pin" transform="translate(248 132)">
+      <path d="M0 0 C -11 -14, -11 -30, 0 -30 C 11 -30, 11 -14, 0 0 Z" fill="var(--pin)" />
+      <circle cx="0" cy="-20" r="4" fill="#fff" />
+    </g>
+  </svg>
+  <svg class="cross" viewBox="0 0 28 28" aria-hidden="true">
+    <circle cx="14" cy="14" r="5" fill="none" stroke="var(--pin)" stroke-width="2.5" />
+    <path d="M14 0 V7 M14 21 V28 M0 14 H7 M21 14 H28" stroke="var(--pin)" stroke-width="2.5" stroke-linecap="round" />
+  </svg>
+  <div class="chip" id="chip"></div>
+  <script>
+    const chip = document.getElementById('chip');
+    const show = () => {
+      const view = (location.hash || '#overview').slice(1);
+      document.body.className = view;
+      chip.innerHTML = view === 'picker' ? 'Meeting point <span>· move the map</span>'
+        : view === 'pin' ? '14 Linden Street <span>· in the area</span>'
+        : 'Delivery area <span>· 2.4 km²</span>';
+    };
+    addEventListener('hashchange', show);
+    show();
+  </script>
+</body>
+</html>

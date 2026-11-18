@@ -19978,6 +19978,50 @@
       ],
       "props": [
         {
+          "name": "expand",
+          "type": "\"full\" | \"none\" | \"sheet\"",
+          "required": false,
+          "description": "Stays inline. Adds an expand button over the frame that opens the same live document in a 70% `'sheet'` or a `'full'` dialog without reloading.",
+          "default": "'none'"
+        },
+        {
+          "name": "expandLabel",
+          "type": "string",
+          "required": false,
+          "description": "The expand button's name: \"Expand map\"."
+        },
+        {
+          "name": "closeLabel",
+          "type": "string",
+          "required": false,
+          "description": "The close button's name in the expanded header: \"Close map\"."
+        },
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether the expanded sheet or dialog is open; leave it out to let the expand and close buttons own it."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "((isOpen: boolean) => void)",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "dismissOn",
+          "type": "DialogDismissOn",
+          "required": false,
+          "description": "Which requests close the expanded sheet or dialog (`'any'` includes a backdrop tap).",
+          "default": "'any'"
+        },
+        {
+          "name": "actions",
+          "type": "Child",
+          "required": false,
+          "description": "Footer inside the expanded sheet or dialog, such as a confirmation bar under a map."
+        },
+        {
           "name": "src",
           "type": "string",
           "required": false,
@@ -19994,44 +20038,6 @@
           "type": "string",
           "required": true,
           "description": "What the embedded page shows, its accessible name and expanded heading."
-        },
-        {
-          "name": "labels",
-          "type": "WebViewLabels",
-          "required": false,
-          "description": "Spoken names for the expand and close controls when `expand` is `'sheet'` or `'full'`."
-        },
-        {
-          "name": "expand",
-          "type": "WebViewExpand",
-          "required": false,
-          "description": "Adds an expand button over the frame that opens the same live document in a 70% `'sheet'` or `'full'` dialog without reloading.",
-          "default": "'none'"
-        },
-        {
-          "name": "isExpanded",
-          "type": "boolean",
-          "required": false,
-          "description": "Controlled expanded state; omit to let the expand and close controls manage it."
-        },
-        {
-          "name": "onExpandedChange",
-          "type": "((isExpanded: boolean) => void)",
-          "required": false,
-          "description": "Runs when the expanded sheet or full-screen dialog opens or closes."
-        },
-        {
-          "name": "dismissOn",
-          "type": "DialogDismissOn",
-          "required": false,
-          "description": "Which requests close the expanded sheet or dialog (`'any'` includes a backdrop tap).",
-          "default": "'any'"
-        },
-        {
-          "name": "actions",
-          "type": "Child",
-          "required": false,
-          "description": "Footer inside the expanded sheet or dialog, such as a confirmation bar under a map."
         },
         {
           "name": "onLoad",
@@ -20121,12 +20127,12 @@
         {
           "name": "ExpandableSheet",
           "title": "Inline card that expands into a 70% sheet",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { WebView, type WebViewLabels } from '@liulidesign/core/WebView';\n\nconst labels: WebViewLabels = {\n  expand: 'Expand map',\n  close: 'Close map',\n};\n\n/** An inline card with a corner expand button that opens the same document in a 70% bottom sheet. */\nexport function ExpandableSheet() {\n  const hash = useLocal('section', '#overview');\n  return (\n    <view className=\"gap-2\">\n      <WebView\n        src={`https://example.com/map${hash.value}`}\n        label=\"Delivery area map\"\n        labels={labels}\n        expand=\"sheet\"\n        data-testid=\"sheet-web\"\n      />\n      <Button\n        label={hash.value === '#overview' ? 'Center on pin' : 'Show overview'}\n        size=\"sm\"\n        width=\"content\"\n        onClick={() => hash.set(hash.value === '#overview' ? '#pin' : '#overview')}\n        data-testid=\"toggle-hash\"\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { WebView } from '@liulidesign/core/WebView';\n\nconst map = 'public/web/map.html';\n\n/** An inline card with a corner expand button that opens the same document in a 70% bottom sheet. */\nexport function ExpandableSheet() {\n  const hash = useLocal('section', '#overview');\n  return (\n    <view className=\"gap-2\">\n      <WebView\n        src={`${map}${hash.value}`}\n        label=\"Delivery area map\"\n        expand=\"sheet\"\n        expandLabel=\"Expand map\"\n        closeLabel=\"Close map\"\n        data-testid=\"sheet-web\"\n      />\n      <Button\n        label={hash.value === '#overview' ? 'Center on pin' : 'Show overview'}\n        size=\"sm\"\n        width=\"content\"\n        onClick={() => hash.set(hash.value === '#overview' ? '#pin' : '#overview')}\n        data-testid=\"toggle-hash\"\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "FullScreenWithActions",
           "title": "Full-screen expansion with a footer action",
-          "source": "import { useLocal, useWebView } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { WebView, type WebViewLabels } from '@liulidesign/core/WebView';\n\nconst labels: WebViewLabels = {\n  expand: 'Expand map',\n  close: 'Close map',\n};\n\n/** Controlled full-screen expansion with a native confirmation footer below the web document. */\nexport function FullScreenWithActions() {\n  const web = useWebView('liuli-web-picker');\n  const open = useLocal('picker-open', false);\n  return (\n    <WebView\n      web={web}\n      src=\"https://example.com/picker\"\n      label=\"Pick a meeting point\"\n      labels={labels}\n      expand=\"full\"\n      isExpanded={open.value}\n      onExpandedChange={next => open.set(next)}\n      actions={<Button label=\"Confirm location\" variant=\"primary\" onClick={() => open.set(false)} data-testid=\"confirm\" />}\n      data-testid=\"full-web\"\n    />\n  );\n}"
+          "source": "import { useLocal, useWebView } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { WebView } from '@liulidesign/core/WebView';\n\nconst map = 'public/web/map.html';\n\n/** Controlled full-screen expansion with a native confirmation footer below the web document. */\nexport function FullScreenWithActions() {\n  const web = useWebView('liuli-web-picker');\n  const open = useLocal('picker-open', false);\n  return (\n    <WebView\n      web={web}\n      src={`${map}#picker`}\n      label=\"Pick a meeting point\"\n      expand=\"full\"\n      expandLabel=\"Expand the map\"\n      closeLabel=\"Close the map\"\n      isOpen={open.value}\n      onOpenChange={next => open.set(next)}\n      actions={<Button label=\"Confirm location\" variant=\"primary\" onClick={() => open.set(false)} data-testid=\"confirm\" />}\n      data-testid=\"full-web\"\n    />\n  );\n}"
         }
       ],
       "gaps": [],

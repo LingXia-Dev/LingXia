@@ -15,35 +15,40 @@ import type { DialogDismissOn } from '../Dialog/Dialog';
 import { Glyph } from '../internal/Glyph';
 import { webViewRecipe as r } from './WebView.recipe';
 
-/** `'none'` stays inline; `'sheet'` opens a 70% bottom sheet; `'full'` fills the window. */
-export type WebViewExpand = 'none' | 'sheet' | 'full';
+export type WebViewExpansion =
+  | {
+      /** Stays inline. @default 'none' */
+      expand?: 'none';
+      expandLabel?: never;
+      closeLabel?: never;
+      isOpen?: never;
+      onOpenChange?: never;
+      dismissOn?: never;
+      actions?: never;
+    }
+  | {
+      /** Adds an expand button over the frame that opens the same live document in a 70% `'sheet'` or a `'full'` dialog without reloading. */
+      expand: 'sheet' | 'full';
+      /** The expand button's name: "Expand map". */
+      expandLabel: string;
+      /** The close button's name in the expanded header: "Close map". */
+      closeLabel: string;
+      /** Whether the expanded sheet or dialog is open; leave it out to let the expand and close buttons own it. */
+      isOpen?: boolean;
+      onOpenChange?: (isOpen: boolean) => void;
+      /** Which requests close the expanded sheet or dialog (`'any'` includes a backdrop tap). @default 'any' */
+      dismissOn?: DialogDismissOn;
+      /** Footer inside the expanded sheet or dialog, such as a confirmation bar under a map. */
+      actions?: Child;
+    };
 
-export interface WebViewLabels {
-  /** Spoken name of the expand button over the inline frame. */
-  readonly expand: string;
-  /** Spoken name of the close button in the expanded sheet or full-screen header. */
-  readonly close: string;
-}
-
-export interface WebViewProps {
+export type WebViewProps = WebViewExpansion & {
   /** Address or packaged path of the document. Optional when another `<webview>` already gave `web` a source. */
   src?: string;
   /** Shared `useWebView` handle; when omitted, `WebView` creates its own so expanding still keeps one live document. */
   web?: WebSession;
   /** What the embedded page shows, its accessible name and expanded heading. */
   label: string;
-  /** Spoken names for the expand and close controls when `expand` is `'sheet'` or `'full'`. */
-  labels?: WebViewLabels;
-  /** Adds an expand button over the frame that opens the same live document in a 70% `'sheet'` or `'full'` dialog without reloading. @default 'none' */
-  expand?: WebViewExpand;
-  /** Controlled expanded state; omit to let the expand and close controls manage it. */
-  isExpanded?: boolean;
-  /** Runs when the expanded sheet or full-screen dialog opens or closes. */
-  onExpandedChange?: (isExpanded: boolean) => void;
-  /** Which requests close the expanded sheet or dialog (`'any'` includes a backdrop tap). @default 'any' */
-  dismissOn?: DialogDismissOn;
-  /** Footer inside the expanded sheet or dialog, such as a confirmation bar under a map. */
-  actions?: Child;
   /** Runs when a top-level document finishes loading. */
   onLoad?: (event: WebViewLoad) => void;
   /** Runs when the page calls `window.lingxia.postMessage`. */
@@ -56,7 +61,7 @@ export interface WebViewProps {
   className?: string;
   /** On the inline `<webview>`; the expand button takes `<id>-expand` and the expanded dialog `<id>-sheet`. */
   'data-testid'?: string;
-}
+};
 
 const closedBy = { any: 'any', closeRequest: 'closerequest', none: 'none' } as const satisfies Record<DialogDismissOn, string>;
 
@@ -68,10 +73,11 @@ export function WebView({
   src,
   web,
   label,
-  labels,
   expand = 'none',
-  isExpanded,
-  onExpandedChange,
+  expandLabel,
+  closeLabel,
+  isOpen,
+  onOpenChange,
   dismissOn = 'any',
   actions,
   onLoad,
@@ -84,16 +90,14 @@ export function WebView({
   const { env } = useView();
   const fallback = useWebView(useId());
   const session = web ?? fallback;
-  const localOpen = useLocal('expanded', false);
-  const controlled = isExpanded !== undefined;
-  const shown = expand !== 'none' && (controlled ? isExpanded : localOpen.value);
+  const localOpen = useLocal('open', false);
+  const controlled = isOpen !== undefined;
+  const shown = expand !== 'none' && (controlled ? isOpen : localOpen.value);
   const setOpen = (next: boolean) => {
     if (!controlled) localOpen.set(next);
-    onExpandedChange?.(next);
+    onOpenChange?.(next);
   };
   const expandable = expand !== 'none';
-  const expandLabel = labels?.expand ?? label;
-  const closeLabel = labels?.close ?? label;
   const panelMode = expand === 'full' ? 'full' : 'sheet';
 
   return (

@@ -15,7 +15,7 @@ export const doc: ComponentDoc = {
   anatomy: [
     { part: 'root', required: true, description: 'The rounded inline frame that clips the embedded document.' },
     { part: 'webview', required: true, description: 'The inline `<webview>` surface.' },
-    { part: 'expand', required: false, description: 'Media-docked corner button shown when `expand` is `sheet` or `full`.' },
+    { part: 'expand', required: false, description: 'Media-docked corner button shown when `expand` is `sheet` or `full`, named by `expandLabel`.' },
     { part: 'panel', required: false, description: 'The 70% bottom sheet or full-screen `<dialog>` shown while expanded.' },
     { part: 'header', required: false, description: 'Header row in the expanded sheet or dialog with document title and close button.' },
     { part: 'stage', required: false, description: 'The expanded `<webview>` sharing the same `useWebView` session.' },
