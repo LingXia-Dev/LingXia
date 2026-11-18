@@ -105,5 +105,5 @@ export function Faces() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Toast message="Changes saved" tone="success" className="w-56" />;
+  return <Toast message="Saved" tone="success" className="w-full" />;
 }

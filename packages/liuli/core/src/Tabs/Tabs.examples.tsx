@@ -127,5 +127,5 @@ export function StateSegmentedDisabled() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Tabs label="Range" items={ranges} value="week" onChange={unused} className="w-52" />;
+  return <Tabs label="Range" items={ranges.slice(0, 2)} value="week" onChange={unused} className="w-full" />;
 }

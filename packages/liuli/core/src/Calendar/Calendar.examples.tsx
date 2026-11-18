@@ -39,5 +39,10 @@ export function Chinese() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Calendar label="Calendar" locale={calendarEn} value="2026-11-19" onChange={unused} today={today} className="w-[280px] scale-50" />;
+  // A month at half size does not fit a tile: its head and first weeks, fading out where the tile cuts them.
+  return (
+    <view className="w-[130px] h-[88px] overflow-hidden mask-b-from-50%">
+      <Calendar label="Calendar" locale={calendarEn} value="2026-11-05" onChange={unused} today={today} className="w-[260px] scale-50 ltr:origin-top-left rtl:origin-top-right" />
+    </view>
+  );
 }

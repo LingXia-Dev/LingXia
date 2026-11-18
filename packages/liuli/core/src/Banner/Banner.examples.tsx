@@ -71,7 +71,7 @@ export function StateDismissible() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Banner tone="success" title="All synced" className="w-44" />;
+  return <Banner tone="success" title="Synced" className="w-full" />;
 }
 
 /** Folded to its title until someone wants the rest: for a notice that stays for days. */

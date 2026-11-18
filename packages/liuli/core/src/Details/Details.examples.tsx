@@ -76,9 +76,8 @@ export function StateOpen() {
 /** The home tile. */
 export function Specimen() {
   return (
-    <DetailsGroup className="w-40">
+    <DetailsGroup className="w-full">
       <Details label="Shipping" isDefaultOpen><text className="text-footnote text-muted">Free over €40.</text></Details>
-      <Details label="Returns"><text className="text-footnote text-muted">30 days.</text></Details>
     </DetailsGroup>
   );
 }

@@ -54,11 +54,11 @@ export function Specimen() {
   return (
     <TreeList
       label="Sample"
-      nodes={[{ id: 'a', label: 'Notes', children: [{ id: 'b', label: 'Travel' }, { id: 'c', label: 'Work' }] }]}
+      nodes={[{ id: 'a', label: 'Notes', children: [{ id: 'b', label: 'Travel' }] }]}
       value="b"
       onChange={unused}
       defaultExpanded={['a']}
-      className="w-36"
+      className="w-full"
     />
   );
 }
