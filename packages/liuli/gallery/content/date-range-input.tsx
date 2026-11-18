@@ -14,7 +14,7 @@ export function Content() {
         </Stage>
       </PageSection>
       <PageSection title={"States"} note={"Each state is set by its props so you can see it. Nothing here is waiting, missing or broken."}>
-        <StageGrid>
+        <StageGrid stack>
           <Stage caption={"Invalid"}>
             <StateInvalid />
           </Stage>

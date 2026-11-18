@@ -71,6 +71,7 @@ export const doc: ComponentDoc = {
       lead: 'Use a date range input when a form needs a first and a last day.',
       hero: 'Stay',
       variants: [{ name: 'Empty', title: 'Nothing chosen yet, with a placeholder' }],
+      statesLayout: 'stack',
       states: [
         { name: 'StateInvalid', title: 'Invalid' },
         { name: 'StateDisabled', title: 'Disabled' },

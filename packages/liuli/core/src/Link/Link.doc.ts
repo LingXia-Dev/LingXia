@@ -63,6 +63,7 @@ export const doc: ComponentDoc = {
       lead: 'Use a link for words in a sentence that lead to another page.',
       hero: 'InSentence',
       variants: [{ name: 'InBody', title: 'At the size of the text around it' }],
+      statesLayout: 'stack',
       states: [{ name: 'Disabled', title: 'Disabled' }],
     },
   },

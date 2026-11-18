@@ -5692,6 +5692,7 @@
               "title": "Nothing chosen yet, with a placeholder"
             }
           ],
+          "statesLayout": "stack",
           "states": [
             {
               "name": "StateInvalid",
@@ -9821,6 +9822,7 @@
               "title": "At the size of the text around it"
             }
           ],
+          "statesLayout": "stack",
           "states": [
             {
               "name": "Disabled",
