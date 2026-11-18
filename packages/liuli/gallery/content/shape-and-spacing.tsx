@@ -79,7 +79,7 @@ export function Content() {
         </StageGrid>
       </PageSection>
       <PageSection title="Control heights">
-        <Stage caption="Buttons, inputs and menu triggers share these three; prefer large on touch layouts">
+        <Stage caption="Buttons, inputs and menu triggers share these three, medium by default; the host gives a shorter control a finger-sized target">
           <view className="gap-3">
             {heights.map(height => (
               <view key={height.name} className={`flex-row items-center justify-between rounded-control border border-line-strong px-4 ${height.bar}`}>
