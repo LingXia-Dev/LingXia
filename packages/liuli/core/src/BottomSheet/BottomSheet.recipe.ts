@@ -15,10 +15,11 @@ export const bottomSheetParts = {
 /**
  * A panel on the bottom edge, rounded at the top, that slides up to open and follows the finger
  * between its detents; under reduced motion it fades. On a wide screen it keeps to 640 px, centred.
+ * Its scrim keeps the panel's timing, so the two arrive and leave together.
  */
 export const bottomSheetRecipe = {
   panel: {
-    base: 'mt-auto mb-0 w-full max-w-[640px] px-5 pt-2 gap-4 rounded-t-dialog border border-b-0 border-text/12 bg-surface-overlay shadow-modal transition duration-slow ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
+    base: 'mt-auto mb-0 w-full max-w-[640px] px-5 pt-2 gap-4 rounded-t-dialog border border-b-0 border-text/12 bg-surface-overlay shadow-modal transition duration-slow ease-spring backdrop:transition-opacity backdrop:duration-slow backdrop:ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
     detents: {
       fit: 'max-h-[90vh]',
       expandable: 'h-[90vh]',

@@ -13,11 +13,12 @@ export const drawerParts = {
 
 /**
  * A panel the height of the screen on one side edge, rounded on its inner side, that slides in from
- * that edge; under reduced motion it fades. The parts match Dialog's.
+ * that edge; under reduced motion it fades. The parts match Dialog's. Its scrim keeps the panel's
+ * timing, so the two arrive and leave together.
  */
 export const drawerRecipe = {
   panel: {
-    base: 'h-full w-[88%] px-5 gap-4 border-text/12 bg-surface-overlay shadow-modal transition duration-slow ease-standard starting:opacity-0 exit:opacity-0',
+    base: 'h-full w-[88%] px-5 gap-4 border-text/12 bg-surface-overlay shadow-modal transition duration-slow ease-standard backdrop:transition-opacity backdrop:duration-slow backdrop:ease-standard starting:opacity-0 exit:opacity-0',
     side: {
       end: 'ms-auto me-0 rounded-s-dialog border-s motion-safe:starting:translate-x-full motion-safe:exit:translate-x-full rtl:motion-safe:starting:-translate-x-full rtl:motion-safe:exit:-translate-x-full',
       start: 'me-auto ms-0 rounded-e-dialog border-e motion-safe:starting:-translate-x-full motion-safe:exit:-translate-x-full rtl:motion-safe:starting:translate-x-full rtl:motion-safe:exit:translate-x-full',

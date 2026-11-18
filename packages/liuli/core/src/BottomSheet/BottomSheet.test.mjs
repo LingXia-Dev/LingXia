@@ -5,6 +5,13 @@ import { renderExample } from '../testing/harness.mjs';
 
 const sheet = (screen, testId) => screen.queryAll(node => node.testId === testId)[0];
 const drag = node => JSON.parse(node.props.drag);
+const timing = node => { const { durationMs, easing } = JSON.parse(node.props.transition); return { durationMs, easing }; };
+
+test('MoveTo: the scrim keeps the sheet\'s timing, so the two leave together', async () => {
+  const screen = await renderExample('BottomSheet/BottomSheet', 'MoveTo');
+  screen.press(screen.getByTestId('move-open'));
+  assert.deepEqual(timing(sheet(screen, 'move-backdrop')), timing(sheet(screen, 'move')));
+});
 
 test('MoveTo: a named dialog on the bottom edge, as tall as its content, that drags off', async () => {
   const screen = await renderExample('BottomSheet/BottomSheet', 'MoveTo');

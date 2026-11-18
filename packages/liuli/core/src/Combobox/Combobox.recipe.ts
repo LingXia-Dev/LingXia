@@ -54,8 +54,9 @@ export const comboboxRecipe = {
     // scales, so it slides 4 px out from the field instead of growing.
     typeahead: 'w-72 max-w-[90vw] p-1 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:-translate-y-1',
   },
+  /** On touch: a bottom sheet, its scrim on the sheet's timing so the two leave together. */
   sheet: {
-    base: 'mt-auto mb-0 w-full max-w-[640px] max-h-[90vh] px-4 pt-2 gap-3 rounded-t-dialog border border-b-0 border-text/12 bg-surface-overlay shadow-modal transition duration-slow ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
+    base: 'mt-auto mb-0 w-full max-w-[640px] max-h-[90vh] px-4 pt-2 gap-3 rounded-t-dialog border border-b-0 border-text/12 bg-surface-overlay shadow-modal transition duration-slow ease-spring backdrop:transition-opacity backdrop:duration-slow backdrop:ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
   },
   grabber: {
     base: 'self-center w-9 h-1 rounded-full bg-text/20',
