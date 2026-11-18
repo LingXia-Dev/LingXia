@@ -175,7 +175,8 @@
   },
   "scripts": {
     "test": "node --test \"src/**/*.test.mjs\"",
-    "check": "node scripts/icons.mjs --check && node scripts/check.mjs && node scripts/generate.mjs --check && tsc --noEmit -p tsconfig.json",
+    "test:pages": "node --test src/testing/gallery-pages.mjs",
+    "check": "node scripts/icons.mjs --check && node scripts/check.mjs && node scripts/generate.mjs --check && tsc --noEmit -p tsconfig.json && npm run test:pages",
     "generate": "node scripts/icons.mjs && node scripts/generate.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

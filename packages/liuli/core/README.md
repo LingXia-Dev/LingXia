@@ -186,6 +186,7 @@ the gallery shows and the tests render) and `X.test.mjs`.
 
 ```sh
 npm test            # unit tests: each example built by the View compiler and rendered in Node
-npm run check       # boundary rules, generated files up to date, and types
+npm run check       # boundary rules, generated files up to date, types, and test:pages
+npm run test:pages  # every gallery page opened in its phone and desk form (src/testing/gallery-pages.mjs, a few minutes)
 npm run generate    # rewrite docs/, catalog.json, this file's component list and the gallery's component pages
 ```
