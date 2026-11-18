@@ -1,4 +1,4 @@
-import { useLocal, type Child, type VectorPath } from '@lingxia/view';
+import { useLocal, useView, type Child, type VectorPath } from '@lingxia/view';
 import { Avatar } from '@liulidesign/core/Avatar';
 import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
@@ -66,9 +66,12 @@ export function Content() {
   const devices = useLocal('devices', initialDevices.map(device => device.id));
   const confirming = useLocal('confirming', false);
   const scheduled = useLocal('scheduled', false);
+  const isWide = useView().env.sizeClass === 'regular';
 
   return (
     <>
+      {/* Beside the sidebar the workspace already shows the page's title. */}
+      {!isWide && <text role="heading" headingLevel={1} className="text-title font-semibold tracking-tight text-text">Settings</text>}
       <Group title="Account">
         <Item
           label="Ana Lima"
