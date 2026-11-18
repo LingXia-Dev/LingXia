@@ -9387,13 +9387,13 @@
           "name": "keys",
           "type": "readonly string[]",
           "required": true,
-          "description": "The keys of one shortcut, in the order they are held: `['Ctrl', 'K']`. Each is drawn as a key cap."
+          "description": "The keys of one shortcut, in the order they are held: `['⌘', 'K']`. Each is drawn as a key cap."
         },
         {
           "name": "label",
           "type": "string",
           "required": false,
-          "description": "How the shortcut is read: \"Control K\". Without it the keys are read as written."
+          "description": "How the shortcut is read: \"Command K\". Without it the keys are read as written."
         },
         {
           "name": "size",
@@ -9439,7 +9439,7 @@
           }
         ],
         "notes": [
-          "With `label` the shortcut is read once, as the label says: \"Control K\". Give it whenever a key is short for a word.",
+          "With `label` the shortcut is read once, as the label says: \"Command K\". Give it whenever a key is a symbol or short for a word.",
           "Without it each key is read as written, which suits keys that are words: \"Enter\".",
           "It takes no focus and no press."
         ]
@@ -9448,7 +9448,7 @@
         {
           "name": "Shortcuts",
           "title": "A list of shortcuts",
-          "source": "import { Kbd } from '@liulidesign/core/Kbd';\n\nconst shortcuts = [\n  { key: 'search', label: 'Search notes', keys: ['Ctrl', 'K'], spoken: 'Control K' },\n  { key: 'new', label: 'New note', keys: ['Ctrl', 'N'], spoken: 'Control N' },\n  { key: 'archive', label: 'Move to archive', keys: ['Ctrl', 'Shift', 'A'], spoken: 'Control Shift A' },\n  { key: 'close', label: 'Close the panel', keys: ['Esc'], spoken: 'Escape' },\n] as const;\n\n/** A list of shortcuts: what each does, and its keys at the end of the row. */\nexport function Shortcuts() {\n  return (\n    <view className=\"gap-3\">\n      {shortcuts.map(shortcut => (\n        <view key={shortcut.key} className=\"flex-row items-center justify-between gap-4\">\n          <text className=\"text-body text-text\">{shortcut.label}</text>\n          <Kbd keys={shortcut.keys} label={shortcut.spoken} data-testid={shortcut.key} />\n        </view>\n      ))}\n    </view>\n  );\n}"
+          "source": "import { Kbd } from '@liulidesign/core/Kbd';\n\nconst shortcuts = [\n  { key: 'search', label: 'Search notes', keys: ['⌘', 'K'], spoken: 'Command K' },\n  { key: 'new', label: 'New note', keys: ['⌘', 'N'], spoken: 'Command N' },\n  { key: 'archive', label: 'Move to archive', keys: ['⇧', '⌘', 'A'], spoken: 'Shift Command A' },\n  { key: 'close', label: 'Close the panel', keys: ['Esc'], spoken: 'Escape' },\n] as const;\n\n/** A list of shortcuts as a Mac shows them: what each does, and its keys at the end of the row. */\nexport function Shortcuts() {\n  return (\n    <view className=\"gap-3\">\n      {shortcuts.map(shortcut => (\n        <view key={shortcut.key} className=\"flex-row items-center justify-between gap-4\">\n          <text className=\"text-body text-text\">{shortcut.label}</text>\n          <Kbd keys={shortcut.keys} label={shortcut.spoken} data-testid={shortcut.key} />\n        </view>\n      ))}\n    </view>\n  );\n}"
         },
         {
           "name": "Hint",
@@ -9458,8 +9458,7 @@
       ],
       "gaps": [],
       "limits": [
-        "The keys are whatever the app passes; Liuli does not know the platform's modifier names.",
-        "Key symbols such as ⌘ and ⇧ are missing from some devices' text face and draw as an empty cap there; write the key's name."
+        "The keys are whatever the app passes; Liuli does not know the platform's modifier names."
       ],
       "theming": {
         "classProps": [

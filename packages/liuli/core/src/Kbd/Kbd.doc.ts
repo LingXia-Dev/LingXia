@@ -28,14 +28,14 @@ export const doc: ComponentDoc = {
       { what: 'key', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
     ],
     notes: [
-      'With `label` the shortcut is read once, as the label says: "Control K". Give it whenever a key is short for a word.',
+      'With `label` the shortcut is read once, as the label says: "Command K". Give it whenever a key is a symbol or short for a word.',
       'Without it each key is read as written, which suits keys that are words: "Enter".',
       'It takes no focus and no press.',
     ],
   },
   guidance: {
     do: [
-      'Write the keys the way the platform names them: Cmd on a Mac, Ctrl elsewhere.',
+      'Write the keys the way the platform shows them: ⌘ ⌥ ⇧ on a Mac, Ctrl and Shift elsewhere.',
       'Show a shortcut where its action is: beside the menu item, in the button\'s tooltip.',
     ],
     dont: [
@@ -50,7 +50,6 @@ export const doc: ComponentDoc = {
   gaps: [],
   limits: [
     'The keys are whatever the app passes; Liuli does not know the platform\'s modifier names.',
-    'Key symbols such as ⌘ and ⇧ are missing from some devices\' text face and draw as an empty cap there; write the key\'s name.',
   ],
   related: ['Tooltip', 'DropdownMenu'],
   gallery: {

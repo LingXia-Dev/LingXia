@@ -5,8 +5,8 @@ import { textOf } from '@lingxia/view/testing';
 
 test('Shortcuts: one cap per key, read once by the spoken form', async () => {
   const kbd = (await renderExample('Kbd/Kbd', 'Shortcuts')).getByTestId('archive');
-  assert.deepEqual(kbd.children.map(textOf), ['Ctrl', 'Shift', 'A']);
-  assert.equal(kbd.props.accessibilityLabel, 'Control Shift A');
+  assert.deepEqual(kbd.children.map(textOf), ['⇧', '⌘', 'A']);
+  assert.equal(kbd.props.accessibilityLabel, 'Shift Command A');
   assert.ok(kbd.children.every(cap => cap.props.accessibilityHidden === 1), 'the caps are not read again');
 });
 

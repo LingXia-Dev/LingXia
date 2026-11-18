@@ -18,13 +18,13 @@ Kbd shows the keys of one shortcut, each as a small key cap, in the order they a
 import { Kbd } from '@liulidesign/core/Kbd';
 
 const shortcuts = [
-  { key: 'search', label: 'Search notes', keys: ['Ctrl', 'K'], spoken: 'Control K' },
-  { key: 'new', label: 'New note', keys: ['Ctrl', 'N'], spoken: 'Control N' },
-  { key: 'archive', label: 'Move to archive', keys: ['Ctrl', 'Shift', 'A'], spoken: 'Control Shift A' },
+  { key: 'search', label: 'Search notes', keys: ['⌘', 'K'], spoken: 'Command K' },
+  { key: 'new', label: 'New note', keys: ['⌘', 'N'], spoken: 'Command N' },
+  { key: 'archive', label: 'Move to archive', keys: ['⇧', '⌘', 'A'], spoken: 'Shift Command A' },
   { key: 'close', label: 'Close the panel', keys: ['Esc'], spoken: 'Escape' },
 ] as const;
 
-/** A list of shortcuts: what each does, and its keys at the end of the row. */
+/** A list of shortcuts as a Mac shows them: what each does, and its keys at the end of the row. */
 export function Shortcuts() {
   return (
     <view className="gap-3">
@@ -65,8 +65,8 @@ export function Hint() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `keys` (required) | `readonly string[]` |  | The keys of one shortcut, in the order they are held: `['Ctrl', 'K']`. Each is drawn as a key cap. |
-| `label` | `string` |  | How the shortcut is read: "Control K". Without it the keys are read as written. |
+| `keys` (required) | `readonly string[]` |  | The keys of one shortcut, in the order they are held: `['⌘', 'K']`. Each is drawn as a key cap. |
+| `label` | `string` |  | How the shortcut is read: "Command K". Without it the keys are read as written. |
 | `size` | `KbdSize` | `'sm'` |  |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
@@ -92,7 +92,7 @@ export function Hint() {
 - Name: label.
 - Description: none.
 - Press target: .
-- With `label` the shortcut is read once, as the label says: "Control K". Give it whenever a key is short for a word.
+- With `label` the shortcut is read once, as the label says: "Command K". Give it whenever a key is a symbol or short for a word.
 - Without it each key is read as written, which suits keys that are words: "Enter".
 - It takes no focus and no press.
 
@@ -104,7 +104,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
-- Do: Write the keys the way the platform names them: Cmd on a Mac, Ctrl elsewhere.
+- Do: Write the keys the way the platform shows them: ⌘ ⌥ ⇧ on a Mac, Ctrl and Shift elsewhere.
 - Do: Show a shortcut where its action is: beside the menu item, in the button's tooltip.
 - Don't: Show shortcuts on a phone; there is no keyboard to press.
 - Don't: Put several shortcuts in one Kbd; use one for each.
@@ -112,6 +112,5 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 ## Limits
 
 - The keys are whatever the app passes; Liuli does not know the platform's modifier names.
-- Key symbols such as ⌘ and ⇧ are missing from some devices' text face and draw as an empty cap there; write the key's name.
 
 Related: Tooltip, DropdownMenu.

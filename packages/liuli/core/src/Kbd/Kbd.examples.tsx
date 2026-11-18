@@ -1,13 +1,13 @@
 import { Kbd } from './Kbd';
 
 const shortcuts = [
-  { key: 'search', label: 'Search notes', keys: ['Ctrl', 'K'], spoken: 'Control K' },
-  { key: 'new', label: 'New note', keys: ['Ctrl', 'N'], spoken: 'Control N' },
-  { key: 'archive', label: 'Move to archive', keys: ['Ctrl', 'Shift', 'A'], spoken: 'Control Shift A' },
+  { key: 'search', label: 'Search notes', keys: ['⌘', 'K'], spoken: 'Command K' },
+  { key: 'new', label: 'New note', keys: ['⌘', 'N'], spoken: 'Command N' },
+  { key: 'archive', label: 'Move to archive', keys: ['⇧', '⌘', 'A'], spoken: 'Shift Command A' },
   { key: 'close', label: 'Close the panel', keys: ['Esc'], spoken: 'Escape' },
 ] as const;
 
-/** A list of shortcuts: what each does, and its keys at the end of the row. */
+/** A list of shortcuts as a Mac shows them: what each does, and its keys at the end of the row. */
 export function Shortcuts() {
   return (
     <view className="gap-3">
@@ -39,5 +39,5 @@ export function Hint() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Kbd keys={['Ctrl', 'K']} size="md" label="Control K" />;
+  return <Kbd keys={['⌘', 'K']} size="md" label="Command K" />;
 }

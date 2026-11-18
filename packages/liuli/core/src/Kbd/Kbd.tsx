@@ -4,9 +4,9 @@ import { kbdRecipe as r } from './Kbd.recipe';
 export type KbdSize = 'sm' | 'md';
 
 export interface KbdProps {
-  /** The keys of one shortcut, in the order they are held: `['Ctrl', 'K']`. Each is drawn as a key cap. */
+  /** The keys of one shortcut, in the order they are held: `['⌘', 'K']`. Each is drawn as a key cap. */
   keys: readonly string[];
-  /** How the shortcut is read: "Control K". Without it the keys are read as written. */
+  /** How the shortcut is read: "Command K". Without it the keys are read as written. */
   label?: string;
   /** @default 'sm' */
   size?: KbdSize;
