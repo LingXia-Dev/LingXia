@@ -12,7 +12,13 @@ export function useSay() {
 /** What the page is given for bars and keyboard, as attributes specs measure against. */
 function useInsets() {
   const { insets, safeArea, keyboard } = useView().env;
-  return { 'data-inset-bottom': String(insets.bottom), 'data-safe-bottom': String(safeArea.bottom), 'data-keyboard': String(keyboard.height) } as const;
+  return {
+    'data-inset-top': String(insets.top), 'data-inset-right': String(insets.right),
+    'data-inset-bottom': String(insets.bottom), 'data-inset-left': String(insets.left),
+    'data-safe-top': String(safeArea.top), 'data-safe-right': String(safeArea.right),
+    'data-safe-bottom': String(safeArea.bottom), 'data-safe-left': String(safeArea.left),
+    'data-keyboard': String(keyboard.height),
+  } as const;
 }
 
 /** A demo's state in words; `state` is the same state as stable text for specs. */
