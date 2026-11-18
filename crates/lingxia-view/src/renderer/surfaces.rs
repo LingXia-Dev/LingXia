@@ -528,14 +528,19 @@ pub fn screenshot_png(id: u64) -> Result<Option<Vec<u8>>, String> {
     Ok(Some(png))
 }
 
-/// [`super::gpu::Presenter::capture`] of presenter `id`.
+/// [`super::gpu::Presenter::capture`] of presenter `id`; an offscreen draw runs after the
+/// presenter is released.
 pub fn capture(id: u64) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
     let _work = gpu_work();
     let _layers = super::gpu::LayerTransaction::begin();
     let Some(presenter) = presenter(id)? else {
         return Ok(None);
     };
-    lock(&presenter)?.capture()
+    let capture = lock(&presenter)?.capture()?;
+    match capture {
+        super::gpu::Capture::Pixels(pixels) => Ok(pixels),
+        super::gpu::Capture::Offscreen(offscreen) => offscreen.draw().map(Some),
+    }
 }
 
 /// The newest frame presenter `id` holds as the surface shows it: width, height and

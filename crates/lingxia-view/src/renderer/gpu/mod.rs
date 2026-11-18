@@ -469,6 +469,35 @@ fn shown_slot(prepared: [Option<u64>; 2], presented: Option<u64>) -> Option<usiz
         })
 }
 
+/// What [`Presenter::capture`] leaves to do.
+pub enum Capture {
+    /// Read already: width, height and straight-alpha RGBA rows, or none held.
+    Pixels(Option<(u32, u32, Vec<u8>)>),
+    /// To draw off screen at the device's pixels, with the presenter released.
+    Offscreen(Offscreen),
+}
+
+/// A kept frame to draw again at the device's pixels.
+pub struct Offscreen {
+    job: PrepareJob,
+    display: crate::DisplayList,
+}
+
+impl Offscreen {
+    /// Width, height and straight-alpha RGBA rows.
+    pub fn draw(mut self) -> Result<(u32, u32, Vec<u8>), String> {
+        self.job.run(&self.display)?;
+        let texture = match &self.job.output {
+            Some(output) => output.texture(),
+            None => self.job.target.texture(),
+        };
+        Ok((
+            self.job.width,
+            self.job.height,
+            read_texture(&self.job.device, &self.job.queue, texture)?,
+        ))
+    }
+}
 /// Surface ownership and presentation stay on the platform UI thread.
 pub struct Presenter {
     surface: Option<RenderSurface<'static>>,
@@ -1284,29 +1313,44 @@ impl Presenter {
         Ok(true)
     }
 
-    /// The newest frame at the device's pixels, as straight-alpha RGBA rows: drawn again off
-    /// screen when the surface shows it at another scale, else read from the target holding it.
-    pub fn capture(&mut self) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
-        let Some((revision, mut display)) = self
+    /// The newest frame at the device's pixels: read from the target holding it, or, when the
+    /// surface shows it at another scale, a copy to draw again off screen once this presenter
+    /// is released, so the capture does not hold back the surface's next frame.
+    pub fn capture(&mut self) -> Result<Capture, String> {
+        let Some((revision, display)) = self
             .retained
-            .take_if(|(_, display)| display.device_raster().is_some())
+            .as_ref()
+            .filter(|(_, display)| display.device_raster().is_some())
         else {
-            return self.readback();
+            return self.readback().map(Capture::Pixels);
         };
+        let mut display = (**display).clone();
         display.swap_raster();
-        let drawn = self.draw_offscreen(revision, &display);
-        display.swap_raster();
-        self.retained = Some((revision, display));
-        drawn.map(Some)
+        let job = self.offscreen(*revision, &display)?;
+        Ok(Capture::Offscreen(Offscreen { job, display }))
     }
 
-    /// Draws `display` whole into a target of its own, sharing only the renderer and its atlas
-    /// with the surface's frames.
+    /// Draws `display` whole into a target of its own.
+    #[cfg(test)]
     fn draw_offscreen(
         &mut self,
         revision: u64,
         display: &crate::DisplayList,
     ) -> Result<(u32, u32, Vec<u8>), String> {
+        Offscreen {
+            job: self.offscreen(revision, display)?,
+            display: display.clone(),
+        }
+        .draw()
+    }
+
+    /// A job drawing `display` into a target of its own, sharing only the renderer and its
+    /// atlas with the surface's frames.
+    fn offscreen(
+        &mut self,
+        revision: u64,
+        display: &crate::DisplayList,
+    ) -> Result<PrepareJob, String> {
         let (width, height) = (u32::from(display.width), u32::from(display.height));
         if width == 0 || height == 0 || width > 4096 || height > 4096 {
             return Err(format!("UI_SURFACE: no capture at {width}x{height}"));
@@ -1319,7 +1363,7 @@ impl Presenter {
                 height: height as u16,
             },
         );
-        let mut job = PrepareJob {
+        Ok(PrepareJob {
             slot: 0,
             epoch: self.epoch,
             revision,
@@ -1351,13 +1395,7 @@ impl Presenter {
             preparation_us: [0; 4],
             scene_cache_hit: false,
             capture: true,
-        };
-        job.run(display)?;
-        let texture = match &job.output {
-            Some(output) => output.texture(),
-            None => job.target.texture(),
-        };
-        Ok((width, height, read_texture(&device, &queue, texture)?))
+        })
     }
 
     /// The newest frame this presenter holds, shown or waiting to be, as straight-alpha RGBA rows.
@@ -1683,10 +1721,16 @@ mod tests {
             presenter.retained = Some((2, Box::new(shown)));
             if live == 3.0 {
                 // Shown at the device's scale: the target holds the capture, and here there is none.
-                assert_eq!(presenter.capture().unwrap(), None);
+                assert!(matches!(
+                    presenter.capture().unwrap(),
+                    Capture::Pixels(None)
+                ));
                 continue;
             }
-            let (width, height, pixels) = presenter.capture().unwrap().expect("a capture");
+            let Capture::Offscreen(offscreen) = presenter.capture().unwrap() else {
+                panic!("live {live}: no offscreen capture");
+            };
+            let (width, height, pixels) = offscreen.draw().unwrap();
             assert_eq!((width, height), (120, 90), "live {live}");
             assert!(
                 pixels == device,
