@@ -1,5 +1,5 @@
 // Drawing, media and control demos of the View catalogue: each is the body of one demo.
-import { createContext, Fragment, List, Progress, useContext, useId, useLocal, useVideo, useView, type Local, type VectorPath } from '@lingxia/view';
+import { createContext, Fragment, List, Progress, useContext, useId, useLocal, useVideo, useView, useWebView, type Local, type VectorPath } from '@lingxia/view';
 import { Button, Icon } from '../ui';
 import type { LabPageData } from '../lab-types';
 import { Readout, useSay } from './demo';
@@ -118,6 +118,71 @@ export function VideoDemo() {
         <Button testId="lab-video-toggle" size="sm" onClick={() => (clip.paused ? clip.play() : clip.pause())}>{t(clip.paused ? labels.play : labels.pause)}</Button>
         <Readout testId="lab-video-state" state={`paused=${clip.paused}`}>{t(readouts.video(!clip.paused, at, of))}</Readout>
       </view>
+    </>
+  );
+}
+
+// A packaged HTML document shared between an inline card and a 70%-height `<dialog>` sheet without reloading.
+export function WebViewDemo() {
+  const web = useWebView('lab-web');
+  const hash = useLocal('lab-webview-hash', '');
+  const ackHash = useLocal('lab-webview-ack', '');
+  const sheet = useLocal('lab-webview-sheet', false);
+  const taps = useLocal('lab-webview-taps', 0);
+  const t = useSay();
+  return (
+    <>
+      <view className="relative h-36 rounded-xl overflow-hidden border border-line">
+        <webview
+          web={web}
+          data-testid="lab-webview-frame"
+          src={`public/embed/demo.html${hash.value}`}
+          aria-label="Embedded demo page"
+          onMessage={ev => {
+            const msg = ev.data as { kind?: string; count?: number; hash?: string } | null;
+            if (msg?.kind === 'tap' && typeof msg.count === 'number') taps.set(msg.count);
+            else if (msg?.kind === 'hash' && typeof msg.hash === 'string') ackHash.set(msg.hash);
+          }}
+          className="w-full h-full rounded-xl"
+        />
+        <button
+          data-testid="lab-webview-expand"
+          aria-label={t(labels.expandWeb)}
+          onClick={() => sheet.set(true)}
+          className="absolute top-2.5 right-2.5 w-9 h-9 rounded-full bg-media text-on-media items-center justify-center"
+        >
+          <Icon name="fullscreen" viewBox={[0, 0, 24, 24]} className="w-4 h-4 text-on-media" />
+        </button>
+      </view>
+      <view className="flex-row items-center gap-3">
+        <Button testId="lab-webview-hash" size="sm" onClick={() => hash.set(hash.value === '#part-2' ? '#part-1' : '#part-2')}>
+          {hash.value === '#part-2' ? '#part-1' : '#part-2'}
+        </Button>
+        <Readout testId="lab-webview-state" state={`title=${web.title} hash=${ackHash.value} taps=${taps.value} sheet=${sheet.value}`}>
+          {`${web.title || 'loading'}${ackHash.value ? ` · ${ackHash.value}` : ''} · taps=${taps.value}`}
+        </Readout>
+      </view>
+      <dialog
+        open={sheet.value}
+        closedby="any"
+        onClose={() => sheet.set(false)}
+        aria-label="Embedded demo sheet"
+        data-testid="lab-webview-sheet"
+        className="mt-auto mb-0 mx-0 w-full h-[70%] rounded-t-2xl bg-surface overflow-hidden"
+      >
+        <view className="flex-row items-center justify-between px-4 py-2.5 border-b border-line">
+          <text className="text-sm font-semibold">{web.title || 'Embed Demo'}</text>
+          <Button testId="lab-webview-sheet-close" size="sm" variant="secondary" onClick={() => sheet.set(false)}>
+            {t(labels.close)}
+          </Button>
+        </view>
+        <webview
+          web={web}
+          data-testid="lab-webview-sheet-frame"
+          aria-label="Embedded demo page"
+          className="w-full grow"
+        />
+      </dialog>
     </>
   );
 }
@@ -278,6 +343,7 @@ export const drawingDemos = {
 };
 export const mediaDemos = {
   video: VideoDemo,
+  webview: WebViewDemo,
   plot: PlotDemo,
   progress: ProgressDemo,
 };

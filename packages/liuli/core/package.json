@@ -62,6 +62,8 @@
     "./VideoControls/recipe": "./src/VideoControls/VideoControls.recipe.ts",
     "./VideoPlayer": "./src/VideoPlayer/VideoPlayer.tsx",
     "./VideoPlayer/recipe": "./src/VideoPlayer/VideoPlayer.recipe.ts",
+    "./WebView": "./src/WebView/WebView.tsx",
+    "./WebView/recipe": "./src/WebView/WebView.recipe.ts",
     "./TextArea": "./src/TextArea/TextArea.tsx",
     "./TextArea/recipe": "./src/TextArea/TextArea.recipe.ts",
     "./EmptyState": "./src/EmptyState/EmptyState.tsx",

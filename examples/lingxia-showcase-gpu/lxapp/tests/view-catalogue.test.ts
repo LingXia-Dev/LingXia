@@ -23,7 +23,7 @@ for (const group of groups) {
 // The Chinese text of each group, whatever language the device is in.
 const zhNames: Record<string, string[]> = {
   'view-drawing': ['渐变填充', '边框与圆角'],
-  'view-media': ['视频', '图表', '进度'],
+  'view-media': ['视频', '内嵌网页', '图表', '进度'],
   'view-controls': ['下拉选择', '传给所有子元素的值'],
   'view-layout': ['网格', '报告自身尺寸的方块'],
   'view-text': ['段落', '选择文字', '已停用的链接'],

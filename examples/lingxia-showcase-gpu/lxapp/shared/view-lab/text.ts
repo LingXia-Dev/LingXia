@@ -7,7 +7,7 @@ export type GroupId = 'drawing' | 'media' | 'controls' | 'layout' | 'text' | 'in
 
 export const groups: readonly { id: GroupId; page: string; title: Words; line: Words }[] = [
   { id: 'drawing', page: 'view-drawing', title: { en: 'Drawing', zh: '绘制' }, line: { en: 'Gradients, borders, rings, vectors and transforms', zh: '渐变、边框、描边环、矢量与变换' } },
-  { id: 'media', page: 'view-media', title: { en: 'Media & data', zh: '媒体与数据' }, line: { en: 'Video, plots and progress', zh: '视频、图表与进度' } },
+  { id: 'media', page: 'view-media', title: { en: 'Media & data', zh: '媒体与数据' }, line: { en: 'Video, embedded web pages, plots and progress', zh: '视频、内嵌网页、图表与进度' } },
   { id: 'controls', page: 'view-controls', title: { en: 'Controls & composition', zh: '控件与组合' }, line: { en: 'Radios, sliders, switches and selects; values a tree shares', zh: '单选、滑块、开关与下拉选择；整棵树共享的值' } },
   { id: 'layout', page: 'view-layout', title: { en: 'Layout', zh: '布局' }, line: { en: 'Grids, sizes and what depends on position', zh: '网格、尺寸与随位置变化的样式' } },
   { id: 'text', page: 'view-text', title: { en: 'Text', zh: '文字' }, line: { en: 'Paragraphs, links, selection and underlines', zh: '段落、链接、选择与下划线' } },
@@ -31,6 +31,7 @@ export const demos = {
   },
   media: {
     video: { testId: 'lab-video', title: { en: 'Video', zh: '视频' }, try: { en: 'Tap Play: the picture starts and the time counts. Tap Pause and both stop.', zh: '点“播放”：画面开始，时间走动；点“暂停”则都停下。' } },
+    webview: { testId: 'lab-webview', title: { en: 'Embedded web page', zh: '内嵌网页' }, try: { en: 'Tap inside the green page: its message reaches View. Switch section or open the 70% sheet without reloading; dismiss via Close, the backdrop, or Back.', zh: '点绿色网页内部：消息传回 View；切换章节或打开七分屏面板都不会重新加载，可用关闭按钮、点背景或系统返回收起。' } },
     plot: { testId: 'lab-plots', title: { en: 'Plot', zh: '图表' }, try: { en: 'Bars, a pie and a line drawn from numbers. Tap a bar to select it.', zh: '由数字画出的柱状图、饼图和折线图。点一根柱子即可选中。' } },
     progress: { testId: 'lab-progress', title: { en: 'Progress', zh: '进度' }, try: { en: 'A bar and a ring with a value, and both without one. Tap More to add 20.', zh: '有数值的进度条和进度环，以及没有数值的两种。点“增加”加 20。' } },
   },
@@ -235,6 +236,7 @@ export const labels = {
   ringInset: { en: 'Inset', zh: '内侧' },
   play: { en: 'Play', zh: '播放' },
   pause: { en: 'Pause', zh: '暂停' },
+  expandWeb: { en: 'Expand sheet', zh: '展开面板' },
   more: { en: 'More', zh: '增加' },
   sizes: { en: 'Small|Medium|Large|Extra large', zh: '小|中|大|特大' },
   power: { en: 'Power', zh: '电源' },

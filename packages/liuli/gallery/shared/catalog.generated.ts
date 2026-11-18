@@ -1303,6 +1303,22 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "WebView",
+    "page": "web-view",
+    "category": "media",
+    "summary": "An embedded web page, inline or expanded into a 70% sheet or full screen without reloading",
+    "keywords": [
+      "webview",
+      "iframe",
+      "html",
+      "embed",
+      "map",
+      "picker",
+      "sheet",
+      "web"
+    ]
+  },
+  {
     "name": "Sign in",
     "page": "sign-in",
     "category": "patterns",
@@ -1425,7 +1441,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "play",
     "description": "Video and its controls",
     "page": "category-media",
-    "count": 5
+    "count": 6
   },
   {
     "id": "patterns",

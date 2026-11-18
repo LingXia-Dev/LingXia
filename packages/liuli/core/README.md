@@ -46,7 +46,7 @@ that directory.
 ## Components
 
 <!-- components:start -->
-75 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
+76 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
 
 | Import | Exports | What it is |
 | --- | --- | --- |
@@ -125,6 +125,7 @@ that directory.
 | `@liulidesign/core/Carousel` | Carousel | A few pages to swipe through, one at a time |
 | `@liulidesign/core/Thumbnail` | Thumbnail | A small picture that stands for a bigger one |
 | `@liulidesign/core/Lightbox` | Lightbox | Pictures one at a time, over the whole screen |
+| `@liulidesign/core/WebView` | WebView | An embedded web page, inline or expanded into a 70% sheet or full screen without reloading |
 <!-- components:end -->
 
 Each component also exports its class recipe at `@liulidesign/core/<Name>/recipe`, for styling a raw

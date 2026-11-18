@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>Embed Demo</title>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: #10b981;
+      color: #ffffff;
+      font-family: system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+    }
+    #tap-zone {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      padding: 12px 52px calc(12px + env(safe-area-inset-bottom, 0px));
+      text-align: center;
+      border: 0;
+      background: #059669;
+      color: #ffffff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #status {
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.18);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    iframe {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+  <button id="tap-zone" type="button">
+    <span>Embedded HTML Surface</span>
+    <span id="count">taps=0</span>
+    <span id="status">ready</span>
+  </button>
+  <iframe id="subframe" srcdoc="<script>parent.postMessage({ __subframeLingxia: typeof window.lingxia !== 'undefined' }, '*');</script>"></iframe>
+  <script>
+    (function () {
+      var bootEpoch = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8);
+      var taps = 0;
+      var sentBoot = false;
+
+      function send(payload, queue) {
+        if (window.lingxia && typeof window.lingxia.postMessage === 'function') {
+          window.lingxia.postMessage(payload, queue ? { queue: true } : undefined);
+        }
+      }
+
+      document.getElementById('tap-zone').addEventListener('click', function () {
+        taps += 1;
+        document.getElementById('count').textContent = 'taps=' + taps;
+        send({ kind: 'tap', count: taps, epoch: bootEpoch }, true);
+      });
+
+      window.addEventListener('message', function (ev) {
+        if (ev && ev.data && typeof ev.data.__subframeLingxia === 'boolean' && !sentBoot) {
+          sentBoot = true;
+          send({
+            kind: 'boot',
+            epoch: bootEpoch,
+            hash: location.hash || '',
+            iframeHasLingxia: ev.data.__subframeLingxia
+          }, true);
+        }
+      });
+
+      setTimeout(function () {
+        if (!sentBoot) {
+          sentBoot = true;
+          send({
+            kind: 'boot',
+            epoch: bootEpoch,
+            hash: location.hash || '',
+            iframeHasLingxia: false
+          }, true);
+        }
+      }, 400);
+
+      if (location.hash) {
+        document.getElementById('status').textContent = 'hash=' + location.hash;
+      }
+
+      window.addEventListener('hashchange', function () {
+        var h = location.hash || '';
+        document.getElementById('status').textContent = 'hash=' + (h || 'ready');
+        if (h === '#coalesce') {
+          for (var c = 1; c <= 20; c++) {
+            send({ kind: 'coalesce', seq: c }, false);
+          }
+          return;
+        }
+        if (h === '#queue') {
+          for (var i = 1; i <= 4; i++) {
+            send({ kind: 'queued', seq: i }, true);
+          }
+          return;
+        }
+        if (h === '#oversize') {
+          var errName = 'none';
+          try {
+            var big = new Array(70000).join('x');
+            window.lingxia.postMessage({ big: big });
+          } catch (e) {
+            errName = e && e.name ? String(e.name) : 'error';
+          }
+          send({ kind: 'oversize', error: errName, epoch: bootEpoch }, true);
+          return;
+        }
+        if (h === '#overflow') {
+          for (var j = 1; j <= 400; j++) {
+            send({ kind: 'flood', seq: j }, true);
+          }
+          return;
+        }
+        if (h === '#block-nav') {
+          location.href = 'https://intranet/escape';
+          return;
+        }
+        send({ kind: 'hash', hash: h, epoch: bootEpoch }, true);
+      });
+    })();
+  </script>
+</body>
+</html>

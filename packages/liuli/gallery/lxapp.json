@@ -107,6 +107,7 @@
     { "name": "carousel", "path": "pages/carousel/index" },
     { "name": "thumbnail", "path": "pages/thumbnail/index" },
     { "name": "lightbox", "path": "pages/lightbox/index" },
+    { "name": "web-view", "path": "pages/web-view/index" },
     { "name": "sign-in", "path": "pages/sign-in/index" },
     { "name": "settings", "path": "pages/settings/index" },
     { "name": "uploads", "path": "pages/uploads/index" },

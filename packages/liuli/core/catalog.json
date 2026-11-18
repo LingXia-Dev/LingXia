@@ -19954,6 +19954,228 @@
           ]
         }
       }
+    },
+    {
+      "name": "WebView",
+      "import": "@liulidesign/core/WebView",
+      "exports": [
+        "WebView"
+      ],
+      "category": "media",
+      "status": "preview",
+      "since": "2026-11-17",
+      "summary": "An embedded web page, inline or expanded into a 70% sheet or full screen without reloading",
+      "description": "WebView frames an untrusted or packaged HTML document (`<webview>`) and optionally adds an expand control over its corner. Expanding opens a 70% bottom sheet or full-screen dialog holding the same `useWebView` session, so maps, previews and third-party widgets never reload or lose state when opened or dismissed.",
+      "keywords": [
+        "webview",
+        "iframe",
+        "html",
+        "embed",
+        "map",
+        "picker",
+        "sheet",
+        "web"
+      ],
+      "props": [
+        {
+          "name": "src",
+          "type": "string",
+          "required": false,
+          "description": "Address or packaged path of the document. Optional when another `<webview>` already gave `web` a source."
+        },
+        {
+          "name": "web",
+          "type": "WebView",
+          "required": false,
+          "description": "Shared `useWebView` handle; when omitted, `WebView` creates its own so expanding still keeps one live document."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "What the embedded page shows, its accessible name and expanded heading."
+        },
+        {
+          "name": "labels",
+          "type": "WebViewLabels",
+          "required": false,
+          "description": "Spoken names for the expand and close controls when `expand` is `'sheet'` or `'full'`."
+        },
+        {
+          "name": "expand",
+          "type": "WebViewExpand",
+          "required": false,
+          "description": "Adds an expand button over the frame that opens the same live document in a 70% `'sheet'` or `'full'` dialog without reloading.",
+          "default": "'none'"
+        },
+        {
+          "name": "isExpanded",
+          "type": "boolean",
+          "required": false,
+          "description": "Controlled expanded state; omit to let the expand and close controls manage it."
+        },
+        {
+          "name": "onExpandedChange",
+          "type": "((isExpanded: boolean) => void)",
+          "required": false,
+          "description": "Runs when the expanded sheet or full-screen dialog opens or closes."
+        },
+        {
+          "name": "dismissOn",
+          "type": "DialogDismissOn",
+          "required": false,
+          "description": "Which requests close the expanded sheet or dialog (`'any'` includes a backdrop tap).",
+          "default": "'any'"
+        },
+        {
+          "name": "actions",
+          "type": "Child",
+          "required": false,
+          "description": "Footer inside the expanded sheet or dialog, such as a confirmation bar under a map."
+        },
+        {
+          "name": "onLoad",
+          "type": "((event: WebViewLoad) => void)",
+          "required": false,
+          "description": "Runs when a top-level document finishes loading."
+        },
+        {
+          "name": "onMessage",
+          "type": "((message: WebViewMessage) => void)",
+          "required": false,
+          "description": "Runs when the page calls `window.lingxia.postMessage`."
+        },
+        {
+          "name": "onBlocked",
+          "type": "((event: WebViewBlocked) => void)",
+          "required": false,
+          "description": "Runs when the host blocks an off-origin or disallowed navigation."
+        },
+        {
+          "name": "onError",
+          "type": "((error: WebViewError) => void)",
+          "required": false,
+          "description": "Runs when loading fails or a queued message is dropped."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Classes for the inline frame, such as its height or aspect ratio."
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the inline `<webview>`; the expand button takes `<id>-expand` and the expanded dialog `<id>-sheet`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "webview": "webview",
+        "expand": "button",
+        "expandIcon": "vector",
+        "panel": "dialog",
+        "header": "view",
+        "title": "text",
+        "close": "button",
+        "closeIcon": "vector",
+        "stage": "webview",
+        "footer": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Escape",
+            "effect": "Closes the expanded sheet or full-screen dialog when `dismissOn` is `any` or `closeRequest`"
+          }
+        ],
+        "contrast": [
+          {
+            "what": "expand button",
+            "pair": [
+              "on-media",
+              "media"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "sheet title",
+            "pair": [
+              "text",
+              "surface-overlay"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "Both the inline `<webview>` and the expanded dialog are named by `label`; while expanded, the page behind is inert to assistive tech."
+        ]
+      },
+      "examples": [
+        {
+          "name": "ExpandableSheet",
+          "title": "Inline card that expands into a 70% sheet",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { WebView, type WebViewLabels } from '@liulidesign/core/WebView';\n\nconst labels: WebViewLabels = {\n  expand: 'Expand map',\n  close: 'Close map',\n};\n\n/** An inline card with a corner expand button that opens the same document in a 70% bottom sheet. */\nexport function ExpandableSheet() {\n  const hash = useLocal('section', '#overview');\n  return (\n    <view className=\"gap-2\">\n      <WebView\n        src={`https://example.com/map${hash.value}`}\n        label=\"Delivery area map\"\n        labels={labels}\n        expand=\"sheet\"\n        data-testid=\"sheet-web\"\n      />\n      <Button\n        label={hash.value === '#overview' ? 'Center on pin' : 'Show overview'}\n        size=\"sm\"\n        width=\"content\"\n        onClick={() => hash.set(hash.value === '#overview' ? '#pin' : '#overview')}\n        data-testid=\"toggle-hash\"\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "FullScreenWithActions",
+          "title": "Full-screen expansion with a footer action",
+          "source": "import { useLocal, useWebView } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { WebView, type WebViewLabels } from '@liulidesign/core/WebView';\n\nconst labels: WebViewLabels = {\n  expand: 'Expand map',\n  close: 'Close map',\n};\n\n/** Controlled full-screen expansion with a native confirmation footer below the web document. */\nexport function FullScreenWithActions() {\n  const web = useWebView('liuli-web-picker');\n  const open = useLocal('picker-open', false);\n  return (\n    <WebView\n      web={web}\n      src=\"https://example.com/picker\"\n      label=\"Pick a meeting point\"\n      labels={labels}\n      expand=\"full\"\n      isExpanded={open.value}\n      onExpandedChange={next => open.set(next)}\n      actions={<Button label=\"Confirm location\" variant=\"primary\" onClick={() => open.set(false)} data-testid=\"confirm\" />}\n      data-testid=\"full-web\"\n    />\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": "Classes for the inline frame, such as its height or aspect ratio."
+          }
+        ],
+        "tokens": [
+          "--text-title",
+          "--shadow-modal",
+          "--radius-container",
+          "--radius-dialog"
+        ],
+        "roles": [
+          "canvas",
+          "focus",
+          "media",
+          "on-media",
+          "surface",
+          "surface-overlay",
+          "text",
+          "text-muted"
+        ]
+      },
+      "related": [
+        "BottomSheet",
+        "Dialog",
+        "VideoPlayer"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Embed a web page",
+        "order": 6,
+        "page": {
+          "lead": "Use WebView to embed a web page or map inline and expand it into a sheet or full screen without reloading.",
+          "stage": "bare",
+          "hero": "ExpandableSheet",
+          "variants": [
+            {
+              "name": "FullScreenWithActions",
+              "title": "Full-screen expansion with a footer action"
+            }
+          ]
+        }
+      }
     }
   ]
 }

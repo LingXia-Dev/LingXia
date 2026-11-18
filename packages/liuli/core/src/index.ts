@@ -74,3 +74,4 @@ export * from './Tour/Tour';
 export * from './TreeList/TreeList';
 export * from './VideoControls/VideoControls';
 export * from './VideoPlayer/VideoPlayer';
+export * from './WebView/WebView';
