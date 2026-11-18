@@ -46,5 +46,5 @@ export function Narrow() {
 
 /** The home tile. */
 export function Specimen() {
-  return <DateTimeInput value="2026-11-20T09:00" onChange={unused} label="When" isLabelHidden dateLabel="Date" timeLabel="Time" size="sm" className="w-36" />;
+  return <DateTimeInput value="2026-11-20T09:00" onChange={unused} label="When" isLabelHidden dateLabel="Date" timeLabel="Time" size="sm" className="w-full max-w-36" data-testid="tile-when" />;
 }

@@ -22,12 +22,14 @@ test('Required: the value is whole only once both parts are set; one part is kep
   assert.equal(screen.queryAll(node => node.text === 'Choose a day and a time.').length, 0);
 });
 
-test('Reminder: the pair wraps; each part keeps a least width and grows to fill its line', async () => {
+test('Reminder: the pair wraps by base widths; each part grows to fill its line and has no least width of its own', async () => {
   const screen = await renderExample('DateTimeInput/DateTimeInput', 'Reminder');
   const group = screen.getByTestId('remind');
   assert.deepEqual([group.props.flexDirection, group.props.flexWrap], ['row', 'wrap']);
   // Each part is its own field column inside the group.
   const [date, time] = group.children;
-  assert.deepEqual([date.props.minWidth, date.props.grow, time.props.minWidth, time.props.grow], [160, 2, 112, 1]);
-  assert.ok(date.props.minWidth + time.props.minWidth + group.props.gap > 240, 'under 280 pt the time takes its own row');
+  assert.deepEqual([date.props.flexBasis, date.props.grow, time.props.flexBasis, time.props.grow], [160, 2, 112, 1]);
+  assert.ok(date.props.flexBasis + time.props.flexBasis + group.props.gap > 240, 'under 280 pt the time takes its own row');
+  // The View keeps an editor as wide as its widest value; a least width of the part's own would push it past a narrow container.
+  assert.deepEqual([date.props.minWidth, time.props.minWidth], [undefined, undefined]);
 });
