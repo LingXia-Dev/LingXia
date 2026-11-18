@@ -46,7 +46,7 @@ that directory.
 ## Components
 
 <!-- components:start -->
-75 components, each at its own import path:
+75 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
 
 | Import | Exports | What it is |
 | --- | --- | --- |

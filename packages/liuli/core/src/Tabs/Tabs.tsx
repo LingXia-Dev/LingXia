@@ -1,4 +1,4 @@
-import { cx, reveal, useBox, useId, type Child } from '@lingxia/view';
+import { cx, reveal, useBox, useId, useLocal, type Child } from '@lingxia/view';
 import { segmentedControlRecipe as s } from '../SegmentedControl/SegmentedControl.recipe';
 import { tabsRecipe as r } from './Tabs.recipe';
 
@@ -57,9 +57,16 @@ function FittedList({ id, label, items, index, onChange, testId }: FittedListPro
   const before = widths.slice(0, index);
   const width = widths[index];
   const isMeasured = width !== undefined && before.every(each => each !== undefined);
+  // A row wider than its frame fades at the edge it runs under, so a cut label reads as more
+  // tabs: at its end until the row has been drawn to its end, then at its start.
+  const frame = useBox('frame');
+  const edge = useLocal<'start' | 'end'>('edge', 'start');
+  const total = widths.reduce<number>((sum, each) => sum + (each ?? 0), 0);
+  const room = frame.value?.width;
+  const overflows = room !== undefined && widths.every(each => each !== undefined) && total > room + 0.5;
   return (
-    <view className={r.frame.fitted}>
-      <scroll className={r.scroller.base}>
+    <view box={frame} className={r.frame.fitted}>
+      <scroll className={cx(r.scroller.base, overflows && r.scroller.more[edge.value])} onReachStart={() => edge.set('start')} onReachEnd={() => edge.set('end')}>
         <view role="tablist" aria-label={label} data-testid={testId} className={r.list.fitted}>
           {isMeasured && (
             <view aria-hidden className={r.track.base}>

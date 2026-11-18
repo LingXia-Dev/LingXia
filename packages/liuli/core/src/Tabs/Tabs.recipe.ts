@@ -28,6 +28,11 @@ export const tabsRecipe = {
   },
   scroller: {
     base: 'overflow-x-auto',
+    // Resting at `start` the row runs on under its end edge, and at `end` under its start edge.
+    more: {
+      start: 'mask-[linear-gradient(to_left,transparent_0,#000_1.5rem)] rtl:mask-[linear-gradient(to_right,transparent_0,#000_1.5rem)]',
+      end: 'mask-[linear-gradient(to_right,transparent_0,#000_1.5rem)] rtl:mask-[linear-gradient(to_left,transparent_0,#000_1.5rem)]',
+    },
   },
   /** Inside the frame's padding, so a tab's width is exactly a share of the list. */
   list: {
