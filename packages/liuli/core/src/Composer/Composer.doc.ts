@@ -29,7 +29,7 @@ export const doc: ComponentDoc = {
     description: [],
     states: [
       { state: 'disabled', from: 'isDisabled; the send button also while the draft is empty' },
-      { state: 'busy', from: 'isSending, on the send button' },
+      { state: 'busy', from: 'isSending, on the send button, unless `onStop` makes it the stop button' },
     ],
     keyboard: [
       { keys: 'Return', effect: 'Sends, with a hardware keyboard' },
@@ -48,6 +48,7 @@ export const doc: ComponentDoc = {
     do: [
       'Empty the draft when the message has been taken, and keep it when sending fails.',
       'Say in `placeholder` who or what it goes to: "Message Kai".',
+      'Give `onStop` when what is sent can be stopped, such as a reply being written.',
     ],
     dont: [
       'Use it for a long text with a title; that is a form with a TextArea.',
@@ -59,11 +60,11 @@ export const doc: ComponentDoc = {
     { name: 'RowWithAttach', title: 'With a way to attach' },
     { name: 'WithAttach', title: 'A draft past one line' },
     { name: 'Attached', title: 'With attachments' },
+    { name: 'Stoppable', title: 'A stop button while sending' },
   ],
   gaps: [],
   limits: [
     'It shows what is attached and leaves choosing and uploading files to the app.',
-    'While sending, the send button is busy; it does not turn into a stop button.',
   ],
   related: ['MessageBubble', 'TextArea', 'IconButton', 'Token'],
   gallery: {
@@ -79,6 +80,7 @@ export const doc: ComponentDoc = {
         { name: 'WithAttach', title: 'Past one line the text takes the full width, to five lines; the buttons go under it' },
         { name: 'Attached', title: 'What is attached sits inside, over the text' },
         { name: 'StateSending', title: 'Sending: the button is busy, the draft stays' },
+        { name: 'Stoppable', title: 'Sending what can be stopped: the button is Stop' },
         { name: 'StateDisabled', title: 'Disabled, with the reason' },
       ],
     },

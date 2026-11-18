@@ -85,6 +85,7 @@ export const iconNames = [
   'grid',
   'play',
   'pause',
+  'stop',
   'volume',
   'mute',
   'microphone',

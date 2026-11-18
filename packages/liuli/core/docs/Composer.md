@@ -126,6 +126,26 @@ export function Attached() {
 }
 ```
 
+### A stop button while sending
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Composer } from '@liulidesign/core/Composer';
+
+/** While a reply is being written the send button stops it; the next draft can be written meanwhile. */
+export function Stoppable() {
+  const draft = useLocal('draft', '');
+  const isWriting = useLocal('writing', true);
+  return (
+    <view className="gap-2">
+      <text className="text-footnote text-muted" data-testid="stoppable-status">{isWriting.value ? 'Writing a reply…' : 'Stopped'}</text>
+      <Composer bind={draft} label="Message" placeholder="Message" sendLabel="Send" onSubmit={() => isWriting.set(true)}
+        isSending={isWriting.value} onStop={() => isWriting.set(false)} stopLabel="Stop" data-testid="stoppable" />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -133,11 +153,13 @@ export function Attached() {
 | `bind` | `Local<string>` |  | A View-local cell holding the draft; use it or `value` with `onChange`. |
 | `value` | `string` |  | The draft; pass `onChange` with it. |
 | `onChange` | `((value: string) => void)` |  |  |
+| `onStop` | `(() => void)` |  | While sending, the send button becomes a stop button that runs this, as when a reply is being written. |
+| `stopLabel` | `string` |  | The stop button's name: "Stop". |
 | `label` (required) | `string` |  | The field\'s accessible name: "Message", "Reply to Kai". Not drawn. |
 | `placeholder` | `string` |  | A hint shown while the draft is empty. |
 | `onSubmit` (required) | `(text: string) => void` |  | Runs with the draft, trimmed, from the send button or the keyboard\'s send key. The app sends it and empties the draft. |
 | `sendLabel` (required) | `string` |  | The send button\'s name: "Send". |
-| `isSending` | `boolean` | `false` | The send button shows a spinner and takes no press; the draft stays editable. |
+| `isSending` | `boolean` | `false` | The send button shows a spinner and takes no press, or becomes the stop button with `onStop`; the draft stays editable. |
 | `startContent` | `Child` |  | Before the text, or under it at the start once the draft takes more than a line: an IconButton that attaches a file or a picture. |
 | `attachments` | `Child` |  | What is attached, shown inside the composer over the text: Tokens or Thumbnails, each with its own way to remove it. |
 | `isDisabled` | `boolean` | `false` |  |
@@ -169,7 +191,7 @@ export function Attached() {
 - Pattern: none.
 - Name: label.
 - Description: none.
-- States: disabled (from isDisabled; the send button also while the draft is empty); busy (from isSending, on the send button).
+- States: disabled (from isDisabled; the send button also while the draft is empty); busy (from isSending, on the send button, unless `onStop` makes it the stop button).
 - Return: Sends, with a hardware keyboard.
 - Shift and Return: Adds a line.
 - Tab: From the field to the send button.
@@ -187,12 +209,12 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Empty the draft when the message has been taken, and keep it when sending fails.
 - Do: Say in `placeholder` who or what it goes to: "Message Kai".
+- Do: Give `onStop` when what is sent can be stopped, such as a reply being written.
 - Don't: Use it for a long text with a title; that is a form with a TextArea.
 - Don't: Disable it without saying why; give `disabledMessage`.
 
 ## Limits
 
 - It shows what is attached and leaves choosing and uploading files to the app.
-- While sending, the send button is busy; it does not turn into a stop button.
 
 Related: MessageBubble, TextArea, IconButton, Token.

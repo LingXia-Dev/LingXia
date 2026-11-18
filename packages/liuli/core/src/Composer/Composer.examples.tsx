@@ -90,6 +90,19 @@ export function StateSending() {
   return <Composer value="On my way." onChange={unused} label="Message" sendLabel="Send" onSubmit={unused} isSending data-testid="sending" />;
 }
 
+/** While a reply is being written the send button stops it; the next draft can be written meanwhile. */
+export function Stoppable() {
+  const draft = useLocal('draft', '');
+  const isWriting = useLocal('writing', true);
+  return (
+    <view className="gap-2">
+      <text className="text-footnote text-muted" data-testid="stoppable-status">{isWriting.value ? 'Writing a reply…' : 'Stopped'}</text>
+      <Composer bind={draft} label="Message" placeholder="Message" sendLabel="Send" onSubmit={() => isWriting.set(true)}
+        isSending={isWriting.value} onStop={() => isWriting.set(false)} stopLabel="Stop" data-testid="stoppable" />
+    </view>
+  );
+}
+
 export function StateDisabled() {
   return <Composer value="" onChange={unused} label="Message" placeholder="Message" sendLabel="Send" onSubmit={unused} isDisabled disabledMessage="Only members can reply." />;
 }

@@ -1,6 +1,7 @@
 // Writes the icon modules from the vendored set: one module per icon (src/Icon/icons/<name>.ts),
 // the name list (src/Icon/names.ts) and the default set (src/Icon/set.ts). The source is
-// icons/icons.json, which maps each semantic name to a file in icons/lucide/. `--check` writes
+// icons/icons.json, which maps each semantic name to a file in icons/lucide/; `isFilled` draws that
+// file's shapes solid, as a stop sign is. `--check` writes
 // nothing and fails on drift. Run: `node scripts/icons.mjs`.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -51,7 +52,7 @@ for (const [name, entry] of Object.entries(source.icons)) {
     if (!d) { problems.push(`${entry.lucide}.svg: <${tag}> is not converted; add it to scripts/icons.mjs`); continue; }
     // A shape with its own fill is a solid mark (a dot); the rest take the icon's stroke.
     const quoted = `'${d}'`;
-    paths.push(a.fill && a.fill !== 'none' ? `{ d: ${quoted}, fill: 'currentColor' }` : quoted);
+    paths.push(entry.isFilled || (a.fill && a.fill !== 'none') ? `{ d: ${quoted}, fill: 'currentColor' }` : quoted);
   }
   if (!paths.length) problems.push(`${entry.lucide}.svg: no shapes`);
   outputs.set(join(out, 'icons', `${name}.ts`), [

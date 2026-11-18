@@ -16,7 +16,16 @@ export type ComposerBinding =
       onChange: (value: string) => void;
     };
 
-export type ComposerProps = ComposerBinding & {
+export type ComposerStop =
+  | { onStop?: never; stopLabel?: never }
+  | {
+      /** While sending, the send button becomes a stop button that runs this, as when a reply is being written. */
+      onStop: () => void;
+      /** The stop button's name: "Stop". */
+      stopLabel: string;
+    };
+
+export type ComposerProps = ComposerBinding & ComposerStop & {
   /** The field\'s accessible name: "Message", "Reply to Kai". Not drawn. */
   label: string;
   /** A hint shown while the draft is empty. */
@@ -25,7 +34,7 @@ export type ComposerProps = ComposerBinding & {
   onSubmit: (text: string) => void;
   /** The send button\'s name: "Send". */
   sendLabel: string;
-  /** The send button shows a spinner and takes no press; the draft stays editable. @default false */
+  /** The send button shows a spinner and takes no press, or becomes the stop button with `onStop`; the draft stays editable. @default false */
   isSending?: boolean;
   /** Before the text, or under it at the start once the draft takes more than a line: an IconButton that attaches a file or a picture. */
   startContent?: Child;
@@ -50,10 +59,11 @@ const longest = 200;
 
 /** Where a message is written and sent: one surface holding the text, which grows to five lines, and its buttons. */
 export function Composer(props: ComposerProps) {
-  const { label, placeholder, onSubmit, sendLabel, isSending = false, startContent, attachments, isDisabled = false, disabledMessage, className, 'data-testid': testId } = props;
+  const { label, placeholder, onSubmit, sendLabel, isSending = false, onStop, stopLabel, startContent, attachments, isDisabled = false, disabledMessage, className, 'data-testid': testId } = props;
   const draft = props.bind ? props.bind.value : props.value;
   const text = draft.trim();
   const send = () => { if (text !== '' && !isSending && !isDisabled) onSubmit(text); };
+  const isStoppable = isSending && onStop !== undefined && !isDisabled;
   const surface = useBox('surface');
   const start = useBox('start');
   const line = useBox('line');
@@ -84,12 +94,12 @@ export function Composer(props: ComposerProps) {
           {props.bind ? <textarea {...editor} bind={props.bind} /> : <textarea {...editor} value={props.value} onInput={props.onChange} />}
         </view>
         <IconButton
-          label={sendLabel}
-          icon="send"
+          label={isStoppable ? stopLabel : sendLabel}
+          icon={isStoppable ? 'stop' : 'send'}
           variant="primary"
           isDisabled={isDisabled || (text === '' && !isSending)}
-          isLoading={isSending}
-          onClick={send}
+          isLoading={isSending && !isStoppable}
+          onClick={isStoppable ? onStop : send}
           className={cx(r.send.base, isStacked && r.send.stacked)}
           data-testid={testId && `${testId}-send`}
         />

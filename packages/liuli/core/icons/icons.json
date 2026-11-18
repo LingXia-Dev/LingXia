@@ -86,6 +86,7 @@
     "grid": { "lucide": "layout-grid" },
     "play": { "lucide": "play" },
     "pause": { "lucide": "pause" },
+    "stop": { "lucide": "square", "isFilled": true },
     "volume": { "lucide": "volume-2" },
     "mute": { "lucide": "volume-x" },
     "microphone": { "lucide": "mic" },

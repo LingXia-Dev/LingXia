@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Reply, RowWithAttach, WithAttach, Attached, StateSending, StateDisabled } from '../../core/src/Composer/Composer.examples';
+import { Reply, RowWithAttach, WithAttach, Attached, StateSending, Stoppable, StateDisabled } from '../../core/src/Composer/Composer.examples';
 import { Lead, PageSection, Stage } from '../shared/Layout';
 
 export function Content() {
@@ -20,6 +20,9 @@ export function Content() {
         </Stage>
         <Stage caption={"Sending: the button is busy, the draft stays"} bare>
           <StateSending />
+        </Stage>
+        <Stage caption={"Sending what can be stopped: the button is Stop"} bare>
+          <Stoppable />
         </Stage>
         <Stage caption={"Disabled, with the reason"} bare>
           <StateDisabled />

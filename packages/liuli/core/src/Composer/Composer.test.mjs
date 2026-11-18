@@ -28,6 +28,18 @@ test('StateSending: the button is busy and takes no second send', async () => {
   assert.equal(send.props.stateBusy, 1);
 });
 
+test('Stoppable: while sending the button is Stop and stops; then it sends again', async () => {
+  const screen = await renderExample('Composer/Composer', 'Stoppable');
+  const button = () => screen.getByTestId('stoppable-send');
+  assert.deepEqual([button().props.accessibilityLabel, button().props.stateBusy, button().props.enabled], ['Stop', undefined, undefined]);
+  screen.press(button());
+  screen.getByText('Stopped');
+  assert.equal(button().props.accessibilityLabel, 'Send');
+  screen.type(screen.getByTestId('stoppable'), 'And the rest?');
+  screen.press(button());
+  screen.getByText('Writing a reply…');
+});
+
 // The composer's surface, the editor's place, and the measured line, found from the editor.
 const partsOf = (screen, id) => {
   const editor = screen.getByTestId(id);

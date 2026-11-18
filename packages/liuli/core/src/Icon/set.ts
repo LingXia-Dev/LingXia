@@ -83,6 +83,7 @@ import { listIcon } from './icons/list';
 import { gridIcon } from './icons/grid';
 import { playIcon } from './icons/play';
 import { pauseIcon } from './icons/pause';
+import { stopIcon } from './icons/stop';
 import { volumeIcon } from './icons/volume';
 import { muteIcon } from './icons/mute';
 import { microphoneIcon } from './icons/microphone';
@@ -97,7 +98,7 @@ import { layersIcon } from './icons/layers';
 import { rowsIcon } from './icons/rows';
 import { templateIcon } from './icons/template';
 
-/** The default set: 96 icons from Lucide. */
+/** The default set: 97 icons from Lucide. */
 export const lucide: IconSet = {
   'add': addIcon,
   'remove': removeIcon,
@@ -182,6 +183,7 @@ export const lucide: IconSet = {
   'grid': gridIcon,
   'play': playIcon,
   'pause': pauseIcon,
+  'stop': stopIcon,
   'volume': volumeIcon,
   'mute': muteIcon,
   'microphone': microphoneIcon,
