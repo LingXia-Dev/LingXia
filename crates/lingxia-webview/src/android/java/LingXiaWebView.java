@@ -543,7 +543,7 @@ public class LingXiaWebView extends WebView {
         });
     }
 
-    private void applyCreateOptions(CreateOptions options) {
+    void applyCreateOptions(CreateOptions options) {
         this.createOptions = options;
         Log.i(
             TAG,
@@ -556,15 +556,37 @@ public class LingXiaWebView extends WebView {
         );
     }
 
+    /**
+     * Older WebViews lack {@code MULTI_PROFILE} and share one process-wide cookie/storage store
+     * with browser tabs. Only a persistent-by-default profile ({@code BrowserTab}) that explicitly
+     * requested {@code ephemeral} (rare modal auth handoffs) may wipe that global store; inline
+     * {@code Embedded} {@code <webview>} mounts ({@code persistentData == false}) must never log
+     * out open browser tabs.
+     */
+    boolean shouldUseGlobalEphemeralFallback(boolean multiProfileSupported) {
+        return "ephemeral".equals(this.createOptions.dataMode)
+                && !multiProfileSupported
+                && rules().persistentData;
+    }
+
     private void prepareDataMode(Runnable continuation, ValueCallback<Throwable> onError) {
         if (!"ephemeral".equals(this.createOptions.dataMode)) {
             continuation.run();
             return;
         }
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+        boolean multiProfileSupported = WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE);
+        if (!multiProfileSupported) {
+            if (!shouldUseGlobalEphemeralFallback(false)) {
+                try {
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, false);
+                } catch (Throwable ignored) {
+                }
+                continuation.run();
+                return;
+            }
             // Old engines have only a process-global cookie/storage store.
-            // Clear it before publishing the WebView so the first navigation
-            // cannot race stale SSO cookies; clear again on teardown below.
+            // Clear it before publishing an explicit ephemeral browser/auth surface
+            // so the first navigation cannot race stale SSO cookies; clear again on teardown.
             this.usesGlobalEphemeralFallback = true;
             CookieManager cookieManager = CookieManager.getInstance();
             cookieManager.removeAllCookies(value -> {
@@ -2002,6 +2024,36 @@ public class LingXiaWebView extends WebView {
     native void onWebViewStateChanged(String appId, String path, long sessionId, long nativeViewId, String url, String title, boolean canGoBack, boolean canGoForward);
     native void onFaviconChanged(String appId, String path, long sessionId, long nativeViewId, byte[] pngBytes);
     native void onLoadError(String appId, String path, long sessionId, long nativeViewId, long loadToken, String url, int errorCode, String description);
+    boolean checkNavigationPolicy(String url, boolean hasUserGesture, boolean isMainFrame) {
+        return handleNavigationPolicy(
+                getAppId() != null ? getAppId() : "",
+                getCurrentPath() != null ? getCurrentPath() : "",
+                getSessionId(),
+                getNativeViewId(),
+                url,
+                hasUserGesture,
+                isMainFrame
+        );
+    }
+
+    WebResourceResponseData interceptSchemeRequest(
+            String url,
+            String method,
+            String[] headerKeysAndValues,
+            boolean isMainFrame
+    ) {
+        return handleRequest(
+                getAppId() != null ? getAppId() : "",
+                getCurrentPath() != null ? getCurrentPath() : "",
+                getSessionId(),
+                getNativeViewId(),
+                url,
+                method,
+                headerKeysAndValues,
+                isMainFrame
+        );
+    }
+
     native WebResourceResponseData handleRequest(String appId, String path, long sessionId, long nativeViewId, String url, String method, String[] headerKeysAndValues, boolean isMainFrame);
     native boolean handleNavigationPolicy(
         String appId,

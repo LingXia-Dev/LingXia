@@ -10,7 +10,8 @@ final class ProfileRules {
     /** Before the token is applied nothing is permitted. */
     static final ProfileRules NONE =
             new ProfileRules(
-                    false, false, false, false, false, false, false, false, false, false, false, false);
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false);
 
     final boolean bridgeTransport;
     final boolean embedMailbox;
@@ -20,6 +21,7 @@ final class ProfileRules {
     final boolean newWindowsWithoutHandler;
     final boolean downloads;
     final boolean reportsBlockedDownloads;
+    final boolean persistentData;
     final boolean siteStorage;
     final boolean proxy;
     final boolean scrollbars;
@@ -34,6 +36,7 @@ final class ProfileRules {
             boolean newWindowsWithoutHandler,
             boolean downloads,
             boolean reportsBlockedDownloads,
+            boolean persistentData,
             boolean siteStorage,
             boolean proxy,
             boolean scrollbars,
@@ -46,6 +49,7 @@ final class ProfileRules {
         this.newWindowsWithoutHandler = newWindowsWithoutHandler;
         this.downloads = downloads;
         this.reportsBlockedDownloads = reportsBlockedDownloads;
+        this.persistentData = persistentData;
         this.siteStorage = siteStorage;
         this.proxy = proxy;
         this.scrollbars = scrollbars;
@@ -66,6 +70,7 @@ final class ProfileRules {
                 rule(rules, "new_windows_without_handler"),
                 rule(rules, "downloads"),
                 rule(rules, "reports_blocked_downloads"),
+                rule(rules, "persistent_data"),
                 rule(rules, "site_storage"),
                 rule(rules, "proxy"),
                 rule(rules, "scrollbars"),

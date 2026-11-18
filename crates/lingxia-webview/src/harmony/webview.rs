@@ -34,10 +34,15 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 
-fn encode_options_token(options: &EffectiveWebViewCreateOptions) -> Result<String, WebViewError> {
-    let json = options.platform_token_json().map_err(|e| {
-        WebViewError::InvalidCreateOptions(format!("Serialize options failed: {e}"))
-    })?;
+fn encode_options_token(
+    options: &EffectiveWebViewCreateOptions,
+    embed_port_init: Option<&str>,
+) -> Result<String, WebViewError> {
+    let json = options
+        .platform_token_json_with_embed_init(embed_port_init)
+        .map_err(|e| {
+            WebViewError::InvalidCreateOptions(format!("Serialize options failed: {e}"))
+        })?;
     Ok(URL_SAFE_NO_PAD.encode(json))
 }
 
@@ -524,6 +529,7 @@ pub struct WebViewInner {
     /// ArkWeb-facing tag for controller operations (may include `#session` suffix).
     ark_webtag: Mutex<String>,
     ports: Mutex<WebMessagePorts>,
+    embed_port_init: Option<String>,
     embed_origin: Mutex<Option<(DocumentGeneration, String)>>,
     pending_port_requests: Mutex<(bool, bool)>,
     document_authority: HarmonyDocumentAuthority,
@@ -772,11 +778,14 @@ unsafe extern "C" fn native_component_update_callback(
             return;
         };
         let webtag = WebTag::from(webtag_str);
-        if find_webview_by_native_view_id(&webtag, native_view_id).is_none() {
+        let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) else {
             log::debug!(
                 "Dropping stale Harmony component callback for {}",
                 webtag.as_str()
             );
+            return;
+        };
+        if !webview.effective_options().rules().native_component_bridge {
             return;
         }
         let mut component_id = String::new();
@@ -1102,13 +1111,24 @@ impl WebViewInner {
             );
         }
         let webtag = WebTag::new(appid, path, session_id);
-        let options_token = match encode_options_token(&effective_options) {
-            Ok(token) => token,
-            Err(e) => {
-                sender.fail(WebViewCreateStage::Requested, e);
-                return;
-            }
-        };
+        // Reserve the non-reusable native identity before the sender moves
+        // into the platform inner state and before any callback is installed.
+        let native_view_id = sender.native_view_id();
+        let embed_port_init = effective_options.rules().embed_mailbox.then(|| {
+            format!(
+                "{}:{}",
+                crate::embed_mailbox::HARMONY_EMBED_PORT_INIT,
+                new_eval_token(native_view_id.raw())
+            )
+        });
+        let options_token =
+            match encode_options_token(&effective_options, embed_port_init.as_deref()) {
+                Ok(token) => token,
+                Err(e) => {
+                    sender.fail(WebViewCreateStage::Requested, e);
+                    return;
+                }
+            };
 
         static NATIVE_GENERATION: std::sync::atomic::AtomicU64 =
             std::sync::atomic::AtomicU64::new(0);
@@ -1123,10 +1143,6 @@ impl WebViewInner {
             .expect("Harmony native generation space exhausted")
             .to_string();
 
-        // Reserve the non-reusable native identity before the sender moves
-        // into the platform inner state and before any callback is installed.
-        let native_view_id = sender.native_view_id();
-
         // Create WebView instance, storing the sender
         let webview_inner = WebViewInner {
             webtag: webtag.clone(),
@@ -1135,6 +1151,7 @@ impl WebViewInner {
             has_bridge: effective_options.rules().bridge_transport,
             ark_webtag: Mutex::new(webtag.as_str().to_string()),
             ports: Mutex::new(WebMessagePorts::default()),
+            embed_port_init,
             embed_origin: Mutex::new(None),
             pending_port_requests: Mutex::new((false, false)),
             document_authority: HarmonyDocumentAuthority::default(),
@@ -1361,6 +1378,9 @@ impl WebViewInner {
                     "*".to_string(),
                 ),
                 PortType::Embed => {
+                    let init_token = self.embed_port_init.as_deref().ok_or_else(|| {
+                        WebViewError::WebView("embed port init token is missing".to_string())
+                    })?;
                     let target = lock_or_recover(&self.embed_origin, "harmony.embed_origin.send")
                         .as_ref()
                         .and_then(|(doc_gen, origin)| {
@@ -1374,12 +1394,7 @@ impl WebViewInner {
                             }
                         })
                         .unwrap_or_else(|| "*".to_string());
-                    (
-                        ports.webview_embed_port,
-                        crate::embed_mailbox::HARMONY_EMBED_PORT_INIT,
-                        "embed",
-                        target,
-                    )
+                    (ports.webview_embed_port, init_token, "embed", target)
                 }
             };
 

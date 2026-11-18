@@ -131,11 +131,7 @@ public class LingXiaWebViewClient extends WebViewClient {
 
         LingXiaWebView webView = webViewRef.get();
         if (webView != null) {
-            return webView.handleNavigationPolicy(
-                webView.getAppId() != null ? webView.getAppId() : "",
-                webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
-                webView.getSessionId(),
-                webView.getNativeViewId(),
+            return webView.checkNavigationPolicy(
                 url,
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && request.hasGesture(),
                 request.isForMainFrame()
@@ -204,17 +200,44 @@ public class LingXiaWebViewClient extends WebViewClient {
         return true;
     }
 
+    private static boolean isNonGetMainFrameNavigation(String method) {
+        return method != null && !method.isEmpty() && !"GET".equalsIgnoreCase(method);
+    }
+
+    private static WebResourceResponse cancelledMainFrameResponse() {
+        return new WebResourceResponse(
+            "text/plain",
+            "UTF-8",
+            204,
+            "No Content",
+            java.util.Collections.emptyMap(),
+            new ByteArrayInputStream(new byte[0])
+        );
+    }
+
     @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         if (request == null || request.getUrl() == null) {
             return null;
         }
         String url = request.getUrl().toString();
+        String method = request.getMethod();
         LingXiaWebView webView = webViewRef.get();
+        // Chromium skips shouldOverrideUrlLoading for POST navigations. Check top-level
+        // non-GET navigations here before any proxy short-circuit or network send, and
+        // answer blocked ones with 204 No Content so the untrusted origin never commits.
+        if (webView != null
+                && request.isForMainFrame()
+                && isNonGetMainFrameNavigation(method)
+                && webView.checkNavigationPolicy(
+                        url,
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && request.hasGesture(),
+                        true)) {
+            return cancelledMainFrameResponse();
+        }
         if (webView != null && webView.shouldSkipRustIntercept(url)) {
             return null;
         }
-        String method = request.getMethod();
 
         // Convert headers to flat array: [key1, value1, key2, value2, ...]
         java.util.List<String> headerList = new java.util.ArrayList<>();
@@ -230,11 +253,7 @@ public class LingXiaWebViewClient extends WebViewClient {
 
         if (webView != null) {
             // Call native to handle request
-            LingXiaWebView.WebResourceResponseData response = webView.handleRequest(
-                webView.getAppId() != null ? webView.getAppId() : "",
-                webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
-                webView.getSessionId(),
-                webView.getNativeViewId(),
+            LingXiaWebView.WebResourceResponseData response = webView.interceptSchemeRequest(
                 url,
                 method,
                 headerArray,

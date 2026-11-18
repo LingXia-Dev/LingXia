@@ -18,6 +18,7 @@ import {
   WebViewManager as CoreWebViewManager,
   extractWebTag,
   isEphemeralDataMode as coreIsEphemeralDataMode,
+  getWebViewEmbedPortInit as coreGetWebViewEmbedPortInit,
   getWebViewProfileRules as coreGetWebViewProfileRules,
   ProfileRules,
   toWebTag
@@ -207,6 +208,10 @@ export function getWebViewInfo(webtag: string): WebViewInfo | null {
 
 export function profileRules(webtag: string): ProfileRules {
   return coreGetWebViewProfileRules(webtag);
+}
+
+export function embedPortInit(webtag: string): string {
+  return coreGetWebViewEmbedPortInit(webtag);
 }
 
 export function isEphemeralDataMode(webtag: string): boolean {

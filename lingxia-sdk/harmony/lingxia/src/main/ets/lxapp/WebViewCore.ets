@@ -51,6 +51,7 @@ const TAG = 'LingXia.WebView';
  */
 export interface ProfileRules {
   embedMailbox: boolean;
+  nativeComponentBridge: boolean;
   jsDialogs: boolean;
   newWindowsWithoutHandler: boolean;
   downloads: boolean;
@@ -69,6 +70,7 @@ export interface EffectiveWebViewCreateOptions {
   hasDownloadHandler: boolean;
   hasFileChooserHandler: boolean;
   surfaceOwned: boolean;
+  embedPortInit: string;
 }
 
 export interface WebViewDownloadRequest {
@@ -111,6 +113,7 @@ export interface WebViewHostHooks {
 
 interface RawProfileRules {
   embed_mailbox?: boolean;
+  native_component_bridge?: boolean;
   js_dialogs?: boolean;
   new_windows_without_handler?: boolean;
   downloads?: boolean;
@@ -128,6 +131,7 @@ interface RawOptionsToken {
   has_download_handler?: boolean;
   has_file_chooser_handler?: boolean;
   surface_owned?: boolean;
+  embed_port_init?: string;
 }
 
 const DATA_MODE_PROFILE_DEFAULT = 'profile_default';
@@ -205,6 +209,7 @@ function bindDefaultHostHooksIfNeeded(): void {
 function unconfiguredOptions(): EffectiveWebViewCreateOptions {
   const rules: ProfileRules = {
     embedMailbox: false,
+    nativeComponentBridge: false,
     jsDialogs: false,
     newWindowsWithoutHandler: false,
     downloads: false,
@@ -220,7 +225,8 @@ function unconfiguredOptions(): EffectiveWebViewCreateOptions {
     hasNewWindowHandler: false,
     hasDownloadHandler: false,
     hasFileChooserHandler: false,
-    surfaceOwned: false
+    surfaceOwned: false,
+    embedPortInit: ''
   };
 }
 
@@ -230,6 +236,7 @@ function decodeProfileRules(raw?: RawProfileRules): ProfileRules | undefined {
     return undefined;
   }
   const embedMailbox = raw.embed_mailbox;
+  const nativeComponentBridge = raw.native_component_bridge;
   const jsDialogs = raw.js_dialogs;
   const newWindowsWithoutHandler = raw.new_windows_without_handler;
   const downloads = raw.downloads;
@@ -238,6 +245,7 @@ function decodeProfileRules(raw?: RawProfileRules): ProfileRules | undefined {
   const scrollbars = raw.scrollbars;
   const provenDocumentBinding = raw.proven_document_binding;
   if (typeof embedMailbox !== 'boolean'
+    || typeof nativeComponentBridge !== 'boolean'
     || typeof jsDialogs !== 'boolean'
     || typeof newWindowsWithoutHandler !== 'boolean'
     || typeof downloads !== 'boolean'
@@ -249,6 +257,7 @@ function decodeProfileRules(raw?: RawProfileRules): ProfileRules | undefined {
   }
   const rules: ProfileRules = {
     embedMailbox,
+    nativeComponentBridge,
     jsDialogs,
     newWindowsWithoutHandler,
     downloads,
@@ -322,6 +331,13 @@ function normalizeDecodedOptions(raw: Object): EffectiveWebViewCreateOptions | u
   normalized.hasDownloadHandler = data.has_download_handler === true;
   normalized.hasFileChooserHandler = data.has_file_chooser_handler === true;
   normalized.surfaceOwned = data.surface_owned === true;
+  if (rules.embedMailbox) {
+    if (typeof data.embed_port_init !== 'string' || data.embed_port_init.length === 0) {
+      hilog.error(DOMAIN, TAG, `Create options for profile ${profile} lack embed_port_init`);
+      return undefined;
+    }
+    normalized.embedPortInit = data.embed_port_init;
+  }
 
   return normalized;
 }
@@ -1161,6 +1177,10 @@ export function getWebViewCreateOptions(webtag: string): EffectiveWebViewCreateO
 
 export function getWebViewProfileRules(webtag: string): ProfileRules {
   return getWebViewCreateOptions(webtag).rules;
+}
+
+export function getWebViewEmbedPortInit(webtag: string): string {
+  return getWebViewCreateOptions(webtag).embedPortInit;
 }
 
 export function isEphemeralDataMode(webtag: string): boolean {

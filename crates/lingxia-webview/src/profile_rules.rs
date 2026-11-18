@@ -21,7 +21,8 @@ pub(crate) struct ProfileRules {
     /// The one-way `window.lingxia.postMessage` mailbox is injected into
     /// top-level embedded documents.
     pub(crate) embed_mailbox: bool,
-    /// The native-component JavaScript interface is exposed (Android).
+    /// The native-component JavaScript interface (Android) and same-level
+    /// native embed mode (Harmony) are exposed.
     pub(crate) native_component_bridge: bool,
     /// `lx` is served even when the creator registered no scheme (Apple).
     /// Otherwise only the creator's schemes exist.
@@ -157,21 +158,32 @@ impl EffectiveWebViewCreateOptions {
 
     /// The create-options token Android and Harmony decode: these options
     /// plus the profile's rules, so neither side keeps a table of its own.
+    #[cfg(any(target_os = "android", test))]
+    pub(crate) fn platform_token_json(&self) -> serde_json::Result<Vec<u8>> {
+        self.platform_token_json_with_embed_init(None)
+    }
+
     #[cfg(any(
         target_os = "android",
         all(target_os = "linux", target_env = "ohos"),
         test
     ))]
-    pub(crate) fn platform_token_json(&self) -> serde_json::Result<Vec<u8>> {
+    pub(crate) fn platform_token_json_with_embed_init(
+        &self,
+        embed_port_init: Option<&str>,
+    ) -> serde_json::Result<Vec<u8>> {
         #[derive(Serialize)]
         struct Token<'a> {
             #[serde(flatten)]
             options: &'a EffectiveWebViewCreateOptions,
             rules: ProfileRules,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            embed_port_init: Option<&'a str>,
         }
         serde_json::to_vec(&Token {
             options: self,
             rules: self.rules(),
+            embed_port_init,
         })
     }
 }
@@ -344,5 +356,15 @@ mod tests {
             ]
         );
         assert!(rules.values().all(serde_json::Value::is_boolean));
+        assert!(token.get("embed_port_init").is_none());
+
+        let harmony_embed = options(SecurityProfile::Embedded)
+            .platform_token_json_with_embed_init(Some("LingXia-embed-port:secret"))
+            .unwrap();
+        let harmony_token: serde_json::Value = serde_json::from_slice(&harmony_embed).unwrap();
+        assert_eq!(
+            harmony_token["embed_port_init"],
+            "LingXia-embed-port:secret"
+        );
     }
 }

@@ -235,13 +235,15 @@ pub(crate) const ANDROID_BOOTSTRAP_SCRIPT: &str = concat!(
 );
 
 /// HarmonyOS document-start bootstrap (`javaScriptOnDocumentStart` in `LingXiaWebView.ets`).
-/// Captures the one-shot `MessagePort` transferred at document commit without exposing it.
+/// Captures the one-shot `MessagePort` transferred at document commit without exposing it,
+/// rejecting any `Window.postMessage` (`ev.source != null`) or guessed token from an `<iframe>`.
 #[cfg(test)]
 pub(crate) const HARMONY_BOOTSTRAP_SCRIPT: &str = embed_install_body!(
     concat!(
+        "  var initToken = \"LingXia-embed-port:<per-view-secret>\";\n",
         "  var port = null, early = [];\n",
         "  window.addEventListener('message', function onInit(ev) {\n",
-        "    if (ev && ev.data === 'LingXia-embed-port' && ev.ports && ev.ports.length === 1) {\n",
+        "    if (ev && !ev.source && ev.data === initToken && ev.ports && ev.ports.length === 1) {\n",
         "      ev.stopImmediatePropagation();\n",
         "      window.removeEventListener('message', onInit, true);\n",
         "      port = ev.ports[0];\n",
@@ -332,5 +334,7 @@ mod tests {
         assert!(APPLE_BOOTSTRAP_SCRIPT.contains("LingXiaEmbed"));
         assert!(ANDROID_BOOTSTRAP_SCRIPT.contains(ANDROID_EMBED_OBJECT));
         assert!(HARMONY_BOOTSTRAP_SCRIPT.contains(HARMONY_EMBED_PORT_INIT));
+        assert!(HARMONY_BOOTSTRAP_SCRIPT.contains("!ev.source"));
+        assert!(HARMONY_BOOTSTRAP_SCRIPT.contains("ev.data === initToken"));
     }
 }

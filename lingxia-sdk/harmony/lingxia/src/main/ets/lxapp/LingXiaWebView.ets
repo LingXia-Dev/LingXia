@@ -19,6 +19,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { requestWebFileChooser } from './WebFileChooserBridge';
 import {
+  embedPortInit,
   getWebViewEmbedManager,
   handleWebViewDownloadStart,
   handleWebViewLoadError,
@@ -47,53 +48,56 @@ import { isExternalWindowUrl } from './APIs/surface/SurfaceUrlPolicy';
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
 
-const EMBED_BOOTSTRAP_SCRIPT: string =
-  '(function(){\n'
-  + '  if (window !== window.top) return;\n'
-  + '  var port = null, early = [];\n'
-  + '  window.addEventListener(\'message\', function onInit(ev) {\n'
-  + '    if (ev && ev.data === \'LingXia-embed-port\' && ev.ports && ev.ports.length === 1) {\n'
-  + '      ev.stopImmediatePropagation();\n'
-  + '      window.removeEventListener(\'message\', onInit, true);\n'
-  + '      port = ev.ports[0];\n'
-  + '      for (var i = 0; i < early.length; i++) {\n'
-  + '        try { port.postMessage(early[i]); } catch (_) {}\n'
-  + '      }\n'
-  + '      early.length = 0;\n'
-  + '    }\n'
-  + '  }, true);\n'
-  + '  function sendWire(w) {\n'
-  + '    if (port) { port.postMessage(w); }\n'
-  + '    else if (early.length < 128) { early.push(w); }\n'
-  + '  }\n'
-  + '  var p = location.protocol;\n'
-  + '  if (p !== \'https:\' && p !== \'http:\' && p !== \'lx:\') return;\n'
-  + '  if (Object.prototype.hasOwnProperty.call(window, \'lingxia\')) return;\n'
-  + '  var enc = typeof TextEncoder === \'function\' ? new TextEncoder() : null;\n'
-  + '  function utf8Len(s) {\n'
-  + '    if (enc) return enc.encode(s).length;\n'
-  + '    return unescape(encodeURIComponent(s)).length;\n'
-  + '  }\n'
-  + '  var api = Object.freeze({\n'
-  + '    postMessage: function(data, options) {\n'
-  + '      if (options !== undefined && options !== null && typeof options !== \'object\') {\n'
-  + '        throw new TypeError(\'window.lingxia.postMessage: options must be an object\');\n'
-  + '      }\n'
-  + '      var queue = !!(options && options.queue === true);\n'
-  + '      var raw = JSON.stringify(data);\n'
-  + '      if (typeof raw !== \'string\') {\n'
-  + '        throw new TypeError(\'window.lingxia.postMessage: data must be JSON-serializable\');\n'
-  + '      }\n'
-  + '      if (utf8Len(raw) > 65536) {\n'
-  + '        throw new RangeError(\'window.lingxia.postMessage: payload exceeds 65536 UTF-8 bytes\');\n'
-  + '      }\n'
-  + '      sendWire((queue ? \'1\' : \'0\') + raw);\n'
-  + '    }\n'
-  + '  });\n'
-  + '  try {\n'
-  + '    Object.defineProperty(window, \'lingxia\', { value: api, configurable: false, enumerable: true, writable: false });\n'
-  + '  } catch (_) {}\n'
-  + '})();\n';
+function buildEmbedBootstrapScript(initToken: string): string {
+  const encodedToken: string = JSON.stringify(initToken);
+  return '(function(){\n'
+    + '  if (window !== window.top) return;\n'
+    + '  var initToken = ' + encodedToken + ';\n'
+    + '  var port = null, early = [];\n'
+    + '  window.addEventListener(\'message\', function onInit(ev) {\n'
+    + '    if (ev && !ev.source && ev.data === initToken && ev.ports && ev.ports.length === 1) {\n'
+    + '      ev.stopImmediatePropagation();\n'
+    + '      window.removeEventListener(\'message\', onInit, true);\n'
+    + '      port = ev.ports[0];\n'
+    + '      for (var i = 0; i < early.length; i++) {\n'
+    + '        try { port.postMessage(early[i]); } catch (_) {}\n'
+    + '      }\n'
+    + '      early.length = 0;\n'
+    + '    }\n'
+    + '  }, true);\n'
+    + '  function sendWire(w) {\n'
+    + '    if (port) { port.postMessage(w); }\n'
+    + '    else if (early.length < 128) { early.push(w); }\n'
+    + '  }\n'
+    + '  var p = location.protocol;\n'
+    + '  if (p !== \'https:\' && p !== \'http:\' && p !== \'lx:\') return;\n'
+    + '  if (Object.prototype.hasOwnProperty.call(window, \'lingxia\')) return;\n'
+    + '  var enc = typeof TextEncoder === \'function\' ? new TextEncoder() : null;\n'
+    + '  function utf8Len(s) {\n'
+    + '    if (enc) return enc.encode(s).length;\n'
+    + '    return unescape(encodeURIComponent(s)).length;\n'
+    + '  }\n'
+    + '  var api = Object.freeze({\n'
+    + '    postMessage: function(data, options) {\n'
+    + '      if (options !== undefined && options !== null && typeof options !== \'object\') {\n'
+    + '        throw new TypeError(\'window.lingxia.postMessage: options must be an object\');\n'
+    + '      }\n'
+    + '      var queue = !!(options && options.queue === true);\n'
+    + '      var raw = JSON.stringify(data);\n'
+    + '      if (typeof raw !== \'string\') {\n'
+    + '        throw new TypeError(\'window.lingxia.postMessage: data must be JSON-serializable\');\n'
+    + '      }\n'
+    + '      if (utf8Len(raw) > 65536) {\n'
+    + '        throw new RangeError(\'window.lingxia.postMessage: payload exceeds 65536 UTF-8 bytes\');\n'
+    + '      }\n'
+    + '      sendWire((queue ? \'1\' : \'0\') + raw);\n'
+    + '    }\n'
+    + '  });\n'
+    + '  try {\n'
+    + '    Object.defineProperty(window, \'lingxia\', { value: api, configurable: false, enumerable: true, writable: false });\n'
+    + '  } catch (_) {}\n'
+    + '})();\n';
+}
 
 // Layout snapshot for same-level NodeContainer
 interface NodeLayoutState {
@@ -162,9 +166,11 @@ export struct LingXiaWebView {
 
   build() {
     Stack() {
-      ForEach(this.embedComponentIds, (componentId: string) => {
-        this.buildNodeContainer(componentId, this.fullscreenRefreshKey)
-      }, (componentId: string) => componentId)
+      if (this.rules().nativeComponentBridge) {
+        ForEach(this.embedComponentIds, (componentId: string) => {
+          this.buildNodeContainer(componentId, this.fullscreenRefreshKey)
+        }, (componentId: string) => componentId)
+      }
       this.buildManagedWeb()
     }
     .width('100%')
@@ -191,8 +197,12 @@ export struct LingXiaWebView {
     if (!this.rules().embedMailbox) {
       return [];
     }
+    const initToken: string = embedPortInit(this.webTag);
+    if (initToken.length === 0) {
+      return [];
+    }
     const item: ScriptItem = {
-      script: EMBED_BOOTSTRAP_SCRIPT,
+      script: buildEmbedBootstrapScript(initToken),
       scriptRules: ['*']
     };
     return [item];
@@ -528,8 +538,10 @@ export struct LingXiaWebView {
         }
       })
       .onControllerAttached(() => {
-        this.setupEmbedManager();
-        hilog.info(DOMAIN, TAG, `Same-level embed manager setup for webTag: ${this.webTag}`);
+        if (this.rules().nativeComponentBridge) {
+          this.setupEmbedManager();
+          hilog.info(DOMAIN, TAG, `Same-level embed manager setup for webTag: ${this.webTag}`);
+        }
       })
       .onDisAppear(() => {
         this.cleanupEmbedManager();
@@ -537,15 +549,15 @@ export struct LingXiaWebView {
       })
       .verticalScrollBarAccess(this.rules().scrollbars)
       .horizontalScrollBarAccess(this.rules().scrollbars)
-      .enableNativeEmbedMode(true)
+      .enableNativeEmbedMode(this.rules().nativeComponentBridge)
       .onNativeEmbedLifecycleChange((embed: NativeEmbedDataInfo) => {
-        if (this.embedManager) {
+        if (this.rules().nativeComponentBridge && this.embedManager) {
           this.embedManager.setUIContext(this.getUIContext());
           this.embedManager.handleLifecycleChange(embed);
         }
       })
       .onNativeEmbedGestureEvent((touch: NativeEmbedTouchInfo) => {
-        if (this.embedManager) {
+        if (this.rules().nativeComponentBridge && this.embedManager) {
           this.embedManager.handleGestureEvent(touch);
         }
       })

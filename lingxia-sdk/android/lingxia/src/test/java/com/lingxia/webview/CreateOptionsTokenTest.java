@@ -2,17 +2,25 @@ package com.lingxia.webview;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import android.net.Uri;
 import android.util.Base64;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 
 import org.json.JSONObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.Map;
 
 @RunWith(RobolectricTestRunner.class)
 public final class CreateOptionsTokenTest {
@@ -25,6 +33,7 @@ public final class CreateOptionsTokenTest {
         "new_windows_without_handler",
         "downloads",
         "reports_blocked_downloads",
+        "persistent_data",
         "site_storage",
         "proxy",
         "scrollbars",
@@ -75,6 +84,7 @@ public final class CreateOptionsTokenTest {
         assertFalse(options.rules.bridgeTransport);
         assertFalse(options.rules.embedMailbox);
         assertFalse(options.rules.reportsBlockedDownloads);
+        assertFalse(options.rules.persistentData);
     }
 
     @Test
@@ -115,8 +125,103 @@ public final class CreateOptionsTokenTest {
     public void permits_nothing_before_a_token_is_applied() {
         ProfileRules none = LingXiaWebView.CreateOptions.unconfigured().rules;
         assertFalse(none.nativeConsole || none.jsDialogs || none.newWindowsWithoutHandler
-                || none.downloads || none.siteStorage || none.proxy || none.scrollbars
-                || none.provenDocumentBinding || none.nativeComponentBridge
+                || none.downloads || none.persistentData || none.siteStorage || none.proxy
+                || none.scrollbars || none.provenDocumentBinding || none.nativeComponentBridge
                 || none.bridgeTransport || none.embedMailbox || none.reportsBlockedDownloads);
+    }
+
+    @Test
+    public void embedded_ephemeral_mode_never_wipes_process_cookies_without_multi_profile()
+            throws Exception {
+        TestWebView embedded = new TestWebView(false);
+        embedded.applyCreateOptions(decode(
+                options("embedded_document", rules(false).put("embed_mailbox", true))
+                        .put("data_mode", "ephemeral")));
+        assertFalse(embedded.shouldUseGlobalEphemeralFallback(false));
+        assertFalse(embedded.shouldUseGlobalEphemeralFallback(true));
+
+        TestWebView browserAuth = new TestWebView(false);
+        browserAuth.applyCreateOptions(decode(
+                options("browser_tab", rules(false).put("persistent_data", true))
+                        .put("data_mode", "ephemeral")));
+        assertTrue(browserAuth.shouldUseGlobalEphemeralFallback(false));
+        assertFalse(browserAuth.shouldUseGlobalEphemeralFallback(true));
+    }
+
+    @Test
+    public void main_frame_post_navigation_is_checked_and_blocked_before_network_or_proxy() {
+        TestWebView blockedView = new TestWebView(true);
+        blockedView.forceSkipRustIntercept = true;
+        LingXiaWebViewClient client = new LingXiaWebViewClient(blockedView);
+
+        WebResourceResponse blocked = client.shouldInterceptRequest(
+                blockedView, request("https://untrusted.example/post", "POST", true));
+        assertNotNull(blocked);
+        assertEquals(204, blocked.getStatusCode());
+        assertEquals(1, blockedView.navigationChecks);
+        assertEquals(0, blockedView.schemeChecks);
+
+        // Allowed main-frame POST proceeds (respecting proxy skip).
+        TestWebView allowedView = new TestWebView(false);
+        allowedView.forceSkipRustIntercept = true;
+        LingXiaWebViewClient allowedClient = new LingXiaWebViewClient(allowedView);
+        assertNull(allowedClient.shouldInterceptRequest(
+                allowedView, request("https://trusted.example/post", "POST", true)));
+        assertEquals(1, allowedView.navigationChecks);
+        assertEquals(0, allowedView.schemeChecks);
+
+        // Main-frame GET and subframe POST are not re-checked in shouldInterceptRequest.
+        TestWebView getAndSubframe = new TestWebView(true);
+        getAndSubframe.forceSkipRustIntercept = true;
+        LingXiaWebViewClient otherClient = new LingXiaWebViewClient(getAndSubframe);
+        assertNull(otherClient.shouldInterceptRequest(
+                getAndSubframe, request("https://trusted.example/get", "GET", true)));
+        assertNull(otherClient.shouldInterceptRequest(
+                getAndSubframe, request("https://untrusted.example/sub", "POST", false)));
+        assertEquals(0, getAndSubframe.navigationChecks);
+    }
+
+    private static WebResourceRequest request(
+            final String url, final String method, final boolean mainFrame) {
+        return new WebResourceRequest() {
+            @Override public Uri getUrl() { return Uri.parse(url); }
+            @Override public boolean isForMainFrame() { return mainFrame; }
+            @Override public boolean isRedirect() { return false; }
+            @Override public boolean hasGesture() { return true; }
+            @Override public String getMethod() { return method; }
+            @Override public Map<String, String> getRequestHeaders() {
+                return Collections.emptyMap();
+            }
+        };
+    }
+
+    private static final class TestWebView extends LingXiaWebView {
+        private final boolean blockNavigation;
+        boolean forceSkipRustIntercept;
+        int navigationChecks;
+        int schemeChecks;
+
+        TestWebView(boolean blockNavigation) {
+            super(RuntimeEnvironment.getApplication());
+            this.blockNavigation = blockNavigation;
+        }
+
+        @Override
+        public boolean shouldSkipRustIntercept(String url) {
+            return forceSkipRustIntercept;
+        }
+
+        @Override
+        boolean checkNavigationPolicy(String url, boolean hasUserGesture, boolean isMainFrame) {
+            navigationChecks++;
+            return blockNavigation;
+        }
+
+        @Override
+        WebResourceResponseData interceptSchemeRequest(
+                String url, String method, String[] headers, boolean isMainFrame) {
+            schemeChecks++;
+            return null;
+        }
     }
 }
