@@ -1007,6 +1007,129 @@ mod tests {
         }
     }
 
+    /// `bg-clip-text`: the gradient shows through the glyphs and nowhere else, whichever way the
+    /// glyphs are drawn.
+    #[cfg(feature = "gpu")]
+    #[test]
+    #[ignore = "requires a GPU adapter; run explicitly with --features gpu -- --ignored"]
+    fn clipped_text_shows_its_gradient_through_its_glyphs() {
+        use crate::renderer::{backdrop_tests::readback, gpu::pass};
+        // The readback helper reads 96 x 96.
+        const W: u32 = 96;
+        const H: u32 = 96;
+        // Authored colours, then what Tailwind's `bg-linear-to-r from-accent to-danger` lowers to.
+        let pages = [
+            "{direction:'right',colorSpace:'srgb',stops:[{offset:0,color:'#ff0000'},{offset:1,color:'#0000ff'}]}",
+            "{direction:'right',colorSpace:'oklab',stops:[{offset:0,color:'accent'},{offset:1,color:'danger'}]}",
+        ]
+        .map(|gradient| {
+            let module = crate::session::tests::source(&format!(
+                "function render(){{return h('view',{{style:{{width:96,height:96,backgroundColor:'#ffffff'}}}},h('text',{{style:{{fontSize:40,fontWeight:700,color:'#00000000',backgroundClip:'text',backgroundImage:{gradient}}}}},'WW'))}}"
+            ));
+            let mut page = crate::ViewSession::new(&module).unwrap();
+            let display = page.layout(W as u16, H as u16, 1.0).unwrap();
+            (page, display)
+        });
+        let domain = crate::renderer::gpu::Context::default();
+        let mut context = domain.lock().unwrap();
+        let id = pollster::block_on(context.device(None)).expect("GPU adapter required");
+        let device = &context.devices[id].device;
+        let queue = &context.devices[id].queue;
+        let size = vello_gpu::RenderSize {
+            width: W as _,
+            height: H as _,
+        };
+        let depth = vello_gpu::Renderer::create_depth_texture_view(device, &size);
+        for (which, atlas) in [(0, false), (0, true), (1, false), (1, true)] {
+            let display = &pages[which].1;
+            let mut renderer = pass::SceneRenderer::default();
+            let mut prep = glifo::GlyphPrepCache::default();
+            let mut entry = Entry::new();
+            if atlas {
+                renderer
+                    .with_resources(device, W as u16, H as u16, |resources| {
+                        entry.build(
+                            display,
+                            &mut crate::renderer::gpu::text::Glyphs {
+                                prep: &mut prep,
+                                atlas: Some(resources),
+                            },
+                        )
+                    })
+                    .unwrap()
+                    .unwrap();
+            } else {
+                entry
+                    .build(
+                        display,
+                        &mut crate::renderer::gpu::text::Glyphs {
+                            prep: &mut prep,
+                            atlas: None,
+                        },
+                    )
+                    .unwrap();
+            }
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width: W,
+                    height: H,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::STORAGE_BINDING,
+                view_formats: &[],
+            });
+            let view = texture.create_view(&Default::default());
+            let bindings = crate::renderer::gpu::images::ImageTextures::default().bindings(
+                device,
+                queue,
+                entry.glyph_images.values().cloned().collect::<Vec<_>>(),
+            );
+            renderer
+                .draw(
+                    device,
+                    queue,
+                    &entry.scene,
+                    &bindings,
+                    pass::Target {
+                        size: size.clone(),
+                        view: &view,
+                        depth: Some(&depth),
+                        init: vello_gpu::TargetInit::Clear(Default::default()),
+                    },
+                )
+                .unwrap();
+            let data = readback(device, queue, &texture);
+            let (mut coloured, mut white) = (0, 0);
+            for pixel in data.chunks_exact(4) {
+                let [low, high] = [
+                    pixel[..3].iter().min().unwrap(),
+                    pixel[..3].iter().max().unwrap(),
+                ];
+                if *low > 240 {
+                    white += 1;
+                } else if high - low > 80 {
+                    coloured += 1;
+                }
+            }
+            assert!(
+                coloured > 150,
+                "page {which} atlas={atlas}: {coloured} coloured, {white} white"
+            );
+            assert!(
+                white > coloured,
+                "page {which} atlas={atlas}: the box is not filled"
+            );
+        }
+    }
+
     #[test]
     fn a_static_change_folded_into_a_span_ends_the_damage_history() {
         let (_page, display) = spin_page(false);

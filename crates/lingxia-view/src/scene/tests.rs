@@ -855,6 +855,30 @@ fn clipped_text_shows_its_gradient_only_through_its_glyphs() {
     assert_eq!(data, recomposed.pixels.data_as_u8_slice());
 }
 
+/// A platform-outlined face gives a run no ink bounds: the gradient still shows through it.
+#[test]
+fn clipped_text_without_ink_bounds_still_shows_its_gradient() {
+    let module = crate::session::tests::source(
+        "function render(){return h('view',{style:{width:200,height:80,backgroundColor:'#ffffff'}},h('text',{style:{fontSize:64,fontWeight:700,color:'#00000000',backgroundClip:'text',backgroundImage:{direction:'right',colorSpace:'srgb',stops:[{offset:0,color:'#ff0000'},{offset:1,color:'#0000ff'}]}}},'WWW'))}",
+    );
+    let mut page = crate::ViewSession::new(&module).unwrap();
+    let mut display = page.layout(200, 80, 1.0).unwrap();
+    let with_ink = display.clone().rasterize().unwrap();
+    let mut runs = 0;
+    for paint in &mut display.commands {
+        if let Paint::Text { ink, .. } = paint {
+            *ink = Some([0.0; 4]);
+            runs += 1;
+        }
+    }
+    assert!(runs > 0);
+    let without = display.rasterize().unwrap();
+    assert_eq!(
+        with_ink.pixels.data_as_u8_slice(),
+        without.pixels.data_as_u8_slice()
+    );
+}
+
 /// A 100px red box faded by `fade`, with a 20px blue child inside it, over white.
 fn masked(fade: &str, backdrop: bool) -> crate::ViewSession {
     let module = crate::session::tests::source(&format!(
@@ -980,4 +1004,30 @@ fn a_rounded_clip_thinner_than_two_radii_still_culls() {
         };
         assert!(turned.intersects([0.0, 0.0, 800.0, 400.0]));
     }
+}
+
+#[test]
+fn a_clipped_text_box_falls_back_to_the_glyphs_reach_without_usable_ink() {
+    use vello_cpu::Glyph;
+    let glyphs = [
+        Glyph {
+            id: 1,
+            x: 10.0,
+            y: 40.0,
+        },
+        Glyph {
+            id: 2,
+            x: 30.0,
+            y: 40.0,
+        },
+    ];
+    let reach = glyph_reach(&glyphs, 20.0, 0.0);
+    assert!(reach[2] > 20.0 && reach[3] > 20.0);
+    // No ink, the "unknown" ink, and an ink placed somewhere with no size.
+    for ink in [None, Some([0.0; 4]), Some([12.0, 30.0, 0.0, 0.0])] {
+        assert_eq!(clip_text_box(ink, &glyphs, 20.0, 0.0), Some(reach));
+    }
+    let ink = [9.0, 25.0, 41.0, 16.0];
+    assert_eq!(clip_text_box(Some(ink), &glyphs, 20.0, 0.0), Some(ink));
+    assert_eq!(clip_text_box(Some(ink), &[], 20.0, 0.0), None);
 }

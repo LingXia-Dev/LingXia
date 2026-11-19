@@ -857,9 +857,14 @@ impl Renderer {
                                 )
                             });
                             let ink = match key.and_then(|key| self.ink_cache.get(&key)) {
-                                Some(ink) => {
-                                    ink.map(|[ix, iy, w, h]| [ix + origin[0], iy + origin[1], w, h])
-                                }
+                                // An empty ink means "unknown" and stays so wherever the run is.
+                                Some(ink) => ink.map(|[ix, iy, w, h]| {
+                                    if w > 0.0 && h > 0.0 {
+                                        [ix + origin[0], iy + origin[1], w, h]
+                                    } else {
+                                        [0.0; 4]
+                                    }
+                                }),
                                 None => {
                                     let ink = glyph_ink(
                                         run.font(),

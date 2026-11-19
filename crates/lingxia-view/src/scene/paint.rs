@@ -264,3 +264,37 @@ pub(crate) enum Paint {
         gradient: Option<Arc<crate::scene::gradient::GradientBrush>>,
     },
 }
+
+/// A box around a run's glyph origins wide enough for any glyph of its size, slant included: for
+/// a run without ink bounds, which a platform-outlined face does not give.
+pub(crate) fn glyph_reach(glyphs: &[Glyph], size: f32, skew: f64) -> [f32; 4] {
+    let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for glyph in glyphs {
+        (x0, y0) = (x0.min(glyph.x), y0.min(glyph.y));
+        (x1, y1) = (x1.max(glyph.x), y1.max(glyph.y));
+    }
+    let em = size.abs() * (1.0 + skew.abs() as f32);
+    [
+        x0 - em,
+        y0 - 1.5 * em,
+        x1 - x0 + 3.0 * em,
+        y1 - y0 + 2.5 * em,
+    ]
+}
+
+/// The box a `bg-clip-text` gradient is filled over: the run's ink, else its reach. The glyphs
+/// mask it either way.
+pub(crate) fn clip_text_box(
+    ink: Option<[f32; 4]>,
+    glyphs: &[Glyph],
+    size: f32,
+    skew: f64,
+) -> Option<[f32; 4]> {
+    if glyphs.is_empty() {
+        return None;
+    }
+    Some(match ink {
+        Some(ink) if ink[2] > 0.0 && ink[3] > 0.0 => ink,
+        _ => glyph_reach(glyphs, size, skew),
+    })
+}
