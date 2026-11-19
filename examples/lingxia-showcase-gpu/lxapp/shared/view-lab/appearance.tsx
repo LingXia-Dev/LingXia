@@ -48,12 +48,12 @@ export function StateDemo() {
   const t = useSay();
   return (
     <>
-      <view data-testid="lab-variants-agree" className="flex-row items-center gap-3 rounded-xl px-4 py-3 bg-surface-sunken has-checked:bg-accent has-checked:text-on-accent">
+      <view data-testid="lab-variants-agree" className="flex-row items-center gap-3 rounded-xl px-4 py-3 bg-surface-sunken has-checked:bg-accent-solid has-checked:text-on-accent-solid">
         <checkbox data-testid="lab-variants-checkbox" bind={agreed} aria-label="Agree" />
         <text className="text-sm">{t(agreed.value ? labels.agreed : labels.agree)}</text>
       </view>
       <button data-testid="lab-variants-toggle" data-state={open.value ? 'open' : 'closed'} onClick={() => open.set(!open.value)}
-        className="rounded-xl px-4 py-3 text-sm bg-surface-sunken data-[state=open]:bg-accent data-[state=open]:text-on-accent data-[state=open]:py-5">
+        className="rounded-xl px-4 py-3 text-sm bg-surface-sunken data-[state=open]:bg-accent-solid data-[state=open]:text-on-accent-solid data-[state=open]:py-5">
         {t(open.value ? labels.openTaller : labels.closedShort)}
       </button>
       <view data-testid="lab-variants-field" className="rounded-xl p-3 gap-1 border border-line focus-within:border-accent focus-within:bg-surface-sunken">

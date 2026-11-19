@@ -20,7 +20,7 @@ export function ShowDemo() {
       <view className="flex-row h-12 items-center gap-2 bg-surface-sunken rounded-lg px-2">
         <view data-testid="lab-display-inline" className="inline-flex px-2 py-1 rounded bg-surface"><text className="text-xs">{t(labels.inlineNote)}</text></view>
       </view>
-      <view data-testid="lab-display-fixed" className="fixed bottom-4 right-4 px-3 py-1 rounded-full bg-accent"><text className="text-xs text-on-accent">{t(labels.pinned)}</text></view>
+      <view data-testid="lab-display-fixed" className="fixed bottom-4 right-4 px-3 py-1 rounded-full bg-accent-solid"><text className="text-xs text-on-accent-solid">{t(labels.pinned)}</text></view>
     </>
   );
 }

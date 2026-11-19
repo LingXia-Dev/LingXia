@@ -47,8 +47,8 @@ export function DragDemo() {
       <view className="h-20 rounded-xl bg-surface-sunken p-2">
         <view drag="x" dragSnapPoints={[0, 112, 224]} bind={at} aria-label="Card" data-testid="lab-drag-card"
           onDragStart={() => last.set('dragging')} onDragEnd={({ index }) => last.set(`released at ${index}`)}
-          className="w-20 h-16 rounded-lg bg-accent items-center justify-center duration-500 ease-spring-bouncy">
-          <text className="text-sm text-on-accent">Drag</text>
+          className="w-20 h-16 rounded-lg bg-accent-solid items-center justify-center duration-500 ease-spring-bouncy">
+          <text className="text-sm text-on-accent-solid">Drag</text>
         </view>
       </view>
       <Readout testId="lab-drag-state" state={`at=${at.value} last=${last.value}`}>{t(readouts.drag(at.value, last.value))}</Readout>
@@ -180,9 +180,9 @@ export function SwipeRow({ item, onOpen, onArchive, onDelete }: { item: string; 
     <view className="grid *:col-start-1 *:row-start-1 h-12">
       <view className="flex-row absolute top-0 bottom-0 right-0 w-[144px]">
         <button id={`archive-${id}`} data-testid={`lab-swipe-archive-${id}`} onClick={() => { open.set(0); onArchive(); }}
-          className={`${strip} w-[72px] bg-accent text-on-accent`}>Archive</button>
+          className={`${strip} w-[72px] bg-accent-solid text-on-accent-solid`}>Archive</button>
         <button id={`delete-${id}`} data-testid={`lab-swipe-delete-${id}`} onClick={onDelete}
-          className={`${strip} w-[72px] bg-danger text-on-danger`}>Delete</button>
+          className={`${strip} w-[72px] bg-danger-solid text-on-danger-solid`}>Delete</button>
       </view>
       <button drag="x" dragSnapPoints={[0, -144, '-100%']} bind={open} aria-actions={`archive-${id} delete-${id}`}
         data-testid={`lab-swipe-row-${id}`} onClick={onOpen} onDragEnd={({ index }) => { if (index === 2) onDelete(); }}
@@ -199,7 +199,7 @@ export function SmallTargetDemo() {
     <>
       <view className="flex-row items-center gap-3 p-6 rounded-xl bg-surface-sunken">
         <button data-testid="lab-small-button" aria-label={t(labels.close)} onClick={() => taps.set(taps.value + 1)}
-          className="w-6 h-6 rounded-md bg-accent active:opacity-70" />
+          className="w-6 h-6 rounded-md bg-accent-solid active:opacity-70" />
       </view>
       <Readout testId="lab-small-state" state={`taps=${taps.value}`}>{t(readouts.taps(taps.value))}</Readout>
     </>

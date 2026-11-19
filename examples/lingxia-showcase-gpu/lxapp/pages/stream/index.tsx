@@ -11,14 +11,14 @@ function Bubble({ id, content, user, chart }: { id: string; content: string; use
   return (
     <view className={user ? 'flex-row justify-end px-4 py-1.5' : 'flex-row justify-start px-4 py-1.5 gap-2 items-start'}>
       {!user && (
-        <view className="w-7 h-7 shrink-0 rounded-full bg-linear-to-br from-chart-4 to-accent items-center justify-center">
-          <Icon name="bolt" className="w-3.5 h-3.5 text-on-accent" />
+        <view className="w-7 h-7 shrink-0 rounded-full bg-linear-to-br from-chart-4 to-accent-solid items-center justify-center">
+          <Icon name="bolt" className="w-3.5 h-3.5 text-on-accent-solid" />
         </view>
       )}
       <view
         className={
           user
-            ? 'shrink min-w-0 max-w-4/5 px-4 py-2.5 rounded-3xl rounded-br-md bg-accent text-on-accent'
+            ? 'shrink min-w-0 max-w-4/5 px-4 py-2.5 rounded-3xl rounded-br-md bg-accent-solid text-on-accent-solid'
             : `${chart ? 'grow basis-0' : 'shrink'} min-w-0 max-w-[90%] px-4 py-2.5 rounded-3xl rounded-bl-md border border-line bg-surface shadow-sm`
         }
       >
@@ -134,9 +134,9 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
             aria-label="Send message"
             disabled={!draft.value.trim()}
             onClick={send}
-            className="w-9 h-9 rounded-full bg-accent items-center justify-center disabled:opacity-30"
+            className="w-9 h-9 rounded-full bg-accent-solid items-center justify-center disabled:opacity-30"
           >
-            <Icon name="send" className="w-4 h-4 text-on-accent" />
+            <Icon name="send" className="w-4 h-4 text-on-accent-solid" />
           </button>
         )}
       </view>

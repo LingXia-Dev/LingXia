@@ -88,9 +88,9 @@ export function render() {
             data-testid="spec-webview-fab"
             aria-label="Overlay action"
             onClick={() => fabTaps.set(fabTaps.value + 1)}
-            className="absolute right-3 bottom-3 px-3 py-2 rounded-xl bg-danger items-center justify-center"
+            className="absolute right-3 bottom-3 px-3 py-2 rounded-xl bg-danger-solid items-center justify-center"
           >
-            <text className="text-xs font-semibold text-on-accent">{`FAB ${fabTaps.value}`}</text>
+            <text className="text-xs font-semibold text-on-danger-solid">{`FAB ${fabTaps.value}`}</text>
           </button>
         </view>
 

@@ -13,7 +13,7 @@ type Data = { bootstrapMarker?: string; logicLoadedAt?: number };
 type Audit = { last: number; received: number; gaps: string[]; firstAtMs: number | null };
 
 const verdictClass = (value: string) =>
-  `px-4 py-3 rounded-lg text-lg font-bold ${value === 'PASS' ? 'bg-success text-on-success' : value === 'FAIL' ? 'bg-danger text-on-danger' : 'bg-surface-sunken text-text'}`;
+  `px-4 py-3 rounded-lg text-lg font-bold ${value === 'PASS' ? 'bg-success text-on-success' : value === 'FAIL' ? 'bg-danger-solid text-on-danger-solid' : 'bg-surface-sunken text-text'}`;
 
 export function render({ data, actions }: View<Actions, Data>) {
   const started = useLocal('started', Date.now());

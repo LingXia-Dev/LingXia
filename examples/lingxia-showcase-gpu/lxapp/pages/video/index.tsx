@@ -72,7 +72,7 @@ function Quality({ actions }: { actions: View['actions'] }) {
               data-testid={`video-quality-${quality}`}
               aria-pressed={video.quality === quality}
               onClick={() => video.setQuality(quality)}
-              className={video.quality === quality ? 'px-3 py-2 rounded-xl bg-accent text-on-accent' : 'px-3 py-2 rounded-xl bg-surface text-text'}
+              className={video.quality === quality ? 'px-3 py-2 rounded-xl bg-accent-solid text-on-accent-solid' : 'px-3 py-2 rounded-xl bg-surface text-text'}
             >
               <text>{quality}</text>
             </button>
@@ -101,7 +101,7 @@ function PublicQuality() {
             data-testid={`video-public-${quality}`}
             aria-pressed={video.quality === quality}
             onClick={() => video.setQuality(quality)}
-            className={video.quality === quality ? 'px-3 py-2 rounded-xl bg-accent text-on-accent' : 'px-3 py-2 rounded-xl bg-surface text-text'}
+            className={video.quality === quality ? 'px-3 py-2 rounded-xl bg-accent-solid text-on-accent-solid' : 'px-3 py-2 rounded-xl bg-surface text-text'}
           >
             <text>{quality}</text>
           </button>

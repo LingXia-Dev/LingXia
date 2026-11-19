@@ -30,7 +30,7 @@ export function PressDemo() {
   const t = useSay();
   return (
     <view className="flex-row">
-      <button data-testid="motion-press-button" onClick={() => {}} className="px-4 py-3 rounded-xl bg-accent text-on-accent text-sm active:scale-95 transition-transform duration-150">
+      <button data-testid="motion-press-button" onClick={() => {}} className="px-4 py-3 rounded-xl bg-accent-solid text-on-accent-solid text-sm active:scale-95 transition-transform duration-150">
         {t(labels.pressHold)}
       </button>
     </view>

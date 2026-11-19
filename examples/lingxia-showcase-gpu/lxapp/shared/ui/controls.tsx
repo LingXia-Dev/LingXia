@@ -3,9 +3,9 @@ import type { DataAttributes } from './layout';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'ghost';
 const variants: Record<ButtonVariant, string> = {
-  primary: 'bg-accent text-on-accent active:opacity-80',
+  primary: 'bg-accent-solid text-on-accent-solid active:opacity-80',
   secondary: 'bg-surface-sunken text-text active:bg-line',
-  destructive: 'bg-danger text-on-danger active:opacity-80',
+  destructive: 'bg-danger-solid text-on-danger-solid active:opacity-80',
   ghost: 'bg-transparent text-accent active:bg-surface-sunken',
 };
 const sizes = { md: 'min-h-11 px-4 py-2.5 rounded-xl text-sm', sm: 'min-h-9 px-3 py-1.5 rounded-lg text-xs' };

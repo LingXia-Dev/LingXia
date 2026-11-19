@@ -67,7 +67,7 @@ export function DaysDemo() {
               return (
                 <button key={String(date)} role="gridcell" data-testid={`lab-day-${date}`} disabled={!inside} aria-selected={chosen}
                   onClick={() => day.set(date)}
-                  className={`grow basis-0 h-9 rounded-md text-sm items-center justify-center focus-visible:ring-2 focus-visible:ring-focus ${chosen ? 'bg-accent text-on-accent' : inside ? 'bg-surface-sunken' : 'text-faint'}`}>
+                  className={`grow basis-0 h-9 rounded-md text-sm items-center justify-center focus-visible:ring-2 focus-visible:ring-focus ${chosen ? 'bg-accent-solid text-on-accent-solid' : inside ? 'bg-surface-sunken' : 'text-faint'}`}>
                   {inside ? String(date) : ''}
                 </button>
               );
@@ -120,7 +120,7 @@ export function GroupsDemo() {
       <view role="tablist" aria-label="Range" className="flex-row gap-2">
         {values.map((value, index) => (
           <button key={value} role="tab" aria-selected={range.value === value} data-testid={`lab-range-${value}`} onClick={() => range.set(value)}
-            className={`${chip} ${range.value === value ? 'bg-accent text-on-accent' : 'bg-surface-sunken'}`}>{names[index]}</button>
+            className={`${chip} ${range.value === value ? 'bg-accent-solid text-on-accent-solid' : 'bg-surface-sunken'}`}>{names[index]}</button>
         ))}
       </view>
       <view role="tabpanel" aria-label="Range view" data-testid="lab-range-panel">
@@ -150,8 +150,8 @@ export function FocusDemo() {
     <>
       <view className="flex-row flex-wrap gap-2 items-center">
         <Button testId="lab-focus-open" size="sm" onClick={() => open.set(true)}>{t(labels.openDialog)}</Button>
-        <button data-testid="lab-focus-visible" onClick={() => {}} className="rounded-xl px-4 py-2 text-sm bg-surface-sunken focus-visible:bg-accent focus-visible:text-on-accent">{t(labels.ringByKey)}</button>
-        <button data-testid="lab-interest" interestFor="lab-interest-hint" aria-label="About focus" className="rounded-full w-8 h-8 items-center justify-center bg-surface-sunken focus-visible:bg-accent focus-visible:text-on-accent"><text className="text-sm">?</text></button>
+        <button data-testid="lab-focus-visible" onClick={() => {}} className="rounded-xl px-4 py-2 text-sm bg-surface-sunken focus-visible:bg-accent-solid focus-visible:text-on-accent-solid">{t(labels.ringByKey)}</button>
+        <button data-testid="lab-interest" interestFor="lab-interest-hint" aria-label="About focus" className="rounded-full w-8 h-8 items-center justify-center bg-surface-sunken focus-visible:bg-accent-solid focus-visible:text-on-accent-solid"><text className="text-sm">?</text></button>
       </view>
       <Readout testId="lab-focus-choice" state={`chosen=${choice.value}`}>{t(readouts.chosen(choice.value))}</Readout>
       <view id="lab-interest-hint" popover="hint" role="tooltip" data-testid="lab-interest-hint" className="max-w-56 px-3 py-2 rounded-lg border border-line bg-surface-raised">
