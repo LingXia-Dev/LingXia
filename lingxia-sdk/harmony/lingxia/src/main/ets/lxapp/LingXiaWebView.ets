@@ -255,6 +255,11 @@ export struct LingXiaWebView {
     }
   }
 
+  /** The Web component's inspector id, which a touch recognizer names its target by. */
+  private webInspectorId(): string {
+    return `lx-web-${this.webTag}`;
+  }
+
   @Builder
   private buildManagedWeb(): void {
     Web({
@@ -263,6 +268,7 @@ export struct LingXiaWebView {
       renderMode: this.syncRender ? RenderMode.SYNC_RENDER : RenderMode.ASYNC_RENDER,
       incognitoMode: isEphemeralDataMode(this.webTag)
     })
+      .id(this.webInspectorId())
       .darkMode(this.appearanceDark ? WebDarkMode.On : WebDarkMode.Off)
       // Form controls are web-rendered (lx-input is a real <input> in the
       // page); RESIZE_CONTENT lets ArkWeb shrink the page and scroll the
@@ -579,11 +585,21 @@ export struct LingXiaWebView {
       .clip(this.renderClip)
       .zIndex(this.renderZIndex)
       .hitTestBehavior(this.renderHitTest)
-      .onGestureRecognizerJudgeBegin((event: BaseGestureEvent, current: GestureRecognizer): GestureJudgeResult => {
+      .onGestureRecognizerJudgeBegin((event: BaseGestureEvent, current: GestureRecognizer,
+        recognizers: Array<GestureRecognizer>, touchRecognizers?: Array<TouchRecognizer>): GestureJudgeResult => {
         if (this.yieldsPan !== undefined && current.isBuiltIn()
           && current.getType() === GestureControl.GestureType.PAN_GESTURE) {
           const pan = event as PanGestureEvent;
           if (this.yieldsPan(pan.offsetX, pan.offsetY)) {
+            // The page saw the finger go down and move; the screen takes the drag, so the page
+            // gets a touchcancel rather than a touchend that would finish its gesture.
+            const id = this.webInspectorId();
+            const touches: Array<TouchRecognizer> = touchRecognizers ?? [];
+            for (const touch of touches) {
+              if (touch.getEventTargetInfo().getId() === id) {
+                touch.cancelTouch();
+              }
+            }
             return GestureJudgeResult.REJECT;
           }
         }
