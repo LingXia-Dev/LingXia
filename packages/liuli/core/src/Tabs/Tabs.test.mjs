@@ -68,4 +68,9 @@ test('Large text: an equal tab is never narrower than its label; the indicator f
   screen.layout(tab('members').children[1], { width: 110, height: 40 });
   assert.deepEqual([bar().props.width, JSON.parse(bar().props.transform).translate], [130, [0, 0]]);
   assert.equal(JSON.parse(scroll().props.maskImage)[0].to, 'left', '360 in 300: the end edge fades');
+  const fades = () => JSON.parse(scroll().props.maskImage).map(layer => layer.to);
+  screen.fire(scroll(), 'onScrollEdge', JSON.stringify({ edge: 'start', at: false }));
+  assert.deepEqual(fades(), ['right', 'left'], 'mid-scroll: both edges fade');
+  screen.fire(scroll(), 'onScrollEdge', JSON.stringify({ edge: 'end', at: true }));
+  assert.deepEqual(fades(), ['right'], 'at the end: only the start edge fades');
 });

@@ -27,10 +27,12 @@ export const tabsRecipe = {
   },
   scroller: {
     base: 'grow overflow-x-auto',
-    // Resting at `start` the row runs on under its end edge, and at `end` under its start edge.
+    // A row that runs on under an edge fades there: past its end at rest, past both mid-scroll.
     more: {
-      start: 'mask-[linear-gradient(to_left,transparent_0,#000_1.5rem)] rtl:mask-[linear-gradient(to_right,transparent_0,#000_1.5rem)]',
-      end: 'mask-[linear-gradient(to_right,transparent_0,#000_1.5rem)] rtl:mask-[linear-gradient(to_left,transparent_0,#000_1.5rem)]',
+      end: 'mask-[linear-gradient(to_left,transparent_0,#000_1.5rem)] rtl:mask-[linear-gradient(to_right,transparent_0,#000_1.5rem)]',
+      start: 'mask-[linear-gradient(to_right,transparent_0,#000_1.5rem)] rtl:mask-[linear-gradient(to_left,transparent_0,#000_1.5rem)]',
+      // Two layers, both kept: each fades one edge.
+      both: 'mask-[linear-gradient(to_right,transparent_0,#000_1.5rem),linear-gradient(to_left,transparent_0,#000_1.5rem)]',
     },
   },
   /** At least the frame's width, so equal tabs share it and the rule spans it; wider, it scrolls. */

@@ -50,9 +50,9 @@ export function Tabs({ label, items, value, onChange, variant = 'underline', tab
   const total = widths.reduce<number>((sum, each) => sum + (each ?? 0), 0);
   const isEven = isMeasured && widths.every(each => Math.abs((each ?? 0) - (widths[0] ?? 0)) <= 0.5);
   const room = frame.value?.width;
-  // A row wider than its frame fades at the edge it runs under, so a cut label reads as more
-  // tabs: at its end until the row has been drawn to its end, then at its start.
-  const edge = useLocal<'start' | 'end'>('edge', 'start');
+  // A row wider than its frame fades at each edge it runs under, so a cut label reads as more tabs.
+  const edges = useLocal<{ start: boolean; end: boolean }>('edges', { start: true, end: false });
+  const under = !edges.value.start && !edges.value.end ? 'both' : !edges.value.start ? 'start' : !edges.value.end ? 'end' : undefined;
   const overflows = room !== undefined && isMeasured && total > room + 0.5;
   const share = 100 / Math.max(1, items.length);
   const place = width === 'equal' && (!isMeasured || isEven)
@@ -63,7 +63,7 @@ export function Tabs({ label, items, value, onChange, variant = 'underline', tab
   return (
     <view className={cx(r.root.base, className)}>
       <view box={frame} className={cx(r.frame.base, segmented && cx(s.root.base, s.root.row))}>
-        <scroll className={cx(r.scroller.base, overflows && r.scroller.more[edge.value])} onReachStart={() => edge.set('start')} onReachEnd={() => edge.set('end')}>
+        <scroll className={cx(r.scroller.base, overflows && under && r.scroller.more[under])} onScrollEdge={({ edge, at }) => edges.set({ ...edges.value, [edge]: at })}>
           <view role="tablist" aria-label={label} data-testid={testId} className={cx(r.list.base, !segmented && r.list.underline)}>
             {/* One box a tab wide, moved along the row. It moves in a left-to-right box that
                 right-to-left mirrors, so the same translate slides it toward the end either way. */}
