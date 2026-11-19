@@ -1,5 +1,6 @@
 import { useLocal, useView } from '@lingxia/view';
 import { Avatar } from '@liulidesign/core/Avatar';
+import { hueFor } from '@liulidesign/core/hue';
 import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
 import { ButtonGroup } from '@liulidesign/core/ButtonGroup';
@@ -58,7 +59,7 @@ function Row({ request, isUnread, isSelected, onOpen }: { request: Request; isUn
       label={request.subject}
       // An unread request says so in words, for a screen reader, and carries a dot, for the eye.
       description={`${isUnread ? 'Unread · ' : ''}${request.from} · ${request.team}`}
-      startContent={<Avatar name={request.from} size="sm" isDecorative />}
+      startContent={<Avatar name={request.from} hue={hueFor(request.from)} size="sm" isDecorative />}
       endContent={(
         <view className="items-end gap-1.5">
           <text className="text-footnote text-muted tabular-nums">{request.when}</text>
@@ -90,7 +91,7 @@ function Detail({ request }: { request: Request }) {
             </view>
             <text role="heading" headingLevel={2} className="text-title font-semibold tracking-tight text-text">{request.subject}</text>
             <view className="flex-row items-center gap-3">
-              <Avatar name={request.from} isDecorative />
+              <Avatar name={request.from} hue={hueFor(request.from)} isDecorative />
               <view className="gap-0.5">
                 <text className="text-body font-medium text-text">{request.from}</text>
                 <text className="text-footnote text-muted">{request.team}</text>
@@ -141,7 +142,7 @@ export function Content() {
     <view className="gap-3">
       <SearchField label="Search requests" isLabelHidden value={query.value} onChange={query.set} placeholder="Search" clearLabel="Clear" resultsLabel={`${shown.length} of ${all.length} requests`} isResultsLabelHidden data-testid="search" />
       {shown.length > 0
-        ? <ItemList label="Requests">{shown.map(request => <Row key={request.id} request={request} isUnread={isNew(request)} isSelected={selected === undefined ? undefined : request.id === selected} onOpen={() => show(request.id)} />)}</ItemList>
+        ? <ItemList label="Requests" isFlush={isWide}>{shown.map(request => <Row key={request.id} request={request} isUnread={isNew(request)} isSelected={selected === undefined ? undefined : request.id === selected} onOpen={() => show(request.id)} />)}</ItemList>
         : <EmptyState title="No requests match" description="Try a name, a team or a word from the subject." size="sm" />}
     </view>
   );

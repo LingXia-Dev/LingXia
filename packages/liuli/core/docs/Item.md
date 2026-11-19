@@ -282,6 +282,7 @@ export function Compact() {
 | `title` | `string` |  | A heading over the list, in the quiet type of a settings group; it names the list. |
 | `description` | `string` |  | A line under the list that explains the group. |
 | `density` | `ItemDensity` | `the screen's density, 'comfortable' unless a DensityProvider says otherwise` | The rows' height and padding; a row's own `density` wins. |
+| `isFlush` | `boolean` | `false` | Rows on the pane's own surface, with no border, corners or fill of the list's: for a list that fills a bordered pane. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 

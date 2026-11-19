@@ -169,3 +169,18 @@ test('At large text: the start slot holds an avatar at its own size, so grown in
   const slot = screen.queryAll(node => node.children?.includes(avatar))[0];
   assert.deepEqual([slot.props.shrink, slot.props.width, slot.props.height, slot.props.overflow], [0, undefined, undefined, undefined], 'a slot that never shrinks and never clamps');
 });
+
+test('a flush list has no border, corners or fill of its own; a list otherwise has all three', async () => {
+  const screen = await renderPage(`
+    import { Item, ItemList } from '@liulidesign/core/Item';
+    export function render() {
+      return <page>
+        <ItemList label="Framed" data-testid="framed"><Item label="One" /></ItemList>
+        <ItemList label="Flush" isFlush data-testid="flush"><Item label="One" /></ItemList>
+      </page>;
+    }
+  `);
+  const edge = node => [node.props.borderTopWidth, node.props.radius, node.props.background];
+  assert.deepEqual(edge(screen.getByTestId('framed')), [1, 14, 'surface']);
+  assert.deepEqual(edge(screen.getByTestId('flush')), [undefined, undefined, undefined]);
+});

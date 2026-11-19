@@ -9338,6 +9338,13 @@
             "default": "the screen's density, 'comfortable' unless a DensityProvider says otherwise"
           },
           {
+            "name": "isFlush",
+            "type": "boolean",
+            "required": false,
+            "description": "Rows on the pane's own surface, with no border, corners or fill of the list's: for a list that fills a bordered pane.",
+            "default": "false"
+          },
+          {
             "name": "className",
             "type": "string",
             "required": false,

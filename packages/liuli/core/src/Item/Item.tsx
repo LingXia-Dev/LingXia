@@ -159,17 +159,19 @@ export interface ItemListProps {
   description?: string;
   /** The rows' height and padding; a row's own `density` wins. @default the screen's density, 'comfortable' unless a DensityProvider says otherwise */
   density?: ItemDensity;
+  /** Rows on the pane's own surface, with no border, corners or fill of the list's: for a list that fills a bordered pane. @default false */
+  isFlush?: boolean;
   className?: string;
   'data-testid'?: string;
 }
 
 /** Rows in one bordered list, read as a list: each row reports its position. */
-export function ItemList({ children, label, title, description, density, className, 'data-testid': testId }: ItemListProps) {
+export function ItemList({ children, label, title, description, density, isFlush = false, className, 'data-testid': testId }: ItemListProps) {
   const layer = useContext(LayerContext);
   const hasFrame = title !== undefined || description !== undefined;
   // A button keeps its own role, so each row sits in a listitem that carries the position.
   const list = (
-    <view role="list" aria-label={label ?? title} data-testid={testId} className={cx(r.list.base, r.list.layer[layer], !hasFrame && className)}>
+    <view role="list" aria-label={label ?? title} data-testid={testId} className={cx(r.list.base, !isFlush && cx(r.list.framed, r.list.layer[layer]), !hasFrame && className)}>
       {childrenToArray(children).map((row, index) => <view key={String(index)} role="listitem" className={r.listitem.base}>{row}</view>)}
     </view>
   );
