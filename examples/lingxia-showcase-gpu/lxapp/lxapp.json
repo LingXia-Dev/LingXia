@@ -150,6 +150,10 @@
       "path": "pages/motion-target/index"
     },
     {
+      "name": "view-screen",
+      "path": "pages/view-screen/index"
+    },
+    {
       "name": "perf-lab",
       "path": "pages/perf-lab/index"
     },

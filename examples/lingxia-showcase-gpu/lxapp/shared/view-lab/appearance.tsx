@@ -3,6 +3,7 @@ import { useLocal, useView } from '@lingxia/view';
 import { Button, Icon } from '../ui';
 import { Readout, useSay } from './demo';
 import { labels, readouts } from './text';
+import { ScreenDemo } from './screen';
 
 // Counts this page's View runs: a theme change repaints a page that never read the theme
 // without running it, and runs one that did.
@@ -84,5 +85,6 @@ export const appearanceDemos = {
   theme: ThemeDemo,
   direction: DirectionDemo,
   state: StateDemo,
+  screen: ScreenDemo,
   insets: InsetsDemo,
 };

@@ -4,4 +4,5 @@ Page({
   onLoad(options: { lang?: string } = {}) {
     if (options.lang) this.setData({ lang: options.lang });
   },
+  async open({ page }: { page: keyof LxAppPages }) { await lx.navigateTo({ page }); },
 });

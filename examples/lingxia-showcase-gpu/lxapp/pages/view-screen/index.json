@@ -1,0 +1,10 @@
+{
+  "navigationStyle": "custom",
+  "pageOrientation": "auto",
+  "navigationBar": {
+    "title": {
+      "default": "Without a navigation bar",
+      "zh-CN": "没有导航栏"
+    }
+  }
+}
