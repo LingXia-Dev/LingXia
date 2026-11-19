@@ -14,6 +14,8 @@ import '@lingxia/test/showcase/pages/host-chrome.test.js';
 import '@lingxia/test/showcase/pages/leave-guard.test.js';
 import '@lingxia/test/showcase/pages/lifecycle.test.js';
 import '@lingxia/test/showcase/pages/media-info.test.js';
+import '@lingxia/test/showcase/pages/media-swiper-video.test.js';
+import '@lingxia/test/showcase/pages/media-swiper.test.js';
 import '@lingxia/test/showcase/pages/native-components.test.js';
 import '@lingxia/test/showcase/pages/navigator.test.js';
 import '@lingxia/test/showcase/pages/orientation.test.js';
