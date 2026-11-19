@@ -664,6 +664,8 @@ declare module 'liblingxia.so' {
   export function gpuPageRetry(token: number): void;
   /** The recovery panel's Back; false when the page could not leave. */
   export function gpuPageBack(token: number): boolean;
+  /** A drag ArkWeb yielded at its page's edge: phase 0 down, 1 move, 2 up, 3 cancel; vp, vp/s. */
+  export function gpuPageWebHandoff(token: number, phase: number, x: number, y: number, vx: number, vy: number): void;
   /** Back: true when the page closed its own top layer. */
   export function gpuPageCloseRequest(token: number): boolean;
   export function gpuPageCanScrollVertically(token: number, x: number, y: number, direction: number): boolean;

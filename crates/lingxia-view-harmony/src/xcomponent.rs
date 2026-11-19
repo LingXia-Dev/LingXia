@@ -6,8 +6,8 @@ use std::ffi::{CString, c_void};
 use std::sync::OnceLock;
 
 /// Touch slop and the slowest fling, in virtual pixels (ArkUI's pan and fling defaults).
-const SLOP_VP: f32 = 8.0;
-const MIN_FLING_VP: f32 = 50.0;
+pub(crate) const SLOP_VP: f32 = 8.0;
+pub(crate) const MIN_FLING_VP: f32 = 50.0;
 /// Velocity looks this far back from the last sample.
 const VELOCITY_WINDOW_NS: i64 = 100_000_000;
 

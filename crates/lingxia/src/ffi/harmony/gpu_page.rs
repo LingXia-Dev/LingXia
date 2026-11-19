@@ -688,6 +688,17 @@ pub fn gpu_page_back(token: i64) -> bool {
     gpu_page::go_back(token)
 }
 
+/// A drag ArkWeb yielded at its page's edge (`phase` 0 down, 1 move, 2 up, 3 cancel), vp.
+#[napi]
+pub fn gpu_page_web_handoff(token: i64, phase: i32, x: f64, y: f64, vx: f64, vy: f64) {
+    lingxia_view_harmony::web_handoff(
+        token,
+        phase.clamp(0, 3) as u8,
+        [x as f32, y as f32],
+        [vx as f32, vy as f32],
+    );
+}
+
 /// Back: true when the page closed its own top layer.
 #[napi]
 pub fn gpu_page_close_request(token: i64) -> bool {

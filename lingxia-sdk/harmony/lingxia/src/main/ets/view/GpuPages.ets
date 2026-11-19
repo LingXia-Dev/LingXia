@@ -70,6 +70,8 @@ export class GpuWebViewMount {
   clips: GpuClipMount[] = [];
   degraded: boolean = false;
   accessibilityHidden: boolean = false;
+  /** The web page handles its own drags: none passes to the View page. */
+  handlesDrags: boolean = false;
   /** The page's appearance, followed live. */
   dark?: boolean;
 }

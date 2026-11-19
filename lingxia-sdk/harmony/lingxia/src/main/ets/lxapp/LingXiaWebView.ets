@@ -138,6 +138,8 @@ export struct LingXiaWebView {
   @Prop openNewWindowExternally: boolean = false
   controller: webview.WebviewController = new webview.WebviewController()
   onFullscreenChange?: (webTag: string, componentId: string, isFullscreen: boolean) => void
+  /// A GPU page's `<webview>`: true when ArkWeb's own pan should yield a drag of `dx`, `dy` vp.
+  yieldsPan?: (dx: number, dy: number) => boolean
 
   // Same-level rendering state (simplified: single webTag, no Map wrappers)
   @State private embedComponentIds: string[] = []
@@ -577,6 +579,16 @@ export struct LingXiaWebView {
       .clip(this.renderClip)
       .zIndex(this.renderZIndex)
       .hitTestBehavior(this.renderHitTest)
+      .onGestureRecognizerJudgeBegin((event: BaseGestureEvent, current: GestureRecognizer): GestureJudgeResult => {
+        if (this.yieldsPan !== undefined && current.isBuiltIn()
+          && current.getType() === GestureControl.GestureType.PAN_GESTURE) {
+          const pan = event as PanGestureEvent;
+          if (this.yieldsPan(pan.offsetX, pan.offsetY)) {
+            return GestureJudgeResult.REJECT;
+          }
+        }
+        return GestureJudgeResult.CONTINUE;
+      })
   }
 
   // ============================================================================

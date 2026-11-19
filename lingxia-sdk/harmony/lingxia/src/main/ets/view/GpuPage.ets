@@ -17,6 +17,8 @@ import {
   gpuPageWindowVisible,
   gpuPageRetry,
   gpuPageBack,
+  gpuPageWebHandoff,
+  gpuPageInputBlocked,
   gpuPageTextMenuAction,
   gpuPageTextMenuDismissed,
   gpuPageTextHandleDrag,
@@ -130,6 +132,50 @@ struct GpuWebSlot {
     return { topLeft: r, topRight: r, bottomRight: r, bottomLeft: r };
   }
 
+  /**
+   * ArkWeb's own pan yields a drag of `dx`, `dy` vp when its page cannot scroll that way, so
+   * the View page takes it. ArkWeb reports no page width: sideways, only the start edge yields.
+   */
+  private yieldsPan(dx: number, dy: number): boolean {
+    const mount = this.findMount();
+    if (mount === null || mount.handlesDrags === true || gpuPageInputBlocked(this.page.token)) {
+      return false;
+    }
+    try {
+      // Over-scroll excluded; ArkWeb signs it by direction, so only its size counts.
+      const offset = this.controller.getPageOffset();
+      if (Math.abs(dy) >= Math.abs(dx)) {
+        // A finger moving down scrolls the content toward its top.
+        return dy > 0 ? Math.abs(offset.y) <= 0.5
+          : Math.abs(offset.y) + mount.bounds[3] >= this.controller.getPageHeight() - 0.5;
+      }
+      return dx > 0 && Math.abs(offset.x) <= 0.5;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /** Feeds a yielded drag to the page from where the finger went down, in page vp. */
+  private handOff(phase: number, event: GestureEvent): void {
+    const mount = this.findMount();
+    const finger = event.fingerList.length > 0 ? event.fingerList[0] : undefined;
+    if (mount === null || finger === undefined) {
+      if (phase >= 2) {
+        gpuPageWebHandoff(this.page.token, 3, 0, 0, 0, 0);
+      }
+      return;
+    }
+    const origin = this.outerPosition(mount);
+    const x = Number(origin.x ?? 0) + finger.localX;
+    const y = Number(origin.y ?? 0) + finger.localY;
+    if (phase === 0) {
+      gpuPageWebHandoff(this.page.token, 0, x - event.offsetX, y - event.offsetY, 0, 0);
+      gpuPageWebHandoff(this.page.token, 1, x, y, 0, 0);
+      return;
+    }
+    gpuPageWebHandoff(this.page.token, phase, x, y, event.velocityX, event.velocityY);
+  }
+
   private hasRadius(mount: GpuWebViewMount | null): boolean {
     if (mount === null) {
       return false;
@@ -158,6 +204,7 @@ struct GpuWebSlot {
           renderBorderRadius: this.radii(this.findMount()),
           renderClip: this.hasRadius(this.findMount()),
           renderHitTest: this.shown(this.findMount()) ? HitTestMode.Default : HitTestMode.None,
+          yieldsPan: (dx: number, dy: number): boolean => this.yieldsPan(dx, dy),
         })
       }
       .position(this.innerPosition(this.findMount()))
@@ -168,6 +215,12 @@ struct GpuWebSlot {
     .width(this.outerWidth(this.findMount()))
     .height(this.outerHeight(this.findMount()))
     .clip(true)
+    // Wins only once ArkWeb's own pan rejected the drag.
+    .gesture(PanGesture()
+      .onActionStart((event: GestureEvent) => this.handOff(0, event))
+      .onActionUpdate((event: GestureEvent) => this.handOff(1, event))
+      .onActionEnd((event: GestureEvent) => this.handOff(2, event))
+      .onActionCancel(() => gpuPageWebHandoff(this.page.token, 3, 0, 0, 0, 0)))
     .opacity(this.shown(this.findMount()) ? 1 : 0)
     .hitTestBehavior(this.shown(this.findMount()) ? HitTestMode.Default : HitTestMode.None)
     .accessibilityLevel((!this.shown(this.findMount()) || (this.findMount()?.accessibilityHidden === true))

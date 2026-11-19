@@ -273,6 +273,37 @@ pub fn focus_by_key(token: i64) {
     xcomponent::focus::by_key(token);
 }
 
+/// A drag an embedded `<webview>` yielded at its page's edge, which the page takes from where
+/// the finger went down: `phase` 0 down, 1 move, 2 up, 3 cancel; page vp and vp/s. Main thread.
+pub fn web_handoff(token: i64, phase: u8, point: [f32; 2], velocity: [f32; 2]) {
+    use lingxia_view::interaction::view::{Pointer, PointerPhase};
+    pages::with(token, |host| {
+        let scale = host.adapter().placement().0;
+        let phase = match phase {
+            0 => PointerPhase::Down,
+            1 => PointerPhase::Move,
+            2 => PointerPhase::Up,
+            _ => PointerPhase::Cancel,
+        };
+        if phase == PointerPhase::Down {
+            host.adapter().begin_gesture();
+            host.hover(None);
+        }
+        host.pointer(Pointer {
+            phase,
+            x: point[0] * scale,
+            y: point[1] * scale,
+            slop: xcomponent::SLOP_VP * scale,
+            velocity: if phase == PointerPhase::Up {
+                [velocity[0] * scale, velocity[1] * scale]
+            } else {
+                [0.0; 2]
+            },
+            min_fling: xcomponent::MIN_FLING_VP * scale,
+        });
+    });
+}
+
 /// Any thread: deliver an embedded `<webview>` event or readiness flag to `token`'s host.
 pub fn webview_event(token: i64, web_id: String, event: lingxia_view::WebViewInbound) {
     dispatch::post_main(Box::new(move || {
