@@ -66,9 +66,10 @@ the default theme defines is listed in [utilities](../reference/utilities.md) as
 ## Colours are roles
 
 Colours name a theme role, never a value: `bg-surface`, `text-muted`, `border-line`,
-`bg-accent-solid text-on-accent-solid`, with opacity modifiers (`bg-text/8`). A filled control that
-carries white marks (a primary or destructive button, a solid badge) takes `accent-solid` or `danger-solid`:
-in dark they are a deeper fill than `accent` and `danger`, which stay for text, icons and rings. The theme pack resolves roles per
+`bg-accent-solid text-on-accent-solid`, with opacity modifiers (`bg-text/8`). A filled control that is
+pressed or switched (a primary or destructive button, a checked mark, a switch track, a selected day, a
+stepper, a floating button) takes `accent-solid` or `danger-solid`: in dark they are a deeper fill than
+`accent` and `danger`, which stay for text, icons, rings and filled labels such as a badge (`bg-accent text-on-accent`). The theme pack resolves roles per
 appearance, so `dark:` on a colour, palette ladders (`gray-200`) and hex fail with `UI_COLOR`; so do hex
 colours in `style`. Complete CSS gradients (`bg-[radial-gradient(…)]`) and shadow layers may use literal
 colours. The roles are listed in [styles](../reference/styles.md#colour-roles).
