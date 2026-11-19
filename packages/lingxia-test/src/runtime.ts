@@ -130,8 +130,8 @@ function trackPublicSurface(): void {
   trackSurface = true;
 }
 
-/** File skips a suite declares for this run, by source name: `{ file: reason }`. */
-const fileSkips = new Map<string, string>();
+/** File skips a suite declares for this run: the name reports print, the reason, and how it matches a source. */
+const fileSkips = new Map<string, { reason: string; matches: (source: string) => boolean }>();
 /** Skipped files the bundle carries that registered no spec this run. */
 let skipUnused: string[] = [];
 
@@ -142,13 +142,30 @@ let skipUnused: string[] = [];
  * A name that registers no spec, or that the run does not carry, is a
  * warning listed as `skipUnused` in the report; keep the list current with a
  * commit-time check.
+ *
+ * With `root`, names are relative to that directory, given by its trailing path segments
+ * (`lingxia-test/showcase`, or several for each place a package can sit): a source matches wherever
+ * that directory resolved, so a symlinked or installed package skips the same files.
  */
-function skipSpecFiles(skips: Record<string, string>): void {
+function skipSpecFiles(skips: Record<string, string>, options: { root?: string | string[] } = {}): void {
+  const slash = (path: string) => path.split("\\").join("/");
+  const roots = (options.root === undefined ? [] : Array.isArray(options.root) ? options.root : [options.root])
+    .map((root) => slash(root).replace(/^\/+|\/+$/g, ""));
+  if (roots.some((root) => root.length === 0 || root.split("/").includes(".."))) {
+    throw new TypeError("skipSpecFiles: root names a directory by its trailing segments, without ..");
+  }
   for (const [file, reason] of Object.entries(skips)) {
     if (typeof reason !== "string" || reason.trim().length === 0) {
       throw new TypeError(`skipSpecFiles: ${file} needs a reason`);
     }
-    fileSkips.set(file.split("\\").join("/"), reason.trim());
+    const name = slash(file);
+    const tails = roots.map((root) => `${root}/${name}`);
+    fileSkips.set(roots.length ? `${roots[0]}/${name}` : name, {
+      reason: reason.trim(),
+      matches: roots.length
+        ? (source) => tails.some((tail) => source === tail || source.endsWith(`/${tail}`))
+        : (source) => source === name,
+    });
   }
 }
 
@@ -752,16 +769,16 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   }
   for (const item of specs) settle(item, fileOptions.get(sourceOf(item).file));
   skipUnused = [];
-  for (const [file, reason] of fileSkips) {
-    if (!specFiles.has(file)) {
+  for (const [file, { reason, matches }] of fileSkips) {
+    if (![...specFiles].some(matches)) {
       skipUnused.push(file);
-      const why = bundledSources()?.includes(file) ? "registered no spec" : "is not part of this run";
+      const why = bundledSources()?.some(matches) ? "registered no spec" : "is not part of this run";
       await host.emit({ type: "diagnostic", phase: "collect", level: "warn",
         message: `skipSpecFiles names ${file}, which ${why}` });
       continue;
     }
     for (const item of specs) {
-      if (sourceOf(item).file === file && item.skip === undefined) {
+      if (matches(sourceOf(item).file) && item.skip === undefined) {
         item.skip = reason;
         item.reason = reason;
       }
