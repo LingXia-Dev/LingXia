@@ -31,7 +31,7 @@ const sourceIds = (root, attr, computed = false) => {
   const walk = (dir) => {
     for (const name of readdirSync(dir)) {
       const path = join(dir, name);
-      if (name === 'node_modules' || name === 'dist' || name === 'tests') continue;
+      if (name === 'node_modules' || name === 'dist' || name === 'tests' || name === 'test-results') continue;
       if (statSync(path).isDirectory()) walk(path);
       else if (/\.(tsx?|jsx?)$/.test(name)) {
         const text = readFileSync(path, 'utf8');
