@@ -759,7 +759,14 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
     private func standardTabBarInset(for appId: String) -> CGFloat {
         guard let config = lingxia.getTabBar(appId), config.is_visible else { return 0 }
-        return config.presentation == 1 ? 0 : CGFloat(config.dimension)
+        guard config.presentation != 1 else { return 0 }
+        let bottom = config.position == 0 ? view.safeAreaInsets.bottom : 0
+        return CGFloat(config.dimension) + bottom
+    }
+
+    public override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        if let appId = LxAppCore.currentAppId { updateWebViewBottomInset(for: appId) }
     }
 
     private func updateWebViewBottomInset(for appId: String) {
@@ -1210,14 +1217,14 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 tabBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor).isActive = true
             }
         } else {
+            // `dimension` is the items' band; the bar grows down through the home-indicator strip.
             NSLayoutConstraint.activate([
-                tabBar.heightAnchor.constraint(equalToConstant: tabBarSize),
+                tabBar.topAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -tabBarSize),
                 tabBar.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
-                tabBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor)
+                tabBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
+                tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor)
             ])
-
-            // For bottom position, extend to view.bottomAnchor to cover safe area
-            tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor).isActive = true
         }
     }
 

@@ -51,10 +51,11 @@ const PHONES: Record<string, { host: 'ios' | 'android' | 'harmony'; portrait: Ed
   'redmi-9': { host: 'android', portrait: [30, 0, 16, 0], landscape: [0, 0, 16, 30] },
 };
 const NAVIGATION_BAR = 44;
-/** The tab bar's reach above the bottom edge: iOS draws its 64 to the edge, Android stacks its 64
- * on the system bar, HarmonyOS grows its 72 to clear the gesture zone. */
+/** The tab bar's reach above the bottom edge: its items' band plus the system's bottom area. iOS
+ * grows its 64 through the home indicator, Android stacks its 64 on the system bar, HarmonyOS grows
+ * its 72 to clear the gesture zone. */
 const TAB_BAR_REACH = {
-  ios: () => 64,
+  ios: (bottom: number) => 64 + bottom,
   android: (bottom: number) => 64 + bottom,
   harmony: (bottom: number) => 72 + Math.max(0, Math.max(12, bottom - 6) - 12),
 };

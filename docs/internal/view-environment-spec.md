@@ -229,6 +229,11 @@ interface TabBarConfig {
 }
 ```
 
+A bottom bar's `thickness` is its items' band on every host: the host grows the
+bar by the system's bottom area below it (the iOS home indicator, the Android
+navigation bar or gesture zone, the HarmonyOS gesture zone), and a page's bottom
+inset is the whole bar.
+
 All three top-level fields are required when `tabBar` is present. New-project
 templates SHOULD emit `contentMode: "resize"` unless the template is explicitly
 an immersive design.

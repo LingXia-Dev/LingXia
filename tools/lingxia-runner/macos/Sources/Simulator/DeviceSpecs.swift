@@ -220,10 +220,14 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         chrome?.host == "android" ? safeArea.bottom : 0
     }
 
-    /// Device points the host's tab bar grows by to clear the gesture zone: the HarmonyOS
-    /// host's `tabBarExtraBottomHeight` (TabBar.ets).
+    /// Device points the host's tab bar grows by below its items: through the iOS home-indicator
+    /// strip, or the HarmonyOS host's `tabBarExtraBottomHeight` (TabBar.ets).
     public var tabBarGrowth: CGFloat {
-        chrome?.host == "harmony" ? max(0, max(12, safeArea.bottom - 6) - 12) : 0
+        switch chrome?.host {
+        case "ios": safeArea.bottom
+        case "harmony": max(0, max(12, safeArea.bottom - 6) - 12)
+        default: 0
+        }
     }
 
     /// The tab bar's reach above the screen's bottom edge, as the page measures it.

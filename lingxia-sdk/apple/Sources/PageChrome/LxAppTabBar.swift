@@ -278,8 +278,10 @@ struct MacOSLxAppTabBar: View {
         Group {
             switch config.positionEnum {
             case .bottom:
+                // Items keep the top band of a bar grown through a system strip below them.
                 buildHorizontalTabBar(items: items)
                     .frame(height: config.dimensionPoints * displayScale)
+                    .frame(maxHeight: .infinity, alignment: .top)
 
             case .left, .right:
                 buildVerticalTabBar(items: items)
@@ -772,11 +774,13 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             setupHorizontalLayout(items: items, config: config, containerView: containerView)
         }
 
+        // A bottom bar's items stay above the home indicator; its background runs under it.
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: topAnchor),
             containerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             containerView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            containerView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            containerView.bottomAnchor.constraint(
+                equalTo: isVertical ? bottomAnchor : safeAreaLayoutGuide.bottomAnchor)
         ])
         NotificationCenter.default.post(name: GpuHostChrome.barChanged, object: self)
     }
