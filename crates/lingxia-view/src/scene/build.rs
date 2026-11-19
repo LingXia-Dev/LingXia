@@ -628,7 +628,7 @@ impl Renderer {
             if let Some(range) = &range {
                 let accent = match record.string(field::COLOR) {
                     Some("currentColor") => paint_style.foreground,
-                    value => color(value.unwrap_or("accent"))?,
+                    value => color(value.unwrap_or("accent-solid"))?,
                 };
                 let center = control_bounds[1]
                     + layout.padding.top
@@ -992,7 +992,7 @@ impl Renderer {
                     && record.number(field::ON_CHECKED_CHANGE).is_some();
                 // A disabled control that is on stays recognisably on, at reduced strength.
                 let accent = {
-                    let [r, g, b, a] = palette.role(Role::Accent);
+                    let [r, g, b, a] = palette.role(Role::AccentSolid);
                     [
                         r,
                         g,
@@ -1069,14 +1069,14 @@ impl Renderer {
                         // Partly checked: a dash in the check mark's ink.
                         commands.push(Paint::Stroke {
                             round: true,
-                            color: palette.role(Role::OnAccent),
+                            color: palette.role(Role::OnAccentSolid),
                             points: vec![[cx + 7.0, cy], [cx + 17.0, cy]],
                             width: 2.5,
                         });
                     } else if checked {
                         commands.push(Paint::Stroke {
                             round: true,
-                            color: palette.role(Role::OnAccent),
+                            color: palette.role(Role::OnAccentSolid),
                             points: vec![
                                 [cx + 6.0, cy],
                                 [cx + 10.0, cy + 4.0],

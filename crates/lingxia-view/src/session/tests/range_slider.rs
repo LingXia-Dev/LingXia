@@ -182,7 +182,7 @@ fn the_two_thumbs_share_one_track_and_the_range_lies_between_them() {
     let palette = crate::theme::Palette::builtin(false);
     let (line, accent) = (
         palette.role(lingxia_theme::Role::Line),
-        palette.role(lingxia_theme::Role::Accent),
+        palette.role(lingxia_theme::Role::AccentSolid),
     );
     let rects: Vec<_> = display
         .commands
