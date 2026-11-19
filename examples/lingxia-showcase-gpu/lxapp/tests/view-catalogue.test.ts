@@ -39,14 +39,15 @@ const zhNames: Record<string, string[]> = {
 for (const group of groups) {
   spec(`${group.page} reads in Chinese when asked`, { covers: ['view:catalogue'], start: { page: group.page, query: { lang: 'zh' } } }, async (t) => {
     const view = t.app.view;
-    for (const title of zhNames[group.page]) expect(await view.getByRole('heading', { name: title }).count()).toBe(1);
+    // Retrying: the page can draw a first frame before its `lang` reaches it.
+    for (const title of zhNames[group.page]) await expect(view.getByRole('heading', { name: title })).toHaveCount(1);
     if (missing[group.id].length) await expect(view.testId('view-group-missing')).toContainText('尚未展示');
   });
 }
 
 spec('a group page reads in English when asked', { covers: ['view:catalogue'], start: { page: 'view-input', query: { lang: 'en' } } }, async (t) => {
   const view = t.app.view;
-  expect(await view.getByRole('heading', { name: 'Suggestions while typing' }).count()).toBe(1);
+  await expect(view.getByRole('heading', { name: 'Suggestions while typing' })).toHaveCount(1);
   await expect(view.testId('view-group-missing')).toContainText('Not shown yet');
 });
 

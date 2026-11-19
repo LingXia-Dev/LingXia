@@ -64,7 +64,7 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
               <view className="flex-row justify-between">
                 <text className="text-[11px] font-medium text-muted">{t('appearance')}</text>
                 <text data-testid="home-appearance-resolved" className="text-[11px] text-muted">
-                  {data.appearance.resolved === 'dark' ? t('appearanceDark') : t('appearanceLight')}
+                  {env.theme === 'dark' ? t('appearanceDark') : t('appearanceLight')}
                 </text>
               </view>
               <Segmented

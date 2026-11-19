@@ -188,8 +188,8 @@ export function WebViewDemo() {
   );
 }
 
-type Pin = { x: number; y: number; moves: number; done: boolean };
-const pinText = (pin: Pin | null) => (pin ? `${pin.x},${pin.y} moves=${pin.moves}${pin.done ? ' done' : ''}` : 'none');
+type Pin = { x: number; y: number; moves: number; end?: 'done' | 'cancelled' };
+const pinText = (pin: Pin | null) => (pin ? `${pin.x},${pin.y} moves=${pin.moves}${pin.end ? ` ${pin.end}` : ''}` : 'none');
 
 // The same page twice, which cannot scroll: a drag on the first passes to the screen, the second
 // keeps every drag that starts on it and moves its pin.
@@ -205,7 +205,7 @@ export function WebDragsDemo() {
   const take = (into: Local<Pin | null>) => (ev: { data: unknown }) => {
     const msg = ev.data as Partial<Pin> & { kind?: string } | null;
     if (msg?.kind === 'pin' && typeof msg.x === 'number' && typeof msg.y === 'number')
-      into.set({ x: msg.x, y: msg.y, moves: msg.moves ?? 0, done: msg.done === true });
+      into.set({ x: msg.x, y: msg.y, moves: msg.moves ?? 0, end: msg.end === 'done' || msg.end === 'cancelled' ? msg.end : undefined });
   };
   return (
     <>

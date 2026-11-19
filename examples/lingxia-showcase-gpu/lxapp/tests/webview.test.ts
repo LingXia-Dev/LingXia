@@ -183,17 +183,21 @@ async function webDrags(t: Fixture) {
   return { view, state };
 }
 
-const skipWhenInjected = (t: Fixture, trace: { delivered: string }) => {
-  if (trace.delivered === 'view') t.skip('the drag was injected into the View page and never reached the native web view; check by hand on a device');
+/** Skips when the runner's drag went to the View page; `byHand` says what a device agent checks instead. */
+const skipWhenInjected = (t: Fixture, trace: { delivered: string }, byHand: string) => {
+  if (trace.delivered === 'view') t.skip(`the drag was injected into the View page and never reached the native web view. By hand: ${byHand}`);
 };
 
 spec('a drag on a web page that does not keep its drags scrolls the screen', { covers: ['view:webview', 'view:scroll'], start: openDemo('webDrags'), requires: { input: ['touch'] } }, async (t) => {
-  const { view } = await webDrags(t);
+  const { view, state } = await webDrags(t);
   const frame = view.testId('lab-web-drags-plain');
   const before = await onScreen(t, frame);
   const from: [number, number] = [before.x + before.width / 2, before.y + before.height - 12];
-  skipWhenInjected(t, await view.swipe({ from, to: [from[0], from[1] - 140], durationMs: 400 }));
+  skipWhenInjected(t, await view.swipe({ from, to: [from[0], from[1] - 140], durationMs: 400 }),
+    'on the View catalogue\'s web-drags demo, press Reset, then drag up from the bottom of the first page: the screen scrolls, and lab-web-drags-state reads plain=none or a plain pin ending "cancelled", never "done".');
   await t.waitFor(() => frame.boundingBox(), { until: now => now.y < before.y - 40 });
+  // The screen took the drag: the page saw nothing, or a cancel, never a completed drag.
+  await expect(state).toHaveAttribute('data-state', /plain=(none|\d+,\d+ moves=\d+ cancelled) /, { timeout: 3_000 });
 });
 
 spec('a web page with handlesDrags keeps a drag that starts on it: its pin follows and the screen stays', { covers: ['view:webview'], start: openDemo('webDrags'), requires: { input: ['touch'] } }, async (t) => {
@@ -203,7 +207,8 @@ spec('a web page with handlesDrags keeps a drag that starts on it: its pin follo
   // Mostly upward, which would scroll the screen if the web page did not keep it.
   const from: [number, number] = [before.x + 40, before.y + before.height - 16];
   const to: [number, number] = [before.x + 140, before.y + 20];
-  skipWhenInjected(t, await view.swipe({ from, to, durationMs: 500 }));
+  skipWhenInjected(t, await view.swipe({ from, to, durationMs: 500 }),
+    'on the web-drags demo, press Reset, then drag up and right across the second page: its pin follows the finger, the screen does not move, and lab-web-drags-state reads own=… moves=N done.');
   await expect(state).toHaveAttribute('data-state', /own=\d+,\d+ moves=[1-9]\d* done/, { timeout: 5_000 });
   const [, x, y] = /own=(\d+),(\d+)/.exec((await state.getAttribute('data-state')) ?? '') ?? [];
   // The pin is where the finger let go, in the web page's own pixels.
@@ -239,7 +244,8 @@ spec('a drag inside a scrollable web page scrolls it to its edge, then the scree
   const box = await onScreen(t, frame);
   const drag = async () => {
     const from: [number, number] = [box.x + box.width / 2, box.y + box.height - 16];
-    skipWhenInjected(t, await view.swipe({ from, to: [from[0], box.y + 16], durationMs: 350 }));
+    skipWhenInjected(t, await view.swipe({ from, to: [from[0], box.y + 16], durationMs: 350 }),
+      'on the web-scroll demo, with the frame wholly on screen, drag up inside it until its last row shows (the screen stays put), then drag up once more there: the screen scrolls.');
   };
   // Thirty rows of 44 px in a 160 px box: a few drags reach the end, and the screen stays put meanwhile.
   for (let i = 0; i < 8 && !/end=true/.test((await state.getAttribute('data-state')) ?? ''); i += 1) {

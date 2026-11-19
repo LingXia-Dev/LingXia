@@ -2,7 +2,7 @@
   "appId": "lingxia-showcase-gpu",
   "renderer": "gpu",
   "appName": "LingXia Showcase GPU",
-  "version": "1.0.55",
+  "version": "1.0.56",
   "minRuntime": "0.28.0",
   "pages": [
     {
