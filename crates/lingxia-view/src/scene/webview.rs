@@ -102,6 +102,8 @@ pub struct WebViewNode {
     pub handles_drags: bool,
     /// The View page's appearance, which the web page's `prefers-color-scheme` follows.
     pub dark: bool,
+    /// The content box's own size, before any transform scales it.
+    pub size: [f32; 2],
 }
 
 /// Mounted `<webview>` geometry and state delivered to [`crate::platform::HostEvents::sync_webviews`].
@@ -118,6 +120,8 @@ pub struct WebViewMount {
     pub dark: bool,
     /// Inner content box `[x, y, width, height]` in logical surface coordinates.
     pub bounds: [f32; 4],
+    /// The content box's own size: a scale in motion changes `bounds`, not the page's layout.
+    pub size: [f32; 2],
     /// Intersection of `bounds` with ancestor scroll/viewport clips.
     pub visible_bounds: [f32; 4],
     pub clips: Vec<ClipSnapshot>,
@@ -190,6 +194,7 @@ pub fn mount_of(node: &crate::scene::node::NodeSnapshot) -> Option<WebViewMount>
         handles_drags: wv.handles_drags,
         dark: wv.dark,
         bounds,
+        size: wv.size,
         visible_bounds,
         clips: node.clips.clone(),
         radius,

@@ -248,7 +248,7 @@ pub fn auto_cap(
             && match fit {
                 Fit::Contain => sx.min(sy) <= UPSCALE_SLACK,
                 Fit::Cover => sx.max(sy) <= UPSCALE_SLACK,
-                Fit::Fill => sx <= UPSCALE_SLACK && sy <= UPSCALE_SLACK,
+                Fit::Fill | Fit::Natural => sx <= UPSCALE_SLACK && sy <= UPSCALE_SLACK,
             }
     };
     renditions

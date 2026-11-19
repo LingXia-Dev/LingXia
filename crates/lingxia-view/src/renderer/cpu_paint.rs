@@ -441,7 +441,19 @@ pub(crate) fn sized_image_geometry(
     fit: crate::scene::image::Fit,
     position: [f32; 2],
 ) -> Result<(PaintRect, Affine, vello_cpu::kurbo::BezPath), String> {
-    let [x, y, w, h] = crate::scene::image::placement(size, bounds, fit, position)?;
+    texel_image_geometry(size, bounds, radius, fit, position, 1.0)
+}
+
+/// [`sized_image_geometry`] where `texels` source pixels make one unit of `bounds`.
+pub(crate) fn texel_image_geometry(
+    size: [u16; 2],
+    bounds: [f32; 4],
+    radius: f32,
+    fit: crate::scene::image::Fit,
+    position: [f32; 2],
+    texels: f32,
+) -> Result<(PaintRect, Affine, vello_cpu::kurbo::BezPath), String> {
+    let [x, y, w, h] = crate::scene::image::placement_at(size, bounds, fit, position, texels)?;
     let rect = PaintRect::new(x as f64, y as f64, (x + w) as f64, (y + h) as f64);
     let transform = Affine::translate((x as f64, y as f64))
         * Affine::scale_non_uniform(w as f64 / f64::from(size[0]), h as f64 / f64::from(size[1]));

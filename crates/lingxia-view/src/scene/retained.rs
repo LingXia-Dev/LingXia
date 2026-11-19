@@ -1398,6 +1398,13 @@ impl RetainedLayout {
         }
         for ((node, matrix), clips) in nodes.iter_mut().zip(transforms).zip(snapshot_clips) {
             node.clips = clips;
+            if let Some(wv) = &mut node.webview {
+                let inner = node
+                    .content_clip
+                    .as_ref()
+                    .map_or(node.bounds, |clip| clip.bounds);
+                wv.size = [inner[2], inner[3]];
+            }
             if matrix == Affine::IDENTITY {
                 continue;
             }

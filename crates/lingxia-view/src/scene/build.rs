@@ -1296,7 +1296,7 @@ impl Renderer {
                         player: key.clone(),
                         bounds: inner_bounds,
                         radius: inner_radius,
-                        fit: crate::scene::image::Fit::Cover,
+                        fit: crate::scene::image::Fit::Natural,
                         position: [0.0, 0.0],
                     });
                     #[cfg(not(target_os = "android"))]
@@ -1326,12 +1326,14 @@ impl Renderer {
                             settings: Default::default(),
                         }),
                     );
+                    // The capture at its own size, top-left: one taken at another box size (a
+                    // sheet opening or closing) is cropped or leaves room, never stretched.
                     commands.push(Paint::Video {
                         player: key,
                         bounds: inner_bounds,
                         radius: uniform_inner_radius,
-                        fit: crate::scene::image::Fit::Fill,
-                        position: [0.5, 0.5],
+                        fit: crate::scene::image::Fit::Natural,
+                        position: [0.0, 0.0],
                     });
                 }
                 #[cfg(not(target_os = "android"))]
@@ -1360,6 +1362,7 @@ impl Renderer {
                         .filter(|handle| *handle != 0),
                     handles_drags: record.number(field::WEB_HANDLES_DRAGS) == Some(1.0),
                     dark: self.dark,
+                    size: [inner_bounds[2], inner_bounds[3]],
                 })
             } else {
                 None

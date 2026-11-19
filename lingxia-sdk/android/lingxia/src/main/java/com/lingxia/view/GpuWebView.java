@@ -233,10 +233,13 @@ final class GpuWebView extends FrameLayout {
                 }
 
                 JSONArray bounds = item.getJSONArray("bounds");
+                // The page lays out at the box's own size: a scale in motion (a sheet opening)
+                // shrinks only `bounds`, and the texture it captures is drawn under that scale.
+                JSONArray size = item.optJSONArray("size");
                 int left = Math.round((float) bounds.getDouble(0) * density);
                 int top = Math.round((float) bounds.getDouble(1) * density);
-                int width = Math.max(1, Math.round((float) bounds.getDouble(2) * density));
-                int height = Math.max(1, Math.round((float) bounds.getDouble(3) * density));
+                int width = Math.max(1, Math.round((float) (size != null ? size.getDouble(0) : bounds.getDouble(2)) * density));
+                int height = Math.max(1, Math.round((float) (size != null ? size.getDouble(1) : bounds.getDouble(3)) * density));
                 boolean degraded = item.optBoolean("degraded", false);
                 boolean a11yHidden = item.optBoolean("accessibilityHidden", false);
                 boolean ready = item.optBoolean("ready", false);
@@ -306,6 +309,15 @@ final class GpuWebView extends FrameLayout {
         /** Changed since the last capture. The traversal and the frame callback both capture; one per change. */
         private boolean captureDirty = true;
         private boolean detached;
+        private int capturedWidth, capturedHeight;
+        /** Resized over a good picture: capture again only once the page has drawn at the new size. */
+        private boolean awaitingDraw;
+        private final Runnable drawTimeout = () -> {
+            if (awaitingDraw) {
+                awaitingDraw = false;
+                invalidateCapture();
+            }
+        };
         private final Choreographer.FrameCallback captureCallback = frameTimeNanos -> {
             captureScheduled = false;
             if (!detached) {
@@ -370,6 +382,14 @@ final class GpuWebView extends FrameLayout {
                     MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY)
                 );
                 layout(left, top, left + width, top + height);
+            }
+            if (sizeChanged && ready && capturedWidth > 0 && webview instanceof WebView && customView == null
+                && (capturedWidth != width || capturedHeight != height)) {
+                // A capture before the page redraws at the new size is blank and would replace a
+                // good picture; the box keeps the old one, unscaled, until the page has drawn.
+                awaitingDraw = true;
+                removeCallbacks(drawTimeout);
+                postDelayed(drawTimeout, 300);
             }
             if (becameReady || (sizeChanged && ready) || (srcChanged && ready)) {
                 scheduleVisualStateCapture();
@@ -441,6 +461,8 @@ final class GpuWebView extends FrameLayout {
 
         void detach() {
             detached = true;
+            awaitingDraw = false;
+            removeCallbacks(drawTimeout);
             if (captureScheduled) {
                 captureScheduled = false;
                 Choreographer.getInstance().removeFrameCallback(captureCallback);
@@ -469,6 +491,7 @@ final class GpuWebView extends FrameLayout {
                     @Override
                     public void onComplete(long requestId) {
                         if (!detached) {
+                            awaitingDraw = false;
                             invalidateCapture();
                         }
                     }
@@ -525,8 +548,9 @@ final class GpuWebView extends FrameLayout {
             captureDirty = true;
         }
 
+        /** Captures in motion too: the box draws the texture under its transform, so it stays current. */
         private void captureToSink() {
-            if (!captureDirty || degraded || webview == null || !hasCommittedContent()) {
+            if (!captureDirty || awaitingDraw || webview == null || !hasCommittedContent()) {
                 return;
             }
             int w = getWidth();
@@ -547,6 +571,13 @@ final class GpuWebView extends FrameLayout {
             }
             if (drawn) {
                 captureDirty = false;
+                if (w != capturedWidth || h != capturedHeight) {
+                    // Device runs read a sheet's resize as the box size against the capture it shows.
+                    android.util.Log.i("LingXia.GpuWebView", "capture " + key + " " + capturedWidth + "x"
+                        + capturedHeight + " -> " + w + "x" + h + " box " + slotWidth + "x" + slotHeight);
+                    capturedWidth = w;
+                    capturedHeight = h;
+                }
                 owner.onWebViewTextureUpdated();
             }
         }

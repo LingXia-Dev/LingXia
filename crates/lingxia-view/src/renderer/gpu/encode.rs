@@ -455,11 +455,12 @@ impl DisplayList {
                     fit,
                     position,
                 } => {
+                    trace_texture(player, bounds, *fit);
                     // Nothing shows until the player's first frame gives its size.
                     if let Some(size) = crate::renderer::gpu::video::frame_size(player) {
                         let (rect, transform, clip) =
-                            crate::renderer::cpu_paint::sized_image_geometry(
-                                size, *bounds, *radius, *fit, *position,
+                            crate::renderer::cpu_paint::texel_image_geometry(
+                                size, *bounds, *radius, *fit, *position, self.scale,
                             )?;
                         context.push_clip_path(&clip);
                         context.set_paint(vello_gpu::Image {
@@ -641,5 +642,24 @@ fn push_clip(context: &mut vello_gpu::Scene, shape: &ClipSnapshot) {
         ));
     } else {
         context.push_clip_path(&shape.path());
+    }
+}
+
+/// Logs each change of a natural-fit (web view) box against the texture drawn in it, so a
+/// device run reads a sheet's open and close frame by frame.
+fn trace_texture(player: &str, bounds: &[f32; 4], fit: crate::scene::image::Fit) {
+    if fit != crate::scene::image::Fit::Natural {
+        return;
+    }
+    static SEEN: std::sync::Mutex<Option<std::collections::HashMap<String, String>>> =
+        std::sync::Mutex::new(None);
+    let texture = crate::renderer::gpu::video::frame_size(player)
+        .map_or_else(|| "none".to_owned(), |[w, h]| format!("{w}x{h}"));
+    let state = format!("box {:.0}x{:.0} texture {texture}", bounds[2], bounds[3]);
+    let mut seen = SEEN.lock().unwrap_or_else(|p| p.into_inner());
+    let seen = seen.get_or_insert_with(Default::default);
+    if seen.get(player) != Some(&state) {
+        log::info!(target: "lingxia_view", "webview texture {player}: {state}");
+        seen.insert(player.to_owned(), state);
     }
 }

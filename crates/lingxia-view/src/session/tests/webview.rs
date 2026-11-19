@@ -308,6 +308,7 @@ fn a_web_view_is_masked_where_a_later_ready_web_view_shows_through() {
         handles_drags: false,
         dark: false,
         bounds,
+        size: [bounds[2], bounds[3]],
         visible_bounds: bounds,
         clips: Vec::new(),
         radius: 12.0,
@@ -390,4 +391,30 @@ fn a_web_view_takes_the_page_appearance_live() {
         dark(&mut page),
         "the mount carries the page's new appearance"
     );
+}
+
+#[test]
+fn a_scaled_web_view_mounts_at_its_own_size() {
+    let module = source(
+        "globalThis.s=1;\
+         function render(){return h('page',{},h('view',{style:{scale:globalThis.s}},h('webview',{'aria-label':'Doc','data-testid':'wv',src:'https://example.com',style:{width:160,height:100}})))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let mount = |page: &mut ViewSession| {
+        let display = page.layout(300, 300, 1.0).unwrap();
+        let node = display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == "wv")
+            .unwrap()
+            .clone();
+        crate::scene::webview::mount_of(&node).unwrap()
+    };
+    assert_eq!(mount(&mut page).size, [160.0, 100.0]);
+    // A sheet scaling in: the box on screen shrinks, the page the web view lays out does not.
+    page.eval("globalThis.s=0.5").unwrap();
+    let scaled = mount(&mut page);
+    assert!(scaled.degraded);
+    assert_eq!([scaled.bounds[2], scaled.bounds[3]], [80.0, 50.0]);
+    assert_eq!(scaled.size, [160.0, 100.0]);
 }

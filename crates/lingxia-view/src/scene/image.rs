@@ -177,6 +177,10 @@ pub enum Fit {
     Cover,
     Contain,
     Fill,
+    /// At its own size, one texel per device pixel, never scaled: a web view's capture taken
+    /// at another box size shows cropped or with room to spare until a new one lands.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    Natural,
 }
 
 /// Image rectangle aligned at `position` box fractions; the caller clips to the node bounds.
@@ -185,6 +189,18 @@ pub fn placement(
     bounds: [f32; 4],
     fit: Fit,
     position: [f32; 2],
+) -> Result<[f32; 4], String> {
+    placement_at(size, bounds, fit, position, 1.0)
+}
+
+/// [`placement`] where `texels` source pixels make one unit of `bounds` (the display scale),
+/// which only [`Fit::Natural`] reads.
+pub fn placement_at(
+    size: [u16; 2],
+    bounds: [f32; 4],
+    fit: Fit,
+    position: [f32; 2],
+    texels: f32,
 ) -> Result<[f32; 4], String> {
     if size.contains(&0)
         || !bounds.iter().all(|value| value.is_finite())
@@ -197,6 +213,8 @@ pub fn placement(
     let [iw, ih] = size.map(f64::from);
     let (w, h) = match fit {
         Fit::Fill => (width, height),
+        Fit::Natural if texels > 0.0 => (iw / f64::from(texels), ih / f64::from(texels)),
+        Fit::Natural => return Err("UI_IMAGE: invalid image geometry".into()),
         _ => {
             let scale = if fit == Fit::Cover {
                 (width / iw).max(height / ih)
@@ -232,6 +250,18 @@ mod tests {
             .write_image(pixels, width, height, ::image::ExtendedColorType::Rgba8)
             .unwrap();
         bytes
+    }
+
+    #[test]
+    fn a_natural_fit_keeps_an_old_capture_at_its_own_size_in_a_resized_box() {
+        // A 300x600 px capture at scale 3 is 100x200 pt, whatever the box became.
+        for bounds in [[10.0, 20.0, 100.0, 120.0], [10.0, 20.0, 100.0, 400.0]] {
+            assert_eq!(
+                placement_at([300, 600], bounds, Fit::Natural, [0.0, 0.0], 3.0).unwrap(),
+                [10.0, 20.0, 100.0, 200.0]
+            );
+        }
+        assert!(placement_at([300, 600], [0.0; 4], Fit::Natural, [0.0, 0.0], 0.0).is_err());
     }
 
     #[test]

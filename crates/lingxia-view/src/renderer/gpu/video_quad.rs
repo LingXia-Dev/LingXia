@@ -93,7 +93,14 @@ fn placements(display: &crate::DisplayList) -> Option<Vec<Placement>> {
                 }
                 let scale = axis_aligned(device * transform)?;
                 let size = super::video::frame_size(player)?;
-                let image = crate::scene::image::placement(size, *bounds, *fit, *position).ok()?;
+                let image = crate::scene::image::placement_at(
+                    size,
+                    *bounds,
+                    *fit,
+                    *position,
+                    display.scale,
+                )
+                .ok()?;
                 let content = map(scale, image);
                 let mut device_clips = Vec::new();
                 for (clip, opened) in &clips {

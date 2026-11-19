@@ -319,6 +319,7 @@ fn sync_android_webviews_ui(
                 "webId": m.web_id,
                 "src": m.src,
                 "bounds": m.bounds,
+                "size": m.size,
                 "visibleBounds": m.visible_bounds,
                 "degraded": m.degraded,
                 "accessibilityHidden": m.accessibility_hidden,
