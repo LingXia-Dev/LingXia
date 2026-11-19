@@ -208,3 +208,59 @@ fn a_hot_swap_changes_whether_a_theme_change_runs_the_view() {
     set_theme(&platform, &host, "dark");
     assert_eq!(runs(&host), before, "and swapped back, it does not");
 }
+
+#[test]
+fn a_theme_change_racing_a_render_leaves_the_page_reading_the_new_theme() {
+    for theme_first in [false, true] {
+        let worker = ViewWorker::spawn("test-appearance-race").unwrap();
+        let platform = Platform::new(&[&worker]);
+        let host = shown(
+            &platform,
+            &worker,
+            &page_source(
+                &format!(
+                    "const n=useLocal('n',0);return h('page',{{}},{BOX},h('button',{{'data-testid':'pick',onClick(){{n.set(n.value+1)}}}},'Pick'),h('text',{{'data-testid':'look'}},'look '+env.theme+' '+n.value))"
+                ),
+                "[]",
+            ),
+        );
+        let pick = || {
+            host.automation_request(
+                &serde_json::json!({"op":"act","css":"[data-testid=\"pick\"]","action":{"kind":"click"}}),
+            )
+            .unwrap();
+        };
+        let theme = |value: &str| {
+            host.adapter()
+                .environment
+                .lock()
+                .unwrap()
+                .as_mut()
+                .unwrap()
+                .value["theme"] = value.into();
+            host.environment_changed();
+        };
+        for (step, value) in ["dark", "light", "dark"].into_iter().enumerate() {
+            if theme_first {
+                theme(value);
+                pick();
+            } else {
+                pick();
+                theme(value);
+            }
+            platform.settle(&[&host]);
+            run_frames(&platform, &host, 6);
+            let look = host
+                .automation_request(
+                    &serde_json::json!({"op": "query", "css": "[data-testid=\"look\"]"}),
+                )
+                .unwrap()["text"]
+                .clone();
+            assert_eq!(
+                look,
+                format!("look {value} {}", step + 1),
+                "theme first: {theme_first}"
+            );
+        }
+    }
+}
