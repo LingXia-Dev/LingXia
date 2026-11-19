@@ -205,10 +205,13 @@ pub(crate) enum Paint {
         position: [f32; 2],
     },
     /// Embedded `<webview>` hole-punch (Apple/Harmony): punches `Compose::DestOut` once ready
-    /// when not degraded; while not ready or degraded it leaves the box's background fill intact.
+    /// when not degraded. Degraded, or in a capture, it draws the view's last picture when one
+    /// is bound; otherwise the box's background fill stays.
     #[cfg_attr(target_os = "android", allow(dead_code))]
     WebHole {
         key: String,
+        /// [`crate::scene::webview::picture_src`] of `key`.
+        picture: String,
         bounds: [f32; 4],
         radius: f32,
         corners: Option<[[f32; 2]; 4]>,

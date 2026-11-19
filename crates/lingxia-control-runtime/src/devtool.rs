@@ -624,7 +624,7 @@ pub(crate) async fn lxapp_dev_page_screenshot_with_info(
     let (page, name) = resolve_dev_page(&app, page_name)?;
     let info = dev_page_info(&app, &page, name.as_deref());
     // The shared lower half answers GPU pages too.
-    let bytes = auto::page_screenshot(&app, Some(&info.instance_id)).await?;
+    let bytes = auto::page_screenshot(&app, Some(&info.instance_id), true).await?;
     Ok((info, bytes))
 }
 

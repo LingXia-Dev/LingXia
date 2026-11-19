@@ -21,9 +21,21 @@ struct GpuWebViewMountSpec: Decodable {
     let radius: CGFloat
     let radii: [[CGFloat]]?
     let clips: [GpuWebViewClipSpec]
+    /// Later web views' holes over this one: masked out, since native views do not stack in
+    /// paint order.
+    let occluders: [GpuWebViewClipSpec]?
     let degraded: Bool
     let accessibilityHidden: Bool
 }
+
+#if os(iOS)
+private func gpuPicturePng(_ image: UIImage) -> Data? { image.pngData() }
+#elseif os(macOS)
+private func gpuPicturePng(_ image: NSImage) -> Data? {
+    guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+    return NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])
+}
+#endif
 
 private func gpuRoundedPath(
     bounds: [CGFloat],
@@ -122,15 +134,34 @@ private func buildMaskChain(spec: GpuWebViewMountSpec, clipOrigin: CGPoint) -> C
             paths.append(anc)
         }
     }
+    let occluders = spec.occluders ?? []
+    if !occluders.isEmpty, spec.visibleBounds.count == 4 {
+        // Even-odd: the slot's whole box, less each occluder.
+        let cut = CGMutablePath()
+        cut.addRect(CGRect(x: spec.visibleBounds[0] - clipOrigin.x, y: spec.visibleBounds[1] - clipOrigin.y,
+                           width: spec.visibleBounds[2], height: spec.visibleBounds[3]))
+        for occluder in occluders where occluder.bounds.count == 4 {
+            if let rounded = gpuRoundedPath(bounds: occluder.bounds, radius: occluder.radius,
+                                            radii: occluder.radii, offset: clipOrigin) {
+                cut.addPath(rounded)
+            } else {
+                cut.addRect(CGRect(x: occluder.bounds[0] - clipOrigin.x, y: occluder.bounds[1] - clipOrigin.y,
+                                   width: occluder.bounds[2], height: occluder.bounds[3]))
+            }
+        }
+        paths.append(cut)
+    }
     guard let first = paths.first else { return nil }
     let root = CAShapeLayer()
     root.actions = ["path": NSNull(), "frame": NSNull(), "position": NSNull(), "bounds": NSNull()]
     root.path = first
+    root.fillRule = paths.count == 1 && !occluders.isEmpty ? .evenOdd : .nonZero
     var current = root
-    for nextPath in paths.dropFirst() {
+    for (index, nextPath) in paths.enumerated().dropFirst() {
         let sub = CAShapeLayer()
         sub.actions = ["path": NSNull(), "frame": NSNull(), "position": NSNull(), "bounds": NSNull()]
         sub.path = nextPath
+        sub.fillRule = index == paths.count - 1 && !occluders.isEmpty ? .evenOdd : .nonZero
         current.mask = sub
         current = sub
     }
@@ -159,6 +190,8 @@ final class GpuWebViewSlot: UIView {
     let webId: String
     weak var webView: WKWebView?
     var accessibilitySuppressed = false
+    /// What the last sync asked for; a snapshot shows a hidden slot only while it runs.
+    var wantsHidden = false
 
     init(webId: String) {
         self.webId = webId
@@ -218,6 +251,34 @@ final class GpuWebViewContainer: UIView {
         return slot.webView
     }
 
+    /// Pictures each of `ids` at `scale` device pixels per point for the page's core, which
+    /// draws it while the live view cannot show. A hidden slot is shown for the snapshot: no
+    /// hole is punched for it, so the GPU layer still covers it.
+    func picture(_ ids: [String], scale: CGFloat, backing: CGFloat) {
+        let token = self.token
+        for id in ids {
+            guard let slot = slots[id], let webView = slot.webView,
+                  webView.bounds.width > 0, webView.bounds.height > 0
+            else { continue }
+            let hidden = slot.isHidden
+            slot.isHidden = false
+            let config = WKSnapshotConfiguration()
+            config.rect = webView.bounds
+            config.snapshotWidth = NSNumber(value: Double(webView.bounds.width * scale / max(backing, 1)))
+            webView.takeSnapshot(with: config) { [weak self, weak slot] image, _ in
+                MainActor.assumeIsolated {
+                    if hidden, let slot, self?.slots[id] === slot, slot.wantsHidden {
+                        slot.isHidden = true
+                    }
+                    guard let png = image.flatMap(gpuPicturePng) else { return }
+                    png.withUnsafeBytes { raw in
+                        gpuPageWebViewPicture(token, id, raw.bindMemory(to: UInt8.self))
+                    }
+                }
+            }
+        }
+    }
+
     func clearAll() {
         for slot in slots.values {
             slot.webView?.removeFromSuperview()
@@ -275,6 +336,7 @@ final class GpuWebViewContainer: UIView {
             let vh = spec.visibleBounds.count == 4 ? max(0, spec.visibleBounds[3]) : 0
 
             let hidden = spec.degraded || vw <= 0.01 || vh <= 0.01
+            slot.wantsHidden = hidden
             slot.isHidden = hidden
             slot.accessibilitySuppressed = spec.accessibilityHidden || spec.degraded
             slot.accessibilityElementsHidden = slot.accessibilitySuppressed
@@ -331,6 +393,8 @@ final class GpuWebViewSlot: NSView {
     let webId: String
     weak var webView: WKWebView?
     var accessibilitySuppressed = false
+    /// What the last sync asked for; a snapshot shows a hidden slot only while it runs.
+    var wantsHidden = false
 
     init(webId: String) {
         self.webId = webId
@@ -393,6 +457,34 @@ final class GpuWebViewContainer: NSView {
         return slot.webView
     }
 
+    /// Pictures each of `ids` at `scale` device pixels per point for the page's core, which
+    /// draws it while the live view cannot show. A hidden slot is shown for the snapshot: no
+    /// hole is punched for it, so the GPU layer still covers it.
+    func picture(_ ids: [String], scale: CGFloat, backing: CGFloat) {
+        let token = self.token
+        for id in ids {
+            guard let slot = slots[id], let webView = slot.webView,
+                  webView.bounds.width > 0, webView.bounds.height > 0
+            else { continue }
+            let hidden = slot.isHidden
+            slot.isHidden = false
+            let config = WKSnapshotConfiguration()
+            config.rect = webView.bounds
+            config.snapshotWidth = NSNumber(value: Double(webView.bounds.width * scale / max(backing, 1)))
+            webView.takeSnapshot(with: config) { [weak self, weak slot] image, _ in
+                MainActor.assumeIsolated {
+                    if hidden, let slot, self?.slots[id] === slot, slot.wantsHidden {
+                        slot.isHidden = true
+                    }
+                    guard let png = image.flatMap(gpuPicturePng) else { return }
+                    png.withUnsafeBytes { raw in
+                        gpuPageWebViewPicture(token, id, raw.bindMemory(to: UInt8.self))
+                    }
+                }
+            }
+        }
+    }
+
     func clearAll() {
         for slot in slots.values {
             slot.webView?.removeFromSuperview()
@@ -427,6 +519,16 @@ final class GpuWebViewContainer: NSView {
         }
         orderedIds = nextIds
 
+        defer {
+            // Later in paint order stacks above, as the page draws them.
+            let order = subviews.compactMap { ($0 as? GpuWebViewSlot)?.webId }
+            if order != nextIds.filter({ slots[$0] != nil }) {
+                for id in nextIds {
+                    if let slot = slots[id] { addSubview(slot, positioned: .above, relativeTo: nil) }
+                }
+            }
+        }
+
         for spec in specs {
             let slot = slots[spec.webId] ?? {
                 let created = GpuWebViewSlot(webId: spec.webId)
@@ -447,6 +549,7 @@ final class GpuWebViewContainer: NSView {
             let vh = spec.visibleBounds.count == 4 ? max(0, spec.visibleBounds[3]) : 0
 
             let hidden = spec.degraded || vw <= 0.01 || vh <= 0.01
+            slot.wantsHidden = hidden
             slot.isHidden = hidden
             slot.accessibilitySuppressed = spec.accessibilityHidden || spec.degraded
             slot.setAccessibilityElement(!slot.accessibilitySuppressed)

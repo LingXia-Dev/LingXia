@@ -42,6 +42,12 @@ pub fn make_key(scope: u64, web_id: &str) -> String {
     format!("{scope}/{web_id}")
 }
 
+/// The image source a `<webview>`'s last picture is bound under, drawn in its place while the
+/// live view cannot show (motion, opacity, masks, blur) and in captures.
+pub fn picture_src(key: &str) -> String {
+    format!("lx-webview-picture://{key}")
+}
+
 /// Marks `<webview>` `(scope, web_id)` ready (or not ready) for hole-punch composition.
 /// Returns `true` when the state changed.
 pub fn set_ready(scope: u64, web_id: &str, ready: bool) -> bool {
@@ -113,6 +119,45 @@ pub struct WebViewMount {
     pub clips: Vec<ClipSnapshot>,
     pub radius: f32,
     pub radii: Option<[[f32; 2]; 4]>,
+    /// Holes of `<webview>`s painted later that overlap this one: the native view is masked out
+    /// there, since native views do not stack in paint order.
+    pub occluders: Vec<ClipSnapshot>,
+}
+
+/// Fills each mount's `occluders` from the live, ready mounts painted after it; `mounts` is in
+/// paint order.
+pub fn occlude(mounts: &mut [WebViewMount]) {
+    let shapes: Vec<Option<ClipSnapshot>> = mounts
+        .iter()
+        .map(|mount| {
+            let [_, _, w, h] = mount.visible_bounds;
+            let live = !mount.degraded
+                && w > 0.0
+                && h > 0.0
+                && is_ready_key(&make_key(mount.scope, &mount.web_id));
+            // Clipped by an ancestor, the hole's corners are the clip's: the visible box is the
+            // nearest shape a mask can take.
+            let whole = mount.visible_bounds == mount.bounds;
+            live.then(|| ClipSnapshot {
+                bounds: mount.visible_bounds,
+                radius: if whole { mount.radius } else { 0.0 },
+                radii: if whole { mount.radii } else { None },
+                transform: None,
+            })
+        })
+        .collect();
+    for (index, mount) in mounts.iter_mut().enumerate() {
+        mount.occluders = shapes[index + 1..]
+            .iter()
+            .flatten()
+            .filter(|shape| overlaps(shape.bounds, mount.visible_bounds))
+            .cloned()
+            .collect();
+    }
+}
+
+fn overlaps(a: [f32; 4], b: [f32; 4]) -> bool {
+    a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]
 }
 
 /// Extracts [`WebViewMount`] geometry from the active `<webview>` [`crate::scene::node::NodeSnapshot`].
@@ -144,6 +189,7 @@ pub fn mount_of(node: &crate::scene::node::NodeSnapshot) -> Option<WebViewMount>
         clips: node.clips.clone(),
         radius,
         radii,
+        occluders: Vec::new(),
     })
 }
 

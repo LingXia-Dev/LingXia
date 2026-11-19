@@ -1510,11 +1510,16 @@ export class LiveFixture implements Fixture {
         return this.locator(lazyPage, selector, location(), target);
       },
       eval: ((...args: unknown[]) => this.viewEval(page, args, bound ? "page.view.eval" : "t.app.view.eval", bound)) as TestView["eval"],
-      screenshot: (options?: unknown) => {
-        noOptions("view.screenshot", options);
+      screenshot: (options?: { allowNotReady?: boolean }) => {
+        if (options !== undefined && (options === null || typeof options !== "object"
+          || Object.keys(options).some((key) => key !== "allowNotReady")
+          || (options.allowNotReady !== undefined && typeof options.allowNotReady !== "boolean"))) {
+          throw new TypeError("view.screenshot() takes { allowNotReady?: boolean }");
+        }
+        const allow = options?.allowNotReady ? { allowNotReady: true } : {};
         return this.act("page.screenshot", bound ? `#${bound}` : "", () =>
           // The driver's options are optional but not nullable: pass none rather than undefined.
-          this.readRetrying(() => (bound ? page().screenshot(target) : page().screenshot())));
+          this.readRetrying(() => page().screenshot({ ...target, ...allow })));
       },
       settled: (options?: ViewSettledOptions) => this.viewSettled(page, target, options),
       environment: (pin: ViewEnvironment | null) => this.act("page.environment", summarise(pin), async () => {

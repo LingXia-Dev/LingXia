@@ -55,8 +55,9 @@ pub trait GpuPageAutomation: Send + Sync {
     ) -> GpuFuture<Value>;
     /// Resolve `css`/`index` and run the action through the page's input paths.
     fn act(&self, css: &str, index: Option<usize>, action: GpuAction) -> GpuFuture<()>;
-    /// A PNG of the presented frame.
-    fn screenshot(&self) -> GpuFuture<Vec<u8>>;
+    /// A PNG of the presented frame. A `<webview>` whose content has not drawn yet fails it
+    /// with `E_WEBVIEW_NOT_READY`, unless `allow_not_ready` takes its placeholder.
+    fn screenshot(&self, allow_not_ready: bool) -> GpuFuture<Vec<u8>>;
     /// The accessibility tree of the presented frame.
     fn tree(&self) -> GpuFuture<Value> {
         Box::pin(async { Err("E_UNSUPPORTED: this GPU page binding has no tree".to_owned()) })

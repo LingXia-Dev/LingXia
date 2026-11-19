@@ -798,10 +798,15 @@ mod gpu_key_tests {
     }
 }
 
-/// Capture a PNG screenshot of the target page's WebView.
-pub async fn page_screenshot(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Vec<u8>, String> {
+/// Capture a PNG screenshot of the target page; see [`gpu::GpuPageAutomation::screenshot`]
+/// for `allow_not_ready`.
+pub async fn page_screenshot(
+    app: &Arc<LxApp>,
+    page_name: Option<&str>,
+    allow_not_ready: bool,
+) -> Result<Vec<u8>, String> {
     if let Some(page) = gpu::backend(app, page_name)? {
-        return page.screenshot().await;
+        return page.screenshot(allow_not_ready).await;
     }
     resolve_webview(app, page_name)?
         .take_screenshot()
@@ -1283,7 +1288,7 @@ mod tests {
                 }
             })
         }
-        fn screenshot(&self) -> gpu::GpuFuture<Vec<u8>> {
+        fn screenshot(&self, _: bool) -> gpu::GpuFuture<Vec<u8>> {
             Box::pin(async { Err("unused".to_owned()) })
         }
         fn frame(&self) -> gpu::GpuFuture<Value> {
@@ -1312,7 +1317,7 @@ mod tests {
         fn act(&self, _: &str, _: Option<usize>, _: gpu::GpuAction) -> gpu::GpuFuture<()> {
             Box::pin(async { Err("unused".to_owned()) })
         }
-        fn screenshot(&self) -> gpu::GpuFuture<Vec<u8>> {
+        fn screenshot(&self, _: bool) -> gpu::GpuFuture<Vec<u8>> {
             Box::pin(async { Err("unused".to_owned()) })
         }
         fn action(&self, name: &str, args: Option<Value>) -> gpu::GpuFuture<u64> {
@@ -1398,7 +1403,7 @@ mod tests {
         fn act(&self, _: &str, _: Option<usize>, _: gpu::GpuAction) -> gpu::GpuFuture<()> {
             Box::pin(async { Err("unused".to_owned()) })
         }
-        fn screenshot(&self) -> gpu::GpuFuture<Vec<u8>> {
+        fn screenshot(&self, _: bool) -> gpu::GpuFuture<Vec<u8>> {
             Box::pin(async { Err("unused".to_owned()) })
         }
     }

@@ -121,7 +121,7 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
   });
 });
 
-test('a box that scales or rotates may not hold an editor, scroll or slider; entering or leaving it only warns', async () => {
+test('a box that scales or rotates may not hold an editor, scroll, slider or web view; entering or leaving it only warns', async () => {
   await project({ 'page.tsx': `export function render(view) {
   return <view className="hover:scale-105">
     <view className="translate-x-2">{view.data.on && <input aria-label="Name"/>}</view>
@@ -149,6 +149,23 @@ test('a box that scales or rotates may not hold an editor, scroll or slider; ent
     assert.equal(transform.length, 2, transform.join('\n'));
     assert.match(transform[0], /page.tsx:3:\d+: UI_TRANSFORM: starting:scale-95 scales a box holding an <input> \(line 3\) as it enters; only its translation moves/);
     assert.match(transform[1], /page.tsx:4:\d+: UI_TRANSFORM: exit:rotate-12 rotates a box holding a <scroll> \(line 4\) as it leaves/);
+  });
+  await project({ 'page.tsx': `export function render() {
+  return <view>
+    <view className="hover:scale-105"><webview aria-label="Doc" src="https://example.com"/></view>
+    <view className="starting:scale-95 translate-y-2"><webview aria-label="Map" src="https://example.com"/></view>
+  </view>;
+}` }, async (root, build) => {
+    const message = (await build().catch(error => error)).message;
+    assert.match(message, /page.tsx:3:\d+: UI_TRANSFORM: hover:scale-105 scales a box holding a <webview> \(line 3\); a web view cannot rotate or scale/);
+    assert.match(message, /1 authoring problem/);
+  });
+  await project({ 'page.tsx': `export function render() {
+  return <view className="starting:scale-95 exit:opacity-0"><webview aria-label="Map" src="https://example.com"/></view>;
+}` }, async (root, build) => {
+    const transform = (await build()).warnings.filter(line => line.includes('UI_TRANSFORM'));
+    assert.equal(transform.length, 1, transform.join('\n'));
+    assert.match(transform[0], /starting:scale-95 scales a box holding a <webview> \(line 2\) as it enters; the web page shows as a still picture while it does/);
   });
 });
 

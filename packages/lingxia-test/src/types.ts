@@ -515,7 +515,11 @@ export interface TestView {
   eval<R, A extends unknown[]>(fn: ViewFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
   /** The same with a `timeout` (see `EvalOptions`). */
   eval<R, A extends unknown[]>(options: EvalOptions, fn: ViewFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
-  screenshot(): Promise<Screenshot>;
+  /**
+   * The page's pixels. A `<webview>` that has not drawn its content yet fails it with
+   * `E_WEBVIEW_NOT_READY` once a short wait runs out; `allowNotReady` takes its placeholder.
+   */
+  screenshot(options?: { allowNotReady?: boolean }): Promise<Screenshot>;
   /**
    * Wait until the GPU page presents no frame for `quietMs` (default 500):
    * transitions, image loads and scrolls have finished. An endless animation

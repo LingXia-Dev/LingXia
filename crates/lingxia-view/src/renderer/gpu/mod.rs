@@ -1324,15 +1324,18 @@ impl Presenter {
     /// surface shows it at another scale, a copy to draw again off screen once this presenter
     /// is released, so the capture does not hold back the surface's next frame.
     pub fn capture(&mut self) -> Result<Capture, String> {
-        let Some((revision, display)) = self
-            .retained
-            .as_ref()
-            .filter(|(_, display)| display.device_raster().is_some())
-        else {
+        // A `<webview>` shows through a hole the target holds no pixels for: such a frame is
+        // drawn again with each web view's picture in its place.
+        let Some((revision, display)) = self.retained.as_ref().filter(|(_, display)| {
+            display.device_raster().is_some() || display.draws_webview()
+        }) else {
             return self.readback().map(Capture::Pixels);
         };
         let mut display = (**display).clone();
-        display.swap_raster();
+        if display.device_raster().is_some() {
+            display.swap_raster();
+        }
+        display.web_pictures = true;
         let job = self.offscreen(*revision, &display)?;
         Ok(Capture::Offscreen(Offscreen { job, display }))
     }
@@ -1705,6 +1708,57 @@ mod tests {
             lifetime.upgrade().is_none(),
             "no process-lifetime device retention"
         );
+    }
+    /// A modal's backdrop over a ready web view's hole covers it as on the CPU, and a capture
+    /// draws the web view's picture where the hole would be.
+    #[cfg(not(target_os = "android"))]
+    #[test]
+    #[ignore = "requires a GPU adapter; run explicitly with --features gpu -- --ignored"]
+    fn a_web_hole_stays_under_later_paint_and_a_capture_draws_its_picture() {
+        let page = |modal: bool| {
+            let module = crate::session::tests::source(&format!(
+                "function render(){{return h('page',{{style:{{backgroundColor:'#ffffff'}}}},h('webview',{{'aria-label':'Doc','data-testid':'wv',src:'https://example.com',style:{{width:100,height:100}}}}),h('view',{{style:{{position:'absolute',top:0,left:0,width:40,height:40,backgroundColor:'#ff0000'}}}}),{modal}&&h('dialog',{{open:true,'aria-label':'Sheet',style:{{width:20,height:20}}}},h('text',{{}},'x')))}}"
+            ));
+            let mut page = crate::ViewSession::new(&module).unwrap();
+            let first = page.layout(120, 120, 1.0).unwrap();
+            let wv = first.nodes.iter().find(|n| n.test_id == "wv").unwrap().webview.clone().unwrap();
+            crate::scene::webview::set_ready(wv.scope, &wv.web_id, true);
+            (page, wv)
+        };
+        let mut presenter = Presenter::headless(Context::default()).expect("GPU adapter required");
+        let mut draw = |display: &crate::DisplayList| {
+            let (width, _, pixels) = presenter.draw_offscreen(1, display).unwrap();
+            move |x: usize, y: usize| -> [u8; 4] {
+                let o = (y * width as usize + x) * 4;
+                pixels[o..o + 4].try_into().unwrap()
+            }
+        };
+        let (mut plain, wv) = page(false);
+        let open = draw(&plain.layout(120, 120, 1.0).unwrap());
+        assert_eq!(open(90, 90), [0, 0, 0, 0], "the hole");
+        assert_eq!(open(10, 10), [255, 0, 0, 255], "a box painted over the hole");
+
+        let (mut covered, covered_wv) = page(true);
+        let modal = covered.layout(120, 120, 1.0).unwrap();
+        let cpu = modal.clone().rasterize().unwrap();
+        let o = (90 * usize::from(cpu.pixels.width()) + 90) * 4;
+        let backdrop = draw(&modal)(90, 90)[3];
+        assert!(backdrop > 0, "the modal's backdrop covers the hole");
+        assert_eq!(backdrop, cpu.pixels.data_as_u8_slice()[o + 3]);
+        crate::scene::webview::set_ready(covered_wv.scope, &covered_wv.web_id, false);
+
+        let mut green = vello_cpu::Pixmap::new(20, 20);
+        for pixel in green.data_as_u8_slice_mut().chunks_exact_mut(4) {
+            pixel.copy_from_slice(&[0, 255, 0, 255]);
+        }
+        let key = crate::scene::webview::make_key(wv.scope, &wv.web_id);
+        assert!(plain.bind_web_picture(&key, crate::scene::image::Bitmap::from_pixels(green)));
+        let mut capture = plain.layout(120, 120, 1.0).unwrap();
+        capture.web_pictures = true;
+        let captured = draw(&capture);
+        assert_eq!(captured(90, 90), [0, 255, 0, 255]);
+        assert_eq!(captured(10, 10), [255, 0, 0, 255]);
+        crate::scene::webview::set_ready(wv.scope, &wv.web_id, false);
     }
     /// A page laid out at 3x shown at another scale: its capture is still the device's pixels,
     /// the same bytes as a draw at 3x, and the kept frame goes on drawing at the shown scale.

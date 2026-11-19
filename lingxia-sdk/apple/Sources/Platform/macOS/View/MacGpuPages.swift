@@ -19,6 +19,7 @@ final class GpuPageView: NSView {
     var chrome: GpuHostChrome? {
         didSet {
             layer?.backgroundColor = chrome?.canvas.cgColor
+            paintCanvas()
             NotificationCenter.default.post(name: GpuHostChrome.changed, object: self)
         }
     }
@@ -166,27 +167,16 @@ final class GpuPageView: NSView {
         if metalView.layer?.isOpaque != opaque {
             metalView.layer?.isOpaque = opaque
         }
+        paintCanvas()
     }
 
-    func captureCompositedPng() -> Data? {
-        guard webContainer.hasActiveMounts, bounds.width > 1, bounds.height > 1,
-              let rep = bitmapImageRepForCachingDisplay(in: bounds)
-        else { return nil }
-        cacheDisplay(in: bounds, to: rep)
-        if let image = lastFrame(), let context = NSGraphicsContext(bitmapImageRep: rep) {
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = context
-            context.cgContext.draw(image, in: CGRect(origin: .zero, size: bounds.size))
-            let cg = context.cgContext
-            cg.saveGState()
-            cg.translateBy(x: 0, y: bounds.height)
-            cg.scaleBy(x: 1, y: -1)
-            drawFeedback(in: cg)
-            cg.restoreGState()
-            context.flushGraphics()
-            NSGraphicsContext.restoreGraphicsState()
+    /// The surface shows the page's canvas until its first frame, not black; with web views
+    /// mounted it stays clear, since their holes must show through.
+    private func paintCanvas() {
+        let canvas = webContainer.hasActiveMounts ? nil : chrome?.canvas.cgColor
+        if metalView.layer?.backgroundColor != canvas {
+            metalView.layer?.backgroundColor = canvas
         }
-        return rep.representation(using: .png, properties: [:])
     }
 
     override func viewDidMoveToWindow() {
@@ -814,17 +804,12 @@ public enum GpuPages {
         MainActor.assumeIsolated { views[token]?.syncWebViews(json) }
     }
 
-    static func captureCompositedPng(token: Int64) -> RustVec<UInt8> {
-        let out = RustVec<UInt8>()
-        let png: Data? = MainActor.assumeIsolated {
-            views[token]?.captureCompositedPng()
+    static func pictureWebViews(token: Int64, web_ids: RustStr, scale: Float) {
+        let ids = (try? JSONDecoder().decode([String].self, from: Data(web_ids.toString().utf8))) ?? []
+        MainActor.assumeIsolated {
+            guard let view = views[token] else { return }
+            view.webContainer.picture(ids, scale: CGFloat(scale), backing: view.window?.backingScaleFactor ?? 1)
         }
-        if let data = png {
-            for byte in data {
-                out.push(value: byte)
-            }
-        }
-        return out
     }
 
     static func dispose(token: Int64) {

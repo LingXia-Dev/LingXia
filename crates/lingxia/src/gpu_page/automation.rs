@@ -16,6 +16,10 @@ const NO_FRAME: &str = "E_PAGE_NOT_READY: no presented frame";
 /// How long a screenshot waits for a page's next frame: a tab revealed after its surface was
 /// trimmed has nothing to read until it presents again.
 const FRAME_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
+/// How long a screenshot waits for a `<webview>` to draw before it fails, inside the 5 s
+/// action budget.
+const WEB_WAIT: std::time::Duration = std::time::Duration::from_secs(4);
+const WEB_NOT_READY: &str = "E_WEBVIEW_NOT_READY";
 
 pub(super) struct GpuAutomation {
     pub native: Weak<dyn NativePage>,
@@ -157,15 +161,21 @@ impl GpuPageAutomation for GpuAutomation {
         self.request(json!({"op": "environment", "read": true}))
     }
 
-    fn screenshot(&self) -> GpuFuture<Vec<u8>> {
+    fn screenshot(&self, allow_not_ready: bool) -> GpuFuture<Vec<u8>> {
         let native = self.native.clone();
         Box::pin(async move {
             let ask = GpuAutomation { native };
-            let until = tokio::time::Instant::now() + FRAME_WAIT;
+            let start = tokio::time::Instant::now();
+            let request = json!({"op": "screenshot", "allowNotReady": allow_not_ready});
             let value = loop {
-                match ask.request(json!({"op": "screenshot"})).await {
-                    Err(error) if error == NO_FRAME && tokio::time::Instant::now() < until => {
+                match ask.request(request.clone()).await {
+                    Err(error) if error == NO_FRAME && start.elapsed() < FRAME_WAIT => {
                         tokio::time::sleep(ACT_POLL).await;
+                    }
+                    Err(error)
+                        if error.starts_with(WEB_NOT_READY) && start.elapsed() < WEB_WAIT =>
+                    {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                     }
                     reply => break reply?,
                 }

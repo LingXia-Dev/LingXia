@@ -297,6 +297,15 @@ export interface PageTarget {
   page?: string;
 }
 
+export interface PageScreenshotOptions extends PageTarget {
+  /**
+   * Take the picture while a `<webview>` has not drawn its content yet, showing its
+   * placeholder. Without it, the capture waits for every web view and then fails with
+   * `E_WEBVIEW_NOT_READY`.
+   */
+  allowNotReady?: boolean;
+}
+
 export interface PageEvalOptions extends PageTarget {
   /** JavaScript expression or function body evaluated in the page WebView. */
   script: string;
@@ -711,7 +720,7 @@ export interface PageDriver {
   scroll(options?: PageScrollOptions): Promise<void>;
   /** Poll until the selector reaches `state`, else reject on timeout. */
   waitFor(options: PageWaitForOptions): Promise<void>;
-  screenshot(options?: PageTarget): Promise<Screenshot>;
+  screenshot(options?: PageScreenshotOptions): Promise<Screenshot>;
   /** The page's accessibility tree: role, name, test id, state and bounds in reading order. */
   tree(options?: PageTarget): Promise<PageTree>;
   /** A GPU page's presentation counters; `E_UNSUPPORTED` on a WebView page. */

@@ -575,6 +575,9 @@ impl HostEvents for AppleAdapter {
         }
         self.shell.sync_webviews(self.token, mounts);
     }
+    fn picture_webviews(&self, web_ids: &[String], scale: f32) {
+        self.shell.picture_webviews(self.token, web_ids, scale);
+    }
     fn exit_webview_fullscreen(&self, web_id: &str) {
         self.shell.exit_webview_fullscreen(self.token, web_id);
     }

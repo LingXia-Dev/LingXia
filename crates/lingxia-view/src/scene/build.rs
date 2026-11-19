@@ -1293,6 +1293,7 @@ impl Renderer {
                 #[cfg(not(target_os = "android"))]
                 if active && !collapsed[index] {
                     commands.push(Paint::WebHole {
+                        picture: crate::scene::webview::picture_src(&key),
                         key,
                         bounds: inner_bounds,
                         radius: inner_radius,

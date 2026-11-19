@@ -270,6 +270,8 @@ fn next_action_token() -> String {
 #[derive(FromJSObject, Default)]
 struct JSScreenshotOptions {
     page: Option<String>,
+    #[js_name = "allowNotReady"]
+    allow_not_ready: Option<bool>,
 }
 
 #[derive(FromJSObject, Default)]
@@ -871,7 +873,8 @@ impl JSPageDriver {
     ) -> JSResult<JSScreenshot> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let options = options.0.unwrap_or_default();
-        let bytes = auto::page_screenshot(&app, options.page.as_deref())
+        let allow = options.allow_not_ready.unwrap_or(false);
+        let bytes = auto::page_screenshot(&app, options.page.as_deref(), allow)
             .await
             .map_err(fail(&app, options.page.as_deref()))?;
         let (width, height) = png_dimensions(&bytes).unwrap_or((0, 0));

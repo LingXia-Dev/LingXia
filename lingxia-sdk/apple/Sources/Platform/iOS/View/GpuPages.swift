@@ -156,19 +156,6 @@ final class GpuPageView: UIView {
         gpuPageCloseRequest(token)
     }
 
-    func captureCompositedPng() -> Data? {
-        guard webContainer.hasActiveMounts, bounds.width > 1, bounds.height > 1 else {
-            return nil
-        }
-        let format = UIGraphicsImageRendererFormat()
-        format.opaque = true
-        format.scale = window?.screen.scale ?? UIScreen.main.scale
-        let image = UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
-            drawHierarchy(in: bounds, afterScreenUpdates: false)
-        }
-        return image.pngData()
-    }
-
     override func willMove(toSuperview newSuperview: UIView?) {
         super.willMove(toSuperview: newSuperview)
         // Removed with its dialog open: the bars it hid must not stay hidden for the next page.
@@ -952,17 +939,12 @@ public enum GpuPages {
         MainActor.assumeIsolated { views[token]?.syncWebViews(json) }
     }
 
-    static func captureCompositedPng(token: Int64) -> RustVec<UInt8> {
-        let out = RustVec<UInt8>()
-        let png: Data? = MainActor.assumeIsolated {
-            views[token]?.captureCompositedPng()
+    static func pictureWebViews(token: Int64, web_ids: RustStr, scale: Float) {
+        let ids = (try? JSONDecoder().decode([String].self, from: Data(web_ids.toString().utf8))) ?? []
+        MainActor.assumeIsolated {
+            guard let view = views[token] else { return }
+            view.webContainer.picture(ids, scale: CGFloat(scale), backing: view.window?.screen.scale ?? UIScreen.main.scale)
         }
-        if let data = png {
-            for byte in data {
-                out.push(value: byte)
-            }
-        }
-        return out
     }
 
     static func dispose(token: Int64) {

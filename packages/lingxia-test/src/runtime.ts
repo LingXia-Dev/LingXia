@@ -1872,7 +1872,8 @@ function uiFailureNote(page: FailurePage, report: ReportError, error: unknown, f
 /** Attach failure evidence; resolves to the page that was current, if known. */
 async function captureForensics(fixture: LiveFixture): Promise<FailurePage | undefined> {
   try {
-    const shot = await fixture.raw.page.screenshot();
+    // Evidence takes the page as it is, a web view still loading included.
+    const shot = await fixture.raw.page.screenshot({ allowNotReady: true });
     const payload = encodeScreenshot(shot);
     if (payload) {
       await fixture.attachRaw("failure.png", payload, "failure_evidence");

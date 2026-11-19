@@ -24,6 +24,8 @@ pub struct DisplayList {
     /// The size and scale the page was laid out at, while it rasterizes at another; see
     /// [`DisplayList::raster_at`].
     pub(crate) device_raster: Option<(u16, u16, f32)>,
+    /// A capture: every `<webview>` draws its picture instead of a hole to the native view.
+    pub(crate) web_pictures: bool,
     pub(crate) retained: Arc<RetainedLayout>,
 }
 
@@ -510,6 +512,7 @@ impl DisplayList {
     pub fn image_sources(&self) -> impl Iterator<Item = &str> {
         self.commands.iter().filter_map(|paint| match paint {
             Paint::Image { src, .. } if ChromeEdge::of_source(src).is_none() => Some(src.as_str()),
+            Paint::WebHole { picture, .. } => Some(picture.as_str()),
             _ => None,
         })
     }

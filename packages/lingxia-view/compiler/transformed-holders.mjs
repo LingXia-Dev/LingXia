@@ -2,8 +2,9 @@ import ts from 'typescript';
 import { classPieces } from './class-usage.mjs';
 
 // The elements that cannot take a scale or rotation: their native parts (a platform editor, a
-// scroll's offset, a slider's thumb under the finger) are placed in page points, unrotated.
-const rigid = new Set(['input', 'textarea', 'search', 'scroll', 'slider']);
+// scroll's offset, a slider's thumb under the finger, a web page) are placed in page points,
+// unrotated.
+const rigid = new Set(['input', 'textarea', 'search', 'scroll', 'slider', 'webview']);
 
 const moment = { starting: ' as it enters', exit: ' as it leaves' };
 
@@ -69,8 +70,11 @@ export function transformedHolderProblems(files, checker, rulesByName, own = () 
           const element = `${tagOf(held).text === 'input' ? 'an' : 'a'} <${tagOf(held).text}>`;
           const holder = held === node ? element : `a box holding ${element} (line ${line(held)})`;
           const moving = moment[rule.when?.state];
-          if (!moving) errors.push(`${at(className)}: UI_TRANSFORM: ${name} ${how} ${holder}; editors, scrolls and sliders cannot rotate or scale: transform a sibling, or translate`);
-          else if (own(file)) warnings.push(`${at(className)}: UI_TRANSFORM: ${name} ${how} ${holder}${moving}; only its translation moves: fade it, or translate`);
+          const web = tagOf(held).text === 'webview';
+          if (!moving) errors.push(`${at(className)}: UI_TRANSFORM: ${name} ${how} ${holder}; ${web ? 'a web view' : 'editors, scrolls and sliders'} cannot rotate or scale: transform a sibling, or translate`);
+          else if (own(file)) warnings.push(web
+            ? `${at(className)}: UI_TRANSFORM: ${name} ${how} ${holder}${moving}; the web page shows as a still picture while it does: fade it, or translate`
+            : `${at(className)}: UI_TRANSFORM: ${name} ${how} ${holder}${moving}; only its translation moves: fade it, or translate`);
         }
       }
       ts.forEachChild(node, visit);

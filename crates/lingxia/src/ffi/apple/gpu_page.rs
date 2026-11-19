@@ -271,6 +271,10 @@ mod bridge {
         // Close the topmost closable overlay / fullscreen `<webview>`; false when none is open.
         #[swift_bridge(swift_name = "gpuPageCloseRequest")]
         fn gpu_page_close_request(token: i64) -> bool;
+
+        // A PNG picture of `web_id`, answering `GpuPages.pictureWebViews`; empty when it failed.
+        #[swift_bridge(swift_name = "gpuPageWebViewPicture")]
+        fn gpu_page_webview_picture(token: i64, web_id: &str, png: &[u8]);
     }
 
     extern "Swift" {
@@ -384,8 +388,10 @@ mod bridge {
         #[swift_bridge(swift_name = "GpuPages.syncWebViews")]
         fn gpu_pages_sync_webviews(token: i64, mounts: &str);
 
-        #[swift_bridge(swift_name = "GpuPages.captureCompositedPng")]
-        fn gpu_pages_capture_composited_png(token: i64) -> Vec<u8>;
+        // Picture each web view of the JSON array `web_ids` at `scale` device pixels per point,
+        // answering each with `gpuPageWebViewPicture`.
+        #[swift_bridge(swift_name = "GpuPages.pictureWebViews")]
+        fn gpu_pages_picture_webviews(token: i64, web_ids: &str, scale: f32);
     }
 }
 
@@ -853,6 +859,14 @@ fn gpu_page_embedded_webview(token: i64, web_id: &str) -> usize {
     gpu_page::webviews::apple_webview_ptr(token, web_id)
 }
 
+fn gpu_page_webview_picture(token: i64, web_id: &str, png: &[u8]) {
+    if png.is_empty() {
+        return;
+    }
+    let (web_id, png) = (web_id.to_owned(), png.to_vec());
+    with_page(token, move |page| page.host().webview_picture(web_id, png));
+}
+
 fn gpu_page_close_request(token: i64) -> bool {
     let mut closed = false;
     with_page(token, |page| {
@@ -1122,6 +1136,12 @@ mod live {
                 sync_apple_webviews_ui,
             );
         }
+        fn picture_webviews(&self, token: i64, web_ids: &[String], scale: f32) {
+            let ids = serde_json::to_string(web_ids).unwrap_or_default();
+            lingxia_view_apple::post_main(Box::new(move || {
+                super::bridge::gpu_pages_picture_webviews(token, &ids, scale);
+            }));
+        }
         fn exit_webview_fullscreen(&self, token: i64, web_id: &str) {
             gpu_page::webviews::exit_webview_fullscreen(token, web_id);
         }
@@ -1163,6 +1183,11 @@ mod live {
                     "radius": m.radius,
                     "radii": m.radii,
                     "clips": clips,
+                    "occluders": m.occluders.iter().map(|c| serde_json::json!({
+                        "bounds": c.bounds,
+                        "radius": c.radius,
+                        "radii": c.radii,
+                    })).collect::<Vec<_>>(),
                     "degraded": m.degraded,
                     "accessibilityHidden": m.accessibility_hidden,
                     "handlesDrags": m.handles_drags,
@@ -1273,13 +1298,10 @@ mod live {
                         page.host().automation_request(&request)
                     } else {
                         use base64::Engine;
-                        let composited = super::bridge::gpu_pages_capture_composited_png(token);
-                        if !composited.is_empty() {
-                            Ok(serde_json::json!({
-                                "png": base64::engine::general_purpose::STANDARD.encode(composited)
-                            }))
-                        } else {
-                            match page.screenshot_png() {
+                        let allow = request["allowNotReady"] == true;
+                        page.host()
+                            .prepare_web_capture(allow)
+                            .and_then(|()| match page.screenshot_png() {
                                 Ok(Some(png)) => Ok(serde_json::json!({
                                     "png": base64::engine::general_purpose::STANDARD.encode(png)
                                 })),
@@ -1289,8 +1311,7 @@ mod live {
                                     }))
                                 }
                                 Err(error) => Err(error),
-                            }
-                        }
+                            })
                     });
                 });
                 reply(answer.unwrap_or_else(|| Err("page is not active".into())));

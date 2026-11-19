@@ -200,3 +200,95 @@ fn webview_paints_surface_placeholder_until_ready_then_punches_dest_out_hole_pre
     let shot_degraded = degraded.rasterize().unwrap();
     assert_eq!(pixel(&shot_degraded, 20, 20)[3], 255);
 }
+
+#[cfg(not(target_os = "android"))]
+#[test]
+fn a_moved_web_view_stays_live_and_a_faded_one_or_a_capture_draws_its_picture() {
+    let module = source(
+        "globalThis.motion='none';\
+         function render(){const m=globalThis.motion;return h('page',{style:{backgroundColor:'#ffffff'}},h('view',{style:m==='fade'?{opacity:0.5}:m==='move'?{translate:[20,0]}:m==='turn'?{rotate:10}:{}},h('webview',{'aria-label':'Doc','data-testid':'wv',src:'https://example.com',style:{width:100,height:100}})))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let first = page.layout(140, 120, 1.0).unwrap();
+    let wv = first.nodes.iter().find(|n| n.test_id == "wv").unwrap().webview.clone().unwrap();
+    let key = crate::scene::webview::make_key(wv.scope, &wv.web_id);
+    crate::scene::webview::set_ready(wv.scope, &wv.web_id, true);
+    let mut green = vello_cpu::Pixmap::new(50, 50);
+    for pixel in green.data_as_u8_slice_mut().chunks_exact_mut(4) {
+        pixel.copy_from_slice(&[0, 255, 0, 255]);
+    }
+    assert!(page.bind_web_picture(&key, crate::scene::image::Bitmap::from_pixels(green)));
+    let pixel = |frame: &crate::Frame, x: usize, y: usize| -> [u8; 4] {
+        let offset = (y * usize::from(frame.pixels.width()) + x) * 4;
+        frame.pixels.data_as_u8_slice()[offset..offset + 4].try_into().unwrap()
+    };
+    let webview = |display: &crate::DisplayList| {
+        display.nodes.iter().find(|n| n.test_id == "wv").unwrap().clone()
+    };
+
+    // Live: the hole shows the native view, wherever a translation moves it.
+    let live = page.layout(140, 120, 1.0).unwrap();
+    assert_eq!(pixel(&live.clone().rasterize().unwrap(), 50, 50), [0, 0, 0, 0]);
+    page.eval("globalThis.motion='move'").unwrap();
+    let moved = page.layout(140, 120, 1.0).unwrap();
+    let node = webview(&moved);
+    assert!(!node.webview.as_ref().unwrap().degraded, "a translation keeps the view live");
+    assert_eq!(crate::scene::webview::mount_of(&node).unwrap().bounds[0], 20.0);
+    let shot = moved.rasterize().unwrap();
+    assert_eq!(pixel(&shot, 115, 50), [0, 0, 0, 0]);
+    assert_eq!(pixel(&shot, 10, 50), [255, 255, 255, 255]);
+
+    // Faded or rotated: the native view cannot follow, so the picture draws in its place.
+    for motion in ["fade", "turn"] {
+        page.eval(&format!("globalThis.motion='{motion}'")).unwrap();
+        let display = page.layout(140, 120, 1.0).unwrap();
+        assert!(webview(&display).webview.as_ref().unwrap().degraded, "{motion}");
+        let [r, g, b, a] = pixel(&display.rasterize().unwrap(), 50, 50);
+        assert!(g > 120 && r < 140 && b < 140 && a == 255, "{motion}: {:?}", [r, g, b, a]);
+    }
+
+    // A capture of a live view draws the picture instead of a hole.
+    page.eval("globalThis.motion='none'").unwrap();
+    let mut capture = page.layout(140, 120, 1.0).unwrap();
+    capture.web_pictures = true;
+    assert_eq!(pixel(&capture.rasterize().unwrap(), 50, 50), [0, 255, 0, 255]);
+    crate::scene::webview::set_ready(wv.scope, &wv.web_id, false);
+}
+
+#[test]
+fn a_web_view_is_masked_where_a_later_ready_web_view_shows_through() {
+    use crate::scene::webview::{WebViewMount, make_key, occlude, set_ready};
+    let mount = |web_id: &str, bounds: [f32; 4], degraded: bool| WebViewMount {
+        scope: 9_100,
+        web_id: web_id.into(),
+        src: String::new(),
+        in_top_layer: false,
+        degraded,
+        accessibility_hidden: false,
+        handles_drags: false,
+        bounds,
+        visible_bounds: bounds,
+        clips: Vec::new(),
+        radius: 12.0,
+        radii: None,
+        occluders: Vec::new(),
+    };
+    let mut mounts = vec![
+        mount("page", [0.0, 0.0, 300.0, 300.0], false),
+        mount("sheet", [0.0, 100.0, 300.0, 300.0], false),
+        mount("loading", [0.0, 0.0, 50.0, 50.0], false),
+        mount("faded", [0.0, 0.0, 50.0, 50.0], true),
+    ];
+    for id in ["page", "sheet", "faded"] {
+        set_ready(9_100, id, true);
+    }
+    assert!(!crate::scene::webview::is_ready_key(&make_key(9_100, "loading")));
+    occlude(&mut mounts);
+    // Only the sheet's hole shows a native view over the page's; a loading or faded view
+    // punches none.
+    assert_eq!(mounts[0].occluders.len(), 1);
+    assert_eq!(mounts[0].occluders[0].bounds, [0.0, 100.0, 300.0, 300.0]);
+    assert_eq!(mounts[0].occluders[0].radius, 12.0);
+    assert!(mounts[1].occluders.is_empty());
+    crate::scene::webview::forget_scope(9_100);
+}

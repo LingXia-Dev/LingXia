@@ -271,12 +271,14 @@ impl RetainedLayout {
                             |cmd| match cmd {
                                 Paint::WebHole {
                                     key,
+                                    picture,
                                     bounds,
                                     radius,
                                     corners,
                                     ..
                                 } => Paint::WebHole {
                                     key,
+                                    picture,
                                     bounds,
                                     radius,
                                     corners,
@@ -804,7 +806,9 @@ impl RetainedLayout {
                     radius: self.blurs[index],
                 });
             }
-            let web_degraded = matrix != Affine::IDENTITY
+            // A translation moves the live view with the box; anything else draws its picture.
+            let [sx, b, c, sy, _, _] = matrix.as_coeffs();
+            let web_degraded = (sx, b, c, sy) != (1.0, 0.0, 0.0, 1.0)
                 || desired.iter().any(|p| {
                     matches!(
                         p,
@@ -1172,6 +1176,7 @@ impl RetainedLayout {
                     }
                     Paint::WebHole {
                         key,
+                        picture,
                         bounds,
                         radius,
                         corners,
@@ -1189,6 +1194,7 @@ impl RetainedLayout {
                         {
                             painted.push(Paint::WebHole {
                                 key: key.clone(),
+                                picture: picture.clone(),
                                 bounds,
                                 radius: *radius,
                                 corners: *corners,
@@ -1435,6 +1441,7 @@ impl RetainedLayout {
             height: self.height,
             scale: self.scale,
             device_raster: None,
+            web_pictures: false,
             retained: Arc::clone(self),
         })
     }

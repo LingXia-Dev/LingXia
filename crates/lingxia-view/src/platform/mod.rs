@@ -175,6 +175,10 @@ pub trait HostEvents {
     fn host_chrome(&self, _chrome: &HostChrome) {}
     /// Main thread: reconcile mounted `<webview>` instances with the presented frame.
     fn sync_webviews(&self, _mounts: &[crate::scene::webview::WebViewMount]) {}
+    /// Main thread: picture each of `web_ids` at `scale` device pixels per point and hand the
+    /// PNGs to [`crate::session::host::ViewHost::webview_picture`]. Without it a web view that
+    /// cannot show live draws its box's background instead.
+    fn picture_webviews(&self, _web_ids: &[String], _scale: f32) {}
     /// Main thread: exit web-initiated fullscreen on `web_id`.
     fn exit_webview_fullscreen(&self, _web_id: &str) {}
     /// Main thread: tear down all `<webview>` mounts on page reload, park or dispose.

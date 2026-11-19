@@ -478,12 +478,49 @@ impl DisplayList {
                 }
                 Paint::WebHole {
                     key,
+                    picture,
                     bounds,
                     radius,
                     corners,
                     degraded,
                 } => {
-                    if !*degraded && crate::scene::webview::is_ready_key(key) {
+                    let bitmap = (*degraded || self.web_pictures)
+                        .then(|| self.images.get(picture))
+                        .flatten();
+                    if let Some(bitmap) = bitmap {
+                        let (rect, transform, clip) = image_geometry(
+                            bitmap,
+                            *bounds,
+                            0.0,
+                            crate::scene::image::Fit::Fill,
+                            [0.5, 0.5],
+                        )?;
+                        let id = image_ids
+                            .get(&(Arc::as_ptr(bitmap.pixels()) as usize))
+                            .ok_or("UI_IMAGE: texture not uploaded")?;
+                        context.push_clip_path(
+                            &ClipSnapshot {
+                                bounds: *bounds,
+                                radius: *radius,
+                                radii: *corners,
+                                transform: None,
+                            }
+                            .path(),
+                        );
+                        context.push_clip_path(&clip);
+                        context.set_paint(vello_gpu::Image {
+                            image: id.clone(),
+                            sampler: Default::default(),
+                        });
+                        context.set_paint_transform(transform);
+                        context.fill_rect(&rect);
+                        context.reset_paint_transform();
+                        context.pop_clip();
+                        context.pop_clip();
+                    } else if !*degraded
+                        && !self.web_pictures
+                        && crate::scene::webview::is_ready_key(key)
+                    {
                         context.push_layer(
                             None,
                             Some(vello_cpu::peniko::BlendMode::new(

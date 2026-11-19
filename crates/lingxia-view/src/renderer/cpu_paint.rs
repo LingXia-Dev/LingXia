@@ -48,6 +48,12 @@ impl DisplayList {
             .any(|p| matches!(p, Paint::Backdrop { .. }))
     }
 
+    pub fn draws_webview(&self) -> bool {
+        self.commands
+            .iter()
+            .any(|p| matches!(p, Paint::WebHole { .. }))
+    }
+
     pub fn has_web_hole(&self) -> bool {
         self.commands.iter().any(|p| {
             matches!(
@@ -288,12 +294,44 @@ impl DisplayList {
                 Paint::Video { .. } => {}
                 Paint::WebHole {
                     key,
+                    picture,
                     bounds,
                     radius,
                     corners,
                     degraded,
                 } => {
-                    if !degraded && crate::scene::webview::is_ready_key(&key) {
+                    let shape = ClipSnapshot {
+                        bounds,
+                        radius,
+                        radii: corners,
+                        transform: None,
+                    }
+                    .path();
+                    if (degraded || self.web_pictures)
+                        && let Some(bitmap) = self.images.get(&picture)
+                    {
+                        let (rect, transform, clip) = image_geometry(
+                            bitmap,
+                            bounds,
+                            0.0,
+                            crate::scene::image::Fit::Fill,
+                            [0.5, 0.5],
+                        )?;
+                        context.push_clip_layer(&shape);
+                        context.push_clip_layer(&clip);
+                        context.set_paint(vello_cpu::Image {
+                            image: vello_cpu::ImageSource::Pixmap(bitmap.pixels().clone()),
+                            sampler: Default::default(),
+                        });
+                        context.set_paint_transform(transform);
+                        context.fill_rect(&rect);
+                        context.reset_paint_transform();
+                        context.pop_layer();
+                        context.pop_layer();
+                    } else if !degraded
+                        && !self.web_pictures
+                        && crate::scene::webview::is_ready_key(&key)
+                    {
                         context.push_layer(
                             None,
                             Some(vello_cpu::peniko::BlendMode::new(

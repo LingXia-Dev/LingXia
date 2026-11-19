@@ -136,7 +136,7 @@ impl ViewSession {
         let retained: usize = self
             .images
             .iter()
-            .filter(|(key, _)| key.as_str() != src)
+            .filter(|(key, _)| key.as_str() != src && !is_web_picture(key))
             .map(|(_, image)| image.byte_len())
             .sum();
         if retained + bitmap.byte_len() > crate::protocol::limits::VISIBLE_IMAGE_BYTES {
@@ -145,9 +145,23 @@ impl ViewSession {
         self.images.insert(src.to_owned(), bitmap);
         Ok(true)
     }
+    /// Binds a `<webview>`'s picture, replacing its last one. A picture is outside the visible
+    /// image budget: there is one per web view on the page.
+    pub fn bind_web_picture(&mut self, key: &str, bitmap: crate::scene::image::Bitmap) -> bool {
+        let src = crate::scene::webview::picture_src(key);
+        if !self.image_sources.contains(&src) {
+            return false;
+        }
+        self.images.insert(src, bitmap);
+        true
+    }
     pub(super) fn commit_images(&mut self, wanted: std::collections::HashSet<String>) {
         self.images.retain(|src, _| wanted.contains(src));
         self.image_sources = wanted;
         self.retain_image_lifecycle();
     }
+}
+
+fn is_web_picture(src: &str) -> bool {
+    src.starts_with("lx-webview-picture://")
 }

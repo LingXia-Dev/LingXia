@@ -202,7 +202,7 @@ pub(crate) mod tests {
         fn act(&self, _: &str, _: Option<usize>, _: GpuAction) -> GpuFuture<()> {
             Box::pin(async { Ok(()) })
         }
-        fn screenshot(&self) -> GpuFuture<Vec<u8>> {
+        fn screenshot(&self, _: bool) -> GpuFuture<Vec<u8>> {
             Box::pin(async { Ok(Vec::new()) })
         }
         fn environment_facts(&self) -> GpuFuture<Value> {
