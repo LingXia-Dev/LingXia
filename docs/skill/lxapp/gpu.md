@@ -66,6 +66,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `useChannel(name, action, { params, onData? })` take `view.actions` references.
   Errors are `{ code, message }`; reloads keep old values (`stale`). `useLeaveGuard(name, { enabled })`.
 - Lists: `<List items getKey renderItem />`; hooks inside rows need stable keys.
+- A component taking a child as its trigger: `elementType(child)` tells what it is; `cloneElement(child, props)` adds props in its place (`className` joins; replacing a handler it has needs `{ override: ['onClick'] }`).
 - A component re-runs only when its props, the `useLocal` cells it reads or the environment change, so render must read
   nothing else; one that reads `Date`, `Math.random` or a module `let` re-runs every render.
 - Scroll snap: `snap-x`/`snap-y` on a `<scroll>` or `<List>`, `snap-start|center|end` on children; every snap is mandatory.
