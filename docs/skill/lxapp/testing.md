@@ -132,6 +132,8 @@ Trigger the behaviour under test through the UI; setup, eval, and backend
 calls do not replace it. Automation types come from `@lingxia/types/automation`.
 Read runtime info and element snapshots with camelCase fields (`appId`,
 `currentPage`, `navigationBar`, `rect.centerX`); CLI JSON keeps its wire names.
+Element boxes are where the element is drawn, mid-transition included: after a
+layout change, read a box with `expect.poll` until it settles.
 Restore shell pins or device settings a spec changes. Routes, `t.scenario.use`
 scenarios, test clocks and dialog answers a spec installs are removed when it
 ends; its leftover timers are cancelled.
