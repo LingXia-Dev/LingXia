@@ -1,5 +1,6 @@
 //! The iOS adapter for the GPU View host: one [`Page`] per native page view.
 //! Every [`Page`] method runs on the main thread.
+#![cfg(target_vendor = "apple")]
 use lingxia_view::platform::DeviceFacts;
 use lingxia_view::session::host::{Failure, ViewHost, ViewWorker};
 use std::sync::Arc;
