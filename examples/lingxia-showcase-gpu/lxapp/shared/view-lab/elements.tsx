@@ -16,8 +16,8 @@ export function GradientsDemo() {
         <view data-testid="lab-gradient-conic" className="h-16 grow basis-0 rounded-xl bg-conic-90 from-accent via-danger to-accent" />
         <view data-testid="lab-gradient-arbitrary" className="h-16 grow basis-0 rounded-xl bg-radial-[at_top] from-surface to-accent to-70%" />
       </view>
-      <view data-testid="lab-gradient-mask" className="h-16 rounded-xl bg-accent-solid mask-b-from-20% mask-r-to-90% p-3">
-        <text className="text-sm text-on-accent-solid">{t(labels.maskText)}</text>
+      <view data-testid="lab-gradient-mask" className="h-16 rounded-xl bg-accent mask-b-from-20% mask-r-to-90% p-3">
+        <text className="text-sm text-on-accent">{t(labels.maskText)}</text>
       </view>
       <view data-testid="lab-gradient-halo" className="h-20 items-center justify-center">
         <view className="absolute w-16 h-16 rounded-full bg-accent/40 blur-xl" />
@@ -45,16 +45,16 @@ export function RingsDemo() {
   return (
     <>
       <view className="flex-row flex-wrap items-center gap-4 p-1">
-        <view data-testid="lab-ring-gap" className="rounded-lg px-4 py-2 bg-accent-solid ring-2 ring-offset-2 ring-accent"><text className="text-sm text-on-accent-solid">{t(labels.ringGap)}</text></view>
-        <view data-testid="lab-ring-band" className="rounded-lg px-4 py-2 bg-accent-solid ring-2 ring-offset-2 ring-offset-surface-sunken ring-focus"><text className="text-sm text-on-accent-solid">{t(labels.ringBand)}</text></view>
+        <view data-testid="lab-ring-gap" className="rounded-lg px-4 py-2 bg-accent ring-2 ring-offset-2 ring-accent"><text className="text-sm text-on-accent">{t(labels.ringGap)}</text></view>
+        <view data-testid="lab-ring-band" className="rounded-lg px-4 py-2 bg-accent ring-2 ring-offset-2 ring-offset-surface-sunken ring-focus"><text className="text-sm text-on-accent">{t(labels.ringBand)}</text></view>
         <view data-testid="lab-ring-inset" className="rounded-lg px-4 py-2 bg-surface inset-ring-2 inset-ring-accent"><text className="text-sm text-text">{t(labels.ringInset)}</text></view>
       </view>
       <view className="flex-row flex-wrap items-center gap-4 p-1">
         <button data-testid="lab-ring-key" onClick={() => {}} className="rounded-lg px-4 py-2 bg-accent-solid text-on-accent-solid text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-focus">{t(labels.ringKey)}</button>
         <switch data-testid="lab-ring-switch" aria-label="Thumb ring" bind={on} className="focus-visible:thumb:ring-2 focus-visible:thumb:ring-offset-2 focus-visible:thumb:ring-focus" />
         <view data-testid="lab-controls-avatars" className="flex-row">
-          <view data-testid="lab-avatar-ada" role="img" aria-label="Ada Lovelace" className="size-10 rounded-full bg-accent-solid items-center justify-center ring-2 ring-surface">
-            <text className="text-on-accent-solid text-sm">AL</text>
+          <view data-testid="lab-avatar-ada" role="img" aria-label="Ada Lovelace" className="size-10 rounded-full bg-accent items-center justify-center ring-2 ring-surface">
+            <text className="text-on-accent text-sm">AL</text>
           </view>
           <view data-testid="lab-avatar-alan" role="img" aria-label="Alan Turing" className="size-10 -ml-3 rounded-full bg-success items-center justify-center ring-2 ring-surface">
             <text className="text-on-success text-sm">AT</text>
@@ -95,7 +95,7 @@ export function TransformsDemo() {
       <Icon name="chevron" className="w-6 h-6 text-text rotate-90" />
       <Icon name="send" className="w-6 h-6 text-accent -scale-x-100" />
       <view className="relative w-16 h-10 rounded-lg bg-surface-sunken">
-        <view data-testid="lab-transform-badge" className="absolute top-0 right-0 w-4 h-4 rounded-full bg-danger-solid translate-x-1/2 -translate-y-1/2" />
+        <view data-testid="lab-transform-badge" className="absolute top-0 right-0 w-4 h-4 rounded-full bg-danger translate-x-1/2 -translate-y-1/2" />
       </view>
       <view data-testid="lab-transform-card" className="w-12 h-12 rounded-lg bg-accent origin-bottom-left rotate-12 scale-90" />
     </view>

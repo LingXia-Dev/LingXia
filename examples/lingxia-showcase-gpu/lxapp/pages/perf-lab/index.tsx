@@ -152,7 +152,7 @@ function LongList({ count, step, glide }: { count: number; step: number; glide: 
             <text className="text-sm font-medium truncate">Row {i + 1}</text>
             <text className="text-xs text-muted truncate">A second line of text to lay out in every row</text>
           </view>
-          <text className="px-2 rounded-full bg-accent-solid text-on-accent-solid text-xs tabular-nums">{String(i % 100)}</text>
+          <text className="px-2 rounded-full bg-accent text-on-accent text-xs tabular-nums">{String(i % 100)}</text>
         </view>
       )} />
   );
@@ -170,7 +170,7 @@ function Records({ rows, count }: { rows: readonly PerfRow[]; count: number }) {
             <text className="text-sm font-medium truncate">{row.title}</text>
             <text className="text-xs text-muted truncate">{row.note}</text>
           </view>
-          <text className={`px-2 rounded-full text-xs tabular-nums ${row.done ? 'bg-accent-solid text-on-accent-solid' : 'bg-surface-sunken'}`}>{String(row.count)}</text>
+          <text className={`px-2 rounded-full text-xs tabular-nums ${row.done ? 'bg-accent text-on-accent' : 'bg-surface-sunken'}`}>{String(row.count)}</text>
         </view>
       )} />
   );

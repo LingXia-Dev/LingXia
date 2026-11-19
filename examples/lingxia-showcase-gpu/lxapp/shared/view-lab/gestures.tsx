@@ -47,8 +47,8 @@ export function DragDemo() {
       <view className="h-20 rounded-xl bg-surface-sunken p-2">
         <view drag="x" dragSnapPoints={[0, 112, 224]} bind={at} aria-label="Card" data-testid="lab-drag-card"
           onDragStart={() => last.set('dragging')} onDragEnd={({ index }) => last.set(`released at ${index}`)}
-          className="w-20 h-16 rounded-lg bg-accent-solid items-center justify-center duration-500 ease-spring-bouncy">
-          <text className="text-sm text-on-accent-solid">Drag</text>
+          className="w-20 h-16 rounded-lg bg-accent items-center justify-center duration-500 ease-spring-bouncy">
+          <text className="text-sm text-on-accent">Drag</text>
         </view>
       </view>
       <Readout testId="lab-drag-state" state={`at=${at.value} last=${last.value}`}>{t(readouts.drag(at.value, last.value))}</Readout>
