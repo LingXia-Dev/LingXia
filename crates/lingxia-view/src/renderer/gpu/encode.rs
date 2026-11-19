@@ -571,7 +571,9 @@ impl DisplayList {
                     } else if let Some(resources) = cache.atlas.as_deref_mut() {
                         context
                             .glyph_run(resources, font)
-                            .atlas_cache(true)
+                            // The atlas key has no transform: a slanted glyph would share the
+                            // upright one's entry.
+                            .atlas_cache(*skew == 0.0)
                             .font_size(*size)
                             .glyph_transform(Affine::new([1.0, 0.0, -*skew, 1.0, 0.0, 0.0]))
                             .normalized_coords(coordinates)

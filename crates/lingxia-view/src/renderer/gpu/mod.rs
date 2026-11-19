@@ -1760,6 +1760,25 @@ mod tests {
         assert_eq!(captured(10, 10), [255, 0, 0, 255]);
         crate::scene::webview::set_ready(wv.scope, &wv.web_id, false);
     }
+    #[test]
+    #[ignore = "requires a GPU adapter; run explicitly with --features gpu -- --ignored"]
+    fn a_slanted_word_draws_the_same_after_its_upright_twin() {
+        let page = |style: &str| {
+            let module = crate::session::tests::source(&format!(
+                "function render(){{return h('view',{{style:{{padding:4,backgroundColor:'#ffffff'}}}},h('text',{{style:{{fontSize:24{style}}}}},'evening'))}}"
+            ));
+            crate::ViewSession::new(&module).unwrap().layout(160, 48, 2.0).unwrap()
+        };
+        let upright = page("");
+        let slanted = page(",fontStyle:'italic'");
+        let mut fresh = Presenter::headless(Context::default()).expect("GPU adapter required");
+        let alone = fresh.draw_offscreen(1, &slanted).unwrap().2;
+        let mut shared = Presenter::headless(Context::default()).expect("GPU adapter required");
+        let first = shared.draw_offscreen(1, &upright).unwrap().2;
+        assert_ne!(first, alone, "the slant shows");
+        let after = shared.draw_offscreen(1, &slanted).unwrap().2;
+        assert!(after == alone, "a slanted glyph drew from its upright twin's atlas entry");
+    }
     /// A page laid out at 3x shown at another scale: its capture is still the device's pixels,
     /// the same bytes as a draw at 3x, and the kept frame goes on drawing at the shown scale.
     #[test]
