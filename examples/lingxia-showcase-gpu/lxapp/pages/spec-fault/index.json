@@ -1,0 +1,9 @@
+{
+  "navigationBar": {
+    "title": {
+      "default": "Fault fixture",
+      "zh-CN": "故障测试页"
+    }
+  },
+  "pageOrientation": "auto"
+}
