@@ -9,11 +9,15 @@ pub(crate) struct ThreadClock(Handle);
 type Handle = libc::mach_port_t;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 type Handle = libc::clockid_t;
+/// A real handle to the thread: the watchdog reads it from another thread.
+#[cfg(windows)]
+type Handle = isize;
 #[cfg(not(any(
     target_os = "macos",
     target_os = "ios",
     target_os = "linux",
-    target_os = "android"
+    target_os = "android",
+    windows
 )))]
 type Handle = ();
 
@@ -39,11 +43,35 @@ impl ThreadClock {
                 .then_some(Self(id))
                 .filter(|clock| clock.elapsed().is_some())
         }
+        #[cfg(windows)]
+        {
+            use windows::Win32::Foundation::{CloseHandle, HANDLE};
+            use windows::Win32::System::Threading::{
+                GetCurrentThreadId, OpenThread, THREAD_QUERY_LIMITED_INFORMATION,
+            };
+            struct Own(isize);
+            impl Drop for Own {
+                fn drop(&mut self) {
+                    // SAFETY: the handle this thread opened for itself, closed once at its exit.
+                    let _ = unsafe { CloseHandle(HANDLE(self.0 as *mut _)) };
+                }
+            }
+            thread_local! {
+                static OWN: Option<Own> = unsafe {
+                    OpenThread(THREAD_QUERY_LIMITED_INFORMATION, false, GetCurrentThreadId())
+                }
+                .ok()
+                .map(|handle| Own(handle.0 as isize));
+            }
+            OWN.with(|own| own.as_ref().map(|own| Self(own.0)))
+                .filter(|clock| clock.elapsed().is_some())
+        }
         #[cfg(not(any(
             target_os = "macos",
             target_os = "ios",
             target_os = "linux",
-            target_os = "android"
+            target_os = "android",
+            windows
         )))]
         None
     }
@@ -81,11 +109,26 @@ impl ThreadClock {
             (unsafe { libc::clock_gettime(self.0, &mut time) } == 0)
                 .then(|| Duration::new(time.tv_sec as u64, time.tv_nsec as u32))
         }
+        #[cfg(windows)]
+        {
+            use windows::Win32::Foundation::{FILETIME, HANDLE};
+            use windows::Win32::System::Threading::GetThreadTimes;
+            let mut times = [FILETIME::default(); 4];
+            let [created, exited, kernel, user] = &mut times;
+            // SAFETY: a live thread's handle, kept open for as long as the thread runs.
+            unsafe { GetThreadTimes(HANDLE(self.0 as *mut _), created, exited, kernel, user) }
+                .ok()?;
+            let ticks =
+                |t: &FILETIME| u64::from(t.dwHighDateTime) << 32 | u64::from(t.dwLowDateTime);
+            // 100 ns ticks.
+            Some(Duration::from_nanos((ticks(kernel) + ticks(user)) * 100))
+        }
         #[cfg(not(any(
             target_os = "macos",
             target_os = "ios",
             target_os = "linux",
-            target_os = "android"
+            target_os = "android",
+            windows
         )))]
         None
     }

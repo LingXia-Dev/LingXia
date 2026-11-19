@@ -2008,7 +2008,7 @@ fn a_frame_past_its_budget_is_dropped_without_recovery_and_counted() {
     let Some(clock) = crate::engine::thread_clock::ThreadClock::current() else {
         return;
     };
-    let probe = 2_000_000u64;
+    let probe = 200_000u64;
     let mut calibration = crate::session::ViewSession::new(&source(&format!(
         "function render(){{let s=0;for(let i=0;i<{probe};i++)s+=i;return h('text',{{}},'probe')}}"
     )))

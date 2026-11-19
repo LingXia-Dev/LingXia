@@ -4381,6 +4381,7 @@ dependencies = [
  "vello_cpu",
  "vello_gpu",
  "wgpu",
+ "windows 0.62.2",
 ]
 
 [[package]]
