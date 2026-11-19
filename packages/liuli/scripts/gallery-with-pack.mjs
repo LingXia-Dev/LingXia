@@ -33,6 +33,12 @@ for (const each of ['core', 'charts']) symlinkSync(join(liuli, each), join(out, 
 symlinkSync(resolve(liuli, '..', 'node_modules'), join(out, 'node_modules'), 'dir');
 
 const gallery = join(out, 'gallery');
+// The baseline's capture spec runs in the copy; its type paths point back into this repository.
+mkdirSync(join(gallery, 'zz-tests'), { recursive: true });
+cpSync(join(liuli, 'gallery', 'zz-tests', 'baseline.test.ts'), join(gallery, 'zz-tests', 'baseline.test.ts'));
+const specConfig = JSON.parse(readFileSync(join(liuli, 'gallery', 'zz-tests', 'tsconfig.json'), 'utf8'));
+specConfig.compilerOptions.paths = { '@lingxia/test': [resolve(liuli, '..', 'lingxia-test', 'dist', 'index.d.ts')] };
+writeFileSync(join(gallery, 'zz-tests', 'tsconfig.json'), `${JSON.stringify(specConfig, null, 2)}\n`);
 mkdirSync(join(gallery, 'theme'), { recursive: true });
 writeFileSync(join(gallery, 'theme', 'pack.json'), `${JSON.stringify(pack, null, 2)}\n`);
 const manifestPath = join(gallery, 'lxapp.json');
