@@ -161,6 +161,10 @@ impl GpuPageAutomation for GpuAutomation {
         self.request(json!({"op": "environment", "read": true}))
     }
 
+    fn pin_state(&self, css: &str, index: Option<usize>, hover: bool) -> GpuFuture<Value> {
+        self.request(json!({"op": "pinState", "css": css, "index": index, "hover": hover}))
+    }
+
     fn screenshot(&self, allow_not_ready: bool) -> GpuFuture<Vec<u8>> {
         let native = self.native.clone();
         Box::pin(async move {

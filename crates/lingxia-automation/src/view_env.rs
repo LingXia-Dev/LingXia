@@ -1,4 +1,5 @@
-//! `page.environment()` — a spec pins a GPU page's theme and stills its motion.
+//! `page.environment()` — a spec pins a GPU page's theme and stills its motion;
+//! `page.pinState()` holds one of its elements hovered.
 //!
 //! The override lives in the page, never in device or product settings, and
 //! belongs to the run and attempt that set it: the attempt's end, and every
@@ -9,6 +10,22 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
+/// What a lease holds on its page; each is leased and cleared on its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Pin {
+    Environment,
+    Hover,
+}
+
+impl Pin {
+    async fn clear(self, page: &Arc<dyn GpuPageAutomation>) {
+        let _ = match self {
+            Pin::Environment => page.environment(None).await,
+            Pin::Hover => page.pin_state("", None, false).await,
+        };
+    }
+}
+
 struct Lease {
     run_id: String,
     /// The spec attempt that set it; `None` for the whole run.
@@ -16,13 +33,15 @@ struct Lease {
     page: Weak<dyn GpuPageAutomation>,
 }
 
-/// By page instance id.
-fn leases() -> &'static Mutex<HashMap<String, Lease>> {
-    static LEASES: OnceLock<Mutex<HashMap<String, Lease>>> = OnceLock::new();
+/// By page instance id and what is pinned.
+type Leases = HashMap<(String, Pin), Lease>;
+
+fn leases() -> &'static Mutex<Leases> {
+    static LEASES: OnceLock<Mutex<Leases>> = OnceLock::new();
     LEASES.get_or_init(Default::default)
 }
 
-fn with_leases<T>(f: impl FnOnce(&mut HashMap<String, Lease>) -> T) -> T {
+fn with_leases<T>(f: impl FnOnce(&mut Leases) -> T) -> T {
     let mut leases = leases().lock().unwrap_or_else(|err| err.into_inner());
     leases.retain(|_, lease| lease.page.strong_count() > 0);
     f(&mut leases)
@@ -64,6 +83,48 @@ pub(crate) fn parse_pin(
     })
 }
 
+/// Lease `kind` on page `instance` to the run's attempt (`hold`) or release it, then apply.
+async fn lease(
+    run_id: &str,
+    attempt: Option<u64>,
+    instance: &str,
+    page: Arc<dyn GpuPageAutomation>,
+    kind: Pin,
+    hold: bool,
+    apply: crate::gpu::GpuFuture<Value>,
+) -> Result<Value, String> {
+    let key = (instance.to_owned(), kind);
+    with_leases(|leases| match leases.get(&key) {
+        Some(lease) if lease.run_id != run_id => Err(match kind {
+            Pin::Environment => {
+                "E_BUSY: this page's environment is pinned by another automation run"
+            }
+            Pin::Hover => "E_BUSY: this page's hover is pinned by another automation run",
+        }
+        .to_owned()),
+        _ => {
+            if hold {
+                leases.insert(
+                    key.clone(),
+                    Lease {
+                        run_id: run_id.to_owned(),
+                        attempt,
+                        page: Arc::downgrade(&page),
+                    },
+                );
+            } else {
+                leases.remove(&key);
+            }
+            Ok(())
+        }
+    })?;
+    let applied = apply.await;
+    if applied.is_err() && hold {
+        with_leases(|leases| leases.remove(&key));
+    }
+    applied
+}
+
 /// Apply `pin` (or clear it, `None`) to page `instance` for the run's attempt.
 pub(crate) async fn set(
     run_id: &str,
@@ -72,34 +133,32 @@ pub(crate) async fn set(
     page: Arc<dyn GpuPageAutomation>,
     pin: Option<TestEnvironment>,
 ) -> Result<Value, String> {
-    with_leases(|leases| match leases.get(instance) {
-        Some(lease) if lease.run_id != run_id => {
-            Err("E_BUSY: this page's environment is pinned by another automation run".to_owned())
-        }
-        _ => {
-            match pin {
-                Some(_) => {
-                    leases.insert(
-                        instance.to_owned(),
-                        Lease {
-                            run_id: run_id.to_owned(),
-                            attempt,
-                            page: Arc::downgrade(&page),
-                        },
-                    );
-                }
-                None => {
-                    leases.remove(instance);
-                }
-            }
-            Ok(())
-        }
-    })?;
-    let applied = page.environment(pin).await;
-    if applied.is_err() && pin.is_some() {
-        with_leases(|leases| leases.remove(instance));
-    }
-    applied
+    let apply = page.environment(pin);
+    lease(
+        run_id,
+        attempt,
+        instance,
+        page,
+        Pin::Environment,
+        pin.is_some(),
+        apply,
+    )
+    .await
+}
+
+/// Hold the `index`th match of `css` hovered on page `instance` for the run's attempt, or
+/// lift the pin (`hover: false`).
+pub(crate) async fn pin_hover(
+    run_id: &str,
+    attempt: Option<u64>,
+    instance: &str,
+    page: Arc<dyn GpuPageAutomation>,
+    css: &str,
+    index: Option<usize>,
+    hover: bool,
+) -> Result<Value, String> {
+    let apply = page.pin_state(css, index, hover);
+    lease(run_id, attempt, instance, page, Pin::Hover, hover, apply).await
 }
 
 /// The run a page call belongs to, and the attempt it may act for.
@@ -134,20 +193,36 @@ pub(crate) async fn set_in_run(
     set(&scope.run_id, attempt, instance, page, pin).await
 }
 
+/// `pin_hover` for the run `ctx` belongs to.
+pub(crate) async fn pin_hover_in_run(
+    ctx: &rong::JSContext,
+    instance: &str,
+    page: Arc<dyn GpuPageAutomation>,
+    css: &str,
+    index: Option<usize>,
+    hover: bool,
+) -> Result<Value, String> {
+    let scope = ctx.get_state::<ViewEnvRunScope>().cloned().ok_or(
+        "E_UNSUPPORTED: a page's hover is pinned only inside a host automation run (lxdev test)",
+    )?;
+    let attempt = (scope.admit)()?;
+    pin_hover(&scope.run_id, attempt, instance, page, css, index, hover).await
+}
+
 /// The page's pin and the facts a visual baseline records. A read changes
 /// nothing, so it never consults the leases: any run, or none, may read.
 pub(crate) async fn read(page: Arc<dyn GpuPageAutomation>) -> Result<Value, String> {
     page.environment_facts().await
 }
 
-fn take(keep: impl Fn(&Lease) -> bool) -> Vec<Arc<dyn GpuPageAutomation>> {
+fn take(keep: impl Fn(&Lease) -> bool) -> Vec<(Pin, Arc<dyn GpuPageAutomation>)> {
     with_leases(|leases| {
         let mut taken = Vec::new();
-        leases.retain(|_, lease| {
+        leases.retain(|(_, kind), lease| {
             if keep(lease) {
                 return true;
             }
-            taken.extend(lease.page.upgrade());
+            taken.extend(lease.page.upgrade().map(|page| (*kind, page)));
             false
         });
         taken
@@ -158,8 +233,8 @@ fn take(keep: impl Fn(&Lease) -> bool) -> Vec<Arc<dyn GpuPageAutomation>> {
 /// A page that fails to clear is already gone or disposing.
 pub(crate) async fn reclaim_attempt(run_id: &str, attempt: u64) -> usize {
     let pages = take(|lease| !(lease.run_id == run_id && lease.attempt == Some(attempt)));
-    for page in &pages {
-        let _ = page.environment(None).await;
+    for (kind, page) in &pages {
+        kind.clear(page).await;
     }
     pages.len()
 }
@@ -175,8 +250,8 @@ pub(crate) fn clear_run(run_id: &str) {
         .name("lingxia-test-view-env-clear".into())
         .spawn(move || {
             futures::executor::block_on(async {
-                for page in &pages {
-                    let _ = page.environment(None).await;
+                for (kind, page) in &pages {
+                    kind.clear(page).await;
                 }
             })
         });
@@ -193,6 +268,7 @@ pub(crate) mod tests {
     #[derive(Default)]
     pub(crate) struct FakePage {
         pub(crate) sent: Arc<Mutex<Vec<Option<TestEnvironment>>>>,
+        pub(crate) hovers: Arc<Mutex<Vec<bool>>>,
     }
 
     impl GpuPageAutomation for FakePage {
@@ -218,6 +294,13 @@ pub(crate) mod tests {
             let sent = self.sent.clone();
             Box::pin(async move {
                 sent.lock().unwrap().push(pin);
+                Ok(Value::Null)
+            })
+        }
+        fn pin_state(&self, _: &str, _: Option<usize>, hover: bool) -> GpuFuture<Value> {
+            let hovers = self.hovers.clone();
+            Box::pin(async move {
+                hovers.lock().unwrap().push(hover);
                 Ok(Value::Null)
             })
         }
@@ -281,6 +364,37 @@ pub(crate) mod tests {
         assert_eq!(sent(&next), vec![Some(DARK)]);
         clear_run("env-attempt");
         wait_cleared(&next);
+    }
+
+    #[test]
+    fn an_attempt_end_lifts_its_hover_pin_and_leaves_the_environment_to_its_own_lease() {
+        let page = pin("hover-attempt", Some(1), "hover-attempt-a");
+        futures::executor::block_on(pin_hover(
+            "hover-attempt",
+            Some(1),
+            "hover-attempt-a",
+            page.clone(),
+            "#b",
+            None,
+            true,
+        ))
+        .unwrap();
+        let busy = futures::executor::block_on(pin_hover(
+            "hover-intruder",
+            Some(1),
+            "hover-attempt-a",
+            page.clone(),
+            "#b",
+            None,
+            false,
+        ));
+        assert!(busy.unwrap_err().starts_with("E_BUSY"));
+        assert_eq!(
+            futures::executor::block_on(reclaim_attempt("hover-attempt", 1)),
+            2
+        );
+        assert_eq!(*page.hovers.lock().unwrap(), vec![true, false]);
+        assert_eq!(sent(&page), vec![Some(DARK), None]);
     }
 
     #[test]

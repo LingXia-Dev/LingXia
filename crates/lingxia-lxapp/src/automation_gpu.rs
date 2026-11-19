@@ -97,6 +97,11 @@ pub trait GpuPageAutomation: Send + Sync {
             Err("E_UNSUPPORTED: this GPU page binding has no test environment".to_owned())
         })
     }
+    /// Hold the `index`th match of `css` hovered as a resting pointer would, or lift the pin
+    /// (`hover: false`, selector ignored).
+    fn pin_state(&self, _css: &str, _index: Option<usize>, _hover: bool) -> GpuFuture<Value> {
+        Box::pin(async { Err("E_UNSUPPORTED: this GPU page binding has no hover pin".to_owned()) })
+    }
 }
 
 /// A test run's override of a GPU page's environment.

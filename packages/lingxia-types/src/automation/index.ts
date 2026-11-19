@@ -738,6 +738,12 @@ export interface PageDriver {
    * end and the run's end clear it. Only inside a host automation run, except `{ read: true }`.
    */
   environment(options: PageTarget & ({ theme?: "light" | "dark"; still?: boolean; textScale?: number; contrast?: "standard" | "high" } | { clear: true } | { read: true })): Promise<PageTestEnvironment>;
+  /**
+   * Hold the `index`th match of `css` on a GPU page hovered, as a resting pointer would (its
+   * `hover:` look, an `interestFor` hint after the usual rest), or lift it with `hover: false`.
+   * The attempt's end and the run's end lift it. Only inside a host automation run.
+   */
+  pinState(options: PageTarget & { css: string; index?: number; hover: boolean }): Promise<void>;
   /** App-window pointer input at page coordinates (`lxdev lxapp page pointer`). */
   readonly pointer: PagePointer;
   /** App-window keyboard input (`lxdev lxapp page key`). */

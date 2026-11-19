@@ -300,6 +300,43 @@ struct JSEnvironmentOptions {
 }
 
 #[derive(FromJSObject)]
+struct JSPinStateOptions {
+    page: Option<String>,
+    #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
+    css: String,
+    #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
+    index: Option<f64>,
+    #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
+    hover: bool,
+}
+
+#[cfg(feature = "runtime")]
+async fn pin_state(
+    ctx: &JSContext,
+    app: &Arc<LxApp>,
+    options: &JSPinStateOptions,
+) -> Result<serde_json::Value, String> {
+    let (instance, page) = auto::page_gpu(app, options.page.as_deref())
+        .map_err(|_| "E_UNSUPPORTED: pinState holds a GPU page's pointer state".to_owned())?;
+    let index = options.index.map(|index| index.max(0.0) as usize);
+    crate::view_env::pin_hover_in_run(ctx, &instance, page, &options.css, index, options.hover)
+        .await
+}
+
+#[cfg(not(feature = "runtime"))]
+async fn pin_state(
+    _: &JSContext,
+    _: &Arc<LxApp>,
+    _: &JSPinStateOptions,
+) -> Result<serde_json::Value, String> {
+    Err(
+        "E_UNSUPPORTED: a page's hover is pinned only inside a host automation run \
+         (lxdev test); this host is built without it"
+            .into(),
+    )
+}
+
+#[derive(FromJSObject)]
 struct JSHudOptions {
     page: Option<String>,
     on: bool,
@@ -863,6 +900,17 @@ impl JSPageDriver {
         }
         .map_err(fail(&app, page_name))?;
         json_to_js(&ctx, &value)
+    }
+
+    /// Hold an element of a GPU page hovered for this test run, or lift it
+    /// (`hover: false`); the attempt's end lifts it too.
+    #[js_method(rename = "pinState")]
+    async fn pin_state(&self, ctx: JSContext, options: JSPinStateOptions) -> JSResult<()> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
+        pin_state(&ctx, &app, &options)
+            .await
+            .map_err(fail(&app, options.page.as_deref()))?;
+        Ok(())
     }
 
     #[js_method]

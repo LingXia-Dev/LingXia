@@ -5400,6 +5400,8 @@ mod failed_first_frame;
 mod failed_page;
 #[path = "fixed_in_popover.rs"]
 mod fixed_in_popover;
+#[path = "hover_pin.rs"]
+mod hover_pin;
 #[path = "list_name.rs"]
 mod list_name;
 #[path = "orphan_overlays.rs"]

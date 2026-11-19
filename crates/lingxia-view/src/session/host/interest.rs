@@ -20,6 +20,10 @@ pub(super) struct Interest {
     shown: Option<String>,
     /// Bumped by every change, so only the latest delay acts.
     timer: u64,
+    /// A test's pinned hover (styled element, trigger); pointer moves do not replace it.
+    pinned: Option<(Option<String>, Option<String>)>,
+    /// What the real pointer last hovered, restored when the pin lifts.
+    pointer: (Option<String>, Option<String>),
 }
 
 impl Interest {
@@ -30,6 +34,7 @@ impl Interest {
     /// The page reloaded or parked: its hints are gone. The timer stays, revoking any delay.
     pub(super) fn reset(&mut self) {
         (self.hovered, self.focused, self.shown) = (None, None, None);
+        (self.pinned, self.pointer) = (None, (None, None));
         self.timer += 1;
     }
 }
@@ -39,10 +44,39 @@ impl<A: PlatformAdapter> Inner<A> {
     pub(super) fn lose_interest(self: &Arc<Self>) {
         {
             let mut main = self.main();
-            main.interest.hovered = None;
+            main.interest.hovered = main.interest.pinned.as_ref().and_then(|pin| pin.1.clone());
             main.interest.focused = None;
         }
         self.interest_changed();
+    }
+
+    /// The real pointer rests on `identity` (styled) and `trigger` (`interestFor`), or neither.
+    pub(super) fn pointer_hovered(
+        self: &Arc<Self>,
+        identity: Option<String>,
+        trigger: Option<String>,
+    ) {
+        {
+            let mut main = self.main();
+            main.interest.pointer = (identity.clone(), trigger.clone());
+            if main.interest.pinned.is_some() {
+                return;
+            }
+        }
+        self.set_hovered(identity);
+        self.interest_hovered(trigger);
+    }
+
+    /// Hold the hover on `pin` (styled element, trigger) as a resting pointer would, or lift it
+    /// back to what the real pointer last hovered.
+    pub(super) fn pin_hover(self: &Arc<Self>, pin: Option<(Option<String>, Option<String>)>) {
+        let (identity, trigger) = {
+            let mut main = self.main();
+            main.interest.pinned = pin.clone();
+            pin.unwrap_or_else(|| main.interest.pointer.clone())
+        };
+        self.set_hovered(identity);
+        self.interest_hovered(trigger);
     }
 
     /// A press at a device-pixel point closes every open hint it is not on, nor on its control.

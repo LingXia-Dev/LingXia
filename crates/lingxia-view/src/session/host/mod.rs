@@ -741,7 +741,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
 
     pub fn set_visible(&self, visible: bool) {
         if !visible {
-            self.inner.set_hovered(None);
+            self.inner.pointer_hovered(None, None);
             self.inner.lose_interest();
             self.inner.pointer_crossing(None);
         }
@@ -1173,8 +1173,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 })
                 .unwrap_or_default()
         };
-        self.inner.set_hovered(identity);
-        self.inner.interest_hovered(trigger);
+        self.inner.pointer_hovered(identity, trigger);
         let logical = point.and_then(|[x, y]| {
             let main = self.inner.main();
             let scale = main.interaction.frame()?.scale;
@@ -1251,7 +1250,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         if !focused {
             self.cancel();
             // Not every platform reports the pointer leaving a window that lost focus.
-            self.inner.set_hovered(None);
+            self.inner.pointer_hovered(None, None);
             self.inner.lose_interest();
             self.inner.pointer_crossing(None);
         }
@@ -1559,8 +1558,28 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 Ok(serde_json::json!({ "hud": on }))
             }
             Some("environment") => self.set_test_environment(request),
+            Some("pinState") => {
+                let hover = request["hover"]
+                    .as_bool()
+                    .ok_or("E_INVALID_ARG: pinState takes `hover: boolean`")?;
+                self.pin_state(css, index, hover)
+                    .map(|()| serde_json::Value::Null)
+            }
             other => Err(format!("E_UNSUPPORTED: automation op {other:?}")),
         }
+    }
+
+    /// `{op: "pinState", css, index, hover}`: hold the match hovered as a resting pointer
+    /// would (its `hover:` styles, an `interestFor` hint after the usual delay) until
+    /// `hover: false`, a reload or a park; real pointer moves meanwhile do not replace it.
+    pub fn pin_state(&self, css: &str, index: Option<usize>, hover: bool) -> Result<(), String> {
+        let pin = if hover {
+            Some(self.inner.main().interaction.hover_target(css, index)?)
+        } else {
+            None
+        };
+        self.inner.pin_hover(pin);
+        Ok(())
     }
 
     /// `{op: "environment", theme?: "light"|"dark", still?: bool, textScale?: number,

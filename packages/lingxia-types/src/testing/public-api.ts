@@ -294,6 +294,7 @@ const PAGE_DRIVER_API = [
   'gesture',
   'hud',
   'key',
+  'pinState',
   'pointer',
   'semanticAction',
   'press',

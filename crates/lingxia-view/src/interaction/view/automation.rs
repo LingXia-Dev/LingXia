@@ -88,6 +88,52 @@ impl ViewInteraction {
         query::query(&projection, selector, index, all, max_text)
     }
 
+    /// What a pointer resting on the `index`th match of `selector` hovers: the nearest element
+    /// with a `hover:` style and the nearest `interestFor` trigger, each the match or around it.
+    pub fn hover_target(
+        &self,
+        selector: &str,
+        index: Option<usize>,
+    ) -> Result<(Option<String>, Option<String>), String> {
+        if self.parked {
+            return Err("E_PAGE_NOT_READY: the page is parked (it left the stack)".into());
+        }
+        let frame = self
+            .frame
+            .as_ref()
+            .ok_or("E_PAGE_NOT_READY: no presented frame")?;
+        let node = {
+            let projection = self
+                .semantics()
+                .ok_or("E_PAGE_NOT_READY: no presented frame")?;
+            let matches = query::select(&projection, selector)?;
+            let position = index.unwrap_or(0);
+            *matches
+                .get(position)
+                .ok_or_else(|| format!("Element not found: {selector} (index {position})"))?
+        };
+        let target = &*frame.nodes[node].identity;
+        let nearest = |wanted: fn(&crate::scene::node::NodeSnapshot) -> bool| {
+            frame
+                .nodes
+                .iter()
+                .filter(|candidate| {
+                    let own = &*candidate.identity;
+                    wanted(candidate)
+                        && (own == target
+                            || target.len() > own.len()
+                                && target.starts_with(own)
+                                && target.as_bytes()[own.len()] == b'/')
+                })
+                .max_by_key(|candidate| candidate.identity.len())
+                .map(|candidate| candidate.identity.to_string())
+        };
+        Ok((
+            nearest(|node| node.hover_style),
+            nearest(|node| node.interest_for.is_some() && !node.disabled),
+        ))
+    }
+
     /// The accessibility tree of the presented frame (`semantics::query::tree`).
     pub fn automation_tree(&self) -> Result<serde_json::Value, String> {
         let projection = self
