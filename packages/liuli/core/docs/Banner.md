@@ -162,6 +162,11 @@ export function Collapsible() {
 | title and message on success | `text` on `success-soft` | 4.5:1 | 14.33:1 | 11.76:1 |
 | title and message on warning | `text` on `warning-soft` | 4.5:1 | 14.59:1 | 11.36:1 |
 | title and message on danger | `text` on `danger-soft` | 4.5:1 | 14.12:1 | 12.22:1 |
+| action on neutral | `accent` on `text/6` over `canvas` | 4.5:1 | 4.68:1 | 6.01:1 |
+| action on info | `accent` on `info-soft` | 4.5:1 | 4.93:1 | 5.02:1 |
+| action on success | `accent` on `success-soft` | 4.5:1 | 4.95:1 | 5.25:1 |
+| action on warning | `accent` on `warning-soft` | 4.5:1 | 5.05:1 | 5.07:1 |
+| action on danger | `accent` on `danger-soft` | 4.5:1 | 4.88:1 | 5.46:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

@@ -9,7 +9,7 @@ export function Content() {
         <Services />
       </Lead>
       <PageSection title={"Variants"}>
-        <Stage caption={"Success, warning, danger, info and accent (one colour where the accent is already a blue), and neutral as a ring"}>
+        <Stage caption={"Success, warning, danger, info, the accent, and neutral as a ring"}>
           <Tones />
         </Stage>
         <Stage caption={"A hue for a category: which calendar an event is on"}>

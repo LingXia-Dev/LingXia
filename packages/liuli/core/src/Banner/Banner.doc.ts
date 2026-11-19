@@ -35,6 +35,11 @@ export const doc: ComponentDoc = {
       { what: 'title and message on success', pair: ['text', 'success-soft'], minimum: '4.5:1' },
       { what: 'title and message on warning', pair: ['text', 'warning-soft'], minimum: '4.5:1' },
       { what: 'title and message on danger', pair: ['text', 'danger-soft'], minimum: '4.5:1' },
+      { what: 'action on neutral', pair: ['accent', 'text/6'], over: 'canvas', minimum: '4.5:1' },
+      { what: 'action on info', pair: ['accent', 'info-soft'], minimum: '4.5:1' },
+      { what: 'action on success', pair: ['accent', 'success-soft'], minimum: '4.5:1' },
+      { what: 'action on warning', pair: ['accent', 'warning-soft'], minimum: '4.5:1' },
+      { what: 'action on danger', pair: ['accent', 'danger-soft'], minimum: '4.5:1' },
     ],
     notes: [
       'Role alert for danger, so it is announced when it appears; role status for the other tones, announced politely.',

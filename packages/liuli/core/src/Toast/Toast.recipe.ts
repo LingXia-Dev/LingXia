@@ -28,7 +28,7 @@ export const toastRecipe = {
   },
   icon: {
     base: 'size-5 shrink-0',
-    tone: { neutral: 'text-muted', info: 'text-accent', success: 'text-success', warning: 'text-warning', danger: 'text-danger' } satisfies Record<ToastTone, string>,
+    tone: { neutral: 'text-muted', info: 'text-info', success: 'text-success', warning: 'text-warning', danger: 'text-danger' } satisfies Record<ToastTone, string>,
   },
   message: {
     base: 'grow shrink basis-0 min-w-0 py-1.5 text-body text-text',

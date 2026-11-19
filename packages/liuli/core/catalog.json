@@ -1016,6 +1016,47 @@
               "danger-soft"
             ],
             "minimum": "4.5:1"
+          },
+          {
+            "what": "action on neutral",
+            "pair": [
+              "accent",
+              "text/6"
+            ],
+            "over": "canvas",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "action on info",
+            "pair": [
+              "accent",
+              "info-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "action on success",
+            "pair": [
+              "accent",
+              "success-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "action on warning",
+            "pair": [
+              "accent",
+              "warning-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "action on danger",
+            "pair": [
+              "accent",
+              "danger-soft"
+            ],
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
@@ -15321,7 +15362,7 @@
           "variants": [
             {
               "name": "Tones",
-              "title": "Success, warning, danger, info and accent (one colour where the accent is already a blue), and neutral as a ring"
+              "title": "Success, warning, danger, info, the accent, and neutral as a ring"
             },
             {
               "name": "Hues",
@@ -18355,9 +18396,9 @@
           "--radius-container"
         ],
         "roles": [
-          "accent",
           "danger",
           "focus",
+          "info",
           "success",
           "surface-overlay",
           "text",
