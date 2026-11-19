@@ -741,16 +741,28 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   } else if (runs) {
     // Nested spans flatten into one run list; inner runs layer over the outer span's style.
     const extra = tag === 'span' || tag === 'link' ? style.author : undefined;
-    result.children = flat.flatMap((child, position) => {
-      const at = authored[position], part = at.slot === undefined ? `key:${JSON.stringify(at.key)}` : `position:${at.slot}`;
+    // A popover or dialog a run's component returns beside it takes no inline space: it is lifted
+    // out and placed after the paragraph, where the top layer draws it anyway.
+    const lifted = [];
+    const runOf = (child, slot, key, inFragment, nesting) => {
+      if (nesting > 128) throw Error('UI_LIMIT: children too deep');
+      const part = slot === undefined ? `key:${JSON.stringify(key)}` : `position:${slot}`;
       const run = resolveNode(inline(child) ? h('span', {}, child) : child, `${identity}/${tag}/${part}`, depth + 1, {
         tag, typography: style.typography, direction, extra, inText: true, inControl: parent.inControl, inLink: parent.inLink || tag === 'link',
-        contexts: parent.contexts,
+        inDialog: parent.inDialog, popovers: parent.popovers, contexts: parent.contexts,
       });
       if (run === null) return [];
-      if (run.fragment) throw Error(`UI_TEXT: a component inside <${tag}> returns a fragment; return one <span>`);
+      if (run.fragment) return run.fragment.flatMap(inner => key === undefined
+        ? runOf(inner.child, inner.slot === undefined ? undefined : `${slot}.${inner.slot}`, inner.key, true, nesting + 1)
+        : runOf(inner.child, undefined, JSON.stringify([key, inner.key ?? `#${inner.slot}`]), true, nesting + 1));
+      if (run.lifted) lifted.push(...run.lifted);
+      if (run.wire.some(([name]) => name === 'topLayer')) { lifted.push(run); return []; }
+      if (inFragment && run.element !== 'span' && run.element !== 'link')
+        throw Error(`UI_TEXT: a component inside <${tag}> returns a <${run.element}> beside its text; with text it may return <span>, <link>, a popover or a <dialog>`);
       return (run.element === 'span' || run.element === 'link') && run.children.length ? run.children : [run];
-    });
+    };
+    result.children = flat.flatMap((child, position) => runOf(child, authored[position].slot, authored[position].key, false, 0));
+    if (lifted.length) result.lifted = lifted;
     // A styled link becomes consecutive link pieces sharing one handle, label and pressed style.
     if (tag === 'link') result.children = result.children.map((piece, i) => ({
       ...piece, tag: 'link', element: 'link', states: result.states, handlers: result.handlers.map(entry => [...entry]),
@@ -783,10 +795,13 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         return;
       }
       if (node === null) return;
-      if (key === undefined) { placed.push(node); slots.push(at); return; }
-      // Inside a keyed fragment the wire key is the composed one native names the node by.
-      placed.push(node.props.key === key ? node : { ...node, props: { ...node.props, key } });
-      slots.push(undefined);
+      if (key === undefined) { placed.push(node); slots.push(at); }
+      else {
+        // Inside a keyed fragment the wire key is the composed one native names the node by.
+        placed.push(node.props.key === key ? node : { ...node, props: { ...node.props, key } });
+        slots.push(undefined);
+      }
+      for (const layer of liftedFrom(node, key === undefined ? `position:${at}` : `key:${key}`)) { placed.push(layer); slots.push(undefined); }
     };
     for (let position = 0; position < authored.length; position++) place(authored[position], position, 0);
     result.children = placed;
@@ -802,6 +817,11 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   for (const kind in style.descendants)
     if (result.children.some(child => holds(child, kind))) Object.assign(result.fields, style.descendants[kind]);
   return result;
+}
+
+/** The top-layer parts a paragraph lifted out, keyed by where each sits so it keeps its place as others open and close. */
+export function liftedFrom(node, part) {
+  return (node.lifted ?? []).map(layer => ({ ...layer, props: { ...layer.props, key: `lx-lifted:${part}${layer.identity.slice(node.identity.length)}` } }));
 }
 
 // Whether a resolved node or one below it is checked (a checkbox, switch or answered radio) or disabled.

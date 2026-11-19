@@ -9,6 +9,7 @@ import { takeActionErrors } from '../src/runtime/actions.js';
 import { compileUtilities } from '../compiler/tailwind.mjs';
 import { configureClasses } from '../src/style/classes.js';
 import { decode } from './support/wire.mjs';
+import { Fragment } from '../src/runtime/nodes.js';
 
 const render = (view, env = {}) => { const out = decode(prepare(view, { env })); commit(); return out; };
 const byId = (nodes, id) => nodes.find(node => node.testId === id);
@@ -101,6 +102,33 @@ test('a link inside text is a hint trigger too', () => {
   const nodes = render(view);
   assert.equal(byId(nodes, 'more').props.anchorName, '--lx-popover-when');
   assert.equal(byId(nodes, 'more').props.ariaDescribedBy, 'when');
+});
+
+test('a trigger mid-sentence keeps its popover out of the paragraph', () => {
+  reset();
+  function When() {
+    return h(Fragment, null, h('link', { popoverTarget: 'when', 'data-testid': 'more' }, 'Sunday'),
+      h('view', { id: 'when', popover: true, 'data-testid': 'when' }, h('text', {}, 'Sunday 18:00')));
+  }
+  const view = () => h('page', {}, h('text', { 'data-testid': 'p' }, 'Due ', h(When), ' at noon'), h('text', {}, 'after'));
+  let nodes = render(view);
+  const runs = () => nodes.filter(node => node.parent?.testId === 'p').map(node => node.text);
+  assert.deepEqual(runs(), ['Due ', 'Sunday', ' at noon']);
+  assert.equal(byId(nodes, 'when'), undefined);
+  dispatch(byId(nodes, 'more').props.onClick);
+  nodes = render(view);
+  assert.deepEqual(runs(), ['Due ', 'Sunday', ' at noon'], 'the open panel takes no inline space');
+  const layer = byId(nodes, 'when').parent;
+  assert.equal(layer.parent.tag, 'page');
+  assert.match(layer.key, /^lx-lifted:/);
+  assert.equal(byId(nodes, 'when').props.anchorTo, '--lx-popover-when');
+  assert.equal(byId(nodes, 'more').props.anchorName, '--lx-popover-when');
+  // The sibling after the paragraph keeps its name while the panel sits before it.
+  assert.equal(nodes.find(node => node.text === 'after').props.childSlot, '1');
+  // Inside text a fragment holds runs and top-layer parts only; a root paragraph has no place for them.
+  function Boxed() { return h(Fragment, null, h('span', {}, 'a'), h('view', {})); }
+  assert.throws(() => render(() => h('page', {}, h('text', {}, h(Boxed)))), /UI_TEXT: a component inside <text> returns a <view> beside its text/);
+  assert.throws(() => render(() => h('text', {}, h(When))), /UI_ROOT: a <text> page root/);
 });
 
 test('a popover its invoker opened is owned; closing it as an orphan tells the page once', () => {

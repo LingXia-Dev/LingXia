@@ -176,7 +176,7 @@ test('fragments lay their children out in their place, keeping each child slot',
   function Keyed() { return h(Fragment, null, text('k', { key: 'same' })); }
   assert.throws(() => describe(() => h('view', {}, h(Keyed), h(Keyed)), {}), /UI_KEY: duplicate sibling/);
   assert.throws(() => describe(() => h(Fragment, null, text('a'), text('b')), {}), /UI_ROOT/);
-  assert.throws(() => describe(() => h('text', {}, h(Pair)), {}), /UI_TEXT: a component inside <text> returns a fragment/);
+  assert.throws(() => describe(() => h('text', {}, h(Pair)), {}), /UI_TEXT: a component inside <text> returns a <text> beside its text; with text it may return <span>, <link>, a popover or a <dialog>/);
 });
 
 test('local state inside a fragment child survives a sibling appearing before the group', () => {

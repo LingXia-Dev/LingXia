@@ -6,7 +6,7 @@ import { render } from './state.js';
 import { readNode, isNode } from './nodes.js';
 import { keyPayload } from './keys.js';
 
-import { resolveNode, handlesIssued } from './elements.js';
+import { resolveNode, handlesIssued, liftedFrom } from './elements.js';
 import { finishTopLayerRow } from './toplayer.js';
 
 const structured = new Set(['backgroundGradient', 'boxShadow', 'ring', 'animation']);
@@ -257,7 +257,7 @@ function renderRowTimed(node, i, cells, depth) {
       direction: node.list.direction, contexts: node.list.contexts });
     if (content?.fragment) throw Error('UI_LIST: a row returns one node; wrap its fragment in <view>');
     const row = { tag: 'column', element: 'view', props: { key }, fields, states: {}, wire: [], handlers: [], identity: render.scope,
-      rowIndex: i, text: '', children: content === null ? [] : [content] };
+      rowIndex: i, text: '', children: content === null ? [] : [content, ...liftedFrom(content, 'row')] };
     return { row, key };
   } finally { render.scope = previous; render.contexts = outerContexts; }
 }

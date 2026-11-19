@@ -78,6 +78,7 @@ export function prepare(renderPage, view, windows = {}, deferAnchors = false) {
     spent('resolve', since);
     render.site = null;
     if (!candidate.tree || candidate.tree.fragment) throw Error('UI_ROOT: page must return one layout node');
+    if (candidate.tree.lifted) throw Error('UI_ROOT: a <text> page root has no place for a popover it holds; wrap it in <view>');
     // The root may be a recalled subtree the committed page shares; layers go into a copy.
     candidate.tree = { ...candidate.tree, children: [...candidate.tree.children] };
     // Logic-requested feedback (toast, modal, action sheet) draws above the page's own children.

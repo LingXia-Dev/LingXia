@@ -2944,7 +2944,7 @@
         identity: render.scope,
         rowIndex: i,
         text: "",
-        children: content === null ? [] : [content]
+        children: content === null ? [] : [content, ...liftedFrom(content, "row")]
       };
       return { row, key };
     } finally {
@@ -5150,8 +5150,10 @@
       render.lists++;
     } else if (runs) {
       const extra = tag === "span" || tag === "link" ? style2.author : void 0;
-      result.children = flat.flatMap((child, position) => {
-        const at = authored[position], part = at.slot === void 0 ? `key:${JSON.stringify(at.key)}` : `position:${at.slot}`;
+      const lifted = [];
+      const runOf = (child, slot, key, inFragment, nesting) => {
+        if (nesting > 128) throw Error("UI_LIMIT: children too deep");
+        const part = slot === void 0 ? `key:${JSON.stringify(key)}` : `position:${slot}`;
         const run = resolveNode(inline(child) ? h("span", {}, child) : child, `${identity}/${tag}/${part}`, depth + 1, {
           tag,
           typography: style2.typography,
@@ -5160,12 +5162,23 @@
           inText: true,
           inControl: parent.inControl,
           inLink: parent.inLink || tag === "link",
+          inDialog: parent.inDialog,
+          popovers: parent.popovers,
           contexts: parent.contexts
         });
         if (run === null) return [];
-        if (run.fragment) throw Error(`UI_TEXT: a component inside <${tag}> returns a fragment; return one <span>`);
+        if (run.fragment) return run.fragment.flatMap((inner) => key === void 0 ? runOf(inner.child, inner.slot === void 0 ? void 0 : `${slot}.${inner.slot}`, inner.key, true, nesting + 1) : runOf(inner.child, void 0, JSON.stringify([key, inner.key ?? `#${inner.slot}`]), true, nesting + 1));
+        if (run.lifted) lifted.push(...run.lifted);
+        if (run.wire.some(([name]) => name === "topLayer")) {
+          lifted.push(run);
+          return [];
+        }
+        if (inFragment && run.element !== "span" && run.element !== "link")
+          throw Error(`UI_TEXT: a component inside <${tag}> returns a <${run.element}> beside its text; with text it may return <span>, <link>, a popover or a <dialog>`);
         return (run.element === "span" || run.element === "link") && run.children.length ? run.children : [run];
-      });
+      };
+      result.children = flat.flatMap((child, position) => runOf(child, authored[position].slot, authored[position].key, false, 0));
+      if (lifted.length) result.lifted = lifted;
       if (tag === "link") result.children = result.children.map((piece, i) => ({
         ...piece,
         tag: "link",
@@ -5205,10 +5218,14 @@
         if (key === void 0) {
           placed.push(node);
           slots.push(at);
-          return;
+        } else {
+          placed.push(node.props.key === key ? node : { ...node, props: { ...node.props, key } });
+          slots.push(void 0);
         }
-        placed.push(node.props.key === key ? node : { ...node, props: { ...node.props, key } });
-        slots.push(void 0);
+        for (const layer2 of liftedFrom(node, key === void 0 ? `position:${at}` : `key:${key}`)) {
+          placed.push(layer2);
+          slots.push(void 0);
+        }
       };
       for (let position = 0; position < authored.length; position++) place(authored[position], position, 0);
       result.children = placed;
@@ -5222,6 +5239,9 @@
     for (const kind in style2.descendants)
       if (result.children.some((child) => holds(child, kind))) Object.assign(result.fields, style2.descendants[kind]);
     return result;
+  }
+  function liftedFrom(node, part) {
+    return (node.lifted ?? []).map((layer2) => ({ ...layer2, props: { ...layer2.props, key: `lx-lifted:${part}${layer2.identity.slice(node.identity.length)}` } }));
   }
   function holds(node, kind) {
     const own2 = kind === "disabled" ? node.props?.disabled === true : ["checkbox", "switch"].includes(node.element) && node.props.value === true || node.element === "radio" && node.props.value != null;
@@ -6001,6 +6021,7 @@
       spent("resolve", since);
       render.site = null;
       if (!candidate.tree || candidate.tree.fragment) throw Error("UI_ROOT: page must return one layout node");
+      if (candidate.tree.lifted) throw Error("UI_ROOT: a <text> page root has no place for a popover it holds; wrap it in <view>");
       candidate.tree = { ...candidate.tree, children: [...candidate.tree.children] };
       const env = envOf(view), overlay = overlayNode(env);
       if (overlay) candidate.tree.children.push(decorateOverlay(resolveNode(
