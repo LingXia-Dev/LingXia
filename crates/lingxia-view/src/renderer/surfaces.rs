@@ -393,6 +393,20 @@ pub fn present(id: u64, revision: u64) -> Result<Option<[u64; 4]>, String> {
         .then(|| presenter.presentation_timings_us()))
 }
 
+/// Main thread: presents `revision` in the thread's current layer transaction, so layer
+/// changes made on the main thread in this turn show with it. The layer must present with
+/// transactions (`CAMetalLayer.presentsWithTransaction`).
+pub fn present_in_transaction(id: u64, revision: u64) -> Result<Option<[u64; 4]>, String> {
+    let _work = gpu_work();
+    let Some(presenter) = presenter(id)? else {
+        return Ok(None);
+    };
+    let mut presenter = lock(&presenter)?;
+    Ok(presenter
+        .present(revision)?
+        .then(|| presenter.presentation_timings_us()))
+}
+
 /// Presenters keeping a frame that draws video; read on the main thread at every refresh, so
 /// it never waits on a presenter.
 static VIDEO: LazyLock<Mutex<HashMap<u64, PresenterFn>>> = LazyLock::new(Default::default);

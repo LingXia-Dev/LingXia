@@ -506,7 +506,7 @@ impl Presenter for HarmonyAdapter {
                     .elapsed_ms()
                     .saturating_sub(self.ticked.load(Ordering::Acquire))
                     > STALLED_MS;
-                crate::render::present(surface, revision, drawn, move |shown, gpu| {
+                crate::render::present(surface, revision, drawn, true, move |shown, gpu| {
                     let Some(strong) = host.upgrade() else { return };
                     // The first frame that draws video starts display frames for its players.
                     if surfaces::keeps_video(surface)

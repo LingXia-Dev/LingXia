@@ -314,7 +314,7 @@ impl Presenter for AndroidAdapter {
                     return Ok(false);
                 };
                 let ticking = self.ticking.clone();
-                super::render::present(surface, revision, drawn, move |shown, gpu| {
+                super::render::present(surface, revision, drawn, true, move |shown, gpu| {
                     let Some(strong) = host.upgrade() else { return };
                     // The first frame that draws video starts display frames for its frames.
                     if lingxia_view::renderer::surfaces::keeps_video(surface)

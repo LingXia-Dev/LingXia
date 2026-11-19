@@ -1016,6 +1016,27 @@ impl<A: PlatformAdapter> ViewHost<A> {
         }));
     }
 
+    /// [`Self::deferred_drawn`] for a frame drawn but not yet presented: `present` puts it on
+    /// screen on the main thread, in the turn that applies its presentation (web view moves).
+    pub fn deferred_drawn_then(
+        &self,
+        generation: CommitTicket,
+        stats: DrawStats,
+        present: Box<dyn FnOnce() -> Result<bool, String> + Send>,
+    ) {
+        let inner = self.inner.clone();
+        self.inner.adapter.post(Box::new(move || {
+            let done = inner.adapter.now();
+            match present() {
+                Ok(shown) => inner.deferred_presented(generation, shown, stats, done),
+                Err(error) => {
+                    inner.deferred_presented(generation, false, stats, done);
+                    inner.fail(error);
+                }
+            }
+        }));
+    }
+
     /// Run the recovery action offered with the last failure.
     pub fn retry(&self) {
         self.inner.retry();

@@ -1195,6 +1195,11 @@ mod live {
             })
             .collect();
         let json = serde_json::Value::Array(items).to_string();
+        // Moved in the turn that presented their frame, the views and the frame show together.
+        if lingxia_view_apple::presenting_with_transaction() {
+            super::bridge::gpu_pages_sync_webviews(token, &json);
+            return;
+        }
         lingxia_view_apple::post_main(Box::new(move || {
             super::bridge::gpu_pages_sync_webviews(token, &json);
         }));
@@ -1299,9 +1304,8 @@ mod live {
                     } else {
                         use base64::Engine;
                         let allow = request["allowNotReady"] == true;
-                        page.host()
-                            .prepare_web_capture(allow)
-                            .and_then(|()| match page.screenshot_png() {
+                        page.host().prepare_web_capture(allow).and_then(|()| {
+                            match page.screenshot_png() {
                                 Ok(Some(png)) => Ok(serde_json::json!({
                                     "png": base64::engine::general_purpose::STANDARD.encode(png)
                                 })),
@@ -1311,7 +1315,8 @@ mod live {
                                     }))
                                 }
                                 Err(error) => Err(error),
-                            })
+                            }
+                        })
                     });
                 });
                 reply(answer.unwrap_or_else(|| Err("page is not active".into())));

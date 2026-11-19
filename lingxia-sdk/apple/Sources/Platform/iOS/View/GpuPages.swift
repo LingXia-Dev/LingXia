@@ -150,6 +150,8 @@ final class GpuPageView: UIView {
             (metalView.layer as? CAMetalLayer)?.isOpaque = opaque
             metalView.backgroundColor = opaque ? nil : .clear
         }
+        // A frame with web views presents in the main thread's transaction, with their moves.
+        (metalView.layer as? CAMetalLayer)?.presentsWithTransaction = hasWeb
     }
 
     func closeRequest() -> Bool {

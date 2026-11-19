@@ -23,6 +23,22 @@ pub fn post_main(task: lingxia_view::platform::Task) {
     dispatch::post_after(std::time::Duration::ZERO, task);
 }
 
+thread_local! {
+    static PRESENT_TURN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Main thread: this turn presented a frame in its layer transaction, so native views moved
+/// now (not posted) show on screen with that frame.
+pub fn presenting_with_transaction() -> bool {
+    PRESENT_TURN.with(std::cell::Cell::get)
+}
+
+pub(crate) fn mark_present_turn() {
+    if !PRESENT_TURN.with(|turn| turn.replace(true)) {
+        post_main(Box::new(|| PRESENT_TURN.with(|turn| turn.set(false))));
+    }
+}
+
 /// The embedding host's half: the Swift view and the lxapp page binding.
 pub trait Shell: Send + Sync + 'static {
     /// Show an opaque premultiplied RGBA8 frame; false when the view cannot take it now.

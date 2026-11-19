@@ -113,6 +113,9 @@ pub enum Frame {
         surface: u64,
         revision: u64,
         drawn: Arc<lingxia_view::renderer::render_thread::Drawn>,
+        /// Shows a live `<webview>`: presented on the main thread, in the transaction that
+        /// moves the web views, so the two never show a frame apart.
+        on_main: bool,
     },
     /// Rasterized off the View worker when presented.
     Cpu(DisplayList, CommitTicket),
@@ -145,8 +148,10 @@ impl Presenter for AppleAdapter {
             match self.route() {
                 Route::Wait => return Ok(None),
                 Route::Gpu(surface) => {
+                    let on_main = cfg!(target_os = "ios") && display.has_web_hole();
                     return Ok(Some(Frame::Gpu {
                         surface,
+                        on_main,
                         revision: generation.get(),
                         drawn: render_thread::draw(
                             render_thread::SURFACES,
@@ -179,6 +184,7 @@ impl Presenter for AppleAdapter {
                 surface,
                 revision,
                 drawn,
+                on_main,
             } => {
                 let Some(host) = self.host.get().cloned() else {
                     return Ok(false);
@@ -188,6 +194,7 @@ impl Presenter for AppleAdapter {
                     surface,
                     revision,
                     drawn,
+                    !on_main,
                     move |shown, gpu| {
                         let Some(strong) = host.upgrade() else { return };
                         // The first frame that draws video starts the display link for its frames.
@@ -206,6 +213,17 @@ impl Presenter for AppleAdapter {
                         }
                         let host = strong;
                         match shown {
+                            Ok(true) if on_main => host.deferred_drawn_then(
+                                CommitTicket::new(revision),
+                                gpu,
+                                Box::new(move || {
+                                    crate::mark_present_turn();
+                                    lingxia_view::renderer::surfaces::present_in_transaction(
+                                        surface, revision,
+                                    )
+                                    .map(|shown| shown.is_some())
+                                }),
+                            ),
                             Ok(shown) => {
                                 host.deferred_drawn(CommitTicket::new(revision), shown, gpu)
                             }

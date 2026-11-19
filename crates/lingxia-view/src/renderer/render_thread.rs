@@ -207,17 +207,20 @@ pub fn draw(backend: Backend, surface: u64, revision: u64, display: DisplayList)
 
 /// Presents `revision` once it is drawn: before any frame queued after its draw, so a frame
 /// built ahead never delays the one already due. `report` gets whether it reached the screen
-/// and what the draw took.
+/// and what the draw took. With `present` false it only waits for the draw: true means the
+/// frame is ready for the caller to present itself ([`super::surfaces::present_in_transaction`]).
 pub fn present(
     surface: u64,
     revision: u64,
     drawn: Arc<Drawn>,
+    present: bool,
     report: impl FnOnce(Result<bool, String>, crate::session::host::DrawStats) + Send + 'static,
 ) {
     let target = drawn.clone();
     let task: Task = Box::new(move || {
         let started = Instant::now();
         let outcome = match lock(&target.result).take() {
+            Some(Ok(Some(metrics))) if !present => Ok((Some([0; 4]), Some(metrics))),
             Some(Ok(Some(metrics))) => {
                 let backend = target.backend;
                 catch_unwind(|| (backend.present)(surface, revision))
@@ -376,7 +379,7 @@ mod tests {
         };
         let drawn = draw(backend, surface, 1, display);
         let (sent, reported) = channel();
-        super::present(surface, 1, drawn, move |shown, _| {
+        super::present(surface, 1, drawn, true, move |shown, _| {
             let _ = sent.send(shown);
         });
         let release = std::thread::spawn(move || {
@@ -454,7 +457,7 @@ mod tests {
             .unwrap();
         let drawn = draw(backend, surface, 1, display);
         let (sent, reported) = channel();
-        super::present(surface, 1, drawn, move |shown, _| {
+        super::present(surface, 1, drawn, true, move |shown, _| {
             let _ = sent.send(shown);
         });
         reported.recv_timeout(Duration::from_secs(5)).unwrap()
