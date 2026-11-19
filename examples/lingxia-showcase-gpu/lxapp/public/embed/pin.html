@@ -14,10 +14,14 @@
       color: #3730a3;
       font: 500 12px system-ui, -apple-system, sans-serif;
     }
-    @media (prefers-color-scheme: dark) { body { background: #1e1b4b; color: #c7d2fe; } }
+    /* The View page names its theme in the hash; a web view does not always follow the system's. */
+    html.dark body { background: #1e1b4b; color: #c7d2fe; }
+    html.dark #pin { background: #818cf8; box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.3); }
     #where { position: absolute; left: 10px; bottom: 8px; }
     #pin {
       position: absolute;
+      left: 50%;
+      top: 50%;
       width: 22px;
       height: 22px;
       margin: -11px 0 0 -11px;
@@ -32,34 +36,45 @@
   <div id="where"></div>
   <script>
     (function () {
-      // The page cannot scroll; a drag anywhere moves the pin and reports where it is.
+      function theme() {
+        var named = location.hash.slice(1);
+        var dark = named ? named === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.classList.toggle('dark', dark);
+      }
+      theme();
+      window.addEventListener('hashchange', theme);
+
+      // The page cannot scroll; a drag anywhere moves the pin, kept whole inside the page, and
+      // reports where it is. It starts centred by CSS: the page may have no size yet.
       var pin = document.getElementById('pin');
       var where = document.getElementById('where');
+      var EDGE = 15;
       var moves = 0;
       var lastX = 0, lastY = 0;
+      var clamp = function (value, size) { return Math.min(Math.max(value, EDGE), Math.max(EDGE, size - EDGE)); };
       function place(x, y) {
-        lastX = x; lastY = y;
-        pin.style.left = x + 'px';
-        pin.style.top = y + 'px';
-        where.textContent = Math.round(x) + ', ' + Math.round(y);
+        lastX = clamp(x, window.innerWidth);
+        lastY = clamp(y, window.innerHeight);
+        pin.style.left = lastX + 'px';
+        pin.style.top = lastY + 'px';
+        where.textContent = Math.round(lastX) + ', ' + Math.round(lastY);
       }
-      function send(x, y, done) {
+      function send(done) {
         if (window.lingxia && typeof window.lingxia.postMessage === 'function')
-          window.lingxia.postMessage({ kind: 'pin', x: Math.round(x), y: Math.round(y), moves: moves, done: done }, done ? { queue: true } : undefined);
+          window.lingxia.postMessage({ kind: 'pin', x: Math.round(lastX), y: Math.round(lastY), moves: moves, done: done }, done ? { queue: true } : undefined);
       }
       var down = false;
-      document.body.addEventListener('pointerdown', function (ev) { down = true; place(ev.clientX, ev.clientY); send(ev.clientX, ev.clientY, false); });
+      document.body.addEventListener('pointerdown', function (ev) { down = true; place(ev.clientX, ev.clientY); send(false); });
       document.body.addEventListener('pointermove', function (ev) {
         if (!down) return;
         moves += 1;
         place(ev.clientX, ev.clientY);
-        send(ev.clientX, ev.clientY, false);
+        send(false);
       });
-      // A cancel (the page took the gesture) keeps the pin where it last was.
-      function up() { if (!down) return; down = false; send(lastX, lastY, true); }
+      // A cancel (the screen took the gesture) leaves the pin where it last was.
+      function up() { if (!down) return; down = false; send(true); }
       document.body.addEventListener('pointerup', up);
       document.body.addEventListener('pointercancel', up);
-      place(window.innerWidth / 2, window.innerHeight / 2);
     })();
   </script>
 </body>

@@ -199,6 +199,8 @@ export function WebDragsDemo() {
   const plain = useLocal<Pin | null>('lab-web-plain-pin', null);
   const own = useLocal<Pin | null>('lab-web-own-pin', null);
   const loaded = useLocal('lab-web-drags-loaded', 0);
+  // The pages take the theme from the hash, which changes without reloading them.
+  const src = `public/embed/pin.html#${useView().env.theme}`;
   const t = useSay();
   const take = (into: Local<Pin | null>) => (ev: { data: unknown }) => {
     const msg = ev.data as Partial<Pin> & { kind?: string } | null;
@@ -208,10 +210,10 @@ export function WebDragsDemo() {
   return (
     <>
       <text className="text-xs text-muted">{t(labels.webPlain)}</text>
-      <webview web={plainWeb} data-testid="lab-web-drags-plain" src="public/embed/pin.html" aria-label={t(labels.webPlain)}
+      <webview web={plainWeb} data-testid="lab-web-drags-plain" src={src} aria-label={t(labels.webPlain)}
         onMessage={take(plain)} onLoad={() => loaded.set(loaded.value + 1)} className="w-full h-28 rounded-xl border border-line" />
       <text className="text-xs text-muted">{t(labels.webOwn)}</text>
-      <webview web={ownWeb} data-testid="lab-web-drags-own" src="public/embed/pin.html" aria-label={t(labels.webOwn)} handlesDrags
+      <webview web={ownWeb} data-testid="lab-web-drags-own" src={src} aria-label={t(labels.webOwn)} handlesDrags
         onMessage={take(own)} onLoad={() => loaded.set(loaded.value + 1)} className="w-full h-28 rounded-xl border border-line" />
       <view className="flex-row items-center gap-3">
         <Button testId="lab-web-drags-reset" size="sm" variant="secondary" onClick={() => { plain.set(null); own.set(null); }}>{t(labels.reset)}</Button>
