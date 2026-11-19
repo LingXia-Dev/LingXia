@@ -304,6 +304,57 @@ pub(crate) fn node_style(
         } else {
             [0.0; 4]
         };
+    // A fixed box in a top layer at a system edge paints out to it; its content stays inside.
+    let bleed = if safe_top + safe_right + safe_bottom + safe_left > 0.0
+        && record.string(field::POSITION) == Some("fixed")
+        && record
+            .parent
+            .and_then(|parent| top_layer_of(records, parent))
+            .is_some()
+    {
+        let touches = |field: usize, safe: f32| {
+            let at_edge = record
+                .fields
+                .iter()
+                .find(|(id, _)| *id == field)
+                .and_then(|(_, value)| crate::protocol::length_or_percent(value, true))
+                .is_some_and(|(value, _)| value == 0.0);
+            if at_edge { safe } else { 0.0 }
+        };
+        [
+            touches(field::INSET_TOP, safe_top),
+            touches(
+                right(
+                    field::INSET_RIGHT,
+                    field::INSET_INLINE_START,
+                    field::INSET_INLINE_END,
+                ),
+                safe_right,
+            ),
+            // Over an open keyboard the edge is the keyboard's, not the system's.
+            if safe.keyboard > safe.insets[2] {
+                0.0
+            } else {
+                touches(field::INSET_BOTTOM, safe_bottom)
+            },
+            touches(
+                left(
+                    field::INSET_LEFT,
+                    field::INSET_INLINE_START,
+                    field::INSET_INLINE_END,
+                ),
+                safe_left,
+            ),
+        ]
+    } else {
+        [0.0; 4]
+    };
+    let [safe_top, safe_right, safe_bottom, safe_left] = [
+        safe_top - bleed[0],
+        safe_right - bleed[1],
+        safe_bottom - bleed[2],
+        safe_left - bleed[3],
+    ];
     // Opposing insets size an absolute box, so fixed media defaults must not override them.
     let spans = |a: usize, b: usize| {
         let (a, b) = (
@@ -417,6 +468,10 @@ pub(crate) fn node_style(
         // It runs on under the bottom bars, which show it through; its end still clears them.
         padding_bottom += safe.insets[2];
     }
+    padding_top += bleed[0];
+    padding_right += bleed[1];
+    padding_bottom += bleed[2];
+    padding_left += bleed[3];
     let composed_switch = composed_switch(records, index);
     if composed_switch {
         padding_right += check_reserve(record);
@@ -444,7 +499,7 @@ pub(crate) fn node_style(
     let border = record.number(field::BORDER_WIDTH).unwrap_or(0.0);
     let [border_top, border_right, border_bottom, border_left] =
         border_edges(record, rtl).map(|id| record.number(id).unwrap_or(border));
-    Ok(Style {
+    let mut style = Style {
         display: if display == Some("none") {
             Display::None
         } else if display == Some("grid") {
@@ -808,5 +863,16 @@ pub(crate) fn node_style(
             .number(field::ASPECT_RATIO)
             .or((record.tag == tag::VIDEO).then_some(16.0 / 9.0)),
         ..Default::default()
-    })
+    };
+    // An authored size grows by what it paints past its edges, so its content keeps that size.
+    let grow = |size: &mut Dimension, by: f32| {
+        if by > 0.0
+            && let taffy::style::ExpandedDimension::Length(authored) = size.expand()
+        {
+            *size = length(authored + by);
+        }
+    };
+    grow(&mut style.size.width, bleed[1] + bleed[3]);
+    grow(&mut style.size.height, bleed[0] + bleed[2]);
+    Ok(style)
 }

@@ -235,6 +235,47 @@ fn fixed_boxes_measure_insets_from_the_safe_content_box() {
 }
 
 #[test]
+fn a_fixed_box_in_a_top_layer_paints_to_the_system_edge_it_touches() {
+    let source = crate::session::tests::source(
+        "function render(){return h('page',{},h('view',{id:'sheet',popover:'manual',open:true},h('view',{'data-testid':'bar',style:{position:'fixed',left:0,right:0,bottom:0,height:30}},h('view',{'data-testid':'label',style:{height:30}})),h('view',{'data-testid':'fab',style:{position:'fixed',right:16,bottom:16,width:40,height:20}})))}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let mut place = |size: [u16; 2], insets: [f32; 4], keyboard: f32| {
+        let [top, right, bottom, left] = insets;
+        page.set_environment(serde_json::json!({"theme":"light","insets":{"top":top,"right":right,"bottom":bottom,"left":left},"keyboard":{"height":keyboard},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false}))
+            .unwrap();
+        let display = page.layout(size[0], size[1], 1.0).unwrap();
+        let at = |id: &str| {
+            display
+                .nodes
+                .iter()
+                .find(|n| n.test_id == id)
+                .unwrap()
+                .bounds
+        };
+        (at("bar"), at("label"), at("fab"))
+    };
+    let (bar, label, fab) = place([360, 640], [24.0, 0.0, 80.0, 0.0], 0.0);
+    assert_eq!(bar, [0.0, 640.0 - 80.0 - 30.0, 360.0, 30.0 + 80.0]);
+    assert_eq!(label[1], 640.0 - 80.0 - 30.0, "its content stays inside");
+    assert_eq!(
+        fab[..2],
+        [360.0 - 16.0 - 40.0, 640.0 - 80.0 - 16.0 - 20.0],
+        "a box clear of the edge keeps its safe inset"
+    );
+    // Landscape: the navigation bar on the right side is an edge it touches too.
+    let (bar, label, _) = place([640, 360], [24.0, 48.0, 56.0, 0.0], 0.0);
+    assert_eq!(bar, [0.0, 360.0 - 56.0 - 30.0, 640.0, 30.0 + 56.0]);
+    assert_eq!(
+        [label[0] + label[2], label[1]],
+        [640.0 - 48.0, 360.0 - 56.0 - 30.0]
+    );
+    // Over an open keyboard it stops at the keyboard.
+    let (bar, _, _) = place([360, 640], [24.0, 0.0, 80.0, 0.0], 300.0);
+    assert_eq!(bar[1] + bar[3], 640.0 - 300.0);
+}
+
+#[test]
 fn viewport_units_measure_the_safe_content_box() {
     let source = crate::session::tests::source(
         "function render(){return h('page',{},h('view',{'data-testid':'half',style:{height:'50vh',width:'50vw'}}))}",
