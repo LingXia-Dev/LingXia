@@ -5,4 +5,5 @@ Page({
     if (options.lang) this.setData({ lang: options.lang });
   },
   async back() { await lx.navigateBack(); },
+  async open({ page }: { page: keyof LxAppPages }) { await lx.navigateTo({ page }); },
 });

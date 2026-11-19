@@ -1,5 +1,5 @@
 import '../../theme/index.css';
-import { useLocal, useWebView, type WebViewBlocked, type WebViewError, type WebViewLoad, type WebViewMessage } from '@lingxia/view';
+import { useLocal, useView, useWebView, type WebViewBlocked, type WebViewError, type WebViewLoad, type WebViewMessage } from '@lingxia/view';
 import { Button, Page } from '../../shared/ui';
 
 type BootMsg = {
@@ -14,6 +14,7 @@ type BootMsg = {
 
 export function render() {
   const web = useWebView('spec-web');
+  const { env } = useView();
   const src = useLocal('wv-src', 'public/embed/demo.html');
   const sheetOpen = useLocal('wv-sheet', false);
   const dialogOpen = useLocal('wv-dialog', false);
@@ -112,6 +113,7 @@ export function render() {
         <text data-testid="wv-state-epoch">{`epoch=${bootEpoch.value}|hash=${lastHash.value}|sheet=${sheetOpen.value}`}</text>
         <text data-testid="wv-state-taps">{`html=${htmlTaps.value}|fab=${fabTaps.value}`}</text>
         <text data-testid="wv-state-msg">{`coalesced=${coalesced.value}|queued=${queued.value}|oversize=${oversizeErr.value}|flood=${floodLast.value}`}</text>
+        <text data-testid="wv-state-inset">{`top=${env.insets.top}`}</text>
         <text data-testid="wv-state-err">{`blocked=${blockedUrl.value}|err=${lastErr.value}`}</text>
 
         <dialog

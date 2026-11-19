@@ -101,8 +101,11 @@ spec('embedded webview composites beneath View overlays, suppresses semantics un
   const viewport = await view.viewport();
   const sheetBox = await view.testId('wv-sheet').boundingBox();
   expect(sheetBox.width).toBeGreaterThanOrEqual(viewport.width - 2);
-  expect(sheetBox.height).toBeGreaterThan(viewport.height * 0.65);
-  expect(sheetBox.height).toBeLessThan(viewport.height * 0.75);
+  // The sheet docks to the bottom edge, so its 70% is of the area below the top bars.
+  const top = Number(/top=([\d.]+)/.exec(await view.testId('wv-state-inset').textContent())?.[1]);
+  const area = viewport.height - top;
+  expect(sheetBox.height).toBeGreaterThan(area * 0.65);
+  expect(sheetBox.height).toBeLessThan(area * 0.75);
 
   await view.testId('wv-sheet-close').click();
   await expect(view.testId('wv-sheet')).not.toBeAttached();

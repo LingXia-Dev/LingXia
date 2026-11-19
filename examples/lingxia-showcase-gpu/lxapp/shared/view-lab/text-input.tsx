@@ -278,7 +278,7 @@ export function FieldsDemo() {
   const field = 'px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm';
   return (
     <>
-      <input data-testid="lab-input-otp" bind={code} aria-label="One-time code" type="number" maxLength={6} autoComplete="one-time-code" enterKeyHint="done" placeholder="6-digit code" className={field} />
+      <input data-testid="lab-input-otp" bind={code} aria-label="One-time code" inputMode="numeric" maxLength={6} autoComplete="one-time-code" enterKeyHint="done" placeholder="6-digit code" className={field} />
       <input data-testid="lab-input-amount" bind={amount} aria-label="Amount" type="number" min={1} max={500} step={0.5} enterKeyHint="next" placeholder="1 to 500, steps of 0.5" className={field} />
       <view className="flex-row gap-2">
         <input data-testid="lab-input-date" bind={day} aria-label="Billing date" type="date" min="2024-01-01" placeholder={t(labels.pickDate)} className={`grow basis-0 ${field}`} />

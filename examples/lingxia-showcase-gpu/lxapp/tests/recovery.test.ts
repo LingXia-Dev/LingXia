@@ -1,5 +1,5 @@
 import { expect, spec, type Fixture } from '@lingxia/test';
-import { openDemo } from './open-demo';
+import { openDemo, openUnderTabs } from './open-demo';
 
 // The host draws the recovery panel in the page's display language.
 const words = {
@@ -63,6 +63,15 @@ spec('Go back on the recovery panel leaves only the failed page', {
   const after = await t.app.nav.stack();
   expect(after.map((page) => page.path)).toEqual(before.map((page) => page.path));
   await expect(t.app.view.testId('lab-recovery-open')).toBeVisible();
+});
+
+spec('the recovery buttons open their pages from the View tab as from the group page', {
+  covers: ['view:recovery'], start: openUnderTabs('recovery'), requires: { chrome: true },
+}, async (t) => {
+  const before = await openFailing(t);
+  await t.app.chrome.tap(labelOf(await panel(t), words.back));
+  await t.waitFor(() => t.app.nav.stack(), { until: (stack) => stack.length === before.length });
+  await expect(t.app.view.testId('lab-recovery-stall')).toBeVisible();
 });
 
 // `devHoldFirstState`: under lingxia dev the page's Logic never sends its first state.
