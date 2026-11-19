@@ -297,6 +297,8 @@ final class GpuWebView extends FrameLayout {
         private int burstRemaining;
         private boolean capturing;
         private boolean captureScheduled;
+        /** Changed since the last capture. The traversal and the frame callback both capture; one per change. */
+        private boolean captureDirty = true;
         private boolean detached;
         private final Choreographer.FrameCallback captureCallback = frameTimeNanos -> {
             captureScheduled = false;
@@ -445,6 +447,7 @@ final class GpuWebView extends FrameLayout {
             if (detached) {
                 return;
             }
+            captureDirty = true;
             invalidate();
             if (!captureScheduled) {
                 captureScheduled = true;
@@ -482,8 +485,14 @@ final class GpuWebView extends FrameLayout {
             captureToSink();
         }
 
+        @Override
+        protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+            super.onSizeChanged(w, h, oldw, oldh);
+            captureDirty = true;
+        }
+
         private void captureToSink() {
-            if (degraded || webview == null || !hasCommittedContent()) {
+            if (!captureDirty || degraded || webview == null || !hasCommittedContent()) {
                 return;
             }
             int w = getWidth();
@@ -503,6 +512,7 @@ final class GpuWebView extends FrameLayout {
                 capturing = false;
             }
             if (drawn) {
+                captureDirty = false;
                 owner.onWebViewTextureUpdated();
             }
         }
