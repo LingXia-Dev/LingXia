@@ -488,7 +488,7 @@ const errorNotes = {
   UI_TEST_ID: 'An invalid `data-testid` reached the native decoder.',
   UI_TEXT: 'A `<span>`/`<link>` outside `<text>`, a bad link label, or too many runs.',
   UI_TIMEOUT: 'View code exceeded its time budget; the page needs a reload.',
-  UI_TRANSFORM: 'A transform the element cannot take (rotate/scale on editors, scrolls, sliders, web views).',
+  UI_TRANSFORM: 'A transform the element cannot take: at build, a box that scales or rotates holding an editor, scroll, slider or web view (a scale computed at run time is not checked); natively, a singular transform or a backdrop under an uneven or rotated one.',
   UI_TRANSITION: 'An invalid transition definition.',
   UI_VECTOR: 'Invalid vector paths, gradients or viewBox.',
   UI_VIEWPORT: 'The host reported an invalid viewport.',

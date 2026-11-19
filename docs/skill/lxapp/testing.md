@@ -483,8 +483,8 @@ spec('deleting asks first', async (t) => {
 `await t.visual.shot('home', { mask: [t.app.view.testId('clock')] })` attaches
 the settled page; mask rects are in the screenshot's own pixels.
 A shot of a page with a `<webview>` waits up to 4 s for it to draw and fails
-`E_WEBVIEW_NOT_READY` naming it; `view.screenshot({ allowNotReady: true })`
-captures it as its box's background instead.
+`E_WEBVIEW_NOT_READY` naming it; `t.visual.shot` always waits, while
+`view.screenshot({ allowNotReady: true })` captures it as its box's background.
 
 - `lxdev test --visual compare` fails a shot that changed against this device's
   baseline at its screen size; a shot with a baseline only at another size (a
