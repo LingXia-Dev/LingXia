@@ -2022,19 +2022,34 @@ class LxAppActivity : AppCompatActivity() {
         slideShow = show
         val gpu = page as? GpuPage
         gpu?.transition(if (backwards) com.lingxia.view.GpuView.TRANSITION_POP else com.lingxia.view.GpuView.TRANSITION_PUSH, 0f)
+        var finished = false
+        val finish = Runnable {
+            if (finished) return@Runnable
+            finished = true
+            incoming.setOnTouchListener(null)
+            // The view's animator keeps listeners for its next animation.
+            incoming.animate().setUpdateListener(null)
+            gpu?.transition(com.lingxia.view.GpuView.TRANSITION_END, 0f)
+            LxLog.d(NAV_TAG, "slide ${page.getWebTag()} done v$version now v$gpuTransitionVersion")
+            if (slideShow === show) slideShow = null
+            if (version == gpuTransitionVersion) {
+                clearGpuTransitionCover()
+                show.run()
+            }
+        }
+        // The live page already sits under the slide: a touch falls through to it, and the
+        // slide jumps to its end so what is shown is what was touched.
+        incoming.isClickable = false
+        incoming.setOnTouchListener { _, event ->
+            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
+                LxLog.d(NAV_TAG, "touch during slide ${page.getWebTag()}; ending it")
+                incoming.post(finish)
+            }
+            false
+        }
         incoming.animate().translationX(0f).setDuration(300L).setInterpolator(interpolator)
             .setUpdateListener { gpu?.transition(com.lingxia.view.GpuView.TRANSITION_FRAME, incoming.translationX) }
-            .withEndAction {
-                // The view's animator keeps listeners for its next animation.
-                incoming.animate().setUpdateListener(null)
-                gpu?.transition(com.lingxia.view.GpuView.TRANSITION_END, 0f)
-                LxLog.d(NAV_TAG, "slide ${page.getWebTag()} done v$version now v$gpuTransitionVersion")
-                if (slideShow === show) slideShow = null
-                if (version == gpuTransitionVersion) {
-                    clearGpuTransitionCover()
-                    show.run()
-                }
-            }.start()
+            .withEndAction(finish).start()
     }
 
     /** [passThrough]: the frame is of the live page under the cover, so touches go to it. */
@@ -2066,6 +2081,11 @@ class LxAppActivity : AppCompatActivity() {
             scaleType = android.widget.ImageView.ScaleType.MATRIX
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             isClickable = true
+            setOnTouchListener { view, event ->
+                if (view.isClickable && event.actionMasked == android.view.MotionEvent.ACTION_DOWN)
+                    LxLog.d(NAV_TAG, "touch held by the cover: the incoming page is not shown yet")
+                false
+            }
             rootContainer.addView(this)
             gpuTransitionCover = this
         }
