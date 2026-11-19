@@ -1210,11 +1210,18 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             String webHit = action == MotionEvent.ACTION_DOWN
                 ? nativeWebViewAt(host, event.getX(), event.getY())
                 : null;
-            if (webviews.dispatchPointer(event, webHit, () -> {
+            int web = webviews.dispatchPointer(event, webHit, () -> {
                 if (ime.isActive()) ime.clear(true);
-            })) {
-                return true;
+            });
+            if (web == GpuWebView.WEB) return true;
+            if (web == GpuWebView.HANDED_OFF) {
+                // The web page cannot scroll this drag: the View page takes it from its down.
+                MotionEvent down = webviews.handedOffDown(event);
+                try { pagePointer(down, MotionEvent.ACTION_DOWN); } finally { down.recycle(); }
             }
+            return pagePointer(event, action);
+        }
+        private boolean pagePointer(MotionEvent event, int action) {
             boolean refreshConsumed = pullToRefresh != null && pullToRefresh.onTouch(event);
             if (refreshConsumed || refreshingGesture) {
                 if (!refreshingGesture) {

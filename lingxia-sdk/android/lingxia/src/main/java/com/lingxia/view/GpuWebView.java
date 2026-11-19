@@ -48,6 +48,16 @@ final class GpuWebView extends FrameLayout {
     private Provider provider;
     private final HashMap<String, Slot> slots = new HashMap<>();
     private Slot touchOwner;
+    /** Not yet past the touch slop: a drag the web page cannot scroll goes to the View page. */
+    private boolean touchDeciding;
+    private float touchDownX;
+    private float touchDownY;
+
+    /** What [dispatchPointer] did with an event. */
+    static final int PAGE = 0;
+    static final int WEB = 1;
+    /** The web page could not scroll this drag: replay it to the View page from its down. */
+    static final int HANDED_OFF = 2;
     private float touchLeftPx;
     private float touchTopPx;
 
@@ -93,28 +103,39 @@ final class GpuWebView extends FrameLayout {
         }
     }
 
-    boolean dispatchPointer(MotionEvent event, String hitSpec, Runnable releaseViewIme) {
+    /** The down of a drag just handed off, at the point and time it began. */
+    MotionEvent handedOffDown(MotionEvent current) {
+        MotionEvent down = MotionEvent.obtain(current);
+        down.setAction(MotionEvent.ACTION_DOWN);
+        down.setLocation(touchDownX, touchDownY);
+        return down;
+    }
+
+    int dispatchPointer(MotionEvent event, String hitSpec, Runnable releaseViewIme) {
         int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
             cancelTouch();
             if (hitSpec == null || hitSpec.isEmpty()) {
                 clearWebFocus();
-                return false;
+                return PAGE;
             }
             String[] parts = hitSpec.split("\n");
             if (parts.length < 3) {
-                return false;
+                return PAGE;
             }
             Slot slot = slots.get(parts[0]);
             if (slot == null || slot.degraded || slot.webview == null) {
-                return false;
+                return PAGE;
             }
             try {
                 touchLeftPx = Float.parseFloat(parts[1]);
                 touchTopPx = Float.parseFloat(parts[2]);
             } catch (NumberFormatException ignored) {
-                return false;
+                return PAGE;
             }
+            touchDeciding = !slot.handlesDrags;
+            touchDownX = event.getX();
+            touchDownY = event.getY();
             if (releaseViewIme != null) {
                 releaseViewIme.run();
             }
@@ -123,7 +144,26 @@ final class GpuWebView extends FrameLayout {
                 getParent().requestDisallowInterceptTouchEvent(true);
             }
         } else if (touchOwner == null) {
-            return false;
+            return PAGE;
+        } else if (touchDeciding && action == MotionEvent.ACTION_MOVE) {
+            float dx = event.getX() - touchDownX;
+            float dy = event.getY() - touchDownY;
+            int slop = android.view.ViewConfiguration.get(getContext()).getScaledTouchSlop();
+            if (dx * dx + dy * dy > (float) slop * slop) {
+                touchDeciding = false;
+                View web = touchOwner.webview;
+                // A finger moving down scrolls the content toward its top.
+                boolean scrolls = Math.abs(dy) >= Math.abs(dx)
+                    ? web.canScrollVertically(dy > 0 ? -1 : 1)
+                    : web.canScrollHorizontally(dx > 0 ? -1 : 1);
+                if (!scrolls) {
+                    cancelTouch();
+                    if (getParent() != null) {
+                        getParent().requestDisallowInterceptTouchEvent(false);
+                    }
+                    return HANDED_OFF;
+                }
+            }
         }
 
         Slot target = touchOwner;
@@ -138,11 +178,12 @@ final class GpuWebView extends FrameLayout {
         target.burstCapture(20);
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
             touchOwner = null;
+            touchDeciding = false;
             if (getParent() != null) {
                 getParent().requestDisallowInterceptTouchEvent(false);
             }
         }
-        return handled || true;
+        return WEB;
     }
 
     void clearAll() {
@@ -200,6 +241,7 @@ final class GpuWebView extends FrameLayout {
                 boolean a11yHidden = item.optBoolean("accessibilityHidden", false);
                 boolean ready = item.optBoolean("ready", false);
                 String src = item.optString("src", "");
+                slot.handlesDrags = item.optBoolean("handlesDrags", false);
 
                 slot.update(left, top, width, height, degraded, a11yHidden, ready, src);
             }
@@ -250,6 +292,7 @@ final class GpuWebView extends FrameLayout {
         int slotHeight = 1;
         boolean degraded;
         boolean ready;
+        boolean handlesDrags;
         String lastSrc = "";
         private int burstRemaining;
         private boolean capturing;

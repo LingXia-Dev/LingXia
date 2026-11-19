@@ -7,6 +7,31 @@ import CLingXiaRustAPI
 /// A GPU page's view. Rust owns the page; this view reports its measurements
 /// and shows the frames Rust presents.
 @MainActor
+/// Lets the page's hand-off pan begin only for a web view that cannot scroll the drag, and
+/// holds the web views' own scroll pans until it fails.
+private final class GpuWebHandoffRule: NSObject, UIGestureRecognizerDelegate {
+    weak var page: GpuPageView?
+
+    func gestureRecognizer(_ recognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard let page else { return false }
+        page.webHandoffStart = touch.location(in: page)
+        return true
+    }
+
+    func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+        guard let page, let pan = recognizer as? UIPanGestureRecognizer,
+              let start = page.webHandoffStart else { return false }
+        return page.handsOff(at: start, translation: pan.translation(in: page))
+    }
+
+    func gestureRecognizer(
+        _ recognizer: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer
+    ) -> Bool {
+        guard let page, let scroll = other.view as? UIScrollView else { return false }
+        return other === scroll.panGestureRecognizer && scroll.isDescendant(of: page)
+    }
+}
+
 final class GpuPageView: UIView {
     let token: Int64
     /// The Metal presenter is bound to this view's layer while it is on screen.
@@ -84,6 +109,67 @@ final class GpuPageView: UIView {
         center.addObserver(self, selector: #selector(windowFocusChanged(_:)), name: UIApplication.didBecomeActiveNotification, object: nil)
         center.addObserver(self, selector: #selector(windowFocusChanged(_:)), name: UIApplication.willResignActiveNotification, object: nil)
         center.addObserver(self, selector: #selector(barChanged(_:)), name: GpuHostChrome.barChanged, object: nil)
+        webHandoff.addTarget(self, action: #selector(webHandedOff(_:)))
+        webHandoff.delegate = webHandoffRule
+        webHandoffRule.page = self
+        addGestureRecognizer(webHandoff)
+    }
+
+    /// A drag that starts on a web view whose page cannot scroll that way: the View page takes
+    /// it from where the finger went down, and the web view's touches are cancelled.
+    private let webHandoff = UIPanGestureRecognizer()
+    private let webHandoffRule = GpuWebHandoffRule()
+    fileprivate var webHandoffStart: CGPoint?
+
+    /// The web view under `point` that would hand a drag of `translation` to the page.
+    fileprivate func handsOff(at point: CGPoint, translation: CGPoint) -> Bool {
+        guard webContainer.hasActiveMounts, !gpuPageInputBlocked(token) else { return false }
+        let webId = gpuPageWebViewAt(token, Float(point.x), Float(point.y)).toString()
+        guard !webId.isEmpty, !webContainer.handlesDrags(webId),
+              let scroll = webContainer.webView(for: webId)?.scrollView else { return false }
+        let inset = scroll.adjustedContentInset
+        let offset = scroll.contentOffset
+        let size = scroll.contentSize
+        let bounds = scroll.bounds.size
+        // A finger moving down scrolls the content toward its top.
+        if abs(translation.y) >= abs(translation.x) {
+            let scrolls = translation.y > 0
+                ? offset.y > -inset.top + 0.5
+                : offset.y + bounds.height < size.height + inset.bottom - 0.5
+            return !scrolls
+        }
+        let scrolls = translation.x > 0
+            ? offset.x > -inset.left + 0.5
+            : offset.x + bounds.width < size.width + inset.right - 0.5
+        return !scrolls
+    }
+
+    @objc private func webHandedOff(_ pan: UIPanGestureRecognizer) {
+        let point = pan.location(in: self)
+        switch pan.state {
+        case .began:
+            guard let start = webHandoffStart else { return }
+            stopFlingNow()
+            touchStart = convert(start, to: nil)
+            samples = []
+            record(start, at: CACurrentMediaTime())
+            send(0, at: start)
+            record(point, at: CACurrentMediaTime())
+            send(1, at: point)
+        case .changed:
+            record(point, at: CACurrentMediaTime())
+            send(1, at: point)
+        case .ended:
+            let scale = window?.screen.scale ?? UIScreen.main.scale
+            let velocity = pan.velocity(in: self)
+            send(2, at: point, velocity: (velocity.x * scale, velocity.y * scale))
+            webHandoffStart = nil
+        case .cancelled, .failed:
+            send(3, at: point)
+            webHandoffStart = nil
+        default:
+            break
+        }
     }
 
     @objc private func suspend() {

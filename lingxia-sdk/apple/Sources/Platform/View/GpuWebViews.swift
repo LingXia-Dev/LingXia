@@ -26,6 +26,8 @@ struct GpuWebViewMountSpec: Decodable {
     let occluders: [GpuWebViewClipSpec]?
     let degraded: Bool
     let accessibilityHidden: Bool
+    /// The page handles its own drags: one starting on it never passes to the View page.
+    let handlesDrags: Bool?
 }
 
 #if os(iOS)
@@ -190,6 +192,7 @@ final class GpuWebViewSlot: UIView {
     let webId: String
     weak var webView: WKWebView?
     var accessibilitySuppressed = false
+    var handlesDrags = false
     /// What the last sync asked for; a snapshot shows a hidden slot only while it runs.
     var wantsHidden = false
 
@@ -249,6 +252,11 @@ final class GpuWebViewContainer: UIView {
     func webView(for webId: String) -> WKWebView? {
         guard let slot = slots[webId], !slot.isHidden else { return nil }
         return slot.webView
+    }
+
+    /// Whether a drag starting on `webId` stays with its page whatever that page can scroll.
+    func handlesDrags(_ webId: String) -> Bool {
+        slots[webId]?.handlesDrags ?? false
     }
 
     /// Pictures each of `ids` at `scale` device pixels per point for the page's core, which
@@ -338,6 +346,7 @@ final class GpuWebViewContainer: UIView {
             let hidden = spec.degraded || vw <= 0.01 || vh <= 0.01
             slot.wantsHidden = hidden
             slot.isHidden = hidden
+            slot.handlesDrags = spec.handlesDrags ?? false
             slot.accessibilitySuppressed = spec.accessibilityHidden || spec.degraded
             slot.accessibilityElementsHidden = slot.accessibilitySuppressed
 
