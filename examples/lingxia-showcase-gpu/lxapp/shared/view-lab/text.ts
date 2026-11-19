@@ -117,7 +117,7 @@ export const demos = {
     focus: { testId: 'lab-focus', title: { en: 'Keyboard focus', zh: '键盘焦点' }, try: { en: 'With a keyboard: Tab to Open and press Enter. Focus stays in the dialog and returns to Open when it closes. The ? shows a hint while focus rests on it.', zh: '使用键盘：Tab 到“打开”并按回车。焦点留在对话框内，关闭后回到“打开”。焦点停在 ? 上时显示提示。' } },
     days: { testId: 'lab-days', title: { en: 'A grid of days', zh: '日期网格' }, try: { en: 'With a keyboard: Tab reaches the grid once; arrows move by day and by week, Home and End go to the week\'s ends, PageUp and PageDown change the month.', zh: '使用键盘：Tab 只进入网格一次；方向键按天、按周移动，Home 和 End 到本周两端，PageUp 和 PageDown 切换月份。' } },
     groups: { testId: 'lab-composites', title: { en: 'One Tab stop, arrows inside', zh: '一次 Tab 进入，方向键在内移动' }, try: { en: 'With a keyboard: Tab reaches the tabs, the toolbar and the tree once each; arrows move within. A tab is chosen as you arrive.', zh: '使用键盘：Tab 分别只进入标签页、工具栏和树一次；方向键在其中移动。到达一个标签即选中它。' } },
-    recovery: { testId: 'lab-recovery', title: { en: 'For testing: a page that fails', zh: '测试用：会出错的页面' }, try: { en: 'Opens a page whose View throws on purpose. The recovery panel offers Retry, which fails again, and Go back, which returns here.', zh: '打开一个视图故意出错的页面。恢复面板提供“重试”（会再次失败）和“返回”（回到这里）。' } },
+    recovery: { testId: 'lab-recovery', title: { en: 'For testing: a page that fails', zh: '测试用：会出错的页面' }, try: { en: 'The first page\'s View throws on purpose; its recovery panel offers Retry, which fails again, and Go back. The second never gets its first state under lingxia dev, so it shows the slow-load panel.', zh: '第一个页面的视图故意出错，恢复面板提供“重试”（会再次失败）和“返回”。第二个页面在 lingxia dev 下收不到首个状态，显示加载缓慢面板。' } },
   },
   motion: {
     panel: { testId: 'lab-panel', title: { en: 'A panel that opens and closes', zh: '展开与收起的面板' }, try: { en: 'Tap the heading: the panel grows to show its text and the row below moves down with it. Tap again and it closes.', zh: '点按标题：面板展开露出文字，下面的一行随之下移；再点一次收起。' } },
@@ -406,6 +406,7 @@ export const labels = {
   reset: { en: 'Reset', zh: '重置' },
   webPlain: { en: 'Page that scrolls with the screen', zh: '随屏幕滚动的网页' },
   openFailing: { en: 'Open the failing page', zh: '打开出错的页面' },
+  openStalled: { en: 'Open the page that never loads', zh: '打开无法加载完的页面' },
   webSchemeFrame: { en: 'Page that follows the colour scheme', zh: '跟随配色方案的网页' },
   webScrollFrame: { en: 'Page with thirty rows', zh: '有三十行的网页' },
   webOwn: { en: 'Page that keeps its drags', zh: '自己接收拖动的网页' },

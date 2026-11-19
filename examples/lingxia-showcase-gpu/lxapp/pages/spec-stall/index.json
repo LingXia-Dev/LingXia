@@ -1,0 +1,10 @@
+{
+  "navigationBar": {
+    "title": {
+      "default": "Stall fixture",
+      "zh-CN": "加载停滞测试页"
+    }
+  },
+  "pageOrientation": "auto",
+  "devHoldFirstState": true
+}

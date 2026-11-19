@@ -2,7 +2,7 @@
   "appId": "lingxia-showcase-gpu",
   "renderer": "gpu",
   "appName": "LingXia Showcase GPU",
-  "version": "1.0.53",
+  "version": "1.0.54",
   "minRuntime": "0.28.0",
   "pages": [
     {
@@ -168,6 +168,10 @@
     {
       "name": "spec-fault",
       "path": "pages/spec-fault/index"
+    },
+    {
+      "name": "spec-stall",
+      "path": "pages/spec-stall/index"
     },
     {
       "name": "spec-video",
