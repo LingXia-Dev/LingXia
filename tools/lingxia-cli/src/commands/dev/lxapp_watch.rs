@@ -692,6 +692,13 @@ fn reload_one(state: &DevServerState, app_id: &str, options: &LxAppWatchOptions)
                 "✗".red()
             );
         }
+        Err(err) if err.is::<super::server::AppInBackground>() => {
+            println!(
+                "  {} rebuilt {}; the app is in the background, so it reloads when it comes back",
+                "•".cyan(),
+                app_id.cyan()
+            );
+        }
         Err(err) => {
             eprintln!(
                 "  {} rebuilt {app_id}, restart failed: {err:#} (retried when the app reconnects)",

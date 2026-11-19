@@ -28,7 +28,24 @@ const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
 /// How long a relayed call waits for an app its host reports in the background.
 /// Long enough for a spec that leaves the app and comes back on purpose.
 const APP_BACKGROUND_GRACE: Duration = Duration::from_secs(5);
+/// An attach's open: a connected app in front answers at once.
+const ATTACH_OPEN_TIMEOUT: Duration = Duration::from_secs(15);
 const RUNTIME_EVENT_QUEUE_CAPACITY: usize = 64;
+
+/// The attach answer's `reason` when the app was in the background.
+pub(crate) const APP_IN_BACKGROUND: &str = "app_in_background";
+
+/// A runtime call refused because the app stayed in the background past the grace.
+#[derive(Debug)]
+pub(crate) struct AppInBackground;
+
+impl std::fmt::Display for AppInBackground {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the app is in the background (screen locked or another app in front)")
+    }
+}
+
+impl std::error::Error for AppInBackground {}
 const DEV_LXAPP_HTTP_PREFIX: &str = "/__lingxia/dev/lxapp/";
 /// zstd window of the dev bundle archive (16 MiB); the client allows the same.
 const DEV_BUNDLE_WINDOW_LOG: u32 = 24;
@@ -499,13 +516,19 @@ impl DevServerState {
             let _ = self.take_pending_result(&id);
             return Err(anyhow!("the runtime disconnected"));
         }
-        match rx.recv_timeout(timeout) {
-            Ok(DevSessionMessage::Response(response)) => match response.error {
-                Some(error) => Err(anyhow!("{}", error.message)),
-                None => Ok(response.result.unwrap_or_default()),
+        match self.await_runtime(&rx, timeout) {
+            RelayWait::Answered(message) => match *message {
+                DevSessionMessage::Response(response) => match response.error {
+                    Some(error) => Err(anyhow!("{}", error.message)),
+                    None => Ok(response.result.unwrap_or_default()),
+                },
+                _ => Err(anyhow!("unexpected response to {method}")),
             },
-            Ok(_) => Err(anyhow!("unexpected response to {method}")),
-            Err(_) => {
+            RelayWait::Background => {
+                let _ = self.take_pending_result(&id);
+                Err(AppInBackground.into())
+            }
+            RelayWait::TimedOut | RelayWait::Disconnected => {
                 let _ = self.take_pending_result(&id);
                 Err(anyhow!("{method} got no answer"))
             }
@@ -887,15 +910,22 @@ impl DevServerState {
         None
     }
 
-    fn set_app_foreground(&self, foreground: bool) {
+    /// Whether the app just came back from the background.
+    fn set_app_foreground(&self, foreground: bool) -> bool {
         let mut since = self
             .app_background_since
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         match (foreground, *since) {
-            (true, _) => *since = None,
-            (false, None) => *since = Some(Instant::now()),
-            (false, Some(_)) => {}
+            (true, was) => {
+                *since = None;
+                was.is_some()
+            }
+            (false, None) => {
+                *since = Some(Instant::now());
+                false
+            }
+            (false, Some(_)) => false,
         }
     }
 
@@ -966,6 +996,18 @@ impl DevServerState {
             }
         }
         runs
+    }
+
+    /// Waits for the runtime's answer; an app that stays in the background past the
+    /// grace ends the wait early.
+    fn await_runtime(
+        &self,
+        rx: &mpsc::Receiver<DevSessionMessage>,
+        timeout: Duration,
+    ) -> RelayWait {
+        wait_for_result(rx, timeout, APP_BACKGROUND_GRACE, || {
+            self.app_background_since()
+        })
     }
 
     fn app_background_since(&self) -> Option<Instant> {
@@ -1356,18 +1398,24 @@ impl DevServerState {
             let _ = self.take_pending_result(&id);
             return Err(anyhow!("Failed to forward restart to runtime"));
         }
-        match rx.recv_timeout(DEFAULT_COMMAND_TIMEOUT) {
-            Ok(DevSessionMessage::Response(response)) => match response.error {
-                Some(error) if error.code == "not_open" => Ok(RestartOutcome::NotOpen),
-                Some(error) => Ok(RestartOutcome::Failed(error.message)),
-                None => Ok(RestartOutcome::Restarted),
+        match self.await_runtime(&rx, DEFAULT_COMMAND_TIMEOUT) {
+            RelayWait::Answered(message) => match *message {
+                DevSessionMessage::Response(response) => match response.error {
+                    Some(error) if error.code == "not_open" => Ok(RestartOutcome::NotOpen),
+                    Some(error) => Ok(RestartOutcome::Failed(error.message)),
+                    None => Ok(RestartOutcome::Restarted),
+                },
+                _ => Err(anyhow!("unexpected restart response")),
             },
-            Ok(_) => Err(anyhow!("unexpected restart response")),
-            Err(mpsc::RecvTimeoutError::Timeout) => {
+            RelayWait::Background => {
+                let _ = self.take_pending_result(&id);
+                Err(AppInBackground.into())
+            }
+            RelayWait::TimedOut => {
                 let _ = self.take_pending_result(&id);
                 Err(anyhow!("lxapp restart timed out"))
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
+            RelayWait::Disconnected => {
                 let _ = self.take_pending_result(&id);
                 Err(anyhow!("runtime disconnected during restart"))
             }
@@ -1388,6 +1436,7 @@ impl DevServerState {
 
     /// Keep `app_id` open in the app: now if it is connected, and again on
     /// every reconnect that finds it closed.
+    /// An app in the background fails it with [`AppInBackground`]; it opens when the app comes back.
     pub(crate) fn present(&self, app_id: &str) -> Result<()> {
         {
             let mut presented = self.lock_presented();
@@ -1401,7 +1450,7 @@ impl DevServerState {
         if self.runtime_sender().is_none() {
             return Ok(());
         }
-        self.show(app_id)
+        self.show(app_id, ATTACH_OPEN_TIMEOUT)
     }
 
     /// Bring the connected app up to date: restart what was rebuilt while it
@@ -1446,8 +1495,11 @@ impl DevServerState {
             if self.current_runtime_id() != Some(runtime_id) {
                 return;
             }
-            if let Err(err) = self.show(&app_id) {
-                eprintln!("  ✗ open {app_id} failed: {err:#}");
+            match self.show(&app_id, DEFAULT_COMMAND_TIMEOUT) {
+                Ok(()) => {}
+                // It opens when the app reports the foreground.
+                Err(err) if err.is::<AppInBackground>() => return,
+                Err(err) => eprintln!("  ✗ open {app_id} failed: {err:#}"),
             }
         }
     }
@@ -1460,7 +1512,7 @@ impl DevServerState {
             .map(|(id, _)| *id)
     }
 
-    fn show(&self, app_id: &str) -> Result<()> {
+    fn show(&self, app_id: &str, open_timeout: Duration) -> Result<()> {
         let _present = self
             .present_lock
             .lock()
@@ -1485,6 +1537,7 @@ impl DevServerState {
             match self.forward_restart(app_id) {
                 // A test run holds the app; this opens when its pause ends.
                 Ok(RestartOutcome::Deferred) => return Ok(()),
+                Err(err) if err.is::<AppInBackground>() => return Err(err),
                 Ok(RestartOutcome::Failed(message)) => {
                     eprintln!("  ✗ restart {app_id} failed: {message}");
                 }
@@ -1492,7 +1545,7 @@ impl DevServerState {
                 Ok(_) => {}
             }
         }
-        self.open_lxapp(app_id)?;
+        self.open_lxapp(app_id, open_timeout)?;
         if let Some(item) = self
             .lock_presented()
             .iter_mut()
@@ -1516,14 +1569,22 @@ impl DevServerState {
         }))
     }
 
-    fn open_lxapp(&self, app_id: &str) -> Result<()> {
+    fn open_lxapp(&self, app_id: &str, timeout: Duration) -> Result<()> {
         let _guard = self.lock_command_forwarding();
-        self.runtime_request(
+        let started = Instant::now();
+        match self.runtime_request(
             lingxia_control_protocol::methods::lxapp::OPEN,
             serde_json::json!({ "appid": app_id }),
-            DEFAULT_COMMAND_TIMEOUT,
-        )?;
-        Ok(())
+            timeout,
+        ) {
+            Ok(_) => Ok(()),
+            Err(err) if err.is::<AppInBackground>() => Err(err),
+            Err(_) if started.elapsed() >= timeout => Err(anyhow!(
+                "The app did not answer the open in {}s. Is it frozen?",
+                timeout.as_secs()
+            )),
+            Err(err) => Err(err),
+        }
     }
 }
 
@@ -2311,9 +2372,14 @@ fn route_runtime_message(
     match message {
         DevSessionMessage::EventBatch { events } => {
             if let Some(foreground) = events.iter().rev().find_map(DevSessionEvent::as_app_state) {
-                state.set_app_foreground(foreground);
+                let came_back = state.set_app_foreground(foreground);
                 if foreground {
                     state.forward_held_cancels();
+                }
+                // What the background held back: an open, a reload of a rebuilt lxapp.
+                if came_back {
+                    let state = Arc::clone(state);
+                    thread::spawn(move || state.catch_up_current());
                 }
             }
             match event_tx.try_send(events) {
@@ -2443,16 +2509,26 @@ fn handle_lxapp_attach(
     {
         return finish_attach_error(&mut websocket, id, view_mismatch(&app_id, have, need));
     }
-    let connected = state.runtime_sender().is_some();
-    if let Err(err) = state.present(&app_id) {
-        return finish_attach_error(&mut websocket, id, format!("{err:#}"));
+    // `open: false` builds and watches it only; nothing comes to the front.
+    let open = params
+        .as_ref()
+        .and_then(|value| value.get("open"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    let mut result = serde_json::json!({ "appId": app_id, "opened": false });
+    if open {
+        let connected = state.runtime_sender().is_some();
+        match state.present(&app_id) {
+            Ok(()) => result["opened"] = serde_json::Value::Bool(connected),
+            Err(err) if err.is::<AppInBackground>() => {
+                result["reason"] = serde_json::Value::from(APP_IN_BACKGROUND);
+            }
+            Err(err) => return finish_attach_error(&mut websocket, id, format!("{err:#}")),
+        }
     }
     send_wire_message(
         &mut websocket,
-        &DevSessionMessage::success(
-            id,
-            Some(serde_json::json!({ "appId": app_id, "opened": connected })),
-        ),
+        &DevSessionMessage::success(id, Some(result)),
     )?;
     hold_attach(&mut websocket);
     Ok(())
@@ -3093,6 +3169,52 @@ mod tests {
             &mut false,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn an_open_in_the_background_gives_up_within_the_grace_and_happens_when_the_app_comes_back() {
+        use lingxia_control_protocol::methods::lxapp;
+        let state = Arc::new(authenticated_state());
+        let (tx, rx) = mpsc::channel();
+        state.claim_runtime_sender(tx);
+        app_state(&state, false);
+        let started = Instant::now();
+        let err = state.present("demo").unwrap_err();
+        assert!(err.is::<super::AppInBackground>(), "{err:#}");
+        assert!(started.elapsed() < super::APP_BACKGROUND_GRACE + Duration::from_secs(2));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(DevSessionMessage::Request(request)) if request.method == lxapp::RESTART
+        ));
+        let runtime = {
+            let state = state.clone();
+            thread::spawn(move || {
+                let mut methods = Vec::new();
+                while let Ok(DevSessionMessage::Request(request)) =
+                    rx.recv_timeout(Duration::from_secs(3))
+                {
+                    methods.push(request.method.clone());
+                    let done = request.method == lxapp::OPEN;
+                    state
+                        .take_pending_result(&request.id)
+                        .unwrap()
+                        .send(DevSessionMessage::Response(
+                            lingxia_control_protocol::ControlResponse {
+                                id: request.id,
+                                result: Some(serde_json::json!({})),
+                                error: None,
+                            },
+                        ))
+                        .unwrap();
+                    if done {
+                        break;
+                    }
+                }
+                methods
+            })
+        };
+        app_state(&state, true);
+        assert_eq!(runtime.join().unwrap(), [lxapp::RESTART, lxapp::OPEN]);
     }
 
     #[test]

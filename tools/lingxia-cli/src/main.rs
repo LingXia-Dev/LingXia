@@ -228,6 +228,10 @@ enum DevAction {
         /// ordinal, or id prefix.
         #[arg(long)]
         session: Option<String>,
+        /// Build and watch the lxapp without opening it or bringing the app
+        /// forward. Saves rebuild it; open it from the app.
+        #[arg(long)]
+        no_open: bool,
     },
 }
 
@@ -1162,9 +1166,15 @@ fn run() -> Result<()> {
                     DevAction::Stop { session } => {
                         commands::dev::DevSessionAction::Stop { session }
                     }
-                    DevAction::Listen { port, session } => {
-                        commands::dev::DevSessionAction::Listen { port, session }
-                    }
+                    DevAction::Listen {
+                        port,
+                        session,
+                        no_open,
+                    } => commands::dev::DevSessionAction::Listen {
+                        port,
+                        session,
+                        open: !no_open,
+                    },
                 }),
             })?;
         }
@@ -1753,8 +1763,21 @@ mod cli_tests {
             dev_options.action,
             Some(DevAction::Listen {
                 port: Some(39447),
-                session: None
+                session: None,
+                no_open: false,
             })
+        ));
+    }
+
+    #[test]
+    fn listen_no_open_parses() {
+        let cli = Cli::try_parse_from(["lingxia", "dev", "listen", "--no-open"]).unwrap();
+        let Commands::Dev { dev_options } = cli.command else {
+            panic!("expected dev command");
+        };
+        assert!(matches!(
+            dev_options.action,
+            Some(DevAction::Listen { no_open: true, .. })
         ));
     }
 
@@ -1769,7 +1792,8 @@ mod cli_tests {
             dev_options.action,
             Some(DevAction::Listen {
                 port: None,
-                session: Some(session)
+                session: Some(session),
+                no_open: false,
             }) if session == "mark-win"
         ));
     }

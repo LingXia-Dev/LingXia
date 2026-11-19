@@ -67,6 +67,10 @@ A relaunched app opens the lxapp again. A foregrounded one keeps its page,
 and one you closed stays closed. A save the app missed while away reloads
 when it reconnects.
 
+`--no-open` builds and watches the lxapp but never opens it or brings the app
+forward; open it from the app. Without it, an app in the background (screen
+locked, another app in front) opens the lxapp when it comes back.
+
 Without `--port`, it attaches to the one running `lingxia dev` host session.
 Only sessions with an app connected count; several require `--session` (a
 name, a target, `target@dir`, an ordinal, or an id prefix). A Runner session

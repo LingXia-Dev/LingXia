@@ -114,6 +114,8 @@ pub enum DevSessionAction {
     Listen {
         port: Option<u16>,
         session: Option<String>,
+        /// Open the lxapp in the app once attached (`--no-open` clears it).
+        open: bool,
     },
 }
 
@@ -454,7 +456,11 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
             }
             return stop_session(&project_root, session.as_deref());
         }
-        Some(DevSessionAction::Listen { port, ref session }) => Some((port, session.clone())),
+        Some(DevSessionAction::Listen {
+            port,
+            ref session,
+            open,
+        }) => Some((port, session.clone(), open)),
         None => None,
     };
     refuse_mock_outside_dev(options.mock, options.env_version.as_deref())?;
@@ -508,7 +514,7 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
     let stop_requested = Arc::new(AtomicBool::new(false));
     install_ctrlc_handler(stop_requested.clone())?;
 
-    if let Some((port, session)) = listen {
+    if let Some((port, session, open)) = listen {
         if !attach::is_standalone_lxapp(&project_root) {
             return Err(anyhow!(
                 "`lingxia dev listen` develops one lxapp on a device whose host app is already \
@@ -537,6 +543,7 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
             device: options.device,
             port,
             name: options.name,
+            open,
         });
     }
 

@@ -41,6 +41,8 @@ pub(super) struct AttachRequest {
     pub device: Option<String>,
     pub port: Option<u16>,
     pub name: Option<String>,
+    /// Open the lxapp once attached; `false` only builds and watches it.
+    pub open: bool,
 }
 
 pub(super) fn is_standalone_lxapp(root: &Path) -> bool {
@@ -102,6 +104,7 @@ pub(super) fn execute(request: AttachRequest) -> Result<()> {
         &source,
         &attach_token,
         request.release,
+        request.open,
         &request.stop_requested,
     )
 }
@@ -187,9 +190,15 @@ fn host_and_attach(request: AttachRequest, port: u16) -> Result<()> {
     let result = (|| -> Result<()> {
         server.rebuild_lxapp(&app_id, request.release)?;
         server.watch_lxapps(request.release);
-        // A failed open is retried on the next connect; the session stays.
-        if let Err(err) = server.present(&app_id) {
-            eprintln!("  {} open {app_id} failed: {err:#}", "✗".red());
+        if !request.open {
+            println!("  {} {NOT_OPENED}", "•".cyan());
+        } else if let Err(err) = server.present(&app_id) {
+            // A failed open is retried on the next connect; the session stays.
+            if err.is::<server::AppInBackground>() {
+                println!("  {} {}", "•".yellow(), background_note(&app_id));
+            } else {
+                eprintln!("  {} open {app_id} failed: {err:#}", "✗".red());
+            }
         }
         print_dev_banner(platform_name, "Ctrl+C", &[("Port", &port.to_string())]);
         if !server.runtime_connected() {
@@ -254,6 +263,7 @@ fn attach_and_hold(
     source: &Path,
     attach_token: &str,
     release: bool,
+    open: bool,
     stop_requested: &AtomicBool,
 ) -> Result<()> {
     let mut websocket = connect_host(ws_url)?;
@@ -275,6 +285,9 @@ fn attach_and_hold(
     if release {
         params["release"] = serde_json::Value::Bool(true);
     }
+    if !open {
+        params["open"] = serde_json::Value::Bool(false);
+    }
     send_message(
         &mut websocket,
         &DevSessionMessage::Request(ControlRequest {
@@ -284,9 +297,14 @@ fn attach_and_hold(
         }),
     )?;
 
-    let (attached_id, opened) = wait_for_attach(&mut websocket, &command_id, stop_requested)?;
+    let (attached_id, opened, reason) =
+        wait_for_attach(&mut websocket, &command_id, stop_requested)?;
     if opened {
         println!("  {} Opened {attached_id}.", "✓".green());
+    } else if !open {
+        println!("  {} {NOT_OPENED}", "•".cyan());
+    } else if reason.as_deref() == Some(server::APP_IN_BACKGROUND) {
+        println!("  {} {}", "•".yellow(), background_note(&attached_id));
     } else {
         println!(
             "  {} {attached_id} opens when the app connects.",
@@ -437,11 +455,21 @@ fn send_message(websocket: &mut WebSocket<TcpStream>, message: &DevSessionMessag
         .context("Failed to send dev websocket message")
 }
 
+const NOT_OPENED: &str = "Attached, not opened. Saves rebuild it; open it from the app.";
+
+fn background_note(app_id: &str) -> String {
+    format!(
+        "The app is in the background (screen locked or another app in front). {app_id} opens \
+         when you bring the app forward."
+    )
+}
+
+/// The attached app id, whether the host opened it, and why not.
 fn wait_for_attach(
     websocket: &mut WebSocket<TcpStream>,
     command_id: &str,
     stop_requested: &AtomicBool,
-) -> Result<(String, bool)> {
+) -> Result<(String, bool, Option<String>)> {
     loop {
         if stop_requested.load(Ordering::Acquire) {
             let _ = websocket.close(None);
@@ -474,7 +502,13 @@ fn wait_for_attach(
                     .and_then(|value| value.get("opened"))
                     .and_then(serde_json::Value::as_bool)
                     .unwrap_or(true);
-                return Ok((app_id, opened));
+                let reason = response
+                    .result
+                    .as_ref()
+                    .and_then(|value| value.get("reason"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned);
+                return Ok((app_id, opened, reason));
             }
             Ok(Message::Close(_)) => {
                 return Err(anyhow!(
