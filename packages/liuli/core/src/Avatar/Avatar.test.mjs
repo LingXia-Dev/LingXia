@@ -77,3 +77,9 @@ test('Hues: a name keeps one hue; the initials sit in the text role on its fill'
   assert.equal(ana.props.background, `hue-${hueFor('Ana Lima')}-soft`);
   assert.equal(ana.children[0].props.color, 'text');
 });
+
+test('People: a photo keeps the box its exact size; only initials grow it', async () => {
+  const screen = await renderExample('Avatar/Avatar', 'People');
+  const ana = screen.getByTestId('ana');
+  assert.deepEqual([ana.props.width, ana.props.height, ana.props.minWidth], [40, 40, undefined]);
+});
