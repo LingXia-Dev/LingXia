@@ -17,7 +17,12 @@ pub(super) struct HostEnvironment {
     ignores_appearance: bool,
     /// A test run's override (`view.environment`); only automation sets it.
     test: Option<TestOverride>,
+    /// The largest factor the system text size may scale text by, as the lxapp and page allow.
+    max_text_scale: Option<f32>,
 }
+
+/// The text scale held to before the lxapp's limit arrives, and when it names none.
+const DEFAULT_MAX_TEXT_SCALE: f32 = 2.0;
 
 /// What a test run pins for a page: its theme, stillness (no motion, a steady caret), the
 /// system text size and the contrast setting. `None` leaves a fact as measured.
@@ -88,6 +93,8 @@ enum Update {
         revision: u64,
         capsule: Option<Capsule>,
     },
+    #[serde(rename = "textScaleLimit")]
+    TextScaleLimit { max: f32 },
 }
 
 impl HostEnvironment {
@@ -149,6 +156,12 @@ impl HostEnvironment {
                 }
                 // Not host context: the View's read tracking does not count `capsule`.
                 changed
+            }
+            Update::TextScaleLimit { max } => {
+                if !(1.0..=3.0).contains(&max) {
+                    return Err("UI_ENVIRONMENT: invalid text scale limit".into());
+                }
+                self.max_text_scale.replace(max) != Some(max)
             }
             Update::Theme { revision, pack } => {
                 let newer = newer(self.theme.as_ref().map(|t| t.0), revision);
@@ -284,6 +297,7 @@ impl HostEnvironment {
                 env["reducedMotion"] = true.into();
             }
         }
+        self.limit_text_scale(env);
         if let Some((_, language, content)) = &self.language {
             env["displayLanguage"] = language.as_str().into();
             env["contentLanguage"] = content.as_deref().unwrap_or(language).into();
@@ -315,6 +329,29 @@ impl HostEnvironment {
             && env.get("scales").is_none()
         {
             env["scales"] = scales.clone();
+        }
+    }
+}
+
+impl HostEnvironment {
+    /// Caps the measured text size mapping at the allowed factor. Capped at its points, the
+    /// mapping stays rising and stays under the cap between them.
+    fn limit_text_scale(&self, env: &mut serde_json::Value) {
+        let max = self.max_text_scale.unwrap_or(DEFAULT_MAX_TEXT_SCALE);
+        let Some(rows) = env
+            .get_mut("textScale")
+            .and_then(|rows| rows.as_array_mut())
+        else {
+            return;
+        };
+        for row in rows {
+            let (Some(x), Some(y)) = (row[0].as_f64(), row[1].as_f64()) else {
+                continue;
+            };
+            let capped = x * f64::from(max);
+            if y > capped {
+                row[1] = capped.into();
+            }
         }
     }
 }
@@ -583,5 +620,37 @@ mod tests {
         let mut env = json!({"theme": "light", "palette": {"revision": 9, "colors": ["#000000"]}});
         host.apply(&mut env);
         assert_eq!(env["palette"]["revision"], 9, "the platform's palette wins");
+    }
+
+    #[test]
+    fn the_text_size_mapping_is_capped_at_the_allowed_scale() {
+        let mut host = HostEnvironment::default();
+        let measured = json!([[0, 0], [17, 51], [100, 150], [16384, 24576]]);
+        let capped = |host: &HostEnvironment| {
+            let mut env = json!({"textScale": measured});
+            host.apply(&mut env);
+            env["textScale"].clone()
+        };
+        // 2.0 until the lxapp says otherwise; a point under the cap keeps its size.
+        assert_eq!(
+            capped(&host),
+            json!([[0, 0], [17, 34.0], [100, 150], [16384, 24576]])
+        );
+        let limit = |max: f64| json!({"kind": "textScaleLimit", "max": max}).to_string();
+        assert!(host.update(&limit(3.0)).unwrap());
+        assert_eq!(capped(&host), measured);
+        assert!(
+            !host.update(&limit(3.0)).unwrap(),
+            "the same limit redraws nothing"
+        );
+        assert!(host.update(&limit(1.0)).unwrap());
+        assert_eq!(
+            capped(&host),
+            json!([[0, 0], [17, 17.0], [100, 100.0], [16384, 16384.0]])
+        );
+        assert!(crate::text::scale::TextScale::decode(Some(&capped(&host))).is_ok());
+        for invalid in [0.5, 3.5] {
+            assert!(host.update(&limit(invalid)).is_err());
+        }
     }
 }

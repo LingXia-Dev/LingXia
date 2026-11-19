@@ -105,7 +105,15 @@ pub(crate) struct LxAppConfig {
     /// The languages the lxapp's text is written in, the first being its fallback.
     #[serde(default)]
     pub(crate) languages: Vec<String>,
+
+    /// The largest factor the system text size may scale this lxapp's GPU text by, `1.0`–`3.0`.
+    #[serde(default)]
+    pub(crate) maxTextScale: Option<f64>,
 }
+
+/// The text scale an lxapp that names none is held to.
+pub(crate) const DEFAULT_MAX_TEXT_SCALE: f64 = 2.0;
+pub(crate) const TEXT_SCALE_LIMITS: std::ops::RangeInclusive<f64> = 1.0..=3.0;
 
 impl LxAppConfig {
     /// Business code 6002 when `runtime_version` is below `minRuntime`.
@@ -160,6 +168,10 @@ impl LxAppConfig {
             .map(|page| page.path.clone())
     }
 
+    pub(crate) fn max_text_scale(&self) -> f64 {
+        self.maxTextScale.unwrap_or(DEFAULT_MAX_TEXT_SCALE)
+    }
+
     pub fn logic_entry(&self) -> Option<String> {
         match &self.logic {
             Some(LxAppLogicEntry::Enabled(false)) => None,
@@ -179,6 +191,14 @@ impl LxAppConfig {
     }
 
     fn validate(&mut self) -> Result<(), serde_json::Error> {
+        if self
+            .maxTextScale
+            .is_some_and(|max| !TEXT_SCALE_LIMITS.contains(&max))
+        {
+            return Err(serde_json::Error::custom(
+                r#""maxTextScale" must be between 1.0 and 3.0"#,
+            ));
+        }
         if self.version.trim().is_empty() {
             return Err(serde_json::Error::custom(r#""version" must not be empty"#));
         }
@@ -493,6 +513,32 @@ mod tests {
             !err.contains("pages[].name, not path"),
             "path hint is CLI-only: {err}"
         );
+    }
+
+    #[test]
+    fn max_text_scale_defaults_to_two_and_stays_between_one_and_three() {
+        let config = |max: serde_json::Value| {
+            let mut value = serde_json::json!({
+                "appId": "demo",
+                "version": "1.0.0",
+                "pages": [{"name":"home","path":"pages/home/index"}]
+            });
+            if !max.is_null() {
+                value["maxTextScale"] = max;
+            }
+            LxAppConfig::from_value(value)
+        };
+        assert_eq!(
+            config(serde_json::Value::Null).unwrap().max_text_scale(),
+            2.0
+        );
+        assert_eq!(
+            config(serde_json::json!(1.3)).unwrap().max_text_scale(),
+            1.3
+        );
+        for out in [0.9, 3.1] {
+            assert!(config(serde_json::json!(out)).is_err());
+        }
     }
 
     #[test]

@@ -304,6 +304,9 @@ impl GpuPageView for Endpoint {
                     serde_json::json!({"x": x, "y": y, "width": width, "height": height})
                 }),
             }),
+            PageViewEnvironment::TextScaleLimit { max } => {
+                serde_json::json!({"kind": "textScaleLimit", "max": max})
+            }
         };
         self.native.update_environment(&update)
     }

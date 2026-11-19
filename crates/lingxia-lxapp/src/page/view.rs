@@ -56,6 +56,8 @@ pub enum PageViewEnvironment {
         capsule: Option<[f64; 4]>,
         revision: u64,
     },
+    /// The largest factor the system text size may scale this page's text by.
+    TextScaleLimit { max: f64 },
 }
 
 /// Runtime-issued connection identity; the native worker must preserve it through queues.
@@ -354,6 +356,8 @@ impl PageView {
                     }
                     // A web page reads the capsule from its page-chrome publication.
                     PageViewEnvironment::PageChrome { .. } => return Ok(()),
+                    // The web page's text size follows the WebView's own setting.
+                    PageViewEnvironment::TextScaleLimit { .. } => return Ok(()),
                 };
                 view.exec_js(&script).map_err(LxAppError::from)
             }

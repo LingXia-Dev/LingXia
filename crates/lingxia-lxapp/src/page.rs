@@ -277,6 +277,8 @@ pub struct PageState {
     leave_guard: bool,
     // PageInstance orientation overrides
     pub(crate) orientation_override: OrientationOverride,
+    /// The page's own `maxTextScale`, which may only lower the lxapp's.
+    max_text_scale: Option<f64>,
     /// A full-screen video's lock; it outranks the page and app orientation while set.
     presentation_orientation: Option<PageOrientation>,
     // Query parameters
@@ -528,6 +530,7 @@ impl PageInstance {
             leave_guard: false,
             presentation_orientation: None,
             orientation_override: page_config.get_orientation_override(),
+            max_text_scale: page_config.max_text_scale,
             query: serde_json::json!({}),
         }
     }
@@ -1237,7 +1240,9 @@ impl PageInstance {
             state.config_load_error = config_load_error;
             state.enable_pull_down_refresh = page_config.is_pull_down_refresh_enabled();
             state.orientation_override = page_config.get_orientation_override();
+            state.max_text_scale = page_config.max_text_scale;
         }
+        self.push_text_scale_limit();
     }
 
     /// Attach WebView to this page (called when WebView is ready)
@@ -1603,6 +1608,19 @@ impl PageInstance {
         }
     }
 
+    /// Hand the View the largest text scale this page allows: the lxapp's, or the page's when lower.
+    pub(crate) fn push_text_scale_limit(&self) {
+        let app = self.owning_lxapp().config().max_text_scale();
+        let page = self
+            .inner
+            .state
+            .lock()
+            .ok()
+            .and_then(|state| state.max_text_scale);
+        let max = page.map_or(app, |page| page.min(app));
+        self.push_view_environment(PageViewEnvironment::TextScaleLimit { max });
+    }
+
     pub(crate) fn push_view_environment(&self, update: PageViewEnvironment) {
         if let Some(view) = self.page_view()
             && let Err(error) = view.update_environment(update)
@@ -1842,6 +1860,7 @@ impl PageInstance {
         drop(current);
         self.inner.discarded.store(false, Ordering::SeqCst);
         self.inner.gpu_module_fresh.store(true, Ordering::SeqCst);
+        self.push_text_scale_limit();
         // Navigation may have queued Load/Show while the asynchronous factory ran.
         // As with the first WebView attachment, those entry requests must survive.
         Ok(())
@@ -3030,6 +3049,7 @@ mod tests {
             leave_guard: false,
             presentation_orientation: None,
             orientation_override: OrientationOverride::default(),
+            max_text_scale: None,
             query: serde_json::json!({}),
         }
     }

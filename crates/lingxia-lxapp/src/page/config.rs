@@ -179,6 +179,10 @@ pub struct PageConfig {
     /// PageInstance orientation override
     #[serde(default)]
     pub page_orientation: Option<PageOrientation>,
+
+    /// Lowers the lxapp's `maxTextScale` for this page; a higher value has no effect.
+    #[serde(default)]
+    pub max_text_scale: Option<f64>,
 }
 
 impl PageConfig {
@@ -248,6 +252,14 @@ impl PageConfig {
         Self::validate_removed_fields(path, &value)?;
         Self::sanitize_page_orientation(path, &mut value);
         let config = serde_json::from_value::<PageConfig>(value)?;
+        if config
+            .max_text_scale
+            .is_some_and(|max| !crate::lxapp::config::TEXT_SCALE_LIMITS.contains(&max))
+        {
+            return Err(serde_json::Error::custom(format!(
+                "{path}.maxTextScale: must be between 1.0 and 3.0"
+            )));
+        }
         config
             .navigation_bar
             .style
