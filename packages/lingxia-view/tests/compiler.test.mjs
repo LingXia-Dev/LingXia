@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { audit, buildPages, identify } from '../compiler/index.mjs';
@@ -531,6 +531,14 @@ export function render() {
     await rm(join(root, 'gone.tsx'));
     await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
     assert.deepEqual(Object.keys(JSON.parse(await readFile(join(root, '.lingxia/gpu-inputs.json'), 'utf8'))), ['page.tsx']);
+    // The record is a cache: a torn one (two writers raced) is rebuilt, never fails the build.
+    await writeFile(join(root, '.lingxia/gpu-inputs.json'), '{"page.tsx": ["page.tsx"]}\n]}\n');
+    await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
+    assert.deepEqual(Object.keys(JSON.parse(await readFile(join(root, '.lingxia/gpu-inputs.json'), 'utf8'))), ['page.tsx']);
+    // Builds racing on one project leave a whole record and whole modules.
+    await Promise.all(Array.from({ length: 6 }, () => buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true })));
+    assert.deepEqual(Object.keys(JSON.parse(await readFile(join(root, '.lingxia/gpu-inputs.json'), 'utf8'))), ['page.tsx']);
+    assert.deepEqual((await readdir(join(root, '.lingxia'))).filter(name => name.endsWith('.tmp')), []);
   });
 });
 

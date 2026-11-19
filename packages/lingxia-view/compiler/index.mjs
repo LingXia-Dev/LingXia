@@ -16,7 +16,7 @@ import { viewTsconfig } from './tsconfig.mjs';
 import { authored, packageOf, sourceLabel } from './packages.mjs';
 import { existsSync, statSync } from 'node:fs';
 import { colorProblem, seriesProblem } from '../src/style/color.js';
-import { readFile, mkdir, writeFile, copyFile, realpath } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, realpath, rename, rm } from 'node:fs/promises';
 import { resolve, dirname, join, relative, isAbsolute, sep, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { elements, style as styleTable, commonProps, limits } from '../src/generated/contract.js';
@@ -28,6 +28,27 @@ const jsx = fileURLToPath(new URL('../src/runtime/jsx.js', import.meta.url));
 const host = fileURLToPath(new URL('../src/host.js', import.meta.url));
 const runtimeRoot = dirname(runtime).toLowerCase();
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+
+// Several dev sessions build one project at once: a reader sees the old file or the new one, never half of each.
+let temps = 0;
+async function writeAtomic(path, contents) {
+  const temp = `${path}.${process.pid}.${++temps}.tmp`;
+  try {
+    await writeFile(temp, contents);
+    await rename(temp, path);
+  } catch (error) {
+    await rm(temp, { force: true });
+    throw error;
+  }
+}
+
+// The inputs record is a cache: one that does not parse is rebuilt from this build's pages.
+async function readRecord(path) {
+  try {
+    const record = JSON.parse(await readFile(path, 'utf8'));
+    return record && typeof record === 'object' && !Array.isArray(record) ? record : {};
+  } catch { return {}; }
+}
 const common = new Set(commonProps);
 const editors = new Set(['input', 'textarea']);
 const controls = new Set(['button', 'checkbox', 'switch', 'radio', 'link', 'slider']);
@@ -513,7 +534,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       module += `configureSourceMap(${JSON.stringify({ sources: named, mappings })});\n`;
       module += 'enableHotSwap();\n';
     }
-    await writeFile(dest, module);
+    await writeAtomic(dest, module);
     // Dev builds record each page's inputs so `lingxia dev` can rebuild only the pages an edit touches:
     // the lxapp's files, a linked package's sources and token file (`../kit/src/x.tsx`), and a linked
     // View runtime's. Installed packages, the View included, do not change under a session.
@@ -523,15 +544,15 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
         .filter(path => path !== '<stdin>' && !path.split(/[\\/]/).includes('node_modules'))
         .map(path => path.split('\\').join('/'));
     }
-    if (config) await copyFile(configPath, join(output, `${base}.json`));
+    if (config) await writeAtomic(join(output, `${base}.json`), await readFile(configPath));
   }
   if (Object.keys(inputs).length) {
     const path = join(root, '.lingxia', 'gpu-inputs.json');
     // A page deleted since its last build leaves the record; an edit it shared would plan it again.
-    const previous = Object.fromEntries(Object.entries(JSON.parse(await readFile(path, 'utf8').catch(() => '{}')))
-      .filter(([page]) => existsSync(resolve(root, page))));
+    const previous = Object.fromEntries(Object.entries(await readRecord(path))
+      .filter(([page, files]) => Array.isArray(files) && existsSync(resolve(root, page))));
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, JSON.stringify({ ...previous, ...inputs }, null, 1) + '\n');
+    await writeAtomic(path, JSON.stringify({ ...previous, ...inputs }, null, 1) + '\n');
   }
   return { warnings, warm, analysed: analysisMisses };
 }
