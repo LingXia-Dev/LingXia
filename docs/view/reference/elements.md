@@ -330,6 +330,7 @@ Children: text and `<span>` runs; links do not nest. Only inside `<text>`.
 | `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
 | `popoverTarget` | `string` |  |
+| `interestFor` | `string` |  |
 
 ## `<select>`
 

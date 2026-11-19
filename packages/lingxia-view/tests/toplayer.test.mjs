@@ -91,6 +91,18 @@ test('a link inside text is a popover invoker too', () => {
   assert.equal(byId(nodes, 'more').props.stateExpanded, 1);
 });
 
+test('a link inside text is a hint trigger too', () => {
+  reset();
+  const view = () => h('page', {},
+    h('text', {}, 'Due ', h('link', { interestFor: 'when', 'data-testid': 'more' }, 'Sunday')),
+    h('view', { id: 'when', popover: 'hint', role: 'tooltip', 'data-testid': 'when' }, h('text', {}, 'Sunday 18:00')));
+  assert.equal(byId(render(view), 'more').props.interestFor, 'when');
+  assert.equal(interest('when', 0, true), true);
+  const nodes = render(view);
+  assert.equal(byId(nodes, 'more').props.anchorName, '--lx-popover-when');
+  assert.equal(byId(nodes, 'more').props.ariaDescribedBy, 'when');
+});
+
 test('a popover its invoker opened is owned; closing it as an orphan tells the page once', () => {
   reset();
   const toggled = [], shown = { value: true };
