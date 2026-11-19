@@ -47,7 +47,7 @@ const PHONES: Record<string, { host: 'ios' | 'android' | 'harmony'; portrait: Ed
   'iphone-11': { host: 'ios', portrait: [48, 0, 34, 0], landscape: [0, 48, 21, 48] },
   'iphone-15-pro-max': { host: 'ios', portrait: [59, 0, 34, 0], landscape: [0, 59, 21, 59] },
   'huawei-nova-13': { host: 'harmony', portrait: [39, 0, 28, 0], landscape: [0, 0, 28, 39] },
-  'pixel-3': { host: 'android', portrait: [24, 0, 48, 0], landscape: [24, 48, 0, 0] },
+  'pixel-3': { host: 'android', portrait: [28, 0, 48, 0], landscape: [24, 48, 0, 0] },
   'redmi-9': { host: 'android', portrait: [30, 0, 16, 0], landscape: [0, 0, 16, 30] },
 };
 const NAVIGATION_BAR = 44;

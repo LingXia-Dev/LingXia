@@ -168,14 +168,14 @@
         "width": 0,
         "height": 0,
         "cornerRadius": 0,
-        "statusBarHeight": 24
+        "statusBarHeight": 28
       },
       "chrome": {
         "host": "android",
-        "safeArea": { "portrait": [24, 0, 48, 0], "landscape": [24, 48, 0, 0] },
+        "safeArea": { "portrait": [28, 0, 48, 0], "landscape": [24, 48, 0, 0] },
         "navigationBar": 44,
         "tabBar": 64,
-        "provisional": ["safeArea.portrait.top", "safeArea.landscape", "screenRadius"]
+        "provisional": ["safeArea.landscape", "screenRadius"]
       }
     },
     {
