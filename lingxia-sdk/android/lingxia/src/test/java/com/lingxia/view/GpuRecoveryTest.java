@@ -22,12 +22,12 @@ public class GpuRecoveryTest {
         FrameLayout host = new FrameLayout(RuntimeEnvironment.getApplication());
         GpuRecovery recovery = new GpuRecovery(host);
         AtomicInteger calls = new AtomicInteger();
-        recovery.show(true, UPDATE_FAILED, RETRY, calls::incrementAndGet);
+        recovery.show(true, UPDATE_FAILED, RETRY, calls::incrementAndGet, null);
         LinearLayout panel = (LinearLayout)host.getChildAt(0);
         Button retry = (Button)panel.getChildAt(1);
         retry.performClick(); retry.performClick();
         assertEquals(1, calls.get());
-        recovery.show(true, UPDATE_FAILED, RETRY, calls::incrementAndGet);
+        recovery.show(true, UPDATE_FAILED, RETRY, calls::incrementAndGet, null);
         retry = (Button)((LinearLayout)host.getChildAt(0)).getChildAt(1);
         recovery.clear();
         retry.performClick();
@@ -38,17 +38,35 @@ public class GpuRecoveryTest {
     @Test public void incompatibleHostsDoNotOfferAnImpossibleRetry() {
         FrameLayout host = new FrameLayout(RuntimeEnvironment.getApplication());
         GpuRecovery recovery = new GpuRecovery(host);
-        recovery.show(false, UPDATE_REQUIRED, NONE, () -> fail("Incompatible modules cannot be retried"));
+        recovery.show(false, UPDATE_REQUIRED, NONE, () -> fail("Incompatible modules cannot be retried"), null);
         LinearLayout panel = (LinearLayout)host.getChildAt(0);
         assertEquals(1, panel.getChildCount());
         assertTrue(((android.widget.TextView)panel.getChildAt(0)).getText().toString().contains("Update the app"));
+    }
+
+    @Test public void backShowsOnlyWhenOfferedAndRetriesAfterARefusal() {
+        FrameLayout host = new FrameLayout(RuntimeEnvironment.getApplication());
+        GpuRecovery recovery = new GpuRecovery(host);
+        AtomicInteger backs = new AtomicInteger();
+        recovery.show(false, DISPLAY_FAILED, RETRY, () -> { }, () -> backs.incrementAndGet() > 1);
+        LinearLayout panel = (LinearLayout)host.getChildAt(0);
+        assertEquals("message, retry, back", 3, panel.getChildCount());
+        Button back = (Button)panel.getChildAt(2);
+        assertEquals("Go back", back.getText().toString());
+        back.performClick();
+        assertTrue("a refused back can be pressed again", back.isEnabled());
+        back.performClick();
+        assertFalse(back.isEnabled());
+        assertEquals(2, backs.get());
+        recovery.show(false, UPDATE_REQUIRED, NONE, null, null);
+        assertEquals("nowhere to go back to", 1, ((LinearLayout)host.getChildAt(0)).getChildCount());
     }
 
     @Test public void interruptedSessionsOfferAnExplicitReload() {
         FrameLayout host = new FrameLayout(RuntimeEnvironment.getApplication());
         GpuRecovery recovery = new GpuRecovery(host);
         AtomicInteger restarts = new AtomicInteger();
-        recovery.show(true, SESSION_FAILED, RELOAD, restarts::incrementAndGet);
+        recovery.show(true, SESSION_FAILED, RELOAD, restarts::incrementAndGet, null);
         Button action = (Button)((LinearLayout)host.getChildAt(0)).getChildAt(1);
         assertEquals("Reload page", action.getText().toString());
         action.performClick();

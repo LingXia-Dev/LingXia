@@ -145,8 +145,14 @@ impl Shell for Bridge {
                     Some(RecoveryAction::Reload) => 1,
                     None => -1,
                 };
-                serde_json::json!({"error": f.error, "retained": f.retained, "message": message, "action": action})
-                    .to_string()
+                serde_json::json!({
+                    "error": f.error,
+                    "retained": f.retained,
+                    "message": message,
+                    "action": action,
+                    "back": gpu_page::can_go_back(token),
+                })
+                .to_string()
             })
             .unwrap_or_default();
         arkts(token, "recovery", &payload);
@@ -674,6 +680,12 @@ pub fn gpu_page_transition_end(token: i64) {
 #[napi]
 pub fn gpu_page_retry(token: i64) {
     with_page(token, |page| page.with_host(|host| host.retry()));
+}
+
+/// The recovery panel's Back; false when the page could not leave.
+#[napi]
+pub fn gpu_page_back(token: i64) -> bool {
+    gpu_page::go_back(token)
 }
 
 /// Back: true when the page closed its own top layer.

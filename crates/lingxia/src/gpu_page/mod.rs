@@ -685,6 +685,21 @@ pub(crate) fn restart(token: Token, generation: u64) -> bool {
     }
 }
 
+/// Whether the recovery panel of page `token` offers Back.
+pub(crate) fn can_go_back(token: Token) -> bool {
+    page_of(token)
+        .and_then(|page| lxapp::try_get(&page.appid()))
+        .is_some_and(|app| app.can_go_back())
+}
+
+/// The recovery panel's Back; false when the page is not on top or has nowhere to go.
+pub(crate) fn go_back(token: Token) -> bool {
+    let Some(page) = page_of(token) else {
+        return false;
+    };
+    lxapp::try_get(&page.appid()).is_some_and(|app| app.leave_failed_page(&page))
+}
+
 /// The live native shell of a page, for platform view lookup.
 pub(crate) fn native_view(page: &PageInstance) -> Option<Arc<dyn NativePage>> {
     let token = *registry().pages.get(&page.instance_id_string())?;

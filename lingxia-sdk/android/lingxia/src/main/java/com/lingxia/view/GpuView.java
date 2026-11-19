@@ -123,6 +123,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         default void onTopLayer(boolean modal) { }
         /** A frame on screen draws the bar snapshots up to {@code generation}; 0 when none. */
         default void onChromeSnapshot(long generation) { }
+        /** Whether the recovery panel offers Back: the user's back path leaves this page. */
+        default boolean canGoBack() { return false; }
+        /** The recovery panel's Back; false when the page could not leave. */
+        default boolean onBack() { return false; }
     }
 
     /** Host chrome colours (ARGB) the core resolves from this page's palette. */
@@ -892,7 +896,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         finishPresentation(false);
         Log.e("LingXia.UI", "Render failed: " + error);
         if (listener != null) listener.onError(new IllegalStateException(error));
-        recovery.show(retained, message, action, action < 0 ? null : () -> { if (!destroyed) nativeRetry(host); });
+        recovery.show(retained, message, action, action < 0 ? null : () -> { if (!destroyed) nativeRetry(host); },
+            listener != null && listener.canGoBack() ? () -> !destroyed && listener.onBack() : null);
     }
 
     /** The host's platform. Native calls arrive on the main thread, or from a View worker when a

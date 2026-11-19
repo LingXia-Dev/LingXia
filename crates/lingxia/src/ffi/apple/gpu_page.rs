@@ -260,6 +260,10 @@ mod bridge {
         #[swift_bridge(swift_name = "gpuPageRetry")]
         fn gpu_page_retry(token: i64);
 
+        // The recovery chrome's Back was pressed; false when the page could not leave.
+        #[swift_bridge(swift_name = "gpuPageBack")]
+        fn gpu_page_back(token: i64) -> bool;
+
         // Hit-test logical point `(x, y)` for a live `<webview>`: returns its `web_id` or `""`.
         #[swift_bridge(swift_name = "gpuPageWebViewAt")]
         fn gpu_page_webview_at(token: i64, x: f32, y: f32) -> String;
@@ -377,9 +381,9 @@ mod bridge {
         fn gpu_pages_accessibility_event(token: i64, kind: u8, id: u32, text: &str);
 
         // Show recovery chrome (`message`, `action`: the core's codes; -1 clears), covering
-        // the page or as a banner under a retained frame.
+        // the page or as a banner under a retained frame; `back` offers Back beside it.
         #[swift_bridge(swift_name = "GpuPages.recovery")]
-        fn gpu_pages_recovery(token: i64, message: i32, action: i32, covers: bool);
+        fn gpu_pages_recovery(token: i64, message: i32, action: i32, covers: bool, back: bool);
 
         // Call `gpuPageVsync` on the next display refresh; false without a display link.
         #[swift_bridge(swift_name = "GpuPages.requestVsync")]
@@ -845,6 +849,10 @@ fn gpu_page_retry(token: i64) {
     with_page(token, |page| page.host().retry());
 }
 
+fn gpu_page_back(token: i64) -> bool {
+    crate::gpu_page::go_back(token)
+}
+
 fn gpu_page_webview_at(token: i64, x: f32, y: f32) -> String {
     let mut hit = String::new();
     with_page(token, |page| {
@@ -1092,7 +1100,7 @@ mod live {
                 RecoveryAction, RecoveryMessage,
             };
             let Some(failure) = failure else {
-                return super::bridge::gpu_pages_recovery(token, -1, -1, false);
+                return super::bridge::gpu_pages_recovery(token, -1, -1, false, false);
             };
             log::warn!("GPU page {token} failed: {}", failure.error);
             let message = match failure.message {
@@ -1106,7 +1114,13 @@ mod live {
                 Some(RecoveryAction::Retry) => 0,
                 Some(RecoveryAction::Reload) => 1,
             };
-            super::bridge::gpu_pages_recovery(token, message, action, failure.covers_page());
+            super::bridge::gpu_pages_recovery(
+                token,
+                message,
+                action,
+                failure.covers_page(),
+                crate::gpu_page::can_go_back(token),
+            );
         }
         fn bootstrap_overdue(&self, token: i64, overdue: bool) {
             if overdue {

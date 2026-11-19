@@ -49,6 +49,8 @@ export class GpuRecovery {
   message: number = 3;
   /** Index into its actions, retry or reload; -1 offers none. */
   action: number = -1;
+  /** Offer Back: the user's back path leaves this page. */
+  back: boolean = false;
 }
 
 export interface GpuClipMount {

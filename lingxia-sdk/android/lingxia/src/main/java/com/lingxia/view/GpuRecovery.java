@@ -22,7 +22,8 @@ final class GpuRecovery {
 
     GpuRecovery(FrameLayout host) { this.host = host; }
 
-    void show(boolean retained, int message, int action, Runnable retry) {
+    /** {@code back}, when non-null, offers Back below the action; false re-enables it. */
+    void show(boolean retained, int message, int action, Runnable retry, java.util.function.BooleanSupplier back) {
         clear();
         LinearLayout current = new LinearLayout(host.getContext());
         panel = current;
@@ -48,6 +49,16 @@ final class GpuRecovery {
                 button.setEnabled(false);
                 button.setText(R.string.lx_gpu_retrying);
                 retry.run();
+            });
+            current.addView(button);
+        }
+        if (back != null) {
+            Button button = new Button(host.getContext());
+            button.setText(R.string.lx_gpu_back);
+            button.setOnClickListener(view -> {
+                if (panel != current || !button.isEnabled()) return;
+                button.setEnabled(false);
+                if (!back.getAsBoolean()) button.setEnabled(true);
             });
             current.addView(button);
         }

@@ -607,6 +607,28 @@ impl LxApp {
         self.leave(&page, reason)
     }
 
+    /// Whether the user's back path leaves the current page: a page under it,
+    /// or a non-home lxapp to close.
+    pub fn can_go_back(&self) -> bool {
+        self.get_page_stack_size() > 1 || !self.is_home_lxapp
+    }
+
+    /// Back from the recovery panel of `page`, whose View failed: it cannot
+    /// answer a leave guard, so it is left without asking. False when it is
+    /// not on top or there is nothing to go back to.
+    pub fn leave_failed_page(self: &Arc<Self>, page: &crate::page::PageInstance) -> bool {
+        if !self
+            .current_page()
+            .is_ok_and(|top| top.instance_id() == page.instance_id())
+        {
+            return false;
+        }
+        if self.get_page_stack_size() > 1 {
+            return self.leave(page, LeaveReason::Back).is_ok();
+        }
+        self.handle_back_press()
+    }
+
     /// The guarded View's "yes" to [`Self::user_leave`]: do what the user
     /// asked, without asking again. A late answer from a page no longer on
     /// top is dropped.
@@ -705,5 +727,39 @@ mod back_press_tests {
         app.bind_arc();
         assert!(app.get_page_stack_size() <= 1);
         assert!(!app.handle_back_press());
+        assert!(!app.can_go_back());
+    }
+
+    #[test]
+    fn back_is_offered_over_a_page_below_and_taken_only_from_the_top() {
+        let root = tempfile::tempdir().unwrap();
+        let platform = Arc::new(
+            lingxia_platform::Platform::new(
+                root.path().join("data").display().to_string(),
+                root.path().join("cache").display().to_string(),
+                "en-US".to_string(),
+            )
+            .unwrap(),
+        );
+        let appid = format!("app.lingxia.failed-back.{}", uuid::Uuid::new_v4());
+        register_synthetic_lxapp(&appid);
+        let mut app = LxApp::new_with_session_class_for_test(
+            appid,
+            platform,
+            LxAppWorkers::init(1),
+            AppSessionClass::StandardApp,
+        )
+        .unwrap();
+        app.is_home_lxapp = true;
+        let app = Arc::new(app);
+        app.bind_arc();
+        let under = app.get_or_create_page("pages/under");
+        let failed = app.get_or_create_page("pages/failed");
+        app.push_to_page_stack(&under).unwrap();
+        app.push_to_page_stack(&failed).unwrap();
+        assert!(app.can_go_back());
+
+        // Only the page on top leaves (leaving navigates, which needs a host).
+        assert!(!app.leave_failed_page(&under));
     }
 }

@@ -662,6 +662,8 @@ declare module 'liblingxia.so' {
   export function gpuPageTransitionEnd(token: number): void;
   /** The recovery panel's button: runs the action the page's last failure offered. */
   export function gpuPageRetry(token: number): void;
+  /** The recovery panel's Back; false when the page could not leave. */
+  export function gpuPageBack(token: number): boolean;
   /** Back: true when the page closed its own top layer. */
   export function gpuPageCloseRequest(token: number): boolean;
   export function gpuPageCanScrollVertically(token: number, x: number, y: number, direction: number): boolean;

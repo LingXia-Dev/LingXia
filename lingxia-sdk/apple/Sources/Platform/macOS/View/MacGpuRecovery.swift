@@ -9,7 +9,7 @@ extension GpuPageView {
     private static let messages = ["update_required", "session_failed", "update_failed", "display_failed"]
     private static let actions = ["retry", "reload"]
 
-    func showRecovery(message: Int32, action: Int32, covers: Bool) {
+    func showRecovery(message: Int32, action: Int32, covers: Bool, back: Bool) {
         recoveryPanel?.removeFromSuperview()
         recoveryPanel = nil
         recoveryCovers = false
@@ -28,13 +28,26 @@ extension GpuPageView {
         stack.orientation = .vertical
         stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false
+        let buttons = NSStackView()
+        buttons.orientation = .horizontal
+        buttons.spacing = 12
+        if back {
+            let button = NSButton(
+                title: L10n.string("lx_gpu_recovery_back"), target: self, action: #selector(recoveryBack(_:)))
+            button.bezelStyle = .rounded
+            button.setAccessibilityIdentifier("lx-recovery-back")
+            buttons.addArrangedSubview(button)
+        }
         if Self.actions.indices.contains(Int(action)) {
             let button = NSButton(
                 title: L10n.string("lx_gpu_recovery_\(Self.actions[Int(action)])"), target: self,
                 action: #selector(recoveryAction(_:)))
             button.bezelStyle = .rounded
             button.setAccessibilityIdentifier("lx-recovery-action")
-            stack.addArrangedSubview(button)
+            buttons.addArrangedSubview(button)
+        }
+        if !buttons.arrangedSubviews.isEmpty {
+            stack.addArrangedSubview(buttons)
         }
         panel.addSubview(stack)
         addSubview(panel)
@@ -68,6 +81,12 @@ extension GpuPageView {
         sender.isEnabled = false
         sender.title = L10n.string("lx_gpu_recovery_retrying")
         gpuPageRetry(token)
+    }
+
+    @objc private func recoveryBack(_ sender: NSButton) {
+        guard sender.isEnabled else { return }
+        sender.isEnabled = false
+        if !gpuPageBack(token) { sender.isEnabled = true }
     }
 }
 #endif

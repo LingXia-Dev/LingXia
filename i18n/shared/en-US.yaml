@@ -147,6 +147,7 @@ gpu:
   session_failed: "This page stopped responding. Reload to continue. Unsaved input may be lost."
   reload: "Reload page"
   retrying: "Retrying…"
+  back: "Go back"
   # Spoken role of a GPU page link.
   a11y_link: "Link"
   # Appended to a GPU page element that reports itself busy (aria-busy).

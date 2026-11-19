@@ -9,7 +9,7 @@ extension GpuPageView {
     private static let messages = ["update_required", "session_failed", "update_failed", "display_failed"]
     private static let actions = ["retry", "reload"]
 
-    func showRecovery(message: Int32, action: Int32, covers: Bool) {
+    func showRecovery(message: Int32, action: Int32, covers: Bool, back: Bool) {
         recoveryPanel?.removeFromSuperview()
         recoveryPanel = nil
         recoveryCovers = false
@@ -29,12 +29,26 @@ extension GpuPageView {
         stack.axis = .vertical
         stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false
+        let buttons = UIStackView()
+        buttons.axis = .horizontal
+        buttons.spacing = 24
+        buttons.alignment = .center
+        if back {
+            let button = UIButton(type: .system)
+            button.setTitle(L10n.string("lx_gpu_recovery_back"), for: .normal)
+            button.accessibilityIdentifier = "lx-recovery-back"
+            button.addTarget(self, action: #selector(recoveryBack(_:)), for: .touchUpInside)
+            buttons.addArrangedSubview(button)
+        }
         if Self.actions.indices.contains(Int(action)) {
             let button = UIButton(type: .system)
             button.setTitle(L10n.string("lx_gpu_recovery_\(Self.actions[Int(action)])"), for: .normal)
             button.accessibilityIdentifier = "lx-recovery-action"
             button.addTarget(self, action: #selector(recoveryAction(_:)), for: .touchUpInside)
-            stack.addArrangedSubview(button)
+            buttons.addArrangedSubview(button)
+        }
+        if !buttons.arrangedSubviews.isEmpty {
+            stack.addArrangedSubview(buttons)
         }
         panel.addSubview(stack)
         addSubview(panel)
@@ -62,6 +76,12 @@ extension GpuPageView {
         sender.isEnabled = false
         sender.setTitle(L10n.string("lx_gpu_recovery_retrying"), for: .normal)
         gpuPageRetry(token)
+    }
+
+    @objc private func recoveryBack(_ sender: UIButton) {
+        guard sender.isEnabled else { return }
+        sender.isEnabled = false
+        if !gpuPageBack(token) { sender.isEnabled = true }
     }
 }
 #endif

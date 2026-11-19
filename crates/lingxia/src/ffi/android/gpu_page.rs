@@ -39,6 +39,8 @@ pub(super) fn initialize(env: &mut Env) -> Result<(), jni::errors::Error> {
                 ),
                 method!("presented", "(JJ)Z", presented),
                 method!("restart", "(JJ)Z", restart),
+                method!("canGoBack", "(J)Z", can_go_back),
+                method!("goBack", "(J)Z", go_back),
                 method!(
                     "automationReply",
                     "(JLjava/lang/String;)V",
@@ -436,6 +438,14 @@ extern "system" fn restart(
     generation: i64,
 ) -> jni::sys::jboolean {
     gpu_page::restart(token, generation as u64)
+}
+
+extern "system" fn can_go_back(_: EnvUnowned<'_>, _: JClass<'_>, token: i64) -> jni::sys::jboolean {
+    gpu_page::can_go_back(token)
+}
+
+extern "system" fn go_back(_: EnvUnowned<'_>, _: JClass<'_>, token: i64) -> jni::sys::jboolean {
+    gpu_page::go_back(token)
 }
 
 extern "system" fn presented(

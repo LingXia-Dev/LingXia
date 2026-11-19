@@ -53,3 +53,4 @@ gpu_recovery:
   retry: "重试"
   reload: "重新载入页面"
   retrying: "正在重试…"
+  back: "返回"

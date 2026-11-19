@@ -15,6 +15,7 @@ import {
   gpuPageSetVisible,
   gpuPageWindowVisible,
   gpuPageRetry,
+  gpuPageBack,
   gpuPageTextMenuAction,
   gpuPageTextMenuDismissed,
   gpuPageTextHandleDrag,
@@ -203,6 +204,7 @@ export struct GpuPage {
   private environment: number = -1;
   /** The failure whose action was pressed: its button waits for the next report. */
   @State retried: GpuRecovery | null = null;
+  @State backed: GpuRecovery | null = null;
   @State menuWidth: number = 0;
   /** The page's size, vp, for keeping the menu on screen. */
   @State pageWidth: number = 0;
@@ -365,6 +367,16 @@ export struct GpuPage {
     gpuPageRetry(this.page.token);
   }
 
+  private recoveryBack(recovery: GpuRecovery): void {
+    if (this.backed === recovery) {
+      return;
+    }
+    this.backed = recovery;
+    if (!gpuPageBack(this.page.token)) {
+      this.backed = null;
+    }
+  }
+
   @Builder
   recoveryPanel(recovery: GpuRecovery) {
     // Host-owned: page content cannot replace its action. A failure over a kept frame sits at
@@ -383,6 +395,13 @@ export struct GpuPage {
             .onClick(() => this.retry(recovery))
             .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.recoverySource(), 'action',
               () => this.text(this.actions[recovery.action]), 'button', area, () => this.retry(recovery)))
+        }
+        if (recovery.back) {
+          Button($r('app.string.lx_gpu_back'))
+            .enabled(this.backed !== recovery)
+            .onClick(() => this.recoveryBack(recovery))
+            .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.recoverySource(), 'back',
+              () => this.text($r('app.string.lx_gpu_back')), 'button', area, () => this.recoveryBack(recovery)))
         }
       }
       .width('100%')

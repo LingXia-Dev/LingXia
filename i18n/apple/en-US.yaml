@@ -56,3 +56,4 @@ gpu_recovery:
   retry: "Retry"
   reload: "Reload page"
   retrying: "Retrying…"
+  back: "Go back"

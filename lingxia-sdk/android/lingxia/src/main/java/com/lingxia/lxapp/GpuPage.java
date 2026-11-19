@@ -16,6 +16,8 @@ public final class GpuPage extends FrameLayout {
     /** A presented frame; true once the page took it as its first, so reports stop until the next connection. */
     private static native boolean presented(long token, long generation);
     private static native boolean restart(long token, long generation);
+    private static native boolean canGoBack(long token);
+    private static native boolean goBack(long token);
     private static native void automationReply(long replyId, String reply);
     private static native android.view.View embeddedWebView(long token, String webId);
     private static final String INACTIVE = "{\"error\":\"page is not active: the GPU page was disposed\"}";
@@ -44,6 +46,8 @@ public final class GpuPage extends FrameLayout {
                     }
                 }
                 public boolean onRestart(long generation) { return restart(token, generation); }
+                public boolean canGoBack() { return GpuPage.canGoBack(token); }
+                public boolean onBack() { return goBack(token); }
                 public void onChrome(GpuView.Chrome chrome) {
                     if (chromeListener != null) chromeListener.accept(GpuPage.this, chrome);
                 }
