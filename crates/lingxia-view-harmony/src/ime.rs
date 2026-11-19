@@ -464,11 +464,16 @@ mod os {
 
     fn text_type(m: &Mirror) -> i32 {
         if m.secure {
-            return if m.keyboard == Keyboard::Number { 8 } else { 7 };
+            return if matches!(m.keyboard, Keyboard::Number | Keyboard::Decimal) {
+                8
+            } else {
+                7
+            };
         }
         match m.keyboard {
             _ if m.multiline => 1,
             Keyboard::Number => 2,
+            Keyboard::Decimal => 12,
             Keyboard::Phone => 3,
             Keyboard::Email => 5,
             Keyboard::Text | Keyboard::Search => 0,

@@ -128,7 +128,7 @@ impl Rules {
             }
             return (value != text).then(|| value.to_owned());
         }
-        if self.keyboard != "number" {
+        if !matches!(self.keyboard.as_str(), "number" | "decimal") {
             return None;
         }
         let parsed: f64 = text.parse().ok().filter(|v: &f64| v.is_finite())?;

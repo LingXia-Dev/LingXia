@@ -332,7 +332,8 @@ final class GpuIme {
         String keyboard=ime.keyboard() == null ? "" : ime.keyboard(); boolean secure=ime.secure();
         int type;
         switch (keyboard) {
-            case "number": type=secure ? InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            case "number": type=InputType.TYPE_CLASS_NUMBER|(secure ? InputType.TYPE_NUMBER_VARIATION_PASSWORD : 0); break;
+            case "decimal": type=secure ? InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD
                 : InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL|InputType.TYPE_NUMBER_FLAG_SIGNED; break;
             case "phone": type=InputType.TYPE_CLASS_PHONE; break;
             case "email": type=InputType.TYPE_CLASS_TEXT|(secure ? InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS); break;

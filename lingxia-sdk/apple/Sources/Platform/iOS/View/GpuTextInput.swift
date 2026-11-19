@@ -102,7 +102,8 @@ extension GpuPageView: GpuImeHost, UITextInput {
     var keyboardType: UIKeyboardType {
         get {
             switch ime.ime.flatMap({ GpuFrameKeyboard(rawValue: $0.keyboard) }) {
-            case .number: .decimalPad
+            case .number: .numberPad
+            case .decimal: .decimalPad
             case .phone: .phonePad
             case .email: .emailAddress
             case .search: .webSearch

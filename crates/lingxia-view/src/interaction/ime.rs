@@ -8,8 +8,10 @@ use serde::Serialize;
 pub enum Keyboard {
     #[default]
     Text,
-    /// Signed decimal.
+    /// Digits only.
     Number,
+    /// Signed digits with the locale's decimal separator.
+    Decimal,
     Email,
     Phone,
     Search,
@@ -77,6 +79,7 @@ impl ImeConfig {
         let attributes = &input.attributes;
         let keyboard = match input.keyboard.as_str() {
             "number" => Keyboard::Number,
+            "decimal" => Keyboard::Decimal,
             "email" => Keyboard::Email,
             "phone" => Keyboard::Phone,
             "search" => Keyboard::Search,
@@ -89,7 +92,13 @@ impl ImeConfig {
                 Some("current-password" | "new-password")
             );
         let capitalize = match attributes.auto_capitalize.as_deref() {
-            _ if matches!(keyboard, Keyboard::Number | Keyboard::Phone) => Capitalize::None,
+            _ if matches!(
+                keyboard,
+                Keyboard::Number | Keyboard::Decimal | Keyboard::Phone
+            ) =>
+            {
+                Capitalize::None
+            }
             Some("sentences" | "on") => Capitalize::Sentences,
             Some("words") => Capitalize::Words,
             Some("characters") => Capitalize::Characters,
@@ -235,6 +244,9 @@ mod tests {
         );
         assert_eq!(number.capitalize, Capitalize::None);
         assert_eq!(number.keyboard, Keyboard::Number);
+        let decimal = ImeConfig::new(&input("decimal", EditorAttributes::default()), false);
+        assert_eq!(decimal.capitalize, Capitalize::None);
+        assert_eq!(decimal.keyboard, Keyboard::Decimal);
     }
 
     #[test]
