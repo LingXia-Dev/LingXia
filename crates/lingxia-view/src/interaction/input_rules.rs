@@ -67,6 +67,21 @@ fn units(text: &str) -> usize {
     text.encode_utf16().count()
 }
 
+/// `text` before UTF-16 offset `start` and after `end`.
+fn split_utf16(text: &str, start: u32, end: u32) -> (&str, &str) {
+    let byte = |unit: u32| {
+        let mut seen = 0;
+        for (i, c) in text.char_indices() {
+            if seen >= unit {
+                return i;
+            }
+            seen += c.len_utf16() as u32;
+        }
+        text.len()
+    };
+    (&text[..byte(start)], &text[byte(end)..])
+}
+
 impl Rules {
     pub fn from_record(record: &Record) -> Self {
         let value = |id| {
@@ -104,6 +119,41 @@ impl Rules {
                 taken <= room
             })
             .collect()
+    }
+
+    /// Inserted text a `number` or `decimal` editor keeps, as the platform's own numeric
+    /// field filters it: digits; for `decimal` also one `.` (a `,` is taken as one) and a
+    /// leading `-`. Full-width digits become ASCII. Other editors keep everything.
+    pub fn filter(&self, before: &Snapshot, text: &str) -> String {
+        let decimal = match self.keyboard.as_str() {
+            "number" => false,
+            "decimal" => true,
+            _ => return text.to_owned(),
+        };
+        let [a, b] = before.composition.unwrap_or(before.selection);
+        let (head, tail) = split_utf16(&before.text, a.min(b), a.max(b));
+        let mut separator = head.contains('.') || tail.contains('.');
+        let mut out = String::with_capacity(text.len());
+        for c in text.chars() {
+            let c = match c {
+                '\u{FF10}'..='\u{FF19}' => char::from(b'0' + (c as u32 - 0xFF10) as u8),
+                ',' | '\u{066B}' => '.',
+                '\u{2212}' => '-',
+                c => c,
+            };
+            match c {
+                '0'..='9' => out.push(c),
+                '.' if decimal && !separator => {
+                    separator = true;
+                    out.push(c);
+                }
+                '-' if decimal && head.is_empty() && out.is_empty() && !tail.starts_with('-') => {
+                    out.push(c)
+                }
+                _ => {}
+            }
+        }
+        out
     }
 
     /// Picker editors hold an ISO value or nothing.
@@ -166,7 +216,8 @@ impl Rules {
         } else {
             formatted
         };
-        (value != parsed || formatted != text)
+        // The typed text stands unless the number itself changes: "7.0" stays "7.0".
+        (formatted.parse::<f64>().ok() != Some(parsed))
             .then_some(formatted)
             .filter(|formatted| formatted != text)
     }
@@ -192,6 +243,33 @@ mod tests {
         }
     }
 
+    fn at(text: &str, caret: u32) -> Snapshot {
+        Snapshot {
+            text: text.into(),
+            selection: [caret, caret],
+            composition: None,
+            focused: true,
+            can_undo: false,
+            can_redo: false,
+        }
+    }
+
+    #[test]
+    fn numeric_editors_keep_only_what_their_keyboard_types() {
+        let number = rules("number", json!(null), json!(null), None);
+        assert_eq!(number.filter(&at("", 0), ".0"), "0");
+        assert_eq!(number.filter(&at("1", 1), "-2,5"), "25");
+        assert_eq!(number.filter(&at("", 0), "１２"), "12");
+        let decimal = rules("decimal", json!(null), json!(null), None);
+        assert_eq!(decimal.filter(&at("", 0), "-1.5.2"), "-1.52");
+        assert_eq!(decimal.filter(&at("2", 1), ",5"), ".5");
+        assert_eq!(decimal.filter(&at("2.5", 3), ".1"), "1");
+        assert_eq!(decimal.filter(&at("2", 1), "-"), "");
+        assert_eq!(decimal.filter(&at("-2", 0), "-"), "");
+        let text = rules("text", json!(null), json!(null), None);
+        assert_eq!(text.filter(&at("", 0), "a.-"), "a.-");
+    }
+
     #[test]
     fn numbers_clamp_and_snap_on_commit() {
         let r = rules("number", json!(1), json!(10), Some(0.5));
@@ -200,6 +278,7 @@ mod tests {
         assert_eq!(r.commit("3.3"), Some("3.5".into()));
         assert_eq!(r.commit("3.5"), None);
         assert_eq!(r.commit("abc"), None);
+        assert_eq!(r.commit("7.0"), None);
         assert_eq!(
             rules("number", json!(null), json!(null), Some(0.1)).commit("0.30000000000000004"),
             Some("0.3".into())

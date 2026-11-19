@@ -49,6 +49,32 @@ fn max_length_cuts_insertions_and_reports_the_kept_text() {
 }
 
 #[test]
+fn a_numeric_keyboard_keeps_only_what_it_can_type() {
+    let (mut digits, id, token) = page("inputMode:'numeric'");
+    let reply = digits
+        .edit_input(token, &id, &[replace(".0")], false)
+        .unwrap()
+        .unwrap();
+    assert_eq!(reply.state.text, "0");
+    // A rejected character leaves the text and caret alone.
+    let reply = digits
+        .edit_input(token, &id, &[replace("-")], false)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (reply.state.text.as_str(), reply.state.selection),
+        ("0", [1, 1])
+    );
+    let (mut decimal, id, token) = page("type:'number'");
+    for typed in ["-", "1", ",", "5", ".", "-"] {
+        decimal
+            .edit_input(token, &id, &[replace(typed)], false)
+            .unwrap();
+    }
+    assert_eq!(shown(&mut decimal), "[-1.5]");
+}
+
+#[test]
 fn numbers_clamp_and_snap_when_the_editor_commits() {
     let (mut page, id, token) = page("type:'number',min:0,max:10,step:0.5");
     page.edit_input(token, &id, &[replace("12.2")], false)

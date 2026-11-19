@@ -442,21 +442,31 @@ impl Inputs {
         let entry = self.entries.get_mut(id).ok_or("UI_INPUT: missing editor")?;
         let before = entry.editor.clone();
         let mut input = None;
-        if entry.rules.max_length.is_none() {
+        let numeric = matches!(entry.rules.keyboard.as_str(), "number" | "decimal");
+        if entry.rules.max_length.is_none() && !numeric {
             input = renderer.edit_text(&mut entry.editor, edits)?.input;
         } else {
             for edit in edits {
-                // maxLength trims what an edit inserts; it never removes existing text.
+                // maxLength and a numeric keyboard trim what an edit inserts; neither
+                // removes existing text.
                 let edit = match edit {
                     Edit::Replace {
                         text,
                         cursor,
                         composing,
-                    } => Edit::Replace {
-                        text: entry.rules.fit(&entry.editor.snapshot(), text),
-                        cursor: *cursor,
-                        composing: *composing,
-                    },
+                    } => {
+                        let before = entry.editor.snapshot();
+                        let kept = entry.rules.filter(&before, text);
+                        // A rejected character over a selection leaves the selection as it was.
+                        if kept.is_empty() && !text.is_empty() && before.composition.is_none() {
+                            continue;
+                        }
+                        Edit::Replace {
+                            text: entry.rules.fit(&before, &kept),
+                            cursor: *cursor,
+                            composing: *composing,
+                        }
+                    }
                     edit => edit.clone(),
                 };
                 let change = renderer.edit_text(&mut entry.editor, std::slice::from_ref(&edit))?;

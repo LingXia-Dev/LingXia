@@ -103,7 +103,9 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   and returns it on close; the focus ring shows only after keyboard input. In a menu, arrows wrap,
   Home/End jump, a typed letter finds the next item; `expect(locator).toBeFocused()` checks focus.
 - Inputs take `type` (`password`, `email`, `number`, `tel`, `search`, `date`, `time`), `inputMode`, `maxLength`, `autoComplete`, `enterKeyHint` (on a textarea, `send`/`go`/`done`/`search` makes Return submit), `autoCapitalize`, `spellCheck`;
-  `type="number"` with `min`/`max`/`step` clamps on blur/submit; `type="date|time"` opens the
+  `type="number"` with `min`/`max`/`step` clamps on blur/submit, keeping the typed text otherwise (`7.0` stays);
+  typed and pasted text is filtered by keyboard: `inputMode="numeric"` keeps digits, `type="number"`/`inputMode="decimal"`
+  also one `.` (a `,` becomes `.`) and a leading `-`; `type="date|time"` opens the
   View's own themed picker (popover with a mouse, sheet on touch) and reports ISO strings;
   a time field shows the user's 12/24-hour clock, and both size to fit any value, so drop `min-w-[…ch]` on them.
 - While an image loads its background colour shows; `placeholder="tiny.jpg"` paints a small stand-in scaled smooth.
