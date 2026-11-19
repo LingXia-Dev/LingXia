@@ -21,11 +21,9 @@ test('Rows: from a finger the menu docks over a scrim, edge to edge alike; an it
   const screen = await renderExample('ContextMenu/ContextMenu', 'Rows');
   await ask(screen, 'note-coast', 'touch');
   const sheet = screen.getByTestId('note-coast-menu');
-  const panel = sheet.parent;
-  assert.equal(panel.props.position, 'absolute', 'placed in its layer: a fixed box stops at the bottom safe area');
-  assert.deepEqual([panel.props.marginLeft ?? 0, panel.props.marginRight ?? 0], [0, 0], 'no margin of the panel\'s own pushes it aside');
-  assert.equal(sheet.props.marginLeft, sheet.props.marginRight, 'the sheet is as far from one edge as from the other');
-  assert.equal(screen.getByTestId('note-coast-scrim').props.background, 'scrim', 'the page is dimmed under it');
+  assert.notEqual(sheet.props.position, 'fixed', 'placed in its layer: a fixed box stops at the bottom safe area');
+  assert.deepEqual([sheet.props.marginLeft ?? 0, sheet.props.marginRight ?? 0], [0, 0], 'the sheet is as far from one edge as from the other');
+  assert.equal(screen.getByTestId('note-coast-menu-backdrop').props.background, 'scrim', 'the page is dimmed under it');
   const remove = screen.queryAll(node => node.tag === 'text' && node.text === 'Delete');
   assert.deepEqual(remove.map(node => node.props.color), ['danger'], 'a destructive item is named in the danger role');
   screen.press(screen.getByTestId('pin-coast'));
@@ -34,15 +32,15 @@ test('Rows: from a finger the menu docks over a scrim, edge to edge alike; an it
   assert.equal(menus(screen).length, 0, 'and the menu closed');
 });
 
-test('Rows: the scrim closes the docked menu and runs nothing; from a mouse there is no scrim', async () => {
+test('Rows: the scrim closes the docked menu and runs nothing; from a mouse the page is not dimmed', async () => {
   const screen = await renderExample('ContextMenu/ContextMenu', 'Rows');
   await ask(screen, 'note-reading', 'touch');
-  screen.press(screen.getByTestId('note-reading-scrim'));
+  screen.press(screen.getByTestId('note-reading-menu-backdrop'));
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual([menus(screen).length, status(screen)], [0, '']);
   await ask(screen, 'note-reading', 'mouse');
   const menu = screen.getByTestId('note-reading-menu');
   assert.equal(menu.props.role, 'menu');
   assert.equal(menu.props.position, 'absolute');
-  assert.equal(screen.queryAll(node => node.testId === 'note-reading-scrim').length, 0);
+  assert.notEqual(screen.getByTestId('note-reading-menu-backdrop').props.background, 'scrim');
 });

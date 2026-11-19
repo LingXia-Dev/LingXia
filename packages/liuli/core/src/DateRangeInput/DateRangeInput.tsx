@@ -105,7 +105,6 @@ export function DateRangeInput(props: DateRangeInputProps) {
               aria-label={label}
               data-testid={testId && `${testId}-panel`}
               className={c.sheet.base}
-              style={{ paddingBottom: env.safeArea.bottom + 16 }}
             >
               <view aria-hidden className={c.grabber.base} />
               <view className={c.header.base}>

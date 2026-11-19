@@ -49,20 +49,12 @@ export function ContextMenu({ label, children, menu, isDisabled = false, classNa
           aria-label={label}
           open={ask.value !== null}
           onToggle={isOpen => { if (!isOpen) ask.set(null); }}
-          data-testid={isDocked ? undefined : testId && `${testId}-menu`}
+          data-testid={testId && `${testId}-menu`}
           style={place}
           className={cx(r.menu.base, isDocked ? r.menu.docked : cx(r.menu.point, r.menu.from[isUpward ? 'above' : 'below']))}
         >
-          {/* Hidden from assistive tech, which closes the menu with Escape or back; the name only satisfies the button. */}
-          {isDocked && <button aria-hidden aria-label={label} onClick={() => ask.set(null)} data-testid={testId && `${testId}-scrim`} className={r.scrim.base} />}
-          {isDocked
-            ? (
-              <view data-testid={testId && `${testId}-menu`} className={r.sheet.base} style={{ marginBottom: env.safeArea.bottom + 8 }}>
-                <text aria-hidden className={r.title.base}>{label}</text>
-                {menu}
-              </view>
-            )
-            : menu}
+          {isDocked && <text aria-hidden className={r.title.base}>{label}</text>}
+          {menu}
         </view>
       </MenuSize.Provider>
     </>

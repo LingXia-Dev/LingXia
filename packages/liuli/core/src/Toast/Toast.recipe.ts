@@ -15,9 +15,9 @@ export const toastParts = {
  * a pointer. It rises a little as it fades in; under reduced motion it only fades.
  */
 export const toastRecipe = {
-  /** The top-layer box the toast sits in; its padding, the 16 px gap plus the bars, is set from the environment. */
+  /** The top-layer box the toast sits in. It meets every edge, so the layer adds the bars to its 16 px gap. */
   region: {
-    base: 'absolute inset-0 m-0 justify-end transition duration-base ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
+    base: 'absolute inset-0 m-0 p-4 justify-end transition duration-base ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
     pointer: { coarse: 'items-center', fine: 'items-end' },
   },
   toast: {

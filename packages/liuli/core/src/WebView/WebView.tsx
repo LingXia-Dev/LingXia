@@ -2,7 +2,6 @@ import {
   cx,
   useId,
   useLocal,
-  useView,
   useWebView,
   type Child,
   type WebView as WebSession,
@@ -87,7 +86,6 @@ export function WebView({
   className,
   'data-testid': testId,
 }: WebViewProps) {
-  const { env } = useView();
   const fallback = useWebView(useId());
   const session = web ?? fallback;
   const localOpen = useLocal('open', false);
@@ -131,9 +129,6 @@ export function WebView({
           aria-label={label}
           data-testid={testId && `${testId}-sheet`}
           className={cx(r.panel.base, r.panel.mode[panelMode])}
-          style={panelMode === 'full'
-            ? { paddingTop: env.safeArea.top, paddingBottom: env.safeArea.bottom }
-            : { paddingBottom: env.safeArea.bottom }}
         >
           <view className={r.header.base}>
             <text role="heading" headingLevel={2} className={r.title.base}>{session.title || label}</text>

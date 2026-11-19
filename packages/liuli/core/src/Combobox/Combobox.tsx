@@ -362,7 +362,6 @@ export function Combobox(props: ComboboxProps) {
             aria-label={label}
             data-testid={testId && `${testId}-panel`}
             className={r.sheet.base}
-            style={{ paddingBottom: env.safeArea.bottom + 16 }}
           >
             <view aria-hidden className={r.grabber.base} />
             <view className={r.header.base}>

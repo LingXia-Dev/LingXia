@@ -102,8 +102,8 @@ export function CommandPalette({ isOpen, onOpenChange, label, placeholder, group
       closedby="any"
       aria-label={label}
       data-testid={testId}
-      // On a phone it starts under the status bar, which it covers; on a wide screen it sits an eighth of the way down.
-      style={isCompact ? { paddingTop: env.safeArea.top } : { marginTop: Math.round(env.viewport.height * 0.12) }}
+      // On a wide screen it sits an eighth of the way down; on a phone it is docked to the top edge.
+      style={isCompact ? undefined : { marginTop: Math.round(env.viewport.height * 0.12) }}
       className={cx(r.panel.base, isCompact ? r.panel.compact : r.panel.regular)}
     >
       <view className={r.search.base}>

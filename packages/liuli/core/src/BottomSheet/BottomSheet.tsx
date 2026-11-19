@@ -1,4 +1,4 @@
-import { cx, useId, useLocal, useView, type Child } from '@lingxia/view';
+import { cx, useId, useLocal, type Child } from '@lingxia/view';
 import type { DialogDismissOn } from '../Dialog/Dialog';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
@@ -59,7 +59,6 @@ export function BottomSheet({
   className,
   'data-testid': testId,
 }: BottomSheetProps) {
-  const { env } = useView();
   const descriptionId = `${useId()}-description`;
   const shape = points[detents];
   const detent = useLocal(`detent-${detents}`, shape.open);
@@ -80,7 +79,6 @@ export function BottomSheet({
       bind={detent}
       data-testid={testId}
       className={cx(r.panel.base, r.panel.detents[detents], className)}
-      style={{ paddingBottom: env.safeArea.bottom + 20 }}
     >
       <view aria-hidden className={r.grabber.base} />
       {(!isLabelHidden || closeLabel !== undefined) && (

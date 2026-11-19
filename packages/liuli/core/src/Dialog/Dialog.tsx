@@ -1,4 +1,4 @@
-import { cx, useId, useView, type Child } from '@lingxia/view';
+import { cx, useId, type Child } from '@lingxia/view';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { dialogRecipe as r } from './Dialog.recipe';
@@ -71,9 +71,6 @@ export function Dialog({
 }: DialogProps) {
   const descriptionId = `${useId()}-description`;
   const close = () => onOpenChange(false);
-  const { env } = useView();
-  // A full dialog covers the system bars, so its own padding clears them.
-  const clear = size === 'full' ? { paddingTop: env.safeArea.top + 20, paddingBottom: env.safeArea.bottom + 20 } : undefined;
   return (
     <dialog
       open={isOpen}
@@ -83,7 +80,6 @@ export function Dialog({
       aria-label={label}
       aria-describedby={description !== undefined ? descriptionId : undefined}
       data-testid={testId}
-      style={clear}
       className={cx(r.panel.base, size !== 'full' && r.panel.floating, r.panel.size[size], className)}
     >
       {media !== undefined && (

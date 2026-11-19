@@ -59,8 +59,9 @@ test('Required: with dismissOn none the sheet has no off-screen point and only i
   assert.equal(textOf(screen.getByTestId('answer')), 'Stayed');
 });
 
-test('the panel clears the home indicator by the safe area', async () => {
-  const screen = await renderExample('BottomSheet/BottomSheet', 'MoveTo', { env: { safeArea: { top: 0, right: 0, bottom: 34, left: 0 } } });
+test('the panel runs to the bottom edge and its content clears the home indicator: its 20 plus the inset the layer adds', async () => {
+  const edges = { top: 0, right: 0, bottom: 34, left: 0 };
+  const screen = await renderExample('BottomSheet/BottomSheet', 'MoveTo', { env: { insets: edges, safeArea: edges } });
   screen.press(screen.getByTestId('move-open'));
   assert.equal(sheet(screen, 'move').props.paddingBottom, 54);
 });

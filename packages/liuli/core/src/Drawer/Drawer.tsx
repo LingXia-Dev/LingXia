@@ -1,4 +1,4 @@
-import { cx, useId, useView, type Child } from '@lingxia/view';
+import { cx, useId, type Child } from '@lingxia/view';
 import type { DialogDismissOn } from '../Dialog/Dialog';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
@@ -51,7 +51,6 @@ export function Drawer({
   'data-testid': testId,
 }: DrawerProps) {
   const descriptionId = `${useId()}-description`;
-  const { env } = useView();
   const close = () => onOpenChange(false);
   return (
     <dialog
@@ -61,8 +60,6 @@ export function Drawer({
       aria-label={label}
       aria-describedby={description !== undefined ? descriptionId : undefined}
       data-testid={testId}
-      // It runs under the system bars, so its own padding clears them.
-      style={{ paddingTop: env.safeArea.top + 20, paddingBottom: env.safeArea.bottom + 20 }}
       className={cx(r.panel.base, r.panel.side[side], r.panel.size[size], className)}
     >
       <view className={r.header.base}>

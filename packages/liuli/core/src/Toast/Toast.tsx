@@ -1,4 +1,4 @@
-import { createContext, cx, useContext, useId, useLocal, useView, type Env, type Local } from '@lingxia/view';
+import { createContext, cx, useContext, useId, useLocal, useView, type Local } from '@lingxia/view';
 import type { BannerTone } from '../Banner/Banner';
 import { Button } from '../Button/Button';
 import { Glyph } from '../internal/Glyph';
@@ -142,18 +142,6 @@ export function useToast(): Toaster {
   return useContext(ToastContext);
 }
 
-// The region fills the top layer's box absolutely, so the box's padding for the bars does not
-// reach it; it clears them itself. The box already ends at the keyboard's top edge.
-function clearBars(env: Env) {
-  const gap = 16;
-  return {
-    paddingTop: gap + env.insets.top,
-    paddingBottom: gap + Math.max(0, env.insets.bottom - env.keyboard.height),
-    paddingLeft: gap + env.insets.left,
-    paddingRight: gap + env.insets.right,
-  };
-}
-
 const swipePoints = ['-120%', 0, '120%'] as const;
 
 function Shown({ entry, regionId, dismissLabel, duration, toaster, actions }: { entry: Entry; regionId: string; dismissLabel: string; duration: number; toaster: Toaster; actions: Map<string, () => void> }) {
@@ -173,7 +161,6 @@ function Shown({ entry, regionId, dismissLabel, duration, toaster, actions }: { 
       closeAfter={closeAfter}
       onToggle={open => { if (!open) close(); }}
       className={cx(r.region.base, r.region.pointer[env.pointer])}
-      style={clearBars(env)}
     >
       <view
         drag="x"

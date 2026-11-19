@@ -1,4 +1,4 @@
-import { useLocal, useView, type Local } from '@lingxia/view';
+import { useLocal, type Local } from '@lingxia/view';
 import { Glyph } from '../internal/Glyph';
 import { PageControl } from '../PageControl/PageControl';
 import { lightboxRecipe as r } from './Lightbox.recipe';
@@ -32,7 +32,6 @@ export interface LightboxProps {
 export function Lightbox({ isOpen, onOpenChange, label, images, bind, closeLabel, pageLabel, 'data-testid': testId }: LightboxProps) {
   const local = useLocal('page', 0);
   const page = bind ?? local;
-  const { env } = useView();
   const at = Math.min(Math.max(0, Math.round(page.value)), Math.max(0, images.length - 1));
   const close = () => onOpenChange(false);
   return (
@@ -42,8 +41,6 @@ export function Lightbox({ isOpen, onOpenChange, label, images, bind, closeLabel
       closedby="closerequest"
       aria-label={label}
       data-testid={testId}
-      // It covers the system bars, so its own padding clears them.
-      style={{ paddingTop: env.safeArea.top + 4, paddingBottom: env.safeArea.bottom + 12 }}
       className={r.panel.base}
     >
       <view className={r.bar.base}>

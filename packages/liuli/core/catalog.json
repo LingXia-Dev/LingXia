@@ -4990,8 +4990,6 @@
       "parts": {
         "target": "view",
         "menu": "view",
-        "scrim": "button",
-        "sheet": "view",
         "title": "text"
       },
       "accessibility": {

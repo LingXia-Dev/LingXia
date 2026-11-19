@@ -552,7 +552,7 @@ spec('context menu (touch): a long press docks the menu level between the edges,
   await finger.up();
   await pause(600);
   const sheet = await view.testId('note-reading-menu').boundingBox();
-  const page = await view.testId('note-reading-scrim').boundingBox();
+  const page = await view.testId('note-reading-menu-backdrop').boundingBox();
   const [before, after] = [sheet.x - page.x, page.x + page.width - (sheet.x + sheet.width)];
   if (Math.abs(before - after) > 1) throw Error(`the docked menu is ${before} from one edge and ${after} from the other`);
   await t.attach('context-menu-docked.png', await view.screenshot());
