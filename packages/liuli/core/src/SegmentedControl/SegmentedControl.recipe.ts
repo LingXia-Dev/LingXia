@@ -14,7 +14,8 @@ export const segmentedControlParts = {
  */
 export const segmentedControlRecipe = {
   root: {
-    base: 'relative flex-row p-0.5 rounded-control bg-surface-sunken',
+    // Dark `surface-sunken` sits a hair under the canvas; an inset hairline draws the track's edge on any surface.
+    base: 'relative flex-row p-0.5 rounded-control bg-surface-sunken inset-ring inset-ring-text/8',
   },
   /** Inside the padding, so a segment is exactly a share of the row; mirrors in right-to-left. */
   track: {
