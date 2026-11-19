@@ -1,5 +1,5 @@
 //! Value grammars shared by decode and layout: lengths, colors, bases and paint deltas.
-use super::{FIELDS, FOCUS_PAINT_FIELDS, PART_FIELDS, field, limits, tag};
+use super::{FIELDS, FOCUS_PAINT_FIELDS, PART_FIELDS, SCALED_FIELDS, SCALES, field, limits, tag};
 use serde_json::Value;
 
 /// Largest callback handle a JS number represents exactly.
@@ -139,6 +139,9 @@ fn bounded_str(value: &Value, max: usize) -> bool {
 /// already admitted on `tag`; page-budgeted and cross-record fields are
 /// checked by the record walk.
 pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> {
+    if let Some(step) = value.as_array() {
+        return scale_step(id, step).map(drop);
+    }
     if let Some(options) = super::options(FIELDS[id].1) {
         let value = value
             .as_str()
@@ -636,6 +639,53 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
     }
 }
 
+/// A `[slot, times, plus]` reference on field `id`: the slot's family must list the field.
+pub(crate) fn scale_step(id: usize, step: &[Value]) -> Result<(usize, f64, f64), String> {
+    let name = FIELDS[id].0;
+    let finite = |v: &Value| v.as_f64().filter(|v| v.is_finite());
+    let slot = step.first().and_then(Value::as_u64).map(|s| s as usize);
+    let (Some(slot), Some(times), Some(plus), 3) = (
+        slot.filter(|s| *s < SCALES.len()),
+        step.get(1).and_then(finite),
+        step.get(2).and_then(finite),
+        step.len(),
+    ) else {
+        let slot = step
+            .first()
+            .map_or_else(|| "nothing".into(), Value::to_string);
+        return Err(format!("UI_SCALE: {name} does not take {slot}"));
+    };
+    let family = SCALES[slot].1;
+    if !SCALED_FIELDS
+        .iter()
+        .any(|(listed, ids)| *listed == family && ids.contains(&id))
+    {
+        return Err(format!("UI_SCALE: {name} does not take {}", SCALES[slot].0));
+    }
+    // Every slot's value is positive, so this one can only land below 0.
+    let signed = id == field::LETTER_SPACING || matches!(FIELDS[id].1, "margin" | "inset");
+    if !signed && times < 0.0 && plus <= 0.0 {
+        return Err(format!("UI_STYLE: {name} resolves below 0"));
+    }
+    Ok((slot, times, plus))
+}
+
+/// A motion reference inside a transition: the runtime writes only `[slot, 1, 0]`.
+fn motion_step(value: Option<&Value>, family: &str) -> bool {
+    value
+        .and_then(Value::as_array)
+        .is_some_and(|step| match step.as_slice() {
+            [slot, times, plus] => {
+                slot.as_u64()
+                    .and_then(|s| SCALES.get(s as usize))
+                    .is_some_and(|(_, listed)| *listed == family)
+                    && times.as_f64() == Some(1.0)
+                    && plus.as_f64() == Some(0.0)
+            }
+            _ => false,
+        })
+}
+
 fn element_ids(value: &Value, max: usize) -> Result<(), String> {
     ensure(
         value.as_str().is_some_and(|ids| {
@@ -692,6 +742,7 @@ fn transition(value: &Value) -> Result<(), String> {
         .ok_or_else(invalid)?;
     let names: std::collections::HashSet<_> = properties.iter().filter_map(Value::as_str).collect();
     let easing = match object.get("easing") {
+        step @ Some(Value::Array(points)) if points.len() == 3 => motion_step(step, "ease"),
         Some(Value::String(name)) => matches!(name.as_str(), "linear" | "step-end"),
         Some(Value::Array(points)) => {
             points.len() == 4
@@ -714,7 +765,8 @@ fn transition(value: &Value) -> Result<(), String> {
             && !properties.is_empty()
             && names.len() == properties.len()
             && names.iter().all(|name| allowed.contains(name))
-            && time("durationMs", f64::MIN_POSITIVE)
+            && (time("durationMs", f64::MIN_POSITIVE)
+                || motion_step(object.get("durationMs"), "duration"))
             && time("delayMs", 0.0)
             && easing,
         "UI_TRANSITION: invalid transition",

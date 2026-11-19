@@ -96,6 +96,8 @@ pub struct ViewSession {
     paint_records: Option<Vec<crate::protocol::Record>>,
     /// The last buffer the View encoded and the host decoded; the next may reference it.
     wire: std::cell::RefCell<crate::protocol::Wire>,
+    /// The theme scales the page's steps resolve against; the wire carries the same.
+    scales: std::sync::Arc<crate::protocol::scales::Scales>,
     input_dirty: bool,
     /// The View's last run read a host-context key (`env.sizeClass`, `env.canDock`).
     reads_host_context: bool,
@@ -346,6 +348,7 @@ impl ViewSession {
             input_records: None,
             paint_records: None,
             wire: Default::default(),
+            scales: crate::protocol::scales::Scales::builtin(),
             animation_inventory: Default::default(),
             animation_visible: Default::default(),
             input_dirty: false,
@@ -387,6 +390,7 @@ impl ViewSession {
     pub fn reset(&mut self) -> Result<(), String> {
         self.eval("__lingxiaReset()")?;
         *self.wire.borrow_mut() = Default::default();
+        self.wire.borrow_mut().set_scales(self.scales.clone())?;
         self.animations.clear()?;
         self.pending_animation = None;
         self.presenting_animation = None;

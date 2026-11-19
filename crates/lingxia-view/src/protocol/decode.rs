@@ -1,4 +1,5 @@
 //! The record walk: header, parent links, fields and page-wide budgets.
+use super::scales::{self, Scales};
 use super::{FIELDS, Record, TAGS, admission, field, limits, tag, values};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -14,18 +15,43 @@ struct Page {
 
 /// A decoded buffer the next one may reference: its serial, records, and for each wire offset of
 /// a node header the record it became, with each record's depth.
-#[derive(Default)]
+/// Also the scales its steps were resolved against.
 pub struct Wire {
     serial: u64,
     records: std::sync::Arc<[Record]>,
     offsets: HashMap<i64, usize>,
     depths: Vec<usize>,
+    scales: std::sync::Arc<Scales>,
+}
+
+impl Default for Wire {
+    fn default() -> Self {
+        Self {
+            serial: 0,
+            records: Default::default(),
+            offsets: Default::default(),
+            depths: Default::default(),
+            scales: Scales::builtin(),
+        }
+    }
 }
 
 impl Wire {
     /// The buffer's serial; 0 when nothing may reference it.
     pub fn serial(&self) -> u64 {
         self.serial
+    }
+
+    /// Resolve later buffers, and the records they may reuse, against `scales`.
+    pub(crate) fn set_scales(&mut self, scales: std::sync::Arc<Scales>) -> Result<(), String> {
+        if *self.scales == *scales {
+            return Ok(());
+        }
+        if let Some(records) = scales::rescale(&self.records, &scales)? {
+            self.records = records;
+        }
+        self.scales = scales;
+        Ok(())
     }
 }
 
@@ -34,7 +60,7 @@ const WIRE_SERIAL: i64 = -3;
 const WIRE_REUSE: i64 = -2;
 
 pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
-    walk(buffer, None).map(|(records, _)| records)
+    walk(buffer, None, &Scales::builtin()).map(|(records, _)| records)
 }
 
 /// Decodes `buffer`, whose reused subtrees may stand as references into `previous`; also
@@ -43,7 +69,9 @@ pub fn decode_wire(
     buffer: &[Value],
     previous: Option<&Wire>,
 ) -> Result<(std::sync::Arc<[Record]>, Wire), String> {
-    let (records, mut wire) = walk(buffer, previous)?;
+    let scales = previous.map_or_else(Scales::builtin, |wire| wire.scales.clone());
+    let (records, mut wire) = walk(buffer, previous, &scales)?;
+    wire.scales = scales;
     let records: std::sync::Arc<[Record]> = records.into();
     if wire.serial != 0 {
         wire.records = records.clone();
@@ -52,7 +80,11 @@ pub fn decode_wire(
 }
 
 /// The records of `buffer`, and its wire without the records.
-fn walk(buffer: &[Value], previous: Option<&Wire>) -> Result<(Vec<Record>, Wire), String> {
+fn walk(
+    buffer: &[Value],
+    previous: Option<&Wire>,
+    scales: &Scales,
+) -> Result<(Vec<Record>, Wire), String> {
     let mut page = Page::default();
     let mut serial = 0;
     let mut records: Vec<Record> = Vec::new();
@@ -146,6 +178,7 @@ fn walk(buffer: &[Value], previous: Option<&Wire>) -> Result<(Vec<Record>, Wire)
             .get(cursor..cursor + count * 2)
             .ok_or("UI_BUFFER: truncated fields")?;
         let mut fields = Vec::new();
+        let mut steps = Vec::new();
         for pair in pairs.chunks_exact(2) {
             let id = pair[0]
                 .as_u64()
@@ -171,7 +204,13 @@ fn walk(buffer: &[Value], previous: Option<&Wire>) -> Result<(Vec<Record>, Wire)
                 }
                 _ => values::check(tag, id, value)?,
             }
-            fields.push((id, value.clone()));
+            match scales::resolve(tag, id, value, scales)? {
+                Some((resolved, step)) => {
+                    fields.push((id, resolved));
+                    steps.push((id, step));
+                }
+                None => fields.push((id, value.clone())),
+            }
         }
         admission::record(tag, parent_tag, &key, &fields)?;
         page.rows(records.len(), parent, &key, &fields)?;
@@ -182,7 +221,7 @@ fn walk(buffer: &[Value], previous: Option<&Wire>) -> Result<(Vec<Record>, Wire)
             key,
             test_id,
             text,
-            fields: fields.into(),
+            fields: super::Fields::with_steps(fields, steps),
         });
         cursor += count * 2;
     }
@@ -196,6 +235,7 @@ fn walk(buffer: &[Value], previous: Option<&Wire>) -> Result<(Vec<Record>, Wire)
         records: Default::default(),
         offsets,
         depths,
+        scales: Scales::builtin(),
     };
     Ok((records, wire))
 }

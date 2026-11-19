@@ -69,6 +69,17 @@ impl ViewSession {
             // palette without the View.
             self.input_dirty = true;
         }
+        // Theme scales, like the palette, reach the renderer and never the View.
+        let scales = match value
+            .as_object_mut()
+            .and_then(|object| object.remove("scales"))
+        {
+            Some(pushed) => std::sync::Arc::new(crate::protocol::scales::Scales::decode(&pushed)?),
+            None => crate::protocol::scales::Scales::builtin(),
+        };
+        if *self.scales != *scales {
+            self.rescale(scales)?;
+        }
         let text_scale = crate::text::scale::TextScale::decode(value.get("textScale"))?;
         if self.renderer.text_scale != text_scale {
             self.renderer.text_scale = text_scale;
@@ -109,6 +120,27 @@ impl ViewSession {
             self.warm.set(true);
         }
         self.environment = value;
+        Ok(())
+    }
+
+    /// Committed records resolved again under `scales`: the same work as a text-scale change,
+    /// without running the View.
+    fn rescale(
+        &mut self,
+        scales: std::sync::Arc<crate::protocol::scales::Scales>,
+    ) -> Result<(), String> {
+        if let Some(records) = &self.input_records
+            && let Some(rescaled) = crate::protocol::scales::rescale(records, &scales)?
+        {
+            self.input_records = Some(rescaled);
+        }
+        self.wire.borrow_mut().set_scales(scales.clone())?;
+        self.scales = scales;
+        self.paint_records = None;
+        self.renderer.clear_text_cache();
+        self.retained = None;
+        crate::layout::list_layout::invalidate_measurements(&mut self.lists);
+        self.input_dirty = true;
         Ok(())
     }
 

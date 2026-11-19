@@ -64,7 +64,7 @@ fn the_session_fills_the_session_keys() {
     let keys: Vec<&str> = shown.split(',').collect();
     for (key, _) in ENVIRONMENT_KEYS
         .iter()
-        .filter(|(key, _)| !matches!(*key, "textScale" | "palette"))
+        .filter(|(key, kind)| *key != "textScale" && *kind != "push")
     {
         assert!(keys.contains(key), "{key} missing from env: {shown}");
     }

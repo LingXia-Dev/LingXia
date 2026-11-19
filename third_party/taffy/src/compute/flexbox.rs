@@ -19,7 +19,8 @@ use super::common::alignment::apply_alignment_fallback;
 #[cfg(feature = "content_size")]
 use super::common::scrollable_overflow::compute_scrollable_overflow_contribution;
 use super::common::sizing_keyword::{
-    resolve_absolute_sizing_keywords, resolve_sizing_keyword, SizingKeywordResolution,
+    resolve_absolute_min_max_sizing_keywords, resolve_absolute_sizing_keywords, resolve_min_max_sizing_keyword,
+    resolve_sizing_keyword, SizingKeywordResolution,
 };
 
 /// The intermediate results of a flexbox calculation for a single item
@@ -35,10 +36,16 @@ struct FlexItem {
     /// The raw size style of this item. Used to detect and resolve sizing
     /// keywords (`min-content`, `max-content`, `fit-content`, `fit-content(...)`, and `stretch`)
     size_style: Size<Dimension>,
-    /// The minimum allowable size of this item
+    /// The minimum allowable size of this item. A sizing keyword is filled in once the item can
+    /// be measured: the main axis when the flex base size is determined, the cross axis when
+    /// the hypothetical cross size is.
     min_size: Size<Option<f32>>,
-    /// The maximum allowable size of this item
+    /// The maximum allowable size of this item (sizing keywords as for `min_size`)
     max_size: Size<Option<f32>>,
+    /// The raw min size style of this item. Used to detect and resolve sizing keywords
+    min_size_style: Size<Dimension>,
+    /// The raw max size style of this item. Used to detect and resolve sizing keywords
+    max_size_style: Size<Dimension>,
     /// The aspect ratio of this item
     aspect_ratio: Option<f32>,
     /// The cross-alignment of this item
@@ -693,6 +700,8 @@ fn generate_anonymous_flex_items(
                     aspect_ratio,
                 )
                 .maybe_add(box_sizing_adjustment),
+                min_size_style: child_style.min_size(),
+                max_size_style: child_style.max_size(),
                 aspect_ratio,
 
                 inset: child_style
@@ -824,8 +833,8 @@ fn determine_flex_base_size(
         // Min/max sizes transferred through the aspect ratio are taken into account here
         // https://github.com/w3c/csswg-drafts/issues/10997
         let cross_axis_margin_sum = constants.margin.cross_axis_sum(dir);
-        let transferred_min_size = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio);
-        let transferred_max_size = child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio);
+        let mut transferred_min_size = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio);
+        let mut transferred_max_size = child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio);
         let child_min_cross = transferred_min_size.cross(dir).maybe_add(cross_axis_margin_sum);
         let child_max_cross = transferred_max_size.cross(dir).maybe_add(cross_axis_margin_sum);
 
@@ -894,6 +903,39 @@ fn determine_flex_base_size(
             .maybe_add(box_sizing_adjustment);
 
         drop(child_style);
+
+        // A min/max main size that is a sizing keyword is the item's content size under the
+        // keyword's constraint, measured with the same cross-axis inputs as the flex base size
+        let min_main_style = child.min_size_style.main(dir);
+        let max_main_style = child.max_size_style.main(dir);
+        if min_main_style.is_sizing_keyword() || max_main_style.is_sizing_keyword() {
+            let stretch_size = percent_resolution_main_size.maybe_sub(child.margin.main_axis_sum(dir));
+            let available_space = Size::MAX_CONTENT.with_cross(dir, cross_axis_available_space);
+            for (style, is_min) in [(min_main_style, true), (max_main_style, false)] {
+                if !style.is_sizing_keyword() {
+                    continue;
+                }
+                let size = resolve_min_max_sizing_keyword(
+                    tree,
+                    child.node,
+                    style,
+                    dir.main_axis(),
+                    child_known_dimensions,
+                    child_parent_size,
+                    available_space,
+                    stretch_size,
+                    percent_resolution_main_size,
+                    Line::FALSE,
+                );
+                if is_min {
+                    child.min_size.set_main(dir, size);
+                } else {
+                    child.max_size.set_main(dir, size);
+                }
+            }
+            transferred_min_size = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio);
+            transferred_max_size = child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio);
+        }
 
         child.flex_basis = 'flex_basis: {
             // A. If the item has a definite used flex basis, that’s the flex base size.
@@ -1780,6 +1822,43 @@ fn determine_hypothetical_cross_size(
 
         let child_known_main = constants.container_size.main(constants.dir).into();
 
+        let cross_stretch_size = constants
+            .node_inner_size
+            .cross(constants.dir)
+            .map(|val| constants.divided_cross_space(val))
+            .maybe_sub(child.margin.cross_axis_sum(constants.dir));
+
+        // A min/max cross size that is a sizing keyword is the item's content size under the
+        // keyword's constraint at its used main size
+        let min_cross_style = child.min_size_style.cross(constants.dir);
+        let max_cross_style = child.max_size_style.cross(constants.dir);
+        if min_cross_style.is_sizing_keyword() || max_cross_style.is_sizing_keyword() {
+            let known_dimensions = Size::NONE.with_main(constants.dir, Some(child.target_size.main(constants.dir)));
+            let available_space = Size::MAX_CONTENT.with_main(constants.dir, child_known_main);
+            for (style, is_min) in [(min_cross_style, true), (max_cross_style, false)] {
+                if !style.is_sizing_keyword() {
+                    continue;
+                }
+                let size = resolve_min_max_sizing_keyword(
+                    tree,
+                    child.node,
+                    style,
+                    constants.dir.cross_axis(),
+                    known_dimensions,
+                    constants.node_inner_size,
+                    available_space,
+                    cross_stretch_size,
+                    constants.node_inner_size.cross(constants.dir),
+                    Line::FALSE,
+                );
+                if is_min {
+                    child.min_size.set_cross(constants.dir, size);
+                } else {
+                    child.max_size.set_cross(constants.dir, size);
+                }
+            }
+        }
+
         // Sizes transferred through the aspect ratio clamp the hypothetical cross size
         // https://github.com/w3c/csswg-drafts/issues/10997
         let transferred_min_cross = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio).cross(constants.dir);
@@ -1801,11 +1880,6 @@ fn determine_hypothetical_cross_size(
         // fit-content(...)) determines the available space constraint the item is measured under.
         // The `stretch` keyword is not resolved here: it stretches to the flex line, which is
         // handled in `determine_used_cross_size`
-        let cross_stretch_size = constants
-            .node_inner_size
-            .cross(constants.dir)
-            .map(|val| constants.divided_cross_space(val))
-            .maybe_sub(child.margin.cross_axis_sum(constants.dir));
         let child_available_cross = match resolve_sizing_keyword(
             child.size_style.cross(constants.dir),
             cross_stretch_size,
@@ -2070,10 +2144,14 @@ fn determine_used_cross_size(
                     let box_sizing_adjustment =
                         if child_style.box_sizing() == BoxSizing::ContentBox { pb_sum } else { Size::ZERO };
 
-                    let max_size_ignoring_aspect_ratio = child_style
+                    let mut max_size_ignoring_aspect_ratio = child_style
                         .max_size()
                         .maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis))
                         .maybe_add(box_sizing_adjustment);
+                    // A keyword max cross size was resolved (without aspect ratio) on the item
+                    if child.max_size_style.cross(constants.dir).is_sizing_keyword() {
+                        max_size_ignoring_aspect_ratio.set_cross(constants.dir, child.max_size.cross(constants.dir));
+                    }
 
                     (line_cross_size - child.margin.cross_axis_sum(constants.dir)).maybe_clamp(
                         child.min_size.cross(constants.dir),
@@ -2694,21 +2772,39 @@ fn perform_absolute_layout_on_absolute_children(
             .maybe_resolve(inset_relative_size, |val, basis| tree.calc(val, basis))
             .maybe_apply_aspect_ratio(aspect_ratio)
             .maybe_add(box_sizing_adjustment);
-        let min_size = child_style
-            .min_size()
-            .maybe_resolve(inset_relative_size, |val, basis| tree.calc(val, basis))
-            .maybe_apply_aspect_ratio(aspect_ratio)
-            .maybe_add(box_sizing_adjustment)
-            .or(padding_border_sum.map(Some))
-            .maybe_max(padding_border_sum);
-        let max_size = child_style
-            .max_size()
+        let min_size_style = child_style.min_size();
+        let max_size_style = child_style.max_size();
+        let mut min_size = min_size_style
             .maybe_resolve(inset_relative_size, |val, basis| tree.calc(val, basis))
             .maybe_apply_aspect_ratio(aspect_ratio)
             .maybe_add(box_sizing_adjustment);
-        let mut known_dimensions = style_size.maybe_clamp(min_size, max_size);
+        let mut max_size = max_size_style
+            .maybe_resolve(inset_relative_size, |val, basis| tree.calc(val, basis))
+            .maybe_apply_aspect_ratio(aspect_ratio)
+            .maybe_add(box_sizing_adjustment);
 
         drop(child_style);
+
+        if min_size_style.width.is_sizing_keyword()
+            || min_size_style.height.is_sizing_keyword()
+            || max_size_style.width.is_sizing_keyword()
+            || max_size_style.height.is_sizing_keyword()
+        {
+            resolve_absolute_min_max_sizing_keywords(
+                tree,
+                child,
+                &mut min_size,
+                &mut max_size,
+                min_size_style,
+                max_size_style,
+                style_size,
+                inset_relative_size,
+                Rect { left, right, top, bottom },
+                margin,
+            );
+        }
+        let min_size = min_size.or(padding_border_sum.map(Some)).maybe_max(padding_border_sum);
+        let mut known_dimensions = style_size.maybe_clamp(min_size, max_size);
 
         // Resolve any sizing keywords (min-content, max-content, fit-content, fit-content(...),
         // stretch) in the size styles. An explicitly sized axis takes precedence over the

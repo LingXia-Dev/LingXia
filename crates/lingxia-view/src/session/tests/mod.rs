@@ -1836,6 +1836,8 @@ mod size_transition;
 mod text_selection;
 #[path = "time_field.rs"]
 mod time_field;
+#[path = "scales.rs"]
+mod scales;
 mod top_layer;
 #[path = "transition.rs"]
 mod transition;

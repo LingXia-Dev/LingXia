@@ -302,6 +302,11 @@ pub mod field {
     pub const ON_SCROLL_EDGE: usize = 264;
     pub const ARIA_CONTROLS: usize = 265;
     pub const ARIA_AUTOCOMPLETE: usize = 266;
+    pub const SCALE_REFS: usize = 267;
+    pub const MIN_WIDTH_KEYWORD: usize = 268;
+    pub const MIN_HEIGHT_KEYWORD: usize = 269;
+    pub const MAX_WIDTH_KEYWORD: usize = 270;
+    pub const MAX_HEIGHT_KEYWORD: usize = 271;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video", "webview"];
@@ -575,6 +580,11 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("onScrollEdge", "handle"),
     ("ariaControls", "element-ids"),
     ("ariaAutocomplete", "auto-complete-mode"),
+    ("scaleRefs", "flag"),
+    ("minWidthKeyword", "sizing-keyword"),
+    ("minHeightKeyword", "sizing-keyword"),
+    ("maxWidthKeyword", "sizing-keyword"),
+    ("maxHeightKeyword", "sizing-keyword"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -611,7 +621,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "role" => Some(&["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip", "tablist", "tab", "tabpanel", "radiogroup", "radio", "toolbar", "tree", "treeitem", "row", "menuitemcheckbox", "menuitemradio", "img", "combobox", "spinbutton"]),
         "anchor-area" => Some(&["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top", "inline-end span-block-end", "inline-end span-block-start", "inline-end", "inline-start span-block-end", "inline-start span-block-start", "inline-start"]),
         "live-region" => Some(&["off", "polite", "assertive"]),
-        "input-keyboard" => Some(&["text", "number", "email", "phone", "search", "date", "time"]),
+        "input-keyboard" => Some(&["text", "number", "email", "phone", "search", "date", "time", "decimal"]),
         "auto-complete-mode" => Some(&["none", "list"]),
         "auto-complete" => Some(&["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"]),
         "enter-key-hint" => Some(&["enter", "done", "go", "next", "previous", "search", "send"]),
@@ -677,6 +687,7 @@ pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
     ("insets", "device"),
     ("safeArea", "device"),
     ("keyboard", "device"),
+    ("capsule", "push"),
     ("pointer", "device"),
     ("os", "device"),
     ("formFactor", "device"),
@@ -693,6 +704,7 @@ pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
     ("renderer", "device"),
     ("textScale", "device"),
     ("palette", "push"),
+    ("scales", "push"),
 ];
 
 /// Whether a native environment snapshot (device facts plus pushes) is well formed.
@@ -702,6 +714,7 @@ pub fn check_environment(value: &serde_json::Value) -> bool {
         && ["top", "right", "bottom", "left"].iter().all(|edge| value["insets"][edge].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n)))
         && (value.get("safeArea").is_none() || ["top", "right", "bottom", "left"].iter().all(|edge| value["safeArea"][edge].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))))
         && value["keyboard"]["height"].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))
+        && (value.get("capsule").is_none() || (value["capsule"].is_null() || (["x", "y", "width", "height"].iter().all(|side| value["capsule"][side].as_f64().is_some_and(|n| n.is_finite() && (-16384.0..=16384.0).contains(&n))) && ["width", "height"].iter().all(|side| value["capsule"][side].as_f64().is_some_and(|n| n >= 0.0)))))
         && matches!(value["pointer"].as_str(), Some("fine") | Some("coarse"))
         && value["os"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
         && value["formFactor"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
@@ -784,6 +797,52 @@ pub struct FieldAdmission {
 }
 
 /// Indexed by field id.
+/// Scale slots by wire index, with their family; append-only like field ids.
+pub const SCALES: &[(&str, &str)] = &[
+    ("text.xs", "type"),
+    ("text.sm", "type"),
+    ("text.base", "type"),
+    ("text.lg", "type"),
+    ("text.xl", "type"),
+    ("text.2xl", "type"),
+    ("text.3xl", "type"),
+    ("text.4xl", "type"),
+    ("leading.xs", "leading"),
+    ("leading.sm", "leading"),
+    ("leading.base", "leading"),
+    ("leading.lg", "leading"),
+    ("leading.xl", "leading"),
+    ("leading.2xl", "leading"),
+    ("leading.3xl", "leading"),
+    ("leading.4xl", "leading"),
+    ("radius.sm", "radius"),
+    ("radius.DEFAULT", "radius"),
+    ("radius.md", "radius"),
+    ("radius.lg", "radius"),
+    ("radius.xl", "radius"),
+    ("radius.2xl", "radius"),
+    ("radius.3xl", "radius"),
+    ("space", "space"),
+    ("duration.fast", "duration"),
+    ("duration.base", "duration"),
+    ("duration.slow", "duration"),
+    ("ease.standard", "ease"),
+    ("ease.enter", "ease"),
+    ("ease.exit", "ease"),
+    ("em", "em"),
+];
+
+/// Fields that take a `[slot, times, plus]` reference, by the family of the slot.
+pub const SCALED_FIELDS: &[(&str, &[usize])] = &[
+    ("type", &[field::FONT_SIZE, field::LINE_HEIGHT, field::LETTER_SPACING]),
+    ("leading", &[field::LINE_HEIGHT]),
+    ("radius", &[field::RADIUS, field::RADIUS_TOP_LEFT, field::RADIUS_TOP_RIGHT, field::RADIUS_BOTTOM_RIGHT, field::RADIUS_BOTTOM_LEFT, field::RADIUS_START_START, field::RADIUS_START_END, field::RADIUS_END_START, field::RADIUS_END_END]),
+    ("space", &[field::LINE_HEIGHT, field::PADDING_TOP, field::PADDING_RIGHT, field::PADDING_BOTTOM, field::PADDING_LEFT, field::PADDING_INLINE_START, field::PADDING_INLINE_END, field::GAP, field::ROW_GAP, field::COLUMN_GAP, field::MARGIN_TOP, field::MARGIN_RIGHT, field::MARGIN_BOTTOM, field::MARGIN_LEFT, field::MARGIN_INLINE_START, field::MARGIN_INLINE_END, field::INSET_TOP, field::INSET_RIGHT, field::INSET_BOTTOM, field::INSET_LEFT, field::INSET_INLINE_START, field::INSET_INLINE_END, field::FLEX_BASIS, field::WIDTH, field::HEIGHT, field::MIN_WIDTH, field::MIN_HEIGHT, field::MAX_WIDTH, field::MAX_HEIGHT]),
+    ("em", &[field::WIDTH, field::HEIGHT, field::MIN_WIDTH, field::MIN_HEIGHT, field::MAX_WIDTH, field::MAX_HEIGHT]),
+    ("duration", &[field::TRANSITION]),
+    ("ease", &[field::TRANSITION]),
+];
+
 pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
@@ -1052,4 +1111,9 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT, tag::BUTTON]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT, tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::PAGE]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
 ];

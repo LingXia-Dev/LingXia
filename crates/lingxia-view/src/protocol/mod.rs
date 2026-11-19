@@ -3,13 +3,14 @@ use std::sync::Arc;
 
 mod admission;
 mod decode;
+pub(crate) mod scales;
 mod values;
 
 #[rustfmt::skip]
 mod generated;
 pub use generated::{
-    Children, ENVIRONMENT_KEYS, FIELD_ADMISSION, FIELDS, FieldAdmission, TAG_ADMISSION, TAGS,
-    TagAdmission, UI_ABI, check_environment, field, limits, options, tag,
+    Children, ENVIRONMENT_KEYS, FIELD_ADMISSION, FIELDS, FieldAdmission, SCALED_FIELDS, SCALES,
+    TAG_ADMISSION, TAGS, TagAdmission, UI_ABI, check_environment, field, limits, options, tag,
 };
 
 pub use decode::{Wire, decode, decode_wire};
@@ -99,11 +100,25 @@ pub struct Record {
     pub fields: Fields,
 }
 
-/// A record's fields, shared by every frame that reuses the record until one edits them.
+/// A record's fields, shared by every frame that reuses the record until one edits them; with
+/// the theme step each resolved field came from, when any did.
 #[derive(Clone, Default, PartialEq)]
-pub struct Fields(Arc<Vec<(usize, Value)>>);
+pub struct Fields(
+    Arc<Vec<(usize, Value)>>,
+    Option<Arc<[(usize, scales::Step)]>>,
+);
 
 impl Fields {
+    pub(crate) fn with_steps(
+        fields: Vec<(usize, Value)>,
+        steps: Vec<(usize, scales::Step)>,
+    ) -> Self {
+        Self(Arc::new(fields), (!steps.is_empty()).then(|| steps.into()))
+    }
+    /// The theme steps resolved into these fields, by field id.
+    pub(crate) fn steps(&self) -> &[(usize, scales::Step)] {
+        self.1.as_deref().unwrap_or_default()
+    }
     /// Same allocation: the fields were carried over, not decoded again.
     pub fn ptr_eq(a: &Self, b: &Self) -> bool {
         Arc::ptr_eq(&a.0, &b.0)
@@ -129,7 +144,7 @@ impl std::ops::DerefMut for Fields {
 
 impl From<Vec<(usize, Value)>> for Fields {
     fn from(fields: Vec<(usize, Value)>) -> Self {
-        Self(Arc::new(fields))
+        Self(Arc::new(fields), None)
     }
 }
 

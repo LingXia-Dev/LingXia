@@ -227,22 +227,42 @@ pub(crate) fn decode_buffer(
     if count as usize > crate::protocol::limits::WIRE_VALUES {
         return Err("UI_LIMIT: buffer too large".into());
     }
+    let number = |value: rong::quickjs::JSValue| -> Result<serde_json::Value, String> {
+        if !value.is_number() {
+            return Err("UI_BUFFER: expected primitive".into());
+        }
+        let n: f64 = value.to_rust().map_err(|e| e.to_string())?;
+        if n.is_finite() && n.fract() == 0.0 && n.abs() < 9_007_199_254_740_992.0 {
+            return Ok(serde_json::Value::from(n as i64));
+        }
+        serde_json::Number::from_f64(n)
+            .map(serde_json::Value::Number)
+            .ok_or("UI_BUFFER: non-finite number".into())
+    };
     let buffer = (0..count)
         .map(|index| {
             let value = values.get_value(index).map_err(|e| e.to_string())?;
             if value.is_number() {
-                let n: f64 = value.to_rust().map_err(|e| e.to_string())?;
-                if n.is_finite() && n.fract() == 0.0 && n.abs() < 9_007_199_254_740_992.0 {
-                    return Ok(serde_json::Value::from(n as i64));
-                }
-                serde_json::Number::from_f64(n)
-                    .map(serde_json::Value::Number)
-                    .ok_or("UI_BUFFER: non-finite number".into())
+                number(value)
             } else if value.is_string() {
                 value
                     .to_rust::<String>()
                     .map(serde_json::Value::String)
                     .map_err(|e| e.to_string())
+            } else if let Some(step) = value
+                .into_object()
+                .and_then(JSArray::from_object)
+                .filter(|step| step.len().is_ok_and(|n| n == 3))
+            {
+                // A scale reference, `[slot, times, plus]`; decode checks what it names.
+                (0..3)
+                    .map(|i| {
+                        step.get_value(i)
+                            .map_err(|e| e.to_string())
+                            .and_then(number)
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(serde_json::Value::Array)
             } else {
                 Err("UI_BUFFER: expected primitive".into())
             }
@@ -310,6 +330,27 @@ mod tests {
             .unwrap();
         assert_eq!(reads, 1);
         assert!(decode_context(&context, "[2,-1,'','label','Recovered',0]").is_ok());
+    }
+
+    #[test]
+    fn transfer_carries_a_scale_step_as_three_numbers_only() {
+        let runtime = RongJS::runtime();
+        let context = runtime.context();
+        let gap = crate::protocol::field::GAP;
+        let records =
+            decode_context(&context, &format!("[0,-1,'','','',1,{gap},[23,4,0.5]]")).unwrap();
+        // `space` is 4 points in the built-in pack.
+        assert_eq!(records[0].fields[0].1, serde_json::json!(16.5));
+        for step in [
+            "[23,4]",
+            "[23,4,'0']",
+            "[23,4,NaN]",
+            "[[23],4,0]",
+            "[23,4,0,0]",
+        ] {
+            let wire = format!("[0,-1,'','','',1,{gap},{step}]");
+            assert!(decode_context(&context, &wire).is_err(), "{step}");
+        }
     }
 
     fn environment(width: u16, height: u16) -> crate::platform::FrameEnvironment {

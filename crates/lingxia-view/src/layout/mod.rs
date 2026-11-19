@@ -218,6 +218,35 @@ impl Renderer {
             if run {
                 style.display = Display::None;
             }
+            // `em`: the node's font size after the text scale, that scale capped at 1.5×.
+            let font = styles[index].size;
+            let grown = if font > 0.0 {
+                (self.text_scale.map(font) / font).min(1.5)
+            } else {
+                1.0
+            };
+            let em = |id| {
+                crate::protocol::scales::em(record, id)
+                    .map(|(times, plus)| length((times * font * grown + plus).max(0.0)))
+            };
+            if let Some(px) = em(field::WIDTH) {
+                style.size.width = px;
+            }
+            if let Some(px) = em(field::HEIGHT) {
+                style.size.height = px;
+            }
+            if let Some(px) = em(field::MIN_WIDTH) {
+                style.min_size.width = px;
+            }
+            if let Some(px) = em(field::MIN_HEIGHT) {
+                style.min_size.height = px;
+            }
+            if let Some(px) = em(field::MAX_WIDTH) {
+                style.max_size.width = px;
+            }
+            if let Some(px) = em(field::MAX_HEIGHT) {
+                style.max_size.height = px;
+            }
             let ch = |id| record.number(id);
             if let Some(n) = ch(field::WIDTH_CH) {
                 style.size.width = length(n * self.zero_advance(&styles[index]));
@@ -231,8 +260,8 @@ impl Renderer {
             // A date or time field is never narrower than the widest value it can show.
             // A percent minimum is left to the author.
             let authored = match style.min_size.width.expand() {
-                taffy::style::ExpandedLengthPercentageAuto::Auto => Some(0.0),
-                taffy::style::ExpandedLengthPercentageAuto::Length(px) => Some(px),
+                taffy::style::ExpandedDimension::Auto => Some(0.0),
+                taffy::style::ExpandedDimension::Length(px) => Some(px),
                 _ => None,
             };
             if let (Some(template), Some(authored)) = (record.string(field::SIZE_TEXT), authored) {

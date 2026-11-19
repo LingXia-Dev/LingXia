@@ -8,7 +8,7 @@ pub(super) struct HostEnvironment {
     surface: Option<(u64, SurfaceContext)>,
     /// The lxapp's theme pack, resolved into palette pushes for light, dark and their
     /// high-contrast variants.
-    theme: Option<(u64, [serde_json::Value; 4])>,
+    theme: Option<(u64, [serde_json::Value; 4], serde_json::Value)>,
     /// The View's last run read a host-context key, so a surface push must rebuild it.
     ignores_host_context: bool,
     /// The View's last run did not depend on the appearance, so a theme change only repaints.
@@ -79,10 +79,10 @@ impl HostEnvironment {
     pub(super) fn for_worker(worker: Option<&str>) -> Self {
         let mut host = Self::default();
         if let Some(pack) = worker.and_then(lingxia_theme::app_pack) {
-            match palettes(&pack, 0) {
-                Ok(palettes) => host.theme = Some((0, palettes)),
+            match theme(&pack, 0) {
+                Ok(theme) => host.theme = Some(theme),
                 Err(error) => {
-                    log::warn!(target: "lingxia_view", "{error}; the default palette applies")
+                    log::warn!(target: "lingxia_view", "{error}; the default theme applies")
                 }
             }
         }
@@ -121,7 +121,7 @@ impl HostEnvironment {
             Update::Theme { revision, pack } => {
                 let newer = newer(self.theme.as_ref().map(|t| t.0), revision);
                 if newer {
-                    self.theme = Some((revision, palettes(&pack, revision)?));
+                    self.theme = Some(theme(&pack, revision)?);
                 }
                 newer
             }
@@ -266,14 +266,28 @@ impl HostEnvironment {
         }
         env["canDock"] = surface.is_some_and(|c| c.can_dock).into();
         // A palette the platform pushes (the host's theme) wins over the lxapp's own pack.
-        if let Some((_, palettes)) = &self.theme
+        if let Some((_, palettes, _)) = &self.theme
             && env.get("palette").is_none()
         {
             let look =
                 usize::from(env["theme"] == "dark") + 2 * usize::from(env["highContrast"] == true);
             env["palette"] = palettes[look].clone();
         }
+        if let Some((_, _, scales)) = &self.theme
+            && env.get("scales").is_none()
+        {
+            env["scales"] = scales.clone();
+        }
     }
+}
+
+/// The pack's palette pushes and its scales push, at `revision`.
+fn theme(
+    pack: &lingxia_theme::Pack,
+    revision: u64,
+) -> Result<(u64, [serde_json::Value; 4], serde_json::Value), String> {
+    let scales = crate::protocol::scales::Scales::from_pack(pack, revision)?;
+    Ok((revision, palettes(pack, revision)?, scales.push()))
 }
 
 /// The pack resolved for each look by the resolver host chrome uses, as palette pushes:

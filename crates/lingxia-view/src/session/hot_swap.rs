@@ -43,6 +43,9 @@ impl ViewSession {
         std::mem::swap(&mut self.budget, &mut other.budget);
         // The buffers each isolate referenced are its own.
         self.wire.swap(&other.wire);
+        // Each keeps resolving against its own page's scales.
+        let _ = self.wire.borrow_mut().set_scales(self.scales.clone());
+        let _ = other.wire.borrow_mut().set_scales(other.scales.clone());
         // A swapped-in module's first frame warms the engine, as a loaded one's does.
         self.warm.swap(&other.warm);
         // Until the new module has run, it is taken to read everything.

@@ -82,3 +82,171 @@ fn every_field_of_a_common_kind_decodes_without_an_arm_of_its_own() {
         assert!(check(&bad).is_err(), "{name}");
     }
 }
+
+fn step(name: &str, times: f64, plus: f64) -> Value {
+    let slot = crate::protocol::SCALES
+        .iter()
+        .position(|(slot, _)| *slot == name)
+        .unwrap();
+    json!([slot, times, plus])
+}
+
+fn styled(id: usize, value: Value) -> Result<Vec<crate::protocol::Record>, String> {
+    wire(json!([0, -1, "", "", "", 1, id, value]))
+}
+
+#[test]
+fn a_scale_step_decodes_on_the_fields_its_family_lists() {
+    use crate::protocol::field;
+    for (id, value) in [
+        (field::PADDING_TOP, step("space", 4.0, 0.0)),
+        (field::FONT_SIZE, step("text.sm", 1.0, 0.0)),
+        (field::LINE_HEIGHT, step("text.sm", 1.25, 0.0)),
+        (field::LINE_HEIGHT, step("leading.sm", 1.0, 0.0)),
+        (field::LINE_HEIGHT, step("space", 6.0, 0.0)),
+        (field::LETTER_SPACING, step("text.sm", -0.025, 0.0)),
+        (field::RADIUS, step("radius.lg", 1.0, 0.0)),
+        (field::RADIUS, step("radius.lg", 1.0, -2.0)),
+        (field::MARGIN_TOP, step("space", -2.0, 0.0)),
+        (field::INSET_LEFT, step("space", -1.0, -1.0)),
+        (field::WIDTH, step("em", 1.25, 0.0)),
+        (field::MAX_HEIGHT, step("space", 64.0, 0.0)),
+    ] {
+        let records = styled(id, value.clone()).unwrap();
+        let (slot, times, plus) = (
+            value[0].as_u64().unwrap() as usize,
+            value[1].as_f64().unwrap(),
+            value[2].as_f64().unwrap(),
+        );
+        if crate::protocol::SCALES[slot].0 == "em" {
+            assert_eq!(records[0].fields[0], (id, value), "em waits for layout");
+            continue;
+        }
+        let (_, resolved) = &records[0].fields[0];
+        assert!(resolved.is_number(), "{resolved}");
+        assert_eq!(
+            records[0].fields.steps(),
+            [(
+                id,
+                crate::protocol::scales::Step::Number { slot, times, plus }
+            )]
+        );
+    }
+    let transition = |duration: Value, easing: Value| {
+        json!({"properties": ["opacity"], "durationMs": duration, "delayMs": 0, "easing": easing})
+            .to_string()
+    };
+    let ok = transition(
+        step("duration.base", 1.0, 0.0),
+        step("ease.enter", 1.0, 0.0),
+    );
+    styled(field::TRANSITION, json!(ok)).unwrap();
+}
+
+#[test]
+fn a_scale_step_outside_its_family_fails_with_the_slot_name() {
+    use crate::protocol::field;
+    let error = |id, value| styled(id, value).unwrap_err();
+    assert_eq!(
+        error(field::PADDING_TOP, step("radius.lg", 1.0, 0.0)),
+        "UI_SCALE: paddingTop does not take radius.lg"
+    );
+    assert_eq!(
+        error(field::PADDING_TOP, step("em", 1.0, 0.0)),
+        "UI_SCALE: paddingTop does not take em"
+    );
+    assert_eq!(
+        error(field::COLOR, step("space", 1.0, 0.0)),
+        "UI_SCALE: color does not take space"
+    );
+    let slots = crate::protocol::SCALES.len();
+    for bad in [
+        json!([1.5, 1, 0]),
+        json!([slots, 1, 0]),
+        json!([-1, 1, 0]),
+        json!([0, 1]),
+        json!([0, 1, 0, 0]),
+        json!([0, "1", 0]),
+    ] {
+        assert_eq!(code(styled(field::PADDING_TOP, bad)), "UI_SCALE");
+    }
+    assert_eq!(
+        error(field::PADDING_TOP, step("space", -1.0, 0.0)),
+        "UI_STYLE: paddingTop resolves below 0"
+    );
+    assert_eq!(
+        code(styled(field::FONT_SIZE, step("text.sm", -1.0, -1.0))),
+        "UI_STYLE"
+    );
+    let transition = |duration: Value, easing: Value| {
+        json!(json!({"properties": ["opacity"], "durationMs": duration, "delayMs": 0, "easing": easing})
+            .to_string())
+    };
+    for (duration, easing) in [
+        (step("duration.base", 2.0, 0.0), json!("linear")),
+        (step("duration.base", 1.0, 10.0), json!("linear")),
+        (step("ease.enter", 1.0, 0.0), json!("linear")),
+        (json!(120), step("duration.fast", 1.0, 0.0)),
+        (json!(120), step("ease.exit", 1.0, 1.0)),
+    ] {
+        assert_eq!(
+            code(styled(field::TRANSITION, transition(duration, easing))),
+            "UI_TRANSITION"
+        );
+    }
+}
+
+#[test]
+fn a_state_style_holds_paint_only_so_no_scale_step() {
+    use crate::protocol::field;
+    let pairs = json!([field::OPACITY, step("space", 1.0, 0.0)]).to_string();
+    assert_eq!(
+        wire(json!([3, -1, "", "", "", 1, field::PRESSED_STYLE, pairs])).unwrap_err(),
+        "UI_SCALE: opacity does not take space"
+    );
+}
+
+#[test]
+fn size_keywords_decimal_keyboards_and_the_scale_flag_decode() {
+    use crate::protocol::field;
+    for id in [
+        field::MIN_WIDTH_KEYWORD,
+        field::MIN_HEIGHT_KEYWORD,
+        field::MAX_WIDTH_KEYWORD,
+        field::MAX_HEIGHT_KEYWORD,
+    ] {
+        styled(id, json!("min-content")).unwrap();
+        assert_eq!(code(styled(id, json!("auto"))), "UI_STYLE");
+    }
+    wire(json!([8, -1, "", "", "", 1, field::KEYBOARD, "decimal"])).unwrap();
+    wire(json!([20, -1, "", "", "", 1, field::SCALE_REFS, 1])).unwrap();
+}
+
+#[test]
+fn motion_steps_in_a_transition_resolve_and_follow_new_scales() {
+    use crate::protocol::{field, scales};
+    let encoded = json!({"properties": ["opacity"], "durationMs": step("duration.base", 1.0, 0.0), "delayMs": 0, "easing": step("ease.exit", 1.0, 0.0)}).to_string();
+    let records = styled(field::TRANSITION, json!(encoded)).unwrap();
+    let resolved: Value = serde_json::from_str(records[0].fields[0].1.as_str().unwrap()).unwrap();
+    assert_eq!(resolved["durationMs"], json!(200.0));
+    assert_eq!(resolved["easing"], json!([0.4, 0.0, 1.0, 1.0]));
+
+    let mut pushed = scales::Scales::builtin().push();
+    let base = crate::protocol::SCALES
+        .iter()
+        .position(|(slot, _)| *slot == "duration.base")
+        .unwrap();
+    pushed["values"][base] = json!(400);
+    let rescaled = scales::rescale(&records, &scales::Scales::decode(&pushed).unwrap())
+        .unwrap()
+        .unwrap();
+    let resolved: Value = serde_json::from_str(rescaled[0].fields[0].1.as_str().unwrap()).unwrap();
+    assert_eq!(resolved["durationMs"], json!(400.0));
+    // A plain transition is not a step and is kept as written.
+    let plain =
+        json!({"properties": ["opacity"], "durationMs": 120, "delayMs": 0, "easing": "linear"})
+            .to_string();
+    let records = styled(field::TRANSITION, json!(plain)).unwrap();
+    assert_eq!(records[0].fields[0].1, json!(plain));
+    assert!(records[0].fields.steps().is_empty());
+}

@@ -14,3 +14,7 @@ upstream tests they add (the tests are not vendored).
 
 1. `96d9f832` fix(flexbox): cap a non-shrinking item's basis contribution by its max size.
 2. `5616126b` fix(flexbox): transfer a definite max size through aspect-ratio to an auto axis.
+3. Sizing keywords on `min_size`/`max_size` (not in upstream or `patches/`): the style type is
+   `Dimension`, and flexbox, block and absolute layout measure the item under the keyword's
+   constraint (`compute/common/sizing_keyword.rs`, tests alongside). Grid treats a keyword
+   minimum as `auto` and a keyword maximum as `none`.
