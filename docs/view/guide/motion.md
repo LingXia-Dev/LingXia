@@ -60,7 +60,9 @@ warns.
 
 A `<webview>` follows the same rule. It moves live with a translation; while its box fades, is
 masked or blurred, or scales or rotates as it enters or leaves, it shows a still picture of the
-page and takes no input, then the live page returns when the effect ends.
+page and takes no input, then the live page returns when the effect ends. The same holds under any
+scale or rotation at run time (a computed `style`, a `hover:` or `active:` variant, a keyframe): the
+build refuses only the ones it can see in class names.
 
 Layout does not animate per frame. A transition of padding, margin, gap, insets or font size is
 refused, naming the alternatives:

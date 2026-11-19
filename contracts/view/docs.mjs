@@ -70,7 +70,7 @@ async function elements(schema) {
     if (admission.root) facts.push('The page root.');
     // Controls nest inside a pressable control; scrolls, lists and webviews are refused there.
     if (name === 'scroll' || element.wire === 'list' || name === 'webview') facts.push('Not allowed inside a pressable control (`UI_BUTTON`).');
-    if (name === 'webview') facts.push('Moves live with a translation. Under opacity, a mask, a blur, a scale or a rotation it shows a still picture of the page and takes no input until the effect ends. Scaling or rotating it outside entering and leaving fails the build (`UI_TRANSFORM`).');
+    if (name === 'webview') facts.push('Moves live with a translation. Under opacity, a mask, a blur, a scale or a rotation it shows a still picture of the page and takes no input until the effect ends. Scaling or rotating it outside entering and leaving fails the build (`UI_TRANSFORM`); a scale or rotation applied at run time shows the still picture.');
     out.push(facts.join(' '), '');
     if (element.binding) {
       const { type, event } = element.binding;
@@ -488,7 +488,7 @@ const errorNotes = {
   UI_TEST_ID: 'An invalid `data-testid` reached the native decoder.',
   UI_TEXT: 'A `<span>`/`<link>` outside `<text>`, a bad link label, too many runs, or a component inside `<text>` returning something other than runs, a popover or a `<dialog>`.',
   UI_TIMEOUT: 'View code exceeded its time budget; the page needs a reload.',
-  UI_TRANSFORM: 'A transform the element cannot take: at build, a box that scales or rotates holding an editor, scroll, slider or web view (a scale computed at run time is not checked); natively, a singular transform or a backdrop under an uneven or rotated one.',
+  UI_TRANSFORM: 'A transform the element cannot take: at build, a box that scales or rotates holding an editor, scroll, slider or web view (one applied at run time shows a web view as its still picture); natively, a singular transform or a backdrop under an uneven or rotated one.',
   UI_TRANSITION: 'An invalid transition definition.',
   UI_VECTOR: 'Invalid vector paths, gradients or viewBox.',
   UI_VIEWPORT: 'The host reported an invalid viewport.',
