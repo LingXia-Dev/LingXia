@@ -29,7 +29,7 @@ export const comboboxParts = {
  */
 export const comboboxRecipe = {
   trigger: {
-    base: 'flex-row items-center gap-2 px-3 rounded-control border border-line-strong bg-surface text-start transition duration-fast ease-standard hover:border-text/30',
+    base: 'flex-row items-center gap-2 px-3 rounded-control border border-line-strong bg-surface text-start transition duration-fast ease-standard hover:border-muted',
     // The sheet's trigger is a button; the typeahead's box holds the editor and takes its focus ring.
     pressable: 'focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:bg-text/5 disabled:border-text/8',
     editable: 'focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/20',
