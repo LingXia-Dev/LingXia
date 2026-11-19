@@ -152,7 +152,7 @@ enum LxAppAppearanceRegistry {
         NotificationCenter.default.post(name: .tabBarStateChanged, object: appId)
     }
 
-    private static func apply(_ dark: Bool, to webView: WKWebView) {
+    static func apply(_ dark: Bool, to webView: WKWebView) {
         #if os(iOS)
         webView.overrideUserInterfaceStyle = dark ? .dark : .light
         // Setup froze light-resolved cgColors on the webview/scroll layers,

@@ -244,6 +244,9 @@ final class GpuWebView extends FrameLayout {
                 slot.handlesDrags = item.optBoolean("handlesDrags", false);
 
                 slot.update(left, top, width, height, degraded, a11yHidden, ready, src);
+                if (item.has("dark")) {
+                    slot.applyDark(item.optBoolean("dark", false));
+                }
             }
 
             java.util.Iterator<java.util.Map.Entry<String, Slot>> it = slots.entrySet().iterator();
@@ -294,6 +297,9 @@ final class GpuWebView extends FrameLayout {
         boolean ready;
         boolean handlesDrags;
         String lastSrc = "";
+        /** The appearance last handed to {@link #appliedTo}. */
+        private boolean appliedDark;
+        private View appliedTo;
         private int burstRemaining;
         private boolean capturing;
         private boolean captureScheduled;
@@ -370,6 +376,34 @@ final class GpuWebView extends FrameLayout {
                 burstCapture(24);
             } else if (sizeChanged || stateChanged) {
                 invalidateCapture();
+            }
+        }
+
+        /**
+         * The page's appearance, live: a WebView reads prefers-color-scheme from its creation
+         * context and its theme, and nothing re-dispatches a configuration to it while it lives.
+         */
+        void applyDark(boolean dark) {
+            View view = webview;
+            if (view == null || (view == appliedTo && dark == appliedDark)) {
+                return;
+            }
+            appliedTo = view;
+            appliedDark = dark;
+            android.content.res.Configuration config =
+                new android.content.res.Configuration(view.getResources().getConfiguration());
+            int night = dark
+                ? android.content.res.Configuration.UI_MODE_NIGHT_YES
+                : android.content.res.Configuration.UI_MODE_NIGHT_NO;
+            config.uiMode = (config.uiMode & ~android.content.res.Configuration.UI_MODE_NIGHT_MASK) | night;
+            if (view.getContext() instanceof android.view.ContextThemeWrapper) {
+                ((android.view.ContextThemeWrapper) view.getContext()).setTheme(dark
+                    ? androidx.appcompat.R.style.Theme_AppCompat
+                    : androidx.appcompat.R.style.Theme_AppCompat_Light);
+            }
+            view.dispatchConfigurationChanged(config);
+            if (ready) {
+                burstCapture(24);
             }
         }
 

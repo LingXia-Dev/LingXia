@@ -321,6 +321,7 @@ fn sync_android_webviews_ui(
                 "degraded": m.degraded,
                 "accessibilityHidden": m.accessibility_hidden,
                 "handlesDrags": m.handles_drags,
+                "dark": m.dark,
                 "ready": ready,
             })
         })

@@ -306,6 +306,7 @@ fn a_web_view_is_masked_where_a_later_ready_web_view_shows_through() {
         degraded,
         accessibility_hidden: false,
         handles_drags: false,
+        dark: false,
         bounds,
         visible_bounds: bounds,
         clips: Vec::new(),
@@ -367,5 +368,26 @@ fn a_web_view_box_that_hands_its_view_to_a_dialog_shows_its_picture() {
         pictures(&full),
         vec![node("inline").bounds],
         "the inline box keeps the picture while the dialog holds the view"
+    );
+}
+
+#[test]
+fn a_web_view_takes_the_page_appearance_live() {
+    let module = source(
+        "function render(){const web=useWebView('doc');return h('page',{},h('webview',{web,'aria-label':'Article',src:'https://example.com',style:{width:120,height:80}}))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let dark = |page: &mut ViewSession| {
+        let display = page.layout(300, 300, 1.0).unwrap();
+        let node = display.nodes.iter().find(|n| n.webview.is_some()).unwrap();
+        crate::scene::webview::mount_of(node).unwrap().dark
+    };
+    assert!(!dark(&mut page));
+    let mut environment = page.environment.clone();
+    environment["theme"] = serde_json::json!("dark");
+    page.set_environment(environment).unwrap();
+    assert!(
+        dark(&mut page),
+        "the mount carries the page's new appearance"
     );
 }

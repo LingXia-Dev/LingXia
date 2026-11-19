@@ -28,6 +28,8 @@ struct GpuWebViewMountSpec: Decodable {
     let accessibilityHidden: Bool
     /// The page handles its own drags: one starting on it never passes to the View page.
     let handlesDrags: Bool?
+    /// The View page's appearance, which the web page's `prefers-color-scheme` follows.
+    let dark: Bool?
 }
 
 #if os(iOS)
@@ -195,6 +197,8 @@ final class GpuWebViewSlot: UIView {
     var handlesDrags = false
     /// What the last sync asked for; a snapshot shows a hidden slot only while it runs.
     var wantsHidden = false
+    /// The appearance last applied, and to which web view.
+    var appliedDark: (Bool, ObjectIdentifier)?
 
     init(webId: String) {
         self.webId = webId
@@ -332,6 +336,11 @@ final class GpuWebViewContainer: UIView {
                 insertSubview(slot, at: min(idx, subviews.count))
             }
             slot.attachIfNeeded(token: token)
+            if let dark = spec.dark, let webView = slot.webView,
+               slot.appliedDark.map({ $0 != (dark, ObjectIdentifier(webView)) }) ?? true {
+                slot.appliedDark = (dark, ObjectIdentifier(webView))
+                LxAppAppearanceRegistry.apply(dark, to: webView)
+            }
 
             let bx = spec.bounds.count == 4 ? spec.bounds[0] : 0
             let by = spec.bounds.count == 4 ? spec.bounds[1] : 0
@@ -404,6 +413,8 @@ final class GpuWebViewSlot: NSView {
     var accessibilitySuppressed = false
     /// What the last sync asked for; a snapshot shows a hidden slot only while it runs.
     var wantsHidden = false
+    /// The appearance last applied, and to which web view.
+    var appliedDark: (Bool, ObjectIdentifier)?
 
     init(webId: String) {
         self.webId = webId
@@ -546,6 +557,11 @@ final class GpuWebViewContainer: NSView {
                 return created
             }()
             slot.attachIfNeeded(token: token)
+            if let dark = spec.dark, let webView = slot.webView,
+               slot.appliedDark.map({ $0 != (dark, ObjectIdentifier(webView)) }) ?? true {
+                slot.appliedDark = (dark, ObjectIdentifier(webView))
+                LxAppAppearanceRegistry.apply(dark, to: webView)
+            }
 
             let bx = spec.bounds.count == 4 ? spec.bounds[0] : 0
             let by = spec.bounds.count == 4 ? spec.bounds[1] : 0

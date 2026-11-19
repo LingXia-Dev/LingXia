@@ -100,6 +100,8 @@ pub struct WebViewNode {
     pub on_event: Option<u64>,
     /// The page handles its own drags: one starting on it never passes to the View page.
     pub handles_drags: bool,
+    /// The View page's appearance, which the web page's `prefers-color-scheme` follows.
+    pub dark: bool,
 }
 
 /// Mounted `<webview>` geometry and state delivered to [`crate::platform::HostEvents::sync_webviews`].
@@ -112,6 +114,8 @@ pub struct WebViewMount {
     pub degraded: bool,
     pub accessibility_hidden: bool,
     pub handles_drags: bool,
+    /// The View page's appearance, which the web page's `prefers-color-scheme` follows.
+    pub dark: bool,
     /// Inner content box `[x, y, width, height]` in logical surface coordinates.
     pub bounds: [f32; 4],
     /// Intersection of `bounds` with ancestor scroll/viewport clips.
@@ -184,6 +188,7 @@ pub fn mount_of(node: &crate::scene::node::NodeSnapshot) -> Option<WebViewMount>
         degraded: wv.degraded,
         accessibility_hidden: node.accessibility_hidden.unwrap_or(false) || wv.degraded,
         handles_drags: wv.handles_drags,
+        dark: wv.dark,
         bounds,
         visible_bounds,
         clips: node.clips.clone(),

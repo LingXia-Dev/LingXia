@@ -149,7 +149,7 @@ struct GpuWebSlot {
           webTag: this.webTag,
           controller: this.controller,
           syncRender: true,
-          appearanceDark: this.appearanceDark,
+          appearanceDark: this.findMount()?.dark ?? this.appearanceDark,
           renderVisibility: Visibility.Visible,
           renderWidth: this.innerWidth(this.findMount()),
           renderHeight: this.innerHeight(this.findMount()),

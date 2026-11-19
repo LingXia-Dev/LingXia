@@ -1345,6 +1345,7 @@ impl Renderer {
                         .and_then(|(_, v)| v.as_u64())
                         .filter(|handle| *handle != 0),
                     handles_drags: record.number(field::WEB_HANDLES_DRAGS) == Some(1.0),
+                    dark: self.dark,
                 })
             } else {
                 None

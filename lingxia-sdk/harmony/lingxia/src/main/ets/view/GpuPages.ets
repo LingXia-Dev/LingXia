@@ -68,6 +68,8 @@ export class GpuWebViewMount {
   clips: GpuClipMount[] = [];
   degraded: boolean = false;
   accessibilityHidden: boolean = false;
+  /** The page's appearance, followed live. */
+  dark?: boolean;
 }
 
 /** One GPU page as ArkTS sees it: the slot Rust mounts its XComponent node into, and chrome state. */
