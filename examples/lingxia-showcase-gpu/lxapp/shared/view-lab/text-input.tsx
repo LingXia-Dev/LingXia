@@ -296,6 +296,38 @@ export function FieldsDemo() {
   );
 }
 
+// One field per number keyboard: `type="number"` and `inputMode="decimal"` ask for digits with a
+// point, `inputMode="numeric"` for digits alone. Each says under it what the user should see.
+export function KeyboardsDemo() {
+  const number = useLocal('key-number', '');
+  const numeric = useLocal('key-numeric', '');
+  const decimal = useLocal('key-decimal', '');
+  const t = useSay();
+  const field = 'px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm';
+  const column = 'grow basis-0 min-w-0 gap-1';
+  return (
+    <>
+      <view className="flex-row gap-2">
+        <view className={column}>
+          <input data-testid="lab-key-number" bind={number} aria-label="Number type" type="number" placeholder="2.5" className={field} />
+          <text className="text-xs text-muted">{t(labels.keyNumber)}</text>
+        </view>
+        <view className={column}>
+          <input data-testid="lab-key-numeric" bind={numeric} aria-label="Numeric mode" inputMode="numeric" placeholder="42" className={field} />
+          <text className="text-xs text-muted">{t(labels.keyNumeric)}</text>
+        </view>
+        <view className={column}>
+          <input data-testid="lab-key-decimal" bind={decimal} aria-label="Decimal mode" inputMode="decimal" placeholder="0.75" className={field} />
+          <text className="text-xs text-muted">{t(labels.keyDecimal)}</text>
+        </view>
+      </view>
+      <Readout testId="lab-key-values" state={`number=${number.value} numeric=${numeric.value} decimal=${decimal.value}`}>
+        {t(readouts.keyboards(number.value, numeric.value, decimal.value))}
+      </Readout>
+    </>
+  );
+}
+
 /** The Text and the Input groups: every demo the text table names, drawn by its body. */
 export const textDemos = {
   paragraphs: TextLayoutDemo,
@@ -311,5 +343,6 @@ export const inputDemos = {
   partly: PartlyDemo,
   range: RangeDemo,
   fields: FieldsDemo,
+  keyboards: KeyboardsDemo,
   form: FormSemanticsDemo,
 };

@@ -32,3 +32,12 @@ spec('a field states required and invalid, names its hint and error, in a group 
   await view.getByRole('button', { name: 'Keep it' }).click();
   await expect(confirm).toHaveCount(0);
 });
+
+spec('three number fields ask for their own keyboards and take what is typed', { covers: ['view:input'], start: openDemo('keyboards') }, async (t) => {
+  const view = t.app.view;
+  // The automation tree does not say which keyboard a field asks for yet; the names and values do.
+  await view.getByRole('textbox', { name: 'Number type' }).fill('2.5');
+  await view.getByRole('textbox', { name: 'Numeric mode' }).fill('42');
+  await view.getByRole('textbox', { name: 'Decimal mode' }).fill('0.75');
+  await expect(view.testId('lab-key-values')).toHaveAttribute('data-state', 'number=2.5 numeric=42 decimal=0.75');
+});

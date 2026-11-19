@@ -64,6 +64,7 @@ export const demos = {
     partly: { testId: 'lab-partly', title: { en: 'A box that is partly checked', zh: '部分选中的复选框' }, try: { en: 'Check one topping: "All toppings" shows a dash. Tap it and every topping is checked.', zh: '勾选一种配料，“全部配料”显示一条横线；点它则全部勾选。' } },
     range: { testId: 'lab-range', title: { en: 'A slider with two thumbs', zh: '双滑块' }, try: { en: 'Drag either thumb, or press the track: the nearer thumb moves, and the two never cross.', zh: '拖动任一滑块，或点按轨道：较近的滑块移动，两者不会交叉。' } },
     fields: { testId: 'lab-inputs', title: { en: 'Fields', zh: '输入框' }, try: { en: 'A code, an amount, a date, a time and a name: the keyboard changes with the field. A long address in a narrow field ends in an ellipsis until you focus it.', zh: '验证码、金额、日期、时间和姓名：键盘随输入框变化。窄输入框里的长地址以省略号结尾，聚焦后才能滚动查看。' } },
+    keyboards: { testId: 'lab-keyboards', title: { en: 'Number keyboards', zh: '数字键盘' }, try: { en: 'Tap each field: the first and third show digits with a decimal point, the middle one digits only.', zh: '依次点每个输入框：第一个和第三个显示带小数点的数字键盘，中间的只有数字。' } },
     form: { testId: 'lab-form', title: { en: 'Required, invalid and described fields', zh: '必填、无效与带说明的字段' }, try: { en: 'Each field tells a screen reader its hint and its error.', zh: '每个字段都把提示和错误告诉读屏软件。' } },
   },
   gestures: {
@@ -211,6 +212,10 @@ export const readouts = {
     en: `Code ${code || '-'} · amount ${amount || '-'} · date ${day || '-'} · time ${time || '-'}`,
     zh: `验证码 ${code || '-'} · 金额 ${amount || '-'} · 日期 ${day || '-'} · 时间 ${time || '-'}`,
   }),
+  keyboards: (number: string, numeric: string, decimal: string): Words => ({
+    en: `Number ${number || '-'} · numeric ${numeric || '-'} · decimal ${decimal || '-'}`,
+    zh: `数字 ${number || '-'} · 整数 ${numeric || '-'} · 小数 ${decimal || '-'}`,
+  }),
   last: (last: string): Words => ({ en: `Last: ${last}`, zh: `上次：${none(last)}` }),
   pickers: (day: string, time: string): Words => ({ en: `Date ${day || '-'} · time ${time || '-'}`, zh: `日期 ${day || '-'} · 时间 ${time || '-'}` }),
   filter: (shown: number, picked: string): Words => ({ en: `${shown} rows · chosen: ${picked || 'none'}`, zh: `${shown} 行 · 已选：${picked || '无'}` }),
@@ -237,6 +242,9 @@ export const readouts = {
 
 /** Labels inside the demos that no spec matches by their text. */
 export const labels = {
+  keyNumber: { en: 'Digits and a point', zh: '数字和小数点' },
+  keyNumeric: { en: 'Digits only', zh: '只有数字' },
+  keyDecimal: { en: 'Digits and a point', zh: '数字和小数点' },
   maskText: { en: 'Fades out downward and to the right', zh: '向下、向右淡出' },
   ringKey: { en: 'Ring on Tab', zh: 'Tab 时出现环' },
   ringGap: { en: 'Gap', zh: '间隙' },
