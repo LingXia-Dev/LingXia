@@ -73,11 +73,8 @@ export const checkboxInputRecipe = {
   description: {
     base: 'text-footnote text-muted',
   },
-  /** The status message starts under the label: a spacer as wide as the box, then the row gap. */
+  /** The status message starts under the label: the box's width in the label's type, plus the row gap. */
   status: {
-    base: 'flex-row gap-3',
-    // Width takes `em` today; padding does not yet, so the indent is a spacer.
-    spacer: { sm: 'shrink-0 text-footnote w-[1.25em]', md: 'shrink-0 text-body w-[1.33em]', lg: 'shrink-0 text-callout w-[1.4em]' } satisfies Record<FieldSize, string>,
-    region: 'grow shrink min-w-0',
+    size: { sm: 'text-footnote ps-[calc(1.25em+12px)]', md: 'text-body ps-[calc(1.33em+12px)]', lg: 'text-callout ps-[calc(1.4em+12px)]' } satisfies Record<FieldSize, string>,
   },
 } as const;

@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
 import { described, renderExample } from '../testing/harness.mjs';
 
+// What the region reads out: its message, without the hidden icon line.
+const announced = node => node.children.filter(child => child.props.accessibilityHidden !== 1).map(textOf).join('');
+
 const mark = node => node.children.length > 0 && JSON.stringify(node).includes('M20 6 9 17l-5-5');
 
 test('Basic: named by the label, described by the help text; toggling draws and removes the mark', async () => {
@@ -21,7 +24,7 @@ test('Controlled: required and invalid until checked; the error is the descripti
   const screen = await renderExample('CheckboxInput/CheckboxInput', 'Controlled');
   const region = () => screen.queryAll(node => node.props.role === 'status')[0];
   const terms = () => screen.getByTestId('terms');
-  assert.equal(textOf(region()), 'Accept the terms to create the account.');
+  assert.equal(announced(region()), 'Accept the terms to create the account.');
   assert.equal(terms().props.stateRequired, 1);
   assert.equal(terms().props.stateInvalid, 1);
   assert.deepEqual(described(screen, terms()), ['Accept the terms to create the account.']);
@@ -29,7 +32,7 @@ test('Controlled: required and invalid until checked; the error is the descripti
   assert.equal(terms().props.checked, 1);
   assert.equal(terms().props.stateInvalid, undefined);
   assert.equal(terms().props.ariaDescribedBy, undefined);
-  assert.equal(textOf(region()), '');
+  assert.equal(announced(region()), '');
 });
 
 test('Sizes: three independent boxes', async () => {
@@ -42,11 +45,10 @@ test('the status message starts under the label, past the box and the row gap', 
   const region = screen.queryAll(node => node.props.role === 'status')[0];
   const row = screen.getByTestId('terms').children[0];
   const box = row.children[0].children[1];
-  // A spacer as wide as the box, in the box's type, then the row's gap.
-  const [spacer, beside] = screen.queryAll(node => node.children?.includes(region))[0].children;
-  assert.equal(beside, region);
-  assert.deepEqual([String(spacer.props.width), spacer.props.fontSize], [String(box.props.width), box.props.fontSize]);
-  assert.equal(screen.queryAll(node => node.children?.includes(spacer))[0].props.gap, row.props.gap);
+  // The box's width in the box's type, plus the row's gap, as an `em` padding.
+  const [, times] = box.props.width;
+  const [, startTimes, plus] = region.props.paddingInlineStart ?? region.props.paddingLeft;
+  assert.deepEqual([startTimes, plus, region.props.fontSize], [times, row.props.gap, box.props.fontSize]);
   const control = screen.getByTestId('terms').props;
   const margin = control.marginLeft ?? control.marginInlineStart;
   const padding = control.paddingLeft ?? control.paddingInlineStart;

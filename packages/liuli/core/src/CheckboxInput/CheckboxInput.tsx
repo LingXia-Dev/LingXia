@@ -106,10 +106,7 @@ export function CheckboxInput(props: CheckboxInputProps) {
           {content}
         </checkbox>
       )}
-      <view className={r.status.base}>
-        <view aria-hidden className={r.status.spacer[size]} />
-        <StatusRegion id={statusId} status={status} className={r.status.region} />
-      </view>
+      <StatusRegion id={statusId} status={status} className={r.status.size[size]} />
     </view>
   );
 }
