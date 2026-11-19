@@ -271,9 +271,40 @@ fn connect(mirror: Mirror) {
 
 type AfterFocus = Box<dyn FnOnce(&mut Mirror) -> Vec<Value> + Send>;
 
-/// Focus editor `identity` of frame `generation` for the keyboard (a tap or focus dispatch).
-pub(crate) fn focus_editor(page: i64, identity: &str, generation: u64) {
-    focus(page, identity, generation, None);
+/// Focus editor `identity` of frame `generation` for the keyboard (a tap or focus dispatch). A
+/// tap at `point` (surface dp) puts the caret where it landed, or selects the word there.
+pub(crate) fn focus_editor(
+    page: i64,
+    identity: &str,
+    generation: u64,
+    point: Option<[f32; 2]>,
+    word: bool,
+) {
+    let Some(point) = point else {
+        return focus(page, identity, generation, None);
+    };
+    let request = json!({
+        "op": "hit_test", "identity": identity, "generation": generation,
+        "point": point, "word": word,
+    });
+    let identity = identity.to_owned();
+    pages::with(page, move |host| {
+        host.input(request.to_string(), move |reply| {
+            let selection = reply
+                .and_then(|r| serde_json::from_str::<Value>(&r).ok())
+                .and_then(|r| {
+                    let s = &r["selection"];
+                    Some((s[0].as_u64()? as u32, s[1].as_u64()? as u32))
+                });
+            on_main(move || {
+                // Without a hit (a superseded frame) the field still focuses, caret at its end.
+                let then = selection.map(|(start, end)| -> AfterFocus {
+                    Box::new(move |m: &mut Mirror| select_edits(m, start, end))
+                });
+                focus(page, &identity, generation, then);
+            });
+        });
+    });
 }
 
 /// Ask the core to focus editor `identity` of frame `generation`, then run `then` on the mirror.

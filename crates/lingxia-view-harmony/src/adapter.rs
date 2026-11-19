@@ -697,11 +697,17 @@ impl InputMethod for HarmonyAdapter {
         ime::reconcile(self.token, frame, *lock(&self.origin));
     }
     fn focus(&self, editor: &Dispatch, frame: &FrameSnapshot) {
-        let Dispatch::Editor { node, commit, .. } = editor else {
+        let Dispatch::Editor {
+            node,
+            commit,
+            point,
+            word,
+        } = editor
+        else {
             return;
         };
         if let Some(node) = frame.frame.nodes.get(*node) {
-            ime::focus_editor(self.token, &node.identity, commit.get());
+            ime::focus_editor(self.token, &node.identity, commit.get(), *point, *word);
         }
     }
     fn activation(&self) {
