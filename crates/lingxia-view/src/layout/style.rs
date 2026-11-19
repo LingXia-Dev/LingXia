@@ -633,57 +633,65 @@ pub(crate) fn node_style(
             }
         },
         min_size: Size {
-            width: dimension(record, field::MIN_WIDTH).unwrap_or(if record.tag == tag::SLIDER {
-                length(120.0)
-            } else if matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION) {
-                length(
-                    if composed_switch {
-                        0.0
-                    } else {
-                        check_reserve(record)
-                    } + padding_left
-                        + padding_right
-                        + border_left
-                        + border_right,
-                )
-            } else if matches!(record.tag, tag::SCROLL | tag::LIST)
-                || (!in_row && record.number(field::GROW).unwrap_or(0.0) > 0.0)
-            {
-                // A scroll container's automatic minimum is zero; an item in a row keeps its
-                // min-content width unless the author sets `min-w-0`.
-                length(0.0)
-            } else if let Some(width) = replaced_size(record, field::WIDTH) {
-                // A replaced element (image, vector) keeps its specified size, as CSS's `<img>`.
-                width
-            } else {
-                auto()
-            }),
-            height: dimension(record, field::MIN_HEIGHT).unwrap_or(
-                if matches!(record.tag, tag::INPUT | tag::SEARCH)
-                    && !sized_control
-                    && record.number(field::HEIGHT_AUTO) != Some(1.0)
-                {
-                    length(48.0)
-                } else if matches!(
-                    record.tag,
-                    tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION | tag::SLIDER
-                ) || (record.tag == tag::SEARCH && !sized_control)
-                {
-                    length(44.0)
+            width: dimension(record, field::MIN_WIDTH)
+                .or_else(|| keyword(record, field::MIN_WIDTH_KEYWORD))
+                .unwrap_or(if record.tag == tag::SLIDER {
+                    length(120.0)
+                } else if matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION) {
+                    length(
+                        if composed_switch {
+                            0.0
+                        } else {
+                            check_reserve(record)
+                        } + padding_left
+                            + padding_right
+                            + border_left
+                            + border_right,
+                    )
                 } else if matches!(record.tag, tag::SCROLL | tag::LIST)
-                    || record.number(field::GROW).unwrap_or(0.0) > 0.0
+                    || (!in_row && record.number(field::GROW).unwrap_or(0.0) > 0.0)
                 {
+                    // A scroll container's automatic minimum is zero; an item in a row keeps its
+                    // min-content width unless the author sets `min-w-0`.
                     length(0.0)
-                } else if let Some(height) = replaced_size(record, field::HEIGHT) {
-                    height
+                } else if let Some(width) = replaced_size(record, field::WIDTH) {
+                    // A replaced element (image, vector) keeps its specified size, as CSS's `<img>`.
+                    width
                 } else {
                     auto()
-                },
-            ),
+                }),
+            height: dimension(record, field::MIN_HEIGHT)
+                .or_else(|| keyword(record, field::MIN_HEIGHT_KEYWORD))
+                .unwrap_or(
+                    if matches!(record.tag, tag::INPUT | tag::SEARCH)
+                        && !sized_control
+                        && record.number(field::HEIGHT_AUTO) != Some(1.0)
+                    {
+                        length(48.0)
+                    } else if matches!(
+                        record.tag,
+                        tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION | tag::SLIDER
+                    ) || (record.tag == tag::SEARCH && !sized_control)
+                    {
+                        length(44.0)
+                    } else if matches!(record.tag, tag::SCROLL | tag::LIST)
+                        || record.number(field::GROW).unwrap_or(0.0) > 0.0
+                    {
+                        length(0.0)
+                    } else if let Some(height) = replaced_size(record, field::HEIGHT) {
+                        height
+                    } else {
+                        auto()
+                    },
+                ),
         },
         max_size: Size {
-            width: dimension(record, field::MAX_WIDTH).unwrap_or(auto()),
-            height: dimension(record, field::MAX_HEIGHT).unwrap_or(auto()),
+            width: dimension(record, field::MAX_WIDTH)
+                .or_else(|| keyword(record, field::MAX_WIDTH_KEYWORD))
+                .unwrap_or(auto()),
+            height: dimension(record, field::MAX_HEIGHT)
+                .or_else(|| keyword(record, field::MAX_HEIGHT_KEYWORD))
+                .unwrap_or(auto()),
         },
         size: Size {
             width: dimension(record, field::WIDTH)

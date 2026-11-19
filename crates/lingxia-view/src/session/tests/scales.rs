@@ -113,6 +113,31 @@ fn an_em_size_grows_with_the_text_up_to_one_and_a_half_times() {
     }
 }
 
+#[test]
+fn min_and_max_size_keywords_size_by_content() {
+    let mut page = ViewSession::new(&source(
+        "function render(){return h('view',{style:{width:60,flexDirection:'row'}},\
+         h('text',{'data-testid':'word',style:{minWidth:'min-content',flexShrink:1}},'Unbreakable'),\
+         h('view',{style:{width:100}}))}",
+    ))
+    .unwrap();
+    page.set_environment(env(None, 1.0)).unwrap();
+    let frame = page.layout(300, 300, 1.0).unwrap();
+    let word = bounds(&frame, "word");
+    assert!(word[2] > 40.0, "min-w-min keeps the longest word: {word:?}");
+
+    let mut page = ViewSession::new(&source(
+        "function render(){return h('view',{style:{width:200}},\
+         h('view',{'data-testid':'capped',style:{maxWidth:'max-content'}},h('text',{},'Hi')))}",
+    ))
+    .unwrap();
+    page.set_environment(env(None, 1.0)).unwrap();
+    let capped = bounds(&page.layout(300, 300, 1.0).unwrap(), "capped");
+    assert!(
+        capped[2] < 60.0,
+        "max-w-max caps at the content: {capped:?}"
+    );
+}
 
 #[test]
 fn a_running_transition_keeps_its_length_across_a_scales_push() {
