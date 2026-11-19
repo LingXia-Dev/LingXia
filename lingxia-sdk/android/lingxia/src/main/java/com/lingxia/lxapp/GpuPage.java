@@ -131,9 +131,17 @@ public final class GpuPage extends FrameLayout {
             GpuPage page = PAGES.get(token);
             if (page == null) { automationReply(replyId, INACTIVE); return; }
             String op;
-            try { op = new org.json.JSONObject(request).optString("op"); }
-            catch (org.json.JSONException error) { automationReply(replyId, "{\"error\":\"E_UNSUPPORTED: malformed automation request\"}"); return; }
+            boolean allowNotReady;
+            try {
+                org.json.JSONObject parsed = new org.json.JSONObject(request);
+                op = parsed.optString("op");
+                allowNotReady = parsed.optBoolean("allowNotReady", false);
+            } catch (org.json.JSONException error) { automationReply(replyId, "{\"error\":\"E_UNSUPPORTED: malformed automation request\"}"); return; }
             if (!"screenshot".equals(op)) { automationReply(replyId, page.content.automate(request)); return; }
+            // Web views draw into the frame live: one that has not drawn yet fails the capture,
+            // which the automation side retries, unless the caller takes its blank box.
+            String ready = page.content.automate("{\"op\":\"webCaptureReady\",\"allowNotReady\":" + allowNotReady + "}");
+            if (ready.contains("\"error\"")) { automationReply(replyId, ready); return; }
             page.content.captureFrameWhenReady(frame -> {
                 if (frame == null) { automationReply(replyId, "{\"error\":\"E_PAGE_NOT_READY: no presented frame\"}"); return; }
                 java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();

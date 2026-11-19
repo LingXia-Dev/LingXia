@@ -119,6 +119,17 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// capture draws them in place. An `E_WEBVIEW_NOT_READY` error names the web views that
     /// have not drawn yet; `allow_not_ready` captures those as their box's background.
     pub fn prepare_web_capture(&self, allow_not_ready: bool) -> Result<(), String> {
+        self.web_capture(allow_not_ready, true)
+    }
+
+    /// Before a capture that shows web views as the screen does (Android's web textures,
+    /// Harmony's composited snapshot): `E_WEBVIEW_NOT_READY` while a shown `<webview>` has
+    /// not drawn, unless `allow_not_ready` takes its box's background, as the screen shows it.
+    pub fn web_capture_ready(&self, allow_not_ready: bool) -> Result<(), String> {
+        self.web_capture(allow_not_ready, false)
+    }
+
+    fn web_capture(&self, allow_not_ready: bool, pictures: bool) -> Result<(), String> {
         let inner = &self.inner;
         let mut main = inner.main();
         let Some(scope) = main.webviews.scope else {
@@ -143,10 +154,12 @@ impl<A: PlatformAdapter> ViewHost<A> {
             )
         };
         if !allow_not_ready && !loading.is_empty() {
-            return Err(not_ready(loading.iter().map(|m| m.web_id.as_str()).collect()));
+            return Err(not_ready(
+                loading.iter().map(|m| m.web_id.as_str()).collect(),
+            ));
         }
         let ids: Vec<String> = ready.iter().map(|m| m.web_id.clone()).collect();
-        if ids.is_empty() {
+        if ids.is_empty() || !pictures {
             return Ok(());
         }
         let now = Instant::now();
@@ -157,25 +170,31 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 let scale = main.snapshot.as_ref().map_or(1.0, |s| s.scale);
                 drop(main);
                 inner.adapter.picture_webviews(&ids, scale);
-                return Err(format!("E_WEBVIEW_NOT_READY: picturing <webview> {}", ids.join(", ")));
+                return Err(format!(
+                    "E_WEBVIEW_NOT_READY: picturing <webview> {}",
+                    ids.join(", ")
+                ));
             }
         };
         let presented = main.webviews.presented;
-        let missing: Vec<&str> = ids
-            .iter()
-            .filter(|id| {
-                !main.webviews.pictured.get(*id).is_some_and(|at| {
-                    *at >= asked && presented.is_some_and(|shown| shown > *at)
+        let missing: Vec<&str> =
+            ids.iter()
+                .filter(|id| {
+                    !main.webviews.pictured.get(*id).is_some_and(|at| {
+                        *at >= asked && presented.is_some_and(|shown| shown > *at)
+                    })
                 })
-            })
-            .map(String::as_str)
-            .collect();
+                .map(String::as_str)
+                .collect();
         if missing.is_empty() {
             main.webviews.capture_ask = None;
             return Ok(());
         }
         if now.duration_since(asked) < PICTURE_WAIT {
-            return Err(format!("E_WEBVIEW_NOT_READY: picturing <webview> {}", missing.join(", ")));
+            return Err(format!(
+                "E_WEBVIEW_NOT_READY: picturing <webview> {}",
+                missing.join(", ")
+            ));
         }
         if allow_not_ready {
             main.webviews.capture_ask = None;
@@ -228,7 +247,11 @@ impl<A: PlatformAdapter> Inner<A> {
         };
         let Some(scope) = ({
             let main = self.main();
-            if main.disposed { None } else { main.webviews.scope }
+            if main.disposed {
+                None
+            } else {
+                main.webviews.scope
+            }
         }) else {
             return;
         };

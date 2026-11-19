@@ -1471,7 +1471,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// `{op: "act", css, index, action: {kind: click|dblclick|fill|type|scroll|press|select|blur, text, key, value, force}}`,
     /// `{op: "tree"}`, `{op: "frame", windowMs?}` (presentation counters and frame pacing over
     /// the last `windowMs`) or `{op: "hud", on}` (draw frame statistics over the page).
-    /// Screenshots belong to the adapter's presenter.
+    /// Screenshots belong to the adapter's presenter; `{op: "webCaptureReady", allowNotReady}`
+    /// is their [`Self::web_capture_ready`] check for a platform that captures web views live.
     pub fn automation_request(
         &self,
         request: &serde_json::Value,
@@ -1489,6 +1490,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
             return Err(error);
         }
         match request["op"].as_str() {
+            Some("webCaptureReady") => self
+                .web_capture_ready(request["allowNotReady"] == true)
+                .map(|()| serde_json::Value::Null),
             Some("query") => self.automation_query(
                 css,
                 index,

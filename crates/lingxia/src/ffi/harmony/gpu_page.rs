@@ -389,6 +389,16 @@ impl NativePage for HarmonyPage {
     fn automation(&self, request: serde_json::Value, reply: AutomationReply) {
         let token = self.token;
         lingxia_view_harmony::post_main(Box::new(move || {
+            // The snapshot composites ArkWeb as the screen shows it: one that has not drawn yet
+            // fails the capture, which the automation side retries.
+            if request["op"] == "screenshot"
+                && let Some(Some(Err(error))) = with_page(token, |page| {
+                    page.with_host(|host| host.web_capture_ready(request["allowNotReady"] == true))
+                })
+            {
+                reply(Err(error));
+                return;
+            }
             let has_webviews = request["op"] == "screenshot"
                 && gpu_page::webviews::has_webviews(token)
                 && with_page(token, |_| ()).is_some();
