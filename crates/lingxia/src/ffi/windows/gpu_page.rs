@@ -2,7 +2,7 @@
 //! WebView2 page does, and registers as native content under its webtag: the host presents,
 //! moves and reparents it through the same handler it uses for WebViews.
 use crate::gpu_page::{self, AutomationReply, Creation, NativeFactory, NativePage, Token};
-use lingxia_view_windows::lingxia_view::session::host::Failure;
+use lingxia_view_windows::lingxia_view::session::host::{Failure, LogicPort, StaleMark};
 use lingxia_view_windows::lingxia_view::session::lifecycle::ConnectionTicket;
 use lingxia_view_windows::{Dispatcher, Page, Scheme, Shell};
 use lingxia_webview::WebTag;
@@ -84,7 +84,7 @@ fn scheme(scheme: WindowsPreferredColorScheme) -> Scheme {
 
 /// The page thread: make the page, pump its messages, tear it down.
 fn run(token: Token, webtag: WebTag, request: Creation) {
-    let made = (|| -> Result<(), String> {
+    let made = (|| -> Result<(LogicPort, StaleMark), String> {
         let dispatcher = Dispatcher::current()?;
         let parent = create_native_content_parent(&webtag).map_err(|e| e.to_string())?;
         let page = match Page::new(
@@ -101,7 +101,11 @@ fn run(token: Token, webtag: WebTag, request: Creation) {
                 return Err(error);
             }
         };
-        page.host().load(request.source);
+        let ports = {
+            let host = page.host();
+            host.load(request.source);
+            (host.logic_port(), host.stale_mark())
+        };
         let content: Arc<dyn WindowsNativeContent> = Arc::new(Content {
             token,
             window: page.hwnd(),
@@ -135,10 +139,12 @@ fn run(token: Token, webtag: WebTag, request: Creation) {
         if disposed {
             teardown();
         }
-        Ok(())
+        Ok(ports)
     })();
     match made {
-        Ok(()) => gpu_page::created(token, Ok(Arc::new(WindowsPage { token }))),
+        Ok((port, stale)) => {
+            gpu_page::created(token, Ok(Arc::new(WindowsPage { token, port, stale })))
+        }
         Err(error) => {
             threads().remove(&token);
             return gpu_page::created(token, Err(error));
@@ -324,8 +330,24 @@ impl Shell for Bridge {
     fn presented(&self, token: i64, connection: u64) {
         gpu_page::presented(token, connection);
     }
-    fn message(&self, token: i64, connection: u64, message: &str) {
-        gpu_page::message(token, connection, message);
+    fn logic(
+        &self,
+        token: i64,
+        connection: u64,
+        messages: Vec<lingxia_view_windows::lingxia_view::session::logic::ToLogic>,
+    ) {
+        gpu_page::view_events(token, connection, messages);
+    }
+    fn state(
+        &self,
+        token: i64,
+        connection: u64,
+        signal: lingxia_view_windows::lingxia_view::session::state::StateSignal,
+    ) {
+        gpu_page::state_signal(token, connection, gpu_page::state::from_view(signal));
+    }
+    fn console(&self, token: i64, level: log::Level, message: &str) {
+        gpu_page::console(token, level, message);
     }
     fn restart(&self, token: i64, connection: u64) -> bool {
         gpu_page::restart(token, connection)
@@ -357,23 +379,37 @@ impl Shell for Bridge {
 
 struct WindowsPage {
     token: Token,
+    port: LogicPort,
+    stale: StaleMark,
 }
 
 impl NativePage for WindowsPage {
-    fn connect(&self, generation: GpuViewGeneration, nonce: &str) -> Result<(), LxAppError> {
-        let nonce = nonce.to_owned();
+    fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError> {
         on_page(self.token, move |page| {
-            page.host()
-                .connect(ConnectionTicket::new(generation.get()), nonce)
+            page.host().connect(ConnectionTicket::new(generation.get()))
         });
         Ok(())
     }
-    fn receive(&self, generation: GpuViewGeneration, frame: &str) -> Result<(), LxAppError> {
-        let frame = frame.to_owned();
-        on_page(self.token, move |page| {
-            page.host()
-                .receive(ConnectionTicket::new(generation.get()), frame)
-        });
+    fn deliver(
+        &self,
+        generation: GpuViewGeneration,
+        message: lxapp::GpuViewMessage,
+    ) -> Result<(), LxAppError> {
+        self.port.deliver(
+            ConnectionTicket::new(generation.get()),
+            gpu_page::state::message_to_view(message),
+        );
+        Ok(())
+    }
+    fn write_state(
+        &self,
+        generation: GpuViewGeneration,
+        write: lxapp::GpuStateWrite,
+    ) -> Result<(), LxAppError> {
+        self.port.write_state(
+            ConnectionTicket::new(generation.get()),
+            gpu_page::state::to_view(write),
+        );
         Ok(())
     }
     fn request_leave(&self, generation: GpuViewGeneration, reason: &str) -> Result<(), LxAppError> {
@@ -394,6 +430,8 @@ impl NativePage for WindowsPage {
         Ok(())
     }
     fn reload(&self, source: &str) -> Result<(), LxAppError> {
+        // Marked before the post: a frame presented meanwhile is of the old document.
+        self.stale.set();
         let source = source.to_owned();
         on_page(self.token, move |page| page.host().load(source));
         Ok(())
@@ -405,6 +443,7 @@ impl NativePage for WindowsPage {
         Ok(())
     }
     fn park(&self) -> Result<(), LxAppError> {
+        self.stale.set();
         on_page(self.token, |page| page.host().park());
         Ok(())
     }

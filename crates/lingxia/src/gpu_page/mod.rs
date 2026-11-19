@@ -25,7 +25,8 @@ pub(crate) use images::{load_image, video_url};
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
-    target_env = "ohos"
+    target_env = "ohos",
+    windows
 ))]
 pub(crate) mod state;
 #[cfg(any(
@@ -390,11 +391,14 @@ fn close_worker(key: &str) {
     lingxia_view_apple::lingxia_view::session::host::ViewWorker::close(key);
     #[cfg(target_env = "ohos")]
     lingxia_view_harmony::lingxia_view::session::host::ViewWorker::close(key);
+    #[cfg(windows)]
+    lingxia_view_windows::lingxia_view::session::host::ViewWorker::close(key);
     #[cfg(not(any(
         target_os = "android",
         target_os = "ios",
         target_os = "macos",
-        target_env = "ohos"
+        target_env = "ohos",
+        windows
     )))]
     let _ = key;
 }
@@ -461,7 +465,8 @@ pub(crate) fn hot_swap(appid: &str, path: &str) -> Result<usize, LxAppError> {
             target_os = "android",
             target_os = "ios",
             target_os = "macos",
-            target_env = "ohos"
+            target_env = "ohos",
+            windows
         )
     ))]
     state::install_swap_reporter();
@@ -604,7 +609,8 @@ pub(crate) fn created(token: Token, outcome: Created) {
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
-    target_env = "ohos"
+    target_env = "ohos",
+    windows
 ))]
 pub(crate) fn view_events(token: Token, generation: u64, messages: Vec<state::ToLogic>) {
     let Some(endpoint) = live(token) else {
@@ -749,11 +755,14 @@ pub(crate) fn set_bytecode_dir(dir: std::path::PathBuf) {
     lingxia_view_apple::lingxia_view::engine::set_bytecode_dir(dir);
     #[cfg(target_env = "ohos")]
     lingxia_view_harmony::lingxia_view::engine::set_bytecode_dir(dir);
+    #[cfg(windows)]
+    lingxia_view_windows::lingxia_view::engine::set_bytecode_dir(dir);
     #[cfg(not(any(
         target_os = "android",
         target_os = "ios",
         target_os = "macos",
-        target_env = "ohos"
+        target_env = "ohos",
+        windows
     )))]
     let _ = dir;
 }

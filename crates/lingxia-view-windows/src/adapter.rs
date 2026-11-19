@@ -283,6 +283,7 @@ impl Presenter for WindowsAdapter {
                     surface,
                     revision,
                     drawn,
+                    true,
                     move |shown, gpu| {
                         let Some(host) = host.upgrade() else { return };
                         match shown {
@@ -508,7 +509,7 @@ impl Feedback for WindowsAdapter {
                     ..
                 } => self.highlight(0, Some(*node)),
                 Effect::Press { .. } | Effect::ClearPress => self.highlight(0, None),
-                Effect::FocusRing { node } => self.highlight(1, Some(*node)),
+                Effect::FocusRing { node, visible } => self.highlight(1, visible.then_some(*node)),
                 Effect::ClearFocusRing => self.highlight(1, None),
                 _ => {}
             }
@@ -552,8 +553,22 @@ impl HostEvents for WindowsAdapter {
             }
         }));
     }
-    fn message(&self, connection: ConnectionTicket, message: &str) {
-        self.shell.message(self.token, connection.get(), message);
+    fn logic(
+        &self,
+        connection: ConnectionTicket,
+        messages: Vec<lingxia_view::session::logic::ToLogic>,
+    ) {
+        self.shell.logic(self.token, connection.get(), messages);
+    }
+    fn state(
+        &self,
+        connection: ConnectionTicket,
+        signal: lingxia_view::session::state::StateSignal,
+    ) {
+        self.shell.state(self.token, connection.get(), signal);
+    }
+    fn console(&self, level: log::Level, message: &str) {
+        self.shell.console(self.token, level, message);
     }
     fn restart(&self, connection: ConnectionTicket) -> bool {
         self.shell.restart(self.token, connection.get())

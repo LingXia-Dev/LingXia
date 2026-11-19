@@ -232,13 +232,17 @@ impl Element {
     }
 
     fn toggles(node: &SemanticNode) -> bool {
-        matches!(node.role, Role::CheckBox | Role::Switch)
-            || (node.pressed.is_some() && node.role == Role::Button)
+        matches!(
+            node.role,
+            Role::CheckBox | Role::Switch | Role::MenuItemCheckBox
+        ) || (node.pressed.is_some() && node.role == Role::Button)
     }
 
     fn selects(node: &SemanticNode) -> bool {
-        matches!(node.role, Role::RadioButton | Role::Option | Role::GridCell)
-            && (node.checked.is_some() || node.selected.is_some())
+        matches!(
+            node.role,
+            Role::RadioButton | Role::Option | Role::GridCell | Role::Tab | Role::MenuItemRadio
+        ) && (node.checked.is_some() || node.selected.is_some())
     }
 }
 
@@ -257,13 +261,22 @@ fn control_type(role: Role) -> UIA_CONTROLTYPE_ID {
         Role::Link => UIA_HyperlinkControlTypeId,
         Role::List | Role::ListBox => UIA_ListControlTypeId,
         Role::ListItem | Role::Option => UIA_ListItemControlTypeId,
-        Role::Dialog => UIA_WindowControlTypeId,
-        Role::Alert => UIA_GroupControlTypeId,
+        Role::Dialog | Role::AlertDialog => UIA_WindowControlTypeId,
+        Role::Alert | Role::Group => UIA_GroupControlTypeId,
+        Role::Tooltip => UIA_ToolTipControlTypeId,
+        Role::ProgressBar => UIA_ProgressBarControlTypeId,
+        Role::TabList => UIA_TabControlTypeId,
+        Role::Tab => UIA_TabItemControlTypeId,
         Role::Status => UIA_StatusBarControlTypeId,
         Role::Grid => UIA_DataGridControlTypeId,
         Role::GridCell => UIA_DataItemControlTypeId,
         Role::Menu => UIA_MenuControlTypeId,
-        Role::MenuItem => UIA_MenuItemControlTypeId,
+        Role::MenuItem | Role::MenuItemCheckBox | Role::MenuItemRadio => UIA_MenuItemControlTypeId,
+        Role::Toolbar => UIA_ToolBarControlTypeId,
+        Role::Tree => UIA_TreeControlTypeId,
+        Role::TreeItem => UIA_TreeItemControlTypeId,
+        Role::Row => UIA_DataItemControlTypeId,
+        Role::Video | Role::TabPanel | Role::WebView => UIA_PaneControlTypeId,
     }
 }
 
@@ -324,7 +337,14 @@ impl IRawElementProviderSimple_Impl for Element_Impl {
             UIA_HelpTextPropertyId => node
                 .text_field
                 .as_ref()
-                .map_or_else(VARIANT::default, |field| text(&field.hint)),
+                .map(|field| field.hint.as_str())
+                .filter(|hint| !hint.is_empty())
+                .or(node.description.as_deref())
+                .map_or_else(VARIANT::default, text),
+            UIA_FullDescriptionPropertyId => node
+                .description
+                .as_deref()
+                .map_or_else(VARIANT::default, text),
             UIA_IsEnabledPropertyId => VARIANT::from(node.enabled),
             UIA_IsKeyboardFocusablePropertyId => VARIANT::from(node.focusable),
             UIA_HasKeyboardFocusPropertyId => VARIANT::from(node.focused),
@@ -347,7 +367,9 @@ impl IRawElementProviderSimple_Impl for Element_Impl {
             UIA_SizeOfSetPropertyId => node
                 .position
                 .map_or_else(VARIANT::default, |(_, count)| VARIANT::from(count as i32)),
-            UIA_IsDialogPropertyId => VARIANT::from(node.role == Role::Dialog),
+            UIA_IsDialogPropertyId => {
+                VARIANT::from(matches!(node.role, Role::Dialog | Role::AlertDialog))
+            }
             _ => VARIANT::default(),
         })
     }
@@ -444,7 +466,7 @@ impl IRawElementProviderFragmentRoot_Impl for Element_Impl {
             let scale = page.scale();
             let at = [point.x as f32 / scale, point.y as f32 / scale];
             page.host()
-                .semantics(|projection, _| projection.and_then(|p| p.hit(at)))
+                .semantics(|projection, _| projection.and_then(|p| p.hit(at, 0.0)))
         })
         .flatten();
         self.fragment(hit)
