@@ -1,6 +1,6 @@
 import { expect, spec } from '@lingxia/test';
 import { openDemo } from './open-demo';
-import { apart, lineRows, reveal, sample, trackFill } from './pixels';
+import { apart, lineRows, reveal, sameHue, sample, trackFill } from './pixels';
 
 // The control, select and composition demos, driven as a user drives them.
 spec('the controls take a tap, a drag and typing as a user gives them', { covers: ['view:radio', 'view:slider', 'view:textarea'], start: openDemo('controls') }, async (t) => {
@@ -61,8 +61,10 @@ spec('a switch styled by parts recolours its track when on, and a disabled switc
   const off = await trackFill(t, power);
   await power.click();
   await expect.poll(async () => apart(await trackFill(t, power), off), { timeout: 3_000 }).toBe(true);
-  const [r, , b] = await trackFill(t, view.getByRole('switch', { name: 'Locked on' }));
-  expect(b - r > 30 ? 'accent' : `grey ${JSON.stringify([r, b])}`).toBe('accent');
+  // The accent as this theme draws it: the track Power just took. Disabled, it fades but keeps that hue.
+  const accent = await trackFill(t, power);
+  const locked = await trackFill(t, view.getByRole('switch', { name: 'Locked on' }));
+  expect(sameHue(locked, accent) ? 'accent' : `grey ${JSON.stringify({ locked, accent })}`).toBe('accent');
 });
 
 spec('a long select label stays on one line', { start: openDemo('select') }, async (t) => {

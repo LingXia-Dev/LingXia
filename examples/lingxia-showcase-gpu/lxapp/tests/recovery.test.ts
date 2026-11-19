@@ -6,9 +6,8 @@ const words = {
   failed: ["This page couldn't be displayed.", '暂时无法显示此页面。'],
   retry: ['Retry', '重试'],
   back: ['Go back', '返回'],
-  slow: ['This page is taking longer to load. You can go back and try again.', '页面加载时间较长，你可以返回后重试。'],
-  // A held first state ends in a Logic restart offer.
-  restart: ['Retry', '重试', 'Reload page', '重新载入页面'],
+  slow: ['This page is taking longer than usual to load.', '页面加载时间比平时长。'],
+  wait: ['Keep waiting', '继续等待'],
 };
 
 async function panel(t: Fixture) {
@@ -75,17 +74,18 @@ spec('the recovery buttons open their pages from the View tab as from the group 
 });
 
 // `devHoldFirstState`: under lingxia dev the page's Logic never sends its first state.
-spec('a page whose first state never comes shows the slow-load notice; Retry waits again and Go back leaves only that page', {
+spec('a page whose first state never comes shows the slow-load notice; Keep waiting closes it until it returns, and Go back leaves only that page', {
   covers: ['view:recovery'], start: openDemo('recovery'), requires: { chrome: true },
 }, async (t) => {
   const before = await openFailing(t, 'lab-recovery-stall', 'spec-stall');
   let elements = await slowPanel(t);
   labelOf(elements, words.back);
-  await t.app.chrome.tap(labelOf(elements, words.restart));
-  // The first state is held again: the notice returns, and the page stays on the stack.
+  await t.app.chrome.tap(labelOf(elements, words.wait));
+  // The notice closes, then returns while the first state is still held; the page stays on the stack.
+  await t.waitFor(() => t.app.chrome.elements(), { until: (now) => !now.some((e) => words.slow.includes(e.label)), timeout: 3_000 });
   elements = await slowPanel(t);
+  // Read through the chrome only: a query on the held page answers that it failed to load.
   expect((await t.app.nav.stack()).length).toBe(before.length + 1);
-  await expect(t.app.view.testId('spec-stall-ready')).not.toBeAttached();
   await t.app.chrome.tap(labelOf(elements, words.back));
   await t.waitFor(() => t.app.nav.stack(), { until: (stack) => stack.length === before.length });
   expect((await t.app.nav.stack()).map((page) => page.path)).toEqual(before.map((page) => page.path));

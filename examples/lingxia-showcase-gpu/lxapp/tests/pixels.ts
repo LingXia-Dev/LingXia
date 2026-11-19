@@ -6,6 +6,21 @@ export type Fixture = Parameters<Parameters<typeof spec>[2]>[0];
 
 export const apart = (a: number[], b: number[]) => a.some((value, i) => Math.abs(value - b[i]) > 40);
 
+/** Hue in degrees and spread (max − min channel) of an sRGB sample; a grey has almost no spread. */
+export function tint([r, g, b]: number[]) {
+  const max = Math.max(r, g, b), spread = max - Math.min(r, g, b);
+  if (spread === 0) return { hue: 0, spread };
+  const sector = max === r ? (g - b) / spread : max === g ? (b - r) / spread + 2 : (r - g) / spread + 4;
+  return { hue: (sector * 60 + 360) % 360, spread };
+}
+
+/** Whether `sample` is `role`'s colour, faded or not: the same hue, and not grey. */
+export function sameHue(sample: number[], role: number[]) {
+  const [a, b] = [tint(sample), tint(role)];
+  const turn = Math.abs(a.hue - b.hue);
+  return a.spread > 20 && Math.min(turn, 360 - turn) < 20;
+}
+
 /** The colour just inside a control's left padding, brought into the top of the screen first:
  * a phone-sized screenshot decodes only down to the sampled row, so a poll stays quick. */
 export async function fillOf(t: Fixture, locator: ReturnType<Fixture['app']['view']['testId']>) {
