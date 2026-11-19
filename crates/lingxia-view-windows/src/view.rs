@@ -154,6 +154,11 @@ fn point(lparam: LPARAM) -> (f32, f32) {
     (f32::from(x), f32::from(y))
 }
 
+/// A message's client position in the page's pixels.
+fn at(page: &Page, lparam: LPARAM) -> (f32, f32) {
+    page.page_pixels(point(lparam))
+}
+
 fn held(key: VIRTUAL_KEY) -> bool {
     // SAFETY: reads this thread's key state.
     unsafe { GetKeyState(i32::from(key.0)) < 0 }
@@ -196,7 +201,7 @@ fn handle(
             2 => PointerPhase::Up,
             _ => PointerPhase::Cancel,
         };
-        touch(page, hwnd, SYNTHETIC_FINGER, phase, point(lparam));
+        touch(page, hwnd, SYNTHETIC_FINGER, phase, at(page, lparam));
         return Some(LRESULT(0));
     }
     if msg == crate::uia::CALL {
@@ -225,7 +230,13 @@ fn handle(
             };
             // SAFETY: converts in place for this thread's window.
             let _ = unsafe { ScreenToClient(hwnd, &mut at) };
-            touch(page, hwnd, id, phase, (at.x as f32, at.y as f32));
+            touch(
+                page,
+                hwnd,
+                id,
+                phase,
+                page.page_pixels((at.x as f32, at.y as f32)),
+            );
             // Handled pointer messages are not promoted to mouse messages.
             Some(LRESULT(0))
         }
@@ -265,7 +276,7 @@ fn handle(
             Some(LRESULT(0))
         }
         WM_MOUSEMOVE => {
-            let (x, y) = point(lparam);
+            let (x, y) = at(page, lparam);
             let tracking = std::mem::replace(&mut page.input.borrow_mut().tracking, true);
             if !tracking {
                 let mut track = TRACKMOUSEEVENT {
@@ -294,7 +305,7 @@ fn handle(
             if pressed {
                 pointer(page, PointerPhase::Up, lparam);
                 if double {
-                    let (x, y) = point(lparam);
+                    let (x, y) = at(page, lparam);
                     host.select_word_at([x, y]);
                 }
             }
@@ -314,7 +325,7 @@ fn handle(
             Some(LRESULT(0))
         }
         WM_RBUTTONUP => {
-            let (x, y) = point(lparam);
+            let (x, y) = at(page, lparam);
             (!host.input_blocked() && host.context_menu([x, y])).then_some(LRESULT(0))
         }
         WM_MOUSEWHEEL | WM_MOUSEHWHEEL => {
@@ -337,9 +348,10 @@ fn handle(
                 (notches, 0.0)
             };
             host.input_age(input_age());
+            let (x, y) = page.page_pixels((at.x as f32, at.y as f32));
             host.wheel(Wheel {
-                x: at.x as f32,
-                y: at.y as f32,
+                x,
+                y,
                 dx,
                 dy,
                 precise: false,
@@ -446,9 +458,10 @@ fn composition_text(hwnd: HWND, kind: IME_COMPOSITION_STRING) -> Option<String> 
 }
 
 fn pointer(page: &Page, phase: PointerPhase, lparam: LPARAM) {
-    let (x, y) = point(lparam);
+    let (x, y) = at(page, lparam);
     // SAFETY: no arguments.
-    let slop = unsafe { GetSystemMetrics(SM_CXDRAG) }.max(1) as f32;
+    let slop =
+        unsafe { GetSystemMetrics(SM_CXDRAG) }.max(1) as f32 * page.scale() / page.shown_scale();
     page.host().input_age(input_age());
     page.host().pointer(Pointer {
         phase,

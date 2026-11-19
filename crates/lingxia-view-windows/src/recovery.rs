@@ -181,6 +181,9 @@ pub(crate) fn forget(page: isize) {
 }
 
 fn scale(page: isize) -> f32 {
+    if let Some(page) = crate::view::page_for(page) {
+        return page.shown_scale();
+    }
     // SAFETY: a window of this thread.
     let dpi = unsafe { GetDpiForWindow(HWND(page as *mut _)) };
     if dpi == 0 { 1.0 } else { dpi as f32 / 96.0 }

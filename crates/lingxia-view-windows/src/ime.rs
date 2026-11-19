@@ -766,7 +766,7 @@ fn sync_os(host: &Host) {
                 .iter()
                 .find(|node| *node.identity == *identity)?;
             let geometry = node.input.as_ref()?.geometry.as_ref()?;
-            Some((geometry.caret, frame.scale))
+            Some((geometry.caret, adapter.shown_scale()))
         });
         os::bind(hwnd, adapter.ime.connected(), caret);
     }));

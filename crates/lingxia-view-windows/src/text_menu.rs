@@ -117,10 +117,5 @@ fn popup(hwnd: isize, (x, y): (i32, i32), items: &[(MenuAction, String)]) -> Opt
 }
 
 fn scale(adapter: &WindowsAdapter) -> f32 {
-    adapter
-        .facts
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .as_ref()
-        .map_or(1.0, |facts| facts.scale)
+    adapter.shown_scale()
 }

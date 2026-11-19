@@ -50,6 +50,9 @@ pub struct WindowsAdapter {
     pub(crate) host: OnceLock<WeakViewHost<WindowsAdapter>>,
     /// The window's latest measurement; `None` until it has a size.
     pub(crate) facts: Mutex<Option<DeviceFacts>>,
+    /// Pixels per point the window shows the page at, when that is not the measured scale: a
+    /// simulated device shown at the Runner's fit. See [`DisplayList::raster_at`].
+    pub(crate) raster_scale: Mutex<Option<f32>>,
     raster: OnceLock<Arc<Mailbox<(DisplayList, CommitTicket)>>>,
     /// The attached GPU presenter, or 0.
     pub(crate) gpu: AtomicU64,
@@ -81,6 +84,7 @@ impl WindowsAdapter {
             started: Instant::now(),
             host: OnceLock::new(),
             facts: Mutex::new(None),
+            raster_scale: Mutex::new(None),
             raster: OnceLock::new(),
             gpu: AtomicU64::new(0),
             // CPU frames until the window attaches a presenter.
@@ -112,6 +116,12 @@ impl WindowsAdapter {
             .unwrap_or_else(|p| p.into_inner())
             .as_ref()
             .map_or(1.0, |facts| facts.scale)
+    }
+
+    /// Window pixels per point: native chrome over the page is placed at it.
+    pub(crate) fn shown_scale(&self) -> f32 {
+        let raster = *self.raster_scale.lock().unwrap_or_else(|p| p.into_inner());
+        raster.unwrap_or_else(|| self.scale())
     }
 
     /// The vsync key fling steps use, apart from the host's own frame requests.
@@ -244,6 +254,9 @@ impl Presenter for WindowsAdapter {
     ) -> Result<Option<Frame>, String> {
         use lingxia_view::renderer::render_thread;
         self.decorate(&mut display);
+        if let Some(scale) = *self.raster_scale.lock().unwrap_or_else(|p| p.into_inner()) {
+            display.raster_at(scale);
+        }
         Ok(match self.route() {
             Route::Wait => None,
             Route::Gpu(surface) => Some(Frame::Gpu {

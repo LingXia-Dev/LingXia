@@ -98,6 +98,10 @@ pub trait WindowsNativeContent: Send + Sync {
     fn content_scale(&self) -> Option<f64> {
         None
     }
+    /// The size the content lays out at, in points, when it is not the window's.
+    fn viewport(&self) -> Option<[f64; 2]> {
+        None
+    }
 }
 
 #[derive(Clone)]
@@ -145,6 +149,14 @@ impl WindowsWebViewHandler {
         match &self.content {
             Content::WebView(_) => None,
             Content::Native(_, native) => native.content_window(),
+        }
+    }
+
+    /// Native content's layout size in points when it is not its window's (a simulated device).
+    pub fn content_viewport(&self) -> Option<[f64; 2]> {
+        match &self.content {
+            Content::WebView(_) => None,
+            Content::Native(_, native) => native.viewport(),
         }
     }
 

@@ -70,6 +70,11 @@ pub trait Shell: Send + Sync + 'static {
     fn host_chrome(&self, token: i64, chrome: &lingxia_view::platform::HostChrome);
     /// A top-layer dialog opened or closed.
     fn top_layer(&self, token: i64, modal: bool);
+    /// Whether the host's navigation bar and tab bar show over this page on a simulated device.
+    fn bars(&self, token: i64) -> [bool; 2] {
+        let _ = token;
+        [false, false]
+    }
     /// Load authorized image bytes for the page; `done` runs once unless the
     /// returned handle is dropped first, which cancels the load.
     fn load_image(
@@ -108,6 +113,62 @@ pub enum Scheme {
     Auto,
     Light,
     Dark,
+}
+
+/// A simulated device (the Runner): what its pages measure, whatever size the window shows
+/// them at. Lengths are the device's points.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Simulation {
+    /// The screen in its present orientation.
+    pub viewport: [f32; 2],
+    pub pixel_ratio: f32,
+    /// System bars and cutouts: top, right, bottom, left.
+    pub safe_area: [f32; 4],
+    /// The host's navigation bar, below the safe area's top.
+    pub navigation_bar: f32,
+    /// The host's tab bar, from the screen's bottom edge to its top.
+    pub tab_bar_reach: f32,
+    pub smallest_width: f32,
+    /// System text size as a factor of the default.
+    pub text_scale: f32,
+    pub high_contrast: bool,
+}
+
+static SIMULATION: Mutex<Option<Simulation>> = Mutex::new(None);
+/// Every live page, for a change that reaches them all.
+static PAGES: Mutex<Vec<(isize, Dispatcher)>> = Mutex::new(Vec::new());
+
+fn simulation() -> Option<Simulation> {
+    SIMULATION.lock().unwrap_or_else(|p| p.into_inner()).clone()
+}
+
+/// The simulated device's viewport in points, while one is simulated.
+pub fn simulated_viewport() -> Option<[f32; 2]> {
+    simulation().map(|s| s.viewport)
+}
+
+/// Simulate a device for every page, or (`None`) measure the window as a desktop page does.
+pub fn set_simulation(simulation: Option<Simulation>) {
+    let simulation = simulation.filter(|s| {
+        s.viewport.iter().all(|v| v.is_finite() && *v > 0.0)
+            && s.pixel_ratio.is_finite()
+            && s.pixel_ratio > 0.0
+    });
+    {
+        let mut current = SIMULATION.lock().unwrap_or_else(|p| p.into_inner());
+        if *current == simulation {
+            return;
+        }
+        *current = simulation;
+    }
+    let pages = PAGES.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    for (hwnd, dispatcher) in pages {
+        dispatcher.post(Box::new(move || {
+            if let Some(page) = view::page_for(hwnd) {
+                page.report();
+            }
+        }));
+    }
 }
 
 /// Pages coming on screen over the pages they replace, clipped until they present. Each page
@@ -209,6 +270,10 @@ impl Page {
             }),
         });
         view::register(hwnd, &page);
+        PAGES
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push((hwnd, dispatcher));
         page.host.set_visible(true);
         page.show_window(false);
         let (width, height) = view::client_size(parent);
@@ -491,45 +556,110 @@ impl Page {
 
     /// Measure the window and tell the host; binds a presenter once it can.
     pub(crate) fn report(&self) {
-        let (width, height) = view::client_size(self.hwnd);
-        if width == 0 || height == 0 {
+        let (window_width, window_height) = view::client_size(self.hwnd);
+        if window_width == 0 || window_height == 0 {
             return;
         }
-        let scale = self.scale();
-        let dark = self.dark();
+        let simulated = simulation();
+        let shown = self.shown_scale();
+        let scale = simulated.as_ref().map_or(shown, |s| s.pixel_ratio);
+        let (width, height) = match &simulated {
+            Some(s) => (
+                (s.viewport[0] * scale).round() as u32,
+                (s.viewport[1] * scale).round() as u32,
+            ),
+            None => (window_width, window_height),
+        };
+        let text_scale = simulated
+            .as_ref()
+            .filter(|s| s.text_scale != 1.0)
+            .map(|s| vec![[0.0, 0.0], [16384.0, 16384.0 * s.text_scale]]);
         let facts = DeviceFacts {
             width,
             height,
             scale,
             os: "windows".into(),
-            dark,
-            system_insets: [0.0; 4],
-            chrome_insets: [0.0; 4],
+            dark: self.dark(),
+            system_insets: simulated
+                .as_ref()
+                .map_or([0.0; 4], |s| s.safe_area.map(|v| v * scale)),
+            chrome_insets: simulated.as_ref().map_or([0.0; 4], |s| {
+                let [navigation, tabs] = self.host.adapter().shell.bars(self.host.adapter().token);
+                [
+                    if navigation {
+                        s.safe_area[0] + s.navigation_bar
+                    } else {
+                        0.0
+                    },
+                    0.0,
+                    if tabs { s.tab_bar_reach } else { 0.0 },
+                    0.0,
+                ]
+                .map(|v| v * scale)
+            }),
             keyboard: 0.0,
-            smallest_width: self.smallest_width(scale),
+            smallest_width: simulated
+                .as_ref()
+                .map_or_else(|| self.smallest_width(shown), |s| s.smallest_width),
             locale: environment::locale(),
             fine_pointer: true,
             animation_scale: 1.0,
             reduce_motion: environment::reduce_motion(),
-            high_contrast: environment::high_contrast(),
-            text_scale: None,
+            high_contrast: simulated
+                .as_ref()
+                .map_or_else(environment::high_contrast, |s| s.high_contrast),
+            text_scale,
             hour_cycle: Some(environment::hour_cycle()),
             first_weekday: Some(environment::first_weekday()),
         };
+        // A simulated device lays out at its own pixels; frames draw at the window's.
+        let raster = simulated
+            .is_some()
+            .then_some(shown)
+            .filter(|shown| (shown - scale).abs() > f32::EPSILON);
+        let changed = {
+            let mut current = self
+                .host
+                .adapter()
+                .raster_scale
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            std::mem::replace(&mut *current, raster) != raster
+        };
         self.measured(facts);
+        if changed {
+            self.host.redraw();
+        }
         if !self.attached.get() && self.visible.get() {
             self.attached.set(true);
-            self.attach(width, height);
+            self.attach(window_width, window_height);
         }
     }
 
-    /// Device pixels per logical pixel.
+    /// Pixels per point of the page: a simulated device's ratio, else the window's.
     pub(crate) fn scale(&self) -> f32 {
+        simulation().map_or_else(|| self.shown_scale(), |s| s.pixel_ratio)
+    }
+
+    /// Window pixels per point of the page.
+    pub(crate) fn shown_scale(&self) -> f32 {
+        if let Some(s) = simulation() {
+            let (width, _) = view::client_size(self.hwnd);
+            if width > 0 {
+                return width as f32 / s.viewport[0];
+            }
+        }
         // SAFETY: this thread's window.
         let dpi = unsafe { GetDpiForWindow(self.window()) };
         self.scale
             .get()
             .unwrap_or(if dpi == 0 { 1.0 } else { dpi as f32 / 96.0 })
+    }
+
+    /// A position in window pixels as the page's pixels.
+    pub(crate) fn page_pixels(&self, (x, y): (f32, f32)) -> (f32, f32) {
+        let factor = self.scale() / self.shown_scale();
+        (x * factor, y * factor)
     }
 
     /// The monitor's shorter side, logical pixels.
@@ -724,6 +854,10 @@ impl Page {
 
 impl Drop for Page {
     fn drop(&mut self) {
+        PAGES
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .retain(|(page, _)| *page != self.hwnd);
         self.settled();
         leaving().retain(|(page, _)| *page != self.hwnd);
         view::unregister(self.hwnd);

@@ -17,6 +17,14 @@ type AppVisibilityKey = (String, Option<u64>);
 static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<AppVisibilityKey, HashSet<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+pub use lingxia_view_windows::Simulation as GpuSimulation;
+
+/// Lay GPU pages out as the simulated device `simulation` (the Runner), or (`None`) as the
+/// window they are shown in.
+pub fn set_gpu_simulation(simulation: Option<GpuSimulation>) {
+    lingxia_view_windows::set_simulation(simulation);
+}
+
 /// Starts the configured home lxapp's Logic worker without opening a page.
 ///
 /// Native and browser main surfaces keep the home lxapp as their control app,

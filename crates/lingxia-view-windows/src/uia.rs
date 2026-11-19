@@ -217,7 +217,7 @@ impl Element {
     /// Screen pixels of a logical rectangle of the page.
     fn screen(&self, bounds: [f32; 4]) -> UiaRect {
         on_page(self.hwnd, |page| {
-            let scale = f64::from(page.scale());
+            let scale = f64::from(page.shown_scale());
             let mut origin = POINT::default();
             // SAFETY: maps this page window's client origin.
             let _ = unsafe { ClientToScreen(HWND(self.hwnd as *mut _), &mut origin) };
@@ -463,7 +463,7 @@ impl IRawElementProviderFragmentRoot_Impl for Element_Impl {
             };
             // SAFETY: maps a screen point into this page window.
             let _ = unsafe { ScreenToClient(HWND(self.hwnd as *mut _), &mut point) };
-            let scale = page.scale();
+            let scale = page.shown_scale();
             let at = [point.x as f32 / scale, point.y as f32 / scale];
             page.host()
                 .semantics(|projection, _| projection.and_then(|p| p.hit(at, 0.0)))

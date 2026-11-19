@@ -240,6 +240,14 @@ impl AppGesture for Platform {
     }
 
     async fn gesture_viewport(&self, target: GestureTarget) -> Result<[f64; 4], PlatformError> {
+        if let GestureTarget::Page { webtag, .. } = &target
+            && let Some([width, height]) = lingxia_webview::platform::windows::find_webview_handler(
+                &lingxia_webview::WebTag::from(webtag.as_str()),
+            )
+            .and_then(|handler| handler.content_viewport())
+        {
+            return Ok([0.0, 0.0, width, height]);
+        }
         let (window, scale) = resolve(&target)?;
         let (width, height) = client_size(window);
         Ok([0.0, 0.0, width / scale, height / scale])

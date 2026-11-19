@@ -233,6 +233,10 @@ impl WindowsNativeContent for Content {
         Some(f64::from_bits(self.scale.load(Ordering::Acquire))).filter(|scale| *scale > 0.0)
     }
 
+    fn viewport(&self) -> Option<[f64; 2]> {
+        lingxia_view_windows::simulated_viewport().map(|size| size.map(f64::from))
+    }
+
     fn set_content_geometry(
         &self,
         left: i32,
@@ -367,6 +371,18 @@ impl Shell for Bridge {
     }
     fn host_chrome(&self, _: i64, _: &lingxia_view_windows::lingxia_view::platform::HostChrome) {}
     fn top_layer(&self, _: i64, _: bool) {}
+    fn bars(&self, token: i64) -> [bool; 2] {
+        let Some(page) = gpu_page::page_of(token) else {
+            return [false, false];
+        };
+        let navigation = page
+            .get_navbar_state()
+            .is_some_and(|state| state.show_navbar);
+        let tabs = lxapp::try_get(&page.appid())
+            .and_then(|app| app.get_tabbar())
+            .is_some_and(|tabbar| tabbar.is_visible_on(&page.path()));
+        [navigation, tabs]
+    }
     fn load_image(
         &self,
         token: i64,
