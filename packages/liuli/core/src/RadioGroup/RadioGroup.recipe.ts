@@ -5,6 +5,8 @@ export const radioGroupParts = {
   field: 'Field',
   group: 'view',
   option: 'button',
+  line: 'view',
+  ghost: 'text',
   circle: 'view',
   dot: 'view',
   text: 'view',
@@ -33,11 +35,18 @@ export const radioGroupRecipe = {
       off: 'border-text/12',
     } satisfies Record<'on' | 'off', string>,
   },
+  /** The label's first line box, holding the mark centred on it at any text size. */
+  line: {
+    base: 'shrink-0 flex-row items-center',
+  },
+  /** An empty run in the label's type: it gives the line its height. */
+  ghost: {
+    base: 'opacity-0',
+  },
   circle: {
     // A mark keeps its size and shape beside a label of any length or text size.
     base: 'shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-fast ease-standard',
-    /** Centred on the label's first line. */
-    size: { sm: 'size-4 mt-px', md: 'size-5 mt-px', lg: 'size-6' } satisfies Record<FieldSize, string>,
+    size: { sm: 'size-4', md: 'size-5', lg: 'size-6' } satisfies Record<FieldSize, string>,
     state: {
       on: 'bg-accent-solid border-accent-solid',
       off: 'bg-surface border-line-strong shadow-[0_1px_2px_rgb(0_0_0/0.05)]',

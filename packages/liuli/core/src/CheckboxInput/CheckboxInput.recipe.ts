@@ -4,6 +4,8 @@ export const checkboxInputParts = {
   root: 'view',
   control: 'checkbox',
   row: 'view',
+  line: 'view',
+  ghost: 'text',
   box: 'view',
   dash: 'view',
   mark: 'vector',
@@ -29,11 +31,18 @@ export const checkboxInputRecipe = {
   row: {
     base: 'flex-row items-start gap-3 py-1 my-auto',
   },
+  /** The label's first line box, holding the mark centred on it at any text size. */
+  line: {
+    base: 'shrink-0 flex-row items-center',
+  },
+  /** An empty run in the label's type: it gives the line its height. */
+  ghost: {
+    base: 'opacity-0',
+  },
   box: {
     // A mark keeps its size and shape beside a label of any length or text size.
     base: 'shrink-0 items-center justify-center rounded-checkbox border-2 transition-colors duration-fast ease-standard',
-    /** Centred on the label's first line. */
-    size: { sm: 'size-4 mt-px', md: 'size-5 mt-px', lg: 'size-6' } satisfies Record<FieldSize, string>,
+    size: { sm: 'size-4', md: 'size-5', lg: 'size-6' } satisfies Record<FieldSize, string>,
     state: {
       on: 'bg-accent-solid border-accent-solid text-on-accent-solid',
       off: 'bg-surface border-line-strong shadow-[0_1px_2px_rgb(0_0_0/0.05)]',

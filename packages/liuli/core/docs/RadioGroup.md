@@ -198,7 +198,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
-- Do: At large text, expect the circle to keep its size beside the label's first line; the label wraps, the mark is never squeezed.
+- Do: At large text, expect the circle to keep its size, centred on the label's first line as that line grows; the label wraps, the mark is never squeezed.
 - Do: Choose a sensible default when one exists; leave the group empty only when the person must decide.
 - Do: Use cards when each option needs a second line: plans, delivery, shipping speed.
 - Don't: Use radios for more than about six options; use a Select.

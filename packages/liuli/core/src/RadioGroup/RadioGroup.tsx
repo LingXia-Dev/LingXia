@@ -87,8 +87,11 @@ export function RadioGroup(props: RadioGroupProps) {
                 onClick={() => choose(option.value)}
                 className={cx(r.option.base, r.option.variant[variant], variant === 'card' && r.option.card[isChecked ? 'on' : 'off'])}
               >
-                <view aria-hidden className={cx(r.circle.base, r.circle.size[size], r.circle.state[isChecked ? 'on' : 'off'], !isChecked && status?.type === 'error' && r.circle.invalid)}>
-                  {isChecked && <view className={cx(r.dot.base, r.dot.size[size])} />}
+                <view aria-hidden className={r.line.base}>
+                  <text className={cx(r.ghost.base, r.label.variant[variant], r.label.size[size])}>{'\u200B'}</text>
+                  <view className={cx(r.circle.base, r.circle.size[size], r.circle.state[isChecked ? 'on' : 'off'], !isChecked && status?.type === 'error' && r.circle.invalid)}>
+                    {isChecked && <view className={cx(r.dot.base, r.dot.size[size])} />}
+                  </view>
                 </view>
                 <view className={r.text.base}>
                   <text aria-hidden className={cx(r.label.base, r.label.variant[variant], r.label.size[size])}>{option.label}</text>

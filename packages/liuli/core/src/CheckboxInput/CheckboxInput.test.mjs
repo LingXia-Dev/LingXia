@@ -41,7 +41,7 @@ test('the status message starts under the label, past the box and the row gap', 
   const screen = await renderExample('CheckboxInput/CheckboxInput', 'Controlled');
   const region = screen.queryAll(node => node.props.role === 'status')[0];
   const row = screen.getByTestId('terms').children[0];
-  const box = row.children[0];
+  const box = row.children[0].children[1];
   assert.equal(region.props.paddingLeft ?? region.props.paddingInlineStart, box.props.width + row.props.gap);
   const control = screen.getByTestId('terms').props;
   const margin = control.marginLeft ?? control.marginInlineStart;
@@ -57,11 +57,25 @@ test('StateMixed: a dash on the filled box, read as mixed', async () => {
 
 test('At large text: the box keeps its size and shape, never squeezed by its label', async () => {
   const screen = await renderExample('CheckboxInput/CheckboxInput', 'Sizes');
-  const boxes = screen.queryAll(node => node.props.borderTopWidth === 2 && node.props.accessibilityHidden === 1);
-  assert.equal(boxes.length, 3);
-  for (const box of boxes) {
-    const { shrink, width, height } = box.props;
+  const lines = screen.queryAll(node => node.props.accessibilityHidden === 1 && node.children?.[1]?.props.borderTopWidth === 2);
+  assert.equal(lines.length, 3);
+  for (const line of lines) {
+    const { shrink, width, height } = line.children[1].props;
     assert.equal(shrink, 0);
     assert.ok(width > 0 && width === height);
+  }
+});
+
+test('At large text: the box is centred on the label\'s first line, in a line box of the label\'s type', async () => {
+  const screen = await renderExample('CheckboxInput/CheckboxInput', 'Sizes');
+  const lines = screen.queryAll(node => node.props.accessibilityHidden === 1 && node.children?.[1]?.props.borderTopWidth === 2);
+  for (const line of lines) {
+    const [ghost, box] = line.children;
+    assert.deepEqual([line.props.flexDirection, line.props.align, line.props.shrink], ['row', 'center', 0]);
+    assert.equal(ghost.tag, 'text');
+    assert.equal(ghost.props.opacity, 0);
+    const label = screen.queryAll(node => node.tag === 'text' && node !== ghost && node.props.fontSize === ghost.props.fontSize && node.props.lineHeight === ghost.props.lineHeight);
+    assert.ok(label.length > 0, 'the ghost has the label\'s font size and line height');
+    assert.equal(box.props.marginTop, undefined, 'no fixed nudge: the line centres it');
   }
 });

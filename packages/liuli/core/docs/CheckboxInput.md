@@ -152,7 +152,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
-- Do: At large text, expect the box to keep its size beside the label's first line; the label wraps, the mark is never squeezed.
+- Do: At large text, expect the box to keep its size, centred on the label's first line as that line grows; the label wraps, the mark is never squeezed.
 - Do: Phrase the label so that checked means yes.
 - Do: Use the help text for the consequence, not for a second question.
 - Don't: Act on the change at once when the screen has a Save button; apply on save.

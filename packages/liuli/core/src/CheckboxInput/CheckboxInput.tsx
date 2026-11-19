@@ -56,9 +56,12 @@ export function CheckboxInput(props: CheckboxInputProps) {
   };
   const content = (
     <view className={r.row.base}>
-      <view aria-hidden className={cx(r.box.base, r.box.size[size], r.box.state[checked || isMixed ? 'on' : 'off'], !checked && !isMixed && status?.type === 'error' && r.box.invalid)}>
-        {checked && <Glyph name="check" weight={2.5} className={r.mark.size[size]} />}
-        {isMixed && <view className={cx(r.dash.base, r.dash.size[size])} />}
+      <view aria-hidden className={r.line.base}>
+        <text className={cx(r.ghost.base, r.label.size[size])}>{'\u200B'}</text>
+        <view className={cx(r.box.base, r.box.size[size], r.box.state[checked || isMixed ? 'on' : 'off'], !checked && !isMixed && status?.type === 'error' && r.box.invalid)}>
+          {checked && <Glyph name="check" weight={2.5} className={r.mark.size[size]} />}
+          {isMixed && <view className={cx(r.dash.base, r.dash.size[size])} />}
+        </view>
       </view>
       <view className={r.text.base}>
         <text className={cx(r.label.base, r.label.size[size], isLabelHidden && r.label.hidden)}>

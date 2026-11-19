@@ -41,9 +41,22 @@ test('At large text: every radio mark keeps its size and its circle, never squee
   for (const example of ['Plans', 'Delivery', 'Sizes']) {
     const screen = await renderExample('RadioGroup/RadioGroup', example);
     for (const radio of screen.queryAll(node => node.props.role === 'radio')) {
-      const { shrink, width, height } = radio.children[0].props;
+      const { shrink, width, height } = radio.children[0].children[1].props;
       assert.equal(shrink, 0, example);
       assert.ok(width > 0 && width === height, `${example}: a fixed square`);
     }
+  }
+});
+
+test('At large text: each radio mark is centred on its label\'s first line, in a line box of the label\'s type', async () => {
+  const screen = await renderExample('RadioGroup/RadioGroup', 'Sizes');
+  for (const radio of screen.queryAll(node => node.props.role === 'radio')) {
+    const [line, text] = radio.children;
+    const [ghost, circle] = line.children;
+    assert.deepEqual([line.props.flexDirection, line.props.align, line.props.shrink], ['row', 'center', 0]);
+    assert.equal(ghost.props.opacity, 0);
+    const label = text.children[0];
+    assert.deepEqual([ghost.props.fontSize, ghost.props.lineHeight], [label.props.fontSize, label.props.lineHeight]);
+    assert.equal(circle.props.marginTop, undefined, 'no fixed nudge: the line centres it');
   }
 });

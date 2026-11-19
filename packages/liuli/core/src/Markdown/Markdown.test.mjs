@@ -74,3 +74,15 @@ test('Reference: code keeps its lines in a sideways scroll; the table is a Table
   assert.equal(plain.queryAll(node => node.tag === 'link').length, 0);
   plain.getByText('See the docs.');
 });
+
+test('a task mark is centred on its item\'s first line, in a line box of the item\'s type', async () => {
+  const screen = await renderExample('Markdown/Markdown', 'Note');
+  const slots = screen.queryAll(node => node.props.role === 'img' || (node.children?.[0]?.tag === 'text' && node.children?.[1]?.props.borderTopWidth === 2));
+  assert.ok(slots.length > 0, 'task marks');
+  for (const slot of slots) {
+    const [ghost, mark] = slot.children;
+    assert.deepEqual([slot.props.flexDirection, slot.props.align, slot.props.height], ['row', 'center', undefined]);
+    assert.deepEqual([ghost.tag, ghost.props.opacity], ['text', 0]);
+    assert.equal(mark.props.borderTopWidth, 2);
+  }
+});

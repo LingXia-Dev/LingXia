@@ -47,7 +47,7 @@ export const doc: ComponentDoc = {
   },
   guidance: {
     do: [
-      'At large text, expect the circle to keep its size beside the label\'s first line; the label wraps, the mark is never squeezed.',
+      'At large text, expect the circle to keep its size, centred on the label\'s first line as that line grows; the label wraps, the mark is never squeezed.',
       'Choose a sensible default when one exists; leave the group empty only when the person must decide.',
       'Use cards when each option needs a second line: plans, delivery, shipping speed.',
     ],

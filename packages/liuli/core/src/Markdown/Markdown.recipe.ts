@@ -11,6 +11,7 @@ export const markdownParts = {
   marker: 'text',
   itemBody: 'view',
   taskSlot: 'view',
+  taskGhost: 'text',
   task: 'view',
   quote: 'view',
   code: 'scroll',
@@ -58,9 +59,12 @@ export const markdownRecipe = {
   itemBody: {
     base: 'grow shrink basis-0 min-w-0 gap-1',
   },
-  // The mark is centred on the first line of its item.
+  // The mark is centred on the first line of its item: an empty run in the item's type gives the slot that line's height at any text size.
   taskSlot: {
-    size: { sm: 'shrink-0 w-5 h-[1.125rem] items-end justify-center', md: 'shrink-0 w-5 h-[1.375rem] items-end justify-center' } satisfies Record<MarkdownSize, string>,
+    base: 'shrink-0 w-5 flex-row items-center justify-end',
+  },
+  taskGhost: {
+    base: 'opacity-0',
   },
   task: {
     base: 'size-4 shrink-0 items-center justify-center rounded-[4px] border-2',
