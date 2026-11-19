@@ -515,12 +515,14 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     wire('role', props.role ?? 'dialog');
   }
   switch (tag) {
-    case 'link':
+    case 'link': {
       check.label(props.accessibilityLabel, 'UI_TEXT');
       if (props.onClick !== undefined && typeof props.onClick !== 'function') throw Error('UI_PROP: onClick');
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
-      if (props.onClick && !disabled) on('onClick', props.onClick);
+      const click = invokerHandler(props, identity, parent.popovers ?? []);
+      if (click && !disabled) on('onClick', click);
       break;
+    }
     case 'button': {
       check.label(props.accessibilityLabel, 'UI_BUTTON');
       if (props.onClick !== undefined && typeof props.onClick !== 'function') throw Error('UI_PROP: onClick');

@@ -77,6 +77,20 @@ test('popoverTarget toggles an uncontrolled popover anchored to its invoker; lig
   assert.equal(byId(render(view), 'menu'), undefined, 'a tap outside closes an auto popover');
 });
 
+test('a link inside text is a popover invoker too', () => {
+  reset();
+  const view = () => h('page', {},
+    h('text', {}, 'Due ', h('link', { popoverTarget: 'when', 'data-testid': 'more' }, 'Sunday')),
+    h('view', { id: 'when', popover: true, 'data-testid': 'when' }, h('text', {}, 'Sunday 18:00')));
+  let nodes = render(view);
+  assert.equal(byId(nodes, 'more').props.stateExpanded, 0);
+  dispatch(byId(nodes, 'more').props.onClick);
+  nodes = render(view);
+  assert.equal(byId(nodes, 'when').props.anchorTo, '--lx-popover-when');
+  assert.equal(byId(nodes, 'more').props.anchorName, '--lx-popover-when');
+  assert.equal(byId(nodes, 'more').props.stateExpanded, 1);
+});
+
 test('a popover its invoker opened is owned; closing it as an orphan tells the page once', () => {
   reset();
   const toggled = [], shown = { value: true };

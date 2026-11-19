@@ -44,8 +44,8 @@ export function render() {
   tap, a sheet dragged off screen) calls `onClose`; it stays open until you set `open` to false there.
   `closedby` picks the requests it takes: `closerequest` (default) Escape and back, `any` also a
   backdrop tap, `none` none, so only your code closes it.
-- **A popover** needs an `id`, and `<button popoverTarget="id">` toggles it. `popover` (auto) closes on a
-  tap outside (that tap reaches nothing else), on Escape or back, and when another auto popover opens;
+- **A popover** needs an `id`, and `<button popoverTarget="id">` toggles it (a `<link>` inside text takes it
+  too). `popover` (auto) closes on a tap outside (that tap reaches nothing else), on Escape or back, and when another auto popover opens;
   `popover="manual"` closes only from its button or code. Pass `open` and `onToggle(open)` to drive it
   from state instead.
 - `anchor="<element id>"` places a popover against that element, as against the button that opens one, even when it opens from `open`. With `popover="manual"` it has no backdrop, so a field under it keeps its taps and its focus: a list of suggestions under an editor. It closes if its anchor unmounts.
@@ -85,7 +85,7 @@ how much of it shows. Its `exit:` styles have nothing left to show by then.
   only the dialog. It needs `aria-label`.
 - With a hardware keyboard, opening a dialog moves focus to its first control and closing it returns
   focus to what had it before. Opened by touch, it leaves focus and the focus ring alone.
-- The `popoverTarget` button reports `aria-expanded`.
+- The `popoverTarget` button or link reports `aria-expanded`.
 - `role="menu"` names a popover of actions; a `<button role="menuitem">` closes its popover after its
   `onClick`. Inside a menu the arrow keys, Home, End and a typed letter move between items
   ([Keyboard](interaction.md#keyboard)).

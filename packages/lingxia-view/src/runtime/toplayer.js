@@ -320,7 +320,7 @@ function wireInvokers(top, tree) {
         names.push(anchorName(interest.target));
     }
     const entry = invokers.get(node.identity);
-    if (entry && node.element === 'button') {
+    if (entry && (node.element === 'button' || node.element === 'link')) {
       const target = top.popovers.get(entry.target);
       if (!target) throw Error(`UI_ID: popoverTarget "${entry.target}" names no popover on this page`);
       if (node.props.accessibilityState?.expanded === undefined) node.wire.push(['stateExpanded', +target.open]);
