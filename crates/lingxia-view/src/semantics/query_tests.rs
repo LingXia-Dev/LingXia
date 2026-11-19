@@ -975,3 +975,20 @@ fn a_descendant_chain_scopes_a_role_query_to_a_subtree() {
             .starts_with("E_SELECTOR_UNSUPPORTED")
     );
 }
+
+#[test]
+fn an_editor_reads_the_keyboard_it_asks_for_as_inputmode() {
+    let i = interaction(
+        "h('view',{},h('input',{'data-testid':'pin','aria-label':'PIN',inputMode:'numeric',value:''}),h('input',{'data-testid':'mail','aria-label':'Mail',type:'email',value:''}),h('input',{'data-testid':'name','aria-label':'Name',value:''}),h('input',{'data-testid':'day','aria-label':'Day',type:'date',value:''}))",
+    );
+    let mode = |id: &str| {
+        i.automation_query(&format!("[data-testid=\"{id}\"]"), None, false, None)
+            .unwrap()["attributes"]["inputmode"]
+            .as_str()
+            .map(str::to_owned)
+    };
+    assert_eq!(mode("pin").as_deref(), Some("numeric"));
+    assert_eq!(mode("mail").as_deref(), Some("email"));
+    assert_eq!(mode("name"), None, "plain text asks for nothing");
+    assert_eq!(mode("day"), None, "a date field has a picker, not a keyboard");
+}

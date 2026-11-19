@@ -417,6 +417,18 @@ fn attributes(node: &NodeSnapshot) -> Value {
     if let Some(text) = node.range.as_ref().and_then(|range| range.text.as_ref()) {
         out.insert("aria-valuetext".into(), json!(text));
     }
+    // The keyboard an editor asks for, by its HTML `inputmode` name; plain text has none.
+    let mode = node.input.as_ref().and_then(|input| match input.keyboard.as_str() {
+        "number" => Some("numeric"),
+        "decimal" => Some("decimal"),
+        "phone" => Some("tel"),
+        "email" => Some("email"),
+        "search" if node.tag != "search" => Some("search"),
+        _ => None,
+    });
+    if let Some(mode) = mode {
+        out.insert("inputmode".into(), json!(mode));
+    }
     Value::Object(out)
 }
 
