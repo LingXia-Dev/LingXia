@@ -13,7 +13,7 @@ import { fieldOptions, field as fieldIds, ignorableFields } from '../generated/w
 import * as check from './validate.js';
 import { defaultSeries } from '../style/color.js';
 import { keyPositions } from './keys.js';
-import { expand, invokerHandler, interestTrigger, popoverScope, dragClose, scrimMark, presenceStyle } from './toplayer.js';
+import { expand, invokerHandler, interestTrigger, popoverScope, dragClose, scrimMark, presenceStyle, backdropOwner } from './toplayer.js';
 import { rangeSlider, thumbMark } from './range.js';
 import { recall, enter, leave, remember } from './memo.js';
 import { isProvider, provide } from './context.js';
@@ -275,7 +275,7 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
   }
   state('focusWithin', 'focusWithinStyle', true);
   state('groupActive', 'groupPressedStyle', true);
-  if (classes?.backdrop && tag !== 'dialog') throw Error(`UI_STYLE: backdrop: styles a <dialog>'s backdrop, not <${tag}>`);
+  if (classes?.backdrop && !props[backdropOwner]) throw Error(`UI_STYLE: backdrop: styles the backdrop of a <dialog> or a light-dismiss popover, not <${tag}>`);
   // `has-checked:`/`has-disabled:` depend on descendants, known once the children resolve.
   const descendants = {};
   for (const [name, kind] of [['hasChecked', 'checked'], ['hasDisabled', 'disabled']]) {

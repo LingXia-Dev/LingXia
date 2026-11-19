@@ -15,6 +15,8 @@ export const dragClose = Symbol('drag close');
 export const scrimMark = Symbol('drag scrim');
 /** The `{ starting, exit }` paint a dialog's backdrop enters from and leaves toward. */
 export const presenceStyle = Symbol('backdrop presence');
+/** Marks a panel whose `backdrop:` classes style its backdrop: a dialog's, or a light-dismiss popover's. */
+export const backdropOwner = Symbol('backdrop owner');
 /** The popover ids a node sits inside, innermost last. */
 export const popoverScope = Symbol('popover scope');
 
@@ -61,21 +63,68 @@ function placement(props, env) {
   return margins;
 }
 
-function layer(identity, env, ...children) {
-  return layerWith({}, identity, env, ...children);
-}
+const rtlOf = (parent, env) => (parent.direction ?? env?.direction) === 'rtl';
 
 function layerWith(style, identity, env, ...children) {
   return h('view', { style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: env?.keyboard?.height ?? 0, zIndex: layerZ + opened.get(identity) % 1000, ...style } }, ...children);
 }
 
-// A popover placed by its classes lays out in the part of the surface the bars leave clear; its
-// backdrop, absolutely placed, still covers the whole layer.
-function clearOfBars(env) {
+const sides = ['Top', 'Right', 'Bottom', 'Left'];
+
+// The safe inset on each side of the layer; over an open keyboard the bottom is the keyboard's.
+function barInsets(env) {
   const insets = env?.insets;
-  if (!insets) return {};
-  return { paddingTop: insets.top, paddingRight: insets.right, paddingLeft: insets.left,
-    paddingBottom: Math.max(0, insets.bottom - (env.keyboard?.height ?? 0)) };
+  if (!insets) return null;
+  return { Top: insets.top ?? 0, Right: insets.right ?? 0, Left: insets.left ?? 0,
+    Bottom: Math.max(0, (insets.bottom ?? 0) - (env.keyboard?.height ?? 0)) };
+}
+
+const zero = value => value === 0 || (Array.isArray(value) && value[1] === 0 && value[2] === 0);
+
+// The physical field an inline side reads: the logical one when the panel sets it, as layout does.
+function inlineField(set, prefix, side, rtl) {
+  const logical = `${prefix}InlineStart`, other = `${prefix}InlineEnd`;
+  const mapped = (side === 'Left') !== rtl ? logical : other;
+  return set[mapped] !== undefined ? mapped : `${prefix}${side}`;
+}
+
+// The edges a classes-placed panel is docked to: one it meets with a zero margin (or a zero inset,
+// placed absolutely) while it spans the screen along it, as a sheet or drawer does; or one its
+// uncapped full size reaches. A small box set in a corner is not docked.
+function docked(set, env, rtl) {
+  const viewport = env?.viewport;
+  const full = (size, max, extent) => set[size] === '100%'
+    && (set[max] === undefined || (typeof set[max] === 'number' && extent !== undefined && set[max] >= extent));
+  const reaches = { Top: full('height', 'maxHeight', viewport?.height), Bottom: full('height', 'maxHeight', viewport?.height),
+    Left: full('width', 'maxWidth', viewport?.width), Right: full('width', 'maxWidth', viewport?.width) };
+  const inline = side => side === 'Left' || side === 'Right';
+  const inset = side => set[side.toLowerCase()] ?? (inline(side) ? set[(side === 'Left') !== rtl ? 'start' : 'end'] : undefined);
+  const meets = side => zero(set[inline(side) ? inlineField(set, 'margin', side, rtl) : `margin${side}`])
+    || (set.position === 'absolute' && zero(inset(side)));
+  const spans = side => inline(side)
+    ? set.height === '100%' || (set.position === 'absolute' && zero(inset('Top')) && zero(inset('Bottom')))
+    : set.width === '100%' || (set.position === 'absolute' && zero(inset('Left')) && zero(inset('Right')));
+  return new Set(sides.filter(side => reaches[side] || (meets(side) && spans(side))));
+}
+
+// A panel placed by its classes lays out in the part of the surface the bars leave clear, except
+// on the edges it is docked to: there its surface runs to the screen's edge and its content is
+// padded by the inset, as a native sheet's is. Its backdrop, absolutely placed, covers the whole layer.
+function dock(props, env, rtl) {
+  const insets = barInsets(env);
+  if (!insets) return { layer: {}, panel: {} };
+  const set = { ...resolveClasses(props.className, { ...env, direction: rtl ? 'rtl' : 'ltr' })?.base, ...props.style };
+  const edges = docked(set, env, rtl);
+  const layer = {}, panel = {};
+  for (const side of sides) {
+    if (!edges.has(side)) { layer[`padding${side}`] = insets[side]; continue; }
+    if (!insets[side]) continue;
+    const field = side === 'Left' || side === 'Right' ? inlineField(set, 'padding', side, rtl) : `padding${side}`;
+    const own = set[field] ?? set.padding ?? 0;
+    if (typeof own === 'number') panel[field] = own + insets[side];
+    else if (Array.isArray(own)) panel[field] = [own[0], own[1], own[2] + insets[side]];
+  }
+  return { layer, panel };
 }
 
 const backdropTiming = { durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] };
@@ -123,12 +172,13 @@ function dialog(props, children, identity, parent) {
   const env = envOf(render.view);
   const backdrop = backdropOf(resolveClasses(props.className, env));
   const testId = props['data-testid'];
+  const docking = dock(rest, env, rtlOf(parent, env));
   return {
-    node: layer(identity, env,
+    node: layerWith(docking.layer, identity, env,
       h('button', { key: 'backdrop', 'aria-hidden': true, 'data-testid': testId && `${testId}-backdrop`, onClick: closedby === 'any' ? close : () => {},
         ...(rest.drag !== undefined ? { [scrimMark]: true } : {}), [presenceStyle]: backdrop.presence,
         style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, ...backdrop.style } }),
-      h('dialog', { ...rest, key: 'panel', [panelMark]: true, [popoverScope]: parent.popovers ?? [], ...(closedby === 'none' ? {} : { [dragClose]: close }), style: { ...placement(rest, env), ...rest.style } }, ...children)),
+      h('dialog', { ...rest, key: 'panel', [panelMark]: true, [backdropOwner]: true, [popoverScope]: parent.popovers ?? [], ...(closedby === 'none' ? {} : { [dragClose]: close }), style: { ...placement(rest, env), ...rest.style, ...docking.panel } }, ...children)),
     finish: result => { result.wire.push(['topLayer', 1]); },
   };
 }
@@ -161,12 +211,18 @@ function popover(tag, props, children, identity, parent) {
   const anchor = anchorId ?? anchors.get(id);
   top.entries.push({ identity, kind, sequence: opened.get(identity), close: kind === 'manual' ? null : () => { if (onCloseRequest?.() !== false) toggle(id, false); } });
   const env = envOf(render.view);
-  const style = anchor ? { ...rest.style, position: 'absolute', top: 0, left: 0 } : { ...placement(rest, env), ...rest.style };
+  const docking = anchor ? { layer: {}, panel: {} } : dock(rest, env, rtlOf(parent, env));
+  // A light-dismiss popover's backdrop is clear unless its `backdrop:` classes paint it, as a sheet's scrim.
+  const lit = kind === 'auto' && !submenus.has(id);
+  const classes = lit ? resolveClasses(rest.className, env) : undefined;
+  const backdrop = classes?.backdrop ? backdropOf(classes) : null;
+  const style = anchor ? { ...rest.style, position: 'absolute', top: 0, left: 0 } : { ...placement(rest, env), ...rest.style, ...docking.panel };
   const testId = props['data-testid'];
-  const node = layerWith(anchor ? {} : clearOfBars(env), identity, env,
-    kind === 'auto' && !submenus.has(id) && h('button', { key: 'backdrop', 'aria-hidden': true, 'data-testid': testId && `${testId}-backdrop`, onClick: () => toggle(id, false),
-      style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'transparent' } }),
-    h(tag, { ...rest, id, key: 'panel', [panelMark]: true, [popoverScope]: [...scope, id], style }, ...children));
+  const node = layerWith(docking.layer, identity, env,
+    lit && h('button', { key: 'backdrop', 'aria-hidden': true, 'data-testid': testId && `${testId}-backdrop`, onClick: () => toggle(id, false),
+      ...(backdrop ? { [presenceStyle]: backdrop.presence } : {}),
+      style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, ...(backdrop ? { ...backdrop.style, backgroundColor: 'transparent', ...classes.backdrop.base } : { backgroundColor: 'transparent' }) } }),
+    h(tag, { ...rest, id, key: 'panel', [panelMark]: true, ...(lit ? { [backdropOwner]: true } : {}), [popoverScope]: [...scope, id], style }, ...children));
   return {
     node,
     finish: result => {

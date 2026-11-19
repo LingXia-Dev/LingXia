@@ -584,20 +584,20 @@
     return map;
   };
   var aliasesByDirection = { ltr: aliases("ltr"), rtl: aliases("rtl") };
-  function resetLonghands(result, layer2) {
-    for (const name of Object.keys(layer2))
-      for (const longhand of longhands[name] ?? []) if (!(longhand in layer2)) delete result[longhand];
+  function resetLonghands(result, layer) {
+    for (const name of Object.keys(layer))
+      for (const longhand of longhands[name] ?? []) if (!(longhand in layer)) delete result[longhand];
   }
   function mergeStyle(direction, ...layers) {
     const result = {};
     const alias = aliasesByDirection[direction] ?? aliasesByDirection.ltr;
-    for (const layer2 of layers) {
-      if (!layer2) continue;
-      for (const name of Object.keys(layer2)) {
-        for (const longhand of longhands[name] ?? []) if (!(longhand in layer2)) delete result[longhand];
-        for (const other of alias[name] ?? []) if (!(other in layer2)) delete result[other];
+    for (const layer of layers) {
+      if (!layer) continue;
+      for (const name of Object.keys(layer)) {
+        for (const longhand of longhands[name] ?? []) if (!(longhand in layer)) delete result[longhand];
+        for (const other of alias[name] ?? []) if (!(other in layer)) delete result[other];
       }
-      Object.assign(result, layer2);
+      Object.assign(result, layer);
     }
     return result;
   }
@@ -728,7 +728,7 @@
       throw Error("UI_STYLE_VALUE: maskImage");
     };
     const position = (stop) => stop.offset !== void 0 !== (stop.px !== void 0) && (stop.offset === void 0 || finite(stop.offset) && Math.abs(stop.offset) <= 16) && (stop.px === void 0 || finite(stop.px) && Math.abs(stop.px) <= 16384);
-    if (!Array.isArray(value) || !value.length || value.length > 4 || value.some((layer2) => !layer2 || !["top", "bottom", "left", "right"].includes(layer2.to) || Object.keys(layer2).some((key) => !["to", "stops"].includes(key)) || !Array.isArray(layer2.stops) || layer2.stops.length < 2 || layer2.stops.length > 16 || layer2.stops.some((stop) => !stop || Object.keys(stop).some((key) => !["alpha", "offset", "px"].includes(key)) || !finite(stop.alpha) || stop.alpha < 0 || stop.alpha > 1 || !position(stop)))) invalid2();
+    if (!Array.isArray(value) || !value.length || value.length > 4 || value.some((layer) => !layer || !["top", "bottom", "left", "right"].includes(layer.to) || Object.keys(layer).some((key) => !["to", "stops"].includes(key)) || !Array.isArray(layer.stops) || layer.stops.length < 2 || layer.stops.length > 16 || layer.stops.some((stop) => !stop || Object.keys(stop).some((key) => !["alpha", "offset", "px"].includes(key)) || !finite(stop.alpha) || stop.alpha < 0 || stop.alpha > 1 || !position(stop)))) invalid2();
     return JSON.stringify(value.map(({ to, stops }) => ({ to, stops: stops.map(({ alpha, offset, px }) => offset === void 0 ? { px, alpha } : { offset, alpha }) })));
   }
   function transitionValue(value) {
@@ -1093,9 +1093,9 @@
       }
     }
     if (shadow.enabled) {
-      style2.boxShadow = (shadow.composite === false ? shadow.fixedLayers ?? [] : shadow.layers ?? []).map(({ useColor, ...layer2 }) => ({
-        ...layer2,
-        color: useColor && shadow.color !== void 0 ? shadow.color : layer2.color
+      style2.boxShadow = (shadow.composite === false ? shadow.fixedLayers ?? [] : shadow.layers ?? []).map(({ useColor, ...layer }) => ({
+        ...layer,
+        color: useColor && shadow.color !== void 0 ? shadow.color : layer.color
       }));
       if (style2.boxShadow.length > 8) throw Error("UI_STYLE: too many box shadows");
       const ring = {};
@@ -1211,6 +1211,7 @@
   var dragClose = Symbol("drag close");
   var scrimMark = Symbol("drag scrim");
   var presenceStyle = Symbol("backdrop presence");
+  var backdropOwner = Symbol("backdrop owner");
   var popoverScope = Symbol("popover scope");
   var popoverTags = /* @__PURE__ */ new Set(["view"]);
   var closers = /* @__PURE__ */ new Set(["any", "closerequest", "none"]);
@@ -1258,21 +1259,60 @@
     }
     return margins;
   }
-  function layer(identity, env, ...children) {
-    return layerWith({}, identity, env, ...children);
-  }
+  var rtlOf = (parent, env) => (parent.direction ?? env?.direction) === "rtl";
   function layerWith(style2, identity, env, ...children) {
     return h("view", { style: { position: "absolute", top: 0, left: 0, right: 0, bottom: env?.keyboard?.height ?? 0, zIndex: layerZ + opened.get(identity) % 1e3, ...style2 } }, ...children);
   }
-  function clearOfBars(env) {
+  var sides2 = ["Top", "Right", "Bottom", "Left"];
+  function barInsets(env) {
     const insets = env?.insets;
-    if (!insets) return {};
+    if (!insets) return null;
     return {
-      paddingTop: insets.top,
-      paddingRight: insets.right,
-      paddingLeft: insets.left,
-      paddingBottom: Math.max(0, insets.bottom - (env.keyboard?.height ?? 0))
+      Top: insets.top ?? 0,
+      Right: insets.right ?? 0,
+      Left: insets.left ?? 0,
+      Bottom: Math.max(0, (insets.bottom ?? 0) - (env.keyboard?.height ?? 0))
     };
+  }
+  var zero = (value) => value === 0 || Array.isArray(value) && value[1] === 0 && value[2] === 0;
+  function inlineField(set, prefix, side, rtl) {
+    const logical2 = `${prefix}InlineStart`, other = `${prefix}InlineEnd`;
+    const mapped = side === "Left" !== rtl ? logical2 : other;
+    return set[mapped] !== void 0 ? mapped : `${prefix}${side}`;
+  }
+  function docked(set, env, rtl) {
+    const viewport = env?.viewport;
+    const full = (size, max, extent) => set[size] === "100%" && (set[max] === void 0 || typeof set[max] === "number" && extent !== void 0 && set[max] >= extent);
+    const reaches = {
+      Top: full("height", "maxHeight", viewport?.height),
+      Bottom: full("height", "maxHeight", viewport?.height),
+      Left: full("width", "maxWidth", viewport?.width),
+      Right: full("width", "maxWidth", viewport?.width)
+    };
+    const inline = (side) => side === "Left" || side === "Right";
+    const inset = (side) => set[side.toLowerCase()] ?? (inline(side) ? set[side === "Left" !== rtl ? "start" : "end"] : void 0);
+    const meets = (side) => zero(set[inline(side) ? inlineField(set, "margin", side, rtl) : `margin${side}`]) || set.position === "absolute" && zero(inset(side));
+    const spans2 = (side) => inline(side) ? set.height === "100%" || set.position === "absolute" && zero(inset("Top")) && zero(inset("Bottom")) : set.width === "100%" || set.position === "absolute" && zero(inset("Left")) && zero(inset("Right"));
+    return new Set(sides2.filter((side) => reaches[side] || meets(side) && spans2(side)));
+  }
+  function dock(props, env, rtl) {
+    const insets = barInsets(env);
+    if (!insets) return { layer: {}, panel: {} };
+    const set = { ...resolveClasses(props.className, { ...env, direction: rtl ? "rtl" : "ltr" })?.base, ...props.style };
+    const edges = docked(set, env, rtl);
+    const layer = {}, panel = {};
+    for (const side of sides2) {
+      if (!edges.has(side)) {
+        layer[`padding${side}`] = insets[side];
+        continue;
+      }
+      if (!insets[side]) continue;
+      const field2 = side === "Left" || side === "Right" ? inlineField(set, "padding", side, rtl) : `padding${side}`;
+      const own2 = set[field2] ?? set.padding ?? 0;
+      if (typeof own2 === "number") panel[field2] = own2 + insets[side];
+      else if (Array.isArray(own2)) panel[field2] = [own2[0], own2[1], own2[2] + insets[side]];
+    }
+    return { layer, panel };
   }
   var backdropTiming = { durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] };
   function backdropOf(classes) {
@@ -1310,8 +1350,10 @@
     const env = envOf(render.view);
     const backdrop2 = backdropOf(resolveClasses(props.className, env));
     const testId = props["data-testid"];
+    const docking = dock(rest, env, rtlOf(parent, env));
     return {
-      node: layer(
+      node: layerWith(
+        docking.layer,
         identity,
         env,
         h("button", {
@@ -1324,7 +1366,7 @@
           [presenceStyle]: backdrop2.presence,
           style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, ...backdrop2.style }
         }),
-        h("dialog", { ...rest, key: "panel", [panelMark]: true, [popoverScope]: parent.popovers ?? [], ...closedby === "none" ? {} : { [dragClose]: close }, style: { ...placement(rest, env), ...rest.style } }, ...children)
+        h("dialog", { ...rest, key: "panel", [panelMark]: true, [backdropOwner]: true, [popoverScope]: parent.popovers ?? [], ...closedby === "none" ? {} : { [dragClose]: close }, style: { ...placement(rest, env), ...rest.style, ...docking.panel } }, ...children)
       ),
       finish: (result) => {
         result.wire.push(["topLayer", 1]);
@@ -1363,20 +1405,25 @@
       if (onCloseRequest?.() !== false) toggle(id, false);
     } });
     const env = envOf(render.view);
-    const style2 = anchor ? { ...rest.style, position: "absolute", top: 0, left: 0 } : { ...placement(rest, env), ...rest.style };
+    const docking = anchor ? { layer: {}, panel: {} } : dock(rest, env, rtlOf(parent, env));
+    const lit = kind === "auto" && !submenus.has(id);
+    const classes = lit ? resolveClasses(rest.className, env) : void 0;
+    const backdrop2 = classes?.backdrop ? backdropOf(classes) : null;
+    const style2 = anchor ? { ...rest.style, position: "absolute", top: 0, left: 0 } : { ...placement(rest, env), ...rest.style, ...docking.panel };
     const testId = props["data-testid"];
     const node = layerWith(
-      anchor ? {} : clearOfBars(env),
+      docking.layer,
       identity,
       env,
-      kind === "auto" && !submenus.has(id) && h("button", {
+      lit && h("button", {
         key: "backdrop",
         "aria-hidden": true,
         "data-testid": testId && `${testId}-backdrop`,
         onClick: () => toggle(id, false),
-        style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "transparent" }
+        ...backdrop2 ? { [presenceStyle]: backdrop2.presence } : {},
+        style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, ...backdrop2 ? { ...backdrop2.style, backgroundColor: "transparent", ...classes.backdrop.base } : { backgroundColor: "transparent" } }
       }),
-      h(tag, { ...rest, id, key: "panel", [panelMark]: true, [popoverScope]: [...scope, id], style: style2 }, ...children)
+      h(tag, { ...rest, id, key: "panel", [panelMark]: true, ...lit ? { [backdropOwner]: true } : {}, [popoverScope]: [...scope, id], style: style2 }, ...children)
     );
     return {
       node,
@@ -4681,7 +4728,7 @@
     }
     state("focusWithin", "focusWithinStyle", true);
     state("groupActive", "groupPressedStyle", true);
-    if (classes?.backdrop && tag !== "dialog") throw Error(`UI_STYLE: backdrop: styles a <dialog>'s backdrop, not <${tag}>`);
+    if (classes?.backdrop && !props[backdropOwner]) throw Error(`UI_STYLE: backdrop: styles the backdrop of a <dialog> or a light-dismiss popover, not <${tag}>`);
     const descendants = {};
     for (const [name, kind] of [["hasChecked", "checked"], ["hasDisabled", "disabled"]]) {
       const delta = classes?.[name];
@@ -5246,8 +5293,8 @@
           placed.push(node.props.key === key ? node : { ...node, props: { ...node.props, key } });
           slots.push(void 0);
         }
-        for (const layer2 of liftedFrom(node, key === void 0 ? `position:${at}` : `key:${key}`)) {
-          placed.push(layer2);
+        for (const layer of liftedFrom(node, key === void 0 ? `position:${at}` : `key:${key}`)) {
+          placed.push(layer);
           slots.push(void 0);
         }
       };
@@ -5265,7 +5312,7 @@
     return result;
   }
   function liftedFrom(node, part) {
-    return (node.lifted ?? []).map((layer2) => ({ ...layer2, props: { ...layer2.props, key: `lx-lifted:${part}${layer2.identity.slice(node.identity.length)}` } }));
+    return (node.lifted ?? []).map((layer) => ({ ...layer, props: { ...layer.props, key: `lx-lifted:${part}${layer.identity.slice(node.identity.length)}` } }));
   }
   function holds(node, kind) {
     const own2 = kind === "disabled" ? node.props?.disabled === true : ["checkbox", "switch"].includes(node.element) && node.props.value === true || node.element === "radio" && node.props.value != null;
@@ -6072,16 +6119,16 @@
       if (bareWeb) candidate.tree.children.push(bareWeb);
       const picker2 = pickerNode(env);
       if (picker2) {
-        const layer2 = resolveNode(
+        const layer = resolveNode(
           picker2,
           `root/${candidate.tree.element}/key:"lx-picker-layer"`,
           1,
           { tag: candidate.tree.element, typography: candidate.tree.typography }
         );
         const anchor = pickerAnchor(env);
-        const panel = layer2.children.find((child) => child.props?.testId === "lx-picker");
+        const panel = layer.children.find((child) => child.props?.testId === "lx-picker");
         if (anchor && panel) panel.wire.push(["anchorTo", anchor]);
-        candidate.tree.children.push(layer2);
+        candidate.tree.children.push(layer);
       }
       finishTopLayer(candidate.tree);
       candidate.baseLocals = new Map(candidate.locals);

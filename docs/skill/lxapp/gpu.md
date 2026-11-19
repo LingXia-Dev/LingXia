@@ -89,8 +89,9 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   groups its content for screen readers ("item 2 of 3"); plain wrappers collapse.
   `aria-pressed`, `aria-selected`, `aria-expanded`, `aria-busy` announce states (e.g. `aria-busy={req.pending}`).
 - `<dialog open onClose closedby aria-label>` is modal, above the page (`backdrop:` styles its scrim;
-  `mt-auto mb-0 w-full` makes a sheet). `<view id popover>` + `<button popoverTarget>` is a light-dismiss
-  popover anchored to its invoker (`open`/`onToggle`; `style={{ positionArea: 'top' }}` opens it upward; it closes if that button unmounts; `anchor="<id>"` places one opened from state against any element, e.g. a `popover="manual"` list under a field); `role="menu"` + `<button role="menuitem">` closes on click (`keepOpen` leaves it open); a popover's `onCloseRequest` returning `false` refuses Escape/back, never a tap outside.
+  `mt-auto mb-0 w-full` makes a sheet). A panel docked to an edge (`mb-0 w-full`, `ms-0 h-full`) runs to the screen's
+  edge and its padding grows by that side's inset: never add `env.insets` yourself. `<view id popover>` + `<button popoverTarget>` is a light-dismiss
+  popover anchored to its invoker (`open`/`onToggle`; `style={{ positionArea: 'top' }}` opens it upward; it closes if that button unmounts; `anchor="<id>"` places one opened from state against any element, e.g. a `popover="manual"` list under a field); `role="menu"` + `<button role="menuitem">` closes on click (`keepOpen` leaves it open); a popover's `onCloseRequest` returning `false` refuses Escape/back, never a tap outside; `backdrop:bg-scrim` dims the page under a light-dismiss popover, as a docked menu sheet does.
 - Swipe row: `<button drag="x" dragSnapPoints={[0, -144, '-100%']} aria-actions="archive-1 delete-1">` over `<button id="archive-1">`s;
   screen readers get those as the row's actions; specs call `locator.performAction('Delete')` (or `increment`/`decrement`/`dismiss`).
 - In-page overlays are `<dialog>`/popovers; `lx.surface.openPage(page, { as: 'float' })` is for a surface that

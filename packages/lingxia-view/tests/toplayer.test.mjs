@@ -262,6 +262,7 @@ test('backdrop: styles a dialog backdrop and nothing else', async () => {
   const nodes = render(() => h('page', {}, h('dialog', { open: true, 'aria-label': 'x', 'data-testid': 'd', className: 'bg-surface backdrop:bg-text/40' })));
   assert.notEqual(byId(nodes, 'd-backdrop').props.backgroundColor, 'scrim');
   assert.throws(() => render(() => h('page', {}, h('view', { className: 'backdrop:bg-text/40' }))), /UI_STYLE: backdrop:/);
+  assert.throws(() => render(() => h('page', {}, h('view', { id: 'h', popover: 'manual', open: true, className: 'backdrop:bg-text/40' }))), /UI_STYLE: backdrop:/, 'a manual popover has no backdrop');
   configureClasses([]);
 });
 
@@ -455,3 +456,76 @@ test('closeAfter rides a manual popover\'s layer and its expiry closes it as a l
   ]) assert.throws(() => render(() => h('page', {}, bad())), /UI_PROP/);
 });
 
+
+test('a panel docked to an edge runs to it and pads its content by the inset; elsewhere the layer clears the bars', async () => {
+  reset();
+  configureClasses(await compileUtilities(new Set(['mt-auto', 'mb-0', 'mt-0', 'w-full', 'h-full', 'max-w-[640px]', 'px-5', 'pb-5', 'ms-0', 'me-auto', 'absolute', 'inset-0', 'm-0', 'w-[60px]', 'backdrop:bg-scrim'])));
+  const space = [23, 5, 0];
+  const at = (className, env, tag = 'dialog') => {
+    const panel = () => tag === 'dialog'
+      ? h('dialog', { open: true, 'aria-label': 'Sheet', 'data-testid': 'p', className }, h('text', {}, 'x'))
+      : h('view', { id: 'm', popover: 'manual', open: true, 'data-testid': 'p', className }, h('text', {}, 'x'));
+    reset();
+    const nodes = render(() => h('page', {}, panel()), env);
+    const p = byId(nodes, 'p');
+    const layer = nodes.find(node => node.children.includes(p));
+    const pad = props => ['Top', 'Right', 'Bottom', 'Left'].map(side => JSON.stringify(props[`padding${side}`] ?? null)).join(' ');
+    return { layer: pad(layer.props), panel: pad(p.props), raw: p.props };
+  };
+  const phone = { insets: { top: 47, right: 0, bottom: 34, left: 0 }, keyboard: { height: 0 }, viewport: { width: 390, height: 844 } };
+  const sheet = 'mt-auto mb-0 w-full max-w-[640px] px-5 pb-5';
+
+  // Bottom sheet: the bottom bleeds, its content clears the home indicator; the top stays clear.
+  let got = at(sheet, phone);
+  assert.equal(got.layer, '47 null null null', 'a phone-wide sheet touches the sides too, which have no inset');
+  assert.deepEqual(got.raw.paddingBottom, [space[0], space[1], 34]);
+  // A centred dialog keeps clear of every bar, its own padding untouched.
+  assert.equal(at(undefined, phone).layer, '47 0 34 0');
+  assert.equal(at(undefined, phone).panel, 'null null null null');
+  // Over an open keyboard the sheet sits on the keyboard: nothing to clear there.
+  got = at(sheet, { ...phone, keyboard: { height: 300 } });
+  assert.deepEqual(got.raw.paddingBottom, space);
+  // Landscape: a 640 px sheet does not reach the side bars, which the layer clears; a full-width one pads past them.
+  const landscape = { insets: { top: 0, right: 44, bottom: 21, left: 44 }, keyboard: { height: 0 }, viewport: { width: 844, height: 390 } };
+  got = at(sheet, landscape);
+  assert.equal(got.layer, '0 44 null 44');
+  assert.deepEqual([got.raw.paddingLeft, got.raw.paddingRight, got.raw.paddingBottom], [space, space, [space[0], space[1], 21]]);
+  got = at(sheet, { ...landscape, viewport: { width: 600, height: 390 } });
+  assert.equal(got.layer, '0 null null null');
+  assert.deepEqual([got.raw.paddingLeft, got.raw.paddingRight], [[space[0], space[1], 44], [space[0], space[1], 44]]);
+  // A start drawer, full height: start, top and bottom bleed; the far side clears its bar. In RTL start is the right.
+  got = at('ms-0 me-auto h-full px-5', landscape);
+  assert.equal(got.layer, 'null 44 null null');
+  assert.deepEqual(got.raw.paddingLeft, [space[0], space[1], 44]);
+  assert.equal(got.raw.paddingTop, undefined, 'no top inset in landscape, nothing added');
+  got = at('ms-0 me-auto h-full px-5', { ...landscape, direction: 'rtl' });
+  assert.equal(got.layer, 'null null null 44');
+  assert.deepEqual(got.raw.paddingRight, [space[0], space[1], 44]);
+  got = at('ms-0 me-auto h-full px-5', phone);
+  assert.deepEqual([got.raw.paddingTop, got.raw.paddingBottom], [47, 34]);
+  // Top-docked: the status bar's inset pads it, the bottom stays clear.
+  got = at('mt-0 w-full', phone);
+  assert.equal(got.layer, 'null null 34 null');
+  assert.equal(got.raw.paddingTop, 47);
+  // A small box set in a corner is not docked: it stays clear of the bars.
+  got = at('mt-0 ms-0 w-[60px]', phone, 'popover');
+  assert.equal(got.layer, '47 0 34 0');
+  assert.equal(got.panel, 'null null null null');
+  // A full-bleed container is docked on every side and padded on each, so a sheet at its foot
+  // stops above the home indicator: a sheet that runs to the edge is the panel itself.
+  got = at('absolute inset-0 m-0', phone, 'popover');
+  assert.equal(got.layer, 'null null null null');
+  assert.deepEqual([got.raw.paddingTop, got.raw.paddingBottom], [47, 34]);
+  // A docked menu as a light-dismiss popover sheet: it runs to the edge over its own scrim.
+  reset();
+  const nodes = render(() => h('page', {}, h('view', { id: 'menu', popover: true, open: true, role: 'menu', 'aria-label': 'Row',
+    'data-testid': 'menu', className: `${sheet} backdrop:bg-scrim` }, h('text', {}, 'x'))), phone);
+  const menu = byId(nodes, 'menu'), backdrop = byId(nodes, 'menu-backdrop');
+  assert.deepEqual(menu.props.paddingBottom, [space[0], space[1], 34]);
+  assert.equal(menu.parent.props.paddingBottom, undefined, 'the layer leaves the bottom to the sheet');
+  assert.equal(backdrop.props.background, 'scrim');
+  assert.deepEqual([backdrop.props.insetTop, backdrop.props.insetBottom], [0, 0], 'the scrim covers the whole layer');
+  const plain = byId(render(() => h('page', {}, h('view', { id: 'n', popover: true, open: true, 'data-testid': 'n' }, h('text', {}, 'x'))), phone), 'n-backdrop');
+  assert.equal(plain.props.background, '#00000000', 'without backdrop: a popover\'s backdrop stays clear');
+  configureClasses([]);
+});
