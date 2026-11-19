@@ -1412,6 +1412,33 @@ pub(crate) fn transparent_tabbar_overlay_rect(
     compute_chrome_rects(client, layout).tab_bar
 }
 
+/// Paints an opaque bottom tab bar into a `width × height` overlay surface; false when the
+/// layout has none to paint.
+pub(crate) fn paint_opaque_tabbar_overlay(
+    hdc: HDC,
+    layout: &WindowsWindowLayout,
+    width: i32,
+    height: i32,
+) -> bool {
+    let Some(tabbar) = shell_layout(layout).and_then(|layout| layout.tab_bar.as_ref()) else {
+        return false;
+    };
+    if !tabbar.visible
+        || tabbar.background_transparent
+        || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
+    {
+        return false;
+    }
+    let rect = RECT {
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height,
+    };
+    draw_tab_bar(hdc, rect, tabbar, None, 0, height);
+    true
+}
+
 /// The lxapp navigation bar, when one shows: the address bar owns the top bar otherwise.
 pub(crate) fn navigation_bar_rect(client: RECT, layout: &WindowsWindowLayout) -> Option<RECT> {
     let layout = shell_layout(layout)?;

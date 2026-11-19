@@ -440,6 +440,9 @@ pub trait WindowsHostBackend: Send + Sync {
         None
     }
 
+    /// A page's top layer (an open dialog) opened or closed: the host's bars go under it.
+    fn set_webview_top_layer(&self, _webtag: &WebTag, _modal: bool) {}
+
     fn webview_window_snapshot(&self, _webtag: &WebTag) -> StdResult<WindowsWebViewWindowSnapshot> {
         unsupported_operation("webview_window_snapshot")
     }
@@ -1242,6 +1245,12 @@ pub fn active_content_screen_rect() -> Option<WindowsContentRect> {
     backend()
         .ok()
         .and_then(|backend| backend.active_content_screen_rect())
+}
+
+pub fn set_webview_top_layer(webtag: &WebTag, modal: bool) {
+    if let Ok(backend) = backend() {
+        backend.set_webview_top_layer(webtag, modal);
+    }
 }
 
 pub fn find_webview_content_window(webtag: &WebTag) -> Option<WindowsWebViewContentWindow> {

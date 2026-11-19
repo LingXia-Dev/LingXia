@@ -370,7 +370,11 @@ impl Shell for Bridge {
         }
     }
     fn host_chrome(&self, _: i64, _: &lingxia_view_windows::lingxia_view::platform::HostChrome) {}
-    fn top_layer(&self, _: i64, _: bool) {}
+    fn top_layer(&self, token: i64, modal: bool) {
+        if let Some(page) = gpu_page::page_of(token) {
+            lingxia_windows_contract::set_webview_top_layer(&page.webtag(), modal);
+        }
+    }
     fn bars(&self, token: i64) -> [bool; 2] {
         let Some(page) = gpu_page::page_of(token) else {
             return [false, false];

@@ -359,6 +359,39 @@ pub fn set_native_pages_span_screen(span: bool) {
     NATIVE_PAGES_SPAN_SCREEN.store(span, std::sync::atomic::Ordering::Release);
 }
 
+/// Pages whose top layer (an open dialog) is up: the tab bar goes under its backdrop and takes
+/// no clicks, as on a phone.
+static TOP_LAYERS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn under_top_layer(webtag_key: &str) -> bool {
+    TOP_LAYERS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .iter()
+        .any(|key| key == webtag_key)
+}
+
+fn set_top_layer(webtag_key: &str, modal: bool) {
+    {
+        let mut layers = TOP_LAYERS.lock().unwrap_or_else(|p| p.into_inner());
+        layers.retain(|key| key != webtag_key);
+        if modal {
+            layers.push(webtag_key.to_owned());
+        }
+    }
+    #[cfg(feature = "shell-chrome")]
+    if let Some(host) = window_handle_for_key(webtag_key) {
+        let handle = hwnd_handle(host);
+        let _ = post_to_window_thread(
+            handle,
+            Box::new(move || {
+                let host = hwnd_from_handle(handle);
+                sync_chrome_overlays(host, active_webtag_key_for_window(host).as_deref());
+            }),
+        );
+    }
+}
+
 fn spans_screen(webtag_key: &str) -> bool {
     NATIVE_PAGES_SPAN_SCREEN.load(std::sync::atomic::Ordering::Acquire)
         && webtag_for_key(webtag_key)
@@ -711,6 +744,10 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
 
     fn find_webview_content_window(&self, webtag: &WebTag) -> Option<WindowsWebViewContentWindow> {
         find_webview_content_window(webtag)
+    }
+
+    fn set_webview_top_layer(&self, webtag: &WebTag, modal: bool) {
+        set_top_layer(webtag.key(), modal);
     }
 
     fn webview_window_snapshot(&self, webtag: &WebTag) -> StdResult<WindowsWebViewWindowSnapshot> {
@@ -3567,8 +3604,8 @@ fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
             return None;
         }
         // A full-screen drill surface covers the whole device screen, tab
-        // bar included.
-        if fullscreen_drill_visible(hwnd) {
+        // bar included; so does an open dialog's backdrop.
+        if fullscreen_drill_visible(hwnd) || under_top_layer(webtag_key) {
             return None;
         }
         let mut client = RECT::default();
@@ -3589,7 +3626,14 @@ fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
             return None;
         }
         let layout = current_window_layout(webtag_key);
-        crate::shell::transparent_tabbar_overlay_rect(client, &layout).map(|rect| (layout, rect))
+        // A page that spans the screen covers an opaque bar too, so that one draws over it.
+        crate::shell::transparent_tabbar_overlay_rect(client, &layout)
+            .or_else(|| {
+                spans_screen(webtag_key)
+                    .then(|| crate::shell::bottom_tabbar_rect(client, &layout))
+                    .flatten()
+            })
+            .map(|rect| (layout, rect))
     });
     let Some((layout, rect)) =
         overlay_layout.filter(|(_, rect)| rect.right > rect.left && rect.bottom > rect.top)
@@ -3805,8 +3849,19 @@ fn upload_transparent_tabbar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
             0,
             pixel_count * std::mem::size_of::<u32>(),
         );
-        let text_runs = crate::shell::paint_transparent_tabbar_overlay(dc, layout, width, height);
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixel_count);
+        let opaque = crate::shell::paint_opaque_tabbar_overlay(dc, layout, width, height);
+        if opaque {
+            let _ = windows::Win32::Graphics::Gdi::GdiFlush();
+            for pixel in pixels.iter_mut() {
+                *pixel |= 0xff00_0000;
+            }
+        }
+        let text_runs = if opaque {
+            Vec::new()
+        } else {
+            crate::shell::paint_transparent_tabbar_overlay(dc, layout, width, height)
+        };
         for text_run in text_runs {
             crate::layered_text::draw_supersampled_text_mask(
                 dc,
@@ -8221,6 +8276,9 @@ pub(crate) fn chrome_elements_for_window(
         return (Vec::new(), false);
     };
     let mut items = crate::shell::chrome_items(&state);
+    if active_webtag_key_for_window(hwnd).is_some_and(|key| under_top_layer(&key)) {
+        items.retain(|item| item.scope != "tabBar");
+    }
     let mut opening = false;
     // A rail shows no tabs; as on macOS, a query for tabs peeks it as a pointer would.
     if reveal_tabs && crate::shell::sidebar_peek_layout(state.client, &state.layout).is_some() {
