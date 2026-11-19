@@ -838,7 +838,7 @@ pub const SCALED_FIELDS: &[(&str, &[usize])] = &[
     ("leading", &[field::LINE_HEIGHT]),
     ("radius", &[field::RADIUS, field::RADIUS_TOP_LEFT, field::RADIUS_TOP_RIGHT, field::RADIUS_BOTTOM_RIGHT, field::RADIUS_BOTTOM_LEFT, field::RADIUS_START_START, field::RADIUS_START_END, field::RADIUS_END_START, field::RADIUS_END_END]),
     ("space", &[field::LINE_HEIGHT, field::PADDING_TOP, field::PADDING_RIGHT, field::PADDING_BOTTOM, field::PADDING_LEFT, field::PADDING_INLINE_START, field::PADDING_INLINE_END, field::GAP, field::ROW_GAP, field::COLUMN_GAP, field::MARGIN_TOP, field::MARGIN_RIGHT, field::MARGIN_BOTTOM, field::MARGIN_LEFT, field::MARGIN_INLINE_START, field::MARGIN_INLINE_END, field::INSET_TOP, field::INSET_RIGHT, field::INSET_BOTTOM, field::INSET_LEFT, field::INSET_INLINE_START, field::INSET_INLINE_END, field::FLEX_BASIS, field::WIDTH, field::HEIGHT, field::MIN_WIDTH, field::MIN_HEIGHT, field::MAX_WIDTH, field::MAX_HEIGHT]),
-    ("em", &[field::WIDTH, field::HEIGHT, field::MIN_WIDTH, field::MIN_HEIGHT, field::MAX_WIDTH, field::MAX_HEIGHT]),
+    ("em", &[field::WIDTH, field::HEIGHT, field::MIN_WIDTH, field::MIN_HEIGHT, field::MAX_WIDTH, field::MAX_HEIGHT, field::PADDING_TOP, field::PADDING_RIGHT, field::PADDING_BOTTOM, field::PADDING_LEFT, field::PADDING_INLINE_START, field::PADDING_INLINE_END, field::GAP, field::ROW_GAP, field::COLUMN_GAP, field::MARGIN_TOP, field::MARGIN_RIGHT, field::MARGIN_BOTTOM, field::MARGIN_LEFT, field::MARGIN_INLINE_START, field::MARGIN_INLINE_END, field::INSET_TOP, field::INSET_RIGHT, field::INSET_BOTTOM, field::INSET_LEFT, field::INSET_INLINE_START, field::INSET_INLINE_END]),
     ("duration", &[field::TRANSITION]),
     ("ease", &[field::TRANSITION]),
 ];

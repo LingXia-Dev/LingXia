@@ -65,7 +65,11 @@
     "accent-solid": "#365cddff",
     "on-accent-solid": "#ffffffff",
     "danger-solid": "#c93434ff",
-    "on-danger-solid": "#ffffffff"
+    "on-danger-solid": "#ffffffff",
+    "accent-solid-hover": "#3255cbff",
+    "accent-solid-pressed": "#2e4fbeff",
+    "danger-solid-hover": "#b93030ff",
+    "danger-solid-pressed": "#ad2d2dff"
   },
   "dark": {
     "canvas": "#0f131aff",
@@ -133,6 +137,10 @@
     "accent-solid": "#3f68e9ff",
     "on-accent-solid": "#ffffffff",
     "danger-solid": "#ca4146ff",
-    "on-danger-solid": "#ffffffff"
+    "on-danger-solid": "#ffffffff",
+    "accent-solid-hover": "#3a60d6ff",
+    "accent-solid-pressed": "#3659c8ff",
+    "danger-solid-hover": "#ba3c40ff",
+    "danger-solid-pressed": "#ae383cff"
   }
 }

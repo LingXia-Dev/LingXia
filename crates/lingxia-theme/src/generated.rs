@@ -136,9 +136,17 @@ pub enum Role {
     DangerSolid = 64,
     /// Text and icons on danger-solid.
     OnDangerSolid = 65,
+    /// accent-solid under a hovering pointer: 8% toward black in both appearances. Always derived; a pack does not write it.
+    AccentSolidHover = 66,
+    /// accent-solid while pressed: 14% toward black in both appearances, so a press always goes deeper. Always derived; a pack does not write it.
+    AccentSolidPressed = 67,
+    /// danger-solid under a hovering pointer: 8% toward black. Always derived; a pack does not write it.
+    DangerSolidHover = 68,
+    /// danger-solid while pressed: 14% toward black. Always derived; a pack does not write it.
+    DangerSolidPressed = 69,
 }
 
-pub const ROLE_COUNT: usize = 66;
+pub const ROLE_COUNT: usize = 70;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -208,6 +216,10 @@ impl Role {
         Role::OnAccentSolid,
         Role::DangerSolid,
         Role::OnDangerSolid,
+        Role::AccentSolidHover,
+        Role::AccentSolidPressed,
+        Role::DangerSolidHover,
+        Role::DangerSolidPressed,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -278,6 +290,10 @@ impl Role {
             Role::OnAccentSolid => "on-accent-solid",
             Role::DangerSolid => "danger-solid",
             Role::OnDangerSolid => "on-danger-solid",
+            Role::AccentSolidHover => "accent-solid-hover",
+            Role::AccentSolidPressed => "accent-solid-pressed",
+            Role::DangerSolidHover => "danger-solid-hover",
+            Role::DangerSolidPressed => "danger-solid-pressed",
         }
     }
 
@@ -413,5 +429,9 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::Chart8, Role::Surface, 3.0),
     (Role::Chart8, Role::Canvas, 3.0),
     (Role::OnAccentSolid, Role::AccentSolid, 4.5),
+    (Role::OnAccentSolid, Role::AccentSolidHover, 4.5),
+    (Role::OnAccentSolid, Role::AccentSolidPressed, 4.5),
     (Role::OnDangerSolid, Role::DangerSolid, 4.5),
+    (Role::OnDangerSolid, Role::DangerSolidHover, 4.5),
+    (Role::OnDangerSolid, Role::DangerSolidPressed, 4.5),
 ];

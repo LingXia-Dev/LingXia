@@ -1281,3 +1281,80 @@ fn motion_defaults_are_the_default_packs_and_bad_values_are_named() {
     }
     assert_eq!(problems.len(), 4, "{problems:?}");
 }
+
+#[test]
+fn hover_and_pressed_solids_go_deeper_and_a_pack_cannot_write_them() {
+    let shades = [
+        (
+            Role::AccentSolid,
+            Role::AccentSolidHover,
+            Role::AccentSolidPressed,
+        ),
+        (
+            Role::DangerSolid,
+            Role::DangerSolidHover,
+            Role::DangerSolidPressed,
+        ),
+    ];
+    let label = |solid: Role| {
+        if solid == Role::AccentSolid {
+            Role::OnAccentSolid
+        } else {
+            Role::OnDangerSolid
+        }
+    };
+    for pack in shipped_packs() {
+        every(|prefs, name| {
+            let theme = resolve(&pack, &prefs).unwrap();
+            for (solid, hover, pressed) in shades {
+                let tag = format!("{} {name} {}", pack.name, solid.name());
+                let [fill, hover, pressed] = [solid, hover, pressed].map(|role| theme.color(role));
+                assert!(
+                    fill.luminance() > hover.luminance() && hover.luminance() > pressed.luminance(),
+                    "{tag}: press goes deeper"
+                );
+                for shade in [hover, pressed] {
+                    assert!(contrast(theme.color(label(solid)), shade) >= 4.5, "{tag}");
+                }
+            }
+        });
+    }
+    // The default pack's shades, 8% and 14% toward black.
+    for (appearance, expected) in [
+        (
+            Appearance::Light,
+            ["#3255cb", "#2e4fbe", "#b93030", "#ad2d2d"],
+        ),
+        (
+            Appearance::Dark,
+            ["#3a60d6", "#3659c8", "#ba3c40", "#ae383c"],
+        ),
+    ] {
+        let prefs = Prefs {
+            appearance,
+            ..Prefs::default()
+        };
+        let theme = resolve(&default_pack(), &prefs).unwrap();
+        let got = [
+            Role::AccentSolidHover,
+            Role::AccentSolidPressed,
+            Role::DangerSolidHover,
+            Role::DangerSolidPressed,
+        ]
+        .map(|role| theme.color(role));
+        assert_eq!(got, expected.map(hex), "{appearance:?}");
+    }
+    let mut own = default_pack();
+    own.appearance
+        .light
+        .insert("accent-solid-pressed".into(), hex("#000000"));
+    assert!(
+        check(&own)
+            .iter()
+            .any(|problem| problem.message.contains("accent-solid-pressed is derived")),
+        "{:?}",
+        check(&own)
+    );
+    let theme = resolve(&own, &Prefs::default()).unwrap();
+    assert_eq!(theme.color(Role::AccentSolidPressed), hex("#2e4fbe"));
+}

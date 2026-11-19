@@ -290,6 +290,10 @@ authored ones and the accent seed, unless a pack sets them.
 | `chart-7` | derived | 3:1 on `surface`, 3:1 on `canvas` | Seventh categorical series. |
 | `chart-8` | derived | 3:1 on `surface`, 3:1 on `canvas` | Eighth categorical series. |
 | `accent-solid` | derived |  | Fill of a control that is pressed or switched and carries white marks: primary buttons, checked boxes and radios, switch tracks, a selected day, steppers, floating buttons; the accent in light, a deeper accent in dark. Accent text, icons, the focus ring and filled labels such as badges keep accent. |
-| `on-accent-solid` | derived | 4.5:1 on `accent-solid` | Text and icons on accent-solid. |
+| `on-accent-solid` | derived | 4.5:1 on `accent-solid`, 4.5:1 on `accent-solid-hover`, 4.5:1 on `accent-solid-pressed` | Text and icons on accent-solid. |
 | `danger-solid` | derived |  | Fill of a destructive control that is pressed and carries white marks; danger in light, a deeper danger in dark. A danger badge or label keeps danger. |
-| `on-danger-solid` | derived | 4.5:1 on `danger-solid` | Text and icons on danger-solid. |
+| `on-danger-solid` | derived | 4.5:1 on `danger-solid`, 4.5:1 on `danger-solid-hover`, 4.5:1 on `danger-solid-pressed` | Text and icons on danger-solid. |
+| `accent-solid-hover` | derived |  | accent-solid under a hovering pointer: 8% toward black in both appearances. Always derived; a pack does not write it. |
+| `accent-solid-pressed` | derived |  | accent-solid while pressed: 14% toward black in both appearances, so a press always goes deeper. Always derived; a pack does not write it. |
+| `danger-solid-hover` | derived |  | danger-solid under a hovering pointer: 8% toward black. Always derived; a pack does not write it. |
+| `danger-solid-pressed` | derived |  | danger-solid while pressed: 14% toward black. Always derived; a pack does not write it. |

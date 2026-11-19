@@ -114,6 +114,37 @@ fn an_em_size_grows_with_the_text_up_to_one_and_a_half_times() {
 }
 
 #[test]
+fn em_spacing_follows_the_text_and_a_margin_keeps_its_sign() {
+    let (text, em) = (slot("text.sm"), slot("em"));
+    // text-sm is 13 points: 1em padding 13, 2em gap 26, -1em margin -13; ×1.3 at a 1.3 ratio.
+    let mut page = ViewSession::new(&source(&format!(
+        "function render(){{return h('view',{{'data-testid':'box',style:{{fontSize:[{text},1,0],paddingLeft:[{em},1,0],paddingTop:[{em},1,1],gap:[{em},2,0]}}}},\
+         h('view',{{'data-testid':'a',style:{{height:10}}}}),\
+         h('view',{{'data-testid':'b',style:{{height:10,marginLeft:[{em},-1,0]}}}}))}}"
+    )))
+    .unwrap();
+    for (ratio, em) in [(1.0, 13.0), (1.3, 16.9)] {
+        page.set_environment(env(None, ratio)).unwrap();
+        let frame = page.layout(300, 300, 1.0).unwrap();
+        let (a, b) = (bounds(&frame, "a"), bounds(&frame, "b"));
+        // Boxes land on whole pixels.
+        let close = |x: f32, y: f32| (x - y).abs() <= 1.0;
+        assert!(
+            close(a[0], em) && close(a[1], em + 1.0),
+            "padding, ratio {ratio}: {a:?}"
+        );
+        assert!(
+            close(b[1] - (a[1] + 10.0), 2.0 * em),
+            "gap, ratio {ratio}: {b:?}"
+        );
+        assert!(
+            close(b[0], 0.0),
+            "margin pulls back by 1em, ratio {ratio}: {b:?}"
+        );
+    }
+}
+
+#[test]
 fn min_and_max_size_keywords_size_by_content() {
     let mut page = ViewSession::new(&source(
         "function render(){return h('view',{style:{width:60,flexDirection:'row'}},\

@@ -137,6 +137,70 @@ impl Renderer {
         self.layout_scrolled(records, width, height, scale, &HashMap::new())
     }
 
+    /// `em` for a node of `font` px: its size after the text scale, that scale capped at 1.5×.
+    fn em_px(&self, font: f32) -> f32 {
+        if font > 0.0 {
+            font * (self.text_scale.map(font) / font).min(1.5)
+        } else {
+            0.0
+        }
+    }
+
+    /// `records` with each `em` step on a padding, margin, gap or inset resolved to px, so the
+    /// box rules read it like any length. Borrowed when no node has one.
+    fn em_spacing<'a>(
+        &self,
+        records: &'a [Record],
+        styles: &[crate::text::style::TextStyle],
+    ) -> std::borrow::Cow<'a, [Record]> {
+        let spacing = crate::protocol::SCALED_FIELDS
+            .iter()
+            .find(|(scale, _)| *scale == "em")
+            .map_or(&[][..], |(_, fields)| *fields);
+        let spacing = |id: usize| {
+            spacing.contains(&id)
+                && !matches!(
+                    id,
+                    field::WIDTH
+                        | field::HEIGHT
+                        | field::MIN_WIDTH
+                        | field::MIN_HEIGHT
+                        | field::MAX_WIDTH
+                        | field::MAX_HEIGHT
+                )
+        };
+        let has = |record: &Record| {
+            record
+                .fields
+                .iter()
+                .any(|(id, _)| spacing(*id) && crate::protocol::scales::em(record, *id).is_some())
+        };
+        if !records.iter().any(has) {
+            return std::borrow::Cow::Borrowed(records);
+        }
+        let mut resolved = records.to_vec();
+        for (index, record) in resolved.iter_mut().enumerate() {
+            let em_px = self.em_px(styles[index].size);
+            let steps: Vec<(usize, f32)> = record
+                .fields
+                .iter()
+                .filter(|(id, _)| spacing(*id))
+                .filter_map(|(id, _)| {
+                    let (times, plus) = crate::protocol::scales::em(record, *id)?;
+                    let px = times * em_px + plus;
+                    let signed = matches!(crate::protocol::FIELDS[*id].1, "margin" | "inset");
+                    Some((*id, if signed { px } else { px.max(0.0) }))
+                })
+                .collect();
+            for (id, px) in steps {
+                if let Some((_, value)) = record.fields.iter_mut().find(|(field, _)| *field == id) {
+                    *value = serde_json::Value::from(f64::from(px));
+                }
+            }
+        }
+        std::borrow::Cow::Owned(resolved)
+    }
+
     /// Offsets belong to the native presenter; scrolling does not require a View render call.
     pub fn layout_scrolled(
         &mut self,
@@ -209,9 +273,10 @@ impl Renderer {
         );
         let mut ids = Vec::with_capacity(records.len());
         let mut children: Vec<Vec<usize>> = vec![Vec::new(); records.len()];
+        let spaced = self.em_spacing(records, &styles);
         for (index, record) in records.iter().enumerate() {
             let mut style = style::node_style(
-                records,
+                &spaced,
                 index,
                 (width, height, scale),
                 self.safe_area,
@@ -222,16 +287,10 @@ impl Renderer {
             if run {
                 style.display = Display::None;
             }
-            // `em`: the node's font size after the text scale, that scale capped at 1.5×.
-            let font = styles[index].size;
-            let grown = if font > 0.0 {
-                (self.text_scale.map(font) / font).min(1.5)
-            } else {
-                1.0
-            };
+            let em_px = self.em_px(styles[index].size);
             let em = |id| {
                 crate::protocol::scales::em(record, id)
-                    .map(|(times, plus)| length((times * font * grown + plus).max(0.0)))
+                    .map(|(times, plus)| length((times * em_px + plus).max(0.0)))
             };
             if let Some(px) = em(field::WIDTH) {
                 style.size.width = px;

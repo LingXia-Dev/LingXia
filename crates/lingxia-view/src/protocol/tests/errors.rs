@@ -152,8 +152,8 @@ fn a_scale_step_outside_its_family_fails_with_the_slot_name() {
         "UI_SCALE: paddingTop does not take radius.lg"
     );
     assert_eq!(
-        error(field::PADDING_TOP, step("em", 1.0, 0.0)),
-        "UI_SCALE: paddingTop does not take em"
+        error(field::RADIUS, step("em", 1.0, 0.0)),
+        "UI_SCALE: radius does not take em"
     );
     assert_eq!(
         error(field::COLOR, step("space", 1.0, 0.0)),

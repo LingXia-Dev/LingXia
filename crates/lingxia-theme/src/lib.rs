@@ -287,6 +287,9 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
             continue;
         }
         let slot = role as usize;
+        if derive::is_shade(role) {
+            continue;
+        }
         if let Some(color) = base.get(role.name()) {
             palette[slot] = *color;
             written[slot] = true;
@@ -502,8 +505,13 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
     for (name, colors, appearance, high_contrast) in variants {
         let Some(colors) = colors else { continue };
         for key in colors.keys() {
-            if Role::from_name(key).is_none() {
-                problem(name, format!("unknown role {key}"));
+            match Role::from_name(key) {
+                None => problem(name, format!("unknown role {key}")),
+                Some(role) if derive::is_shade(role) => problem(
+                    name,
+                    format!("{key} is derived from its solid fill; a pack does not write it"),
+                ),
+                Some(_) => {}
             }
         }
         let prefs = Prefs {

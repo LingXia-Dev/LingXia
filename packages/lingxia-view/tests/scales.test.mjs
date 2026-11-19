@@ -26,6 +26,19 @@ test('theme steps compile to [slot, times, plus] references; literals stay numbe
   assert.equal(rules['rounded-full'].style.borderRadius, 16384);
 });
 
+test('em follows the text on padding, margin, gap and inset too, keeping a margin\'s sign', async () => {
+  const rules = await compiled(['ps-[1.33em]', 'gap-[0.5em]', '-mt-[0.25em]', 'left-[1em]', 'py-[calc(0.5em+2px)]']);
+  assert.deepEqual(rules['ps-[1.33em]'].style.paddingInlineStart, step('em', 1.33));
+  assert.deepEqual(rules['gap-[0.5em]'].style.gap, step('em', 0.5));
+  assert.deepEqual(rules['-mt-[0.25em]'].style.marginTop, step('em', -0.25));
+  assert.deepEqual(rules['left-[1em]'].style.left, step('em', 1));
+  assert.deepEqual(rules['py-[calc(0.5em+2px)]'].style.paddingTop, step('em', 0.5, 2));
+  reset();
+  configureClasses(await compileUtilities(new Set(['ps-[1.33em]'])));
+  assert.deepEqual(props('ps-[1.33em]').paddingInlineStart, step('em', 1.33));
+  configureClasses([]);
+});
+
 test('UI_SCALE: arithmetic a step cannot follow at run time fails the build, naming it', async () => {
   const rules = await compiled(['m-[calc(var(--spacing)*2+var(--radius-lg))]', 'p-[max(var(--spacing),4px)]', 'w-[calc(var(--spacing)*var(--spacing))]']);
   assert.match(rules['m-[calc(var(--spacing)*2+var(--radius-lg))]'].error.message, /UI_SCALE: .*two scale steps \(space, radius\.lg\)/);

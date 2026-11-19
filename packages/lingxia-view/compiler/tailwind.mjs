@@ -114,7 +114,7 @@ const reference = ({ value, unit, plus }) => [scales.findIndex(slot => slot.name
 let stepping = false;
 function folded({ value, unit, plus }) {
   const slot = scales.findIndex(entry => entry.name === unit.slice(1));
-  if (scaleDefaults[slot] === null) unsupported(`${unit.slice(1)} sizes only width and height`);
+  if (scaleDefaults[slot] === null) unsupported(`${unit.slice(1)} sizes only width, height, padding, margin, gap and inset`);
   return { value: value * scaleDefaults[slot] + plus, unit: 'px' };
 }
 

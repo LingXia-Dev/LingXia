@@ -102,6 +102,35 @@ const WARNING_SHARE: [f64; 2] = [0.83, 0.7];
 const WHITE_BIAS: f64 = 1.25;
 /// How far overlays lift off `surface-raised` in dark, where a shadow alone does not separate them.
 const OVERLAY_LIFT: f64 = 0.045;
+/// Hover and pressed fills of each solid. A pack never writes them: a press must always go
+/// deeper than the fill, which an opacity over the page cannot promise.
+pub(crate) const SHADES: [(Role, Role, Role); 2] = [
+    (
+        Role::AccentSolid,
+        Role::AccentSolidHover,
+        Role::AccentSolidPressed,
+    ),
+    (
+        Role::DangerSolid,
+        Role::DangerSolidHover,
+        Role::DangerSolidPressed,
+    ),
+];
+pub(crate) const HOVER_SHADE: f64 = 0.08;
+pub(crate) const PRESSED_SHADE: f64 = 0.14;
+
+pub(crate) fn is_shade(role: Role) -> bool {
+    SHADES
+        .iter()
+        .any(|&(_, hover, pressed)| role == hover || role == pressed)
+}
+
+/// `color` mixed `amount` toward black in sRGB, alpha kept.
+pub(crate) fn toward_black(Rgba([r, g, b, a]): Rgba, amount: f64) -> Rgba {
+    let shade = |channel: u8| (f64::from(channel) * (1.0 - amount)).round() as u8;
+    Rgba([shade(r), shade(g), shade(b), a])
+}
+
 /// White on a dark-appearance solid fill: past the 4.5 it needs, so rounding never takes it under.
 const SOLID_WHITE: f64 = 4.8;
 
@@ -403,6 +432,10 @@ impl Build<'_> {
             [Role::DangerSolid, Role::OnDangerSolid],
             danger,
         );
+        for (solid, hover, pressed) in SHADES {
+            self.palette[hover as usize] = self.shade(solid, HOVER_SHADE);
+            self.palette[pressed as usize] = self.shade(solid, PRESSED_SHADE);
+        }
         self.info(seed);
         self.categorical(seed, sides);
     }
@@ -480,6 +513,20 @@ impl Build<'_> {
                     && grounds.iter().all(|&ground| contrast(moved, ground) >= off)
             })
             .unwrap_or(tries[0])
+    }
+
+    /// `solid` taken `amount` toward black, or less where its label is dark and would stop reading.
+    fn shade(&self, solid: Role, amount: f64) -> Rgba {
+        let (fill, need) = (self.get(solid), self.need(4.5));
+        let label = self.get(if solid == Role::AccentSolid {
+            Role::OnAccentSolid
+        } else {
+            Role::OnDangerSolid
+        });
+        (0..=100)
+            .map(|step| toward_black(fill, amount * f64::from(100 - step) / 100.0))
+            .find(|&shade| contrast(shade, label) >= need)
+            .unwrap_or(fill)
     }
 
     /// The fill of a control that carries white marks and its text. In light the plain role is
