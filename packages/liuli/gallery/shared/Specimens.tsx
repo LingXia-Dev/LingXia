@@ -117,7 +117,7 @@ export function DashboardSpecimen() {
 export function ConversationSpecimen() {
   return (
     <view className="w-full gap-1 rounded-container border border-text/12 bg-surface p-3">
-      <MessageBubble text="Saturday?" />
+      <MessageBubble text="Lunch?" />
       <MessageBubble side="end" text="Yes!" />
     </view>
   );

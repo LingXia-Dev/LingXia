@@ -46,7 +46,7 @@ export function Content() {
       <view className="flex-row items-center justify-between gap-3">
         {/* Beside the sidebar the workspace already shows the page's title. */}
         {isWide ? <view /> : <text role="heading" headingLevel={1} className="text-title font-semibold tracking-tight text-text">Uploads</text>}
-        <Badge label={active === 0 ? 'Idle' : `${active} active`} tone={active === 0 ? 'neutral' : 'accent'} data-testid="active" />
+        <Badge label={active === 0 ? 'Idle' : `${active} active`} tone={active === 0 ? 'neutral' : 'info'} data-testid="active" />
       </view>
 
       <PageSection title="In progress">
