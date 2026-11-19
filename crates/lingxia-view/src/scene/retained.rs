@@ -1156,9 +1156,14 @@ impl RetainedLayout {
                         fit,
                         position,
                     } => {
-                        if node.webview.as_ref().is_some_and(|wv| wv.degraded) {
-                            continue;
-                        }
+                        // A web view's texture stops updating while it cannot show live: drawn
+                        // at its own size from the top-left, it is the view's still picture.
+                        let still = node.webview.as_ref().is_some_and(|wv| wv.degraded);
+                        let (fit, position) = if still {
+                            (crate::scene::image::Fit::Cover, [0.0, 0.0])
+                        } else {
+                            (*fit, *position)
+                        };
                         let mut bounds = *bounds;
                         bounds[0] -= translation[0];
                         bounds[1] -= translation[1];
@@ -1171,8 +1176,8 @@ impl RetainedLayout {
                                 player: player.clone(),
                                 bounds,
                                 radius: *radius,
-                                fit: *fit,
-                                position: *position,
+                                fit,
+                                position,
                             });
                         }
                     }
