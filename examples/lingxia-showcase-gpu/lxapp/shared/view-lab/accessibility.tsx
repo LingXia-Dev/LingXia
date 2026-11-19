@@ -1,5 +1,5 @@
 // Accessibility demos of the View catalogue: each is the body of one demo.
-import { List, useLocal } from '@lingxia/view';
+import { List, useLocal, useView } from '@lingxia/view';
 import { Button } from '../ui';
 import { Readout, useSay } from './demo';
 import { labels, readouts } from './text';
@@ -168,6 +168,17 @@ export function FocusDemo() {
   );
 }
 
+// Dev only: a page whose View throws on every render, for the host's recovery panel.
+function RecoveryDemo() {
+  const { actions } = useView();
+  const t = useSay();
+  return (
+    <view className="flex-row">
+      <Button testId="lab-recovery-open" size="sm" variant="secondary" onClick={() => actions.open({ page: 'spec-fault' })}>{t(labels.openFailing)}</Button>
+    </view>
+  );
+}
+
 /** The Accessibility group: every demo the text table names, drawn by its body. */
 export const accessibilityDemos = {
   names: NamesDemo,
@@ -176,4 +187,5 @@ export const accessibilityDemos = {
   tree: TreeDemo,
   named: NamedListDemo,
   days: DaysDemo,
+  recovery: RecoveryDemo,
 };
