@@ -135,6 +135,8 @@ class LxAppActivity : AppCompatActivity() {
         private const val TAG = "LingXia.WebView"
         /** GPU navigation stages, at debug level: transitions are timing-sensitive. */
         private const val NAV_TAG = "LingXia.Nav"
+        /** The longest a gesture after a back waits for the page it returns to. */
+        private const val BACK_HOLD_MS = 1000L
         /** Above the navigation and tab bars, whatever their elevation. */
         private const val TOP_LAYER_Z = 10_000f
         const val META_FORCE_IMMERSIVE = "com.lingxia.FORCE_IMMERSIVE"
@@ -477,6 +479,11 @@ class LxAppActivity : AppCompatActivity() {
     private var gpuTransitionVersion = 0L
     /** The show a running push slide delivers at its end; null when none is running. */
     private var slideShow: Runnable? = null
+    /** The back navigation whose new gestures are held until the page it returns to shows; 0: none. */
+    private var backHold = 0L
+    private val heldTouches = ArrayList<android.view.MotionEvent>()
+    private var holdingGesture = false
+    private var replayingTouches = false
     private var gpuTransitionCover: android.widget.ImageView? = null
     private var gpuOutgoingCover: android.widget.ImageView? = null
     /** The outgoing page's copy in flight and the transitions waiting on it, in arrival order. */
@@ -1744,6 +1751,43 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * A tap right after a back is for the page it returns to, which is not shown yet: the
+     * gesture is held and replayed to it once shown, rather than landing on the cover or on
+     * the page being left.
+     */
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (!replayingTouches && backHold != 0L &&
+            (holdingGesture || event.actionMasked == android.view.MotionEvent.ACTION_DOWN)) {
+            if (!holdingGesture) LxLog.d(NAV_TAG, "touch held until the page a back returns to shows")
+            holdingGesture = true
+            if (heldTouches.size < 512) heldTouches.add(android.view.MotionEvent.obtain(event))
+            return true
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
+    /** Ends the hold of back navigation [version] (any, when null) and replays what it held. */
+    private fun releaseBackHold(version: Long? = null) {
+        if (backHold == 0L || (version != null && version != backHold)) return
+        backHold = 0L
+        holdingGesture = false
+        if (heldTouches.isEmpty()) return
+        val held = ArrayList(heldTouches)
+        heldTouches.clear()
+        LxLog.d(NAV_TAG, "replaying ${held.size} held touch events")
+        // Posted: the page shown in this turn takes the gesture after it is laid out.
+        window.decorView.post {
+            replayingTouches = true
+            try {
+                held.forEach { dispatchTouchEvent(it) }
+            } finally {
+                replayingTouches = false
+                held.forEach { it.recycle() }
+            }
+        }
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (::appId.isInitialized && appId.isNotBlank()) {
             val action = event.action
@@ -1880,6 +1924,11 @@ class LxAppActivity : AppCompatActivity() {
         val version = ++gpuTransitionVersion
         LxLog.d(NAV_TAG, "navigate $webtag $animationType v$version cover=${gpuTransitionCover != null}")
         ++presentTicket
+        if (animationType == AnimationType.BACKWARD) {
+            backHold = version
+            // Bounded: whatever shows by then takes the held gesture.
+            window.decorView.postDelayed({ releaseBackHold(version) }, BACK_HOLD_MS)
+        } else releaseBackHold()
         if (gpuOutgoingCover != null) clearGpuTransitionCover()
         // A replace between kept surfaces needs no cover; see navigateToPage.
         val covered = !(animationType == AnimationType.NONE && com.lingxia.view.GpuView.keepsSurfaces())
@@ -2537,6 +2586,7 @@ class LxAppActivity : AppCompatActivity() {
         fun failedGpuPresentation() {
             LxLog.d(NAV_TAG, "reveal ${newWebView.getWebTag()} failed v$version parent=${newWebView.parent != null}")
             clearGpuTransitionCover()
+            releaseBackHold(version)
             if (animateGpu) (newWebView.parent as? FrameLayout)?.let { triggerOnPageShow(it) }
         }
         if (newWebView is GpuPage && gpuTransitionCover != null) {
@@ -2563,8 +2613,10 @@ class LxAppActivity : AppCompatActivity() {
                     if (gpuTransitionCover != null) showGpuTransitionFrame(frame, newWebView, passThrough = !animateGpu)
                     if (animateGpu && outgoing != null) {
                         animateGpuTransition(outgoing, isBackNavigation, version, newWebView)
+                        releaseBackHold(version)
                         return
                     }
+                    releaseBackHold(version)
                     // The show waited for a slide; another cover owner (a tab bar change) took
                     // the outgoing cover, so no slide runs and the show is due now.
                     if (animateGpu) LxLog.d(NAV_TAG, "reveal ${newWebView.getWebTag()} without slide v$version")
@@ -2590,7 +2642,10 @@ class LxAppActivity : AppCompatActivity() {
                     if (success) revealPresentedFrame() else failedGpuPresentation()
                 }
             }
-        } else clearGpuTransitionCover()
+        } else {
+            clearGpuTransitionCover()
+            releaseBackHold(version)
+        }
         try {
             val targetPath = normalizePath(newWebView.getCurrentPath())
             // Get current WebView before changes
