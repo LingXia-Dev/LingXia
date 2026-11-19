@@ -199,7 +199,7 @@ export function SmallTargetDemo() {
     <>
       <view className="flex-row items-center gap-3 p-6 rounded-xl bg-surface-sunken">
         <button data-testid="lab-small-button" aria-label={t(labels.close)} onClick={() => taps.set(taps.value + 1)}
-          className="w-6 h-6 rounded-md bg-accent-solid active:opacity-70" />
+          className="w-6 h-6 rounded-md bg-accent-solid active:bg-accent-solid-pressed" />
       </view>
       <Readout testId="lab-small-state" state={`taps=${taps.value}`}>{t(readouts.taps(taps.value))}</Readout>
     </>

@@ -247,8 +247,8 @@ spec('a drag inside a scrollable web page scrolls it to its edge, then the scree
     skipWhenInjected(t, await view.swipe({ from, to: [from[0], box.y + 16], durationMs: 350 }),
       'on the web-scroll demo, with the frame wholly on screen, drag up inside it until its last row shows (the screen stays put), then drag up once more there: the screen scrolls.');
   };
-  // Thirty rows of 44 px in a 160 px box: a few drags reach the end, and the screen stays put meanwhile.
-  for (let i = 0; i < 8 && !/end=true/.test((await state.getAttribute('data-state')) ?? ''); i += 1) {
+  // Thirty rows of 44 px in a 160 px box: drags reach the end (how many depends on the screen), and the screen stays put meanwhile.
+  for (let i = 0; i < 20 && !/end=true/.test((await state.getAttribute('data-state')) ?? ''); i += 1) {
     await drag();
     const now = await frame.boundingBox();
     expect(Math.abs(now.y - box.y), 'the screen stays while the web page scrolls').toBeLessThan(2);
