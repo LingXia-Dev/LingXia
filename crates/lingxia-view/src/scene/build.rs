@@ -1269,6 +1269,26 @@ impl Renderer {
                     Some(clip) => (clip.bounds, clip.radius, clip.radii),
                     None => (control_bounds, radius, corners),
                 };
+                // Another box of this session holds the live view (a dialog fading in or out over
+                // it): this one shows what the view showed, top-left aligned, not an empty slot.
+                if !active && !collapsed[index] {
+                    #[cfg(target_os = "android")]
+                    commands.push(Paint::Video {
+                        player: key.clone(),
+                        bounds: inner_bounds,
+                        radius: inner_radius,
+                        fit: crate::scene::image::Fit::Cover,
+                        position: [0.0, 0.0],
+                    });
+                    #[cfg(not(target_os = "android"))]
+                    commands.push(Paint::Image {
+                        src: crate::scene::webview::picture_src(&key),
+                        bounds: inner_bounds,
+                        radius: inner_radius,
+                        fit: crate::scene::image::Fit::Cover,
+                        position: [0.0, 0.0],
+                    });
+                }
                 #[cfg(target_os = "android")]
                 if active && !collapsed[index] {
                     let uniform_inner_radius = inner_corners

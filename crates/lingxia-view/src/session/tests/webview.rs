@@ -327,3 +327,38 @@ fn a_web_view_is_masked_where_a_later_ready_web_view_shows_through() {
     assert!(mounts[1].occluders.is_empty());
     crate::scene::webview::forget_scope(9_100);
 }
+
+#[cfg(not(target_os = "android"))]
+#[test]
+fn a_web_view_box_that_hands_its_view_to_a_dialog_shows_its_picture() {
+    use crate::scene::paint::Paint;
+    let module = source(
+        "globalThis.full=false;\
+         function render(){const web=useWebView('doc');return h('page',{},h('webview',{web,'aria-label':'Article','data-testid':'inline',src:'https://example.com',style:{width:120,height:80}}),h('dialog',{open:globalThis.full,'aria-label':'Full','data-testid':'full',style:{width:200,height:200}},h('webview',{web,'aria-label':'Article','data-testid':'wv-full',style:{width:'100%',height:'100%'}})))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let pictures = |display: &crate::DisplayList| -> Vec<[f32; 4]> {
+        display
+            .commands
+            .iter()
+            .filter_map(|paint| match paint {
+                Paint::Image { src, bounds, .. } if src.starts_with("lx-webview-picture://") => {
+                    Some(*bounds)
+                }
+                _ => None,
+            })
+            .collect()
+    };
+    let inline = page.layout(300, 300, 1.0).unwrap();
+    assert!(pictures(&inline).is_empty(), "the live view shows inline");
+    page.eval("globalThis.full=true").unwrap();
+    let full = page.layout(300, 300, 1.0).unwrap();
+    let node = |id: &str| full.nodes.iter().find(|n| n.test_id == id).unwrap();
+    assert!(node("wv-full").webview.as_ref().unwrap().active);
+    assert!(!node("inline").webview.as_ref().unwrap().active);
+    assert_eq!(
+        pictures(&full),
+        vec![node("inline").bounds],
+        "the inline box keeps the picture while the dialog holds the view"
+    );
+}
