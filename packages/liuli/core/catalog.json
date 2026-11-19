@@ -11873,6 +11873,7 @@
         "adornment": "text",
         "input": "input",
         "steppers": "view",
+        "divider": "view",
         "stepper": "button",
         "stepperIcon": "vector"
       },

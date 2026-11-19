@@ -145,6 +145,7 @@ export function NumberInput(props: NumberInputProps) {
           {suffix !== undefined && <text id={suffixId} className={cx(t.adornment.base, t.input.size[size])}>{suffix}</text>}
           {hasSteppers && (
             <view className={r.steppers.base}>
+              <view aria-hidden className={r.divider.base} />
               <button
                 aria-label={decrementLabel}
                 disabled={isDisabled || (current !== null && min !== undefined && current <= min)}
@@ -154,12 +155,13 @@ export function NumberInput(props: NumberInputProps) {
               >
                 <Glyph name="remove" className={r.stepperIcon.base} />
               </button>
+              <view aria-hidden className={r.divider.base} />
               <button
                 aria-label={incrementLabel}
                 disabled={isDisabled || (current !== null && max !== undefined && current >= max)}
                 onClick={() => nudge(1)}
                 data-testid={testId && `${testId}-increment`}
-                className={cx(r.stepper.base, r.stepper.size[size], r.stepper.second)}
+                className={cx(r.stepper.base, r.stepper.size[size])}
               >
                 <Glyph name="add" className={r.stepperIcon.base} />
               </button>
