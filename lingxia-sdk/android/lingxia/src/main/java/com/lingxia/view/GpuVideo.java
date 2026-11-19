@@ -55,6 +55,13 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
     private volatile int posterWidth;
     private volatile int posterHeight;
     private volatile boolean closed;
+    /**
+     * A web view's picture is queued and not yet latched; while it is, a capture waits. The
+     * queue drops nothing, so another draw would block the main thread until the renderer
+     * latched, which it does only for a drawn frame: a page not yet presented never would.
+     */
+    private volatile boolean webQueued;
+    private volatile boolean webMissed;
     private volatile java.util.concurrent.Future<?> posterTask;
     private static java.util.concurrent.ExecutorService posters;
 
@@ -83,7 +90,7 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
         texture.setOnFrameAvailableListener(this, handler);
         snapshot = new double[] {0, -1, 0, 0, 0, 0, 1, 1, 0, 0, 1};
         WEB_SINKS.put(webKey, this);
-        GpuWebView.onSinkRegistered(webKey);
+        GpuWebView.recapture(webKey);
     }
 
     private GpuVideo(String source) {
@@ -385,12 +392,27 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
         available = false;
         texture.updateTexImage();
         texture.getTransformMatrix(matrix);
+        if (webKey != null) {
+            webQueued = false;
+            if (webMissed) {
+                webMissed = false;
+                GpuWebView.recapture(webKey);
+            }
+        }
         return matrix;
     }
 
     synchronized boolean drawWebView(android.view.View target, int w, int h) {
         if (closed || w <= 0 || h <= 0 || !surface.isValid()) {
             return false;
+        }
+        if (webQueued) {
+            webMissed = true;
+            // Latched meanwhile: either update() saw the miss and recaptures, or this draws now.
+            if (webQueued) {
+                return false;
+            }
+            webMissed = false;
         }
         if (width != w || height != h) {
             texture.setDefaultBufferSize(w, h);
@@ -408,6 +430,7 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
             target.draw(canvas);
         } finally {
             surface.unlockCanvasAndPost(canvas);
+            webQueued = true;
         }
         return true;
     }

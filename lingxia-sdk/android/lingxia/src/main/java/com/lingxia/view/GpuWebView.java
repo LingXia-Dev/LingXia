@@ -34,7 +34,8 @@ final class GpuWebView extends FrameLayout {
     private static final ConcurrentHashMap<String, Slot> LIVE_SLOTS = new ConcurrentHashMap<>();
     private static final AtomicLong NEXT_VISUAL_REQ = new AtomicLong(1);
 
-    static void onSinkRegistered(String key) {
+    /** Capture the web view of [key] again: its sink appeared, or took a capture that had to wait. */
+    static void recapture(String key) {
         MAIN.post(() -> {
             Slot slot = LIVE_SLOTS.get(key);
             if (slot != null) {
