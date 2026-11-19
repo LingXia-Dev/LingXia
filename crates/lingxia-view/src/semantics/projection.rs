@@ -936,13 +936,8 @@ impl Projection<'_> {
                 {
                     return Some(label.to_owned());
                 }
-                let prefix = format!("{}/", target.identity);
                 let text: Vec<&str> = std::iter::once(target)
-                    .chain(
-                        nodes[at + 1..]
-                            .iter()
-                            .take_while(|other| other.identity.starts_with(&prefix)),
-                    )
+                    .chain(readable_descendants(nodes, at))
                     .map(|other| other.text.trim())
                     .filter(|text| !text.is_empty())
                     .collect();
@@ -1043,18 +1038,40 @@ fn spoken(frame: &PresentedFrame, node: &NodeSnapshot) -> String {
     if !node.text.is_empty() {
         return node.text.clone();
     }
-    let prefix = format!("{}/", node.identity);
-    frame
+    let Some(at) = frame
         .nodes
         .iter()
-        .filter(|other| {
-            other.identity.starts_with(&prefix)
-                && !other.text.is_empty()
-                && !other.accessibility_hidden.unwrap_or(false)
-        })
+        .position(|other| other.identity == node.identity)
+    else {
+        return String::new();
+    };
+    readable_descendants(&frame.nodes, at)
+        .filter(|other| !other.text.is_empty())
         .map(|other| other.text.as_str())
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// The nodes under `nodes[at]`, in order, without any `aria-hidden` subtree: hidden text is
+/// never read into another node's name or description.
+fn readable_descendants(nodes: &[NodeSnapshot], at: usize) -> impl Iterator<Item = &NodeSnapshot> {
+    let prefix = format!("{}/", nodes[at].identity);
+    let mut hidden: Option<String> = None;
+    nodes[at + 1..]
+        .iter()
+        .take_while(move |other| other.identity.starts_with(&prefix))
+        .filter(move |other| {
+            if let Some(under) = &hidden
+                && other.identity.starts_with(under.as_str())
+            {
+                return false;
+            }
+            if other.accessibility_hidden.unwrap_or(false) {
+                hidden = Some(format!("{}/", other.identity));
+                return false;
+            }
+            true
+        })
 }
 
 pub fn changes(

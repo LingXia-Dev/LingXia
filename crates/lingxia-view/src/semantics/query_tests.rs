@@ -1027,3 +1027,13 @@ fn a_typed_key_the_keyboard_has_no_place_for_fails_at_once() {
             .any(|e| matches!(e, Effect::EditText { text: Some(t), .. } if t == "78")),
     );
 }
+
+#[test]
+fn hidden_text_is_never_read_into_a_description_or_a_name() {
+    let i = interaction(
+        "h('view',{},h('input',{'data-testid':'field','aria-label':'Email','aria-describedby':'help',value:''}),h('view',{id:'help'},h('view',{'aria-hidden':true},h('text',{},'HIDDEN-A')),h('text',{},'Saved')),h('button',{'data-testid':'go',onClick(){}},h('text',{},h('span',{'aria-hidden':true},'HIDDEN-B'),'Send')))",
+    );
+    let tree = i.automation_tree().unwrap().to_string();
+    assert!(tree.contains(r#""description":"Saved""#), "{tree}");
+    assert!(!tree.contains("HIDDEN"), "{tree}");
+}
