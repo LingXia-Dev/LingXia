@@ -415,7 +415,7 @@ final class LxAppCore {
         }
         let token = GpuPages.token(
             appId: appId, sessionId: sessionId, pageInstanceId: currentPageInstanceId)
-        return token == 0 ? nil : GpuPages.view(for: token)
+        return token == 0 ? nil : GpuPages.existingView(for: token)
     }
 
     /// Get home LxApp ID

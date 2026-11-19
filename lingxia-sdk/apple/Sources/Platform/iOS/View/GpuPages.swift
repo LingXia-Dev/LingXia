@@ -883,6 +883,9 @@ func gpuInputAge(_ timestamp: TimeInterval) -> UInt64 {
 public enum GpuPages {
     @MainActor private static var views: [Int64: GpuPageView] = [:]
 
+    /// The view already made for a page token; never creates one.
+    @MainActor static func existingView(for token: Int64) -> GpuPageView? { views[token] }
+
     /// The view for a page token, created on first use.
     @MainActor static func view(for token: Int64) -> GpuPageView {
         if let view = views[token] { return view }
