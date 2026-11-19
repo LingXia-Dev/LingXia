@@ -93,14 +93,26 @@ fn a_pressed_switch_paints_its_track_not_a_box() {
             .collect()
     };
     assert!(layers(&display).is_empty());
-    page.set_pointer_state(Some(&identity), None);
-    let pressed = page.layout(400, 200, 1.0).unwrap();
     // The track: 52x32 at the inline end, vertically centred in the 12px padding.
     let track = [x + w - 12.0 - 52.0, y + h / 2.0 - 16.0, 52.0, 32.0];
-    assert_eq!(
-        layers(&pressed),
-        [track],
-        "the state layer covers the track only"
+    let track_fill = |display: &crate::scene::display::DisplayList| {
+        display.commands.iter().find_map(|p| match p {
+            Paint::Rect { color, bounds, .. } if *bounds == track => Some(*color),
+            _ => None,
+        })
+    };
+    let resting = track_fill(&display).unwrap();
+    page.set_pointer_state(Some(&identity), None);
+    let pressed = page.layout(400, 200, 1.0).unwrap();
+    // The default off track is opaque: it deepens, as any opaque fill does, and takes no layer.
+    let deep = track_fill(&pressed).unwrap();
+    assert!(
+        layers(&pressed).is_empty(),
+        "no state layer over an opaque track"
+    );
+    assert!(
+        deep[3] == 255 && (0..3).all(|i| deep[i] < resting[i]),
+        "the pressed track is deeper: {resting:?} -> {deep:?}"
     );
     assert!(
         !pressed.commands.iter().any(|p| matches!(p,

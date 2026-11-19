@@ -515,6 +515,22 @@ pub(crate) struct Switch {
     pub press_layer: [u8; 4],
 }
 
+/// A filled mark's colour while pressed: a solid role's own pressed shade, else the colour mixed
+/// 14 % toward black, as the theme derives those shades.
+fn pressed_fill(value: &str, palette: &crate::theme::Palette) -> Result<[u8; 4], String> {
+    use lingxia_theme::Role;
+    if let crate::theme::WireColor::Role(role, 100) = crate::theme::parse(value)? {
+        match role {
+            Role::AccentSolid => return Ok(palette.role(Role::AccentSolidPressed)),
+            Role::DangerSolid => return Ok(palette.role(Role::DangerSolidPressed)),
+            _ => {}
+        }
+    }
+    let [r, g, b, a] = palette.resolve(value)?;
+    let deep = |c: u8| (f32::from(c) * 0.86).round() as u8;
+    Ok([deep(r), deep(g), deep(b), a])
+}
+
 /// Draws a switch's track and thumb; the thumb rests `gap` inside the track at either end.
 pub(crate) fn paint_switch(
     switch: &Switch,
@@ -534,19 +550,32 @@ pub(crate) fn paint_switch(
         Some(value) => palette.resolve(value),
         None => Ok(default),
     };
-    // The engine's own on track deepens when pressed; an authored or off track takes the layer.
-    let deepened = switch.pressed && switch.checked && track.background.is_none();
+    // A pressed track deepens, on or off, authored or not: the text-colour layer would lighten
+    // it in dark. Only a translucent off track takes the layer.
+    let resting = fill(
+        &track,
+        if switch.checked {
+            switch.on
+        } else {
+            switch.off
+        },
+    )?;
+    let deepened = switch.pressed && (switch.checked || resting[3] == 255);
+    let color = if !deepened {
+        resting
+    } else if switch.checked {
+        match track.background.as_deref() {
+            None | Some("currentColor") => switch.on_pressed,
+            Some(value) => pressed_fill(value, palette)?,
+        }
+    } else {
+        let deep = |c: u8| (f32::from(c) * 0.86).round() as u8;
+        [deep(resting[0]), deep(resting[1]), deep(resting[2]), 255]
+    };
     slots.0[0] = Some(commands.len());
     commands.push(Paint::Rect {
         corners: None,
-        color: fill(
-            &track,
-            match (switch.checked, deepened) {
-                (true, true) => switch.on_pressed,
-                (true, false) => switch.on,
-                (false, _) => switch.off,
-            },
-        )?,
+        color,
         bounds,
         radius,
     });
@@ -662,5 +691,60 @@ mod tests {
         let parts = crate::animation::transition::TransitionDef::parts();
         assert!(parts.covers(crate::animation::transition::Property::Parts));
         assert!(!parts.covers(crate::animation::transition::Property::Background));
+    }
+
+    #[test]
+    fn a_pressed_on_track_deepens_in_dark_whether_or_not_it_is_authored() {
+        use lingxia_theme::Role;
+        let palette = crate::theme::Palette::builtin(true);
+        let record = |background: Option<&str>| {
+            let fields: Vec<_> = background
+                .map(|bg| {
+                    let pairs = serde_json::json!([field::BACKGROUND, bg]).to_string();
+                    (field::TRACK_STYLE, serde_json::Value::String(pairs))
+                })
+                .into_iter()
+                .collect();
+            crate::scene::test_prelude::node(crate::protocol::tag::SWITCH, None, "s", &fields)
+        };
+        let track = |background: Option<&str>, checked: bool| {
+            let switch = Switch {
+                right: 100.0,
+                center: 20.0,
+                checked,
+                pressed: true,
+                on: palette.role(Role::AccentSolid),
+                on_pressed: palette.role(Role::AccentSolidPressed),
+                off: palette.role(Role::Line),
+                press_layer: [255, 255, 255, 51],
+            };
+            let mut commands = Vec::new();
+            paint_switch(&switch, &record(background), &palette, &mut commands).unwrap();
+            let fills: Vec<[u8; 4]> = commands
+                .iter()
+                .filter_map(|paint| match paint {
+                    Paint::Rect { color, .. } => Some(*color),
+                    _ => None,
+                })
+                .collect();
+            fills
+        };
+        let deep = palette.role(Role::AccentSolidPressed);
+        assert_eq!(track(None, true)[0], deep);
+        // Liuli's `checked:track:bg-accent-solid`.
+        let authored = track(Some("accent-solid"), true);
+        assert_eq!(authored[0], deep);
+        assert!(
+            !authored.contains(&[255, 255, 255, 51]),
+            "no lightening layer"
+        );
+        // Another colour mixes toward black.
+        assert_eq!(track(Some("#00b050"), true)[0], [0, 151, 69, 255]);
+        // Off, an opaque track deepens the same way in dark (the layer would lighten it)...
+        let off = track(Some("#00b050"), false);
+        assert_eq!(off[0], [0, 151, 69, 255]);
+        assert!(!off.contains(&[255, 255, 255, 51]), "no lightening layer");
+        // ...and only a translucent one takes the layer.
+        assert!(track(Some("#00b05080"), false).contains(&[255, 255, 255, 51]));
     }
 }
