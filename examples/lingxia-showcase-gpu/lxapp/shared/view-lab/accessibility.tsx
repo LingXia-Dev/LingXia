@@ -168,8 +168,8 @@ export function FocusDemo() {
   );
 }
 
-// Dev only: a page whose View throws on every render, and one whose first state never comes,
-// for the host's recovery panels.
+// Dev only: a page whose View throws on every render, one whose first state never comes, and one
+// whose update fails after it has shown, for the host's recovery panels.
 function RecoveryDemo() {
   const { actions } = useView();
   const t = useSay();
@@ -177,6 +177,7 @@ function RecoveryDemo() {
     <view className="flex-row flex-wrap gap-2">
       <Button testId="lab-recovery-open" size="sm" variant="secondary" onClick={() => actions.open({ page: 'spec-fault' })}>{t(labels.openFailing)}</Button>
       <Button testId="lab-recovery-stall" size="sm" variant="secondary" onClick={() => actions.open({ page: 'spec-stall' })}>{t(labels.openStalled)}</Button>
+      <Button testId="lab-recovery-break" size="sm" variant="secondary" onClick={() => actions.open({ page: 'spec-break' })}>{t(labels.openBreaking)}</Button>
     </view>
   );
 }

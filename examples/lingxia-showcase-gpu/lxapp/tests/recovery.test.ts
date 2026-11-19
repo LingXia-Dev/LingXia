@@ -8,6 +8,7 @@ const words = {
   back: ['Go back', '返回'],
   slow: ['This page is taking longer than usual to load.', '页面加载时间比平时长。'],
   wait: ['Keep waiting', '继续等待'],
+  updateFailed: ["This page couldn't update. Your previous view is still available.", '页面更新失败，已保留上次显示的内容。'],
 };
 
 async function panel(t: Fixture) {
@@ -90,4 +91,47 @@ spec('a page whose first state never comes shows the slow-load notice; Keep wait
   await t.waitFor(() => t.app.nav.stack(), { until: (stack) => stack.length === before.length });
   expect((await t.app.nav.stack()).map((page) => page.path)).toEqual(before.map((page) => page.path));
   await expect(t.app.view.testId('lab-recovery-stall')).toBeVisible();
+});
+
+// An update that fails over a shown page keeps the page: a banner, not a panel over it. The host
+// draws it in each appearance, so the spec reads it in both.
+spec('an update that fails after the page has shown keeps the page under a banner with Retry and Go back, light and dark', {
+  covers: ['view:recovery'], start: openDemo('recovery'), requires: { chrome: true },
+}, async (t) => {
+  const preference = await t.app.logic.eval(({ lx }) => lx.host.control?.appearance.getPreference() ?? null);
+  if (preference === null) t.skip('this host does not let an lxapp set its appearance; check the banner by hand in light and dark');
+  t.defer(() => t.app.logic.eval(({ lx }, look) => lx.host.control?.appearance.setPreference(look), preference!));
+  const banner = async () => {
+    const elements = await t.waitFor(() => t.app.chrome.elements(), {
+      until: (now) => now.some((e) => words.updateFailed.includes(e.label)),
+      timeout: 8_000,
+    });
+    return { elements, notice: elements.find((e) => words.updateFailed.includes(e.label))! };
+  };
+  for (const look of ['light', 'dark'] as const) {
+    await t.app.logic.eval(({ lx }, look) => lx.host.control?.appearance.setPreference(look), look);
+    const before = await openFailing(t, 'lab-recovery-break', 'spec-break');
+    await expect(t.app.view.testId('spec-break-shown')).toBeVisible();
+    // Measured while the page still renders: once its update fails, a page query answers the failure.
+    const window = await t.app.view.viewport();
+    // The tap's update is the one that throws, so the frame the click waits for never comes.
+    const tapped = t.app.view.testId('spec-break-go').click().catch(() => undefined);
+    let { elements, notice } = await banner();
+    await tapped;
+    const [, y, width, height] = notice.bounds;
+    // On screen, and a strip rather than a cover: most of the kept page shows around it.
+    expect(width, `${look}: banner width`).toBeGreaterThan(0);
+    expect(y, `${look}: banner top`).toBeGreaterThanOrEqual(0);
+    expect(y + height, `${look}: banner bottom`).toBeLessThanOrEqual(window.top + window.height + 1);
+    expect(height, `${look}: banner height`).toBeLessThan(window.height / 2);
+    labelOf(elements, words.back);
+    await t.app.chrome.tap(labelOf(elements, words.retry));
+    // The data still breaks the View: the banner returns over the same page.
+    ({ elements } = await banner());
+    expect((await t.app.nav.stack()).length).toBe(before.length + 1);
+    await t.app.chrome.tap(labelOf(elements, words.back));
+    await t.waitFor(() => t.app.nav.stack(), { until: (stack) => stack.length === before.length });
+    expect((await t.app.nav.stack()).map((page) => page.path)).toEqual(before.map((page) => page.path));
+    await expect(t.app.view.testId('lab-recovery-break')).toBeVisible();
+  }
 });
