@@ -235,21 +235,20 @@ Logic action to submit, and disable the submit button while the action runs (as 
 
 ## Disclosure
 
-`<Details>` with a `<Summary>` (both from `@lingxia/view`) is HTML's details/summary: the summary is a
-button that shows a chevron and announces expanded or collapsed, and the rest of the children exist only
-while open. It keeps its own open state, starting from `defaultOpen`; pass `open` and `onToggle` to
-control it. `className` on `<Summary>` styles the toggle.
+HTML's details/summary is a `<button>` with `aria-expanded`, which a screen reader announces as
+expanded or collapsed, and a body that exists only while open. Keep the open state in `useLocal`.
 
 ```tsx
-import { Details, Summary } from '@lingxia/view';
+import { useLocal } from '@lingxia/view';
 
 export function render() {
+  const open = useLocal(true);
   return (
     <page className="p-4 gap-2">
-      <Details defaultOpen>
-        <Summary className="py-2 text-sm font-semibold">Open-source licenses</Summary>
-        <text className="text-sm text-muted">MIT, Apache-2.0</text>
-      </Details>
+      <button aria-expanded={open.value} onClick={() => open.set(!open.value)} className="py-2">
+        <text className="text-sm font-semibold">Open-source licenses</text>
+      </button>
+      {open.value && <text className="text-sm text-muted">MIT, Apache-2.0</text>}
     </page>
   );
 }

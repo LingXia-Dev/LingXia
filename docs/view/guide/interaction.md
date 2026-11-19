@@ -149,9 +149,9 @@ The host recognizes the gestures; the View receives their outcome:
 There are no pointer, touch, swipe, pinch or long-press handlers on elements, and no drag-and-drop.
 Build carousels from a horizontal `<scroll>`. A pager is one with `snap-x snap-always` and `snap-start`
 pages: a flick stops on the next page however fast, and `bind={page}` (a `useLocal` number) is the
-page it rests on, two-way: setting it springs there. Assistive scrolling steps one page.
-`<Pager aria-label="…">` from `@lingxia/view` builds that for you: its children are the pages, a screen
-reader reads them as a named list ("2 of 3"), and dots under it follow the page and jump on tap.
+page it rests on, two-way: setting it springs there. Assistive scrolling steps one page. Give the
+row of pages `role="list"` with an `aria-label` and each page `role="listitem"`, and a screen reader
+reads "2 of 3".
 
 ## Dragging an element
 

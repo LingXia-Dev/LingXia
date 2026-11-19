@@ -9,9 +9,7 @@
   // src/internal.js
   var internal_exports = {};
   __export(internal_exports, {
-    Details: () => Details,
     List: () => List,
-    Summary: () => Summary,
     childrenToArray: () => childrenToArray,
     cloneElement: () => cloneElement,
     commit: () => commit,
@@ -206,6 +204,216 @@
     return flatten([children]);
   }
 
+  // src/runtime/press.js
+  var held = null;
+  function pressChange(identity, callback) {
+    if (held?.identity === identity) return;
+    held = { identity, callback };
+    return callback(true);
+  }
+  function releasePress() {
+    if (!held) return false;
+    const { callback } = held;
+    held = null;
+    const result = callback(false);
+    if (result && typeof result.then === "function") Promise.resolve(result).catch(() => {
+    });
+    return true;
+  }
+  function refreshPresses(live) {
+    if (held && live.has(held.identity)) held.callback = live.get(held.identity);
+  }
+  var waiting = /* @__PURE__ */ new Map();
+  function changeEnd(identity, value, end) {
+    if (waiting.has(identity)) waiting.set(identity, { value });
+    else end(value);
+  }
+  function pressEnd(identity, pressed, end) {
+    if (pressed) {
+      waiting.set(identity, null);
+      return;
+    }
+    const last = waiting.get(identity);
+    waiting.delete(identity);
+    if (last) end(last.value);
+  }
+  var resetPresses = () => {
+    held = null;
+    waiting = /* @__PURE__ */ new Map();
+  };
+
+  // src/generated/contract.js
+  var elements = { "view": { "wire": "column", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "onPage": false, "onContextMenu": false, "anchor": false, "onPointer": false, "pointerAxis": false, "onLayout": false, "box": false, "aria-label": false, "popover": false, "open": false, "onToggle": false, "drag": false, "dragSnapPoints": false, "bind": false, "onDragStart": false, "onDragEnd": false, "aria-actions": false, "onPointerEnter": false, "onPointerLeave": false, "closeAfter": false, "onCloseRequest": false } }, "page": { "wire": "page", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "aria-label": false } }, "text": { "wire": "text", "children": "runs", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "backgroundClip", "lineClamp", "textOverflow"], "props": { "onContextMenu": false, "onLayout": false, "box": false, "aria-label": false } }, "button": { "wire": "button", "children": "content", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "onContextMenu": false, "onPointer": false, "pointerAxis": false, "onClick": false, "disabled": false, "aria-label": false, "popoverTarget": false, "interestFor": false, "keepOpen": false, "drag": false, "dragSnapPoints": false, "bind": false, "onDragStart": false, "onDragEnd": false, "aria-actions": false, "onPointerEnter": false, "onPointerLeave": false } }, "scroll": { "wire": "scroll", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "overflowX", "overflowY", "overscrollBehavior", "scrollSnapStop", "scrollSnapType"], "props": { "onLayout": false, "box": false, "onReachStart": false, "onReachEnd": false, "onScrollEdge": false, "bind": false } }, "list": { "wire": "list", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "overscrollBehavior", "scrollSnapStop", "scrollSnapType"], "props": { "count": true, "row": true, "height": false, "anchor": false, "itemKeys": false, "onReachStart": false, "onReachEnd": false, "onScrollEdge": false, "aria-label": false }, "component": "List" }, "image": { "wire": "image", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "objectFit", "objectPosition"], "props": { "src": true, "placeholder": false, "alt": false, "retryKey": false, "onLoad": false, "onError": false } }, "input": { "wire": "input", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "placeholderColor", "textOverflow"], "props": { "onKeyDown": false, "readOnly": false, "onFocus": false, "onBlur": false, "aria-label": false, "placeholder": false, "type": false, "inputMode": false, "autoFocus": false, "disabled": false, "onSubmit": false, "maxLength": false, "autoComplete": false, "enterKeyHint": false, "autoCapitalize": false, "spellCheck": false, "min": false, "max": false, "step": false }, "binding": { "type": "string", "event": "onInput" } }, "textarea": { "wire": "textarea", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "placeholderColor"], "props": { "onKeyDown": false, "readOnly": false, "onFocus": false, "onBlur": false, "rows": false, "maxRows": false, "aria-label": false, "placeholder": false, "inputMode": false, "autoFocus": false, "disabled": false, "onSubmit": false, "maxLength": false, "autoComplete": false, "enterKeyHint": false, "autoCapitalize": false, "spellCheck": false }, "binding": { "type": "string", "event": "onInput" } }, "checkbox": { "wire": "checkbox", "children": "content", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": { "indeterminate": false, "aria-label": false, "disabled": false }, "binding": { "type": "boolean", "event": "onChange" } }, "switch": { "wire": "switch", "children": "content", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "trackPart", "rangePart", "secondaryPart", "thumbPart"], "props": { "aria-label": false, "disabled": false }, "binding": { "type": "boolean", "event": "onChange" } }, "radio": { "wire": "radio", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": { "options": true, "aria-label": false, "disabled": false }, "binding": { "type": "string", "event": "onChange" } }, "slider": { "wire": "slider", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "trackPart", "rangePart", "secondaryPart", "thumbPart"], "props": { "min": false, "max": false, "step": false, "secondaryValue": false, "aria-label": true, "aria-valuetext": false, "disabled": false, "onPressChange": false }, "binding": { "type": "number", "event": "onChange", "end": "onChangeEnd", "pair": { "values": "values", "labels": "thumbLabels" } } }, "dialog": { "wire": "column", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "open": false, "onClose": false, "closedby": false, "aria-label": true, "drag": false, "dragSnapPoints": false, "bind": false, "onDragStart": false, "onDragEnd": false } }, "plot": { "wire": "plot", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign"], "props": { "onLayout": false, "box": false, "kind": true, "values": true, "colors": true, "aria-label": true, "smooth": false, "area": false, "selectedIndex": false, "domainMin": false, "domainMax": false, "onSelect": false, "pieLayout": false, "markerEmphasisScale": false } }, "vector": { "wire": "vector", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "objectFit"], "props": { "onPointer": false, "pointerAxis": false, "onLayout": false, "box": false, "paths": true, "gradients": false, "viewBox": false } }, "span": { "wire": "span", "children": "runs", "style": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "letterSpacing", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "fontVariantNumeric", "backgroundColor"], "props": {} }, "link": { "wire": "link", "children": "runs", "style": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "letterSpacing", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "fontVariantNumeric", "backgroundColor"], "props": { "onContextMenu": false, "onClick": false, "aria-label": false, "disabled": false } }, "select": { "wire": "select", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "backgroundClip", "lineClamp", "textOverflow", "placeholderColor"], "props": { "options": true, "placeholder": false, "aria-label": false, "disabled": false }, "binding": { "type": "string", "event": "onChange" } }, "video": { "wire": "video", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "objectFit", "objectPosition"], "props": { "src": false, "sources": false, "player": false, "poster": false, "autoPlay": false, "paused": false, "muted": false, "loop": false, "playbackRate": false, "volume": false, "aria-label": false, "onLoadedMetadata": false, "onPlay": false, "onPlaying": false, "onPause": false, "onWaiting": false, "onSeeked": false, "onTimeUpdate": false, "onEnded": false, "onError": false, "onRateChange": false, "onVolumeChange": false, "onQualityChange": false, "onFullscreenChange": false } }, "webview": { "wire": "webview", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign"], "props": { "src": false, "web": false, "aria-label": true, "handlesDrags": false, "onFullscreenChange": false, "onLoad": false, "onMessage": false, "onBlocked": false, "onError": false } } };
+  var style = { "width": { "lower": "dimension", "wire": "width" }, "height": { "lower": "dimension", "wire": "height" }, "minWidth": { "lower": "dimension", "wire": "minWidth" }, "minHeight": { "lower": "dimension", "wire": "minHeight" }, "maxWidth": { "lower": "dimension", "wire": "maxWidth" }, "aspectRatio": { "lower": "aspect-ratio", "wire": "aspectRatio" }, "maxHeight": { "lower": "dimension", "wire": "maxHeight" }, "margin": { "lower": "margin", "wire": ["marginTop", "marginRight", "marginBottom", "marginLeft"] }, "marginTop": { "lower": "margin", "wire": "marginTop" }, "marginRight": { "lower": "margin", "wire": "marginRight" }, "marginBottom": { "lower": "margin", "wire": "marginBottom" }, "marginLeft": { "lower": "margin", "wire": "marginLeft" }, "marginInlineStart": { "lower": "margin", "wire": "marginInlineStart" }, "marginInlineEnd": { "lower": "margin", "wire": "marginInlineEnd" }, "position": { "lower": "option", "wire": "position" }, "inset": { "lower": "inset", "wire": ["insetTop", "insetRight", "insetBottom", "insetLeft"] }, "top": { "lower": "inset", "wire": "insetTop" }, "right": { "lower": "inset", "wire": "insetRight" }, "bottom": { "lower": "inset", "wire": "insetBottom" }, "left": { "lower": "inset", "wire": "insetLeft" }, "insetInlineStart": { "lower": "inset", "wire": "insetInlineStart" }, "insetInlineEnd": { "lower": "inset", "wire": "insetInlineEnd" }, "zIndex": { "lower": "z-index", "wire": "zIndex" }, "positionArea": { "lower": "option", "wire": "anchorArea" }, "flexGrow": { "lower": "number", "wire": "grow" }, "flexShrink": { "lower": "number", "wire": "shrink" }, "flexBasis": { "lower": "basis", "wire": "flexBasis" }, "alignSelf": { "lower": "alignment", "wire": "alignSelf" }, "gridColumn": { "lower": "grid-line", "wire": "gridColumn" }, "gridColumnStart": { "lower": "grid-line", "wire": "gridColumn" }, "gridColumnEnd": { "lower": "grid-line", "wire": "gridColumn" }, "gridRow": { "lower": "grid-line", "wire": "gridRow" }, "gridRowStart": { "lower": "grid-line", "wire": "gridRow" }, "gridRowEnd": { "lower": "grid-line", "wire": "gridRow" }, "justifySelf": { "lower": "alignment", "wire": "justifySelf" }, "order": { "lower": "order", "wire": "order" }, "opacity": { "lower": "opacity", "wire": "opacity", "paint": true }, "overflow": { "lower": "option", "wire": "overflow" }, "backgroundColor": { "lower": "color", "wire": "background", "paint": true }, "backgroundImage": { "lower": "gradient", "wire": "backgroundGradient", "paint": true }, "borderRadius": { "lower": "length", "wire": ["radius", "radiusTopLeft", "radiusTopRight", "radiusBottomRight", "radiusBottomLeft"] }, "borderTopLeftRadius": { "lower": "length", "wire": "radiusTopLeft" }, "borderTopRightRadius": { "lower": "length", "wire": "radiusTopRight" }, "borderBottomRightRadius": { "lower": "length", "wire": "radiusBottomRight" }, "borderBottomLeftRadius": { "lower": "length", "wire": "radiusBottomLeft" }, "borderStartStartRadius": { "lower": "length", "wire": "radiusStartStart" }, "borderStartEndRadius": { "lower": "length", "wire": "radiusStartEnd" }, "borderEndStartRadius": { "lower": "length", "wire": "radiusEndStart" }, "borderEndEndRadius": { "lower": "length", "wire": "radiusEndEnd" }, "borderWidth": { "lower": "length", "wire": ["borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth"] }, "borderTopWidth": { "lower": "length", "wire": "borderTopWidth" }, "borderRightWidth": { "lower": "length", "wire": "borderRightWidth" }, "borderBottomWidth": { "lower": "length", "wire": "borderBottomWidth" }, "borderLeftWidth": { "lower": "length", "wire": "borderLeftWidth" }, "borderInlineStartWidth": { "lower": "length", "wire": "borderInlineStartWidth" }, "borderInlineEndWidth": { "lower": "length", "wire": "borderInlineEndWidth" }, "borderStyle": { "lower": "option", "wire": "borderStyle" }, "borderColor": { "lower": "color", "wire": "borderColor", "paint": true }, "boxShadow": { "lower": "shadow", "wire": "boxShadow", "paint": true }, "ring": { "lower": "ring", "wire": "ring", "paint": true }, "backdropFilter": { "lower": "backdrop", "wire": ["backdropBlur", "backdropSaturation"] }, "translate": { "lower": "transform", "wire": "transform", "paint": true }, "rotate": { "lower": "transform", "wire": "transform", "paint": true }, "scale": { "lower": "transform", "wire": "transform", "paint": true }, "transformOrigin": { "lower": "transform", "wire": "transform", "paint": true }, "animation": { "lower": "animation", "wire": "animation", "internal": true }, "transition": { "lower": "transition", "wire": "transition", "internal": true }, "maskImage": { "lower": "mask", "wire": "maskImage", "internal": true }, "filter": { "lower": "filter", "wire": "filterBlur" }, "padding": { "lower": "length", "wire": ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"] }, "paddingTop": { "lower": "length", "wire": "paddingTop" }, "paddingRight": { "lower": "length", "wire": "paddingRight" }, "paddingBottom": { "lower": "length", "wire": "paddingBottom" }, "paddingLeft": { "lower": "length", "wire": "paddingLeft" }, "paddingInlineStart": { "lower": "length", "wire": "paddingInlineStart" }, "paddingInlineEnd": { "lower": "length", "wire": "paddingInlineEnd" }, "display": { "lower": "option", "wire": "display" }, "touchTarget": { "lower": "option", "wire": "touchTarget" }, "flexDirection": { "lower": "option", "wire": "flexDirection" }, "alignItems": { "lower": "alignment", "wire": "align" }, "justifyContent": { "lower": "justification", "wire": "justify" }, "alignContent": { "lower": "align-content", "wire": "alignContent" }, "flexWrap": { "lower": "option", "wire": "flexWrap" }, "gap": { "lower": "length", "wire": "gap" }, "rowGap": { "lower": "length", "wire": "rowGap" }, "columnGap": { "lower": "length", "wire": "columnGap" }, "gridTemplateColumns": { "lower": "grid-template", "wire": "gridTemplateColumns" }, "gridTemplateRows": { "lower": "grid-template", "wire": "gridTemplateRows" }, "gridAutoColumns": { "lower": "grid-auto", "wire": "gridAutoColumns" }, "gridAutoRows": { "lower": "grid-auto", "wire": "gridAutoRows" }, "gridAutoFlow": { "lower": "grid-flow", "wire": "gridAutoFlow" }, "justifyItems": { "lower": "alignment", "wire": "justifyItems" }, "color": { "lower": "color", "wire": "color", "paint": true }, "fontSize": { "lower": "font-size", "wire": "fontSize" }, "fontWeight": { "lower": "font-weight", "wire": "fontWeight" }, "fontFamily": { "lower": "family", "wire": "fontFamily" }, "fontStyle": { "lower": "option", "wire": "fontStyle" }, "lineHeight": { "lower": "line-height", "wire": "lineHeight" }, "letterSpacing": { "lower": "letter-spacing", "wire": "letterSpacing" }, "fontVariantNumeric": { "lower": "font-variant-numeric", "wire": "fontVariantNumeric" }, "userSelect": { "lower": "option", "wire": "userSelect" }, "textAlign": { "lower": "option", "wire": "textAlign" }, "textDecorationLine": { "lower": "option", "wire": "textDecorationLine" }, "textDecorationStyle": { "lower": "option", "wire": "textDecorationStyle" }, "textDecorationColor": { "lower": "color", "wire": "textDecorationColor" }, "textTransform": { "lower": "option", "wire": "textTransform" }, "backgroundClip": { "lower": "option", "wire": "backgroundClip" }, "whiteSpace": { "lower": "option", "wire": "whiteSpace" }, "wordBreak": { "lower": "option", "wire": "wordBreak" }, "overflowWrap": { "lower": "option", "wire": "overflowWrap" }, "lineClamp": { "lower": "line-clamp", "wire": "textLines" }, "textOverflow": { "lower": "option", "wire": "textOverflow" }, "overflowX": { "lower": "scroll-axis", "wire": "scrollAxis" }, "overflowY": { "lower": "scroll-axis", "wire": "scrollAxis" }, "overscrollBehavior": { "lower": "option", "wire": "overscroll" }, "scrollSnapStop": { "lower": "option", "wire": "snapStop" }, "scrollSnapType": { "lower": "snap-type", "wire": "scrollSnap" }, "scrollSnapAlign": { "lower": "option", "wire": "snapAlign" }, "placeholderColor": { "lower": "color", "wire": "placeholderColor", "paint": true }, "trackPart": { "lower": "part", "wire": "trackStyle", "paint": true, "internal": true }, "rangePart": { "lower": "part", "wire": "rangeStyle", "paint": true, "internal": true }, "secondaryPart": { "lower": "part", "wire": "secondaryStyle", "paint": true, "internal": true }, "thumbPart": { "lower": "part", "wire": "thumbStyle", "paint": true, "internal": true }, "objectFit": { "lower": "fit", "wire": "imageFit" }, "objectPosition": { "lower": "object-position", "wire": "imagePosition" } };
+  var limits = { "nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256, "transitionMs": 1e4, "evalBudgetMs": 100, "evalBudgetDebugMultiplier": 8, "evalWarmupMultiplier": 2, "evalLimitMultiplier": 4, "evalOverrunFrames": 3, "editorTextBytes": 65536, "inputRequestBytes": 524288, "inputBatchEdits": 64, "clipboardItems": 128, "wireValues": 1e5, "textBytes": 65536, "identifierBytes": 256, "listRows": 1e5, "gridTracks": 64, "vectorSourceBytes": 32768, "vectorPathBytes": 16384, "vectorPathWork": 16384, "vectorWork": 32768, "plotWork": 16384, "shadowMaskBytes": 16777216, "compositeFrames": 6, "leaseFrames": 6, "compositeBytes": 268435456, "outlineGlyphs": 4096, "ghosts": 64, "layoutMotions": 256, "dataAttributeBytes": 65536, "blurLayers": 8, "topLayer": 16, "dragSnapPoints": 8, "webMessageBytes": 65536, "webMessageQueue": 64 };
+  var admission = { "tags": { "column": { "children": "any", "content": true }, "reserved-1": { "children": "none" }, "text": { "children": "runs", "content": true }, "button": { "children": "content" }, "reserved-4": { "children": "none" }, "scroll": { "children": "any" }, "list": { "children": "rows", "requires": ["listId", "listCount", "listLeading", "listTrailing"] }, "image": { "children": "none", "content": true, "requires": ["imageSrc"] }, "input": { "children": "none" }, "textarea": { "children": "none" }, "checkbox": { "children": "content" }, "switch": { "children": "content" }, "radio": { "children": "options" }, "radio-option": { "children": "text", "parent": "radio", "keyed": true, "requires": ["checked"] }, "search": { "children": "none" }, "slider": { "children": "none" }, "reserved-16": { "children": "none" }, "reserved-17": { "children": "none" }, "plot": { "children": "none" }, "vector": { "children": "none", "content": true }, "page": { "children": "any", "root": true }, "span": { "children": "text", "content": true, "parent": "text" }, "link": { "children": "text", "parent": "text" }, "select": { "children": "text" }, "video": { "children": "none", "content": true }, "webview": { "children": "none", "content": true, "requires": ["webSrc", "webSession", "accessibilityLabel"] } }, "fields": { "onClick": ["button", "link"], "enabled": ["button", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "select", "link"], "listId": ["list"], "listCount": ["list"], "listLeading": ["list"], "listTrailing": ["list"], "listRowIndex": ["column"], "listAnchor": ["list"], "onReachStart": ["scroll", "list"], "onReachEnd": ["scroll", "list"], "imageSrc": ["image"], "imageFit": ["image", "video"], "inputValue": ["input", "textarea", "search", "select"], "placeholder": ["input", "textarea", "search", "select"], "secure": ["input", "textarea"], "keyboard": ["input", "textarea", "search"], "autoFocus": ["input", "textarea", "search"], "onInput": ["input", "textarea", "search"], "onSubmit": ["input", "textarea", "search"], "checked": ["checkbox", "switch", "radio-option"], "onCheckedChange": ["checkbox", "switch", "radio-option"], "accessibilityLabel": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "page", "text", "select", "video", "webview", "list"], "sliderValue": ["slider"], "sliderMin": ["slider"], "sliderMax": ["slider"], "sliderStep": ["slider"], "onSliderChange": ["slider"], "textLines": ["text"], "plotValues": ["plot"], "plotKind": ["plot"], "plotColors": ["plot"], "plotSmooth": ["plot"], "plotArea": ["plot"], "onPlotSelect": ["plot"], "plotSelectedIndex": ["plot"], "vectorSource": ["vector"], "submitOnEnter": ["textarea"], "plotDomainMin": ["plot"], "plotDomainMax": ["plot"], "plotPieLayout": ["plot"], "plotMarkerEmphasisScale": ["plot"], "focusStyle": ["input", "textarea", "search", "select"], "scrollAxis": ["scroll"], "listItemKeys": ["list"], "flexDirection": ["column", "page", "button"], "imageAlt": ["image"], "imageRetryKey": ["image"], "onImageLoad": ["image"], "onImageError": ["image"], "pressedStyle": ["button", "checkbox", "switch", "radio", "link", "slider"], "overscroll": ["scroll", "list"], "maxLength": ["input", "textarea", "search"], "autoComplete": ["input", "textarea", "search"], "enterKeyHint": ["input", "textarea", "search"], "autoCapitalize": ["input", "textarea", "search"], "spellCheck": ["input", "textarea", "search"], "inputMin": ["input"], "inputMax": ["input"], "inputStep": ["input"], "focusRequest": ["input", "textarea", "search"], "selectOptions": ["select"], "onSelect": ["select"], "rows": ["textarea"], "maxRows": ["textarea"], "imagePlaceholder": ["image"], "imagePosition": ["image", "video"], "anchorTo": ["column"], "scrollSnap": ["scroll", "list"], "topLayer": ["column"], "anchorArea": ["column"], "drag": ["column", "button"], "onDragEvent": ["column", "button"], "dragScrim": ["button"], "elementId": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video", "webview"], "ariaActions": ["column", "button"], "snapStop": ["scroll", "list"], "snapIndex": ["scroll"], "onSnapChange": ["scroll"], "videoSrc": ["video"], "videoPlayer": ["video"], "videoPoster": ["video"], "videoPaused": ["video"], "videoMuted": ["video"], "videoLoop": ["video"], "videoRate": ["video"], "videoVolume": ["video"], "onVideoEvent": ["video"], "videoSources": ["video"], "ariaDescribedBy": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video", "webview"], "focusVisibleStyle": ["button", "checkbox", "switch", "radio", "slider", "link", "select", "input", "textarea", "search"], "sliderSecondary": ["slider"], "interestFor": ["button"], "onPointerEnter": ["column", "button"], "onPointerLeave": ["column", "button"], "hint": ["column"], "onSliderPress": ["slider"], "closeAfter": ["column"], "displayValue": ["input"], "sizeText": ["input"], "onLayout": ["column", "text", "vector", "plot", "scroll"], "onPointer": ["column", "button", "vector"], "pointerAxis": ["column", "button", "vector"], "onFocus": ["input", "textarea", "search"], "onBlur": ["input", "textarea", "search"], "readOnly": ["input", "textarea", "search"], "keyMap": ["input", "textarea", "search"], "onKeyDown": ["input", "textarea", "search"], "ariaActiveDescendant": ["input", "textarea", "search"], "mixed": ["checkbox", "button", "column"], "onContextMenu": ["column", "button", "link", "text"], "onPage": ["column"], "sliderOther": ["slider"], "sliderThumb": ["slider"], "webSrc": ["webview"], "webSession": ["webview"], "onWebEvent": ["webview"], "webHandlesDrags": ["webview"], "onScrollEdge": ["scroll", "list"], "ariaControls": ["input", "button"], "ariaAutocomplete": ["input", "button"] } };
+  var options = { "snap-stop": ["normal", "always"], "font-family": ["sans", "mono", "serif"], "font-style": ["normal", "italic"], "flex-wrap": ["nowrap", "wrap", "wrap-reverse"], "flex-direction": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "scroll-axis": ["horizontal", "vertical"], "word-break": ["normal", "break-all", "keep-all"], "overflow-wrap": ["normal", "break-word", "anywhere"], "text-decoration-line": ["none", "line-through", "underline"], "text-alignment": ["start", "end", "left", "center", "right", "justify"], "alignment": ["start", "center", "end", "stretch", "baseline"], "justification": ["start", "center", "end", "between", "around", "evenly"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "text-transform": ["none", "uppercase", "lowercase", "capitalize"], "background-clip": ["border-box", "text"], "white-space": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "text-overflow": ["clip", "ellipsis"], "sizing-keyword": ["fit-content", "max-content", "min-content"], "border-style": ["solid", "dashed", "dotted"], "slider-thumb": ["lower", "upper"], "overscroll": ["auto", "contain", "none"], "scroll-snap": ["none", "x", "y"], "snap-align": ["none", "start", "center", "end"], "grid-auto-flow": ["row", "column", "row-dense", "column-dense"], "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip", "tablist", "tab", "tabpanel", "radiogroup", "radio", "toolbar", "tree", "treeitem", "row", "menuitemcheckbox", "menuitemradio", "img", "combobox", "spinbutton"], "anchor-area": ["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top", "inline-end span-block-end", "inline-end span-block-start", "inline-end", "inline-start span-block-end", "inline-start span-block-start", "inline-start"], "live-region": ["off", "polite", "assertive"], "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time"], "auto-complete-mode": ["none", "list"], "auto-complete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enter-key-hint": ["enter", "done", "go", "next", "previous", "search", "send"], "auto-capitalize": ["none", "sentences", "words", "characters"], "transition-property": ["opacity", "transform", "bg", "fg", "border", "shadow", "layout", "size"], "user-select": ["none", "text", "all"], "touch-target": ["auto", "none"], "pointer-axis": ["x", "y", "both"] };
+  var commonProps = ["style", "className", "key", "data-testid", "dir", "children", "id", "role", "headingLevel", "aria-valuenow", "aria-valuemin", "aria-valuemax", "aria-valuetext", "aria-activedescendant", "aria-controls", "aria-autocomplete", "aria-hidden", "aria-live", "aria-pressed", "aria-selected", "aria-expanded", "aria-busy", "aria-invalid", "aria-required", "aria-checked", "aria-level", "aria-describedby"];
+  var roles = ["canvas", "surface", "surface-raised", "surface-sunken", "line", "text", "text-muted", "text-faint", "accent", "on-accent", "accent-soft", "on-accent-soft", "danger", "on-danger", "danger-soft", "success", "on-success", "success-soft", "warning", "on-warning", "warning-soft", "focus", "scrim", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5", "line-strong", "selection", "shadow", "media", "on-media", "surface-overlay", "knob", "success-mark", "warning-mark", "danger-mark", "media-canvas", "info", "on-info", "info-soft", "info-mark", "hue-1", "hue-2", "hue-3", "hue-4", "hue-5", "hue-6", "hue-7", "hue-8", "hue-1-soft", "hue-2-soft", "hue-3-soft", "hue-4-soft", "hue-5-soft", "hue-6-soft", "hue-7-soft", "hue-8-soft", "chart-6", "chart-7", "chart-8"];
+
+  // src/runtime/fonts.js
+  var declared = [];
+  var pageFamily;
+  function configureFonts(faces, family2) {
+    if (!Array.isArray(faces) || faces.length > 32) throw Error("UI_FONT: invalid font list");
+    if (family2 !== void 0 && typeof family2 !== "string") throw Error("UI_FONT: invalid page family");
+    declared = faces.map(({ family: family3, src, weight, style: style2 }) => ({ family: String(family3), src: String(src), ...weight ? { weight: String(weight) } : {}, ...style2 ? { style: String(style2) } : {} }));
+    pageFamily = family2;
+  }
+  var declaredFamily = (name) => declared.some((face) => face.family === name);
+  var takeFonts = () => JSON.stringify(declared);
+
+  // src/generated/wire.js
+  var ignorableFields = ["stateInvalid", "stateRequired", "ariaDescribedBy", "ariaActiveDescendant"];
+  var tags = { "column": 0, "reserved-1": 1, "text": 2, "button": 3, "reserved-4": 4, "scroll": 5, "list": 6, "image": 7, "input": 8, "textarea": 9, "checkbox": 10, "switch": 11, "radio": 12, "radio-option": 13, "search": 14, "slider": 15, "reserved-16": 16, "reserved-17": 17, "plot": 18, "vector": 19, "page": 20, "span": 21, "link": 22, "select": 23, "video": 24, "webview": 25 };
+  var field = { "width": 0, "height": 1, "gap": 2, "padding": 3, "fontSize": 4, "color": 5, "background": 6, "grow": 7, "onClick": 8, "enabled": 9, "radius": 10, "listId": 11, "listCount": 12, "listLeading": 13, "listTrailing": 14, "listRowIndex": 15, "listAnchor": 16, "onReachStart": 17, "onReachEnd": 18, "imageSrc": 19, "imageFit": 20, "inputValue": 21, "placeholder": 22, "secure": 23, "keyboard": 24, "autoFocus": 25, "onInput": 26, "onSubmit": 27, "minWidth": 28, "minHeight": 29, "maxWidth": 30, "maxHeight": 31, "shrink": 32, "align": 33, "justify": 34, "alignSelf": 35, "fontWeight": 36, "lineHeight": 37, "fontFamily": 38, "checked": 39, "onCheckedChange": 40, "accessibilityLabel": 41, "sliderValue": 42, "sliderMin": 43, "sliderMax": 44, "sliderStep": 45, "onSliderChange": 46, "gridColumns": 47, "offsetX": 48, "offsetY": 49, "textLines": 50, "plotValues": 51, "plotKind": 52, "plotColors": 53, "plotSmooth": 54, "plotArea": 55, "onPlotSelect": 56, "plotSelectedIndex": 57, "opacity": 58, "paddingTop": 59, "paddingRight": 60, "paddingBottom": 61, "paddingLeft": 62, "wordBreak": 63, "overflowWrap": 64, "borderWidth": 65, "borderColor": 66, "borderTopWidth": 67, "borderRightWidth": 68, "borderBottomWidth": 69, "borderLeftWidth": 70, "textAlign": 71, "backgroundGradient": 72, "boxShadow": 73, "widthPercent": 74, "heightPercent": 75, "minWidthPercent": 76, "minHeightPercent": 77, "maxWidthPercent": 78, "maxHeightPercent": 79, "vectorSource": 80, "textDecorationLine": 81, "heightAuto": 82, "submitOnEnter": 83, "fontStyle": 84, "plotDomainMin": 85, "plotDomainMax": 86, "flexWrap": 87, "plotPieLayout": 88, "letterSpacing": 89, "radiusTopLeft": 90, "radiusTopRight": 91, "radiusBottomRight": 92, "radiusBottomLeft": 93, "plotMarkerEmphasisScale": 94, "backdropBlur": 95, "backdropSaturation": 96, "placeholderColor": 97, "focusStyle": 98, "flexBasis": 99, "scrollAxis": 100, "animation": 101, "listItemKeys": 102, "flexDirection": 103, "display": 104, "imageAlt": 105, "imageRetryKey": 106, "onImageLoad": 107, "onImageError": 108, "marginTop": 109, "marginRight": 110, "marginBottom": 111, "marginLeft": 112, "position": 113, "insetTop": 114, "insetRight": 115, "insetBottom": 116, "insetLeft": 117, "zIndex": 118, "overflow": 119, "rowGap": 120, "columnGap": 121, "textTransform": 122, "whiteSpace": 123, "textOverflow": 124, "pressedStyle": 125, "hoverStyle": 126, "widthKeyword": 127, "heightKeyword": 128, "borderStyle": 129, "transform": 130, "fontVariantNumeric": 131, "overscroll": 132, "aspectRatio": 133, "maxWidthCh": 134, "gridTemplateColumns": 135, "gridTemplateRows": 136, "gridAutoColumns": 137, "gridAutoRows": 138, "gridAutoFlow": 139, "gridColumn": 140, "gridRow": 141, "justifyItems": 142, "justifySelf": 143, "alignContent": 144, "order": 145, "direction": 146, "marginInlineStart": 147, "marginInlineEnd": 148, "paddingInlineStart": 149, "paddingInlineEnd": 150, "insetInlineStart": 151, "insetInlineEnd": 152, "borderInlineStartWidth": 153, "borderInlineEndWidth": 154, "radiusStartStart": 155, "radiusStartEnd": 156, "radiusEndStart": 157, "radiusEndEnd": 158, "role": 159, "headingLevel": 160, "accessibilityHidden": 161, "accessibilityLiveRegion": 162, "maxLength": 163, "autoComplete": 164, "enterKeyHint": 165, "autoCapitalize": 166, "spellCheck": 167, "inputMin": 168, "inputMax": 169, "inputStep": 170, "transition": 171, "userSelect": 172, "focusRequest": 173, "statePressed": 174, "stateSelected": 175, "stateExpanded": 176, "stateBusy": 177, "selectOptions": 178, "onSelect": 179, "rows": 180, "maxRows": 181, "imagePlaceholder": 182, "imagePosition": 183, "childSlot": 184, "startingStyle": 185, "exitStyle": 186, "focusWithinStyle": 187, "dataAttributes": 188, "backgroundClip": 189, "maskImage": 190, "filterBlur": 191, "groupPressedStyle": 192, "anchorTo": 193, "scrollSnap": 194, "snapAlign": 195, "topLayer": 196, "anchorArea": 197, "anchorName": 198, "drag": 199, "onDragEvent": 200, "dragScrim": 201, "elementId": 202, "ariaActions": 203, "snapStop": 204, "snapIndex": 205, "onSnapChange": 206, "videoSrc": 207, "videoPlayer": 208, "videoPoster": 209, "videoPaused": 210, "videoMuted": 211, "videoLoop": 212, "videoRate": 213, "videoVolume": 214, "onVideoEvent": 215, "videoSources": 216, "ariaValueNow": 217, "ariaValueMin": 218, "ariaValueMax": 219, "ariaValueText": 220, "stateInvalid": 221, "stateRequired": 222, "ariaDescribedBy": 223, "stateChecked": 224, "focusVisibleStyle": 225, "trackStyle": 226, "rangeStyle": 227, "secondaryStyle": 228, "thumbStyle": 229, "sliderSecondary": 230, "interestFor": 231, "onPointerEnter": 232, "onPointerLeave": 233, "ring": 234, "hint": 235, "onSliderPress": 236, "closeAfter": 237, "touchTarget": 238, "minWidthCh": 239, "widthCh": 240, "displayValue": 241, "sizeText": 242, "alignSafe": 243, "onLayout": 244, "onPointer": 245, "pointerAxis": 246, "onFocus": 247, "onBlur": 248, "readOnly": 249, "keyMap": 250, "onKeyDown": 251, "ariaActiveDescendant": 252, "mixed": 253, "onContextMenu": 254, "onPage": 255, "textDecorationStyle": 256, "textDecorationColor": 257, "sliderOther": 258, "sliderThumb": 259, "webSrc": 260, "webSession": 261, "onWebEvent": 262, "webHandlesDrags": 263, "onScrollEdge": 264, "ariaControls": 265, "ariaAutocomplete": 266 };
+  var fieldOptions = { "keyboard": ["text", "number", "email", "phone", "search", "date", "time"], "align": ["start", "center", "end", "stretch", "baseline"], "justify": ["start", "center", "end", "between", "around", "evenly"], "alignSelf": ["start", "center", "end", "stretch", "baseline"], "wordBreak": ["normal", "break-all", "keep-all"], "overflowWrap": ["normal", "break-word", "anywhere"], "textAlign": ["start", "end", "left", "center", "right", "justify"], "textDecorationLine": ["none", "line-through", "underline"], "fontStyle": ["normal", "italic"], "flexWrap": ["nowrap", "wrap", "wrap-reverse"], "scrollAxis": ["horizontal", "vertical"], "flexDirection": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "textTransform": ["none", "uppercase", "lowercase", "capitalize"], "whiteSpace": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "textOverflow": ["clip", "ellipsis"], "widthKeyword": ["fit-content", "max-content", "min-content"], "heightKeyword": ["fit-content", "max-content", "min-content"], "borderStyle": ["solid", "dashed", "dotted"], "overscroll": ["auto", "contain", "none"], "gridAutoFlow": ["row", "column", "row-dense", "column-dense"], "justifyItems": ["start", "center", "end", "stretch", "baseline"], "justifySelf": ["start", "center", "end", "stretch", "baseline"], "alignContent": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip", "tablist", "tab", "tabpanel", "radiogroup", "radio", "toolbar", "tree", "treeitem", "row", "menuitemcheckbox", "menuitemradio", "img", "combobox", "spinbutton"], "accessibilityLiveRegion": ["off", "polite", "assertive"], "autoComplete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enterKeyHint": ["enter", "done", "go", "next", "previous", "search", "send"], "autoCapitalize": ["none", "sentences", "words", "characters"], "userSelect": ["none", "text", "all"], "backgroundClip": ["border-box", "text"], "scrollSnap": ["none", "x", "y"], "snapAlign": ["none", "start", "center", "end"], "anchorArea": ["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top", "inline-end span-block-end", "inline-end span-block-start", "inline-end", "inline-start span-block-end", "inline-start span-block-start", "inline-start"], "snapStop": ["normal", "always"], "touchTarget": ["auto", "none"], "pointerAxis": ["x", "y", "both"], "textDecorationStyle": ["solid", "dashed", "dotted"], "sliderThumb": ["lower", "upper"], "ariaAutocomplete": ["none", "list"] };
+
+  // src/style/color.js
+  var names = new Set(roles);
+  function isRole(value) {
+    const match = typeof value === "string" && /^([a-z0-9-]+)(?:\/(\d{1,3}))?$/.exec(value);
+    return Boolean(match) && names.has(match[1]) && (match[2] === void 0 || Number(match[2]) <= 100);
+  }
+  function colorProblem(value, where = "a page colour") {
+    if (value === "currentColor" || value === "transparent" || /^#[0-9a-fA-F]{6}00$/.test(value) || isRole(value)) return void 0;
+    return `UI_COLOR: ${JSON.stringify(value)} is not a role; ${where} uses a role such as 'surface', 'text-muted', 'line', 'accent' or 'accent/12'`;
+  }
+  function wireColorProblem(value, where) {
+    return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value) ? void 0 : colorProblem(value, where);
+  }
+  function seriesProblem(value) {
+    return isRole(value) ? void 0 : `UI_COLOR: ${JSON.stringify(value)} is not a role; plot series use 'chart-1' to 'chart-8'`;
+  }
+  var defaultSeries = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"];
+
+  // src/style/shadow.js
+  function normalizeShadows(value) {
+    if (value === "none") return value;
+    const invalid2 = () => {
+      throw Error("UI_SHADOW: invalid box shadow");
+    };
+    if (!Array.isArray(value) || value.length > 8) invalid2();
+    return value.map((shadow) => {
+      if (!shadow || typeof shadow !== "object" || Array.isArray(shadow) || Object.keys(shadow).some((key) => !["offsetX", "offsetY", "blur", "spread", "color"].includes(key))) invalid2();
+      const result = {};
+      for (const key of ["offsetX", "offsetY", "blur", "spread"]) {
+        const number = shadow[key] === void 0 ? 0 : shadow[key];
+        if (typeof number !== "number" || !Number.isFinite(number) || (key === "blur" ? number < 0 || number > 256 : Math.abs(number) > 1024)) invalid2();
+        result[key] = number;
+      }
+      result.color = shadow.color === void 0 ? "currentColor" : shadow.color;
+      if (result.color !== "currentColor" && (typeof result.color !== "string" || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(result.color) || isRole(result.color)))) invalid2();
+      return result;
+    });
+  }
+  var ringColor = (value, invalid2) => {
+    const color = value === void 0 ? "currentColor" : value;
+    if (color !== "currentColor" && (typeof color !== "string" || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(color) || isRole(color)))) invalid2();
+    return color;
+  };
+  function normalizeRing(value) {
+    if (value === "none") return value;
+    const invalid2 = () => {
+      throw Error("UI_SHADOW: invalid ring");
+    };
+    const plain3 = (object, keys2) => object && typeof object === "object" && !Array.isArray(object) && Object.keys(object).every((key) => keys2.includes(key));
+    const size = (number) => typeof number === "number" && Number.isFinite(number) && number >= 0 && number <= 1024;
+    if (!plain3(value, ["outer", "inner"])) invalid2();
+    const result = {};
+    if (value.outer !== void 0) {
+      const { width, offset = 0, color, offsetColor } = value.outer;
+      if (!plain3(value.outer, ["width", "offset", "color", "offsetColor"]) || !size(width) || !size(offset)) invalid2();
+      result.outer = { width, offset, color: ringColor(color, invalid2) };
+      if (offsetColor !== void 0) result.outer.offsetColor = ringColor(offsetColor, invalid2);
+    }
+    if (value.inner !== void 0) {
+      if (!plain3(value.inner, ["width", "color"]) || !size(value.inner.width)) invalid2();
+      result.inner = { width: value.inner.width, color: ringColor(value.inner.color, invalid2) };
+    }
+    return result;
+  }
+
+  // src/style/hints.js
+  var container = /* @__PURE__ */ new Set([
+    "alignItems",
+    "alignContent",
+    "justifyContent",
+    "justifyItems",
+    "flexDirection",
+    "flexWrap",
+    "gap",
+    "rowGap",
+    "columnGap",
+    "gridTemplateColumns",
+    "gridTemplateRows",
+    "gridAutoColumns",
+    "gridAutoRows",
+    "gridAutoFlow"
+  ]);
+  var layouts = /* @__PURE__ */ new Set(["view", "scroll", "list", "button", "checkbox", "page"]);
+  var boxes = {
+    column: "<view>",
+    row: '<view className="flex-row">',
+    grid: '<view className="grid">',
+    stack: '<view className="grid *:col-start-1 *:row-start-1">',
+    spacer: "<view>",
+    iframe: "<webview>",
+    details: "<button aria-expanded> and a body shown from useLocal state",
+    summary: "<button aria-expanded> and a body shown from useLocal state",
+    progress: '<view role="progressbar" aria-valuenow>'
+  };
+  function tagHint(tag) {
+    return Object.hasOwn(boxes, tag) ? `; use ${boxes[tag]}` : "";
+  }
+  var gridOnly = {
+    flexWrap: "; grid items wrap into rows by themselves (use grid-cols-[repeat(auto-fit,minmax(\u2026,1fr))])",
+    flexDirection: "; use grid-flow-col to fill columns first"
+  };
+  var gridRefuses = (props) => props.find((prop) => Object.hasOwn(gridOnly, prop));
+  function gridProblem(name, prop) {
+    return `UI_CLASS_ELEMENT: ${name} does not apply to <view className="grid">${gridOnly[prop]}`;
+  }
+  function classElementProblem(name, prop, tag) {
+    let hint = "";
+    if (prop === "justifyItems" && layouts.has(tag)) hint = "; on a flex element center with items-center justify-center";
+    else if (container.has(prop) && !layouts.has(tag)) hint = "; layout classes go on the element that holds it";
+    else hint = appliesTo(prop);
+    return `UI_CLASS_ELEMENT: ${name} does not apply to <${tag}>${hint}`;
+  }
+  function appliesTo(prop) {
+    const takers = Object.keys(elements).filter((name) => elements[name].style.includes(prop));
+    return takers.length && takers.length <= 3 ? `; it applies to ${takers.map((name) => `<${elements[name].component ?? name}>`).join(", ")}` : "";
+  }
+
+  // src/style/gradient.js
+  var hex = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
+  var directions = ["top", "right", "bottom", "left", "top-right", "bottom-right", "bottom-left", "top-left"];
+  var geometry = { linear: ["direction", "angle"], radial: ["shape", "size", "radii", "at"], conic: ["from", "at"] };
+  var sizes = ["closest-side", "closest-corner", "farthest-side", "farthest-corner"];
+  var angle = (value) => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 36e3;
+  function normalizeGradient(value) {
+    if (value === "none") return value;
+    const invalid2 = () => {
+      throw Error("UI_GRADIENT: invalid gradient");
+    };
+    if (!value || typeof value !== "object" || Array.isArray(value)) invalid2();
+    const kind = value.kind ?? "linear";
+    const keys2 = geometry[kind] ?? invalid2();
+    const pair = (v, low2, high2) => Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === "number" && Number.isFinite(n) && n > low2 && n <= high2);
+    if (Object.keys(value).some((key) => !["kind", "colorSpace", "stops", "layerSize", "layerPosition", ...keys2].includes(key)) || value.layerSize !== void 0 && !pair(value.layerSize, 0, 16) || value.layerPosition !== void 0 && !pair(value.layerPosition, -16.0001, 16) || value.direction !== void 0 && !directions.includes(value.direction) || value.angle !== void 0 && !angle(value.angle) || value.direction !== void 0 && value.angle !== void 0 || value.from !== void 0 && !angle(value.from) || value.shape !== void 0 && !["circle", "ellipse"].includes(value.shape) || value.size !== void 0 && !sizes.includes(value.size) || value.radii !== void 0 && (value.size !== void 0 || value.shape !== void 0 || !Array.isArray(value.radii) || value.radii.length !== 2 || value.radii.some((v) => typeof v !== "number" || !Number.isFinite(v) || v <= 0 || v > 16)) || value.at !== void 0 && (!Array.isArray(value.at) || value.at.length !== 2 || value.at.some((v) => typeof v !== "number" || !Number.isFinite(v) || Math.abs(v) > 16)) || value.colorSpace !== void 0 && !["srgb", "oklab"].includes(value.colorSpace) || !Array.isArray(value.stops) || value.stops.length < 2 || value.stops.length > 16) invalid2();
+    const [low, high] = kind === "linear" ? [-16, 16] : kind === "radial" ? [0, 16] : [0, 1];
+    let previous = -Infinity;
+    const stops = value.stops.map((stop) => {
+      if (!stop || typeof stop !== "object" || Array.isArray(stop) || Object.keys(stop).some((key) => key !== "offset" && key !== "color") || typeof stop.offset !== "number" || !Number.isFinite(stop.offset) || stop.offset < low || stop.offset > high || stop.offset < previous || typeof stop.color !== "string" || !(hex.test(stop.color) || isRole(stop.color))) invalid2();
+      previous = stop.offset;
+      return { offset: stop.offset, color: stop.color };
+    });
+    const result = kind === "linear" ? {} : { kind };
+    for (const key of [...keys2, "layerSize", "layerPosition"]) if (value[key] !== void 0) result[key] = Array.isArray(value[key]) ? [...value[key]] : value[key];
+    return { ...result, colorSpace: value.colorSpace ?? "srgb", stops };
+  }
+
   // src/runtime/data.js
   function immutable(value, depth = 0, omitUndefined = false, budget) {
     if (depth > 64) throw Error("UI_LOCAL: value too deep");
@@ -336,175 +544,6 @@
     return typeof value === "string" && utf8Bytes(value, 65536) <= 65536;
   }
   var has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
-
-  // src/runtime/fonts.js
-  var declared = [];
-  var pageFamily;
-  function configureFonts(faces, family2) {
-    if (!Array.isArray(faces) || faces.length > 32) throw Error("UI_FONT: invalid font list");
-    if (family2 !== void 0 && typeof family2 !== "string") throw Error("UI_FONT: invalid page family");
-    declared = faces.map(({ family: family3, src, weight, style: style2 }) => ({ family: String(family3), src: String(src), ...weight ? { weight: String(weight) } : {}, ...style2 ? { style: String(style2) } : {} }));
-    pageFamily = family2;
-  }
-  var declaredFamily = (name) => declared.some((face) => face.family === name);
-  var takeFonts = () => JSON.stringify(declared);
-
-  // src/generated/contract.js
-  var elements = { "view": { "wire": "column", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "onPage": false, "onContextMenu": false, "anchor": false, "onPointer": false, "pointerAxis": false, "onLayout": false, "box": false, "aria-label": false, "popover": false, "open": false, "onToggle": false, "drag": false, "dragSnapPoints": false, "bind": false, "onDragStart": false, "onDragEnd": false, "aria-actions": false, "onPointerEnter": false, "onPointerLeave": false, "closeAfter": false, "onCloseRequest": false } }, "page": { "wire": "page", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "aria-label": false } }, "text": { "wire": "text", "children": "runs", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "backgroundClip", "lineClamp", "textOverflow"], "props": { "onContextMenu": false, "onLayout": false, "box": false, "aria-label": false } }, "button": { "wire": "button", "children": "content", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "onContextMenu": false, "onPointer": false, "pointerAxis": false, "onClick": false, "disabled": false, "aria-label": false, "popoverTarget": false, "interestFor": false, "keepOpen": false, "drag": false, "dragSnapPoints": false, "bind": false, "onDragStart": false, "onDragEnd": false, "aria-actions": false, "onPointerEnter": false, "onPointerLeave": false } }, "scroll": { "wire": "scroll", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "overflowX", "overflowY", "overscrollBehavior", "scrollSnapStop", "scrollSnapType"], "props": { "onLayout": false, "box": false, "onReachStart": false, "onReachEnd": false, "onScrollEdge": false, "bind": false } }, "list": { "wire": "list", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "overscrollBehavior", "scrollSnapStop", "scrollSnapType"], "props": { "count": true, "row": true, "height": false, "anchor": false, "itemKeys": false, "onReachStart": false, "onReachEnd": false, "onScrollEdge": false, "aria-label": false }, "component": "List" }, "image": { "wire": "image", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "objectFit", "objectPosition"], "props": { "src": true, "placeholder": false, "alt": false, "retryKey": false, "onLoad": false, "onError": false } }, "input": { "wire": "input", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "placeholderColor", "textOverflow"], "props": { "onKeyDown": false, "readOnly": false, "onFocus": false, "onBlur": false, "aria-label": false, "placeholder": false, "type": false, "inputMode": false, "autoFocus": false, "disabled": false, "onSubmit": false, "maxLength": false, "autoComplete": false, "enterKeyHint": false, "autoCapitalize": false, "spellCheck": false, "min": false, "max": false, "step": false }, "binding": { "type": "string", "event": "onInput" } }, "textarea": { "wire": "textarea", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "placeholderColor"], "props": { "onKeyDown": false, "readOnly": false, "onFocus": false, "onBlur": false, "rows": false, "maxRows": false, "aria-label": false, "placeholder": false, "inputMode": false, "autoFocus": false, "disabled": false, "onSubmit": false, "maxLength": false, "autoComplete": false, "enterKeyHint": false, "autoCapitalize": false, "spellCheck": false }, "binding": { "type": "string", "event": "onInput" } }, "checkbox": { "wire": "checkbox", "children": "content", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": { "indeterminate": false, "aria-label": false, "disabled": false }, "binding": { "type": "boolean", "event": "onChange" } }, "switch": { "wire": "switch", "children": "content", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "trackPart", "rangePart", "secondaryPart", "thumbPart"], "props": { "aria-label": false, "disabled": false }, "binding": { "type": "boolean", "event": "onChange" } }, "radio": { "wire": "radio", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": { "options": true, "aria-label": false, "disabled": false }, "binding": { "type": "string", "event": "onChange" } }, "slider": { "wire": "slider", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "trackPart", "rangePart", "secondaryPart", "thumbPart"], "props": { "min": false, "max": false, "step": false, "secondaryValue": false, "aria-label": true, "aria-valuetext": false, "disabled": false, "onPressChange": false }, "binding": { "type": "number", "event": "onChange", "end": "onChangeEnd", "pair": { "values": "values", "labels": "thumbLabels" } } }, "dialog": { "wire": "column", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "open": false, "onClose": false, "closedby": false, "aria-label": true, "drag": false, "dragSnapPoints": false, "bind": false, "onDragStart": false, "onDragEnd": false } }, "plot": { "wire": "plot", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign"], "props": { "onLayout": false, "box": false, "kind": true, "values": true, "colors": true, "aria-label": true, "smooth": false, "area": false, "selectedIndex": false, "domainMin": false, "domainMax": false, "onSelect": false, "pieLayout": false, "markerEmphasisScale": false } }, "vector": { "wire": "vector", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "objectFit"], "props": { "onPointer": false, "pointerAxis": false, "onLayout": false, "box": false, "paths": true, "gradients": false, "viewBox": false } }, "span": { "wire": "span", "children": "runs", "style": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "letterSpacing", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "fontVariantNumeric", "backgroundColor"], "props": {} }, "link": { "wire": "link", "children": "runs", "style": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "letterSpacing", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "fontVariantNumeric", "backgroundColor"], "props": { "onContextMenu": false, "onClick": false, "aria-label": false, "disabled": false } }, "select": { "wire": "select", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textDecorationStyle", "textDecorationColor", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "backgroundClip", "lineClamp", "textOverflow", "placeholderColor"], "props": { "options": true, "placeholder": false, "aria-label": false, "disabled": false }, "binding": { "type": "string", "event": "onChange" } }, "video": { "wire": "video", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign", "objectFit", "objectPosition"], "props": { "src": false, "sources": false, "player": false, "poster": false, "autoPlay": false, "paused": false, "muted": false, "loop": false, "playbackRate": false, "volume": false, "aria-label": false, "onLoadedMetadata": false, "onPlay": false, "onPlaying": false, "onPause": false, "onWaiting": false, "onSeeked": false, "onTimeUpdate": false, "onEnded": false, "onError": false, "onRateChange": false, "onVolumeChange": false, "onQualityChange": false, "onFullscreenChange": false } }, "webview": { "wire": "webview", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "positionArea", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "ring", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "touchTarget", "scrollSnapAlign"], "props": { "src": false, "web": false, "aria-label": true, "handlesDrags": false, "onFullscreenChange": false, "onLoad": false, "onMessage": false, "onBlocked": false, "onError": false } } };
-  var style = { "width": { "lower": "dimension", "wire": "width" }, "height": { "lower": "dimension", "wire": "height" }, "minWidth": { "lower": "dimension", "wire": "minWidth" }, "minHeight": { "lower": "dimension", "wire": "minHeight" }, "maxWidth": { "lower": "dimension", "wire": "maxWidth" }, "aspectRatio": { "lower": "aspect-ratio", "wire": "aspectRatio" }, "maxHeight": { "lower": "dimension", "wire": "maxHeight" }, "margin": { "lower": "margin", "wire": ["marginTop", "marginRight", "marginBottom", "marginLeft"] }, "marginTop": { "lower": "margin", "wire": "marginTop" }, "marginRight": { "lower": "margin", "wire": "marginRight" }, "marginBottom": { "lower": "margin", "wire": "marginBottom" }, "marginLeft": { "lower": "margin", "wire": "marginLeft" }, "marginInlineStart": { "lower": "margin", "wire": "marginInlineStart" }, "marginInlineEnd": { "lower": "margin", "wire": "marginInlineEnd" }, "position": { "lower": "option", "wire": "position" }, "inset": { "lower": "inset", "wire": ["insetTop", "insetRight", "insetBottom", "insetLeft"] }, "top": { "lower": "inset", "wire": "insetTop" }, "right": { "lower": "inset", "wire": "insetRight" }, "bottom": { "lower": "inset", "wire": "insetBottom" }, "left": { "lower": "inset", "wire": "insetLeft" }, "insetInlineStart": { "lower": "inset", "wire": "insetInlineStart" }, "insetInlineEnd": { "lower": "inset", "wire": "insetInlineEnd" }, "zIndex": { "lower": "z-index", "wire": "zIndex" }, "positionArea": { "lower": "option", "wire": "anchorArea" }, "flexGrow": { "lower": "number", "wire": "grow" }, "flexShrink": { "lower": "number", "wire": "shrink" }, "flexBasis": { "lower": "basis", "wire": "flexBasis" }, "alignSelf": { "lower": "alignment", "wire": "alignSelf" }, "gridColumn": { "lower": "grid-line", "wire": "gridColumn" }, "gridColumnStart": { "lower": "grid-line", "wire": "gridColumn" }, "gridColumnEnd": { "lower": "grid-line", "wire": "gridColumn" }, "gridRow": { "lower": "grid-line", "wire": "gridRow" }, "gridRowStart": { "lower": "grid-line", "wire": "gridRow" }, "gridRowEnd": { "lower": "grid-line", "wire": "gridRow" }, "justifySelf": { "lower": "alignment", "wire": "justifySelf" }, "order": { "lower": "order", "wire": "order" }, "opacity": { "lower": "opacity", "wire": "opacity", "paint": true }, "overflow": { "lower": "option", "wire": "overflow" }, "backgroundColor": { "lower": "color", "wire": "background", "paint": true }, "backgroundImage": { "lower": "gradient", "wire": "backgroundGradient", "paint": true }, "borderRadius": { "lower": "length", "wire": ["radius", "radiusTopLeft", "radiusTopRight", "radiusBottomRight", "radiusBottomLeft"] }, "borderTopLeftRadius": { "lower": "length", "wire": "radiusTopLeft" }, "borderTopRightRadius": { "lower": "length", "wire": "radiusTopRight" }, "borderBottomRightRadius": { "lower": "length", "wire": "radiusBottomRight" }, "borderBottomLeftRadius": { "lower": "length", "wire": "radiusBottomLeft" }, "borderStartStartRadius": { "lower": "length", "wire": "radiusStartStart" }, "borderStartEndRadius": { "lower": "length", "wire": "radiusStartEnd" }, "borderEndStartRadius": { "lower": "length", "wire": "radiusEndStart" }, "borderEndEndRadius": { "lower": "length", "wire": "radiusEndEnd" }, "borderWidth": { "lower": "length", "wire": ["borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth"] }, "borderTopWidth": { "lower": "length", "wire": "borderTopWidth" }, "borderRightWidth": { "lower": "length", "wire": "borderRightWidth" }, "borderBottomWidth": { "lower": "length", "wire": "borderBottomWidth" }, "borderLeftWidth": { "lower": "length", "wire": "borderLeftWidth" }, "borderInlineStartWidth": { "lower": "length", "wire": "borderInlineStartWidth" }, "borderInlineEndWidth": { "lower": "length", "wire": "borderInlineEndWidth" }, "borderStyle": { "lower": "option", "wire": "borderStyle" }, "borderColor": { "lower": "color", "wire": "borderColor", "paint": true }, "boxShadow": { "lower": "shadow", "wire": "boxShadow", "paint": true }, "ring": { "lower": "ring", "wire": "ring", "paint": true }, "backdropFilter": { "lower": "backdrop", "wire": ["backdropBlur", "backdropSaturation"] }, "translate": { "lower": "transform", "wire": "transform", "paint": true }, "rotate": { "lower": "transform", "wire": "transform", "paint": true }, "scale": { "lower": "transform", "wire": "transform", "paint": true }, "transformOrigin": { "lower": "transform", "wire": "transform", "paint": true }, "animation": { "lower": "animation", "wire": "animation", "internal": true }, "transition": { "lower": "transition", "wire": "transition", "internal": true }, "maskImage": { "lower": "mask", "wire": "maskImage", "internal": true }, "filter": { "lower": "filter", "wire": "filterBlur" }, "padding": { "lower": "length", "wire": ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"] }, "paddingTop": { "lower": "length", "wire": "paddingTop" }, "paddingRight": { "lower": "length", "wire": "paddingRight" }, "paddingBottom": { "lower": "length", "wire": "paddingBottom" }, "paddingLeft": { "lower": "length", "wire": "paddingLeft" }, "paddingInlineStart": { "lower": "length", "wire": "paddingInlineStart" }, "paddingInlineEnd": { "lower": "length", "wire": "paddingInlineEnd" }, "display": { "lower": "option", "wire": "display" }, "touchTarget": { "lower": "option", "wire": "touchTarget" }, "flexDirection": { "lower": "option", "wire": "flexDirection" }, "alignItems": { "lower": "alignment", "wire": "align" }, "justifyContent": { "lower": "justification", "wire": "justify" }, "alignContent": { "lower": "align-content", "wire": "alignContent" }, "flexWrap": { "lower": "option", "wire": "flexWrap" }, "gap": { "lower": "length", "wire": "gap" }, "rowGap": { "lower": "length", "wire": "rowGap" }, "columnGap": { "lower": "length", "wire": "columnGap" }, "gridTemplateColumns": { "lower": "grid-template", "wire": "gridTemplateColumns" }, "gridTemplateRows": { "lower": "grid-template", "wire": "gridTemplateRows" }, "gridAutoColumns": { "lower": "grid-auto", "wire": "gridAutoColumns" }, "gridAutoRows": { "lower": "grid-auto", "wire": "gridAutoRows" }, "gridAutoFlow": { "lower": "grid-flow", "wire": "gridAutoFlow" }, "justifyItems": { "lower": "alignment", "wire": "justifyItems" }, "color": { "lower": "color", "wire": "color", "paint": true }, "fontSize": { "lower": "font-size", "wire": "fontSize" }, "fontWeight": { "lower": "font-weight", "wire": "fontWeight" }, "fontFamily": { "lower": "family", "wire": "fontFamily" }, "fontStyle": { "lower": "option", "wire": "fontStyle" }, "lineHeight": { "lower": "line-height", "wire": "lineHeight" }, "letterSpacing": { "lower": "letter-spacing", "wire": "letterSpacing" }, "fontVariantNumeric": { "lower": "font-variant-numeric", "wire": "fontVariantNumeric" }, "userSelect": { "lower": "option", "wire": "userSelect" }, "textAlign": { "lower": "option", "wire": "textAlign" }, "textDecorationLine": { "lower": "option", "wire": "textDecorationLine" }, "textDecorationStyle": { "lower": "option", "wire": "textDecorationStyle" }, "textDecorationColor": { "lower": "color", "wire": "textDecorationColor" }, "textTransform": { "lower": "option", "wire": "textTransform" }, "backgroundClip": { "lower": "option", "wire": "backgroundClip" }, "whiteSpace": { "lower": "option", "wire": "whiteSpace" }, "wordBreak": { "lower": "option", "wire": "wordBreak" }, "overflowWrap": { "lower": "option", "wire": "overflowWrap" }, "lineClamp": { "lower": "line-clamp", "wire": "textLines" }, "textOverflow": { "lower": "option", "wire": "textOverflow" }, "overflowX": { "lower": "scroll-axis", "wire": "scrollAxis" }, "overflowY": { "lower": "scroll-axis", "wire": "scrollAxis" }, "overscrollBehavior": { "lower": "option", "wire": "overscroll" }, "scrollSnapStop": { "lower": "option", "wire": "snapStop" }, "scrollSnapType": { "lower": "snap-type", "wire": "scrollSnap" }, "scrollSnapAlign": { "lower": "option", "wire": "snapAlign" }, "placeholderColor": { "lower": "color", "wire": "placeholderColor", "paint": true }, "trackPart": { "lower": "part", "wire": "trackStyle", "paint": true, "internal": true }, "rangePart": { "lower": "part", "wire": "rangeStyle", "paint": true, "internal": true }, "secondaryPart": { "lower": "part", "wire": "secondaryStyle", "paint": true, "internal": true }, "thumbPart": { "lower": "part", "wire": "thumbStyle", "paint": true, "internal": true }, "objectFit": { "lower": "fit", "wire": "imageFit" }, "objectPosition": { "lower": "object-position", "wire": "imagePosition" } };
-  var limits = { "nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256, "transitionMs": 1e4, "evalBudgetMs": 100, "evalBudgetDebugMultiplier": 8, "evalWarmupMultiplier": 2, "evalLimitMultiplier": 4, "evalOverrunFrames": 3, "editorTextBytes": 65536, "inputRequestBytes": 524288, "inputBatchEdits": 64, "clipboardItems": 128, "wireValues": 1e5, "textBytes": 65536, "identifierBytes": 256, "listRows": 1e5, "gridTracks": 64, "vectorSourceBytes": 32768, "vectorPathBytes": 16384, "vectorPathWork": 16384, "vectorWork": 32768, "plotWork": 16384, "shadowMaskBytes": 16777216, "compositeFrames": 6, "leaseFrames": 6, "compositeBytes": 268435456, "outlineGlyphs": 4096, "ghosts": 64, "layoutMotions": 256, "dataAttributeBytes": 65536, "blurLayers": 8, "topLayer": 16, "dragSnapPoints": 8, "webMessageBytes": 65536, "webMessageQueue": 64 };
-  var admission = { "tags": { "column": { "children": "any", "content": true }, "reserved-1": { "children": "none" }, "text": { "children": "runs", "content": true }, "button": { "children": "content" }, "reserved-4": { "children": "none" }, "scroll": { "children": "any" }, "list": { "children": "rows", "requires": ["listId", "listCount", "listLeading", "listTrailing"] }, "image": { "children": "none", "content": true, "requires": ["imageSrc"] }, "input": { "children": "none" }, "textarea": { "children": "none" }, "checkbox": { "children": "content" }, "switch": { "children": "content" }, "radio": { "children": "options" }, "radio-option": { "children": "text", "parent": "radio", "keyed": true, "requires": ["checked"] }, "search": { "children": "none" }, "slider": { "children": "none" }, "reserved-16": { "children": "none" }, "reserved-17": { "children": "none" }, "plot": { "children": "none" }, "vector": { "children": "none", "content": true }, "page": { "children": "any", "root": true }, "span": { "children": "text", "content": true, "parent": "text" }, "link": { "children": "text", "parent": "text" }, "select": { "children": "text" }, "video": { "children": "none", "content": true }, "webview": { "children": "none", "content": true, "requires": ["webSrc", "webSession", "accessibilityLabel"] } }, "fields": { "onClick": ["button", "link"], "enabled": ["button", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "select", "link"], "listId": ["list"], "listCount": ["list"], "listLeading": ["list"], "listTrailing": ["list"], "listRowIndex": ["column"], "listAnchor": ["list"], "onReachStart": ["scroll", "list"], "onReachEnd": ["scroll", "list"], "imageSrc": ["image"], "imageFit": ["image", "video"], "inputValue": ["input", "textarea", "search", "select"], "placeholder": ["input", "textarea", "search", "select"], "secure": ["input", "textarea"], "keyboard": ["input", "textarea", "search"], "autoFocus": ["input", "textarea", "search"], "onInput": ["input", "textarea", "search"], "onSubmit": ["input", "textarea", "search"], "checked": ["checkbox", "switch", "radio-option"], "onCheckedChange": ["checkbox", "switch", "radio-option"], "accessibilityLabel": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "page", "text", "select", "video", "webview", "list"], "sliderValue": ["slider"], "sliderMin": ["slider"], "sliderMax": ["slider"], "sliderStep": ["slider"], "onSliderChange": ["slider"], "textLines": ["text"], "plotValues": ["plot"], "plotKind": ["plot"], "plotColors": ["plot"], "plotSmooth": ["plot"], "plotArea": ["plot"], "onPlotSelect": ["plot"], "plotSelectedIndex": ["plot"], "vectorSource": ["vector"], "submitOnEnter": ["textarea"], "plotDomainMin": ["plot"], "plotDomainMax": ["plot"], "plotPieLayout": ["plot"], "plotMarkerEmphasisScale": ["plot"], "focusStyle": ["input", "textarea", "search", "select"], "scrollAxis": ["scroll"], "listItemKeys": ["list"], "flexDirection": ["column", "page", "button"], "imageAlt": ["image"], "imageRetryKey": ["image"], "onImageLoad": ["image"], "onImageError": ["image"], "pressedStyle": ["button", "checkbox", "switch", "radio", "link", "slider"], "overscroll": ["scroll", "list"], "maxLength": ["input", "textarea", "search"], "autoComplete": ["input", "textarea", "search"], "enterKeyHint": ["input", "textarea", "search"], "autoCapitalize": ["input", "textarea", "search"], "spellCheck": ["input", "textarea", "search"], "inputMin": ["input"], "inputMax": ["input"], "inputStep": ["input"], "focusRequest": ["input", "textarea", "search"], "selectOptions": ["select"], "onSelect": ["select"], "rows": ["textarea"], "maxRows": ["textarea"], "imagePlaceholder": ["image"], "imagePosition": ["image", "video"], "anchorTo": ["column"], "scrollSnap": ["scroll", "list"], "topLayer": ["column"], "anchorArea": ["column"], "drag": ["column", "button"], "onDragEvent": ["column", "button"], "dragScrim": ["button"], "elementId": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video", "webview"], "ariaActions": ["column", "button"], "snapStop": ["scroll", "list"], "snapIndex": ["scroll"], "onSnapChange": ["scroll"], "videoSrc": ["video"], "videoPlayer": ["video"], "videoPoster": ["video"], "videoPaused": ["video"], "videoMuted": ["video"], "videoLoop": ["video"], "videoRate": ["video"], "videoVolume": ["video"], "onVideoEvent": ["video"], "videoSources": ["video"], "ariaDescribedBy": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video", "webview"], "focusVisibleStyle": ["button", "checkbox", "switch", "radio", "slider", "link", "select", "input", "textarea", "search"], "sliderSecondary": ["slider"], "interestFor": ["button"], "onPointerEnter": ["column", "button"], "onPointerLeave": ["column", "button"], "hint": ["column"], "onSliderPress": ["slider"], "closeAfter": ["column"], "displayValue": ["input"], "sizeText": ["input"], "onLayout": ["column", "text", "vector", "plot", "scroll"], "onPointer": ["column", "button", "vector"], "pointerAxis": ["column", "button", "vector"], "onFocus": ["input", "textarea", "search"], "onBlur": ["input", "textarea", "search"], "readOnly": ["input", "textarea", "search"], "keyMap": ["input", "textarea", "search"], "onKeyDown": ["input", "textarea", "search"], "ariaActiveDescendant": ["input", "textarea", "search"], "mixed": ["checkbox", "button", "column"], "onContextMenu": ["column", "button", "link", "text"], "onPage": ["column"], "sliderOther": ["slider"], "sliderThumb": ["slider"], "webSrc": ["webview"], "webSession": ["webview"], "onWebEvent": ["webview"], "webHandlesDrags": ["webview"], "onScrollEdge": ["scroll", "list"], "ariaControls": ["input", "button"], "ariaAutocomplete": ["input", "button"] } };
-  var options = { "snap-stop": ["normal", "always"], "font-family": ["sans", "mono", "serif"], "font-style": ["normal", "italic"], "flex-wrap": ["nowrap", "wrap", "wrap-reverse"], "flex-direction": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "scroll-axis": ["horizontal", "vertical"], "word-break": ["normal", "break-all", "keep-all"], "overflow-wrap": ["normal", "break-word", "anywhere"], "text-decoration-line": ["none", "line-through", "underline"], "text-alignment": ["start", "end", "left", "center", "right", "justify"], "alignment": ["start", "center", "end", "stretch", "baseline"], "justification": ["start", "center", "end", "between", "around", "evenly"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "text-transform": ["none", "uppercase", "lowercase", "capitalize"], "background-clip": ["border-box", "text"], "white-space": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "text-overflow": ["clip", "ellipsis"], "sizing-keyword": ["fit-content", "max-content", "min-content"], "border-style": ["solid", "dashed", "dotted"], "slider-thumb": ["lower", "upper"], "overscroll": ["auto", "contain", "none"], "scroll-snap": ["none", "x", "y"], "snap-align": ["none", "start", "center", "end"], "grid-auto-flow": ["row", "column", "row-dense", "column-dense"], "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip", "tablist", "tab", "tabpanel", "radiogroup", "radio", "toolbar", "tree", "treeitem", "row", "menuitemcheckbox", "menuitemradio", "img", "combobox", "spinbutton"], "anchor-area": ["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top", "inline-end span-block-end", "inline-end span-block-start", "inline-end", "inline-start span-block-end", "inline-start span-block-start", "inline-start"], "live-region": ["off", "polite", "assertive"], "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time"], "auto-complete-mode": ["none", "list"], "auto-complete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enter-key-hint": ["enter", "done", "go", "next", "previous", "search", "send"], "auto-capitalize": ["none", "sentences", "words", "characters"], "transition-property": ["opacity", "transform", "bg", "fg", "border", "shadow", "layout", "size"], "user-select": ["none", "text", "all"], "touch-target": ["auto", "none"], "pointer-axis": ["x", "y", "both"] };
-  var commonProps = ["style", "className", "key", "data-testid", "dir", "children", "id", "role", "headingLevel", "aria-valuenow", "aria-valuemin", "aria-valuemax", "aria-valuetext", "aria-activedescendant", "aria-controls", "aria-autocomplete", "aria-hidden", "aria-live", "aria-pressed", "aria-selected", "aria-expanded", "aria-busy", "aria-invalid", "aria-required", "aria-checked", "aria-level", "aria-describedby"];
-  var roles = ["canvas", "surface", "surface-raised", "surface-sunken", "line", "text", "text-muted", "text-faint", "accent", "on-accent", "accent-soft", "on-accent-soft", "danger", "on-danger", "danger-soft", "success", "on-success", "success-soft", "warning", "on-warning", "warning-soft", "focus", "scrim", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5", "line-strong", "selection", "shadow", "media", "on-media", "surface-overlay", "knob", "success-mark", "warning-mark", "danger-mark", "media-canvas", "info", "on-info", "info-soft", "info-mark", "hue-1", "hue-2", "hue-3", "hue-4", "hue-5", "hue-6", "hue-7", "hue-8", "hue-1-soft", "hue-2-soft", "hue-3-soft", "hue-4-soft", "hue-5-soft", "hue-6-soft", "hue-7-soft", "hue-8-soft", "chart-6", "chart-7", "chart-8"];
-
-  // src/generated/wire.js
-  var ignorableFields = ["stateInvalid", "stateRequired", "ariaDescribedBy", "ariaActiveDescendant"];
-  var tags = { "column": 0, "reserved-1": 1, "text": 2, "button": 3, "reserved-4": 4, "scroll": 5, "list": 6, "image": 7, "input": 8, "textarea": 9, "checkbox": 10, "switch": 11, "radio": 12, "radio-option": 13, "search": 14, "slider": 15, "reserved-16": 16, "reserved-17": 17, "plot": 18, "vector": 19, "page": 20, "span": 21, "link": 22, "select": 23, "video": 24, "webview": 25 };
-  var field = { "width": 0, "height": 1, "gap": 2, "padding": 3, "fontSize": 4, "color": 5, "background": 6, "grow": 7, "onClick": 8, "enabled": 9, "radius": 10, "listId": 11, "listCount": 12, "listLeading": 13, "listTrailing": 14, "listRowIndex": 15, "listAnchor": 16, "onReachStart": 17, "onReachEnd": 18, "imageSrc": 19, "imageFit": 20, "inputValue": 21, "placeholder": 22, "secure": 23, "keyboard": 24, "autoFocus": 25, "onInput": 26, "onSubmit": 27, "minWidth": 28, "minHeight": 29, "maxWidth": 30, "maxHeight": 31, "shrink": 32, "align": 33, "justify": 34, "alignSelf": 35, "fontWeight": 36, "lineHeight": 37, "fontFamily": 38, "checked": 39, "onCheckedChange": 40, "accessibilityLabel": 41, "sliderValue": 42, "sliderMin": 43, "sliderMax": 44, "sliderStep": 45, "onSliderChange": 46, "gridColumns": 47, "offsetX": 48, "offsetY": 49, "textLines": 50, "plotValues": 51, "plotKind": 52, "plotColors": 53, "plotSmooth": 54, "plotArea": 55, "onPlotSelect": 56, "plotSelectedIndex": 57, "opacity": 58, "paddingTop": 59, "paddingRight": 60, "paddingBottom": 61, "paddingLeft": 62, "wordBreak": 63, "overflowWrap": 64, "borderWidth": 65, "borderColor": 66, "borderTopWidth": 67, "borderRightWidth": 68, "borderBottomWidth": 69, "borderLeftWidth": 70, "textAlign": 71, "backgroundGradient": 72, "boxShadow": 73, "widthPercent": 74, "heightPercent": 75, "minWidthPercent": 76, "minHeightPercent": 77, "maxWidthPercent": 78, "maxHeightPercent": 79, "vectorSource": 80, "textDecorationLine": 81, "heightAuto": 82, "submitOnEnter": 83, "fontStyle": 84, "plotDomainMin": 85, "plotDomainMax": 86, "flexWrap": 87, "plotPieLayout": 88, "letterSpacing": 89, "radiusTopLeft": 90, "radiusTopRight": 91, "radiusBottomRight": 92, "radiusBottomLeft": 93, "plotMarkerEmphasisScale": 94, "backdropBlur": 95, "backdropSaturation": 96, "placeholderColor": 97, "focusStyle": 98, "flexBasis": 99, "scrollAxis": 100, "animation": 101, "listItemKeys": 102, "flexDirection": 103, "display": 104, "imageAlt": 105, "imageRetryKey": 106, "onImageLoad": 107, "onImageError": 108, "marginTop": 109, "marginRight": 110, "marginBottom": 111, "marginLeft": 112, "position": 113, "insetTop": 114, "insetRight": 115, "insetBottom": 116, "insetLeft": 117, "zIndex": 118, "overflow": 119, "rowGap": 120, "columnGap": 121, "textTransform": 122, "whiteSpace": 123, "textOverflow": 124, "pressedStyle": 125, "hoverStyle": 126, "widthKeyword": 127, "heightKeyword": 128, "borderStyle": 129, "transform": 130, "fontVariantNumeric": 131, "overscroll": 132, "aspectRatio": 133, "maxWidthCh": 134, "gridTemplateColumns": 135, "gridTemplateRows": 136, "gridAutoColumns": 137, "gridAutoRows": 138, "gridAutoFlow": 139, "gridColumn": 140, "gridRow": 141, "justifyItems": 142, "justifySelf": 143, "alignContent": 144, "order": 145, "direction": 146, "marginInlineStart": 147, "marginInlineEnd": 148, "paddingInlineStart": 149, "paddingInlineEnd": 150, "insetInlineStart": 151, "insetInlineEnd": 152, "borderInlineStartWidth": 153, "borderInlineEndWidth": 154, "radiusStartStart": 155, "radiusStartEnd": 156, "radiusEndStart": 157, "radiusEndEnd": 158, "role": 159, "headingLevel": 160, "accessibilityHidden": 161, "accessibilityLiveRegion": 162, "maxLength": 163, "autoComplete": 164, "enterKeyHint": 165, "autoCapitalize": 166, "spellCheck": 167, "inputMin": 168, "inputMax": 169, "inputStep": 170, "transition": 171, "userSelect": 172, "focusRequest": 173, "statePressed": 174, "stateSelected": 175, "stateExpanded": 176, "stateBusy": 177, "selectOptions": 178, "onSelect": 179, "rows": 180, "maxRows": 181, "imagePlaceholder": 182, "imagePosition": 183, "childSlot": 184, "startingStyle": 185, "exitStyle": 186, "focusWithinStyle": 187, "dataAttributes": 188, "backgroundClip": 189, "maskImage": 190, "filterBlur": 191, "groupPressedStyle": 192, "anchorTo": 193, "scrollSnap": 194, "snapAlign": 195, "topLayer": 196, "anchorArea": 197, "anchorName": 198, "drag": 199, "onDragEvent": 200, "dragScrim": 201, "elementId": 202, "ariaActions": 203, "snapStop": 204, "snapIndex": 205, "onSnapChange": 206, "videoSrc": 207, "videoPlayer": 208, "videoPoster": 209, "videoPaused": 210, "videoMuted": 211, "videoLoop": 212, "videoRate": 213, "videoVolume": 214, "onVideoEvent": 215, "videoSources": 216, "ariaValueNow": 217, "ariaValueMin": 218, "ariaValueMax": 219, "ariaValueText": 220, "stateInvalid": 221, "stateRequired": 222, "ariaDescribedBy": 223, "stateChecked": 224, "focusVisibleStyle": 225, "trackStyle": 226, "rangeStyle": 227, "secondaryStyle": 228, "thumbStyle": 229, "sliderSecondary": 230, "interestFor": 231, "onPointerEnter": 232, "onPointerLeave": 233, "ring": 234, "hint": 235, "onSliderPress": 236, "closeAfter": 237, "touchTarget": 238, "minWidthCh": 239, "widthCh": 240, "displayValue": 241, "sizeText": 242, "alignSafe": 243, "onLayout": 244, "onPointer": 245, "pointerAxis": 246, "onFocus": 247, "onBlur": 248, "readOnly": 249, "keyMap": 250, "onKeyDown": 251, "ariaActiveDescendant": 252, "mixed": 253, "onContextMenu": 254, "onPage": 255, "textDecorationStyle": 256, "textDecorationColor": 257, "sliderOther": 258, "sliderThumb": 259, "webSrc": 260, "webSession": 261, "onWebEvent": 262, "webHandlesDrags": 263, "onScrollEdge": 264, "ariaControls": 265, "ariaAutocomplete": 266 };
-  var fieldOptions = { "keyboard": ["text", "number", "email", "phone", "search", "date", "time"], "align": ["start", "center", "end", "stretch", "baseline"], "justify": ["start", "center", "end", "between", "around", "evenly"], "alignSelf": ["start", "center", "end", "stretch", "baseline"], "wordBreak": ["normal", "break-all", "keep-all"], "overflowWrap": ["normal", "break-word", "anywhere"], "textAlign": ["start", "end", "left", "center", "right", "justify"], "textDecorationLine": ["none", "line-through", "underline"], "fontStyle": ["normal", "italic"], "flexWrap": ["nowrap", "wrap", "wrap-reverse"], "scrollAxis": ["horizontal", "vertical"], "flexDirection": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "textTransform": ["none", "uppercase", "lowercase", "capitalize"], "whiteSpace": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "textOverflow": ["clip", "ellipsis"], "widthKeyword": ["fit-content", "max-content", "min-content"], "heightKeyword": ["fit-content", "max-content", "min-content"], "borderStyle": ["solid", "dashed", "dotted"], "overscroll": ["auto", "contain", "none"], "gridAutoFlow": ["row", "column", "row-dense", "column-dense"], "justifyItems": ["start", "center", "end", "stretch", "baseline"], "justifySelf": ["start", "center", "end", "stretch", "baseline"], "alignContent": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip", "tablist", "tab", "tabpanel", "radiogroup", "radio", "toolbar", "tree", "treeitem", "row", "menuitemcheckbox", "menuitemradio", "img", "combobox", "spinbutton"], "accessibilityLiveRegion": ["off", "polite", "assertive"], "autoComplete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enterKeyHint": ["enter", "done", "go", "next", "previous", "search", "send"], "autoCapitalize": ["none", "sentences", "words", "characters"], "userSelect": ["none", "text", "all"], "backgroundClip": ["border-box", "text"], "scrollSnap": ["none", "x", "y"], "snapAlign": ["none", "start", "center", "end"], "anchorArea": ["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top", "inline-end span-block-end", "inline-end span-block-start", "inline-end", "inline-start span-block-end", "inline-start span-block-start", "inline-start"], "snapStop": ["normal", "always"], "touchTarget": ["auto", "none"], "pointerAxis": ["x", "y", "both"], "textDecorationStyle": ["solid", "dashed", "dotted"], "sliderThumb": ["lower", "upper"], "ariaAutocomplete": ["none", "list"] };
-
-  // src/style/color.js
-  var names = new Set(roles);
-  function isRole(value) {
-    const match = typeof value === "string" && /^([a-z0-9-]+)(?:\/(\d{1,3}))?$/.exec(value);
-    return Boolean(match) && names.has(match[1]) && (match[2] === void 0 || Number(match[2]) <= 100);
-  }
-  function colorProblem(value, where = "a page colour") {
-    if (value === "currentColor" || value === "transparent" || /^#[0-9a-fA-F]{6}00$/.test(value) || isRole(value)) return void 0;
-    return `UI_COLOR: ${JSON.stringify(value)} is not a role; ${where} uses a role such as 'surface', 'text-muted', 'line', 'accent' or 'accent/12'`;
-  }
-  function wireColorProblem(value, where) {
-    return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value) ? void 0 : colorProblem(value, where);
-  }
-  function seriesProblem(value) {
-    return isRole(value) ? void 0 : `UI_COLOR: ${JSON.stringify(value)} is not a role; plot series use 'chart-1' to 'chart-8'`;
-  }
-  var defaultSeries = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"];
-
-  // src/style/shadow.js
-  function normalizeShadows(value) {
-    if (value === "none") return value;
-    const invalid2 = () => {
-      throw Error("UI_SHADOW: invalid box shadow");
-    };
-    if (!Array.isArray(value) || value.length > 8) invalid2();
-    return value.map((shadow) => {
-      if (!shadow || typeof shadow !== "object" || Array.isArray(shadow) || Object.keys(shadow).some((key) => !["offsetX", "offsetY", "blur", "spread", "color"].includes(key))) invalid2();
-      const result = {};
-      for (const key of ["offsetX", "offsetY", "blur", "spread"]) {
-        const number = shadow[key] === void 0 ? 0 : shadow[key];
-        if (typeof number !== "number" || !Number.isFinite(number) || (key === "blur" ? number < 0 || number > 256 : Math.abs(number) > 1024)) invalid2();
-        result[key] = number;
-      }
-      result.color = shadow.color === void 0 ? "currentColor" : shadow.color;
-      if (result.color !== "currentColor" && (typeof result.color !== "string" || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(result.color) || isRole(result.color)))) invalid2();
-      return result;
-    });
-  }
-  var ringColor = (value, invalid2) => {
-    const color = value === void 0 ? "currentColor" : value;
-    if (color !== "currentColor" && (typeof color !== "string" || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(color) || isRole(color)))) invalid2();
-    return color;
-  };
-  function normalizeRing(value) {
-    if (value === "none") return value;
-    const invalid2 = () => {
-      throw Error("UI_SHADOW: invalid ring");
-    };
-    const plain3 = (object, keys2) => object && typeof object === "object" && !Array.isArray(object) && Object.keys(object).every((key) => keys2.includes(key));
-    const size = (number) => typeof number === "number" && Number.isFinite(number) && number >= 0 && number <= 1024;
-    if (!plain3(value, ["outer", "inner"])) invalid2();
-    const result = {};
-    if (value.outer !== void 0) {
-      const { width, offset = 0, color, offsetColor } = value.outer;
-      if (!plain3(value.outer, ["width", "offset", "color", "offsetColor"]) || !size(width) || !size(offset)) invalid2();
-      result.outer = { width, offset, color: ringColor(color, invalid2) };
-      if (offsetColor !== void 0) result.outer.offsetColor = ringColor(offsetColor, invalid2);
-    }
-    if (value.inner !== void 0) {
-      if (!plain3(value.inner, ["width", "color"]) || !size(value.inner.width)) invalid2();
-      result.inner = { width: value.inner.width, color: ringColor(value.inner.color, invalid2) };
-    }
-    return result;
-  }
-
-  // src/style/hints.js
-  var container = /* @__PURE__ */ new Set([
-    "alignItems",
-    "alignContent",
-    "justifyContent",
-    "justifyItems",
-    "flexDirection",
-    "flexWrap",
-    "gap",
-    "rowGap",
-    "columnGap",
-    "gridTemplateColumns",
-    "gridTemplateRows",
-    "gridAutoColumns",
-    "gridAutoRows",
-    "gridAutoFlow"
-  ]);
-  var layouts = /* @__PURE__ */ new Set(["view", "scroll", "list", "button", "checkbox", "page"]);
-  var boxes = {
-    column: "<view>",
-    row: '<view className="flex-row">',
-    grid: '<view className="grid">',
-    stack: '<view className="grid *:col-start-1 *:row-start-1">',
-    spacer: "<view>",
-    iframe: "<webview>"
-  };
-  function tagHint(tag) {
-    return Object.hasOwn(boxes, tag) ? `; use ${boxes[tag]}` : "";
-  }
-  var gridOnly = {
-    flexWrap: "; grid items wrap into rows by themselves (use grid-cols-[repeat(auto-fit,minmax(\u2026,1fr))])",
-    flexDirection: "; use grid-flow-col to fill columns first"
-  };
-  var gridRefuses = (props) => props.find((prop) => Object.hasOwn(gridOnly, prop));
-  function gridProblem(name, prop) {
-    return `UI_CLASS_ELEMENT: ${name} does not apply to <view className="grid">${gridOnly[prop]}`;
-  }
-  function classElementProblem(name, prop, tag) {
-    let hint = "";
-    if (prop === "justifyItems" && layouts.has(tag)) hint = "; on a flex element center with items-center justify-center";
-    else if (container.has(prop) && !layouts.has(tag)) hint = "; layout classes go on the element that holds it";
-    else hint = appliesTo(prop);
-    return `UI_CLASS_ELEMENT: ${name} does not apply to <${tag}>${hint}`;
-  }
-  function appliesTo(prop) {
-    const takers = Object.keys(elements).filter((name) => elements[name].style.includes(prop));
-    return takers.length && takers.length <= 3 ? `; it applies to ${takers.map((name) => `<${elements[name].component ?? name}>`).join(", ")}` : "";
-  }
-
-  // src/style/gradient.js
-  var hex = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
-  var directions = ["top", "right", "bottom", "left", "top-right", "bottom-right", "bottom-left", "top-left"];
-  var geometry = { linear: ["direction", "angle"], radial: ["shape", "size", "radii", "at"], conic: ["from", "at"] };
-  var sizes = ["closest-side", "closest-corner", "farthest-side", "farthest-corner"];
-  var angle = (value) => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 36e3;
-  function normalizeGradient(value) {
-    if (value === "none") return value;
-    const invalid2 = () => {
-      throw Error("UI_GRADIENT: invalid gradient");
-    };
-    if (!value || typeof value !== "object" || Array.isArray(value)) invalid2();
-    const kind = value.kind ?? "linear";
-    const keys2 = geometry[kind] ?? invalid2();
-    const pair = (v, low2, high2) => Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === "number" && Number.isFinite(n) && n > low2 && n <= high2);
-    if (Object.keys(value).some((key) => !["kind", "colorSpace", "stops", "layerSize", "layerPosition", ...keys2].includes(key)) || value.layerSize !== void 0 && !pair(value.layerSize, 0, 16) || value.layerPosition !== void 0 && !pair(value.layerPosition, -16.0001, 16) || value.direction !== void 0 && !directions.includes(value.direction) || value.angle !== void 0 && !angle(value.angle) || value.direction !== void 0 && value.angle !== void 0 || value.from !== void 0 && !angle(value.from) || value.shape !== void 0 && !["circle", "ellipse"].includes(value.shape) || value.size !== void 0 && !sizes.includes(value.size) || value.radii !== void 0 && (value.size !== void 0 || value.shape !== void 0 || !Array.isArray(value.radii) || value.radii.length !== 2 || value.radii.some((v) => typeof v !== "number" || !Number.isFinite(v) || v <= 0 || v > 16)) || value.at !== void 0 && (!Array.isArray(value.at) || value.at.length !== 2 || value.at.some((v) => typeof v !== "number" || !Number.isFinite(v) || Math.abs(v) > 16)) || value.colorSpace !== void 0 && !["srgb", "oklab"].includes(value.colorSpace) || !Array.isArray(value.stops) || value.stops.length < 2 || value.stops.length > 16) invalid2();
-    const [low, high] = kind === "linear" ? [-16, 16] : kind === "radial" ? [0, 16] : [0, 1];
-    let previous = -Infinity;
-    const stops = value.stops.map((stop) => {
-      if (!stop || typeof stop !== "object" || Array.isArray(stop) || Object.keys(stop).some((key) => key !== "offset" && key !== "color") || typeof stop.offset !== "number" || !Number.isFinite(stop.offset) || stop.offset < low || stop.offset > high || stop.offset < previous || typeof stop.color !== "string" || !(hex.test(stop.color) || isRole(stop.color))) invalid2();
-      previous = stop.offset;
-      return { offset: stop.offset, color: stop.color };
-    });
-    const result = kind === "linear" ? {} : { kind };
-    for (const key of [...keys2, "layerSize", "layerPosition"]) if (value[key] !== void 0) result[key] = Array.isArray(value[key]) ? [...value[key]] : value[key];
-    return { ...result, colorSpace: value.colorSpace ?? "srgb", stops };
-  }
 
   // src/style/lower.js
   var finite = (value) => typeof value === "number" && Number.isFinite(value);
@@ -2558,44 +2597,6 @@
     };
   }
 
-  // src/runtime/press.js
-  var held = null;
-  function pressChange(identity, callback) {
-    if (held?.identity === identity) return;
-    held = { identity, callback };
-    return callback(true);
-  }
-  function releasePress() {
-    if (!held) return false;
-    const { callback } = held;
-    held = null;
-    const result = callback(false);
-    if (result && typeof result.then === "function") Promise.resolve(result).catch(() => {
-    });
-    return true;
-  }
-  function refreshPresses(live) {
-    if (held && live.has(held.identity)) held.callback = live.get(held.identity);
-  }
-  var waiting = /* @__PURE__ */ new Map();
-  function changeEnd(identity, value, end) {
-    if (waiting.has(identity)) waiting.set(identity, { value });
-    else end(value);
-  }
-  function pressEnd(identity, pressed, end) {
-    if (pressed) {
-      waiting.set(identity, null);
-      return;
-    }
-    const last = waiting.get(identity);
-    waiting.delete(identity);
-    if (last) end(last.value);
-  }
-  var resetPresses = () => {
-    held = null;
-    waiting = /* @__PURE__ */ new Map();
-  };
-
   // src/runtime/keys.js
   var parents = /* @__PURE__ */ new WeakMap();
   var checked = /* @__PURE__ */ new WeakMap();
@@ -2670,6 +2671,732 @@
     return map;
   }
 
+  // src/runtime/encode.js
+  var structured = /* @__PURE__ */ new Set(["backgroundGradient", "boxShadow", "ring", "animation"]);
+  var encodeValue = (key, value) => structured.has(key) && value !== "none" ? JSON.stringify(value) : value;
+  var ignorable = new Set(ignorableFields);
+  var unknownToHost = (key) => ignorable.has(key) && field[key] > (globalThis.__lingxiaViewHost?.maxField ?? Infinity);
+  function copyTree(node) {
+    let children = node.children;
+    for (let i = 0; i < children.length; i++) {
+      const child = copyTree(node.children[i]);
+      if (child === node.children[i]) continue;
+      if (children === node.children) children = children.slice();
+      children[i] = child;
+    }
+    if (node.list) return { ...node, children, list: { ...node.list, states: new Map(node.list.states), cache: new Map(node.list.cache), pure: new Set(node.list.pure) } };
+    return children === node.children ? node : { ...node, children };
+  }
+  function retainCells(cells) {
+    for (const [key, cell2] of cells) {
+      render.candidate.locals.set(key, cell2);
+      for (const collector of render.collectors) collector.set(key, cell2);
+    }
+  }
+  var initialWindow = (count) => ({ start: 0, end: Math.min(1, count), leading: 0, trailing: Math.max(0, count - 1) * 64 });
+  var slices = /* @__PURE__ */ new WeakMap();
+  var sliceable = /* @__PURE__ */ new WeakSet();
+  var WIRE_SERIAL = -3;
+  var WIRE_REUSE = -2;
+  var wireSerial = 0;
+  var wireHeld = 0;
+  function wireAck(serial) {
+    wireHeld = serial;
+  }
+  function wireReset() {
+    wireHeld = 0;
+  }
+  function encodeTree(tree, windows) {
+    const { candidate } = render;
+    const serial = ++wireSerial;
+    const output = [];
+    let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0, dataBytes = 0;
+    const heads = [], handled = [];
+    let lists = 0, deepest = 0;
+    const paste = (slice, parent, depth) => {
+      if (depth + slice.depth > limits.depth || (count += slice.nodes) > limits.nodes) throw Error("UI_LIMIT: candidate too large");
+      if ((plotWork += slice.plotWork) > 16384) throw Error("UI_LIMIT: plot geometry budget exceeded");
+      if ((animationBytes += slice.animationBytes) > limits.animationBytes) throw Error("UI_ANIMATION: page payload budget exceeded");
+      if ((dataBytes += slice.dataBytes) > limits.dataAttributeBytes) throw Error("UI_PROP: data-* page budget exceeded");
+      for (let i = 0; i < slice.handlers.length; i++) {
+        const entry = slice.handlers[i];
+        candidate.callbacks.set(entry[0], entry[1]);
+        handled.push(entry);
+      }
+      const base = output.length, values = slice.values;
+      deepest = Math.max(deepest, depth + slice.depth);
+      if (slice.serial === wireHeld && wireHeld) {
+        output.push(WIRE_REUSE, parent, slice.serial, slice.offset, slice.nodes, 0);
+        slice.serial = serial;
+        slice.offset = base;
+        heads.push(-1);
+        return;
+      }
+      slice.serial = serial;
+      slice.offset = base;
+      for (let i = 0; i < values.length; i++) output.push(values[i]);
+      output[base + 1] = parent;
+      for (let i = 0; i < slice.heads.length; i++) {
+        const at = slice.heads[i];
+        if (at) output[base + at + 1] += base;
+        heads.push(base + at);
+      }
+    };
+    const write = (node, parent, depth) => {
+      const slice = slices.get(node);
+      if (slice) return paste(slice, parent, depth);
+      if (!sliceable.has(node)) return writeNode(node, parent, depth);
+      const index = output.length, mark = { heads: heads.length, handled: handled.length, lists, deepest, count, plotWork, animationBytes, dataBytes };
+      deepest = depth;
+      writeNode(node, parent, depth);
+      const heads2 = heads.slice(mark.heads);
+      if (lists === mark.lists && !heads2.includes(-1)) {
+        const values = output.slice(index), at = heads2.map((head) => head - index);
+        for (let i = 1; i < at.length; i++) values[at[i] + 1] -= index;
+        slices.set(node, {
+          values,
+          heads: at,
+          handlers: handled.slice(mark.handled),
+          depth: deepest - depth,
+          nodes: count - mark.count,
+          plotWork: plotWork - mark.plotWork,
+          animationBytes: animationBytes - mark.animationBytes,
+          dataBytes: dataBytes - mark.dataBytes,
+          serial,
+          offset: index
+        });
+      }
+      deepest = Math.max(deepest, mark.deepest);
+    };
+    const writeNode = (node, parent, depth) => {
+      if (depth > limits.depth || ++count > limits.nodes) throw Error("UI_LIMIT: candidate too large");
+      deepest = Math.max(deepest, depth);
+      const { tag, props, identity, fields: fields3, states: states2, wire, handlers } = node;
+      const index = output.length;
+      heads.push(index);
+      output.push(tags[tag], parent, props.key ?? "", props.testId ?? "", node.text, 0);
+      const start = output.length;
+      for (const key in fields3) {
+        const value = fields3[key];
+        if (key === "animation") {
+          animationBytes += utf8Bytes(JSON.stringify(value), 32768);
+          if (animationBytes > limits.animationBytes) throw Error("UI_ANIMATION: page payload budget exceeded");
+        }
+        if (unknownToHost(key)) continue;
+        output.push(field[key], encodeValue(key, value));
+      }
+      for (const key in states2) {
+        const style2 = states2[key], pairs = [];
+        for (const name in style2) if (!unknownToHost(name)) pairs.push(field[name], encodeValue(name, style2[name]));
+        if (pairs.length) output.push(field[key], JSON.stringify(pairs));
+      }
+      for (let i = 0; i < wire.length; i++) {
+        const key = wire[i][0], value = wire[i][1];
+        if (key === "dataAttributes") {
+          dataBytes += utf8Bytes(value, limits.dataAttributeBytes);
+          if (dataBytes > limits.dataAttributeBytes) throw Error("UI_PROP: data-* page budget exceeded");
+        }
+        output.push(field[key], value);
+      }
+      for (let i = 0; i < handlers.length; i++) {
+        const handler = handlers[i];
+        candidate.callbacks.set(handler[1], handler[2]);
+        handled.push([handler[1], handler[2]]);
+        output.push(field[handler[0]], handler[1]);
+      }
+      if (node.plotWork) {
+        plotWork += node.plotWork;
+        if (plotWork > 16384) throw Error("UI_LIMIT: plot geometry budget exceeded");
+      }
+      if (node.rowIndex !== void 0) output.push(field.listRowIndex, node.rowIndex);
+      if (node.slot !== void 0) output.push(field.childSlot, node.slot);
+      let window, seededAnchor = false;
+      if (node.list) {
+        lists++;
+        window = windows[identity] ?? node.list.window ?? initialWindow(props.count);
+        if (!Number.isSafeInteger(window.start) || !Number.isSafeInteger(window.end) || window.start < 0 || window.end < window.start || window.end > Math.max(props.count, node.list.previousCount) || ![window.leading, window.trailing].every((v) => Number.isFinite(v) && v >= 0 && v <= 16384e5)) throw Error("UI_LIST: invalid window");
+        if (window.end > props.count) window = initialWindow(props.count);
+        const typography = node.list.rowSource ? JSON.stringify(node.typography ?? null) : void 0;
+        if (node.list.reusable && node.list.reusable.typography === typography) {
+          node.list.cache = new Map(node.list.reusable.rows);
+          node.list.pure = new Set(node.list.reusable.rows.keys());
+        }
+        node.list.reusable = null;
+        node.list.typography = typography;
+        const target = props.anchor === "end" ? props.count - 1 : Math.min(props.anchor?.index ?? 0, props.count - 1);
+        if (node.list.anchorChanged && !props.anchor?.duration && props.count > 0 && (target < window.start || target >= window.end)) {
+          node.list.cache = new Map([...node.list.anchorCache].filter(([i, row]) => props.itemKeys === void 0 || row.props.key === `key:${JSON.stringify(props.itemKeys[i])}`));
+          seededAnchor = true;
+        }
+        node.list.anchorChanged = false;
+        node.list.anchorCache = null;
+        node.list.previousCount = props.count;
+        node.list.window = { ...window };
+        output.push(field.listId, identity, field.listCount, props.count, field.listLeading, window.leading, field.listTrailing, window.trailing);
+        if (props.itemKeys !== void 0) {
+          const { payload, bytes } = keyPayload(props.itemKeys);
+          itemKeyBytes += bytes;
+          if (itemKeyBytes > limits.itemKeyBytes) throw Error("UI_LIST: itemKeys page budget exceeded");
+          output.push(field.listItemKeys, payload);
+        }
+        if (props.anchor !== void 0) output.push(field.listAnchor, JSON.stringify(props.anchor));
+        candidate.lists.set(identity, node.list);
+      }
+      output[start - 1] = (output.length - start) / 2;
+      if (!node.list) {
+        const children = node.children;
+        for (let i = 0; i < children.length; i++) write(children[i], index, depth + 1);
+        return;
+      }
+      writeRows(node, window, index, depth, write);
+      if (seededAnchor) node.list.cache.clear();
+    };
+    write(tree, -1, 0);
+    output.push(WIRE_SERIAL, serial, "", "", "", 0);
+    return output;
+  }
+  function writeRows(node, window, index, depth, write) {
+    const visibleKeys = /* @__PURE__ */ new Set();
+    for (const i of node.list.cache.keys()) if (i < window.start || i >= window.end) {
+      node.list.cache.delete(i);
+      node.list.pure.delete(i);
+    }
+    for (let i = window.start; i < window.end; i++) {
+      const cells = /* @__PURE__ */ new Map();
+      render.collectors.push(cells);
+      try {
+        let row = node.list.cache.get(i), key = node.list.states.get(i)?.key;
+        if (!row) {
+          const { candidate } = render, handles2 = handlesIssued(), declarations = candidate.declarations.size, resources = candidate.resources.size;
+          const reads = render.cellReads, contextReads = render.contextReads;
+          render.readsView = false;
+          ({ row, key } = renderRow(node, i, cells, depth));
+          finishTopLayerRow(row);
+          const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles2 && render.cellReads === reads && render.contextReads === contextReads && candidate.declarations.size === declarations && candidate.resources.size === resources;
+          if (pure) node.list.pure.add(i);
+          else node.list.pure.delete(i);
+        } else {
+          row = copyTree(row);
+          retainCells(node.list.states.get(i).locals);
+        }
+        if (visibleKeys.has(key)) throw Error("UI_KEY: duplicate list row");
+        visibleKeys.add(key);
+        sliceable.add(row);
+        write(row, index, depth + 1);
+        node.list.cache.set(i, row);
+        node.list.states.set(i, { key, locals: cells });
+      } finally {
+        render.collectors.pop();
+      }
+    }
+    for (const [i, state] of node.list.states) {
+      if (state.locals.size) retainCells(state.locals);
+      else if (i < window.start || i >= window.end) node.list.states.delete(i);
+    }
+  }
+  function renderRow(node, i, cells, depth) {
+    const since = now();
+    try {
+      return renderRowTimed(node, i, cells, depth);
+    } finally {
+      spent("rows", since);
+    }
+  }
+  function renderRowTimed(node, i, cells, depth) {
+    const { props, identity } = node;
+    const suppliedKey = props.itemKeys?.[i];
+    const previous = render.scope, outerContexts = render.contexts;
+    render.contexts = node.list.contexts;
+    render.scope = suppliedKey === void 0 ? `${identity}/row:${i}` : `${identity}/row/key:${JSON.stringify(suppliedKey)}`;
+    try {
+      const value = props.row(i);
+      render.contexts = outerContexts;
+      const declared2 = isNode(value) ? readNode(value)[1].key : void 0;
+      if (declared2 !== void 0 && typeof declared2 !== "string") throw Error("UI_KEY: expected string");
+      if (suppliedKey === void 0 && declared2 !== void 0 && cells.size > 0)
+        throw Error("UI_LIST: keyed row factory hooks require itemKeys; alternatively move hooks into a keyed component");
+      if (suppliedKey !== void 0 && declared2 !== void 0 && suppliedKey !== declared2) throw Error("UI_LIST: row key does not match itemKeys");
+      const rowKey = suppliedKey ?? declared2;
+      const key = rowKey === void 0 ? `index:${i}` : `key:${JSON.stringify(rowKey)}`;
+      render.scope = `${identity}/row/${key}`;
+      const fields3 = {};
+      if (props.height) {
+        const height = props.height(i);
+        if (!Number.isFinite(height) || height < 0 || height > 16384) throw Error("UI_LIST: invalid row height");
+        fields3.height = height;
+      }
+      const content = resolveNode(value, render.scope, depth + 2, {
+        typography: node.typography,
+        sibling: { index: i, count: props.count },
+        direction: node.list.direction,
+        contexts: node.list.contexts
+      });
+      if (content?.fragment) throw Error("UI_LIST: a row returns one node; wrap its fragment in <view>");
+      const row = {
+        tag: "column",
+        element: "view",
+        props: { key },
+        fields: fields3,
+        states: {},
+        wire: [],
+        handlers: [],
+        identity: render.scope,
+        rowIndex: i,
+        text: "",
+        children: content === null ? [] : [content]
+      };
+      return { row, key };
+    } finally {
+      render.scope = previous;
+      render.contexts = outerContexts;
+    }
+  }
+
+  // src/runtime/context.js
+  var unstamped = /* @__PURE__ */ new WeakMap();
+  var unnamed = 0;
+  function contextId(context) {
+    if (typeof context.__lxid === "string") return context.__lxid;
+    let id = unstamped.get(context);
+    if (id === void 0) unstamped.set(context, id = `context#${++unnamed}`);
+    return id;
+  }
+  function lookup(chain, id) {
+    while (chain && chain.id !== id) chain = chain.next;
+    return chain;
+  }
+  function plain(value, budget) {
+    if (value === null || typeof value !== "object" || --budget.left < 0 || brand in value || cellOf(value)) return true;
+    if (Array.isArray(value)) return value.every((each) => plain(each, budget));
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return false;
+    for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value)))
+      if ("value" in descriptor && !plain(descriptor.value, budget)) return false;
+    return true;
+  }
+  function checkValue(value) {
+    if (!plain(value, { left: 256 })) throw Error("UI_CONTEXT: value must be plain data, functions or handles");
+  }
+  function isProvider(tag) {
+    return Boolean(tag.__lxContext);
+  }
+  function provide(tag, props, children, chain, resolve) {
+    for (const key in props) if (key !== "value" && key !== "key") throw Error(`UI_CONTEXT: a Provider takes only value, not ${key}`);
+    if (!("value" in props)) throw Error("UI_CONTEXT: a Provider needs a value");
+    checkValue(props.value);
+    const child = children.length === 1 ? children[0] : void 0;
+    if (children.length > 1 || child != null && child !== false && !isNode(child)) throw Error("UI_CONTEXT: a Provider wraps one element");
+    const result = resolve(child, { id: contextId(tag.__lxContext), value: props.value, next: chain });
+    if (result?.fragment) throw Error("UI_CONTEXT: a Provider wraps one element");
+    return result;
+  }
+
+  // src/runtime/memo.js
+  var compareBudget = 256;
+  var stamps = /* @__PURE__ */ new WeakMap();
+  function viewStamp(view) {
+    let stamp = stamps.get(view);
+    if (!stamp) stamps.set(view, stamp = { env: JSON.stringify(envOf(view) ?? null), actions: view?.actions, channels: view?.channels });
+    return stamp;
+  }
+  var sameView = (a, b) => a.env === b.env && a.actions === b.actions && a.channels === b.channels;
+  function same(a, b, old, budget) {
+    if (Object.is(a, b)) return true;
+    if (typeof a !== "object" || typeof b !== "object" || a === null || b === null || --budget.left < 0) return false;
+    const nodeA = brand in a, nodeB = brand in b;
+    if (nodeA || nodeB) {
+      if (!nodeA || !nodeB) return false;
+      const x = currentArena()[a[brand][1]], y = old[b[brand][1]];
+      return Boolean(x && y) && x[0] === y[0] && sameFields(x[1], y[1], old, budget) && same(x[2], y[2], old, budget);
+    }
+    if (Array.isArray(a)) {
+      if (!Array.isArray(b) || a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) if (!same(a[i], b[i], old, budget)) return false;
+      return true;
+    }
+    if (Object.getPrototypeOf(a) !== Object.prototype || Object.getPrototypeOf(b) !== Object.prototype) return false;
+    return sameFields(a, b, old, budget);
+  }
+  function sameFields(a, b, old, budget) {
+    let count = 0;
+    for (const key in a) {
+      count++;
+      if (!Object.prototype.hasOwnProperty.call(b, key) || !same(a[key], b[key], old, budget)) return false;
+    }
+    for (const key in b) count--;
+    return count === 0;
+  }
+  var contextKeys = ["tag", "direction", "inControl", "inText", "inLink"];
+  function sameContext(a, b, old) {
+    for (let i = 0; i < contextKeys.length; i++) if (a[contextKeys[i]] !== b[contextKeys[i]]) return false;
+    const budget = { left: compareBudget };
+    return same(a.typography, b.typography, old, budget) && same(a.extra, b.extra, old, budget) && same(a.every, b.every, old, budget) && same(a.sibling, b.sibling, old, budget) && same(a.popovers, b.popovers, old, budget);
+  }
+  function sameContexts(reads, chain, old, budget) {
+    for (const [id, read] of reads) {
+      const entry = lookup(chain, id);
+      if (!same(entry ? entry.value : read.context.defaultValue, read.value, old, budget)) return false;
+    }
+    return true;
+  }
+  function sameChain(a, b, old, budget) {
+    for (; a || b; a = a.next, b = b.next) if (!a || !b || a.id !== b.id || !same(a.value, b.value, old, budget)) return false;
+    return true;
+  }
+  function passContexts(reads, chain, outer) {
+    for (const [id, read] of reads) if (!outer.contextReads.has(id) && lookup(chain, id) === lookup(outer.contexts, id)) outer.contextReads.set(id, read);
+  }
+  var topLayerSize = () => {
+    const top = render.candidate.topLayer;
+    return top ? top.entries.length + top.popovers.size + top.invokers.length : 0;
+  };
+  function recall(scope, tag, props, children, parent) {
+    const since = now();
+    try {
+      return recallTimed(scope, tag, props, children, parent);
+    } finally {
+      spent("recall", since);
+    }
+  }
+  function recallTimed(scope, tag, props, children, parent) {
+    const record = render.recall?.get(scope);
+    if (!record || record.tag !== tag || tag.__lxVolatile || !sameView(record.view, viewStamp(render.view))) return void 0;
+    for (const cell2 of record.reads) if (page.updates.has(cell2)) return void 0;
+    for (const cell2 of record.cells.values()) if (page.updates.has(cell2)) return void 0;
+    const budget = { left: compareBudget };
+    if (!sameFields(props, record.props, record.arena, budget) || !same(children, record.children, record.arena, budget) || !sameContext(parent, record.parent, record.arena) || !sameContexts(record.contextReads, parent.contexts, record.arena, budget) || record.lists && !sameChain(parent.contexts, record.parent.contexts, record.arena, budget)) return void 0;
+    const fresh2 = { ...record, props, children, parent, arena: currentArena(), result: record.lists ? reuse(record.result) : record.result };
+    keep(fresh2);
+    const frame = render.frames[render.frames.length - 1];
+    if (frame) {
+      frame.nested.push(fresh2);
+      for (const cell2 of record.reads) frame.reads.add(cell2);
+      passContexts(record.contextReads, parent.contexts, frame);
+    }
+    for (const [key, cell2] of record.cells) {
+      render.candidate.locals.set(key, cell2);
+      for (const collector of render.collectors) collector.set(key, cell2);
+    }
+    if (record.handles) skipHandle();
+    if (record.lists) render.lists++;
+    return fresh2.result;
+  }
+  function reuse(node) {
+    let children = node.children;
+    for (let i = 0; i < children.length; i++) {
+      const child = reuse(node.children[i]);
+      if (child === node.children[i]) continue;
+      if (children === node.children) children = children.slice();
+      children[i] = child;
+    }
+    if (!node.list) return children === node.children ? node : { ...node, children };
+    const { pure } = node.list, cache2 = /* @__PURE__ */ new Map();
+    for (const [i, row] of node.list.cache) if (pure.has(i)) cache2.set(i, row);
+    return { ...node, children, list: {
+      ...node.list,
+      states: new Map(node.list.states),
+      cache: cache2,
+      pure: new Set(cache2.keys()),
+      reusable: null,
+      anchorChanged: false,
+      anchorCache: null
+    } };
+  }
+  function keep(record) {
+    render.candidate.memo.set(record.scope, record);
+    for (const [key, entry] of record.closures) render.candidate.closures?.set(key, entry);
+    for (const nested of record.nested) keep(nested);
+  }
+  function enter(scope, contexts) {
+    const frame = { scope, contexts, contextReads: /* @__PURE__ */ new Map(), cells: /* @__PURE__ */ new Map(), reads: /* @__PURE__ */ new Set(), view: false, nested: [], closures: [], handles: handlesIssued(), top: topLayerSize(), lists: render.lists };
+    render.frames.push(frame);
+    render.collectors.push(frame.cells);
+    return frame;
+  }
+  function noteRead(cell2) {
+    render.cellReads++;
+    const frame = render.frames[render.frames.length - 1];
+    if (frame) frame.reads.add(cell2);
+  }
+  function noteView() {
+    const frame = render.frames[render.frames.length - 1];
+    if (frame) frame.view = true;
+  }
+  function leave(frame) {
+    render.frames.splice(render.frames.lastIndexOf(frame), 1);
+    render.collectors.splice(render.collectors.lastIndexOf(frame.cells), 1);
+    const outer = render.frames[render.frames.length - 1];
+    if (outer) {
+      for (const cell2 of frame.reads) outer.reads.add(cell2);
+      outer.view || (outer.view = frame.view);
+      passContexts(frame.contextReads, frame.contexts, outer);
+    }
+  }
+  function remember(frame, tag, props, children, parent, result) {
+    if (frame.view || result?.fragment || topLayerSize() !== frame.top || !render.candidate.memo) return;
+    const record = {
+      scope: frame.scope,
+      tag,
+      props,
+      children,
+      parent,
+      arena: currentArena(),
+      result,
+      cells: frame.cells,
+      reads: frame.reads,
+      contextReads: frame.contextReads,
+      nested: frame.nested,
+      closures: frame.closures,
+      view: viewStamp(render.view),
+      handles: handlesIssued() !== frame.handles,
+      lists: render.lists !== frame.lists
+    };
+    render.candidate.memo.set(frame.scope, record);
+    render.frames[render.frames.length - 1]?.nested.push(record);
+    if (result && !record.lists) sliceable.add(result);
+  }
+
+  // src/runtime/hooks.js
+  var bindings = /* @__PURE__ */ new WeakMap();
+  function cellOf(binding) {
+    return bindings.get(binding);
+  }
+  function local(name, initial, resource = "", order) {
+    if (!render.active || render.scope === null || order === void 0 && (typeof name !== "string" || !name || name.length > 256))
+      throw Error("UI_SCOPE: invalid local state");
+    const { candidate, scope } = render;
+    const key = JSON.stringify(order !== void 0 ? [scope, order] : resource ? [scope, resource, name] : [scope, name]);
+    if (!resource && candidate.declarations.has(key)) throw Error(`UI_LOCAL: duplicate declaration ${JSON.stringify(name)} in ${scope}`);
+    candidate.declarations.add(key);
+    const cell2 = candidate.locals.get(key) ?? render.lookupLocals?.get(key) ?? page.locals.get(key) ?? { value: immutable(initial, 0, true) };
+    candidate.locals.set(key, cell2);
+    for (const collector of render.collectors) collector.set(key, cell2);
+    if (cell2.binding) return cell2.binding;
+    const binding = cell2.binding = Object.freeze({
+      get value() {
+        if (render.active) noteRead(cell2);
+        return page.updates.has(cell2) ? page.updates.get(cell2) : cell2.value;
+      },
+      set(value) {
+        outsideRender("state mutation");
+        if (page.locals.get(key) !== cell2 && render.candidate?.locals.get(key) !== cell2)
+          throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
+        page.updates.set(cell2, immutable(value, 0, true));
+      },
+      focus() {
+        outsideRender("focus");
+        if (page.locals.get(key) !== cell2) throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
+        cell2.focus = (cell2.focus ?? 0) + 1;
+        page.updates.set(cell2, page.updates.has(cell2) ? page.updates.get(cell2) : cell2.value);
+      }
+    });
+    bindings.set(binding, { key, cell: cell2 });
+    return binding;
+  }
+  function useLocal(...args) {
+    var _a;
+    if (args.length === 2) return local(args[0], args[1]);
+    if (args.length !== 1) throw Error("UI_LOCAL: useLocal takes (initial) or (name, initial)");
+    if (!render.active || render.scope === null) throw Error("UI_SCOPE: invalid local state");
+    const counts = (_a = render.candidate).localOrder ?? (_a.localOrder = /* @__PURE__ */ new Map());
+    const order = counts.get(render.scope) ?? 0;
+    counts.set(render.scope, order + 1);
+    return local(`#${order}`, args[0], "", order);
+  }
+  function hashId(text2) {
+    let a = 2166136261, b = 2538058380;
+    for (let i = 0; i < text2.length; i++) {
+      const c = text2.charCodeAt(i);
+      a = Math.imul(a ^ c, 16777619) >>> 0;
+      b = Math.imul(b ^ c, 16777619) >>> 0;
+    }
+    return a.toString(36) + b.toString(36);
+  }
+  function useId(site) {
+    var _a;
+    if (!render.active || render.scope === null) throw Error("UI_SCOPE: useId outside render");
+    const counts = (_a = render.candidate).idOrder ?? (_a.idOrder = /* @__PURE__ */ new Map());
+    const base = `${render.scope}\0${site ?? "#"}`;
+    const seen = counts.get(base) ?? 0;
+    counts.set(base, seen + 1);
+    return `lx-${hashId(seen ? `${base}\0${seen}` : base)}`;
+  }
+  function hasLocalUpdates() {
+    return page.updates.size > 0 || page.invalidated === true;
+  }
+  function useView() {
+    if (!render.active) throw Error("UI_SCOPE: useView outside render");
+    render.readsView = true;
+    noteView();
+    return render.view;
+  }
+  function pageAction(action, code, mode) {
+    if (action === void 0 && !Object.keys(render.view.actions).length) return void 0;
+    const info = typeof action === "function" ? actionInfo(action) : void 0;
+    if (!info || info.mode !== mode || info.name.includes("."))
+      throw Error(`${code}: expected a ${mode === "stream" ? "streaming" : "unary"} action from view.actions`);
+    return { action, name: info.name };
+  }
+  function own(name, initial, kind, code, create, definition) {
+    const binding = local(name, initial, kind);
+    const { key, cell: cell2 } = bindings.get(binding);
+    const state = { get value() {
+      return binding.value;
+    }, set(value) {
+      if (page.locals.get(key) === cell2 || render.candidate?.locals.get(key) === cell2) binding.set(value);
+    } };
+    const { candidate } = render;
+    if (candidate.resourceNames.has(cell2)) throw Error(`${code}: duplicate resource name`);
+    candidate.resourceNames.add(cell2);
+    const resource = page.resources.get(cell2) ?? create(state);
+    candidate.resources.set(cell2, { resource, definition });
+    return resource;
+  }
+  var guard = (what, fn) => (...args) => {
+    outsideRender(what);
+    return fn(...args);
+  };
+  function useRequest(name, action, ...params) {
+    if (params.length > 1) throw Error("UI_REQUEST: expected at most one JSON payload");
+    const target = pageAction(action, "UI_REQUEST", "call");
+    const payload = params[0] === void 0 ? void 0 : immutable(params[0]);
+    const resource = own(
+      name,
+      { pending: false, stale: false, value: null, error: null },
+      "request",
+      "UI_REQUEST",
+      requestResource,
+      { action: target?.action, params: payload, key: JSON.stringify(payload) }
+    );
+    return Object.freeze({
+      get pending() {
+        return resource.state.pending;
+      },
+      get stale() {
+        return resource.state.stale;
+      },
+      get value() {
+        return resource.state.value;
+      },
+      get error() {
+        return resource.state.error;
+      },
+      reload: guard("request reload", resource.reload)
+    });
+  }
+  function useStream(name, action, options2 = {}) {
+    if (!options2 || typeof options2 !== "object" || options2.onData !== void 0 && typeof options2.onData !== "function")
+      throw Error("UI_STREAM: onData must be a function");
+    const target = pageAction(action, "UI_STREAM", "stream");
+    const resource = own(
+      name,
+      { status: "idle", error: null, result: null },
+      "stream",
+      "UI_STREAM",
+      streamResource,
+      { action: target?.action, onData: options2.onData }
+    );
+    return Object.freeze({
+      get status() {
+        return resource.state.status;
+      },
+      get error() {
+        return resource.state.error;
+      },
+      get result() {
+        return resource.state.result;
+      },
+      start: guard("stream mutation", resource.start),
+      cancel: guard("stream mutation", resource.cancel)
+    });
+  }
+  function useChannel(name, action, options2) {
+    if (!options2 || typeof options2 !== "object" || !("params" in options2) || options2.onData !== void 0 && typeof options2.onData !== "function")
+      throw Error("UI_CHANNEL: expected { params, onData? }");
+    const target = pageAction(action, "UI_CHANNEL", "call");
+    const params = options2.params === void 0 ? void 0 : immutable(options2.params);
+    const resource = own(
+      name,
+      { connecting: false, connected: false, error: null },
+      "channel",
+      "UI_CHANNEL",
+      (state) => channelResource(state, report),
+      { topic: target?.name, params, key: JSON.stringify(params), onData: options2.onData, channels: render.view.channels }
+    );
+    return Object.freeze({
+      get connecting() {
+        return resource.state.connecting;
+      },
+      get connected() {
+        return resource.state.connected;
+      },
+      get error() {
+        return resource.state.error;
+      },
+      connect: guard("channel resource mutation", resource.connect),
+      close: guard("channel resource mutation", resource.close),
+      send: guard("channel resource mutation", resource.send)
+    });
+  }
+  function useLeaveGuard(name, options2) {
+    if (typeof options2?.enabled !== "boolean") throw Error("UI_LEAVE: expected { enabled: boolean }");
+    const resource = own(name, { pending: null, requests: 0, error: null }, "leave", "UI_LEAVE", leaveGuards.resource, { enabled: options2.enabled });
+    return Object.freeze({
+      get pending() {
+        return resource.state.pending;
+      },
+      get requests() {
+        return resource.state.requests;
+      },
+      get error() {
+        return resource.state.error;
+      },
+      answer: guard("leave mutation", resource.answer),
+      request: guard("leave mutation", resource.request)
+    });
+  }
+  var hostContextKeys = /* @__PURE__ */ new Set(["sizeClass", "canDock"]);
+  var hostContextRead = false;
+  var appearanceKeys = /* @__PURE__ */ new Set(["theme", "highContrast"]);
+  var appearanceRead = false;
+  var rawEnvs = /* @__PURE__ */ new WeakMap();
+  var lastData;
+  var lastRevision = null;
+  function syncData(from, revision, ops) {
+    if (lastData === void 0 || lastRevision !== from) return false;
+    try {
+      lastData = applyPatch(lastData, ops);
+    } catch {
+      lastRevision = null;
+      return false;
+    }
+    lastRevision = revision;
+    return true;
+  }
+  function createView(data, env, revision) {
+    const { actions: actions2, channels: channels2 } = currentActions();
+    hostContextRead = false;
+    const frozen = immutable(env);
+    const watched = frozen && typeof frozen === "object" ? new Proxy(frozen, {
+      get(target, key, receiver) {
+        if (hostContextKeys.has(key)) hostContextRead = true;
+        if (appearanceKeys.has(key)) appearanceRead = true;
+        return Reflect.get(target, key, receiver);
+      }
+    }) : frozen;
+    const view = Object.freeze({ data: data === void 0 ? lastData : shared(data, lastData), env: watched, actions: actions2, channels: channels2 });
+    if (data !== void 0) lastRevision = typeof revision === "number" ? revision : null;
+    lastData = view.data;
+    rawEnvs.set(view, frozen);
+    return view;
+  }
+  var envOf = (view) => (view && rawEnvs.get(view)) ?? view?.env;
+  var readsHostContext = () => hostContextRead;
+  var envReads = () => (hostContextRead ? 1 : 0) | (appearanceRead || classesReadTheme() ? 2 : 0);
+  function resetEnvReads() {
+    appearanceRead = false;
+  }
+
   // src/runtime/validate.js
   function label(value, code, required = false) {
     if (value === void 0 && !required) return;
@@ -2680,12 +3407,12 @@
   var hexColor = (value) => typeof value === "string" && /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value);
   var pathKeys = ["d", "fill", "stroke", "strokeWidth", "strokeDasharray", "strokeDashoffset", "strokeLinecap", "strokeLinejoin", "transform", "vectorEffect"];
   var gradientKeys = ["type", "x1", "y1", "x2", "y2", "cx", "cy", "r", "fx", "fy", "fr", "from", "units", "spread", "stops"];
-  var plain = (value) => value && typeof value === "object" && !Array.isArray(value);
+  var plain2 = (value) => value && typeof value === "object" && !Array.isArray(value);
   function vectorGradient(id, gradient) {
     const invalid2 = () => {
       throw Error(`UI_VECTOR: invalid gradient ${id}`);
     };
-    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || !plain(gradient) || Object.keys(gradient).some((k) => !gradientKeys.includes(k)) || !["linear", "radial", "conic"].includes(gradient.type) || { linear: ["cx", "cy", "r", "fx", "fy", "fr", "from"], radial: ["x1", "y1", "x2", "y2", "from"], conic: ["x1", "y1", "x2", "y2", "r", "fx", "fy", "fr"] }[gradient.type].some((k) => gradient[k] !== void 0) || gradient.from !== void 0 && !finiteWithin(gradient.from, 36e3) || ["x1", "y1", "x2", "y2", "cx", "cy", "fx", "fy"].some((k) => gradient[k] !== void 0 && !finiteWithin(gradient[k], 16384)) || ["r", "fr"].some((k) => gradient[k] !== void 0 && (!finiteWithin(gradient[k], 16384) || gradient[k] < 0)) || gradient.units !== void 0 && !["objectBoundingBox", "userSpaceOnUse"].includes(gradient.units) || gradient.spread !== void 0 && !["pad", "reflect", "repeat"].includes(gradient.spread) || !Array.isArray(gradient.stops) || !gradient.stops.length || gradient.stops.length > 16 || gradient.stops.some((stop) => !plain(stop) || Object.keys(stop).some((k) => !["offset", "color", "opacity"].includes(k)) || !finiteWithin(stop.offset, 1) || stop.offset < 0 || !(hexColor(stop.color) || isRole(stop.color)) || stop.opacity !== void 0 && (!finiteWithin(stop.opacity, 1) || stop.opacity < 0))) invalid2();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || !plain2(gradient) || Object.keys(gradient).some((k) => !gradientKeys.includes(k)) || !["linear", "radial", "conic"].includes(gradient.type) || { linear: ["cx", "cy", "r", "fx", "fy", "fr", "from"], radial: ["x1", "y1", "x2", "y2", "from"], conic: ["x1", "y1", "x2", "y2", "r", "fx", "fy", "fr"] }[gradient.type].some((k) => gradient[k] !== void 0) || gradient.from !== void 0 && !finiteWithin(gradient.from, 36e3) || ["x1", "y1", "x2", "y2", "cx", "cy", "fx", "fy"].some((k) => gradient[k] !== void 0 && !finiteWithin(gradient[k], 16384)) || ["r", "fr"].some((k) => gradient[k] !== void 0 && (!finiteWithin(gradient[k], 16384) || gradient[k] < 0)) || gradient.units !== void 0 && !["objectBoundingBox", "userSpaceOnUse"].includes(gradient.units) || gradient.spread !== void 0 && !["pad", "reflect", "repeat"].includes(gradient.spread) || !Array.isArray(gradient.stops) || !gradient.stops.length || gradient.stops.length > 16 || gradient.stops.some((stop) => !plain2(stop) || Object.keys(stop).some((k) => !["offset", "color", "opacity"].includes(k)) || !finiteWithin(stop.offset, 1) || stop.offset < 0 || !(hexColor(stop.color) || isRole(stop.color)) || stop.opacity !== void 0 && (!finiteWithin(stop.opacity, 1) || stop.opacity < 0))) invalid2();
   }
   function vector(props, fit) {
     const box = props.viewBox ?? [0, 0, 24, 24];
@@ -2693,10 +3420,10 @@
       throw Error("UI_VECTOR: invalid viewBox");
     if (!Array.isArray(props.paths) || !props.paths.length || props.paths.length > 32) throw Error("UI_VECTOR: invalid paths");
     const gradients = props.gradients ?? {};
-    if (!plain(gradients) || Object.keys(gradients).length > 8) throw Error("UI_VECTOR: at most 8 gradients");
+    if (!plain2(gradients) || Object.keys(gradients).length > 8) throw Error("UI_VECTOR: at most 8 gradients");
     for (const [id, gradient] of Object.entries(gradients)) vectorGradient(id, gradient);
     for (const path of props.paths) {
-      if (!plain(path) || Object.keys(path).some((k) => !pathKeys.includes(k)) || typeof path.d !== "string" || !path.d.length || path.d.length > limits.vectorPathBytes) throw Error("UI_VECTOR: invalid path");
+      if (!plain2(path) || Object.keys(path).some((k) => !pathKeys.includes(k)) || typeof path.d !== "string" || !path.d.length || path.d.length > limits.vectorPathBytes) throw Error("UI_VECTOR: invalid path");
       for (const key of ["fill", "stroke"]) {
         const value = path[key];
         if (value === void 0 || value === "none" || value === "currentColor" || hexColor(value) || isRole(value)) continue;
@@ -2952,45 +3679,6 @@
     };
   }
 
-  // src/runtime/context.js
-  var unstamped = /* @__PURE__ */ new WeakMap();
-  var unnamed = 0;
-  function contextId(context) {
-    if (typeof context.__lxid === "string") return context.__lxid;
-    let id = unstamped.get(context);
-    if (id === void 0) unstamped.set(context, id = `context#${++unnamed}`);
-    return id;
-  }
-  function lookup(chain, id) {
-    while (chain && chain.id !== id) chain = chain.next;
-    return chain;
-  }
-  function plain2(value, budget) {
-    if (value === null || typeof value !== "object" || --budget.left < 0 || brand in value || cellOf(value)) return true;
-    if (Array.isArray(value)) return value.every((each) => plain2(each, budget));
-    const proto = Object.getPrototypeOf(value);
-    if (proto !== Object.prototype && proto !== null) return false;
-    for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value)))
-      if ("value" in descriptor && !plain2(descriptor.value, budget)) return false;
-    return true;
-  }
-  function checkValue(value) {
-    if (!plain2(value, { left: 256 })) throw Error("UI_CONTEXT: value must be plain data, functions or handles");
-  }
-  function isProvider(tag) {
-    return Boolean(tag.__lxContext);
-  }
-  function provide(tag, props, children, chain, resolve) {
-    for (const key in props) if (key !== "value" && key !== "key") throw Error(`UI_CONTEXT: a Provider takes only value, not ${key}`);
-    if (!("value" in props)) throw Error("UI_CONTEXT: a Provider needs a value");
-    checkValue(props.value);
-    const child = children.length === 1 ? children[0] : void 0;
-    if (children.length > 1 || child != null && child !== false && !isNode(child)) throw Error("UI_CONTEXT: a Provider wraps one element");
-    const result = resolve(child, { id: contextId(tag.__lxContext), value: props.value, next: chain });
-    if (result?.fragment) throw Error("UI_CONTEXT: a Provider wraps one element");
-    return result;
-  }
-
   // src/runtime/video.js
   var fields = [
     "paused",
@@ -3131,7 +3819,7 @@
     players.set(handle2, name);
     return handle2;
   }
-  var same = (a, b) => Object.is(a, b) || typeof a === "object" && typeof b === "object" && a !== null && b !== null && JSON.stringify(a) === JSON.stringify(b);
+  var same2 = (a, b) => Object.is(a, b) || typeof a === "object" && typeof b === "object" && a !== null && b !== null && JSON.stringify(a) === JSON.stringify(b);
   function videoStatus(name, status) {
     const next = Object.freeze({ ...status, fullscreen: fullscreenName === name, qualities: Object.freeze([...status.qualities ?? []]), error: status.error ? Object.freeze({ ...status.error }) : null });
     latest2.set(name, next);
@@ -3144,7 +3832,7 @@
         continue;
       }
       const current = reader.binding.value;
-      if ([...reader.read].some((field2) => !same(current[field2], next[field2]))) reader.binding.set(next);
+      if ([...reader.read].some((field2) => !same2(current[field2], next[field2]))) reader.binding.set(next);
       else cell2.value = next;
     }
   }
@@ -3543,7 +4231,7 @@
     latestLabel.clear();
   }
   var webSessionName = (handle2) => sessions.get(handle2);
-  var same2 = (a, b) => Object.is(a, b) || typeof a === "object" && typeof b === "object" && a !== null && b !== null && JSON.stringify(a) === JSON.stringify(b);
+  var same3 = (a, b) => Object.is(a, b) || typeof a === "object" && typeof b === "object" && a !== null && b !== null && JSON.stringify(a) === JSON.stringify(b);
   function updateStatus(name, patch) {
     const prev = latest3.get(name) ?? empty2;
     const session = `name:${name}`;
@@ -3562,7 +4250,7 @@
         continue;
       }
       const current = reader.binding.value;
-      if (page.updates.has(cell2) || [...reader.read].some((field2) => !same2(current[field2], next[field2]))) reader.binding.set(next);
+      if (page.updates.has(cell2) || [...reader.read].some((field2) => !same3(current[field2], next[field2]))) reader.binding.set(next);
       else cell2.value = next;
     }
   }
@@ -3759,11 +4447,11 @@
   var common2 = new Set(commonProps);
   var semanticStates = { pressed: "statePressed", selected: "stateSelected", expanded: "stateExpanded", busy: "stateBusy", invalid: "stateInvalid", required: "stateRequired", checked: "stateChecked" };
   var accepts = (field2, tag) => admission.fields[field2].includes(elements[tag].wire);
-  var ignorable = new Set(ignorableFields);
+  var ignorable2 = new Set(ignorableFields);
   var warned = /* @__PURE__ */ new Set();
   function dropped(key) {
     const host = globalThis.__lingxiaViewHost;
-    if (!ignorable.has(key) || !host || field[key] <= host.maxField) return false;
+    if (!ignorable2.has(key) || !host || field[key] <= host.maxField) return false;
     if (!warned.has(key) && typeof globalThis.__lingxiaWarn === "function") {
       warned.add(key);
       globalThis.__lingxiaWarn(`UI_COMPAT: the native host predates ${key}; it is left out of this page's semantics`);
@@ -4754,744 +5442,6 @@
       window: old?.window ? { ...old.window, start: Math.min(old.window.start, props.count), end: Math.min(old.window.end, props.count) } : null
     };
   }
-
-  // src/runtime/encode.js
-  var structured = /* @__PURE__ */ new Set(["backgroundGradient", "boxShadow", "ring", "animation"]);
-  var encodeValue = (key, value) => structured.has(key) && value !== "none" ? JSON.stringify(value) : value;
-  var ignorable2 = new Set(ignorableFields);
-  var unknownToHost = (key) => ignorable2.has(key) && field[key] > (globalThis.__lingxiaViewHost?.maxField ?? Infinity);
-  function copyTree(node) {
-    let children = node.children;
-    for (let i = 0; i < children.length; i++) {
-      const child = copyTree(node.children[i]);
-      if (child === node.children[i]) continue;
-      if (children === node.children) children = children.slice();
-      children[i] = child;
-    }
-    if (node.list) return { ...node, children, list: { ...node.list, states: new Map(node.list.states), cache: new Map(node.list.cache), pure: new Set(node.list.pure) } };
-    return children === node.children ? node : { ...node, children };
-  }
-  function retainCells(cells) {
-    for (const [key, cell2] of cells) {
-      render.candidate.locals.set(key, cell2);
-      for (const collector of render.collectors) collector.set(key, cell2);
-    }
-  }
-  var initialWindow = (count) => ({ start: 0, end: Math.min(1, count), leading: 0, trailing: Math.max(0, count - 1) * 64 });
-  var slices = /* @__PURE__ */ new WeakMap();
-  var sliceable = /* @__PURE__ */ new WeakSet();
-  var WIRE_SERIAL = -3;
-  var WIRE_REUSE = -2;
-  var wireSerial = 0;
-  var wireHeld = 0;
-  function wireAck(serial) {
-    wireHeld = serial;
-  }
-  function wireReset() {
-    wireHeld = 0;
-  }
-  function encodeTree(tree, windows) {
-    const { candidate } = render;
-    const serial = ++wireSerial;
-    const output = [];
-    let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0, dataBytes = 0;
-    const heads = [], handled = [];
-    let lists = 0, deepest = 0;
-    const paste = (slice, parent, depth) => {
-      if (depth + slice.depth > limits.depth || (count += slice.nodes) > limits.nodes) throw Error("UI_LIMIT: candidate too large");
-      if ((plotWork += slice.plotWork) > 16384) throw Error("UI_LIMIT: plot geometry budget exceeded");
-      if ((animationBytes += slice.animationBytes) > limits.animationBytes) throw Error("UI_ANIMATION: page payload budget exceeded");
-      if ((dataBytes += slice.dataBytes) > limits.dataAttributeBytes) throw Error("UI_PROP: data-* page budget exceeded");
-      for (let i = 0; i < slice.handlers.length; i++) {
-        const entry = slice.handlers[i];
-        candidate.callbacks.set(entry[0], entry[1]);
-        handled.push(entry);
-      }
-      const base = output.length, values = slice.values;
-      deepest = Math.max(deepest, depth + slice.depth);
-      if (slice.serial === wireHeld && wireHeld) {
-        output.push(WIRE_REUSE, parent, slice.serial, slice.offset, slice.nodes, 0);
-        slice.serial = serial;
-        slice.offset = base;
-        heads.push(-1);
-        return;
-      }
-      slice.serial = serial;
-      slice.offset = base;
-      for (let i = 0; i < values.length; i++) output.push(values[i]);
-      output[base + 1] = parent;
-      for (let i = 0; i < slice.heads.length; i++) {
-        const at = slice.heads[i];
-        if (at) output[base + at + 1] += base;
-        heads.push(base + at);
-      }
-    };
-    const write = (node, parent, depth) => {
-      const slice = slices.get(node);
-      if (slice) return paste(slice, parent, depth);
-      if (!sliceable.has(node)) return writeNode(node, parent, depth);
-      const index = output.length, mark = { heads: heads.length, handled: handled.length, lists, deepest, count, plotWork, animationBytes, dataBytes };
-      deepest = depth;
-      writeNode(node, parent, depth);
-      const heads2 = heads.slice(mark.heads);
-      if (lists === mark.lists && !heads2.includes(-1)) {
-        const values = output.slice(index), at = heads2.map((head) => head - index);
-        for (let i = 1; i < at.length; i++) values[at[i] + 1] -= index;
-        slices.set(node, {
-          values,
-          heads: at,
-          handlers: handled.slice(mark.handled),
-          depth: deepest - depth,
-          nodes: count - mark.count,
-          plotWork: plotWork - mark.plotWork,
-          animationBytes: animationBytes - mark.animationBytes,
-          dataBytes: dataBytes - mark.dataBytes,
-          serial,
-          offset: index
-        });
-      }
-      deepest = Math.max(deepest, mark.deepest);
-    };
-    const writeNode = (node, parent, depth) => {
-      if (depth > limits.depth || ++count > limits.nodes) throw Error("UI_LIMIT: candidate too large");
-      deepest = Math.max(deepest, depth);
-      const { tag, props, identity, fields: fields3, states: states2, wire, handlers } = node;
-      const index = output.length;
-      heads.push(index);
-      output.push(tags[tag], parent, props.key ?? "", props.testId ?? "", node.text, 0);
-      const start = output.length;
-      for (const key in fields3) {
-        const value = fields3[key];
-        if (key === "animation") {
-          animationBytes += utf8Bytes(JSON.stringify(value), 32768);
-          if (animationBytes > limits.animationBytes) throw Error("UI_ANIMATION: page payload budget exceeded");
-        }
-        if (unknownToHost(key)) continue;
-        output.push(field[key], encodeValue(key, value));
-      }
-      for (const key in states2) {
-        const style2 = states2[key], pairs = [];
-        for (const name in style2) if (!unknownToHost(name)) pairs.push(field[name], encodeValue(name, style2[name]));
-        if (pairs.length) output.push(field[key], JSON.stringify(pairs));
-      }
-      for (let i = 0; i < wire.length; i++) {
-        const key = wire[i][0], value = wire[i][1];
-        if (key === "dataAttributes") {
-          dataBytes += utf8Bytes(value, limits.dataAttributeBytes);
-          if (dataBytes > limits.dataAttributeBytes) throw Error("UI_PROP: data-* page budget exceeded");
-        }
-        output.push(field[key], value);
-      }
-      for (let i = 0; i < handlers.length; i++) {
-        const handler = handlers[i];
-        candidate.callbacks.set(handler[1], handler[2]);
-        handled.push([handler[1], handler[2]]);
-        output.push(field[handler[0]], handler[1]);
-      }
-      if (node.plotWork) {
-        plotWork += node.plotWork;
-        if (plotWork > 16384) throw Error("UI_LIMIT: plot geometry budget exceeded");
-      }
-      if (node.rowIndex !== void 0) output.push(field.listRowIndex, node.rowIndex);
-      if (node.slot !== void 0) output.push(field.childSlot, node.slot);
-      let window, seededAnchor = false;
-      if (node.list) {
-        lists++;
-        window = windows[identity] ?? node.list.window ?? initialWindow(props.count);
-        if (!Number.isSafeInteger(window.start) || !Number.isSafeInteger(window.end) || window.start < 0 || window.end < window.start || window.end > Math.max(props.count, node.list.previousCount) || ![window.leading, window.trailing].every((v) => Number.isFinite(v) && v >= 0 && v <= 16384e5)) throw Error("UI_LIST: invalid window");
-        if (window.end > props.count) window = initialWindow(props.count);
-        const typography = node.list.rowSource ? JSON.stringify(node.typography ?? null) : void 0;
-        if (node.list.reusable && node.list.reusable.typography === typography) {
-          node.list.cache = new Map(node.list.reusable.rows);
-          node.list.pure = new Set(node.list.reusable.rows.keys());
-        }
-        node.list.reusable = null;
-        node.list.typography = typography;
-        const target = props.anchor === "end" ? props.count - 1 : Math.min(props.anchor?.index ?? 0, props.count - 1);
-        if (node.list.anchorChanged && !props.anchor?.duration && props.count > 0 && (target < window.start || target >= window.end)) {
-          node.list.cache = new Map([...node.list.anchorCache].filter(([i, row]) => props.itemKeys === void 0 || row.props.key === `key:${JSON.stringify(props.itemKeys[i])}`));
-          seededAnchor = true;
-        }
-        node.list.anchorChanged = false;
-        node.list.anchorCache = null;
-        node.list.previousCount = props.count;
-        node.list.window = { ...window };
-        output.push(field.listId, identity, field.listCount, props.count, field.listLeading, window.leading, field.listTrailing, window.trailing);
-        if (props.itemKeys !== void 0) {
-          const { payload, bytes } = keyPayload(props.itemKeys);
-          itemKeyBytes += bytes;
-          if (itemKeyBytes > limits.itemKeyBytes) throw Error("UI_LIST: itemKeys page budget exceeded");
-          output.push(field.listItemKeys, payload);
-        }
-        if (props.anchor !== void 0) output.push(field.listAnchor, JSON.stringify(props.anchor));
-        candidate.lists.set(identity, node.list);
-      }
-      output[start - 1] = (output.length - start) / 2;
-      if (!node.list) {
-        const children = node.children;
-        for (let i = 0; i < children.length; i++) write(children[i], index, depth + 1);
-        return;
-      }
-      writeRows(node, window, index, depth, write);
-      if (seededAnchor) node.list.cache.clear();
-    };
-    write(tree, -1, 0);
-    output.push(WIRE_SERIAL, serial, "", "", "", 0);
-    return output;
-  }
-  function writeRows(node, window, index, depth, write) {
-    const visibleKeys = /* @__PURE__ */ new Set();
-    for (const i of node.list.cache.keys()) if (i < window.start || i >= window.end) {
-      node.list.cache.delete(i);
-      node.list.pure.delete(i);
-    }
-    for (let i = window.start; i < window.end; i++) {
-      const cells = /* @__PURE__ */ new Map();
-      render.collectors.push(cells);
-      try {
-        let row = node.list.cache.get(i), key = node.list.states.get(i)?.key;
-        if (!row) {
-          const { candidate } = render, handles2 = handlesIssued(), declarations = candidate.declarations.size, resources = candidate.resources.size;
-          const reads = render.cellReads, contextReads = render.contextReads;
-          render.readsView = false;
-          ({ row, key } = renderRow(node, i, cells, depth));
-          finishTopLayerRow(row);
-          const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles2 && render.cellReads === reads && render.contextReads === contextReads && candidate.declarations.size === declarations && candidate.resources.size === resources;
-          if (pure) node.list.pure.add(i);
-          else node.list.pure.delete(i);
-        } else {
-          row = copyTree(row);
-          retainCells(node.list.states.get(i).locals);
-        }
-        if (visibleKeys.has(key)) throw Error("UI_KEY: duplicate list row");
-        visibleKeys.add(key);
-        sliceable.add(row);
-        write(row, index, depth + 1);
-        node.list.cache.set(i, row);
-        node.list.states.set(i, { key, locals: cells });
-      } finally {
-        render.collectors.pop();
-      }
-    }
-    for (const [i, state] of node.list.states) {
-      if (state.locals.size) retainCells(state.locals);
-      else if (i < window.start || i >= window.end) node.list.states.delete(i);
-    }
-  }
-  function renderRow(node, i, cells, depth) {
-    const since = now();
-    try {
-      return renderRowTimed(node, i, cells, depth);
-    } finally {
-      spent("rows", since);
-    }
-  }
-  function renderRowTimed(node, i, cells, depth) {
-    const { props, identity } = node;
-    const suppliedKey = props.itemKeys?.[i];
-    const previous = render.scope, outerContexts = render.contexts;
-    render.contexts = node.list.contexts;
-    render.scope = suppliedKey === void 0 ? `${identity}/row:${i}` : `${identity}/row/key:${JSON.stringify(suppliedKey)}`;
-    try {
-      const value = props.row(i);
-      render.contexts = outerContexts;
-      const declared2 = isNode(value) ? readNode(value)[1].key : void 0;
-      if (declared2 !== void 0 && typeof declared2 !== "string") throw Error("UI_KEY: expected string");
-      if (suppliedKey === void 0 && declared2 !== void 0 && cells.size > 0)
-        throw Error("UI_LIST: keyed row factory hooks require itemKeys; alternatively move hooks into a keyed component");
-      if (suppliedKey !== void 0 && declared2 !== void 0 && suppliedKey !== declared2) throw Error("UI_LIST: row key does not match itemKeys");
-      const rowKey = suppliedKey ?? declared2;
-      const key = rowKey === void 0 ? `index:${i}` : `key:${JSON.stringify(rowKey)}`;
-      render.scope = `${identity}/row/${key}`;
-      const fields3 = {};
-      if (props.height) {
-        const height = props.height(i);
-        if (!Number.isFinite(height) || height < 0 || height > 16384) throw Error("UI_LIST: invalid row height");
-        fields3.height = height;
-      }
-      const content = resolveNode(value, render.scope, depth + 2, {
-        typography: node.typography,
-        sibling: { index: i, count: props.count },
-        direction: node.list.direction,
-        contexts: node.list.contexts
-      });
-      if (content?.fragment) throw Error("UI_LIST: a row returns one node; wrap its fragment in <view>");
-      const row = {
-        tag: "column",
-        element: "view",
-        props: { key },
-        fields: fields3,
-        states: {},
-        wire: [],
-        handlers: [],
-        identity: render.scope,
-        rowIndex: i,
-        text: "",
-        children: content === null ? [] : [content]
-      };
-      return { row, key };
-    } finally {
-      render.scope = previous;
-      render.contexts = outerContexts;
-    }
-  }
-
-  // src/runtime/memo.js
-  var compareBudget = 256;
-  var stamps = /* @__PURE__ */ new WeakMap();
-  function viewStamp(view) {
-    let stamp = stamps.get(view);
-    if (!stamp) stamps.set(view, stamp = { env: JSON.stringify(envOf(view) ?? null), actions: view?.actions, channels: view?.channels });
-    return stamp;
-  }
-  var sameView = (a, b) => a.env === b.env && a.actions === b.actions && a.channels === b.channels;
-  function same3(a, b, old, budget) {
-    if (Object.is(a, b)) return true;
-    if (typeof a !== "object" || typeof b !== "object" || a === null || b === null || --budget.left < 0) return false;
-    const nodeA = brand in a, nodeB = brand in b;
-    if (nodeA || nodeB) {
-      if (!nodeA || !nodeB) return false;
-      const x = currentArena()[a[brand][1]], y = old[b[brand][1]];
-      return Boolean(x && y) && x[0] === y[0] && sameFields(x[1], y[1], old, budget) && same3(x[2], y[2], old, budget);
-    }
-    if (Array.isArray(a)) {
-      if (!Array.isArray(b) || a.length !== b.length) return false;
-      for (let i = 0; i < a.length; i++) if (!same3(a[i], b[i], old, budget)) return false;
-      return true;
-    }
-    if (Object.getPrototypeOf(a) !== Object.prototype || Object.getPrototypeOf(b) !== Object.prototype) return false;
-    return sameFields(a, b, old, budget);
-  }
-  function sameFields(a, b, old, budget) {
-    let count = 0;
-    for (const key in a) {
-      count++;
-      if (!Object.prototype.hasOwnProperty.call(b, key) || !same3(a[key], b[key], old, budget)) return false;
-    }
-    for (const key in b) count--;
-    return count === 0;
-  }
-  var contextKeys = ["tag", "direction", "inControl", "inText", "inLink"];
-  function sameContext(a, b, old) {
-    for (let i = 0; i < contextKeys.length; i++) if (a[contextKeys[i]] !== b[contextKeys[i]]) return false;
-    const budget = { left: compareBudget };
-    return same3(a.typography, b.typography, old, budget) && same3(a.extra, b.extra, old, budget) && same3(a.every, b.every, old, budget) && same3(a.sibling, b.sibling, old, budget) && same3(a.popovers, b.popovers, old, budget);
-  }
-  function sameContexts(reads, chain, old, budget) {
-    for (const [id, read] of reads) {
-      const entry = lookup(chain, id);
-      if (!same3(entry ? entry.value : read.context.defaultValue, read.value, old, budget)) return false;
-    }
-    return true;
-  }
-  function sameChain(a, b, old, budget) {
-    for (; a || b; a = a.next, b = b.next) if (!a || !b || a.id !== b.id || !same3(a.value, b.value, old, budget)) return false;
-    return true;
-  }
-  function passContexts(reads, chain, outer) {
-    for (const [id, read] of reads) if (!outer.contextReads.has(id) && lookup(chain, id) === lookup(outer.contexts, id)) outer.contextReads.set(id, read);
-  }
-  var topLayerSize = () => {
-    const top = render.candidate.topLayer;
-    return top ? top.entries.length + top.popovers.size + top.invokers.length : 0;
-  };
-  function recall(scope, tag, props, children, parent) {
-    const since = now();
-    try {
-      return recallTimed(scope, tag, props, children, parent);
-    } finally {
-      spent("recall", since);
-    }
-  }
-  function recallTimed(scope, tag, props, children, parent) {
-    const record = render.recall?.get(scope);
-    if (!record || record.tag !== tag || tag.__lxVolatile || !sameView(record.view, viewStamp(render.view))) return void 0;
-    for (const cell2 of record.reads) if (page.updates.has(cell2)) return void 0;
-    for (const cell2 of record.cells.values()) if (page.updates.has(cell2)) return void 0;
-    const budget = { left: compareBudget };
-    if (!sameFields(props, record.props, record.arena, budget) || !same3(children, record.children, record.arena, budget) || !sameContext(parent, record.parent, record.arena) || !sameContexts(record.contextReads, parent.contexts, record.arena, budget) || record.lists && !sameChain(parent.contexts, record.parent.contexts, record.arena, budget)) return void 0;
-    const fresh2 = { ...record, props, children, parent, arena: currentArena(), result: record.lists ? reuse(record.result) : record.result };
-    keep(fresh2);
-    const frame = render.frames[render.frames.length - 1];
-    if (frame) {
-      frame.nested.push(fresh2);
-      for (const cell2 of record.reads) frame.reads.add(cell2);
-      passContexts(record.contextReads, parent.contexts, frame);
-    }
-    for (const [key, cell2] of record.cells) {
-      render.candidate.locals.set(key, cell2);
-      for (const collector of render.collectors) collector.set(key, cell2);
-    }
-    if (record.handles) skipHandle();
-    if (record.lists) render.lists++;
-    return fresh2.result;
-  }
-  function reuse(node) {
-    let children = node.children;
-    for (let i = 0; i < children.length; i++) {
-      const child = reuse(node.children[i]);
-      if (child === node.children[i]) continue;
-      if (children === node.children) children = children.slice();
-      children[i] = child;
-    }
-    if (!node.list) return children === node.children ? node : { ...node, children };
-    const { pure } = node.list, cache2 = /* @__PURE__ */ new Map();
-    for (const [i, row] of node.list.cache) if (pure.has(i)) cache2.set(i, row);
-    return { ...node, children, list: {
-      ...node.list,
-      states: new Map(node.list.states),
-      cache: cache2,
-      pure: new Set(cache2.keys()),
-      reusable: null,
-      anchorChanged: false,
-      anchorCache: null
-    } };
-  }
-  function keep(record) {
-    render.candidate.memo.set(record.scope, record);
-    for (const [key, entry] of record.closures) render.candidate.closures?.set(key, entry);
-    for (const nested of record.nested) keep(nested);
-  }
-  function enter(scope, contexts) {
-    const frame = { scope, contexts, contextReads: /* @__PURE__ */ new Map(), cells: /* @__PURE__ */ new Map(), reads: /* @__PURE__ */ new Set(), view: false, nested: [], closures: [], handles: handlesIssued(), top: topLayerSize(), lists: render.lists };
-    render.frames.push(frame);
-    render.collectors.push(frame.cells);
-    return frame;
-  }
-  function noteRead(cell2) {
-    render.cellReads++;
-    const frame = render.frames[render.frames.length - 1];
-    if (frame) frame.reads.add(cell2);
-  }
-  function noteView() {
-    const frame = render.frames[render.frames.length - 1];
-    if (frame) frame.view = true;
-  }
-  function leave(frame) {
-    render.frames.splice(render.frames.lastIndexOf(frame), 1);
-    render.collectors.splice(render.collectors.lastIndexOf(frame.cells), 1);
-    const outer = render.frames[render.frames.length - 1];
-    if (outer) {
-      for (const cell2 of frame.reads) outer.reads.add(cell2);
-      outer.view || (outer.view = frame.view);
-      passContexts(frame.contextReads, frame.contexts, outer);
-    }
-  }
-  function remember(frame, tag, props, children, parent, result) {
-    if (frame.view || result?.fragment || topLayerSize() !== frame.top || !render.candidate.memo) return;
-    const record = {
-      scope: frame.scope,
-      tag,
-      props,
-      children,
-      parent,
-      arena: currentArena(),
-      result,
-      cells: frame.cells,
-      reads: frame.reads,
-      contextReads: frame.contextReads,
-      nested: frame.nested,
-      closures: frame.closures,
-      view: viewStamp(render.view),
-      handles: handlesIssued() !== frame.handles,
-      lists: render.lists !== frame.lists
-    };
-    render.candidate.memo.set(frame.scope, record);
-    render.frames[render.frames.length - 1]?.nested.push(record);
-    if (result && !record.lists) sliceable.add(result);
-  }
-
-  // src/runtime/hooks.js
-  var bindings = /* @__PURE__ */ new WeakMap();
-  function cellOf(binding) {
-    return bindings.get(binding);
-  }
-  function local(name, initial, resource = "", order) {
-    if (!render.active || render.scope === null || order === void 0 && (typeof name !== "string" || !name || name.length > 256))
-      throw Error("UI_SCOPE: invalid local state");
-    const { candidate, scope } = render;
-    const key = JSON.stringify(order !== void 0 ? [scope, order] : resource ? [scope, resource, name] : [scope, name]);
-    if (!resource && candidate.declarations.has(key)) throw Error(`UI_LOCAL: duplicate declaration ${JSON.stringify(name)} in ${scope}`);
-    candidate.declarations.add(key);
-    const cell2 = candidate.locals.get(key) ?? render.lookupLocals?.get(key) ?? page.locals.get(key) ?? { value: immutable(initial, 0, true) };
-    candidate.locals.set(key, cell2);
-    for (const collector of render.collectors) collector.set(key, cell2);
-    if (cell2.binding) return cell2.binding;
-    const binding = cell2.binding = Object.freeze({
-      get value() {
-        if (render.active) noteRead(cell2);
-        return page.updates.has(cell2) ? page.updates.get(cell2) : cell2.value;
-      },
-      set(value) {
-        outsideRender("state mutation");
-        if (page.locals.get(key) !== cell2 && render.candidate?.locals.get(key) !== cell2)
-          throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
-        page.updates.set(cell2, immutable(value, 0, true));
-      },
-      focus() {
-        outsideRender("focus");
-        if (page.locals.get(key) !== cell2) throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
-        cell2.focus = (cell2.focus ?? 0) + 1;
-        page.updates.set(cell2, page.updates.has(cell2) ? page.updates.get(cell2) : cell2.value);
-      }
-    });
-    bindings.set(binding, { key, cell: cell2 });
-    return binding;
-  }
-  function useLocal(...args) {
-    var _a;
-    if (args.length === 2) return local(args[0], args[1]);
-    if (args.length !== 1) throw Error("UI_LOCAL: useLocal takes (initial) or (name, initial)");
-    if (!render.active || render.scope === null) throw Error("UI_SCOPE: invalid local state");
-    const counts = (_a = render.candidate).localOrder ?? (_a.localOrder = /* @__PURE__ */ new Map());
-    const order = counts.get(render.scope) ?? 0;
-    counts.set(render.scope, order + 1);
-    return local(`#${order}`, args[0], "", order);
-  }
-  function hashId(text2) {
-    let a = 2166136261, b = 2538058380;
-    for (let i = 0; i < text2.length; i++) {
-      const c = text2.charCodeAt(i);
-      a = Math.imul(a ^ c, 16777619) >>> 0;
-      b = Math.imul(b ^ c, 16777619) >>> 0;
-    }
-    return a.toString(36) + b.toString(36);
-  }
-  function useId(site) {
-    var _a;
-    if (!render.active || render.scope === null) throw Error("UI_SCOPE: useId outside render");
-    const counts = (_a = render.candidate).idOrder ?? (_a.idOrder = /* @__PURE__ */ new Map());
-    const base = `${render.scope}\0${site ?? "#"}`;
-    const seen = counts.get(base) ?? 0;
-    counts.set(base, seen + 1);
-    return `lx-${hashId(seen ? `${base}\0${seen}` : base)}`;
-  }
-  function hasLocalUpdates() {
-    return page.updates.size > 0 || page.invalidated === true;
-  }
-  function useView() {
-    if (!render.active) throw Error("UI_SCOPE: useView outside render");
-    render.readsView = true;
-    noteView();
-    return render.view;
-  }
-  function pageAction(action, code, mode) {
-    if (action === void 0 && !Object.keys(render.view.actions).length) return void 0;
-    const info = typeof action === "function" ? actionInfo(action) : void 0;
-    if (!info || info.mode !== mode || info.name.includes("."))
-      throw Error(`${code}: expected a ${mode === "stream" ? "streaming" : "unary"} action from view.actions`);
-    return { action, name: info.name };
-  }
-  function own(name, initial, kind, code, create, definition) {
-    const binding = local(name, initial, kind);
-    const { key, cell: cell2 } = bindings.get(binding);
-    const state = { get value() {
-      return binding.value;
-    }, set(value) {
-      if (page.locals.get(key) === cell2 || render.candidate?.locals.get(key) === cell2) binding.set(value);
-    } };
-    const { candidate } = render;
-    if (candidate.resourceNames.has(cell2)) throw Error(`${code}: duplicate resource name`);
-    candidate.resourceNames.add(cell2);
-    const resource = page.resources.get(cell2) ?? create(state);
-    candidate.resources.set(cell2, { resource, definition });
-    return resource;
-  }
-  var guard = (what, fn) => (...args) => {
-    outsideRender(what);
-    return fn(...args);
-  };
-  function useRequest(name, action, ...params) {
-    if (params.length > 1) throw Error("UI_REQUEST: expected at most one JSON payload");
-    const target = pageAction(action, "UI_REQUEST", "call");
-    const payload = params[0] === void 0 ? void 0 : immutable(params[0]);
-    const resource = own(
-      name,
-      { pending: false, stale: false, value: null, error: null },
-      "request",
-      "UI_REQUEST",
-      requestResource,
-      { action: target?.action, params: payload, key: JSON.stringify(payload) }
-    );
-    return Object.freeze({
-      get pending() {
-        return resource.state.pending;
-      },
-      get stale() {
-        return resource.state.stale;
-      },
-      get value() {
-        return resource.state.value;
-      },
-      get error() {
-        return resource.state.error;
-      },
-      reload: guard("request reload", resource.reload)
-    });
-  }
-  function useStream(name, action, options2 = {}) {
-    if (!options2 || typeof options2 !== "object" || options2.onData !== void 0 && typeof options2.onData !== "function")
-      throw Error("UI_STREAM: onData must be a function");
-    const target = pageAction(action, "UI_STREAM", "stream");
-    const resource = own(
-      name,
-      { status: "idle", error: null, result: null },
-      "stream",
-      "UI_STREAM",
-      streamResource,
-      { action: target?.action, onData: options2.onData }
-    );
-    return Object.freeze({
-      get status() {
-        return resource.state.status;
-      },
-      get error() {
-        return resource.state.error;
-      },
-      get result() {
-        return resource.state.result;
-      },
-      start: guard("stream mutation", resource.start),
-      cancel: guard("stream mutation", resource.cancel)
-    });
-  }
-  function useChannel(name, action, options2) {
-    if (!options2 || typeof options2 !== "object" || !("params" in options2) || options2.onData !== void 0 && typeof options2.onData !== "function")
-      throw Error("UI_CHANNEL: expected { params, onData? }");
-    const target = pageAction(action, "UI_CHANNEL", "call");
-    const params = options2.params === void 0 ? void 0 : immutable(options2.params);
-    const resource = own(
-      name,
-      { connecting: false, connected: false, error: null },
-      "channel",
-      "UI_CHANNEL",
-      (state) => channelResource(state, report),
-      { topic: target?.name, params, key: JSON.stringify(params), onData: options2.onData, channels: render.view.channels }
-    );
-    return Object.freeze({
-      get connecting() {
-        return resource.state.connecting;
-      },
-      get connected() {
-        return resource.state.connected;
-      },
-      get error() {
-        return resource.state.error;
-      },
-      connect: guard("channel resource mutation", resource.connect),
-      close: guard("channel resource mutation", resource.close),
-      send: guard("channel resource mutation", resource.send)
-    });
-  }
-  function useLeaveGuard(name, options2) {
-    if (typeof options2?.enabled !== "boolean") throw Error("UI_LEAVE: expected { enabled: boolean }");
-    const resource = own(name, { pending: null, requests: 0, error: null }, "leave", "UI_LEAVE", leaveGuards.resource, { enabled: options2.enabled });
-    return Object.freeze({
-      get pending() {
-        return resource.state.pending;
-      },
-      get requests() {
-        return resource.state.requests;
-      },
-      get error() {
-        return resource.state.error;
-      },
-      answer: guard("leave mutation", resource.answer),
-      request: guard("leave mutation", resource.request)
-    });
-  }
-  var hostContextKeys = /* @__PURE__ */ new Set(["sizeClass", "canDock"]);
-  var hostContextRead = false;
-  var appearanceKeys = /* @__PURE__ */ new Set(["theme", "highContrast"]);
-  var appearanceRead = false;
-  var rawEnvs = /* @__PURE__ */ new WeakMap();
-  var lastData;
-  var lastRevision = null;
-  function syncData(from, revision, ops) {
-    if (lastData === void 0 || lastRevision !== from) return false;
-    try {
-      lastData = applyPatch(lastData, ops);
-    } catch {
-      lastRevision = null;
-      return false;
-    }
-    lastRevision = revision;
-    return true;
-  }
-  function createView(data, env, revision) {
-    const { actions: actions2, channels: channels2 } = currentActions();
-    hostContextRead = false;
-    const frozen = immutable(env);
-    const watched = frozen && typeof frozen === "object" ? new Proxy(frozen, {
-      get(target, key, receiver) {
-        if (hostContextKeys.has(key)) hostContextRead = true;
-        if (appearanceKeys.has(key)) appearanceRead = true;
-        return Reflect.get(target, key, receiver);
-      }
-    }) : frozen;
-    const view = Object.freeze({ data: data === void 0 ? lastData : shared(data, lastData), env: watched, actions: actions2, channels: channels2 });
-    if (data !== void 0) lastRevision = typeof revision === "number" ? revision : null;
-    lastData = view.data;
-    rawEnvs.set(view, frozen);
-    return view;
-  }
-  var envOf = (view) => (view && rawEnvs.get(view)) ?? view?.env;
-  var readsHostContext = () => hostContextRead;
-  var envReads = () => (hostContextRead ? 1 : 0) | (appearanceRead || classesReadTheme() ? 2 : 0);
-  function resetEnvReads() {
-    appearanceRead = false;
-  }
-
-  // src/runtime/details.js
-  function Summary({ children }) {
-    return children ?? null;
-  }
-  Summary.__lxid = "@lingxia/view#Summary";
-  var chevron = [{ d: "M9 6l6 6-6 6", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }];
-  function Details({ open, defaultOpen = false, onToggle, className, "data-testid": testId, children }) {
-    if (open !== void 0 && typeof open !== "boolean") throw Error("UI_PROP: open must be boolean");
-    if (onToggle !== void 0 && typeof onToggle !== "function") throw Error("UI_PROP: onToggle");
-    const local2 = useLocal("open", defaultOpen === true);
-    const expanded = open ?? local2.value;
-    const items = childrenToArray(children);
-    const at = items.findIndex((item) => isNode(item) && readNode(item)[0] === Summary);
-    const summary = at < 0 ? null : readNode(items[at]);
-    const label2 = summary ? childrenToArray(summary[2].length ? summary[2] : summary[1].children) : ["Details"];
-    const body = items.filter((_, index) => index !== at);
-    const toggle2 = () => {
-      if (open === void 0) local2.set(!expanded);
-      onToggle?.(!expanded);
-    };
-    return h(
-      "view",
-      { className, "data-testid": testId },
-      h(
-        "button",
-        {
-          "data-testid": testId && `${testId}-summary`,
-          onClick: toggle2,
-          "aria-expanded": expanded,
-          className: summary?.[1].className,
-          style: summary?.[1].className ? void 0 : { backgroundColor: "transparent", color: "text", paddingTop: 8, paddingBottom: 8 }
-        },
-        h(
-          "view",
-          { style: { flexDirection: "row", alignItems: "center", gap: 8 } },
-          h(
-            "vector",
-            {
-              "aria-hidden": true,
-              paths: chevron,
-              style: { width: 16, height: 16, rotate: expanded ? 90 : 0, transition: { properties: ["transform"], durationMs: 150, delayMs: 0, easing: [0.4, 0, 0.2, 1] } }
-            }
-          ),
-          ...label2.map((item) => typeof item === "string" || typeof item === "number" ? h("text", {}, item) : item)
-        )
-      ),
-      expanded && h("view", { "data-testid": testId && `${testId}-body` }, ...body)
-    );
-  }
-  Details.__lxid = "@lingxia/view#Details";
 
   // src/runtime/frames.js
   var pending = [];

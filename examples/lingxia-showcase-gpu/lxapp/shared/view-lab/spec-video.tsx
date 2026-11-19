@@ -1,5 +1,6 @@
 // Fixtures for specs only, never listed in the catalogue: Liuli's video controls over a player.
-import { Progress, useLocal, useVideo, useView } from '@lingxia/view';
+import { useLocal, useVideo, useView } from '@lingxia/view';
+import { ProgressRing } from './kit';
 import { VideoControls } from '@liulidesign/core/VideoControls';
 import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../public-video';
 import { VIDEO_LABELS } from '../video-labels';
@@ -24,7 +25,7 @@ export function SpecVideo() {
         <VideoControls player={clip} labels={VIDEO_LABELS} poster={packaged ? 'public/video/fractal-poster.jpg' : undefined} data-testid="lab-video-controls" />
       </view>
       {/* A spinner beside the player commits the page every frame; the bar must still follow it. */}
-      {spec ? <Progress variant="ring" size={24} aria-label="Loading next" data-testid="lab-video-spinner" /> : (
+      {spec ? <ProgressRing small label="Loading next" testId="lab-video-spinner" /> : (
         <view className="relative rounded-xl overflow-hidden">
           <video data-testid="lab-stream-player" player={stream} src={PUBLIC_STREAM} aria-label="HLS test stream" />
           <VideoControls player={stream} labels={VIDEO_LABELS} data-testid="lab-stream-controls" />

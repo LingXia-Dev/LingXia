@@ -1,10 +1,8 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Fragment } from '../src/runtime/nodes.js';
-import * as details from '../src/runtime/details.js';
-import { Pager } from '../src/runtime/pager.js';
-import { Progress } from '../src/runtime/progress.js';
-import { rendered, byTestId } from './support/wire.mjs';
+import { rendered } from './support/wire.mjs';
+import { audit } from '../compiler/index.mjs';
 import { h, List, childrenToArray, elementType, cloneElement, describe, prepare, discard, reset, dispatch, useLocal, useRequest, configureActions, createView, takeActionRequests } from '../src/internal.js';
 
 beforeEach(() => reset());
@@ -191,58 +189,6 @@ test('local state inside a fragment child survives a sibling appearing before th
   assert.ok(rendered(render).children.some(child => child.text === '5'));
 });
 
-test('Details discloses its body behind a Summary toggle that announces expanded', () => {
-  const { Details, Summary } = details;
-  const view = () => h('view', {}, h(Details, { 'data-testid': 'lic' }, h(Summary, {}, 'Licenses'), h('text', {}, 'MIT')));
-  let root = rendered(view);
-  const summary = root.children[0].children[0];
-  assert.equal(summary.testId, 'lic-summary');
-  assert.equal(JSON.stringify(summary.props).includes('stateExpanded'), true);
-  assert.equal(summary.props.stateExpanded, 0);
-  assert.equal(root.children[0].children.length, 1, 'closed: no body');
-  // Clicking the summary opens it.
-  const click = summary.props.onClick;
-  assert.ok(click);
-  dispatch(click);
-  root = rendered(view);
-  assert.equal(root.children[0].children[0].props.stateExpanded, 1);
-  assert.equal(root.children[0].children[1].children[0].text, 'MIT');
-  // Controlled: `open` wins and `onToggle` hears the request.
-  let asked;
-  const controlled = rendered(() => h(Details, { open: true, onToggle: next => { asked = next; } }, h(Summary, {}, 'More'), h('text', {}, 'body')));
-  assert.equal(controlled.children.length, 2);
-  dispatch(controlled.children[0].props.onClick);
-  assert.equal(asked, false);
-});
-
-test('Pager lists its pages for a screen reader and its hidden dots follow and set the page', () => {
-  const view = () => h(Pager, { 'aria-label': 'Steps', 'data-testid': 'p' }, h('text', {}, 'A'), h('text', {}, 'B'), h('text', {}, 'C'));
-  let root = rendered(view);
-  const list = byTestId(root, 'p-scroll').children[0];
-  assert.equal(list.props.role, 'list');
-  assert.equal(list.props.accessibilityLabel, 'Steps');
-  assert.deepEqual(list.children.map(page => page.props.role), ['listitem', 'listitem', 'listitem']);
-  assert.equal(byTestId(root, 'p-dots').props.accessibilityHidden, 1);
-  assert.deepEqual([0, 1, 2].map(i => byTestId(root, `p-mark-${i}`).props.width), [18, 6, 6]);
-  dispatch(byTestId(root, 'p-dot-2').props.onClick);
-  root = rendered(view);
-  assert.deepEqual([0, 1, 2].map(i => byTestId(root, `p-mark-${i}`).props.width), [6, 6, 18]);
-  assert.equal(rendered(() => h(Pager, { 'aria-label': 'One', 'data-testid': 'q' }, h('text', {}, 'A'))).children.length, 1, 'one page: no dots');
-  assert.throws(() => rendered(() => h(Pager, {}, h('text', {}, 'A'))), /aria-label/);
-});
-
-test('Progress is a progressbar with its value, or indeterminate and moving without one', () => {
-  const bar = rendered(() => h(Progress, { value: 3, max: 4, 'aria-label': 'Upload', 'data-testid': 'p' }));
-  assert.deepEqual([bar.props.role, bar.props.ariaValueNow, bar.props.ariaValueMax, bar.props.accessibilityLabel], ['progressbar', 3, 4, 'Upload']);
-  assert.equal(byTestId(bar, 'p-fill').props.widthPercent, 75);
-  const busy = rendered(() => h(Progress, { 'aria-label': 'Loading', 'data-testid': 'q' }));
-  assert.equal(busy.props.ariaValueNow, undefined);
-  assert.match(byTestId(busy, 'q-fill').props.animation, /lx-progress-slide/);
-  const ring = rendered(() => h(Progress, { variant: 'ring', value: 150, 'aria-label': 'Sync', 'aria-valuetext': 'Done', 'data-testid': 'r' }));
-  assert.deepEqual([ring.props.ariaValueNow, ring.props.ariaValueText], [100, 'Done']);
-  assert.throws(() => rendered(() => h(Progress, { value: 1 })), /aria-label/);
-});
-
 test('useLocal(initial) keys state by call order, independent of named locals', () => {
   const cells = [];
   function Counter() {
@@ -256,4 +202,11 @@ test('useLocal(initial) keys state by call order, independent of named locals', 
   const output = describe(render, {});
   assert.ok(output.includes('5|x|typed'));
   assert.throws(() => describe(() => { useLocal(); return h('text'); }, {}), /UI_LOCAL: useLocal takes \(initial\) or \(name, initial\)/);
+});
+
+test('details, summary and progress are not elements; the build names the primitives that replace them', () => {
+  assert.deepEqual(audit('export function render() { return <page><details/><progress/></page>; }', 'page.tsx'), [
+    'page.tsx:1:41: UI_TAG: unsupported tag <details>; use <button aria-expanded> and a body shown from useLocal state',
+    'page.tsx:1:51: UI_TAG: unsupported tag <progress>; use <view role="progressbar" aria-valuenow>',
+  ]);
 });

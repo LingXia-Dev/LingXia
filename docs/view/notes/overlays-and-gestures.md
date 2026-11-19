@@ -22,13 +22,13 @@ Two primitives, spelled as HTML spells them. A sheet and a menu are not primitiv
 | `<dialog open>`, `close` event, `closedby="any\|closerequest\|none"`, `::backdrop` | `<dialog open onClose closedby>`, `backdrop:` (paint only). Default `closerequest`, as a modal's is |
 | `popover` (`auto`, `manual`), `popovertarget`, `toggle` | `popover`, `popoverTarget`, `onToggle(open)`; `auto` behaves as `closedby="any"`, `manual` as `none` (no `closedby` on popovers, as in HTML); `id` is new, page-unique (`UI_ID`), read only by `popoverTarget` and `aria-actions` |
 | `position-area`, `position-try-fallbacks`, `anchor-name` | `positionArea` (`top`/`bottom`, optionally `span-inline-start\|end`; style or `[position-area:…]`); flips and stays on screen always, 4 px from the anchor; the opening invoker carries the anchor name |
-| `showPopover()` | `open` + `onToggle`: controlled exactly as `<Details>` is, uncontrolled without `open` |
+| `showPopover()` | `open` + `onToggle`: controlled as a dialog's `open` is, uncontrolled without `open` |
 
 **Departures, all deliberate:**
 - `<dialog>` is always modal. HTML's non-modal form needs an imperative `showModal()` to tell them apart; a non-modal floating box is a `popover`. `popover` on `<dialog>` is `UI_PROP`.
 - A tap outside a `popover="auto"` closes it and is swallowed, on every platform: a mouse click on macOS too, so no button fires under a closing menu. The web lets it through. The picker already behaves this way.
 - A `role="menuitem"` closes its popover after `onClick`. The web has no shipped menu element; this is what the ARIA menu pattern prescribes, and otherwise every item repeats a close.
-- `onToggle` takes a boolean, not the `toggle` event's `newState: "open"|"closed"`, matching `<Details>`.
+- `onToggle` takes a boolean, not the `toggle` event's `newState: "open"|"closed"`.
 - `role="dialog"` leaves the author's role list (`UI_PROP` names `<dialog>`). `role="menu"` and `menuitem` are added.
 
 **Departures made while building it:** placement is the `positionArea` style (or `[position-area:…]`), not new

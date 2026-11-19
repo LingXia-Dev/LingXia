@@ -3,11 +3,13 @@ import { elements } from '../generated/contract.js';
 const container = new Set(['alignItems', 'alignContent', 'justifyContent', 'justifyItems', 'flexDirection', 'flexWrap',
   'gap', 'rowGap', 'columnGap', 'gridTemplateColumns', 'gridTemplateRows', 'gridAutoColumns', 'gridAutoRows', 'gridAutoFlow']);
 const layouts = new Set(['view', 'scroll', 'list', 'button', 'checkbox', 'page']);
-// Box tags that `<view>` and its classes replace.
+// HTML tags the View lacks, and what replaces each.
 const boxes = { column: '<view>', row: '<view className="flex-row">', grid: '<view className="grid">',
-  stack: '<view className="grid *:col-start-1 *:row-start-1">', spacer: '<view>', iframe: '<webview>' };
+  stack: '<view className="grid *:col-start-1 *:row-start-1">', spacer: '<view>', iframe: '<webview>',
+  details: '<button aria-expanded> and a body shown from useLocal state', summary: '<button aria-expanded> and a body shown from useLocal state',
+  progress: '<view role="progressbar" aria-valuenow>' };
 
-/** `; use <view …>` for a box tag the layout classes replace, else nothing. */
+/** `; use …` for an HTML tag the View replaces, else nothing. */
 export function tagHint(tag) {
   return Object.hasOwn(boxes, tag) ? `; use ${boxes[tag]}` : '';
 }

@@ -1,10 +1,11 @@
 // Drawing, media and control demos of the View catalogue: each is the body of one demo.
-import { createContext, Fragment, List, Progress, useContext, useId, useLocal, useVideo, useView, useWebView, type Local, type VectorPath } from '@lingxia/view';
+import { createContext, Fragment, List, useContext, useId, useLocal, useVideo, useView, useWebView, type Local, type VectorPath } from '@lingxia/view';
 import { Button, Icon } from '../ui';
 import type { LabPageData } from '../lab-types';
 import { Readout, useSay } from './demo';
 import { labels, readouts } from './text';
 import { Term } from './text-input';
+import { ProgressBar, ProgressRing } from './kit';
 
 export function GradientsDemo() {
   const t = useSay();
@@ -211,11 +212,11 @@ export function ProgressDemo() {
   const t = useSay();
   return (
     <>
-      <Progress value={done.value} aria-label="Upload" data-testid="lab-progress-bar" />
-      <Progress aria-label="Syncing" data-testid="lab-progress-busy" />
+      <ProgressBar value={done.value} label="Upload" testId="lab-progress-bar" />
+      <ProgressBar label="Syncing" testId="lab-progress-busy" />
       <view className="flex-row gap-4 items-center">
-        <Progress variant="ring" value={done.value} aria-label="Storage" aria-valuetext={`${done.value} of 100 GB`} data-testid="lab-progress-ring" />
-        <Progress variant="ring" aria-label="Connecting" data-testid="lab-progress-spin" />
+        <ProgressRing value={done.value} label="Storage" valueText={`${done.value} of 100 GB`} testId="lab-progress-ring" />
+        <ProgressRing label="Connecting" testId="lab-progress-spin" />
         <Button testId="lab-progress-more" size="sm" onClick={() => done.set(Math.min(100, done.value + 20))}>{t(labels.more)}</Button>
       </view>
     </>

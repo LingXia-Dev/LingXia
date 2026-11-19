@@ -1,5 +1,5 @@
 // Layout demos of the View catalogue: each is the body of one demo.
-import { Details, Summary, useBox, useLocal } from '@lingxia/view';
+import { useBox, useLocal } from '@lingxia/view';
 import { Button } from '../ui';
 import { Readout, useSay } from './demo';
 import { labels, readouts } from './text';
@@ -92,11 +92,14 @@ export function PositionDemo() {
 // HTML's details and summary: the summary says whether it is open; the body exists only while it is.
 export function SectionDemo() {
   const t = useSay();
+  const open = useLocal('licenses-open', false);
   return (
-    <Details data-testid="lab-disclosure-licenses">
-      <Summary className="py-2 text-sm font-semibold">{t(labels.licenses)}</Summary>
-      <text data-testid="lab-disclosure-body" className="text-sm text-muted">MIT, Apache-2.0, BSD-3-Clause</text>
-    </Details>
+    <view data-testid="lab-disclosure-licenses">
+      <button data-testid="lab-disclosure-licenses-summary" aria-expanded={open.value} onClick={() => open.set(!open.value)} className="py-2 bg-transparent">
+        <text className="text-sm font-semibold">{t(labels.licenses)}</text>
+      </button>
+      {open.value && <text data-testid="lab-disclosure-body" className="text-sm text-muted">MIT, Apache-2.0, BSD-3-Clause</text>}
+    </view>
   );
 }
 

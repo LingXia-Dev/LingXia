@@ -276,14 +276,6 @@ export interface DataListProps<T> extends Omit<ListProps, "count" | "itemKeys" |
   getItemHeight?: (item: T, index: number) => number;
 }
 export declare function List<T>(props: DataListProps<T>): JSX.Element;
-/** A disclosure, as HTML's details: a `<Summary>` toggle that announces its expanded state, and a body that exists while open. Uncontrolled with `defaultOpen`, controlled with `open` and `onToggle`. */
-export declare function Details(props: { open?: boolean; defaultOpen?: boolean; onToggle?: (open: boolean) => void; className?: string; "data-testid"?: string; children?: Child }): JSX.Element;
-/** The label row of a `<Details>`; `className` styles its toggle. */
-export declare function Summary(props: { className?: string; children?: Child }): JSX.Element;
-/** Pages side by side that stop on each one, as a named list a screen reader reads "n of m"; dots under it follow the page and jump to one on tap. Uncontrolled with `defaultPage`, controlled with `bind`. */
-export declare function Pager(props: { bind?: Local<number>; defaultPage?: number; dots?: boolean; "aria-label": string; className?: string; "data-testid"?: string; children?: Child }): JSX.Element;
-/** An amount done, as HTML's progress: a bar or a ring, indeterminate without `value`. A screen reader hears `value` / `max` (100) as a percentage unless `aria-valuetext` says otherwise. */
-export declare function Progress(props: { value?: number; max?: number; variant?: "bar" | "ring"; size?: number; "aria-label": string; "aria-valuetext"?: string; className?: string; "data-testid"?: string }): JSX.Element;
 export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }
 /** Strokes around the box (`outer`, after an `offset` gap) and inside its border (`inner`); they never take layout space. */
 export interface Ring {

@@ -1,5 +1,6 @@
 // Scrolling demos of the View catalogue: each is the body of one demo.
-import { List, Pager, reveal, useLocal } from '@lingxia/view';
+import { List, reveal, useLocal } from '@lingxia/view';
+import { Pager } from './kit';
 import { Button } from '../ui';
 import { Readout, useSay } from './demo';
 import { labels, readouts } from './text';
@@ -60,13 +61,13 @@ export function SnapDemo() {
   );
 }
 
-// The kit pager: dots under the pages, a tap on one jumps there; the pages read "n of m" as a list.
+// A pager with dots under the pages, a tap on one jumps there; the pages read "n of m" as a list.
 export function DotsDemo() {
   const page = useLocal('kit-pager-page', 0);
   const t = useSay();
   return (
     <>
-      <Pager bind={page} aria-label="Checkout steps" data-testid="lab-kit-pager-view" className="w-72">
+      <Pager bind={page} label="Checkout steps" testId="lab-kit-pager-view" className="w-72">
         {['Plan', 'Pay', 'Done'].map(name => (
           <view key={name} className="h-28 items-center justify-center rounded-xl bg-surface-sunken">
             <text className="text-lg font-semibold">{name}</text>

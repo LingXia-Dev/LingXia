@@ -122,8 +122,7 @@ export function audit(source, filename, { literalColors = false } = {}) {
       const intrinsic = has(elements, tag) && !elements[tag].component;
       const problem = intrinsic && unnamed(tag, node, file);
       if (problem) report(node, problem);
-      const component = { details: 'Details', summary: 'Summary', list: 'List' }[tag];
-      if (!intrinsic) report(node, `UI_TAG: unsupported tag <${tag}>${component ? `; use <${component}> from @lingxia/view` : tagHint(tag)}`);
+      if (!intrinsic) report(node, `UI_TAG: unsupported tag <${tag}>${tag === 'list' ? '; use <List> from @lingxia/view' : tagHint(tag)}`);
       else for (const prop of node.attributes.properties) {
         if (ts.isJsxSpreadAttribute(prop)) {
           for (const symbol of checker.getTypeAtLocation(prop.expression).getProperties())
