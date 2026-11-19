@@ -2303,12 +2303,7 @@ impl PageInstance {
                 "VIDEO_NOT_FOUND: {source}"
             )));
         }
-        let encoded: Vec<String> = path
-            .to_string_lossy()
-            .split('/')
-            .map(|segment| urlencoding::encode(segment).into_owned())
-            .collect();
-        Ok(format!("file://{}", encoded.join("/")))
+        Ok(file_url(&path))
     }
 
     pub fn app_session_id(&self) -> u64 {
@@ -2999,6 +2994,32 @@ fn restore_tabbar_after_back(tabbar: &mut crate::lxapp::tabbar::TabBar, path: &s
         true
     } else {
         false
+    }
+}
+
+/// `path` as a `file:` URL, each segment percent-encoded; a Windows drive stays as it is.
+fn file_url(path: &std::path::Path) -> String {
+    let path = path.to_string_lossy();
+    #[cfg(windows)]
+    let path = path.replace('\\', "/");
+    let encoded: Vec<String> = path
+        .split('/')
+        .map(|segment| {
+            let drive = segment.len() == 2
+                && segment.ends_with(':')
+                && segment.as_bytes()[0].is_ascii_alphabetic();
+            if drive {
+                segment.to_owned()
+            } else {
+                urlencoding::encode(segment).into_owned()
+            }
+        })
+        .collect();
+    let joined = encoded.join("/");
+    if joined.starts_with('/') {
+        format!("file://{joined}")
+    } else {
+        format!("file:///{joined}")
     }
 }
 
