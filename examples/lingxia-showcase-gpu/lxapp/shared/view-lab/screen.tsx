@@ -45,6 +45,35 @@ export function ScreenFacts() {
         <text className={name}>{t(labels.envTheme)}</text>
         <Readout testId="lab-env-theme" state={env.theme}>{env.theme}</Readout>
       </view>
+      <view className={row}>
+        <text className={name}>{t(labels.envMotion)}</text>
+        <Readout testId="lab-env-reduced-motion" state={env.reducedMotion ? 'reduce' : 'full'}>{env.reducedMotion ? 'reduce' : 'full'}</Readout>
+        <Readout testId="lab-env-duration-scale" state={round(env.animatorDurationScale)}>{`×${round(env.animatorDurationScale)}`}</Readout>
+      </view>
+      <view className={row}>
+        <text className={name}>{t(labels.envViewport)}</text>
+        <Readout testId="lab-env-viewport" state={`${round(env.viewport.width)},${round(env.viewport.height)}`}>{`${round(env.viewport.width)} × ${round(env.viewport.height)}`}</Readout>
+      </view>
+      <view className={row}>
+        <text className={name}>{t(labels.envKeyboard)}</text>
+        <Readout testId="lab-env-keyboard" state={round(env.keyboard.height)}>{round(env.keyboard.height)}</Readout>
+      </view>
+      <view className={row}>
+        <text className={name}>{t(labels.envDevice)}</text>
+        <Readout testId="lab-env-os" state={env.os}>{env.os}</Readout>
+        <Readout testId="lab-env-form-factor" state={env.formFactor}>{env.formFactor}</Readout>
+        <Readout testId="lab-env-pointer" state={env.pointer}>{env.pointer}</Readout>
+      </view>
+      <view className={row}>
+        <text className={name}>{t(labels.envLanguage)}</text>
+        <Readout testId="lab-env-content-language" state={env.contentLanguage}>{env.contentLanguage}</Readout>
+        <Readout testId="lab-env-direction" state={env.direction}>{env.direction}</Readout>
+        <Readout testId="lab-env-hour-cycle" state={env.hourCycle}>{env.hourCycle}</Readout>
+      </view>
+      <view className={row}>
+        <text className={name}>{t(labels.envRenderer)}</text>
+        <Readout testId="lab-env-renderer" state={env.renderer?.fallback ?? 'gpu'}>{env.renderer?.fallback ? `cpu (${env.renderer.fallback})` : 'gpu'}</Readout>
+      </view>
     </view>
   );
 }
