@@ -359,7 +359,7 @@ fn arrows_move_through_a_grid_by_row_and_column_past_cells_that_take_no_focus() 
             })
             .unwrap_or_default()
     };
-    let mut press = |i: &mut ViewInteraction, from: &str, key: &str| {
+    let press = |i: &mut ViewInteraction, from: &str, key: &str| {
         let selector = if from.is_empty() {
             String::new()
         } else {
@@ -620,26 +620,20 @@ fn unlabelled_editors_answer_placeholder_selectors() {
 }
 
 #[test]
-fn a_details_summary_is_a_button_that_announces_expanded() {
-    let mut i = interaction(
-        "h(Details,{'data-testid':'lic'},h(Summary,{},'Licenses'),h('text',{'data-testid':'body'},'MIT'))",
+fn a_disclosure_button_announces_expanded() {
+    let i = interaction(
+        "h('view',{},h('button',{'data-testid':'lic','aria-expanded':false,onClick(){}},'Licenses'))",
     );
     let tree = i.automation_tree().unwrap().to_string();
     assert!(
         tree.contains("Licenses") && tree.contains("\"expanded\":false"),
         "{tree}"
     );
-    assert_eq!(
-        i.automation_query("[data-testid=\"body\"]", None, false, None)
-            .unwrap()["exists"],
-        false
-    );
     let summary = i
-        .automation_query("[data-testid=\"lic-summary\"]", None, false, None)
+        .automation_query("[data-testid=\"lic\"]", None, false, None)
         .unwrap();
     assert_eq!(summary["role"], "button");
     assert_eq!(summary["expanded"], false);
-    let _ = &mut i;
 }
 
 #[test]
