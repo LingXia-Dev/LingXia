@@ -3808,10 +3808,7 @@ impl LxApp {
                     if let Some(error) = state.webview_error {
                         return Err(LxAppError::Runtime(error));
                     }
-                    // Hidden/preloaded documents cannot dispatch onReady until shown.
-                    ready &= state.webview_ready
-                        && state.bridge_ready
-                        && state.render_state == "finished";
+                    ready &= restored(&state, page.is_visible(), page.renderer());
                 }
                 if ready {
                     return Ok(());
@@ -5094,6 +5091,45 @@ mod delayed_destroy_tests {
             .sum::<usize>();
         assert_eq!(winners, 1);
         assert_eq!(session.status(), LxAppSessionStatus::Restarting);
+    }
+}
+
+/// A page is back after a device change once its document and bridge are ready and its frame
+/// finished. Hidden/preloaded documents cannot dispatch onReady until shown, and a hidden GPU
+/// page presents no frame to finish on.
+fn restored(
+    state: &crate::page::PageAutomationState,
+    visible: bool,
+    renderer: crate::PageRenderer,
+) -> bool {
+    let draws = visible || renderer != crate::PageRenderer::Gpu;
+    state.webview_ready && state.bridge_ready && (state.render_state == "finished" || !draws)
+}
+
+#[cfg(test)]
+mod restore_tests {
+    use super::*;
+
+    #[test]
+    fn a_hidden_gpu_page_is_restored_without_a_frame_and_others_wait_for_one() {
+        let state = |render_state| crate::page::PageAutomationState {
+            webview_attached: true,
+            webview_ready: true,
+            webview_error: None,
+            bridge_ready: true,
+            render_state,
+            lifecycle: "loaded",
+            ready: false,
+            query: serde_json::json!({}),
+        };
+        let (gpu, web) = (crate::PageRenderer::Gpu, crate::PageRenderer::Webview);
+        assert!(restored(&state("unstarted"), false, gpu));
+        assert!(!restored(&state("unstarted"), true, gpu));
+        assert!(!restored(&state("loading"), false, web));
+        assert!(restored(&state("finished"), true, gpu));
+        let mut unbridged = state("finished");
+        unbridged.bridge_ready = false;
+        assert!(!restored(&unbridged, false, gpu));
     }
 }
 
