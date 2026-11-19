@@ -574,6 +574,9 @@ pub struct ScrollSnapshot {
     /// A list anchor with a `duration`: where its row sits now, for the host to scroll to.
     #[serde(skip)]
     pub(crate) glide: Option<Glide>,
+    /// A list's gap between rows, resolved (an `em` step in px).
+    #[serde(skip)]
+    pub(crate) row_gap: f32,
 }
 
 #[derive(Clone, Debug, PartialEq)]

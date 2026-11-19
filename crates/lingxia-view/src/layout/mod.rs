@@ -515,7 +515,7 @@ impl Renderer {
         )
         .map_err(|e| e.to_string())?;
         let retained = self.build_scene(
-            records,
+            &spaced,
             &*tree,
             &ids,
             (&styles, &texts, &paragraphs),

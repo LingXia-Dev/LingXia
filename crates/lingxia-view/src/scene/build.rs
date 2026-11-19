@@ -276,6 +276,11 @@ impl Renderer {
                     ScrollAxis::Vertical => layout.scroll_height(),
                 };
                 ScrollSnapshot {
+                    row_gap: if record.tag == tag::LIST {
+                        record.number(field::GAP).unwrap_or(0.0)
+                    } else {
+                        0.0
+                    },
                     rtl: axis == ScrollAxis::Horizontal && directions[index],
                     contain: matches!(record.string(field::OVERSCROLL), Some("contain" | "none")),
                     content_insets: [

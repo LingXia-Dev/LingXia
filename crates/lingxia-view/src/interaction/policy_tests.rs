@@ -105,6 +105,7 @@ pub(crate) fn region(id: &str, parent: Option<&str>, offset: f32, max: f32) -> S
         snap_index: None,
         on_snap: None,
         glide: None,
+        row_gap: 0.0,
     }
 }
 

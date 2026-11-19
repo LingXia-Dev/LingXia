@@ -253,3 +253,44 @@ fn a_running_transition_keeps_its_length_across_a_scales_push() {
         "the next run takes the pushed 1000 ms: {next} frames"
     );
 }
+
+#[test]
+fn an_em_step_reaches_a_sticky_inset_and_a_list_gap() {
+    let (text, em) = (slot("text.sm"), slot("em"));
+    // text-sm is 13 points: a sticky header 1em down, list rows 2em apart.
+    let mut page = ViewSession::new(&source(&format!(
+        "function render(){{return h('view',{{style:{{fontSize:[{text},1,0]}}}},\
+         h('scroll',{{'data-testid':'s',style:{{height:100}}}},h('text',{{'data-testid':'h',style:{{position:'sticky',top:[{em},1,0],height:20}}}},'H'),h('view',{{style:{{height:400}}}})),\
+         h(List,{{'data-testid':'list',style:{{height:120,gap:[{em},2,0]}},items:[1,2,3],getKey:i=>String(i),renderItem:i=>h('text',{{style:{{height:20}}}},String(i))}}))}}"
+    )))
+    .unwrap();
+    page.set_environment(env(None, 1.0)).unwrap();
+    let frame = page.layout(300, 300, 1.0).unwrap();
+    let id = frame
+        .nodes
+        .iter()
+        .find(|n| n.test_id == "s")
+        .and_then(|n| n.scroll.as_ref())
+        .unwrap()
+        .id
+        .clone();
+    let scrolled = frame
+        .retained
+        .compose(&std::collections::HashMap::from([(id, 200.0)]))
+        .unwrap();
+    let (s, h) = (bounds(&scrolled, "s"), bounds(&scrolled, "h"));
+    assert!(
+        (h[1] - (s[1] + 13.0)).abs() <= 1.0,
+        "stuck 1em below the top: {h:?} {s:?}"
+    );
+    let gap = frame
+        .nodes
+        .iter()
+        .find_map(|n| n.scroll.as_ref().filter(|_| n.test_id == "list"))
+        .unwrap()
+        .row_gap;
+    assert!(
+        (gap - 26.0).abs() <= 1.0,
+        "the list measures rows 2em apart: {gap}"
+    );
+}

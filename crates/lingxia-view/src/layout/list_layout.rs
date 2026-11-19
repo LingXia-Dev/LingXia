@@ -214,7 +214,8 @@ pub(crate) fn reconcile(
             .ok_or("UI_LIST: missing scroll geometry")?;
         let count = record.number(field::LIST_COUNT).unwrap_or(0.0) as usize;
         let padding = scroll.content_insets[0];
-        let gap = record.number(field::GAP).unwrap_or(0.0);
+        // Resolved by layout: the record still holds an `em` step as authored.
+        let gap = scroll.row_gap;
         let width = scroll.content_size[0];
         // Measurement restoration must use the same content box as row anchors;
         // ignoring the bottom inset clamps an already anchored list on rerender.
