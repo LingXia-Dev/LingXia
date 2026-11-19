@@ -739,8 +739,8 @@ fn load_manifest(root: &Path) -> Result<TemplateManifest> {
 
 fn validate_manifest(root: &Path, manifest: &TemplateManifest) -> Result<()> {
     slug_for_name(&manifest.name)?;
-    if !matches!(manifest.framework.as_str(), "react" | "html") {
-        bail!("Template framework must be react or html");
+    if !matches!(manifest.framework.as_str(), "react" | "html" | "gpu") {
+        bail!("Template framework must be react, html, or gpu");
     }
     let template = resolve_owned_path(root, &manifest.template, "template directory")?;
     if !template.is_dir() {
@@ -1544,6 +1544,21 @@ mod tests {
         assert_eq!(manifest.name, "Example Kit");
         assert_eq!(manifest.framework, "react");
         assert_eq!(slug_for_name(&manifest.name).unwrap(), "example-kit");
+    }
+
+    #[test]
+    fn validates_gpu_framework_manifest() {
+        let root = tempdir().unwrap();
+        fs::create_dir_all(root.path().join("template")).unwrap();
+        fs::write(root.path().join("template/package.json"), "{}").unwrap();
+        fs::write(root.path().join("template/lxapp.json"), "{}").unwrap();
+        fs::write(
+            root.path().join(MANIFEST_FILE),
+            r#"{"name":"GPU Kit","template":"template","framework":"gpu"}"#,
+        )
+        .unwrap();
+        let manifest = load_manifest(root.path()).unwrap();
+        assert_eq!(manifest.framework, "gpu");
     }
 
     #[test]

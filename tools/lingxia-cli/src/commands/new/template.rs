@@ -43,11 +43,11 @@ pub fn process_template_dir(
             continue;
         }
 
-        // .tsx files belong to React projects only.
+        // .tsx files belong to React and GPU projects only.
         if let Some(framework) = vars.get("FRAMEWORK").map(|s| s.as_str())
             && let Some(ext) = path.extension().and_then(|e| e.to_str())
             && ext == "tsx"
-            && framework != "react"
+            && !matches!(framework, "react" | "gpu")
         {
             continue;
         }
@@ -315,6 +315,22 @@ mod tests {
         assert!(
             dst.path().join("util.ts").exists(),
             "shared .ts must be copied"
+        );
+    }
+
+    #[test]
+    fn gpu_framework_keeps_tsx_files() {
+        let src = tempdir().unwrap();
+        let dst = tempdir().unwrap();
+        fs::write(src.path().join("index.tsx"), "gpu page").unwrap();
+
+        let mut vars = HashMap::new();
+        vars.insert("FRAMEWORK".to_string(), "gpu".to_string());
+        process_template_dir(src.path(), dst.path(), &vars).unwrap();
+
+        assert!(
+            dst.path().join("index.tsx").exists(),
+            "tsx must be kept for gpu framework"
         );
     }
 

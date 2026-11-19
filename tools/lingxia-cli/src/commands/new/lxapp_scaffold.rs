@@ -173,9 +173,20 @@ pub(super) fn build_framework_vars(
             "",
             "",
         ),
+        "gpu" => (
+            "GPU",
+            "@lingxia/view",
+            "tsx",
+            "preserve",
+            r#""pages/**/*.tsx", "shared/**/*.tsx""#,
+            "",
+            "",
+            "",
+            "",
+        ),
         other => {
             return Err(anyhow!(
-                "Unsupported framework: {other}. Use 'react' or 'html'."
+                "Unsupported framework: {other}. Use 'react', 'html', or 'gpu'."
             ));
         }
     };
@@ -621,6 +632,18 @@ mod tests {
             package_json.contains("-html"),
             "html overlay should override shared package.json"
         );
+    }
+
+    #[test]
+    fn gpu_framework_vars() {
+        let vars =
+            build_framework_vars("gpu", "app", "app", "App", &dummy_versions(), "0.28.0").unwrap();
+        assert_eq!(vars["FRAMEWORK"], "gpu");
+        assert_eq!(vars["FRAMEWORK_DISPLAY"], "GPU");
+        assert_eq!(vars["FRAMEWORK_PKG"], "@lingxia/view");
+        assert_eq!(vars["PAGE_EXT"], "tsx");
+        assert_eq!(vars["JSX_MODE"], "preserve");
+        assert_eq!(vars["FRAMEWORK_RUNTIME_DEPS"], "");
     }
 
     #[test]
