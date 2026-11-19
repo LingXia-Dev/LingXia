@@ -139,6 +139,17 @@ fn validate_lxapp_manifest(manifest: &Value) -> Result<()> {
     Ok(())
 }
 
+/// The keys a page's `index.json` may set: `PageConfig`'s fields in the runtime, which a test
+/// keeps in step since the CLI cannot depend on that crate.
+const PAGE_CONFIG_FIELDS: [&str; 6] = [
+    "navigationStyle",
+    "navigationBar",
+    "enablePullDownRefresh",
+    "pageOrientation",
+    "maxTextScale",
+    "devHoldFirstState",
+];
+
 fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
     for page in pages {
         let relative = PathBuf::from(format!("{}.json", crate::lxapp::framework::page_base(page)));
@@ -181,15 +192,7 @@ fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
             ));
         }
         for key in object.keys() {
-            if ![
-                "navigationStyle",
-                "navigationBar",
-                "enablePullDownRefresh",
-                "pageOrientation",
-                "devHoldFirstState",
-            ]
-            .contains(&key.as_str())
-            {
+            if !PAGE_CONFIG_FIELDS.contains(&key.as_str()) {
                 return Err(anyhow!(
                     "{} {key}: unknown page config field",
                     relative.display()
@@ -202,6 +205,15 @@ fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
         {
             return Err(anyhow!(
                 "{} devHoldFirstState: must be a boolean",
+                relative.display()
+            ));
+        }
+        if object
+            .get("maxTextScale")
+            .is_some_and(|max| !max.as_f64().is_some_and(|max| (1.0..=3.0).contains(&max)))
+        {
+            return Err(anyhow!(
+                "{} maxTextScale: must be between 1.0 and 3.0",
                 relative.display()
             ));
         }
@@ -691,6 +703,42 @@ mod tests {
                 .expect_err(&format!("{count} items accepted"));
             assert_eq!(error.to_string(), "tabBar.items: expected 2 to 10 items");
         }
+    }
+
+    #[test]
+    fn the_page_config_keys_are_the_runtime_page_config_fields() {
+        let source = include_str!("../../../../crates/lingxia-lxapp/src/page/config.rs");
+        let start = source
+            .find("pub struct PageConfig {")
+            .expect("PageConfig in the runtime");
+        let body = &source[start..start + source[start..].find("\n}").unwrap()];
+        let camel = |name: &str| {
+            let mut out = String::new();
+            let mut upper = false;
+            for c in name.chars() {
+                if c == '_' {
+                    upper = true;
+                } else if upper {
+                    out.extend(c.to_uppercase());
+                    upper = false;
+                } else {
+                    out.push(c);
+                }
+            }
+            out
+        };
+        let mut runtime: Vec<String> = body
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("pub ")?.split_once(':'))
+            .map(|(name, _)| camel(name.trim()))
+            .collect();
+        let mut cli: Vec<String> = PAGE_CONFIG_FIELDS.iter().map(|k| k.to_string()).collect();
+        runtime.sort();
+        cli.sort();
+        assert_eq!(
+            cli, runtime,
+            "a page config key the runtime reads needs the CLI's PAGE_CONFIG_FIELDS too"
+        );
     }
 
     #[test]
