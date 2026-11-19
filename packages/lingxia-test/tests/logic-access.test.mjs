@@ -651,7 +651,8 @@ test("page handles keep the selected identity; their view takes no page option",
     assert.equal(await page.actions.rename({ title: 'After' }), true);
     assert.throws(() => page.view.css('button', { page: 'other' }), /view\.css\(\) takes no options: bind another page with t\.app\.page\(\{ name \}\)/);
     assert.throws(() => page.view.testId('save', {}), /view\.testId\(\) takes no options/);
-    assert.throws(() => page.view.screenshot({ page: 'other' }), /view\.screenshot\(\) takes no options/);
+    assert.throws(() => page.view.screenshot({ page: 'other' }), /view\.screenshot\(\) takes \{ allowNotReady\?: boolean \}/);
+    assert.throws(() => page.view.screenshot({ allowNotReady: 'yes' }), /view\.screenshot\(\) takes \{ allowNotReady\?: boolean \}/);
     assert.equal(await page.view.eval(({ document }) => document.title), 'Editor');
   });
   assert.equal(result.status, 'passed', JSON.stringify(result.error));

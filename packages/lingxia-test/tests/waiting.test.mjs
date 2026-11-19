@@ -657,7 +657,7 @@ test("a read that finds nothing on a GPU page names the test ids on screen", asy
   assert.match(message, /^boundingBox\(\): locator .*view-group-overlays.* resolved to nothing; on screen: view-index, view-row-text, view-row-input$/);
 });
 
-test("t.app.view takes no options on testId, css or screenshot, and no page on eval or scroll", async () => {
+test("t.app.view takes no options on testId or css, only allowNotReady on screenshot, and no page on eval or scroll", async () => {
   installFakeHost(createWorld());
   const messages = [];
   spec("options", { forensics: false }, async (t) => {
@@ -665,6 +665,7 @@ test("t.app.view takes no options on testId, css or screenshot, and no page on e
       () => t.app.view.testId("x", { page: "other" }),
       () => t.app.view.css("#x", { index: 1 }),
       () => t.app.view.screenshot({ page: "other" }),
+      () => t.app.view.screenshot({ allowNotReady: 1 }),
       () => t.app.view.eval({ page: "other" }, () => 1),
       () => t.app.view.scroll({ page: "other", dy: 1 }),
     ]) {
@@ -673,12 +674,13 @@ test("t.app.view takes no options on testId, css or screenshot, and no page on e
   });
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases[0]?.error));
-  assert.deepEqual(messages.map((message) => message.split(":")[0]), ["TypeError", "TypeError", "TypeError", "TypeError", "TypeError"]);
+  assert.deepEqual(messages.map((message) => message.split(":")[0]), ["TypeError", "TypeError", "TypeError", "TypeError", "TypeError", "TypeError"]);
   assert.match(messages[0], /view\.testId\(\) takes no options: bind another page with t\.app\.page\(\{ name \}\) and use its view/);
   assert.match(messages[1], /view\.css\(\) takes no options/);
-  assert.match(messages[2], /view\.screenshot\(\) takes no options/);
-  assert.match(messages[3], /page is not an eval option/);
-  assert.match(messages[4], /view\.scroll\(\) takes no page option: bind another page/);
+  assert.match(messages[2], /view\.screenshot\(\) takes \{ allowNotReady\?: boolean \}/);
+  assert.match(messages[3], /view\.screenshot\(\) takes \{ allowNotReady\?: boolean \}/);
+  assert.match(messages[4], /page is not an eval option/);
+  assert.match(messages[5], /view\.scroll\(\) takes no page option: bind another page/);
 });
 
 test("a retrying locator assertion that times out is an AssertionError with code E_TIMEOUT", async () => {
@@ -796,7 +798,7 @@ test("app.page() binds locators, eval, screenshot and scroll to an instance; cal
   world.app.page.query = (options) => { queried.push(options.page); return query(options); };
   const shots = [];
   const screenshot = world.app.page.screenshot;
-  world.app.page.screenshot = (...args) => { shots.push(args[0]?.page); return screenshot(...args); };
+  world.app.page.screenshot = (...args) => { shots.push(args[0]?.allowNotReady ? [args[0]?.page, "allowNotReady"] : args[0]?.page); return screenshot(...args); };
 
   let instanceId;
   spec("bound", { forensics: false }, async (t) => {
@@ -812,6 +814,7 @@ test("app.page() binds locators, eval, screenshot and scroll to an instance; cal
     assert.throws(() => todo.eval({ page: "cart" }, ({ document }) => document.title), /page is not an eval option/);
     await todo.screenshot();
     await t.app.view.screenshot();
+    await todo.screenshot({ allowNotReady: true });
     await todo.scroll({ dy: 10 });
     await t.app.view.scroll({ dy: 10 });
     assert.throws(() => todo.scroll({ page: "cart" }), /takes no page option/);
@@ -826,7 +829,7 @@ test("app.page() binds locators, eval, screenshot and scroll to an instance; cal
   assert.ok(!queried.includes(undefined), JSON.stringify(queried));
   assert.ok(world.evaluatedPages.includes(instanceId));
   assert.ok(!world.evaluatedPages.includes("cart"));
-  assert.deepEqual(shots, [instanceId, undefined]);
+  assert.deepEqual(shots, [instanceId, undefined, [instanceId, "allowNotReady"]]);
   assert.deepEqual(world.pageTargets.filter(([method]) => method === "scroll"), [["scroll", instanceId], ["scroll", undefined]]);
 });
 
