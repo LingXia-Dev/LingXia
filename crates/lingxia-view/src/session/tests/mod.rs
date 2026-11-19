@@ -1159,6 +1159,49 @@ fn keyboard_occlusion_reveals_without_surface_resize() {
 }
 
 #[test]
+fn a_tapped_low_field_clears_the_keyboard_whichever_comes_first() {
+    // The page does not pad itself for the keyboard; the field sits where it will be covered.
+    let module = source(
+        "function render(){return h('page',{},h('scroll',{style:{flexGrow:1}},h('view',{style:{height:300}}),h('input',{value:'1',style:{height:44}}),h('view',{style:{height:60}})))}",
+    );
+    let keyboard = |page: &mut ViewSession, height: u32| {
+        let mut environment = page.environment.clone();
+        environment["keyboard"]["height"] = serde_json::json!(height);
+        page.set_environment(environment).unwrap();
+        page.prepare_native(300, 500, 1.0, false, None, Ok).unwrap()
+    };
+    // Focus, then the keyboard rises over the field.
+    let mut page = ViewSession::new(&module).unwrap();
+    let frame = page.prepare_native(300, 500, 1.0, false, None, Ok).unwrap();
+    let id = frame.nodes[3].identity.to_string();
+    page.focus_input(page.generation(), &id).unwrap().unwrap();
+    let frame = page.prepare_native(300, 500, 1.0, false, None, Ok).unwrap();
+    assert_eq!(
+        frame.nodes[3].bounds[1], 300.0,
+        "no keyboard yet: nothing moves"
+    );
+    let field = keyboard(&mut page, 320).nodes[3].bounds;
+    assert!(
+        field[1] + field[3] <= 180.0,
+        "the field clears the keyboard: {field:?}"
+    );
+    // Another field holds the keyboard; a tap on this one, half under it, moves focus here.
+    let mut page = ViewSession::new(&module).unwrap();
+    page.prepare_native(300, 500, 1.0, false, None, Ok).unwrap();
+    keyboard(&mut page, 180);
+    page.focus_input(page.generation(), &id).unwrap().unwrap();
+    let field = page
+        .prepare_native(300, 500, 1.0, false, None, Ok)
+        .unwrap()
+        .nodes[3]
+        .bounds;
+    assert!(
+        field[1] + field[3] <= 320.0,
+        "the field clears a keyboard already up: {field:?}"
+    );
+}
+
+#[test]
 fn editor_focus_paint_tracks_autofocus_blur_disable_and_failed_frames() {
     let module = source(
         "configureClasses([{name:'base',when:{},style:{backgroundColor:'#ffffff'}},{name:'focused',when:{state:'focus'},style:{backgroundColor:'#0000ff'}}]);globalThis.__focusEnabled=true;function render(){return h('input',{className:'base focused',disabled:!globalThis.__focusEnabled,autoFocus:true,style:{width:100,height:40,borderRadius:0}})}",

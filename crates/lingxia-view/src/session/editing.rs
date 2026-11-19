@@ -71,6 +71,8 @@ impl ViewSession {
                 self.focus_event(&left, false)?;
             }
             self.focus_event(identity, true)?;
+            // A keyboard already up does not change again: the newly focused field clears it now.
+            self.reveal_input = true;
         }
         for (handle, text) in inputs.take_committed() {
             self.text_event(self.generation, handle, &text)?;
