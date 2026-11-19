@@ -10,7 +10,8 @@ export const cardRecipe = {
       outlined: 'bg-surface border border-text/12',
       raised: 'bg-surface-raised border border-text/12 shadow-contact',
       floating: 'bg-surface-raised border border-text/8 shadow-raised',
-      sunken: 'bg-surface-sunken border border-transparent',
+      // Dark `surface-sunken` sits a hair under the canvas; the hairline keeps the well's edge on any surface and in high contrast.
+      sunken: 'bg-surface-sunken border border-text/8',
     } satisfies Record<CardVariant, string>,
     padding: {
       none: 'p-0 gap-0',
