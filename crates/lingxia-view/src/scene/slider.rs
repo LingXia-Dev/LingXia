@@ -747,4 +747,58 @@ mod tests {
         // ...and only a translucent one takes the layer.
         assert!(track(Some("#00b05080"), false).contains(&[255, 255, 255, 51]));
     }
+
+    #[test]
+    fn a_pressed_on_switch_in_the_showcase_green_deepens_in_light_and_dark() {
+        use lingxia_theme::{Appearance, Prefs, Role};
+        let pack = lingxia_theme::complete(
+            serde_json::from_str(include_str!(
+                "../../../../examples/lingxia-showcase-gpu/lxapp/theme/pack.json"
+            ))
+            .unwrap(),
+        );
+        // A track has no label: whatever its solid's label needs, pressed is darker.
+        let luminance = |[r, g, b, _]: [u8; 4]| {
+            0.2126 * f32::from(r) + 0.7152 * f32::from(g) + 0.0722 * f32::from(b)
+        };
+        for appearance in [Appearance::Light, Appearance::Dark] {
+            let prefs = Prefs {
+                appearance,
+                ..Prefs::default()
+            };
+            let theme = lingxia_theme::resolve(&pack, &prefs).unwrap();
+            let palette = crate::theme::Palette(theme.palette.map(|color| color.0));
+            let pairs = serde_json::json!([field::BACKGROUND, "accent-solid"]).to_string();
+            let record = crate::scene::test_prelude::node(
+                crate::protocol::tag::SWITCH,
+                None,
+                "s",
+                &[(field::TRACK_STYLE, serde_json::Value::String(pairs))],
+            );
+            let switch = Switch {
+                right: 100.0,
+                center: 20.0,
+                checked: true,
+                pressed: true,
+                on: palette.role(Role::AccentSolid),
+                on_pressed: palette.role(Role::AccentSolidPressed),
+                off: palette.role(Role::Line),
+                press_layer: [255, 255, 255, 51],
+            };
+            let mut commands = Vec::new();
+            paint_switch(&switch, &record, &palette, &mut commands).unwrap();
+            let pressed = commands
+                .iter()
+                .find_map(|paint| match paint {
+                    Paint::Rect { color, .. } => Some(*color),
+                    _ => None,
+                })
+                .unwrap();
+            let on = palette.role(Role::AccentSolid);
+            assert!(
+                luminance(pressed) < luminance(on),
+                "{appearance:?}: pressed {pressed:?} is not darker than {on:?}"
+            );
+        }
+    }
 }
