@@ -42,7 +42,8 @@ export const checkboxInputRecipe = {
   box: {
     // A mark keeps its size and shape beside a label of any length or text size.
     base: 'shrink-0 items-center justify-center rounded-checkbox border-2 transition-colors duration-fast ease-standard',
-    size: { sm: 'size-4', md: 'size-5', lg: 'size-6' } satisfies Record<FieldSize, string>,
+    // In the label's type, so the mark grows with the text (the View caps that at 1.5×).
+    size: { sm: 'text-footnote size-[1.25em]', md: 'text-body size-[1.33em]', lg: 'text-callout size-[1.4em]' } satisfies Record<FieldSize, string>,
     state: {
       on: 'bg-accent-solid border-accent-solid text-on-accent-solid',
       off: 'bg-surface border-line-strong shadow-[0_1px_2px_rgb(0_0_0/0.05)]',
@@ -50,12 +51,11 @@ export const checkboxInputRecipe = {
     invalid: 'border-danger',
   },
   mark: {
-    size: { sm: 'size-3', md: 'size-3.5', lg: 'size-4' } satisfies Record<FieldSize, string>,
+    base: 'size-[0.93em]',
   },
   /** Partly chosen: a dash on the filled box. */
   dash: {
-    base: 'h-0.5 rounded-full bg-on-accent-solid',
-    size: { sm: 'w-2', md: 'w-2.5', lg: 'w-3' } satisfies Record<FieldSize, string>,
+    base: 'h-0.5 w-[0.66em] rounded-full bg-on-accent-solid',
   },
   text: {
     base: 'grow shrink min-w-0 gap-0.5',
@@ -68,8 +68,11 @@ export const checkboxInputRecipe = {
   description: {
     base: 'text-footnote text-muted',
   },
-  /** The status message starts under the label: the box width plus the row gap. */
+  /** The status message starts under the label: a spacer as wide as the box, then the row gap. */
   status: {
-    size: { sm: 'ps-7', md: 'ps-8', lg: 'ps-9' } satisfies Record<FieldSize, string>,
+    base: 'flex-row gap-3',
+    // Width takes `em` today; padding does not yet, so the indent is a spacer.
+    spacer: { sm: 'shrink-0 text-footnote w-[1.25em]', md: 'shrink-0 text-body w-[1.33em]', lg: 'shrink-0 text-callout w-[1.4em]' } satisfies Record<FieldSize, string>,
+    region: 'grow shrink min-w-0',
   },
 } as const;

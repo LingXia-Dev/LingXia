@@ -59,8 +59,8 @@ export function CheckboxInput(props: CheckboxInputProps) {
       <view aria-hidden className={r.line.base}>
         <text className={cx(r.ghost.base, r.label.size[size])}>{'\u200B'}</text>
         <view className={cx(r.box.base, r.box.size[size], r.box.state[checked || isMixed ? 'on' : 'off'], !checked && !isMixed && status?.type === 'error' && r.box.invalid)}>
-          {checked && <Glyph name="check" weight={2.5} className={r.mark.size[size]} />}
-          {isMixed && <view className={cx(r.dash.base, r.dash.size[size])} />}
+          {checked && <Glyph name="check" weight={2.5} className={r.mark.base} />}
+          {isMixed && <view className={r.dash.base} />}
         </view>
       </view>
       <view className={r.text.base}>
@@ -106,7 +106,10 @@ export function CheckboxInput(props: CheckboxInputProps) {
           {content}
         </checkbox>
       )}
-      <StatusRegion id={statusId} status={status} className={r.status.size[size]} />
+      <view className={r.status.base}>
+        <view aria-hidden className={r.status.spacer[size]} />
+        <StatusRegion id={statusId} status={status} className={r.status.region} />
+      </view>
     </view>
   );
 }

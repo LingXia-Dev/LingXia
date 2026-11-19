@@ -46,7 +46,8 @@ export const radioGroupRecipe = {
   circle: {
     // A mark keeps its size and shape beside a label of any length or text size.
     base: 'shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-fast ease-standard',
-    size: { sm: 'size-4', md: 'size-5', lg: 'size-6' } satisfies Record<FieldSize, string>,
+    // In the label's type, so the mark grows with the text (the View caps that at 1.5×).
+    size: { sm: 'text-footnote size-[1.25em]', md: 'text-body size-[1.33em]', lg: 'text-callout size-[1.4em]' } satisfies Record<FieldSize, string>,
     state: {
       on: 'bg-accent-solid border-accent-solid',
       off: 'bg-surface border-line-strong shadow-[0_1px_2px_rgb(0_0_0/0.05)]',
@@ -54,8 +55,7 @@ export const radioGroupRecipe = {
     invalid: 'border-danger',
   },
   dot: {
-    base: 'rounded-full bg-on-accent-solid transition duration-fast ease-standard starting:scale-50 starting:opacity-0',
-    size: { sm: 'size-1.5', md: 'size-2', lg: 'size-2.5' } satisfies Record<FieldSize, string>,
+    base: 'size-[0.53em] rounded-full bg-on-accent-solid transition duration-fast ease-standard starting:scale-50 starting:opacity-0',
   },
   text: {
     base: 'grow shrink min-w-0 gap-0.5',

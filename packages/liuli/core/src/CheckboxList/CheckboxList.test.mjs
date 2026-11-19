@@ -45,7 +45,8 @@ test('WithUnavailable and StateDisabled: one option, or all of them, take no pre
 
 test('Sizes: the options take the list\'s size', async () => {
   const screen = await renderExample('CheckboxList/CheckboxList', 'Sizes');
-  const boxSize = id => box(screen, id).children[0].children[0].children[1].props.width;
+  // Each size's box in `em` of its label's type: 16 and 24 pt at the default type.
+  const boxSize = id => { const { width, fontSize } = box(screen, id).children[0].children[0].children[1].props; return Math.round(width[1] * fontSize); };
   assert.deepEqual([boxSize('small-a'), boxSize('large-a')], [16, 24]);
 });
 

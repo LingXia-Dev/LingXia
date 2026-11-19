@@ -43,7 +43,7 @@ test('At large text: every radio mark keeps its size and its circle, never squee
     for (const radio of screen.queryAll(node => node.props.role === 'radio')) {
       const { shrink, width, height } = radio.children[0].children[1].props;
       assert.equal(shrink, 0, example);
-      assert.ok(width > 0 && width === height, `${example}: a fixed square`);
+      assert.ok(Array.isArray(width) && String(width) === String(height), `${example}: a square in em of the label's type`);
     }
   }
 });

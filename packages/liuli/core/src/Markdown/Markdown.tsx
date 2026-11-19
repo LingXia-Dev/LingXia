@@ -70,10 +70,10 @@ export function Markdown({
               {item.isDone === undefined
                 ? <text aria-hidden className={cx(r.marker.base, r.paragraph.size[size])}>{each.isOrdered ? `${each.start + index}.` : '•'}</text>
                 : (
-                  <view role={taskLabels ? 'img' : undefined} aria-label={taskLabels ? (item.isDone ? taskLabels.done : taskLabels.open) : undefined} aria-hidden={taskLabels ? undefined : true} className={r.taskSlot.base}>
+                  <view role={taskLabels ? 'img' : undefined} aria-label={taskLabels ? (item.isDone ? taskLabels.done : taskLabels.open) : undefined} aria-hidden={taskLabels ? undefined : true} className={cx(r.taskSlot.base, r.taskSlot.size[size])}>
                     <text aria-hidden className={cx(r.taskGhost.base, r.paragraph.size[size])}>{'\u200B'}</text>
-                    <view className={cx(r.task.base, item.isDone ? r.task.done : r.task.open)}>
-                      {item.isDone && <vector aria-hidden paths={tick} viewBox={[0, 0, 16, 16]} className={r.task.tick} />}
+                    <view className={cx(r.task.base, r.task.size[size], item.isDone ? r.task.done : r.task.open)}>
+                      {item.isDone && <vector aria-hidden paths={tick} viewBox={[0, 0, 16, 16]} className={r.task.tick[size]} />}
                     </view>
                   </view>
                 )}

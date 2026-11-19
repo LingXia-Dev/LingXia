@@ -61,16 +61,20 @@ export const markdownRecipe = {
   },
   // The mark is centred on the first line of its item: an empty run in the item's type gives the slot that line's height at any text size.
   taskSlot: {
-    base: 'shrink-0 w-5 flex-row items-center justify-end',
+    base: 'shrink-0 flex-row items-center justify-end',
+    // In the item's type, so the column grows with its mark.
+    size: { sm: 'text-footnote w-[1.54em]', md: 'text-body w-[1.33em]' } satisfies Record<MarkdownSize, string>,
   },
   taskGhost: {
     base: 'opacity-0',
   },
   task: {
-    base: 'size-4 shrink-0 items-center justify-center rounded-[4px] border-2',
+    base: 'shrink-0 items-center justify-center rounded-[4px] border-2',
+    // In the item's type, so the mark grows with the text, capped by the View at 1.5×.
+    size: { sm: 'text-footnote size-[1.23em]', md: 'text-body size-[1.07em]' } satisfies Record<MarkdownSize, string>,
     open: 'border-line-strong',
     done: 'border-accent-solid bg-accent-solid text-on-accent-solid',
-    tick: 'size-3',
+    tick: { sm: 'size-[0.92em]', md: 'size-[0.8em]' } satisfies Record<MarkdownSize, string>,
   },
   quote: {
     base: 'self-stretch gap-2 ps-3 border-s-2 border-line-strong',

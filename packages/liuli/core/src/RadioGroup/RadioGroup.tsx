@@ -90,7 +90,7 @@ export function RadioGroup(props: RadioGroupProps) {
                 <view aria-hidden className={r.line.base}>
                   <text className={cx(r.ghost.base, r.label.variant[variant], r.label.size[size])}>{'\u200B'}</text>
                   <view className={cx(r.circle.base, r.circle.size[size], r.circle.state[isChecked ? 'on' : 'off'], !isChecked && status?.type === 'error' && r.circle.invalid)}>
-                    {isChecked && <view className={cx(r.dot.base, r.dot.size[size])} />}
+                    {isChecked && <view className={r.dot.base} />}
                   </view>
                 </view>
                 <view className={r.text.base}>

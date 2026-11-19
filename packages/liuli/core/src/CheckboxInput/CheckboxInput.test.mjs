@@ -42,7 +42,11 @@ test('the status message starts under the label, past the box and the row gap', 
   const region = screen.queryAll(node => node.props.role === 'status')[0];
   const row = screen.getByTestId('terms').children[0];
   const box = row.children[0].children[1];
-  assert.equal(region.props.paddingLeft ?? region.props.paddingInlineStart, box.props.width + row.props.gap);
+  // A spacer as wide as the box, in the box's type, then the row's gap.
+  const [spacer, beside] = screen.queryAll(node => node.children?.includes(region))[0].children;
+  assert.equal(beside, region);
+  assert.deepEqual([String(spacer.props.width), spacer.props.fontSize], [String(box.props.width), box.props.fontSize]);
+  assert.equal(screen.queryAll(node => node.children?.includes(spacer))[0].props.gap, row.props.gap);
   const control = screen.getByTestId('terms').props;
   const margin = control.marginLeft ?? control.marginInlineStart;
   const padding = control.paddingLeft ?? control.paddingInlineStart;
@@ -62,7 +66,8 @@ test('At large text: the box keeps its size and shape, never squeezed by its lab
   for (const line of lines) {
     const { shrink, width, height } = line.children[1].props;
     assert.equal(shrink, 0);
-    assert.ok(width > 0 && width === height);
+    // A square in `em` of the label's type: it grows with the text, never squeezed.
+    assert.ok(Array.isArray(width) && String(width) === String(height));
   }
 });
 
