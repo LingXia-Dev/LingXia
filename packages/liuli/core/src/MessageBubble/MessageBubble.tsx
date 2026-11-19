@@ -22,7 +22,7 @@ export interface MessageBubbleProps {
   hasAvatarSpace?: boolean;
   /** A line under the bubble, as the app writes it: the time, "Sending", "Not sent". */
   meta?: string;
-  /** `failed` adds an error mark to `meta` and an edge to the bubble; say what failed in `meta`. */
+  /** `failed` adds an error mark to `meta`; say what failed in `meta`. */
   status?: MessageStatus;
   /** Beside `meta`, for a failed message: a Button that sends it again. */
   action?: Child;
@@ -40,22 +40,25 @@ export function MessageBubble({
   isJoinedBefore = false, isJoinedAfter = false, className, 'data-testid': testId,
 }: MessageBubbleProps) {
   const isFailed = status === 'failed';
+  const hasAvatar = avatar !== undefined || hasAvatarSpace;
   return (
     <view data-testid={testId} className={cx(r.root.base, r.root.side[side], className)}>
-      {(avatar !== undefined || hasAvatarSpace) && <view className={r.avatar.base}>{avatar}</view>}
-      <view className={cx(r.column.base, r.column.side[side])}>
-        {author !== undefined && <text className={r.author.base}>{author}</text>}
-        <view className={cx(r.bubble.base, r.bubble.side[side], isJoinedBefore && r.bubble.joinBefore[side], isJoinedAfter && r.bubble.joinAfter[side], isFailed && r.bubble.failed)}>
-          {children ?? <text className={r.text.base}>{text}</text>}
-        </view>
-        {(meta !== undefined || action !== undefined) && (
-          <view className={r.meta.base}>
-            {isFailed && <Glyph name="error" className={r.statusIcon.base} />}
-            {meta !== undefined && <text className={cx(r.metaText.base, isFailed && r.metaText.failed)}>{meta}</text>}
-            {action}
+      <view className={cx(r.line.base, r.line.side[side])}>
+        {hasAvatar && <view className={r.avatar.base}>{avatar}</view>}
+        <view className={cx(r.column.base, r.column.side[side])}>
+          {author !== undefined && <text className={r.author.base}>{author}</text>}
+          <view className={cx(r.bubble.base, r.bubble.side[side], isJoinedBefore && r.bubble.joinBefore[side], isJoinedAfter && r.bubble.joinAfter[side])}>
+            {children ?? <text className={r.text.base}>{text}</text>}
           </view>
-        )}
+        </view>
       </view>
+      {(meta !== undefined || action !== undefined) && (
+        <view className={cx(r.meta.base, hasAvatar && r.meta.afterAvatar)}>
+          {isFailed && <Glyph name="error" className={r.statusIcon.base} />}
+          {meta !== undefined && <text className={cx(r.metaText.base, isFailed && r.metaText.failed)}>{meta}</text>}
+          {action}
+        </view>
+      )}
     </view>
   );
 }

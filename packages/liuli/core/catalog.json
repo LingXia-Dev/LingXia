@@ -10742,7 +10742,7 @@
           "name": "status",
           "type": "MessageStatus",
           "required": false,
-          "description": "`failed` adds an error mark to `meta` and an edge to the bubble; say what failed in `meta`."
+          "description": "`failed` adds an error mark to `meta`; say what failed in `meta`."
         },
         {
           "name": "action",
@@ -10840,6 +10840,7 @@
       },
       "parts": {
         "root": "view",
+        "line": "view",
         "avatar": "view",
         "column": "view",
         "author": "text",
@@ -10922,7 +10923,7 @@
         ],
         "notes": [
           "It is read in order: the name, the message, then the line under it. Put the list in the View's list so a screen reader steps message by message.",
-          "A failed message says so in words and with an error mark, not only with its red edge.",
+          "A failed message says so in words and with an error mark under the bubble, not with colour alone.",
           "The side tells whose it is to the eye; say it in `author` for the ear, or name the list by who is speaking."
         ]
       },

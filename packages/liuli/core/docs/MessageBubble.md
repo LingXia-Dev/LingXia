@@ -95,7 +95,7 @@ export function Reasoning() {
 | `avatar` | `Child` |  | Their Avatar, at the bubble\'s start. For the other bubbles of a run pass `hasAvatarSpace` to keep the edge. |
 | `hasAvatarSpace` | `boolean` | `false` | Keeps the avatar\'s width empty. |
 | `meta` | `string` |  | A line under the bubble, as the app writes it: the time, "Sending", "Not sent". |
-| `status` | `MessageStatus` |  | `failed` adds an error mark to `meta` and an edge to the bubble; say what failed in `meta`. |
+| `status` | `MessageStatus` |  | `failed` adds an error mark to `meta`; say what failed in `meta`. |
 | `action` | `Child` |  | Beside `meta`, for a failed message: a Button that sends it again. |
 | `isJoinedBefore` | `boolean` | `false` | Whether the same person\'s bubble comes right before this one: tightens the corner toward it. |
 | `isJoinedAfter` | `boolean` | `false` | Whether the same person\'s bubble comes right after. |
@@ -121,6 +121,7 @@ export function Reasoning() {
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
 | root | `<view>` | yes | The row: it puts the bubble at its side. |
+| line | `<view>` | yes | The avatar and the bubble, the avatar level with the bubble's last line. |
 | avatar | `<view>` | no | The writer's Avatar, or its width kept empty down a run. |
 | author | `<text>` | no | Who wrote it, over the first bubble of a run. |
 | bubble | `<view>` | yes | The message: up to four fifths of the row, 520 px at most. |
@@ -145,7 +146,7 @@ export function Reasoning() {
 - Enter or Space: Opens and closes a MessageReasoning.
 - Press target: .
 - It is read in order: the name, the message, then the line under it. Put the list in the View's list so a screen reader steps message by message.
-- A failed message says so in words and with an error mark, not only with its red edge.
+- A failed message says so in words and with an error mark under the bubble, not with colour alone.
 - The side tells whose it is to the eye; say it in `author` for the ear, or name the list by who is speaking.
 
 | Contrast | Pair | Minimum | Light | Dark |

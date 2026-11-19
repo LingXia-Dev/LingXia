@@ -2,6 +2,7 @@ import type { MessageSide } from './MessageBubble';
 
 export const messageBubbleParts = {
   root: 'view',
+  line: 'view',
   avatar: 'view',
   column: 'view',
   author: 'text',
@@ -26,6 +27,11 @@ export const messageBubbleParts = {
  */
 export const messageBubbleRecipe = {
   root: {
+    base: 'self-stretch gap-1',
+    side: { start: 'items-start', end: 'items-end' } satisfies Record<MessageSide, string>,
+  },
+  /** The avatar and the bubble: the avatar sits level with the bubble's last line, not the meta under it. */
+  line: {
     base: 'self-stretch flex-row items-end gap-2',
     side: { start: 'justify-start', end: 'justify-end' } satisfies Record<MessageSide, string>,
   },
@@ -46,7 +52,6 @@ export const messageBubbleRecipe = {
     /** Tight on the side of its own edge, toward the bubble before and after it in a run. */
     joinBefore: { start: 'rounded-ss-checkbox', end: 'rounded-se-checkbox' } satisfies Record<MessageSide, string>,
     joinAfter: { start: 'rounded-es-checkbox', end: 'rounded-ee-checkbox' } satisfies Record<MessageSide, string>,
-    failed: 'border border-danger',
   },
   /** Long words and addresses break rather than push the bubble past the row. */
   text: {
@@ -54,6 +59,8 @@ export const messageBubbleRecipe = {
   },
   meta: {
     base: 'flex-row items-center gap-1 px-1',
+    /** Under the bubble, past the avatar's width (32) and the gap after it (8). */
+    afterAvatar: 'ms-10',
   },
   metaText: {
     base: 'text-caption text-muted tabular-nums',

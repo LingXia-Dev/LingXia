@@ -17,6 +17,7 @@ export const doc: ComponentDoc = {
   recipe: { map: 'messageBubbleRecipe', parts: 'messageBubbleParts' },
   anatomy: [
     { part: 'root', required: true, description: 'The row: it puts the bubble at its side.' },
+    { part: 'line', required: true, description: 'The avatar and the bubble, the avatar level with the bubble\'s last line.' },
     { part: 'avatar', required: false, description: 'The writer\'s Avatar, or its width kept empty down a run.' },
     { part: 'author', required: false, description: 'Who wrote it, over the first bubble of a run.' },
     { part: 'bubble', required: true, description: 'The message: up to four fifths of the row, 520 px at most.' },
@@ -43,7 +44,7 @@ export const doc: ComponentDoc = {
     ],
     notes: [
       'It is read in order: the name, the message, then the line under it. Put the list in the View\'s list so a screen reader steps message by message.',
-      'A failed message says so in words and with an error mark, not only with its red edge.',
+      'A failed message says so in words and with an error mark under the bubble, not with colour alone.',
       'The side tells whose it is to the eye; say it in `author` for the ear, or name the list by who is speaking.',
     ],
   },

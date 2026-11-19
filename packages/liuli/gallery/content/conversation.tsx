@@ -65,7 +65,6 @@ export function Content() {
               <MessageBubble
                 side={entry.mine ? 'end' : 'start'}
                 text={entry.text}
-                author={!entry.mine && startsRun ? 'Kai Chen' : undefined}
                 avatar={!entry.mine && endsRun ? <Avatar name="Kai Chen" size="sm" isDecorative /> : undefined}
                 hasAvatarSpace={!entry.mine}
                 isJoinedBefore={!startsRun}
