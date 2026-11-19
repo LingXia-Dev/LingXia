@@ -225,6 +225,52 @@ export function WebDragsDemo() {
   );
 }
 
+// A page with no hash and no script for its theme: only `prefers-color-scheme`, which the web
+// view takes from the View page's appearance. It reports what it reads, and each change.
+export function WebSchemeDemo() {
+  const web = useWebView('lab-web-scheme');
+  const read = useLocal<{ scheme: string; changes: number; background: string } | null>('lab-web-scheme-read', null);
+  const loads = useLocal('lab-web-scheme-loads', 0);
+  const t = useSay();
+  return (
+    <>
+      <webview web={web} data-testid="lab-web-scheme-frame" src="public/embed/scheme.html" aria-label={t(labels.webSchemeFrame)}
+        onLoad={() => loads.set(loads.value + 1)}
+        onMessage={(ev) => {
+          const msg = ev.data as { kind?: string; scheme?: string; changes?: number; background?: string } | null;
+          if (msg?.kind === 'scheme') read.set({ scheme: msg.scheme ?? '', changes: msg.changes ?? 0, background: msg.background ?? '' });
+        }}
+        className="w-full h-20 rounded-xl border border-line" />
+      <Readout testId="lab-web-scheme-state"
+        state={`loads=${loads.value} scheme=${read.value?.scheme ?? 'none'} changes=${read.value?.changes ?? 0} background=${read.value?.background ?? ''}`}>
+        {t(readouts.scheme(read.value?.scheme ?? '-', read.value?.changes ?? 0))}
+      </Readout>
+    </>
+  );
+}
+
+// A page taller than its box: a drag inside scrolls it to its edge; the next drag belongs to the screen.
+export function WebScrollDemo() {
+  const web = useWebView('lab-web-scroll');
+  const at = useLocal<{ top: number; end: boolean } | null>('lab-web-scroll-at', null);
+  const loads = useLocal('lab-web-scroll-loads', 0);
+  const t = useSay();
+  return (
+    <>
+      <webview web={web} data-testid="lab-web-scroll-frame" src="public/embed/scroll.html" aria-label={t(labels.webScrollFrame)}
+        onLoad={() => loads.set(loads.value + 1)}
+        onMessage={(ev) => {
+          const msg = ev.data as { kind?: string; top?: number; end?: boolean } | null;
+          if (msg?.kind === 'scroll' && typeof msg.top === 'number') at.set({ top: msg.top, end: msg.end === true });
+        }}
+        className="w-full h-40 rounded-xl border border-line" />
+      <Readout testId="lab-web-scroll-state" state={`loads=${loads.value} top=${at.value?.top ?? -1} end=${at.value?.end === true}`}>
+        {t(readouts.scrolled(at.value?.top ?? 0, at.value?.end === true))}
+      </Readout>
+    </>
+  );
+}
+
 // Bar, pie and line plots drawn from the page's series; a bar takes the selection.
 export function PlotDemo() {
   const { plots } = useView().data as unknown as LabPageData;
@@ -382,6 +428,8 @@ export const drawingDemos = {
 export const mediaDemos = {
   video: VideoDemo,
   webview: WebViewDemo,
+  webScheme: WebSchemeDemo,
+  webScroll: WebScrollDemo,
   webDrags: WebDragsDemo,
   plot: PlotDemo,
   progress: ProgressDemo,

@@ -198,3 +198,42 @@ spec('a web page with handlesDrags keeps a drag that starts on it: its pin follo
   const after = await frame.boundingBox();
   expect(Math.abs(after.y - before.y)).toBeLessThan(2);
 });
+
+// The page reads only `prefers-color-scheme`: no hash, no message from the View page.
+spec('an embedded web page follows the View page\'s appearance live, without the hash or a reload', { covers: ['view:webview', 'view:environment'], start: openDemo('webScheme') }, async (t) => {
+  const state = t.app.view.testId('lab-web-scheme-state');
+  const read = async () => (await state.getAttribute('data-state')) ?? '';
+  for (const theme of ['light', 'dark', 'light'] as const) {
+    await t.app.view.environment({ theme });
+    await expect(state).toHaveAttribute('data-state', new RegExp(`^loads=1 scheme=${theme} `), { timeout: 8_000 });
+  }
+  // Each switch reached the running page as a change, and its own colours moved with it.
+  expect(Number(/changes=(\d+)/.exec(await read())?.[1]), 'two live changes after the first read').toBeGreaterThanOrEqual(2);
+  await t.app.view.environment({ theme: 'dark' });
+  await expect(state).toHaveAttribute('data-state', /scheme=dark .*background=rgb\(30, 27, 75\)/, { timeout: 8_000 });
+});
+
+// Scrolling hands off at the edge: drags inside move the web page until its last row, then the
+// next drag scrolls the screen. Only a real touch reaches the native web view.
+spec('a drag inside a scrollable web page scrolls it to its edge, then the screen takes the next drag', { covers: ['view:webview', 'view:scroll'], start: openDemo('webScroll'), requires: { input: ['touch'] } }, async (t) => {
+  const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
+  if (os === 'ios') t.skip('iOS: the runner\'s drag never reaches the native web view; check by hand on a device');
+  const view = t.app.view;
+  const frame = view.testId('lab-web-scroll-frame');
+  const state = view.testId('lab-web-scroll-state');
+  await expect(state).toHaveAttribute('data-state', /^loads=1 top=0 end=false$/, { timeout: 8_000 });
+  const box = await frame.boundingBox();
+  const drag = async () => {
+    const from: [number, number] = [box.x + box.width / 2, box.y + box.height - 16];
+    skipWhenInjected(t, await view.swipe({ from, to: [from[0], box.y + 16], durationMs: 350 }));
+  };
+  // Thirty rows of 44 px in a 160 px box: a few drags reach the end, and the screen stays put meanwhile.
+  for (let i = 0; i < 8 && !/end=true/.test((await state.getAttribute('data-state')) ?? ''); i += 1) {
+    await drag();
+    const now = await frame.boundingBox();
+    expect(Math.abs(now.y - box.y), 'the screen stays while the web page scrolls').toBeLessThan(2);
+  }
+  await expect(state).toHaveAttribute('data-state', /end=true$/, { timeout: 3_000 });
+  await drag();
+  await t.waitFor(() => frame.boundingBox(), { until: now => now.y < box.y - 40 });
+});

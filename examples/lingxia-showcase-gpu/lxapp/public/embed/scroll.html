@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Scroll</title>
+  <style>
+    html, body { margin: 0; }
+    body { font: 500 13px system-ui, -apple-system, sans-serif; color: #334155; background: #f8fafc; }
+    @media (prefers-color-scheme: dark) { body { color: #cbd5e1; background: #0f172a; } }
+    .row { height: 44px; padding: 0 12px; display: flex; align-items: center; border-bottom: 1px solid rgba(100, 116, 139, 0.25); }
+  </style>
+</head>
+<body>
+  <div id="rows"></div>
+  <script>
+    (function () {
+      // Taller than its box: thirty rows to scroll through before the edge.
+      var rows = document.getElementById('rows');
+      for (var i = 1; i <= 30; i += 1) {
+        var row = document.createElement('div');
+        row.className = 'row';
+        row.textContent = 'Row ' + i;
+        rows.appendChild(row);
+      }
+      var root = document.scrollingElement || document.documentElement;
+      var last = -1;
+      function report() {
+        var top = Math.round(root.scrollTop);
+        if (top === last) return;
+        last = top;
+        var end = top + window.innerHeight >= root.scrollHeight - 2;
+        if (window.lingxia && typeof window.lingxia.postMessage === 'function')
+          window.lingxia.postMessage({ kind: 'scroll', top: top, end: end }, { queue: true });
+      }
+      window.addEventListener('scroll', report, { passive: true });
+      report();
+    })();
+  </script>
+</body>
+</html>

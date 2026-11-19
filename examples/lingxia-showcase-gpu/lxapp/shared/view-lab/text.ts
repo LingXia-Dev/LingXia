@@ -32,6 +32,8 @@ export const demos = {
   media: {
     video: { testId: 'lab-video', title: { en: 'Video', zh: '视频' }, try: { en: 'Tap Play: the picture starts and the time counts. Tap Pause and both stop.', zh: '点“播放”：画面开始，时间走动；点“暂停”则都停下。' } },
     webview: { testId: 'lab-webview', title: { en: 'Embedded web page', zh: '内嵌网页' }, try: { en: 'Tap inside the green page: its message reaches View. Switch section or open the 70% sheet without reloading; dismiss via Close, the backdrop, or Back.', zh: '点绿色网页内部：消息传回 View；切换章节或打开七分屏面板都不会重新加载，可用关闭按钮、点背景或系统返回收起。' } },
+    webScheme: { testId: 'lab-web-scheme', title: { en: 'A web page in the page\'s appearance', zh: '跟随页面外观的网页' }, try: { en: 'Switch the system between light and dark: the page below changes with it, without reloading and without being told.', zh: '在系统中切换浅色与深色：下面的网页随之变化，不重新加载，也无需通知。' } },
+    webScroll: { testId: 'lab-web-scroll', title: { en: 'A web page that scrolls inside', zh: '内部可滚动的网页' }, try: { en: 'Drag up inside the list: it scrolls to its last row. Drag up again there and the screen scrolls on.', zh: '在列表内向上拖：它滚到最后一行。到底后再向上拖，屏幕接着滚动。' } },
     webDrags: { testId: 'lab-web-drags', title: { en: 'A web page that keeps its drags', zh: '自己接收拖动的网页' }, try: { en: 'Drag up on the first page: the screen scrolls. Drag on the second: its pin follows your finger and the screen stays.', zh: '在第一个网页上向上拖：屏幕滚动。在第二个网页上拖：圆点跟着手指移动，屏幕不动。' } },
     plot: { testId: 'lab-plots', title: { en: 'Plot', zh: '图表' }, try: { en: 'Bars, a pie and a line drawn from numbers. Tap a bar to select it.', zh: '由数字画出的柱状图、饼图和折线图。点一根柱子即可选中。' } },
     progress: { testId: 'lab-progress', title: { en: 'Progress', zh: '进度' }, try: { en: 'A bar and a ring with a value, and both without one. Tap More to add 20.', zh: '有数值的进度条和进度环，以及没有数值的两种。点“增加”加 20。' } },
@@ -229,6 +231,8 @@ export const readouts = {
   showing: (range: string): Words => ({ en: `Showing the ${range}`, zh: `显示：${range}` }),
   chosen: (choice: string): Words => ({ en: `Chosen: ${choice}`, zh: `已选择：${none(choice)}` }),
   crossings: (log: string): Words => (log ? { en: log, zh: log } : { en: 'Move a mouse over this box', zh: '把鼠标移到这个方块上' }),
+  scheme: (scheme: string, changes: number): Words => ({ en: `The web page reads ${scheme} (changed ${changes} times)`, zh: `网页读到 ${scheme === 'dark' ? '深色' : scheme === 'light' ? '浅色' : scheme}（变化 ${changes} 次）` }),
+  scrolled: (top: number, end: boolean): Words => ({ en: `Scrolled ${top} px${end ? ', at the last row' : ''}`, zh: `已滚动 ${top} 像素${end ? '，到最后一行' : ''}` }),
   pins: (plain: string, own: string): Words => ({ en: `First pin ${plain} · second pin ${own}`, zh: `第一个圆点 ${plain} · 第二个圆点 ${own}` }),
   edges: (start: boolean, end: boolean): Words => ({
     en: start && end ? 'All rows fit' : start ? 'At the top' : end ? 'At the bottom' : 'In the middle',
@@ -400,6 +404,8 @@ export const labels = {
   updated: { en: 'Updated', zh: '更新于' },
   reset: { en: 'Reset', zh: '重置' },
   webPlain: { en: 'Page that scrolls with the screen', zh: '随屏幕滚动的网页' },
+  webSchemeFrame: { en: 'Page that follows the colour scheme', zh: '跟随配色方案的网页' },
+  webScrollFrame: { en: 'Page with thirty rows', zh: '有三十行的网页' },
   webOwn: { en: 'Page that keeps its drags', zh: '自己接收拖动的网页' },
   edgeRow: { en: 'Message', zh: '消息' },
   edgesFew: { en: 'Two rows', zh: '两行' },

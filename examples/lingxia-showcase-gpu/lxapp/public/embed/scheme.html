@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Scheme</title>
+  <style>
+    html, body { margin: 0; height: 100%; }
+    body { display: flex; align-items: center; justify-content: center; background: #eef2ff; color: #3730a3; font: 600 14px system-ui, -apple-system, sans-serif; }
+    /* No hash, no script: the colours follow the system scheme the web view reports. */
+    @media (prefers-color-scheme: dark) { body { background: #1e1b4b; color: #c7d2fe; } }
+  </style>
+</head>
+<body>
+  <div id="scheme"></div>
+  <script>
+    (function () {
+      var query = window.matchMedia('(prefers-color-scheme: dark)');
+      var changes = 0;
+      function report() {
+        var scheme = query.matches ? 'dark' : 'light';
+        document.getElementById('scheme').textContent = scheme;
+        if (window.lingxia && typeof window.lingxia.postMessage === 'function')
+          window.lingxia.postMessage({ kind: 'scheme', scheme: scheme, changes: changes, background: getComputedStyle(document.body).backgroundColor }, { queue: true });
+      }
+      query.addEventListener('change', function () { changes += 1; report(); });
+      report();
+    })();
+  </script>
+</body>
+</html>
