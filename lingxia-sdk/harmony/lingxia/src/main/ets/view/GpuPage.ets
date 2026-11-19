@@ -2,6 +2,7 @@ import { window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common, Configuration, EnvironmentCallback } from '@kit.AbilityKit';
+import { accessibility } from '@kit.AccessibilityKit';
 import { Lingxia } from '../app/Lingxia';
 import { GpuFeedback, GpuPageModel, GpuRecovery, GpuSelectionHandles, GpuWebViewMount } from './GpuPages';
 import { GpuFrameTextMenu, GpuFrameTextMenuTargetKinds } from './generated/GpuFrame';
@@ -223,6 +224,8 @@ export struct GpuPage {
   private actions: Resource[] = [$r('app.string.lx_gpu_retry'), $r('app.string.lx_gpu_reload')];
 
   private keyboardFocus: () => boolean = () => this.getUIContext().getFocusController().isActive();
+  /** The system's reduce-motion setting changed: the page's `reducedMotion` follows. */
+  private onReduceMotion: (reduced: boolean) => void = (_reduced: boolean) => this.remeasure();
 
   aboutToAppear(): void {
     this.gone = false;
@@ -243,6 +246,11 @@ export struct GpuPage {
       onMemoryLevel: (_level: number): void => {}
     };
     this.environment = context.getApplicationContext().on('environment', callback);
+    try {
+      accessibility.onAnimationReduceStateChange(this.onReduceMotion);
+    } catch (_) {
+      // Before API 23 there is no such setting to follow.
+    }
     // This component's own window: the last-created one is a float's sub-window while it exists.
     const named: window.Window | undefined = this.ownWindow();
     (named !== undefined ? Promise.resolve(named) : window.getLastWindow(context)).then((win: window.Window) => {
@@ -296,6 +304,10 @@ export struct GpuPage {
 
   aboutToDisappear(): void {
     WebViewManager.removeUiCallback(this.webViewUiCallback);
+    try {
+      accessibility.offAnimationReduceStateChange(this.onReduceMotion);
+    } catch (_) {
+    }
     if (this.environment >= 0) {
       (Lingxia.context as common.UIAbilityContext).getApplicationContext().off('environment', this.environment);
       this.environment = -1;

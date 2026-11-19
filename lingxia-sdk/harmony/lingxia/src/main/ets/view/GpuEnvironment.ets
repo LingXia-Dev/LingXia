@@ -1,6 +1,7 @@
 import { display, window } from '@kit.ArkUI';
 import { i18n } from '@kit.LocalizationKit';
 import { common, Configuration } from '@kit.AbilityKit';
+import { accessibility } from '@kit.AccessibilityKit';
 
 /**
  * The OS facts a GPU page's `env` is derived from, in device pixels, with the keys
@@ -78,6 +79,11 @@ export function sampleFacts(context: common.UIAbilityContext, win: window.Window
   // HarmonyOS scales text linearly up to its configured maximum.
   const scale = config.fontSizeScale ?? 1;
   facts.text_scale = scale === 1 ? null : [[0, 0], [16384, 16384 * scale]];
+  try {
+    facts.reduce_motion = accessibility.isAnimationReduceEnabledSync();
+  } catch (_) {
+    // Before API 23 the setting is not readable; motion stays on.
+  }
   facts.hour_cycle = i18n.System.is24HourClock() ? 'h23' : 'h12';
   facts.first_weekday = i18n.getCalendar(locale).getFirstDayOfWeek();
   return facts;
