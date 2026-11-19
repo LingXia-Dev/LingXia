@@ -146,7 +146,13 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
 
     private void onMain(Runnable work) {
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) work.run(); else main.post(work);
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) work.run(); else postAsync(work, 0);
+    }
+    /** Asynchronous, so a pending traversal's sync barrier never holds a worker result for a vsync. */
+    private void postAsync(Runnable work, long delayMillis) {
+        android.os.Message message = android.os.Message.obtain(main, work);
+        if (android.os.Build.VERSION.SDK_INT >= 22) message.setAsynchronous(true);
+        main.sendMessageDelayed(message, delayMillis);
     }
     private final GpuRecovery recovery = new GpuRecovery(this);
     /** Tags the recovery panel, so host automation reads it although it never reads page content. */
@@ -904,7 +910,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
      *  failure is recorded there; UI work hops to the main thread, values are read in place. */
     private final class Platform implements GpuPlatform {
         @Override public void post(long task, long delayMillis) {
-            main.postDelayed(() -> nativeRunTask(task), delayMillis);
+            postAsync(() -> nativeRunTask(task), delayMillis);
         }
         @Override public void requestVsync() { onMain(() -> {
             if (destroyed || vsyncRequested) return;

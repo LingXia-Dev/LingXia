@@ -23,6 +23,8 @@ final class GpuStaticSelection extends Drawable {
     private String dragging;
     private int which, pointer;
     private float dx, dy;
+    /** The selection node last drawn; handles redraw only when it changes. */
+    private String drawn;
 
     GpuStaticSelection(View view, Host host) { this.view = view; this.host = host; }
 
@@ -38,7 +40,11 @@ final class GpuStaticSelection extends Drawable {
 
     /** After each presented frame: handles follow the selection or go with it. */
     void update() {
-        if (node() == null) release();
+        JSONObject node = node();
+        if (node == null) release();
+        String now = node == null ? null : node.toString();
+        if (java.util.Objects.equals(now, drawn)) return;
+        drawn = now;
         invalidateSelf();
     }
 
