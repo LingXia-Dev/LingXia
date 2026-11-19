@@ -2,7 +2,6 @@ import type { ButtonSize } from '../Button/Button';
 import type { DropdownMenuItemVariant, DropdownMenuPlacement } from './DropdownMenu';
 
 export const dropdownMenuParts = {
-  chevron: 'vector',
   menu: 'view',
   items: 'view',
   item: 'button',
@@ -11,6 +10,7 @@ export const dropdownMenuParts = {
   itemLabel: 'text',
   itemDescription: 'text',
   itemCheck: 'vector',
+  itemDash: 'view',
   submenuChevron: 'vector',
   back: 'button',
   radioGroup: 'view',
@@ -19,11 +19,8 @@ export const dropdownMenuParts = {
   divider: 'view',
 } as const;
 
-/** The trigger reuses `buttonRecipe`; these are its chevron and the menu itself. */
+/** The menu and its items; the trigger is the author's own Button. */
 export const dropdownMenuRecipe = {
-  chevron: {
-    base: 'size-4 -me-1',
-  },
   menu: {
     base: 'min-w-48 p-1 gap-0.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
     /** The gap between the trigger and the menu, on the side the menu opens to. */
@@ -60,6 +57,10 @@ export const dropdownMenuRecipe = {
   /** The check at the end of a checked checkbox or radio item. */
   itemCheck: {
     base: 'size-4 shrink-0 text-accent',
+  },
+  /** Partly on: a dash where the check goes, in the check's colour and width. */
+  itemDash: {
+    base: 'w-2.5 h-0.5 mx-[3px] shrink-0 rounded-full bg-accent',
   },
   /** Spaced as the menu spaces its items. */
   radioGroup: {

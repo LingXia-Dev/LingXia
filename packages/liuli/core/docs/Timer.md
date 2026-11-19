@@ -25,7 +25,7 @@ export function Countdown() {
   return (
     <view className="items-start gap-3">
       <Timer seconds={left.value} size="lg" label={`${Math.floor(left.value / 60)} minutes ${left.value % 60} seconds left`} data-testid="countdown" />
-      <view className="flex-row gap-2">
+      <view className="flex-row flex-wrap gap-2">
         <Button label="Skip 15 seconds" onClick={() => left.set(Math.max(0, left.value - 15))} data-testid="skip" />
         <Button label="Reset" variant="ghost" onClick={() => left.set(125)} />
       </view>
@@ -43,11 +43,11 @@ import { Timer } from '@liulidesign/core/Timer';
 export function Inline() {
   return (
     <view className="gap-2">
-      <view className="flex-row items-baseline gap-1.5">
+      <view className="flex-row flex-wrap items-baseline gap-x-1.5">
         <text className="text-footnote text-muted">Code expires in</text>
         <Timer seconds={272} size="sm" data-testid="expires" />
       </view>
-      <view className="flex-row items-baseline gap-1.5">
+      <view className="flex-row flex-wrap items-baseline gap-x-1.5">
         <text className="text-body text-text">On a call</text>
         <Timer seconds={4325} data-testid="call" />
       </view>
@@ -100,6 +100,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Say beside it what the time is: "Code expires in", "Recording".
 - Do: Use `hasHours` where the time may pass an hour, so the digits do not jump wider.
+- Do: At large text, let the row around a Timer wrap (`flex-wrap`): its digits stay on one line and move under their words whole.
 - Don't: Use it for a time of day or a date; that is Timestamp.
 - Don't: Hide the only way to tell time is running out in the digits; change the screen when it is up.
 

@@ -1,5 +1,6 @@
 import { cx } from '@lingxia/view';
 import { toggleButtonRecipe as r } from './ToggleButton.recipe';
+import { registerPressable, useTrigger } from '../internal/trigger';
 
 export type ToggleButtonSize = 'sm' | 'md' | 'lg';
 
@@ -20,10 +21,14 @@ export interface ToggleButtonProps {
 
 /** A button that turns one option on or off and shows which: a filter, a view option. */
 export function ToggleButton({ label, value: isPressed, onChange: onPressedChange, size = 'md', isDisabled = false, className, 'data-testid': testId }: ToggleButtonProps) {
+  const trigger = useTrigger();
   return (
     <button
       aria-label={label}
       aria-pressed={isPressed}
+      aria-describedby={trigger?.describedBy}
+      popoverTarget={trigger?.popoverTarget}
+      interestFor={trigger?.interestFor}
       data-state={isPressed ? 'on' : 'off'}
       disabled={isDisabled}
       data-testid={testId}
@@ -34,3 +39,4 @@ export function ToggleButton({ label, value: isPressed, onChange: onPressedChang
     </button>
   );
 }
+registerPressable(ToggleButton);

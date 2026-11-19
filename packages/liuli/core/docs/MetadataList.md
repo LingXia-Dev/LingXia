@@ -117,6 +117,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Order the pairs by what people look for first, not by the record's fields.
 - Do: Use `rows` for a list that may have long values; `stacked` for a handful of short ones.
 - Do: Format dates and amounts as the rest of the app does.
+- Do: At large text, a label word wider than its third widens the label column; keep labels to short words.
 - Don't: Use it for fields people edit; that is a form.
 - Don't: Leave a pair with an empty value; leave the pair out, or say "None".
 

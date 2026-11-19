@@ -8,7 +8,8 @@ export const doc: ComponentDoc = {
   summary: 'How much is done, as a ring',
   description:
     'CircularProgress shows an amount from 0 to `max` as an arc around a ring, with the app\'s own words in the middle at the larger sizes. ' +
-    'Without `value` the arc spins: the task is running and its length is unknown. Use it where a ProgressBar has no room: a tile, the end of a row.',
+    'Without `value` the arc spins: the task is running and its length is unknown. Use it where a ProgressBar has no room: a tile, the end of a row. ' +
+    'CircularProgressGroup holds rings shown together, its rings as direct children, and keeps their words all inside or all beside.',
   keywords: ['progress', 'ring', 'circular', 'radial', 'meter', 'gauge', 'donut'],
   propsType: 'CircularProgressProps',
   recipe: { map: 'circularProgressRecipe', parts: 'circularProgressParts' },
@@ -44,6 +45,7 @@ export const doc: ComponentDoc = {
     do: [
       'Give `valueLabel` in the words the screen uses: "72%", "3 of 8".',
       'Use `sm` at the end of a row or inside a button; say the amount beside it if it matters.',
+      'At large text, the ring keeps its size and the words move beside it once they outgrow its middle; keep `valueLabel` to a figure or a short word, and put rings shown together in a `CircularProgressGroup`, which moves all their words at once so a row never mixes the two; let its row wrap.',
     ],
     dont: [
       'Use a ring where a bar fits; a bar is easier to compare and to read.',

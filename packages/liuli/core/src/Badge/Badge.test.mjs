@@ -19,9 +19,10 @@ test('Solid: fill with its on- role', async () => {
   assert.equal(screen.getByTestId('solid').props.color, 'on-accent');
 });
 
-test('Sizes: heights 20 and 24; the icon is hidden', async () => {
+test('Sizes: heights 20 and 24 at the least, grown by the label at large text; the icon is hidden', async () => {
   const screen = await renderExample('Badge/Badge', 'Sizes');
-  assert.equal(screen.getByTestId('small').props.height, 20);
+  const { props } = screen.getByTestId('small');
+  assert.deepEqual([props.height, props.minHeight, props.paddingTop, props.paddingBottom], [undefined, 20, 2, 2]);
   // The icon is drawn from the set by its name, and not read.
   const icon = screen.queryAll(node => node.tag === 'vector' && node.props.accessibilityHidden);
   assert.equal(icon.length, 1);

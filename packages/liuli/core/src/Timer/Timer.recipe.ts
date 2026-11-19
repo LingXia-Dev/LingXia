@@ -2,10 +2,10 @@ import type { TimerSize } from './Timer';
 
 export const timerParts = { root: 'text' } as const;
 
-/** Digits that do not shift as they change. */
+/** Digits that do not shift as they change, and never break across lines. */
 export const timerRecipe = {
   root: {
-    base: 'tabular-nums text-text',
+    base: 'tabular-nums whitespace-nowrap text-text',
     size: { sm: 'text-footnote', md: 'text-body font-medium', lg: 'text-display font-semibold tracking-tight' } satisfies Record<TimerSize, string>,
     done: 'text-muted',
   },

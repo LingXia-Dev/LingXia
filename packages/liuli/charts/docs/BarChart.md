@@ -207,6 +207,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Pass `summarize` so a screen reader gets the finding first.
 - Do: Keep to about twelve categories on a phone when each should be pressed.
 - Do: Give charts that are compared the same `domainMax`.
+- Do: At large text, figures that would touch give way to the top of the scale, unless `valueLabels="always"`; their line grows with them.
 - Don't: Use bars for a trend over many points in time; use LineChart.
 - Don't: Draw more than three series side by side on a phone.
 - Don't: Colour single-series bars differently from each other; colour says which series.

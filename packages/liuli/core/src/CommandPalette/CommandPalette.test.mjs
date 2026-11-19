@@ -47,3 +47,10 @@ test('Commands: End goes to the last row that can be chosen, past the one that c
   screen.key(screen.getByTestId('palette-search'), 'End');
   assert.deepEqual(highlighted(screen), ['palette-share']);
 });
+
+test('At large text: the button that opens the palette stays inside its card and is not cut', async () => {
+  const screen = await renderExample('CommandPalette/CommandPalette', 'Commands');
+  const open = screen.getByTestId('palette-open');
+  assert.deepEqual([open.props.maxWidthPercent, open.props.height, open.props.minHeight > 0], [100, undefined, true]);
+  assert.equal(open.children.find(node => node.tag === 'text').props.whiteSpace, undefined, 'its label wraps only when the button alone is wider than the card');
+});

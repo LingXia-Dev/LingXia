@@ -41,6 +41,7 @@ export const doc: ComponentDoc = {
     do: [
       'Start with one empty row when at least one is needed, and set `min` to 1.',
       'Key rows by an id the app makes when a row is added, so a row keeps its text when another is removed.',
+      'At large text, let a row of controls wrap (`flex-wrap`, least widths, no fixed widths) so each keeps its words whole.',
     ],
     dont: [
       'Use it for choosing among known options; that is MultiSelect or CheckboxList.',

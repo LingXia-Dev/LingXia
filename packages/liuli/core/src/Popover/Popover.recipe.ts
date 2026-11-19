@@ -6,7 +6,7 @@ export const popoverParts = {
 } as const;
 
 /**
- * The trigger reuses `buttonRecipe`. The panel is a raised card beside the trigger, as the
+ * The trigger is the author's own Button. The panel is a raised card beside the trigger, as the
  * DropdownMenu's menu is drawn, roomier for content; it fades and grows from the trigger's side.
  */
 export const popoverRecipe = {

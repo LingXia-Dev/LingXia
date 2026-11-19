@@ -3,11 +3,13 @@ import type { IconName } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { settleFlag } from '../internal/settle';
+import { registerPressable, useTrigger } from '../internal/trigger';
 import { buttonRecipe as r } from './Button.recipe';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'link' | 'destructive';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 export type ButtonWidth = 'content' | 'fill';
+export type ButtonEdge = 'start' | 'end';
 
 export interface ButtonProps {
   /** The visible text and the accessible name. Name the outcome: "Save changes", not "OK". */
@@ -32,6 +34,8 @@ export interface ButtonProps {
   isFloating?: boolean;
   /** `content` keeps its own width in a column; `fill` stretches across. Unset follows the parent. */
   width?: ButtonWidth;
+  /** For a ghost or link button at the edge of a row: its padding hangs past that side, so the label or the icon's drawing lines up with the content edge, as the text above and below does. */
+  edge?: ButtonEdge;
   /** @default false */
   isDisabled?: boolean;
   /** Why it is disabled: read as the button's description while disabled; not drawn. */
@@ -69,6 +73,7 @@ export function Button({
   endContent,
   isFloating = false,
   width,
+  edge,
   isDisabled: ownDisabled = false,
   disabledMessage,
   isLoading = false,
@@ -78,6 +83,7 @@ export function Button({
   'data-testid': testId,
 }: ButtonProps) {
   const group = useContext(ButtonGroupContext);
+  const trigger = useTrigger();
   const variant = ownVariant ?? group?.variant ?? 'secondary';
   const size = ownSize ?? group?.size ?? 'md';
   const isDisabled = ownDisabled || group?.isDisabled === true;
@@ -101,13 +107,15 @@ export function Button({
     <button
       data-testid={testId}
       aria-label={label}
-      aria-describedby={hasReason ? reasonId : undefined}
+      aria-describedby={hasReason ? reasonId : trigger?.describedBy}
       aria-busy={busy || undefined}
       disabled={isDisabled}
+      popoverTarget={trigger?.popoverTarget}
+      interestFor={trigger?.interestFor}
       onClick={press}
       className={cx(
         r.root.base, r.root.variant[variant], r.root.disabled[variant], isIconOnly ? r.root.square[size] : r.root.size[size],
-        group?.isAttached && r.root.attached, isFloating && !isDisabled && r.root.floating, width && r.root.width[width], className,
+        group?.isAttached && r.root.attached, isFloating && !isDisabled && r.root.floating, width && r.root.width[width], edge && r.root.edge[edge][isIconOnly ? 'square' : (edge === 'end' ? endIcon : startIcon) ? 'icon' : 'label'][size], className,
       )}
     >
       {busy ? (
@@ -123,3 +131,4 @@ export function Button({
     </button>
   );
 }
+registerPressable(Button);

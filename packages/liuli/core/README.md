@@ -46,7 +46,7 @@ that directory.
 ## Components
 
 <!-- components:start -->
-76 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
+77 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
 
 | Import | Exports | What it is |
 | --- | --- | --- |
@@ -92,13 +92,14 @@ that directory.
 | `@liulidesign/core/EmptyState` | EmptyState | What a page or list shows when it has nothing in it yet, and the way forward |
 | `@liulidesign/core/Skeleton` | Skeleton, SkeletonGroup | Quiet shapes that stand in for content while it loads |
 | `@liulidesign/core/Toast` | Toast, useToast, ToastRegion | A short message about something that just happened, over the bottom of the screen |
-| `@liulidesign/core/CircularProgress` | CircularProgress | How much is done, as a ring |
+| `@liulidesign/core/CircularProgress` | CircularProgress, CircularProgressGroup | How much is done, as a ring |
 | `@liulidesign/core/StatusDot` | StatusDot | How something stands, as a dot and a word |
 | `@liulidesign/core/Dialog` | Dialog | Modal panel over the page for a decision or a short task |
-| `@liulidesign/core/DropdownMenu` | DropdownMenu, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSubmenu, DropdownMenuDivider | Button that opens a short menu of actions |
-| `@liulidesign/core/Tooltip` | Tooltip | An info button that opens a short note about what is beside it |
+| `@liulidesign/core/DropdownMenu` | DropdownMenu, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSubmenu, DropdownMenuDivider | A short menu of actions that opens from its trigger |
+| `@liulidesign/core/Tooltip` | Tooltip | A short hint naming its trigger, shown on hover, focus or a long press |
+| `@liulidesign/core/InfoTip` | InfoTip | An info button that opens a short note about what is beside it |
 | `@liulidesign/core/BottomSheet` | BottomSheet | A modal panel on the bottom edge that drags between detents and off to close |
-| `@liulidesign/core/Popover` | Popover | A button that opens a panel of content above or below it, closed by a tap outside |
+| `@liulidesign/core/Popover` | Popover | A panel of content that opens beside its trigger, closed by a tap outside |
 | `@liulidesign/core/Drawer` | Drawer | A panel that slides in from a side edge |
 | `@liulidesign/core/HoverCard` | HoverCard | A preview of what a word names |
 | `@liulidesign/core/ContextMenu` | ContextMenu | A menu for one thing, asked for on the thing |

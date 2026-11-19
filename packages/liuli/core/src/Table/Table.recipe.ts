@@ -20,6 +20,8 @@ export const tableParts = {
   pair: 'view',
   pairHeading: 'text',
   pairValue: 'text',
+  measure: 'view',
+  sample: 'text',
 } as const;
 
 /**
@@ -39,7 +41,7 @@ export const tableRecipe = {
     sticky: 'sticky top-0 z-10',
   },
   heading: {
-    base: 'text-footnote font-medium text-muted truncate',
+    base: 'text-footnote font-medium text-muted',
     align: { start: 'text-start', end: 'text-end' } satisfies Record<TableAlign, string>,
   },
   body: {
@@ -97,5 +99,10 @@ export const tableRecipe = {
   },
   empty: {
     base: 'px-4 py-6 text-body text-muted text-center',
+  },
+  /** A line of body type measured and never seen: how wide a character is at the reader's text size. */
+  measure: {
+    base: 'absolute size-0 overflow-hidden opacity-0 flex-row',
+    sample: 'shrink-0 whitespace-nowrap text-body tabular-nums',
   },
 } as const;

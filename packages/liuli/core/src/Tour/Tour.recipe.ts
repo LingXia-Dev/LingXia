@@ -12,7 +12,7 @@ export const tourParts = {
   quiet: 'Button',
 } as const;
 
-/** A callout on the inverted surface, as Tooltip\'s bubble is, so it reads as apart from the page it points at. */
+/** A callout on the inverted surface, as InfoTip\'s note is, so it reads as apart from the page it points at. */
 export const tourRecipe = {
   /**
    * A square turned on its corner, anchored to the target: it stays on the target's centre. The

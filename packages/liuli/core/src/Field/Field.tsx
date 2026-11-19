@@ -2,7 +2,7 @@ import { cx, useId, type Child } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { describedBy } from '../internal/describedBy';
 import { hasMessage, StatusRegion } from '../internal/StatusRegion';
-import { Tooltip } from '../Tooltip/Tooltip';
+import { InfoTip } from '../InfoTip/InfoTip';
 import { fieldRecipe as r } from './Field.recipe';
 
 export type FieldSize = 'sm' | 'md' | 'lg';
@@ -109,10 +109,10 @@ export function Field({
     <view data-testid={testId} className={cx(r.root.base, className)}>
       {!isLabelHidden && !hasOptional && !hasInfo && visibleLabel}
       {(hasOptional || hasInfo) && (
-        <view className={cx(r.labelRow.base, hasInfo && r.labelRow.withInfo)}>
+        <view className={r.labelRow.base}>
           {visibleLabel}
           {hasOptional && <text id={optionalId} className={cx(r.optional.base, r.optional.size[size])}>{optionalLabel}</text>}
-          {hasInfo && <Tooltip label={info.label} content={info.content} size="sm" />}
+          {hasInfo && <InfoTip label={info.label} content={info.content} size="sm" className={cx(r.info.base, r.info.size[size])} />}
         </view>
       )}
       {children(control)}

@@ -2,13 +2,13 @@
 
 # DropdownMenu
 
-Button that opens a short menu of actions. Status: preview.
+A short menu of actions that opens from its trigger. Status: preview.
 
 ```ts
 import { DropdownMenu, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSubmenu, DropdownMenuDivider } from '@liulidesign/core/DropdownMenu';
 ```
 
-DropdownMenu groups a few related actions behind one button: sort options, a "more" menu on a row, account actions. Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu. DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one choice; both keep the menu open.
+DropdownMenu groups a few related actions behind one trigger: sort options, a "more" menu on a row, account actions. Its children are the trigger, a Button or IconButton; `menu` holds DropdownMenuItems and DropdownMenuDividers, and choosing an item runs its onClick and closes the menu. DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one choice; both keep the menu open.
 
 ## Examples
 
@@ -17,16 +17,22 @@ DropdownMenu groups a few related actions behind one button: sort options, a "mo
 ```tsx
 import { useLocal } from '@lingxia/view';
 import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+import { Button } from '@liulidesign/core/Button';
 
 /** A labelled trigger; the menu lines up with its start edge. */
 export function Basic() {
   const order = useLocal('order', 'Name');
   return (
     <view className="flex-row items-center gap-3">
-      <DropdownMenu label="Sort by" data-testid="sort">
-        <DropdownMenuItem label="Name" onClick={() => order.set('Name')} data-testid="sort-name" />
-        <DropdownMenuItem label="Last updated" description="Newest first" onClick={() => order.set('Last updated')} data-testid="sort-updated" />
-        <DropdownMenuItem label="Size" onClick={() => order.set('Size')} />
+      <DropdownMenu
+        label="Sort by"
+        menu={<>
+          <DropdownMenuItem label="Name" onClick={() => order.set('Name')} data-testid="sort-name" />
+          <DropdownMenuItem label="Last updated" description="Newest first" onClick={() => order.set('Last updated')} data-testid="sort-updated" />
+          <DropdownMenuItem label="Size" onClick={() => order.set('Size')} />
+        </>}
+      >
+        <Button label="Sort by" endIcon="chevron-down" data-testid="sort" />
       </DropdownMenu>
       <text data-testid="order" className="text-footnote text-muted">{order.value}</text>
     </view>
@@ -40,6 +46,7 @@ export function Basic() {
 import { useLocal } from '@lingxia/view';
 import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
 import { Said, unused } from '../example';
+import { IconButton } from '@liulidesign/core/IconButton';
 
 /** An icon-only "more" menu at the end of a row, aligned to the row's end edge. */
 export function More() {
@@ -51,22 +58,21 @@ export function More() {
           <text className="grow basis-0 text-body font-medium text-text">{removed.value ? 'Removed' : 'Groceries'}</text>
           <DropdownMenu
             label="More actions"
-            isLabelHidden
-            icon="more"
-            variant="ghost"
             alignment="end"
-            data-testid="more"
+            menu={<>
+              <DropdownMenuItem label="Rename" onClick={() => say('Chose Rename')} />
+              <DropdownMenuItem label="Share" onClick={unused} isDisabled />
+              <DropdownMenuDivider />
+              <DropdownMenuItem
+                label="Delete"
+                variant="destructive"
+                icon="delete"
+                onClick={() => removed.set(true)}
+                data-testid="delete"
+              />
+            </>}
           >
-            <DropdownMenuItem label="Rename" onClick={() => say('Chose Rename')} />
-            <DropdownMenuItem label="Share" onClick={unused} isDisabled />
-            <DropdownMenuDivider />
-            <DropdownMenuItem
-              label="Delete"
-              variant="destructive"
-              icon="delete"
-              onClick={() => removed.set(true)}
-              data-testid="delete"
-            />
+            <IconButton label="More actions" icon="more" data-testid="more" />
           </DropdownMenu>
         </view>
       )}
@@ -80,6 +86,7 @@ export function More() {
 ```tsx
 import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
 import { Said } from '../example';
+import { IconButton } from '@liulidesign/core/IconButton';
 
 /** Rows that each carry a menu: every menu gets its own id, so no row needs one. */
 export function InList() {
@@ -91,16 +98,8 @@ export function InList() {
           {rows.map(row => (
             <view key={row} className="flex-row items-center gap-3">
               <text className="grow basis-0 text-body text-text">{row}</text>
-              <DropdownMenu
-                label={`${row} actions`}
-                isLabelHidden
-                icon="more"
-                variant="ghost"
-                size="sm"
-                alignment="end"
-                data-testid={`menu-${row}`}
-              >
-                <DropdownMenuItem label="Open" onClick={() => say(`Opened ${row}`)} />
+              <DropdownMenu label={`${row} actions`} size="sm" alignment="end" menu={<DropdownMenuItem label="Open" onClick={() => say(`Opened ${row}`)} />}>
+                <IconButton label={`${row} actions`} icon="more" size="sm" data-testid={`menu-${row}`} />
               </DropdownMenu>
             </view>
           ))}
@@ -116,6 +115,7 @@ export function InList() {
 ```tsx
 import { useLocal } from '@lingxia/view';
 import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';
+import { Button } from '@liulidesign/core/Button';
 
 /** A menu that sets a value: the trigger shows the choice, and the menu checks it. */
 export function Value() {
@@ -123,12 +123,19 @@ export function Value() {
   return (
     <view className="flex-row items-center gap-3">
       <text className="grow basis-0 text-body text-text">Appearance</text>
-      <DropdownMenu label="Appearance" value={appearance.value} variant="ghost" size="sm" alignment="end" data-testid="appearance">
-        <DropdownMenuRadioGroup value={appearance.value} onChange={next => appearance.set(next)}>
-          {['System', 'Light', 'Dark'].map(option => (
-            <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`appearance-${option}`} />
-          ))}
-        </DropdownMenuRadioGroup>
+      <DropdownMenu
+        label="Appearance"
+        size="sm"
+        alignment="end"
+        menu={
+          <DropdownMenuRadioGroup value={appearance.value} onChange={next => appearance.set(next)}>
+            {['System', 'Light', 'Dark'].map(option => (
+              <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`appearance-${option}`} />
+            ))}
+          </DropdownMenuRadioGroup>
+        }
+      >
+        <Button label={appearance.value} variant="ghost" size="sm" endIcon="chevron-down" data-testid="appearance" />
       </DropdownMenu>
     </view>
   );
@@ -140,6 +147,7 @@ export function Value() {
 ```tsx
 import { useLocal } from '@lingxia/view';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';
+import { Button } from '@liulidesign/core/Button';
 
 /** Options turned on and off, and one choice among several, in one menu that stays open while they change. */
 export function Checkable() {
@@ -147,7 +155,7 @@ export function Checkable() {
   const archived = useLocal('archived', false);
   const grouping = useLocal('grouping', 'Day');
   return (
-    <DropdownMenu label="View" data-testid="view-menu">
+    <DropdownMenu label="View" menu={<>
       <DropdownMenuCheckboxItem label="Show completed" value={completed.value} onChange={next => completed.set(next)} data-testid="show-completed" />
       <DropdownMenuCheckboxItem label="Show archived" value={archived.value} onChange={next => archived.set(next)} data-testid="show-archived" />
       <DropdownMenuDivider />
@@ -156,7 +164,39 @@ export function Checkable() {
           <DropdownMenuRadioItem key={option} value={option} label={`Group by ${option.toLowerCase()}`} data-testid={`group-${option}`} />
         ))}
       </DropdownMenuRadioGroup>
+    </>}>
+      <Button label="View" endIcon="chevron-down" data-testid="view-menu" />
     </DropdownMenu>
+  );
+}
+```
+
+### An item for a set, partly on
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider } from '@liulidesign/core/DropdownMenu';
+import { Button } from '@liulidesign/core/Button';
+
+const labels = ['Work', 'Personal', 'Travel'] as const;
+
+/** An item that turns a set on and off: mixed while only some of the set is on. */
+export function StateMixed() {
+  const shown = useLocal<readonly string[]>('labels', ['Work']);
+  const isAll = shown.value.length === labels.length;
+  return (
+    <view className="flex-row">
+      <DropdownMenu label="Labels" menu={<>
+        <DropdownMenuCheckboxItem label="All labels" value={isAll} isIndeterminate={shown.value.length > 0} onChange={next => shown.set(next ? labels : [])} data-testid="labels-all" />
+        <DropdownMenuDivider />
+        {labels.map(label => (
+          <DropdownMenuCheckboxItem key={label} label={label} value={shown.value.includes(label)}
+            onChange={next => shown.set(next ? [...shown.value, label] : shown.value.filter(each => each !== label))} data-testid={`label-${label}`} />
+        ))}
+      </>}>
+        <Button label="Labels" endIcon="chevron-down" data-testid="labels-menu" />
+      </DropdownMenu>
+    </view>
   );
 }
 ```
@@ -166,13 +206,14 @@ export function Checkable() {
 ```tsx
 import { useLocal } from '@lingxia/view';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';
+import { Button } from '@liulidesign/core/Button';
 
 /** Groups under their headings, when a menu holds more than one kind of thing. */
 export function Grouped() {
   const sort = useLocal('sort', 'Edited');
   const completed = useLocal('done', true);
   return (
-    <DropdownMenu label="View options" data-testid="options">
+    <DropdownMenu label="View options" menu={<>
       <DropdownMenuGroup label="Sort by">
         <DropdownMenuRadioGroup value={sort.value} onChange={next => sort.set(next)}>
           {['Edited', 'Created', 'Title'].map(option => (
@@ -184,6 +225,8 @@ export function Grouped() {
       <DropdownMenuGroup label="Show">
         <DropdownMenuCheckboxItem label="Completed" value={completed.value} onChange={next => completed.set(next)} data-testid="show-done" />
       </DropdownMenuGroup>
+    </>}>
+      <Button label="View options" endIcon="chevron-down" data-testid="options" />
     </DropdownMenu>
   );
 }
@@ -195,6 +238,7 @@ export function Grouped() {
 import { useLocal } from '@lingxia/view';
 import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem, DropdownMenuSubmenu } from '@liulidesign/core/DropdownMenu';
 import { Said } from '../example';
+import { Button } from '@liulidesign/core/Button';
 
 /** A submenu for a few choices under one name; it opens at the item's side. */
 export function Submenu() {
@@ -203,7 +247,7 @@ export function Submenu() {
     <Said>
       {say => (
         <view className="items-start gap-2">
-          <DropdownMenu label="Note" data-testid="note-menu">
+          <DropdownMenu label="Note" menu={<>
             <DropdownMenuItem label="Rename" onClick={() => say('Chose Rename')} />
             <DropdownMenuSubmenu label="Move to" data-testid="move">
               {['Notes', 'Travel', 'Recipes', 'Archive'].map(folder => (
@@ -212,6 +256,8 @@ export function Submenu() {
             </DropdownMenuSubmenu>
             <DropdownMenuDivider />
             <DropdownMenuItem label="Delete" variant="destructive" onClick={() => say('Chose Delete')} />
+          </>}>
+            <Button label="Note" endIcon="chevron-down" data-testid="note-menu" />
           </DropdownMenu>
           <text role="status" className="text-footnote text-muted">{`In ${moved.value}`}</text>
         </view>
@@ -221,26 +267,48 @@ export function Submenu() {
 }
 ```
 
+### On a link in a sentence
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+import { Link } from '@liulidesign/core/Link';
+
+/** On a link in a sentence: the choice is made where it is read. */
+export function InSentence() {
+  const order = useLocal('sentence-order', 'newest');
+  return (
+    <text className="text-body text-text" data-testid="sentence">
+      Showing notes,{' '}
+      <DropdownMenu
+        label="Order"
+        menu={<>
+          <DropdownMenuItem label="Newest first" onClick={() => order.set('newest')} />
+          <DropdownMenuItem label="Oldest first" onClick={() => order.set('oldest')} />
+        </>}
+      >
+        <Link label={`${order.value} first`} data-testid="order-link" />
+      </DropdownMenu>
+      .
+    </text>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `label` (required) | `string` |  | The trigger's text, the trigger's accessible name and the menu's accessible name. |
-| `value` | `string` |  | For a menu that sets a value: the current choice, drawn on the trigger in place of `label` and read after it as the trigger's description (label "Appearance", value "System"). |
-| `isLabelHidden` | `boolean` | `false` | Draws only `icon` on a square trigger; `label` stays the name. |
-| `icon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "checklist" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "click" \| "clock" \| "close" \| "cloud" \| "collapse" \| "compass" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "layers" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "palette" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "rows" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "stop" \| "success" \| "tag" \| "template" \| "text-input" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  | An icon from the set, on the trigger before the label. |
-| `hasChevron` | `boolean` |  | A down chevron after the label. Defaults to shown unless the label is hidden. |
-| `variant` | `ButtonVariant` | `'secondary'` | The trigger's look, from Button. |
-| `size` | `ButtonSize` | `'md'` | The trigger's and the items' height. |
-| `children` (required) | `Child` |  | `DropdownMenuItem`s and `DropdownMenuDivider`s, in order. |
+| `children` (required) | `Child` |  | The trigger: a Button or an IconButton, or any element, which is then wrapped in a plain button. |
+| `menu` (required) | `Child` |  | `DropdownMenuItem`s and `DropdownMenuDivider`s, in order. |
+| `label` (required) | `string` |  | The menu's accessible name. |
+| `size` | `ButtonSize` | `'md'` | The items' height; match the trigger's size. |
 | `isOpen` | `boolean` |  | Controls whether the menu is open; leave it out to let the trigger own it. Opened from code, the menu is placed by its classes, not under the trigger. |
 | `onOpenChange` | `((isOpen: boolean) => void)` |  |  |
 | `placement` | `DropdownMenuPlacement` | `'bottom'` | Which side of the trigger the menu opens on. |
 | `alignment` | `DropdownMenuAlignment` | `'start'` | Which edge of the trigger the menu lines up with. |
-| `isDisabled` | `boolean` | `false` |  |
-| `className` | `string` |  | Classes for the trigger. |
 | `menuClassName` | `string` |  | Classes for the menu panel. |
-| `data-testid` | `string` |  | On the trigger. |
+| `data-testid` | `string` |  | On a wrapped trigger; the menu gets `<testid>-menu`. |
 
 ## DropdownMenuItem props
 
@@ -261,6 +329,7 @@ export function Submenu() {
 | `label` (required) | `string` |  | The item's text and its accessible name. |
 | `description` | `string` |  | A second line, read as the item's description. |
 | `value` (required) | `boolean` |  |  |
+| `isIndeterminate` | `boolean` | `false` | Stands for a set that is partly on, such as "All labels": draws a dash and is read as mixed. A press asks for all. |
 | `onChange` (required) | `(isChecked: boolean) => void` |  | Runs with the new state; the menu stays open. |
 | `isDisabled` | `boolean` | `false` |  |
 | `data-testid` | `string` |  |  |
@@ -288,7 +357,6 @@ export function Submenu() {
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
-| chevron | `<vector>` | no | The trigger is a Button-styled popover invoker; the chevron marks it as opening a menu. |
 | menu | `<view>` | yes | A popover with the menu role, anchored to the trigger, in the top layer. |
 | item | `<button>` | yes | DropdownMenuItem: a menu item button with icon, label and description. |
 | itemCheck | `<vector>` | no | A check at the end of a checked checkbox or radio item; hidden from assistive tech. |
@@ -298,7 +366,6 @@ export function Submenu() {
 
 ## What an app may override
 
-- `className`: Classes for the trigger.
 - `menuClassName`: Classes for the menu panel.
 - The recipe, `dropdownMenuRecipe` from `@liulidesign/core/DropdownMenu/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--spacing-control-lg`, `--text-caption`, `--text-footnote`, `--text-body`, `--shadow-raised`, `--radius-control`, `--radius-container`.
@@ -309,7 +376,7 @@ export function Submenu() {
 - Pattern: menuButton.
 - Name: label.
 - Description: none.
-- States: expanded (from the trigger, while the menu is open (set by the View)); checked (from a checkbox item's value; a radio item matching its group's value); disabled (from isDisabled; an item's isDisabled).
+- States: expanded (from the trigger, while the menu is open (set by the View)); checked (from a checkbox item's value; a radio item matching its group's value); disabled (from the trigger's isDisabled; an item's isDisabled).
 - Enter, Space on the trigger: opens the menu on its first item.
 - Up, Down: moves between items, wrapping.
 - Home, End: first and last item.
@@ -331,8 +398,11 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
+- Do: At the end of a row, open it from a ghost Button with `edge="end"`: its padding hangs past the edge, so the chevron lines up with the values and badges in the rows around it.
+- Do: Use a `Link` as the trigger for words in a sentence: put the overlay in the `<text>`, around the Link, and the panel opens from the linked words.
 - Do: Keep it to a handful of actions; put destructive ones last, after a divider.
 - Do: Use the end alignment for a trigger at the end of a row.
+- Do: Give a labelled trigger the `chevron-down` end icon, so it reads as opening a menu.
 - Don't: Use it to choose a value that should stay visible.
 - Don't: Put it inside a Button; a popover cannot sit in a pressable control.
 - Don't: Nest menus.

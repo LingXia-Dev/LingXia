@@ -167,7 +167,7 @@ test('a theme change or an unrelated render draws the same outlines', async () =
 
 test('valueLabels: always writes every value, none writes nothing and keeps the bars at full height, and the smallest size is bare', async () => {
   const rows = many(9, '[40, 187, 90, 12, 60, 75, 31, 5, 66][index]');
-  const figures = screen => screen.queryAll(node => node.tag === 'text' && /^\$/.test(node.text ?? '')).map(node => node.text);
+  const figures = screen => screen.queryAll(node => node.tag === 'text' && node.props.opacity !== 0 && /^\$/.test(node.text ?? '')).map(node => node.text);
   const auto = await renderPage(page('formatValue={money}', rows));
   assert.deepEqual(figures(auto), ['$200'], 'nine bars: the top of the scale only');
   const always = await renderPage(page('formatValue={money} valueLabels="always"', rows));
@@ -303,4 +303,19 @@ test('bars in the hundred thousands, and below zero, lay out with small numbers'
   const grows = screen.queryAll(node => node.tag !== 'vector' && node.props.grow !== undefined).map(node => node.props.grow);
   assert.ok(grows.length >= 2, 'regions and figures are placed by flex shares');
   assert.ok(grows.every(value => Number.isFinite(value) && value >= 0 && value <= 1000), `flex shares are small, whole and never negative: ${grows}`);
+});
+
+test('At large text: figures grow their line, and figures that would touch give way to the scale at the ends', async () => {
+  const screen = await renderExample('BarChart/BarChart', 'Orders');
+  const ghost = () => screen.queryAll(node => node.tag === 'text' && node.props.opacity === 0 && node.props.fontSize === 13)[0];
+  const marks = () => find(screen.getByTestId('orders'), node => node.props.position === 'absolute' && node.props.accessibilityHidden && node.children.some(child => child.props.overflow === 'hidden'))[0];
+  assert.equal(ghost().text, '132', 'the longest figure, laid out unseen');
+  screen.layout(ghost().parent, { width: 308, height: 176 });
+  screen.layout(ghost(), { width: 30, height: 34 });
+  assert.equal(marks().props.insetTop, 34, 'the drawing starts under a figure as tall as it is drawn');
+  assert.equal(screen.getByTestId('orders-Thu').children[1].props.height, 34);
+  screen.layout(ghost(), { width: 42, height: 34 });
+  assert.equal(screen.queryAll(node => node.tag === 'text' && node.text === '163').length, 0, 'seven 42 pt figures do not fit in 308 pt');
+  assert.equal(marks().props.insetTop, 0);
+  screen.getByText('200');
 });

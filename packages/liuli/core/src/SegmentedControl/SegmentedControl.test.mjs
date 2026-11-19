@@ -39,3 +39,26 @@ test('StateDisabled: a disabled segment stays in the row but cannot be chosen', 
   assert.equal(max.props.enabled, 0);
   assert.equal(max.props.onClick, undefined);
 });
+
+test('Large text: a long label widens its segment and the thumb follows; a row that cannot hold the labels stacks', async () => {
+  const screen = await renderExample('SegmentedControl/SegmentedControl', 'Units');
+  const group = () => screen.getByTestId('units');
+  const segment = value => screen.getByTestId(`units-${value}`);
+  const box = () => screen.queryAll(node => node.props.background === 'surface-raised')[0];
+  assert.equal(segment('km').children[0].props.whiteSpace, 'nowrap', 'a label in a row is never cut');
+  screen.layout(group(), { width: 200, height: 36 });
+  screen.layout(segment('km').children[0], { width: 100, height: 22 });
+  screen.layout(segment('mi').children[0], { width: 40, height: 22 });
+  screen.layout(segment('km').children[1], { width: 124, height: 36 });
+  screen.layout(segment('mi').children[1], { width: 76, height: 36 });
+  assert.deepEqual([box().props.width, JSON.parse(box().props.transform).translate], [124, [0, 0]]);
+  screen.press(segment('mi'));
+  assert.deepEqual([box().props.width, JSON.parse(box().props.transform).translate], [76, [124, 0]], 'after Kilometres');
+  screen.layout(group(), { width: 150, height: 36 });
+  assert.equal(group().props.flexDirection, 'column', 'Kilometres and Miles with padding need 156');
+  assert.equal(Math.round(box().props.heightPercent), 50);
+  assert.deepEqual(JSON.parse(box().props.transform).translate, [0, '100%']);
+  assert.equal(segment('km').props.grow, undefined);
+  screen.layout(group(), { width: 300, height: 72 });
+  assert.equal(group().props.flexDirection, 'row', 'room again, a row again');
+});

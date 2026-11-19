@@ -30,7 +30,8 @@ export const checkboxInputRecipe = {
     base: 'flex-row items-start gap-3 py-1 my-auto',
   },
   box: {
-    base: 'items-center justify-center rounded-checkbox border-2 transition-colors duration-fast ease-standard',
+    // A mark keeps its size and shape beside a label of any length or text size.
+    base: 'shrink-0 items-center justify-center rounded-checkbox border-2 transition-colors duration-fast ease-standard',
     /** Centred on the label's first line. */
     size: { sm: 'size-4 mt-px', md: 'size-5 mt-px', lg: 'size-6' } satisfies Record<FieldSize, string>,
     state: {

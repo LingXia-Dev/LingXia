@@ -19,9 +19,10 @@ export function Welcome() {
     <Said>
       {say => (
         <view className="gap-4">
-          <view className="flex-row items-center gap-2">
+          {/* At large text the field takes its own line rather than shrinking to its magnifier. */}
+          <view className="flex-row flex-wrap items-center gap-2">
             <view id="tour-new"><Button label="New note" variant="primary" startIcon="add" onClick={() => say('Created a note')} /></view>
-            <view id="tour-search" className="grow basis-0 min-w-0">
+            <view id="tour-search" className="grow basis-40">
               <SearchField label="Search notes" isLabelHidden value={query.value} onChange={query.set} placeholder="Search" clearLabel="Clear" />
             </view>
           </view>

@@ -109,7 +109,7 @@ export function Narrow() {
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `dateTimeInputRecipe` from `@liulidesign/core/DateTimeInput/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- It reads no Liuli scale token.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--text-callout`.
 - It paints with no colour role of its own.
 
 ## Accessibility
@@ -133,6 +133,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Name the parts in full: "Start date", "Start time".
 - Do: Use it when the day and the time are one answer: a reminder, a meeting, a deadline.
+- Do: At large text, expect the time to move under the date: the parts are measured at the reader's text size and stack before either value is cut.
 - Don't: Use it when only the day matters; that is a DateInput.
 - Don't: Show a time zone inside it; say which zone in the help text.
 

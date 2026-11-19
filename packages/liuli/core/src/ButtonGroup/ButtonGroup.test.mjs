@@ -18,7 +18,7 @@ test('Actions: a toolbar named by its label; the buttons keep a gap, their own v
 
 test('Attached: no gap, shared edges, and only the group\'s two ends are round', async () => {
   const screen = await renderExample('ButtonGroup/ButtonGroup', 'Attached');
-  assert.equal(screen.getByTestId('history').props.gap, 0);
+  assert.equal(screen.getByTestId('history').props.columnGap, 0);
   const [undo, redo, reset] = ['undo', 'redo', 'reset'].map(id => screen.getByTestId(id));
   const round = button => JSON.stringify(['radiusStartStart', 'radiusStartEnd', 'radiusEndEnd', 'radiusEndStart'].map(corner => button.props[corner] ?? 0));
   assert.equal(round(redo), '[0,0,0,0]', 'a middle button is square');
@@ -52,4 +52,15 @@ test('Toolbar: icon buttons in a quiet group, each named', async () => {
   assert.deepEqual(group.children.map(button => [button.props.accessibilityLabel, button.props.width, button.props.background]), [
     ['Reply', 32, '#00000000'], ['Forward', 32, '#00000000'], ['Delete', 32, '#00000000'],
   ]);
+});
+
+test('At large text: a group wraps rather than run past its card, attached or apart, and its buttons keep their labels whole', async () => {
+  for (const [example, id, gaps] of [['Attached', 'history', [0, 8]], ['Actions', 'actions', [8, 8]]]) {
+    const screen = await renderExample('ButtonGroup/ButtonGroup', example);
+    const group = screen.getByTestId(id);
+    assert.deepEqual([group.props.flexWrap, group.props.maxWidthPercent, group.props.columnGap ?? group.props.gap, group.props.rowGap ?? group.props.gap], ['wrap', 100, ...gaps], example);
+    assert.ok(group.children.every(button => button.props.shrink === 0), example);
+  }
+  const toolbar = await renderExample('ButtonGroup/ButtonGroup', 'Toolbar');
+  assert.equal(toolbar.queryAll(node => node.children.includes(toolbar.getByTestId('message')))[0].props.flexWrap, 'wrap', 'the group and the action beside it wrap too');
 });

@@ -1,61 +1,38 @@
-import { cx, useId, useLocal } from '@lingxia/view';
-import { Glyph } from '../internal/Glyph';
+import { cx, useId, useLocal, type Child } from '@lingxia/view';
+import { Trigger } from '../internal/trigger';
 import { tooltipRecipe as r } from './Tooltip.recipe';
 
 export type TooltipPlacement = 'top' | 'bottom' | 'end' | 'start';
-export type TooltipSize = 'sm' | 'md';
 
 export interface TooltipProps {
-  /** The info button's name: what the note is about ("About storage"). */
-  label: string;
-  /** The note: one or two short sentences. */
+  /** The trigger, usually an IconButton; any other element is wrapped in a plain button. */
+  children: Child;
+  /** The hint: the trigger's own name in words, a few at most. It never says what the trigger's label lacks. */
   content: string;
-  /** Which side of the button the note opens on. @default 'top' */
+  /** Which side of the trigger the hint opens on. @default 'top' */
   placement?: TooltipPlacement;
-  /** @default 'md' */
-  size?: TooltipSize;
-  /** Controlled open state; pass `onOpenChange` with it. */
-  isOpen?: boolean;
-  onOpenChange?: (isOpen: boolean) => void;
-  className?: string;
-  /** On the info button; the note gets `<testid>-content`. */
+  /** On a wrapped trigger; the hint gets `<testid>-content`. */
   'data-testid'?: string;
 }
 
 const areas = { top: 'top', bottom: 'bottom', end: 'inline-end', start: 'inline-start' } as const satisfies Record<TooltipPlacement, string>;
 
 /**
- * An info button that opens a short note about what is next to it. It opens on a tap, Enter or
- * Space, not on focus or hover; Escape or a tap elsewhere closes it.
+ * A short hint shown while a pointer rests on its trigger or keyboard focus is on it, and on a
+ * long press on a phone; never on a tap. It goes away by itself and describes the trigger while shown.
  */
-export function Tooltip({ label, content, placement = 'top', size = 'md', isOpen, onOpenChange, className, 'data-testid': testId }: TooltipProps) {
+export function Tooltip({ children, content, placement = 'top', 'data-testid': testId }: TooltipProps) {
   const id = useId();
   const textId = `${id}-text`;
-  const local = useLocal(false);
-  const open = isOpen ?? local.value;
-  const toggle = (next: boolean) => {
-    local.set(next);
-    onOpenChange?.(next);
-  };
+  const open = useLocal(false);
   return (
     <>
-      <button
-        popoverTarget={id}
-        aria-label={label}
-        aria-describedby={open ? textId : undefined}
-        aria-expanded={open}
-        data-state={open ? 'open' : 'closed'}
-        data-testid={testId}
-        className={cx(r.trigger.base, r.trigger.size[size], className)}
-      >
-        <Glyph name="info" className={r.icon.size[size]} />
-      </button>
+      <Trigger wiring={{ interestFor: id, describedBy: open.value ? textId : undefined }} data-testid={testId}>{children}</Trigger>
       <view
         id={id}
-        popover
+        popover="hint"
         role="tooltip"
-        open={isOpen}
-        onToggle={toggle}
+        onToggle={open.set}
         data-testid={testId && `${testId}-content`}
         style={{ positionArea: areas[placement] }}
         className={cx(r.bubble.base, r.bubble.offset[placement])}

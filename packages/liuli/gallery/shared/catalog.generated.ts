@@ -748,7 +748,7 @@ export const entries: GalleryEntry[] = [
     "name": "DropdownMenu",
     "page": "dropdown-menu",
     "category": "overlays",
-    "summary": "Button that opens a short menu of actions",
+    "summary": "A short menu of actions that opens from its trigger",
     "keywords": [
       "dropdown",
       "menu",
@@ -764,10 +764,25 @@ export const entries: GalleryEntry[] = [
     "name": "Tooltip",
     "page": "tooltip",
     "category": "overlays",
-    "summary": "An info button that opens a short note about what is beside it",
+    "summary": "A short hint naming its trigger, shown on hover, focus or a long press",
     "keywords": [
       "tooltip",
+      "hint",
+      "hover",
+      "label",
+      "icon button",
+      "title"
+    ]
+  },
+  {
+    "name": "InfoTip",
+    "page": "info-tip",
+    "category": "overlays",
+    "summary": "An info button that opens a short note about what is beside it",
+    "keywords": [
+      "infotip",
       "toggletip",
+      "tooltip",
       "info",
       "help",
       "hint",
@@ -796,7 +811,7 @@ export const entries: GalleryEntry[] = [
     "name": "Popover",
     "page": "popover",
     "category": "overlays",
-    "summary": "A button that opens a panel of content above or below it, closed by a tap outside",
+    "summary": "A panel of content that opens beside its trigger, closed by a tap outside",
     "keywords": [
       "popover",
       "popup",
@@ -1417,7 +1432,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "layers",
     "description": "Dialogs, sheets and menus",
     "page": "category-overlays",
-    "count": 10
+    "count": 11
   },
   {
     "id": "content",

@@ -66,6 +66,7 @@ export const doc: ComponentDoc = {
       'Say the status in the label; the colour only repeats it.',
       'Keep one solid badge per view at most.',
       'In a pressable Item, repeat the status in the row description; the end content is not read there.',
+      'At large text, the pill grows taller with its label; keep the label to a word or two.',
     ],
     dont: [
       'Make a badge pressable; use a Button or a row.',

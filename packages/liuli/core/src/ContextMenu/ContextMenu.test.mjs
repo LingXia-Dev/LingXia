@@ -22,7 +22,7 @@ test('Rows: from a finger the menu docks over a scrim, edge to edge alike; an it
   await ask(screen, 'note-coast', 'touch');
   const sheet = screen.getByTestId('note-coast-menu');
   const panel = sheet.parent;
-  assert.equal(panel.props.position, 'absolute', 'placed in its layer: a fixed panel is not pressed through its backdrop');
+  assert.equal(panel.props.position, 'absolute', 'placed in its layer: a fixed box stops at the bottom safe area');
   assert.deepEqual([panel.props.marginLeft ?? 0, panel.props.marginRight ?? 0], [0, 0], 'no margin of the panel\'s own pushes it aside');
   assert.equal(sheet.props.marginLeft, sheet.props.marginRight, 'the sheet is as far from one edge as from the other');
   assert.equal(screen.getByTestId('note-coast-scrim').props.background, 'scrim', 'the page is dimmed under it');

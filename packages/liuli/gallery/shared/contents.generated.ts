@@ -64,6 +64,7 @@ import { Content as StatusDot } from '../content/status-dot';
 import { Content as Dialog } from '../content/dialog';
 import { Content as DropdownMenu } from '../content/dropdown-menu';
 import { Content as Tooltip } from '../content/tooltip';
+import { Content as InfoTip } from '../content/info-tip';
 import { Content as BottomSheet } from '../content/bottom-sheet';
 import { Content as Popover } from '../content/popover';
 import { Content as Drawer } from '../content/drawer';
@@ -174,6 +175,7 @@ export const contents: Record<string, GalleryContent> = {
   "dialog": Dialog,
   "dropdown-menu": DropdownMenu,
   "tooltip": Tooltip,
+  "info-tip": InfoTip,
   "bottom-sheet": BottomSheet,
   "popover": Popover,
   "drawer": Drawer,

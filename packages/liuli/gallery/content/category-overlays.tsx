@@ -2,6 +2,7 @@
 import { Specimen as DialogSpecimen } from '../../core/src/Dialog/Dialog.examples';
 import { Specimen as DropdownMenuSpecimen } from '../../core/src/DropdownMenu/DropdownMenu.examples';
 import { Specimen as TooltipSpecimen } from '../../core/src/Tooltip/Tooltip.examples';
+import { Specimen as InfoTipSpecimen } from '../../core/src/InfoTip/InfoTip.examples';
 import { Specimen as BottomSheetSpecimen } from '../../core/src/BottomSheet/BottomSheet.examples';
 import { Specimen as PopoverSpecimen } from '../../core/src/Popover/Popover.examples';
 import { Specimen as DrawerSpecimen } from '../../core/src/Drawer/Drawer.examples';
@@ -15,7 +16,7 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Surfaces that float over the page: dialogs, sheets, menus and popovers."}</text>
-      <Category title={"10 components"}>
+      <Category title={"11 components"}>
         <Tile
           name={"Dialog"}
           tagline={"A decision, on top"}
@@ -34,11 +35,19 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         </Tile>
         <Tile
           name={"Tooltip"}
-          tagline={"A note on demand"}
+          tagline={"A hint on hover"}
           onOpen={() => onOpen("tooltip")}
           testId={"open-tooltip"}
         >
           <TooltipSpecimen />
+        </Tile>
+        <Tile
+          name={"InfoTip"}
+          tagline={"A note on demand"}
+          onOpen={() => onOpen("info-tip")}
+          testId={"open-info-tip"}
+        >
+          <InfoTipSpecimen />
         </Tile>
         <Tile
           name={"BottomSheet"}
@@ -91,6 +100,7 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"Tour"}
           tagline={"Point things out"}
+          isWide
           onOpen={() => onOpen("tour")}
           testId={"open-tour"}
         >

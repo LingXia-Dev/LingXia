@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { described, renderExample } from '../testing/harness.mjs';
+import { described, renderExample, renderPage } from '../testing/harness.mjs';
 
 const icon = node => node.children.find(child => child.tag === 'vector');
 
@@ -52,4 +52,12 @@ test('InRows: each row\'s button is named with its row, and removes it', async (
   assert.equal(remove.props.width, 32);
   screen.press(remove);
   assert.equal(screen.queryAll(node => node.props.role === 'listitem').length, 2);
+});
+
+test('edge: a trailing icon button hangs its inset past the edge, so the drawing meets the content edge', async () => {
+  const screen = await renderPage(`
+    import { IconButton } from '@liulidesign/core/IconButton';
+    export function render() { return <page><IconButton label="More" icon="more" size="md" edge="end" data-testid="more" /></page>; }
+  `);
+  assert.equal(screen.getByTestId('more').props.marginInlineEnd, -14.75);
 });

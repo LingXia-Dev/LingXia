@@ -36,3 +36,14 @@ test('Inline: the options sit in a row that wraps', async () => {
   const group = (await renderExample('RadioGroup/RadioGroup', 'Inline')).getByTestId('billing');
   assert.deepEqual([group.props.flexDirection, group.props.flexWrap, group.children.length], ['row', 'wrap', 2]);
 });
+
+test('At large text: every radio mark keeps its size and its circle, never squeezed by its label', async () => {
+  for (const example of ['Plans', 'Delivery', 'Sizes']) {
+    const screen = await renderExample('RadioGroup/RadioGroup', example);
+    for (const radio of screen.queryAll(node => node.props.role === 'radio')) {
+      const { shrink, width, height } = radio.children[0].props;
+      assert.equal(shrink, 0, example);
+      assert.ok(width > 0 && width === height, `${example}: a fixed square`);
+    }
+  }
+});

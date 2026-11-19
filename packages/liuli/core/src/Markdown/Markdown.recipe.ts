@@ -63,7 +63,7 @@ export const markdownRecipe = {
     size: { sm: 'shrink-0 w-5 h-[1.125rem] items-end justify-center', md: 'shrink-0 w-5 h-[1.375rem] items-end justify-center' } satisfies Record<MarkdownSize, string>,
   },
   task: {
-    base: 'size-4 items-center justify-center rounded-[4px] border-2',
+    base: 'size-4 shrink-0 items-center justify-center rounded-[4px] border-2',
     open: 'border-line-strong',
     done: 'border-accent bg-accent text-on-accent',
     tick: 'size-3',

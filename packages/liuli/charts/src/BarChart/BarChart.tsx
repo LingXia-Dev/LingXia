@@ -1,4 +1,4 @@
-import { cx, type PointerEvent, type VectorPath } from '@lingxia/view';
+import { cx, useBox, type PointerEvent, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
@@ -80,6 +80,9 @@ const maxPressable = 36;
 const maxLabelled = 7;
 const denseFrom = 16;
 const maxValued = 8;
+// The least space between two figures, and the figures' line before one is measured.
+const figureGap = 4;
+const figureLine = 20;
 // The part of a category's width its bars' outlines take, and the gap between two bars of a group,
 // as parts of the slot. The stroke that rounds a bar adds its width on each side.
 const share = { solo: 0.5, group: 0.62, gap: 0.1 };
@@ -133,9 +136,18 @@ export function BarChart({
   const shown = all.filter(series => !hiddenSeries.includes(series.field));
   const facts = shown.flatMap(series => seriesFacts(data, x, series, formatValue) ?? []);
   const values = data.flatMap(row => shown.map(series => numberOf(row, series.field))).filter(Number.isFinite);
+  const plot = useBox('plot');
+  const widest = useBox('figure');
   // The smallest plot holds nothing but the marks.
-  const scale = valueLabels === 'none' || (valueLabels === 'auto' && size === 'xs') ? 'none'
-    : valueLabels === 'always' || (data.length <= maxValued && shown.length === 1) ? 'each' : 'ends';
+  const isNone = valueLabels === 'none' || (valueLabels === 'auto' && size === 'xs');
+  const isFigured = !isNone && (valueLabels === 'always' || (data.length <= maxValued && shown.length === 1));
+  const longest = isFigured ? data.map(row => formatValue(numberOf(row, shown[0]?.field ?? ''))).reduce((a, b) => (b.length > a.length ? b : a), '') : '';
+  const [plotWidth, figureWidth] = [plot.value?.width ?? 0, widest.value?.width ?? 0];
+  // Figures that would touch, as at large text, give way to the scale at the ends unless asked for.
+  const isCrowded = valueLabels === 'auto' && plotWidth > 0 && figureWidth + figureGap > plotWidth / Math.max(1, data.length);
+  const scale = isNone ? 'none' : isFigured && !isCrowded ? 'each' : 'ends';
+  // The figures' line is as tall as a figure, so a large one still sits on its bar.
+  const lane = Math.max(figureLine, Math.ceil(widest.value?.height ?? 0));
   const reach = [Math.max(0, domainMax ?? 0, ...values), Math.max(0, -(domainMin ?? 0), ...values.map(value => -value))];
   // With the ends of the scale written out, the plot's edges are round numbers.
   const [high, depth] = scale === 'ends' ? reach.map(roundUp) : reach;
@@ -186,11 +198,12 @@ export function BarChart({
     const [over, under] = shares(high - value, depth + value);
     const figure = scale === 'each' && shown.length === 1 && Number.isFinite(value) && [
       <view key="over" className={r.space.base} style={{ flexGrow: over }} />,
-      <view key="figure" aria-hidden className={r.valueSlot.base}><text className={r.value.base}>{formatValue(value)}</text></view>,
+      <view key="figure" aria-hidden className={r.valueSlot.base} style={{ height: lane }}><text className={r.value.base}>{formatValue(value)}</text></view>,
       <view key="under" className={r.space.base} style={{ flexGrow: under }} />,
     ];
-    const slot = cx(r.slot.base, scale === 'each' && isSigned && (value < 0 ? r.slot.below : r.slot.above));
-    if (!isPressable) return <view key={key} role="listitem" aria-label={name} className={slot}>{figure}</view>;
+    const slot = r.slot.base;
+    const lanes = scale === 'each' && isSigned ? (value < 0 ? { paddingTop: lane } : { paddingBottom: lane }) : undefined;
+    if (!isPressable) return <view key={key} role="listitem" aria-label={name} className={slot} style={lanes}>{figure}</view>;
     return (
       <button
         key={key}
@@ -199,6 +212,7 @@ export function BarChart({
         onClick={() => onSelect(chosen === index ? null : key)}
         data-testid={testId === undefined ? undefined : `${testId}-${key}`}
         className={cx(slot, r.slot.pressable)}
+        style={lanes}
       >
         {figure}
       </button>
@@ -267,9 +281,10 @@ export function BarChart({
       ) : row(labels, r.labels.row)}
     >
       {scale === 'ends' && <text aria-hidden className={r.scale.base}>{formatValue(high)}</text>}
-      <view className={cx(r.plot.base, scale === 'ends' && r.plot.ruled, scale === 'ends' && isSigned && r.plot.floored)}>
+      <view box={plot} className={cx(r.plot.base, scale === 'ends' && r.plot.ruled, scale === 'ends' && isSigned && r.plot.floored)}>
+        {isFigured && <text aria-hidden box={widest} className={cx(r.value.base, r.value.ghost)}>{longest}</text>}
         {/* The marks: one drawing per side of zero, and a second, fainter one for bars that stepped back. */}
-        <view aria-hidden className={cx(r.marks.base, scale === 'each' && r.marks.figured, scale === 'each' && isSigned && r.marks.figuredBelow)}>
+        <view aria-hidden className={r.marks.base} style={scale === 'each' ? { top: lane, ...(isSigned ? { bottom: lane } : {}) } : undefined}>
           <view className={r.region.base} style={{ flexGrow: above }}>
             {drawing(wrapUp, paths.up, false)}
             {drawing(wrapUp, paths.upDimmed, true)}

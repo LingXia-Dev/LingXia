@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
 
 test('ViewOptions: a named trigger opens a panel named by its title, with live controls', async () => {
   const screen = await renderExample('Popover/Popover', 'ViewOptions');
@@ -36,4 +36,26 @@ test('Beside: the panel is anchored at the end side of the trigger, their tops l
   const screen = await renderExample('Popover/Popover', 'Beside');
   screen.press(screen.getByTestId('beside'));
   assert.ok(JSON.stringify(screen.getByTestId('beside-panel').props).includes('inline-end span-block-end'));
+});
+
+test('a Link mid-sentence opens the panel, anchored to the link', async () => {
+  const screen = await renderPage(`
+    import { Popover } from '@liulidesign/core/Popover';
+    import { Link } from '@liulidesign/core/Link';
+    export function render() { return <page><text>Due <Popover label="When" data-testid="due" content={<text>Sunday 18:00</text>}><Link label="Sunday" data-testid="when" /></Popover>, at six.</text></page>; }
+  `);
+  const link = screen.getByTestId('when');
+  assert.equal(link.tag, 'link');
+  assert.equal(link.props.stateExpanded, 0);
+  screen.press(link);
+  assert.equal(screen.getByTestId('when').props.stateExpanded, 1);
+  assert.equal(screen.getByTestId('due-panel').props.anchorTo, screen.getByTestId('when').props.anchorName);
+});
+
+test('InSentence: the link stays in its sentence and wires the overlay', async () => {
+  const screen = await renderExample('Popover/Popover', 'InSentence');
+  const link = screen.queryAll(node => node.tag === 'link')[0];
+  assert.ok(link, 'a link');
+  assert.equal(screen.queryAll(node => node.tag === 'text' && node.children?.includes(link)).length, 1, 'inside the sentence');
+  assert.ok(link.props.interestFor || link.props.stateExpanded === 0, 'wired to its overlay');
 });

@@ -71,14 +71,14 @@ test('the menu panel is the raised surface with a hairline border and the raised
   assert.equal(JSON.parse(menu.props.boxShadow).length, 2, 'contact and ambient layers');
 });
 
-test('Value: the trigger shows the choice, is named by its label and described by the choice', async () => {
+test('Value: the trigger is the author\'s Button showing the choice; the menu keeps the setting\'s name', async () => {
   const screen = await renderExample('DropdownMenu/DropdownMenu', 'Value');
   const trigger = screen.getByTestId('appearance');
-  assert.equal(trigger.props.accessibilityLabel, 'Appearance');
-  assert.deepEqual(described(screen, trigger), ['System']);
+  assert.equal(trigger.props.accessibilityLabel, 'System');
   screen.press(trigger);
+  assert.equal(screen.queryAll(node => node.props.role === 'menu' && node.props.accessibilityLabel === 'Appearance').length, 1);
   screen.press(screen.getByTestId('appearance-Dark'));
-  assert.deepEqual(described(screen, screen.getByTestId('appearance')), ['Dark']);
+  assert.equal(screen.getByTestId('appearance').props.accessibilityLabel, 'Dark');
 });
 
 test('Value: the chosen option is a checked radio item, and choosing another moves the check', async () => {
@@ -109,12 +109,28 @@ test('Checkable: a checkbox item flips; a radio item checks one; the check is dr
   assert.equal(screen.getByTestId('group-Day').props.stateChecked, 0);
 });
 
+test('StateMixed: a set partly on reads as mixed with a dash; a press turns all on, then all off', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'StateMixed');
+  screen.press(screen.getByTestId('labels-menu'));
+  const all = () => screen.getByTestId('labels-all');
+  assert.deepEqual([all().props.stateChecked, all().props.mixed], [0, 1]);
+  assert.ok(all().children.some(node => node.tag !== 'vector' && node.props.accessibilityHidden && !node.children.length), 'a hidden dash');
+  assert.ok(!all().children.some(node => node.tag === 'vector'), 'no check while mixed');
+  screen.press(all());
+  assert.deepEqual([all().props.stateChecked, all().props.mixed], [1, undefined]);
+  assert.equal(screen.getByTestId('label-Travel').props.stateChecked, 1);
+  screen.press(all());
+  assert.deepEqual([all().props.stateChecked, all().props.mixed], [0, undefined]);
+  assert.equal(screen.getByTestId('label-Work').props.stateChecked, 0);
+});
+
 test('a radio item outside a DropdownMenuRadioGroup fails, naming the fix', async () => {
   await assert.rejects(async () => {
     const screen = await renderPage(`
+      import { Button } from '@liulidesign/core/Button';
       import { DropdownMenu, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';
       export function render() {
-        return <page><DropdownMenu label="Menu" data-testid="menu"><DropdownMenuRadioItem value="a" label="A" /></DropdownMenu></page>;
+        return <page><DropdownMenu label="Menu" menu={<DropdownMenuRadioItem value="a" label="A" />}><Button label="Menu" data-testid="menu" /></DropdownMenu></page>;
       }
     `);
     screen.press(screen.getByTestId('menu'));
@@ -156,4 +172,53 @@ test('Submenu, narrow: the submenu takes the panel under a row that goes back; c
   screen.press(screen.getByTestId('move-recipes'));
   assert.equal(menus(screen).length, 0);
   screen.getByText('In Recipes');
+});
+
+test('a trigger that is not a Liuli button is wrapped in one plain button that opens the menu', async () => {
+  const screen = await renderPage(`
+    import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+    export function render() {
+      return <page><DropdownMenu label="Account" menu={<DropdownMenuItem label="Sign out" onClick={() => {}} />} data-testid="account"><text>Ana Lima</text></DropdownMenu></page>;
+    }
+  `);
+  const trigger = screen.getByTestId('account');
+  assert.equal(trigger.tag, 'button');
+  assert.equal(screen.queryAll(node => node.tag === 'button').length, 1, 'one focus stop');
+  screen.press(trigger);
+  assert.equal(screen.getByTestId('account-menu').props.role, 'menu');
+});
+
+test('more than one element as the trigger fails, naming the fix', async () => {
+  await assert.rejects(async () => {
+    await renderPage(`
+      import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+      export function render() {
+        return <page><DropdownMenu label="Account" menu={<DropdownMenuItem label="Sign out" onClick={() => {}} />}><text>Ana</text><text>Lima</text></DropdownMenu></page>;
+      }
+    `);
+  }, /one element as its trigger/);
+});
+
+test('a Link mid-sentence is the trigger and opens the menu', async () => {
+  const screen = await renderPage(`
+    import { DropdownMenu } from '@liulidesign/core/DropdownMenu';
+    import { DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+    import { Link } from '@liulidesign/core/Link';
+    export function render() { return <page><text>Due <DropdownMenu label="When" data-testid="menu" menu={<DropdownMenuItem label="Move to Monday" onClick={() => {}} />}><Link label="Sunday" data-testid="when" /></DropdownMenu>, at six.</text></page>; }
+  `);
+  const link = screen.getByTestId('when');
+  assert.equal(link.tag, 'link');
+  assert.equal(screen.queryAll(node => node.tag === 'text' && node.children?.includes(link)).length, 1, 'the link stays in its sentence');
+  assert.equal(link.props.stateExpanded, 0);
+  screen.press(link);
+  assert.equal(screen.getByTestId('when').props.stateExpanded, 1);
+  assert.equal(screen.queryAll(node => node.props.role === 'menu').length, 1);
+});
+
+test('InSentence: the link stays in its sentence and wires the overlay', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'InSentence');
+  const link = screen.queryAll(node => node.tag === 'link')[0];
+  assert.ok(link, 'a link');
+  assert.equal(screen.queryAll(node => node.tag === 'text' && node.children?.includes(link)).length, 1, 'inside the sentence');
+  assert.ok(link.props.interestFor || link.props.stateExpanded === 0, 'wired to its overlay');
 });

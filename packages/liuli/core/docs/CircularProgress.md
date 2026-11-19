@@ -5,10 +5,10 @@
 How much is done, as a ring. Status: preview.
 
 ```ts
-import { CircularProgress } from '@liulidesign/core/CircularProgress';
+import { CircularProgress, CircularProgressGroup } from '@liulidesign/core/CircularProgress';
 ```
 
-CircularProgress shows an amount from 0 to `max` as an arc around a ring, with the app's own words in the middle at the larger sizes. Without `value` the arc spins: the task is running and its length is unknown. Use it where a ProgressBar has no room: a tile, the end of a row.
+CircularProgress shows an amount from 0 to `max` as an arc around a ring, with the app's own words in the middle at the larger sizes. Without `value` the arc spins: the task is running and its length is unknown. Use it where a ProgressBar has no room: a tile, the end of a row. CircularProgressGroup holds rings shown together, its rings as direct children, and keeps their words all inside or all beside.
 
 ## Examples
 
@@ -22,7 +22,7 @@ export function Goal() {
   return (
     <view className="flex-row items-center gap-4">
       <CircularProgress label="Steps today" value={7200} max={10000} valueLabel="72%" size="lg" data-testid="steps" />
-      <view className="gap-0.5">
+      <view className="shrink min-w-0 gap-0.5">
         <text className="text-body font-medium text-text">7,200 steps</text>
         <text className="text-footnote text-muted">2,800 to your goal of 10,000</text>
       </view>
@@ -52,15 +52,15 @@ export function InRows() {
 ### Sizes
 
 ```tsx
-import { CircularProgress } from '@liulidesign/core/CircularProgress';
+import { CircularProgress, CircularProgressGroup } from '@liulidesign/core/CircularProgress';
 
 export function Sizes() {
   return (
-    <view className="flex-row items-center gap-5">
+    <CircularProgressGroup className="flex-row flex-wrap items-center gap-5">
       <CircularProgress label="Storage used" value={40} valueLabel="40%" size="sm" />
       <CircularProgress label="Storage used" value={40} valueLabel="40%" />
       <CircularProgress label="Storage used" value={40} valueLabel="40%" size="lg" />
-    </view>
+    </CircularProgressGroup>
   );
 }
 ```
@@ -68,16 +68,16 @@ export function Sizes() {
 ### Meters in a tone
 
 ```tsx
-import { CircularProgress } from '@liulidesign/core/CircularProgress';
+import { CircularProgress, CircularProgressGroup } from '@liulidesign/core/CircularProgress';
 
 /** A meter in a tone: the words say how it stands too. */
 export function Tones() {
   return (
-    <view className="flex-row items-center gap-5">
+    <CircularProgressGroup className="flex-row flex-wrap items-center gap-5">
       <CircularProgress label="Monthly goal" value={100} valueLabel="Done" tone="success" size="lg" />
       <CircularProgress label="Storage" value={86} valueLabel="86%" tone="warning" size="lg" />
       <CircularProgress label="Data plan" value={100} valueLabel="Over" tone="danger" size="lg" data-testid="over" />
-    </view>
+    </CircularProgressGroup>
   );
 }
 ```
@@ -137,6 +137,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Give `valueLabel` in the words the screen uses: "72%", "3 of 8".
 - Do: Use `sm` at the end of a row or inside a button; say the amount beside it if it matters.
+- Do: At large text, the ring keeps its size and the words move beside it once they outgrow its middle; keep `valueLabel` to a figure or a short word, and put rings shown together in a `CircularProgressGroup`, which moves all their words at once so a row never mixes the two; let its row wrap.
 - Don't: Use a ring where a bar fits; a bar is easier to compare and to read.
 - Don't: Rely on the tone alone; say "nearly full" or "over" in words.
 

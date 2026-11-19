@@ -108,3 +108,35 @@ test('Floating: the raised shadow in place of the variant\'s hairline one', asyn
   const button = (await renderExample('Button/Button', 'Floating')).getByTestId('floating');
   assert.deepEqual(JSON.parse(button.props.boxShadow).map(layer => layer.blur), [2, 24]);
 });
+
+test('At large text: rows of buttons wrap; a button grows in height and its neighbours never squeeze it', async () => {
+  for (const example of ['Variants', 'Hero', 'VariantsEveryday', 'Specimen']) {
+    const screen = await renderExample('Button/Button', example);
+    const button = screen.queryAll(node => node.tag === 'button')[0];
+    const row = screen.queryAll(node => node.children.includes(button))[0];
+    assert.equal(row.props.flexWrap, 'wrap', example);
+    assert.deepEqual([button.props.shrink, button.props.maxWidthPercent, button.props.height, button.props.minHeight > 0], [0, 100, undefined, true], example);
+    assert.equal(button.children.find(node => node.tag === 'text').props.numberOfLines, undefined, example);
+  }
+});
+
+test('edge: a ghost button at the end of a row hangs its padding past the edge, and an end icon its drawing\'s inset too', async () => {
+  const screen = await renderPage(`
+    import { Button } from '@liulidesign/core/Button';
+    export function render() {
+      return <page>
+        <Button label="System" variant="ghost" size="sm" endIcon="chevron-down" edge="end" data-testid="menu" />
+        <Button label="Edit" variant="ghost" size="md" edge="end" data-testid="edit" />
+        <Button label="Back" variant="ghost" size="sm" startIcon="chevron-start" edge="start" data-testid="back" />
+        <Button label="Plain" variant="ghost" size="sm" data-testid="plain" />
+        <Button label="More" variant="ghost" size="sm" startIcon="more" isIconOnly edge="end" data-testid="square" />
+      </page>;
+    }
+  `);
+  const margins = id => { const { marginInlineStart, marginInlineEnd } = screen.getByTestId(id).props; return [marginInlineStart, marginInlineEnd]; };
+  assert.deepEqual(margins('menu'), [undefined, -16.33]);
+  assert.deepEqual(margins('edit'), [undefined, -17]);
+  assert.deepEqual(margins('back'), [-16.33, undefined]);
+  assert.deepEqual(margins('plain'), [undefined, undefined]);
+  assert.deepEqual(margins('square'), [undefined, -11.33], 'a square hangs its inset around the glyph, plus the drawing\'s');
+});

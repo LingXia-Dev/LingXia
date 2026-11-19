@@ -180,6 +180,7 @@ export function Floating() {
 | `endContent` | `Child` |  | Drawn after the label: a count, a shortcut hint. Hidden from assistive tech. |
 | `isFloating` | `boolean` | `false` | Lifts the button off the page with a shadow, for the one action that floats over scrolling content. |
 | `width` | `ButtonWidth` |  | `content` keeps its own width in a column; `fill` stretches across. Unset follows the parent. |
+| `edge` | `ButtonEdge` |  | For a ghost or link button at the edge of a row: its padding hangs past that side, so the label or the icon's drawing lines up with the content edge, as the text above and below does. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Why it is disabled: read as the button's description while disabled; not drawn. |
 | `isLoading` | `boolean` | `false` | Shows a spinner and ignores presses; the button stays focusable and reports busy. |
@@ -230,10 +231,12 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
+- Do: Give a ghost or link button at the start or end of a row `edge`, so its label or icon lines up with the text above and below instead of sitting in by its padding.
 - Do: Use one primary button per view, for the action most people take.
 - Do: Write the label as a verb phrase that names the outcome.
 - Do: Pass a Logic action to clickAction so the button shows progress by itself.
 - Do: Confirm destructive actions that cannot be undone with a Dialog.
+- Do: At large text, set buttons side by side in a row that wraps (`flex-wrap`): a button keeps its label on one line and wraps it only when it alone is wider than the row.
 - Don't: Put two primary buttons side by side.
 - Don't: Build a button from a view and classes; only a button takes presses, focus and a role.
 - Don't: Hard-code copy inside the button; labels come from the app.

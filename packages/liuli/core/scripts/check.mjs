@@ -42,13 +42,16 @@ const replacedProps = new Set(['disabled', 'checked', 'open', 'onPress', 'onClos
 // without one. `Said`, `Held` and `unused` in src/example.tsx are the ways to answer.
 const pressed = new Set(['Button', 'IconButton', 'Link']);
 const answering = new Set(['onClick', 'clickAction', 'isDisabled', 'isLoading']);
+// An overlay's trigger answers a press by opening it.
+const overlays = new Set(['Popover', 'HoverCard', 'Tooltip', 'DropdownMenu']);
+const isTrigger = node => ts.isJsxElement(node.parent) && ts.isIdentifier(node.parent.openingElement.tagName) && overlays.has(node.parent.openingElement.tagName.text);
 function answers(file, report) {
   const visit = node => {
     if (ts.isArrowFunction(node) && ts.isBlock(node.body) && node.body.statements.length === 0 && !ts.isVariableDeclaration(node.parent))
       report(node, 'answer', 'an empty handler: a press must answer visibly; use Said or Held from src/example.tsx, or `unused` on a control that cannot be used');
     if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && ts.isIdentifier(node.tagName) && pressed.has(node.tagName.text)) {
       const attributes = node.attributes.properties;
-      if (!attributes.some(each => ts.isJsxSpreadAttribute(each) || answering.has(each.name.getText(file))))
+      if (!isTrigger(node) && !attributes.some(each => ts.isJsxSpreadAttribute(each) || answering.has(each.name.getText(file))))
         report(node, 'answer', `<${node.tagName.text}> has no handler: a press must answer visibly; give it onClick, with Said from src/example.tsx where nothing else shows the press`);
     }
     ts.forEachChild(node, visit);

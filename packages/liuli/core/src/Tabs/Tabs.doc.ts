@@ -8,13 +8,14 @@ export const doc: ComponentDoc = {
   summary: 'A row of tabs over one panel, as an underline or a segmented control',
   description:
     'Tabs switch one area between a few peers: sections of a page, or modes of one view. ' +
-    'The tabs share the row equally, and a single indicator slides to the chosen one.',
+    'The tabs share the row equally, and a single indicator slides to the chosen one. No label is cut: a tab is never ' +
+    'narrower than its label, and a row that cannot hold them scrolls.',
   keywords: ['tabs', 'tab bar', 'segmented control', 'segments', 'switcher', 'sections', 'filter', 'range'],
   propsType: 'TabsProps',
   recipe: { map: 'tabsRecipe', parts: 'tabsParts' },
   anatomy: [
-    { part: 'frame', required: true, description: 'The underline rule, or the sunken track of the segmented control.' },
-    { part: 'list', required: true, description: 'The tab list: one Tab stop, named by `label`.' },
+    { part: 'frame', required: true, description: 'What the row fits in, around the scroll that holds it; for the segmented control, the sunken track.' },
+    { part: 'list', required: true, description: 'The tab list: one Tab stop, named by `label`; it carries the underline rule.' },
     { part: 'track', required: true, description: 'Holds the indicator; mirrors in right-to-left so it slides toward the end.' },
     { part: 'indicator', required: true, description: 'The underline or thumb, one tab wide, sliding to the chosen tab.' },
     { part: 'tab', required: true, description: 'One tab per item; its text is its name.' },
@@ -49,7 +50,8 @@ export const doc: ComponentDoc = {
   },
   guidance: {
     do: [
-      'Keep to two to five short labels that fit the row without truncating.',
+      'Keep to two to five short labels that fit the row.',
+      'At large text, expect the row to scroll rather than cut a label; put the tab people need first at the start.',
       'Use the underline for sections of a page and the segmented control for modes of one view.',
     ],
     dont: [

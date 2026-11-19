@@ -41,7 +41,7 @@ const drawnSmall: Array<[page: string, testId: string, what: string]> = [
   ['breadcrumb', 'deep-more', 'the folded levels button'],
   ['token', 'person-kai-remove', 'a token\'s remove button'],
   ['page-control', 'welcome-1', 'a page dot'],
-  ['tooltip', 'side', 'a small info button'],
+  ['info-tip', 'side', 'a small info button'],
 ];
 
 for (const [page, testId, what] of drawnSmall) {

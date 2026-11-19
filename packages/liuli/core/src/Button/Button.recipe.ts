@@ -1,4 +1,4 @@
-import type { ButtonSize, ButtonVariant, ButtonWidth } from './Button';
+import type { ButtonEdge, ButtonSize, ButtonVariant, ButtonWidth } from './Button';
 
 /** The element each part lands on. */
 export const buttonParts = { root: 'button', glyph: 'vector', icon: 'view', spinner: 'vector', label: 'text', reason: 'text' } as const;
@@ -9,7 +9,8 @@ export const buttonParts = { root: 'button', glyph: 'vector', icon: 'view', spin
  */
 export const buttonRecipe = {
   root: {
-    base: 'flex-row items-center justify-center-safe rounded-control transition-colors duration-fast ease-standard focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+    // Neighbours never squeeze a button into wrapping its label; only a button wider than its whole row wraps it.
+    base: 'flex-row items-center justify-center-safe shrink-0 max-w-full rounded-control transition-colors duration-fast ease-standard focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     variant: {
       primary: 'bg-accent text-on-accent border border-transparent shadow-[0_1px_2px_rgb(0_0_0/0.10)] hover:bg-accent/92 active:bg-accent/88',
       secondary: 'bg-surface text-text border border-text/12 shadow-[0_1px_2px_rgb(0_0_0/0.05)] hover:bg-text/5 active:bg-text/8',
@@ -45,6 +46,20 @@ export const buttonRecipe = {
       content: 'self-start',
       fill: 'self-stretch',
     } satisfies Record<ButtonWidth, string>,
+    // Padding plus the 1 pt border hang past the edge; an icon adds its drawing's inset (5/24 of its box). A square hangs its
+    // inset around the glyph: (square − glyph) / 2 plus that drawing inset.
+    edge: {
+      start: {
+        label: { sm: '-ms-[13px]', md: '-ms-[17px]', lg: '-ms-[21px]' },
+        icon: { sm: '-ms-[16.33px]', md: '-ms-[20.75px]', lg: '-ms-[25.17px]' },
+        square: { sm: '-ms-[11.33px]', md: '-ms-[14.75px]', lg: '-ms-[18.17px]' },
+      },
+      end: {
+        label: { sm: '-me-[13px]', md: '-me-[17px]', lg: '-me-[21px]' },
+        icon: { sm: '-me-[16.33px]', md: '-me-[20.75px]', lg: '-me-[25.17px]' },
+        square: { sm: '-me-[11.33px]', md: '-me-[14.75px]', lg: '-me-[18.17px]' },
+      },
+    } satisfies Record<ButtonEdge, Record<'label' | 'icon' | 'square', Record<ButtonSize, string>>>,
     /**
      * In an attached group: neighbours share an edge and only the group's ends are round. The focus
      * ring is drawn inside the button, where the next button cannot cover it.

@@ -43,6 +43,7 @@ export const doc: ComponentDoc = {
       'On a dense desktop screen wrap the form in a DensityProvider with `compact` (from `@liulidesign/core/density`): every control built on Field defaults to its small size, and one that sets `size` keeps it.',
       'Pass every prop Field hands the control on to the control element.',
       'Say what to fix in a status message, not only that something is wrong.',
+      'At large text, a long label wraps with the optional mark and info button on its first line; keep the label to a few words.',
     ],
     dont: [
       'Use the placeholder as the label; it disappears as soon as someone types.',

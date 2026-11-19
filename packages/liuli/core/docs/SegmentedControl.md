@@ -8,7 +8,7 @@ One value from a few, as a row of segments with a thumb on the chosen one. Statu
 import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
 ```
 
-SegmentedControl sets one value from two to five short choices that fit a row: a unit, a theme, a sort order. It is a radio group drawn as equal segments, with a raised thumb that slides to the chosen one. It sets a value; to switch what a panel shows, use Tabs.
+SegmentedControl sets one value from two to five short choices that fit a row: a unit, a theme, a sort order. It is a radio group drawn as equal segments, with a raised thumb that slides to the chosen one. A label is never cut: a long one widens its segment, and when the row cannot hold them the segments stack. It sets a value; to switch what a panel shows, use Tabs.
 
 ## Examples
 
@@ -93,7 +93,7 @@ export function Sizes() {
 | `value` | `string` |  | The chosen segment's value. |
 | `onChange` | `((value: string) => void)` |  | Runs with the segment chosen by a tap or by arrowing onto it. |
 | `label` (required) | `string` |  | Names the group for assistive tech: "Units", "Sort". |
-| `items` (required) | `readonly SegmentedOption[]` |  | Two to five choices, in order; they share the row equally. |
+| `items` (required) | `readonly SegmentedOption[]` |  | Two to five choices, in order; they share the row equally, and stack when it cannot hold them. |
 | `size` | `SegmentedControlSize` | `'md'` |  |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the group; each segment gets `<testid>-<value>`. |
@@ -106,7 +106,7 @@ export function Sizes() {
 | track | `<view>` | yes | Holds the thumb; mirrors in right-to-left so it slides toward the end. |
 | thumb | `<view>` | yes | The raised box, one segment wide, under the chosen segment. |
 | segment | `<button>` | yes | A radio per option, named by its label. |
-| label | `<text>` | yes | The option's text, cut short if its share of the row is too narrow. |
+| label | `<text>` | yes | The option's text, whole; cut short only if a stacked segment cannot hold it. |
 
 ## What an app may override
 
@@ -138,6 +138,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 ## Guidance
 
 - Do: Keep to two to five labels short enough to fit their share of the row.
+- Do: At large text, let it stack: a column of segments keeps every choice in view, where a scrolling row would hide some.
 - Do: Apply the choice at once, where people can see what it changed.
 - Don't: Use it to switch between panels of content; that is Tabs.
 - Don't: Use it for more than five choices or long labels; use a Select or a RadioGroup.
@@ -147,7 +148,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Segments as wide as their labels, with the thumb following. | a way to read a laid-out box's position and width from View, or a shared-element layout motion between siblings | Segments share the row equally, so the thumb moves by a segment's width. |
 | Icon-only segments. | an icon set for Liuli | Segments carry a text label. |
 
 Related: Tabs, RadioGroup, ToggleButton.

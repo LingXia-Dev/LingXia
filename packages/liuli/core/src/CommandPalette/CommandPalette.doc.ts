@@ -51,6 +51,7 @@ export const doc: ComponentDoc = {
     do: [
       'Offer every command somewhere else too; the palette is a shortcut.',
       'Start each label with the word people will type: "New note", not "Create a new note".',
+      'At large text, open it from a Button, which stays inside its card: a label wider than the card wraps inside the button rather than being cut.',
     ],
     dont: [
       'Use it to choose a value in a form; that is a Combobox.',
@@ -67,7 +68,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'Find and run',
-    order: 9,
+    order: 10,
     page: {
       lead: 'Use a command palette to reach any command or place by typing.',
       hero: 'Commands',

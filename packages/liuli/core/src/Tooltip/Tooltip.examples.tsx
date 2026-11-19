@@ -1,112 +1,66 @@
-import { cx } from '@lingxia/view';
+import { IconButton } from '../IconButton/IconButton';
 import { Glyph } from '../internal/Glyph';
-import { Tooltip } from './Tooltip';
 import { tooltipRecipe } from './Tooltip.recipe';
+import { Tooltip } from './Tooltip';
+import { Link } from '../Link/Link';
 
-/** Beside the thing it explains. */
-export function Storage() {
+/** A toolbar of icon buttons: each hint says the button's name in words. */
+export function Toolbar() {
   return (
     <view className="flex-row items-center gap-1">
-      <text className="text-body text-text">Storage used: 9.6 of 10 GB</text>
-      <Tooltip label="About storage" content="Attachments count toward storage. Notes themselves do not." data-testid="storage" />
+      <Tooltip content="Undo" data-testid="undo"><IconButton label="Undo" icon="undo" data-testid="undo" /></Tooltip>
+      <Tooltip content="Redo"><IconButton label="Redo" icon="redo" /></Tooltip>
+      <Tooltip content="Share"><IconButton label="Share" icon="share" /></Tooltip>
     </view>
   );
 }
 
-/** Below the button, where there is no room above. */
+/** Below the trigger, where there is no room above. */
 export function Below() {
   return (
-    <view className="flex-row items-center gap-1">
-      <text className="text-body text-text">Two-step sign-in</text>
-      <Tooltip label="About two-step sign-in" content="A code from your phone, on top of your password." placement="bottom" data-testid="two-step" />
+    <view className="flex-row">
+      <Tooltip content="Print" placement="bottom" data-testid="print"><IconButton label="Print" icon="print" data-testid="print" /></Tooltip>
     </view>
   );
 }
 
-export function Sizes() {
+/** Words as the trigger: wrapped in one plain button, a single focus stop. */
+export function OnWords() {
   return (
-    <view className="flex-row items-center gap-4">
-      <Tooltip label="Small" content="Small." size="sm" />
-      <Tooltip label="Medium" content="Medium." />
+    <view className="flex-row">
+      <Tooltip content="Last synced 2 minutes ago" data-testid="synced"><text className="text-footnote text-muted">Synced</text></Tooltip>
     </view>
   );
 }
 
-/** Next to a field label, for what the label cannot say. */
-export function InForm() {
-  return (
-    <view className="gap-1.5">
-      <view className="flex-row items-center gap-0.5">
-        <text className="text-footnote font-medium text-text">Workspace URL</text>
-        <Tooltip label="About the workspace URL" content="People you invite open this address. You can change it once a month." size="sm" data-testid="url" />
-      </view>
-      <view className="min-h-control-md justify-center px-3 rounded-control border border-line-strong bg-surface">
-        <text className="text-body text-text">notes.example.com/atlas</text>
-      </view>
-    </view>
-  );
-}
-
-/** A still drawing of an open note over its button. */
+/** The hint drawn at rest, for the gallery's parts stage. */
 export function Parts() {
   return (
-    <view className="items-center gap-1 py-4">
-      <view className={tooltipRecipe.bubble.base}>
-        <text className={tooltipRecipe.text.base}>Attachments count toward storage. Notes themselves do not.</text>
-      </view>
-      <DrawnTrigger fill="bg-text/6" />
+    <view className="items-start">
+      <view className={tooltipRecipe.bubble.base}><text className={tooltipRecipe.text.base}>Undo</text></view>
     </view>
   );
 }
 
-/** A still trigger, drawn because a view refuses `active:`. */
-function DrawnTrigger({ fill }: { fill?: string }) {
-  return (
-    <view className={cx('size-10 items-center justify-center rounded-full text-muted', fill)}>
-      <Glyph name="info" className={tooltipRecipe.icon.size.md} />
-    </view>
-  );
-}
-
-export function StateClosed() {
-  return <Tooltip label="About storage" content="Attachments count toward storage." />;
-}
-
-export function StatePressed() {
-  return <DrawnTrigger fill="bg-text/10" />;
-}
-
-export function StateOpen() {
-  return (
-    <view className="items-center gap-1">
-      <view className={tooltipRecipe.bubble.base}>
-        <text className={tooltipRecipe.text.base}>A short note</text>
-      </view>
-      <DrawnTrigger fill="bg-text/6" />
-    </view>
-  );
-}
-
-/** The home tile: the still drawing, small. */
+/** The home tile: a still drawing, since a real hint opens over the page. */
 export function Specimen() {
   return (
     <view className="items-center gap-1">
-      <view className={tooltipRecipe.bubble.base}>
-        <text className={tooltipRecipe.text.base}>Counts attachments</text>
-      </view>
-      <view className="size-8 items-center justify-center rounded-full text-muted">
-        <Glyph name="info" className={tooltipRecipe.icon.size.sm} />
-      </view>
+      <view className="px-2 py-1 rounded-control bg-text"><text className="text-caption text-surface">Undo</text></view>
+      <view className="size-6 items-center justify-center rounded-control bg-text/6"><Glyph name="undo" className="size-3.5 text-muted" /></view>
     </view>
   );
 }
 
-/** Beside its button, where the note would cover what is above and below. */
-export function Beside() {
+/** On a link in a sentence: the hint spells out the short name the link shows. */
+export function InSentence() {
   return (
-    <view className="flex-row items-center gap-1">
-      <text className="text-body text-text">Sync</text>
-      <Tooltip label="About sync" content="Notes are sent when you are online." placement="end" size="sm" data-testid="side" />
-    </view>
+    <text className="text-body text-text">
+      Shipped by{' '}
+      <Tooltip content="United Parcel Service">
+        <Link label="UPS" data-testid="carrier-link" />
+      </Tooltip>
+      {' '}this morning.
+    </text>
   );
 }

@@ -57,6 +57,7 @@ export const doc: ComponentDoc = {
       'Pass `today` from the page\'s Logic, which knows the time and the person\'s time zone; a View has no clock.',
       'Show the chosen span in words beside the calendar, as the app formats dates.',
       'Spread a ready-made locale to change the first day of the week or a word.',
+      'At large text, a day\'s circle widens to hold two digits, up to its seventh of the row; give the calendar the full width.',
     ],
     dont: [
       'Use it for a birth date or any date far from today; DateInput\'s picker reaches a year faster.',

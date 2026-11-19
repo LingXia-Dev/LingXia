@@ -3,6 +3,7 @@ import type { FieldSize, FieldStatusType } from './Field';
 export const fieldParts = {
   root: 'view',
   labelRow: 'view',
+  info: 'InfoTip',
   label: 'text',
   required: 'span',
   optional: 'text',
@@ -28,8 +29,11 @@ export const fieldRecipe = {
   },
   labelRow: {
     base: 'flex-row items-baseline gap-1.5',
-    /** The info button is taller than the label's line: centre the row on it and keep the label's height. */
-    withInfo: 'items-center -my-1',
+  },
+  /** The 32 px info button, centred on the label's first line and no taller than it, so a wrapped label keeps it at its start. */
+  info: {
+    base: 'self-start',
+    size: { sm: '-my-2', md: '-my-[7px]', lg: '-my-[5px]' } satisfies Record<FieldSize, string>,
   },
   required: {
     base: 'text-danger',

@@ -59,7 +59,8 @@ test('Scrolling: the rows scroll under a heading that stays outside the scroll; 
 test('StateEmpty: the headings stay and the empty line stands in for the rows', async () => {
   const screen = await renderExample('Table/Table', 'StateEmpty');
   assert.equal(rows(screen).length, 0);
-  assert.deepEqual(screen.getByTestId('empty').children.map(textOf), ['CustomerDueAmount', 'No invoices yet']);
+  const [header, empty, measure] = screen.getByTestId('empty').children;
+  assert.deepEqual([textOf(header), textOf(empty), measure.props.opacity], ['CustomerDueAmount', 'No invoices yet', 0]);
 });
 
 test('Members: where a text column is too narrow the records stack; measured wide, they are columns again', async () => {
@@ -92,4 +93,29 @@ test('layout: columns holds whatever the width; a short text column does not sta
   const three = await renderExample('Table/Table', 'Invoices');
   three.layout(three.getByTestId('invoices'), { width: 326, height: 300 });
   assert.ok(three.getByTestId('invoices-INV-1043').props.gridTemplateColumns, 'Due gets 68 pt and its longest value, "20 Nov", needs about 48');
+});
+
+test('At large text: measured wider type stacks the records; a number is never cut and a heading never ends in an ellipsis', async () => {
+  const screen = await renderExample('Table/Table', 'Invoices');
+  const table = () => screen.getByTestId('invoices');
+  const isColumns = () => Boolean(screen.getByTestId('invoices-INV-1043').props.gridTemplateColumns);
+  // The measure line is last and unseen: the alphabet in body type, then each number column's widest value.
+  const measured = () => table().children.at(-1).children;
+  const [alphabet, amount] = measured();
+  assert.deepEqual([alphabet.text, amount.text, amount.props.whiteSpace, amount.props.fontVariantNumeric], ['abcdefghijklmnopqrstuvwxyz', '$1,280.00', 'nowrap', 'tabular-nums']);
+  const set = (charWidth, amountWidth) => {
+    screen.layout(measured()[0], { width: charWidth * 26, height: 22 });
+    screen.layout(measured()[1], { width: amountWidth, height: 22 });
+  };
+  // 326 - 32 padding - 24 gaps leaves 67.5 pt a share: Customer 135, Amount 67.5.
+  screen.layout(table(), { width: 326, height: 300 });
+  set(8, 64);
+  assert.ok(isColumns(), 'at the standard size every column holds its values');
+  set(8, 84);
+  assert.equal(isColumns(), false, 'a number wider than its column stacks the table rather than run past its edge');
+  set(16, 64);
+  assert.equal(isColumns(), false, 'at twice the size Customer is under 11 characters: stacked, not broken mid-word');
+  const columns = await renderExample('Table/Table', 'MembersColumns');
+  const headings = columns.getByTestId('members-columns').children[0].children;
+  assert.ok(headings.every(heading => heading.props.numberOfLines === undefined && heading.props.textOverflow === undefined), 'a heading wraps; it is never cut');
 });

@@ -4,6 +4,7 @@ import { Button } from '../Button/Button';
 import { Switch } from '../Switch/Switch';
 import { popoverRecipe } from './Popover.recipe';
 import { Popover } from './Popover';
+import { Link } from '../Link/Link';
 
 /** View options for a list: switches that apply at once, in a panel under the trigger. */
 export function ViewOptions() {
@@ -11,9 +12,16 @@ export function ViewOptions() {
   const dates = useLocal('dates', false);
   return (
     <view className="gap-3">
-      <Popover label="View options" title="Show in the list" data-testid="options">
-        <Switch bind={previews} label="Previews" size="sm" data-testid="previews" />
-        <Switch bind={dates} label="Dates" size="sm" data-testid="dates" />
+      <Popover
+        label="View options"
+        title="Show in the list"
+        content={<>
+          <Switch bind={previews} label="Previews" size="sm" data-testid="previews" />
+          <Switch bind={dates} label="Dates" size="sm" data-testid="dates" />
+        </>}
+        data-testid="options"
+      >
+        <Button label="View options" data-testid="options" />
       </Popover>
       <text className="text-footnote text-muted" data-testid="summary">
         {[previews.value && 'Previews', dates.value && 'Dates'].filter(Boolean).join(' and ') || 'Titles only'}
@@ -27,9 +35,18 @@ export function Share() {
   const copied = useLocal('copied', false);
   return (
     <view className="items-end">
-      <Popover label="Share" title="Anyone with the link can view" placement="top" alignment="end" variant="primary" data-testid="share">
-        <text className="text-footnote text-muted select-text">notes.example.com/s/q3-plan</text>
-        <Button label={copied.value ? 'Copied' : 'Copy link'} size="sm" width="content" onClick={() => copied.set(true)} data-testid="copy" />
+      <Popover
+        label="Share"
+        title="Anyone with the link can view"
+        placement="top"
+        alignment="end"
+        content={<>
+          <text className="text-footnote text-muted select-text">notes.example.com/s/q3-plan</text>
+          <Button label={copied.value ? 'Copied' : 'Copy link'} size="sm" width="content" onClick={() => copied.set(true)} data-testid="copy" />
+        </>}
+        data-testid="share"
+      >
+        <Button label="Share" variant="primary" data-testid="share" />
       </Popover>
     </view>
   );
@@ -71,9 +88,22 @@ export function Specimen() {
 export function Beside() {
   return (
     <view className="items-start gap-2">
-      <Popover label="Line" title="Line" placement="end" data-testid="beside">
-        <text className="text-footnote text-muted">Weight and style for the shapes you draw next.</text>
+      <Popover label="Line" title="Line" placement="end" content={<text className="text-footnote text-muted">Weight and style for the shapes you draw next.</text>} data-testid="beside">
+        <Button label="Line" data-testid="beside" />
       </Popover>
     </view>
+  );
+}
+
+/** On a link in a sentence: the panel opens from the linked words, which stay in their line. */
+export function InSentence() {
+  return (
+    <text className="text-body text-text">
+      Your parcel arrives{' '}
+      <Popover label="Delivery window" content={<text className="text-footnote text-text">Sunday between 18:00 and 20:00. Someone needs to be in to sign.</text>} data-testid="window">
+        <Link label="on Sunday" data-testid="window-link" />
+      </Popover>
+      , at the front door.
+    </text>
   );
 }

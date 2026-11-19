@@ -36,9 +36,10 @@ export function Welcome() {
     <Said>
       {say => (
         <view className="gap-4">
-          <view className="flex-row items-center gap-2">
+          {/* At large text the field takes its own line rather than shrinking to its magnifier. */}
+          <view className="flex-row flex-wrap items-center gap-2">
             <view id="tour-new"><Button label="New note" variant="primary" startIcon="add" onClick={() => say('Created a note')} /></view>
-            <view id="tour-search" className="grow basis-0 min-w-0">
+            <view id="tour-search" className="grow basis-40">
               <SearchField label="Search notes" isLabelHidden value={query.value} onChange={query.set} placeholder="Search" clearLabel="Clear" />
             </view>
           </view>
@@ -121,6 +122,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Keep a tour to three or four steps, about things already in view.
 - Do: Let people skip it, and offer it again from Help.
+- Do: At large text, let the rows around a target wrap so the target keeps its size; the callout follows it to its new line.
 - Don't: Use a tour to explain a screen that needs explaining; fix the screen.
 - Don't: Start it over something the user is in the middle of.
 

@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Basic, More, Value, Checkable, Grouped, Submenu, Sizes, StateEnabled, StateDisabled, InList } from '../../core/src/DropdownMenu/DropdownMenu.examples';
+import { Basic, More, Value, Checkable, Grouped, Submenu, Sizes, StateEnabled, StateDisabled, StateMixed, InList, InSentence } from '../../core/src/DropdownMenu/DropdownMenu.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -38,11 +38,17 @@ export function Content() {
           <Stage caption={"Disabled"}>
             <StateDisabled />
           </Stage>
+          <Stage caption={"Mixed: an item for a set, partly on"}>
+            <StateMixed />
+          </Stage>
         </StageGrid>
       </PageSection>
       <PageSection title={"In context"}>
         <Stage caption={"A menu on every row"}>
           <InList />
+        </Stage>
+        <Stage caption={"On a link in a sentence"}>
+          <InSentence />
         </Stage>
       </PageSection>
     </>

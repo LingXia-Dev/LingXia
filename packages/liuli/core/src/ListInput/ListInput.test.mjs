@@ -31,3 +31,12 @@ test('Links: with no rows there is no list, only the add button and the error', 
   screen.press(button(screen, 'links-add'));
   assert.equal(screen.getByTestId('links').children.length, 1);
 });
+
+test('At large text: a row of controls wraps, the kind at a least width and the number under it', async () => {
+  const screen = await renderExample('ListInput/ListInput', 'Phones');
+  const row = screen.queryAll(node => node.props.flexWrap === 'wrap')[0];
+  assert.ok(row, 'the row wraps');
+  const kind = row.children[0];
+  assert.deepEqual([kind.props.minWidth, kind.props.width], [112, undefined], 'the kind grows with its words from 112 pt');
+  assert.equal(row.children[1].props.flexBasis, 128, 'the number wraps under it below 128 pt');
+});

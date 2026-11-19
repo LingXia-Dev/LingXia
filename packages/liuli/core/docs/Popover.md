@@ -2,13 +2,13 @@
 
 # Popover
 
-A button that opens a panel of content above or below it, closed by a tap outside. Status: preview.
+A panel of content that opens beside its trigger, closed by a tap outside. Status: preview.
 
 ```ts
 import { Popover } from '@liulidesign/core/Popover';
 ```
 
-Popover shows a small panel beside the button that opened it: view options, a share link, a short form. It is not modal; a tap outside, Escape or back closes it and focus goes back to the button. For a list of actions use DropdownMenu; for a note about something use Tooltip; for a decision use Dialog.
+Popover shows a small panel, its `content`, beside the trigger that opened it: view options, a share link, a short form. Its children are the trigger, a Button or IconButton, or any element, which is wrapped in a plain button. It is not modal; a tap outside, Escape or back closes it and focus goes back to the trigger. For a list of actions use DropdownMenu; for a note about something use InfoTip; for a decision use Dialog.
 
 ## Examples
 
@@ -16,6 +16,7 @@ Popover shows a small panel beside the button that opened it: view options, a sh
 
 ```tsx
 import { useLocal } from '@lingxia/view';
+import { Button } from '@liulidesign/core/Button';
 import { Switch } from '@liulidesign/core/Switch';
 import { Popover } from '@liulidesign/core/Popover';
 
@@ -25,9 +26,16 @@ export function ViewOptions() {
   const dates = useLocal('dates', false);
   return (
     <view className="gap-3">
-      <Popover label="View options" title="Show in the list" data-testid="options">
-        <Switch bind={previews} label="Previews" size="sm" data-testid="previews" />
-        <Switch bind={dates} label="Dates" size="sm" data-testid="dates" />
+      <Popover
+        label="View options"
+        title="Show in the list"
+        content={<>
+          <Switch bind={previews} label="Previews" size="sm" data-testid="previews" />
+          <Switch bind={dates} label="Dates" size="sm" data-testid="dates" />
+        </>}
+        data-testid="options"
+      >
+        <Button label="View options" data-testid="options" />
       </Popover>
       <text className="text-footnote text-muted" data-testid="summary">
         {[previews.value && 'Previews', dates.value && 'Dates'].filter(Boolean).join(' and ') || 'Titles only'}
@@ -49,9 +57,18 @@ export function Share() {
   const copied = useLocal('copied', false);
   return (
     <view className="items-end">
-      <Popover label="Share" title="Anyone with the link can view" placement="top" alignment="end" variant="primary" data-testid="share">
-        <text className="text-footnote text-muted select-text">notes.example.com/s/q3-plan</text>
-        <Button label={copied.value ? 'Copied' : 'Copy link'} size="sm" width="content" onClick={() => copied.set(true)} data-testid="copy" />
+      <Popover
+        label="Share"
+        title="Anyone with the link can view"
+        placement="top"
+        alignment="end"
+        content={<>
+          <text className="text-footnote text-muted select-text">notes.example.com/s/q3-plan</text>
+          <Button label={copied.value ? 'Copied' : 'Copy link'} size="sm" width="content" onClick={() => copied.set(true)} data-testid="copy" />
+        </>}
+        data-testid="share"
+      >
+        <Button label="Share" variant="primary" data-testid="share" />
       </Popover>
     </view>
   );
@@ -61,16 +78,37 @@ export function Share() {
 ### Beside the trigger
 
 ```tsx
+import { Button } from '@liulidesign/core/Button';
 import { Popover } from '@liulidesign/core/Popover';
 
 /** Beside its trigger: a tool at the edge of a canvas opens its options at its side. */
 export function Beside() {
   return (
     <view className="items-start gap-2">
-      <Popover label="Line" title="Line" placement="end" data-testid="beside">
-        <text className="text-footnote text-muted">Weight and style for the shapes you draw next.</text>
+      <Popover label="Line" title="Line" placement="end" content={<text className="text-footnote text-muted">Weight and style for the shapes you draw next.</text>} data-testid="beside">
+        <Button label="Line" data-testid="beside" />
       </Popover>
     </view>
+  );
+}
+```
+
+### On a link in a sentence
+
+```tsx
+import { Popover } from '@liulidesign/core/Popover';
+import { Link } from '@liulidesign/core/Link';
+
+/** On a link in a sentence: the panel opens from the linked words, which stay in their line. */
+export function InSentence() {
+  return (
+    <text className="text-body text-text">
+      Your parcel arrives{' '}
+      <Popover label="Delivery window" content={<text className="text-footnote text-text">Sunday between 18:00 and 20:00. Someone needs to be in to sign.</text>} data-testid="window">
+        <Link label="on Sunday" data-testid="window-link" />
+      </Popover>
+      , at the front door.
+    </text>
   );
 }
 ```
@@ -79,21 +117,16 @@ export function Beside() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `label` (required) | `string` |  | The trigger's text and accessible name; the panel's name too, unless `title` is set. |
+| `children` (required) | `Child` |  | The trigger: a Button, an IconButton or any element, which is then wrapped in a plain button. |
+| `content` (required) | `Child` |  | The panel's content: a few lines, a short form, a handful of controls. |
+| `label` (required) | `string` |  | The panel's accessible name, unless `title` is set. |
 | `title` | `string` |  | A heading at the top of the panel, and its accessible name. |
-| `children` (required) | `Child` |  | The panel's content: a few lines, a short form, a handful of controls. |
-| `isLabelHidden` | `boolean` | `false` | Draws only `icon` on a square trigger; `label` stays the name. |
-| `icon` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "checklist" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "click" \| "clock" \| "close" \| "cloud" \| "collapse" \| "compass" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "layers" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "palette" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "rows" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "stop" \| "success" \| "tag" \| "template" \| "text-input" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  | An icon from the set, on the trigger before the label. |
-| `variant` | `ButtonVariant` | `'secondary'` | The trigger's look, from Button. |
-| `size` | `ButtonSize` | `'md'` |  |
 | `placement` | `PopoverPlacement` | `'bottom'` | Which side of the trigger the panel opens on. Beside the trigger it flips to the other side for room, and falls back to below or above. |
 | `alignment` | `PopoverAlignment` | `'start'` | Which edge of the trigger the panel lines up with: for `end` and `start`, `start` is the top of the trigger and `end` its bottom. |
 | `isOpen` | `boolean` |  | Controls whether it is open; leave it out to let the trigger own it. |
 | `onOpenChange` | `((isOpen: boolean) => void)` |  |  |
-| `isDisabled` | `boolean` | `false` |  |
-| `className` | `string` |  | Classes for the trigger. |
 | `panelClassName` | `string` |  | Classes for the panel. |
-| `data-testid` | `string` |  | On the trigger; the panel gets `<testid>-panel`. |
+| `data-testid` | `string` |  | On the panel, as `<testid>-panel`, and on a wrapped trigger. |
 
 ## Anatomy
 
@@ -104,7 +137,6 @@ export function Beside() {
 
 ## What an app may override
 
-- `className`: Classes for the trigger.
 - `panelClassName`: Classes for the panel.
 - The recipe, `popoverRecipe` from `@liulidesign/core/Popover/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-body`, `--shadow-raised`, `--radius-container`.
@@ -132,6 +164,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
+- Do: Use a `Link` as the trigger for words in a sentence: put the overlay in the `<text>`, around the Link, and the panel opens from the linked words.
 - Do: Keep the panel short: a title and a few controls or lines.
 - Do: Apply its controls at once; it has no Save.
 - Do: Open it upward when the trigger sits near the bottom of the screen.
@@ -145,4 +178,4 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | --- | --- | --- |
 | A panel beside its trigger, at the start or end side. | side values for a popover's `positionArea` (`inline-end`, `inline-start`), flipping to the other side where there is no room | Above or below the trigger, lined up with its start, centre or end. |
 
-Related: DropdownMenu, Tooltip, Dialog.
+Related: DropdownMenu, InfoTip, Dialog.

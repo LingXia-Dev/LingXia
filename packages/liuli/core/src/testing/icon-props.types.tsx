@@ -18,10 +18,10 @@ export const named = [
   <Badge label="Paid" startIcon="success" />,
   <Button label="Send" startIcon="send" endIcon="chevron-end" onClick={none} />,
   <Details label="More" startIcon="info"><text>Body</text></Details>,
-  <DropdownMenu label="Actions" icon="more"><DropdownMenuItem label="Delete" icon="delete" onClick={none} /><DropdownMenuSubmenu label="Move" icon="folder"><DropdownMenuItem label="Inbox" onClick={none} /></DropdownMenuSubmenu></DropdownMenu>,
+  <DropdownMenu label="Actions" menu={<><DropdownMenuItem label="Delete" icon="delete" onClick={none} /><DropdownMenuSubmenu label="Move" icon="folder"><DropdownMenuItem label="Inbox" onClick={none} /></DropdownMenuSubmenu></>}><IconButton label="Actions" icon="more" /></DropdownMenu>,
   <IconButton label="Close" icon="close" onClick={none} />,
   <Item label="Inbox" startIcon="mail" />,
-  <Popover label="Filters" icon="filter"><text>Panel</text></Popover>,
+  <Popover label="Filters" content={<text>Panel</text>}><Button label="Filters" startIcon="filter" /></Popover>,
   <TextInput label="Name" value="" onChange={none} startIcon="user" />,
   // A node goes in the slot made for one.
   <TextInput label="Name" value="" onChange={none} startContent={node} />,
@@ -34,13 +34,9 @@ export const refused = [
   // @ts-expect-error a node where a name belongs
   <Badge label="Paid" startIcon={node} />,
   // @ts-expect-error
-  <DropdownMenu label="Actions" icon={node}><text>Menu</text></DropdownMenu>,
-  // @ts-expect-error
   <DropdownMenuItem label="Delete" icon={node} onClick={none} />,
   // @ts-expect-error
   <DropdownMenuSubmenu label="Move" icon={node}><text>Menu</text></DropdownMenuSubmenu>,
-  // @ts-expect-error
-  <Popover label="Filters" icon={node}><text>Panel</text></Popover>,
   // @ts-expect-error
   <TextInput label="Name" value="" onChange={none} startIcon={node} />,
   // @ts-expect-error

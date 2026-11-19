@@ -7,7 +7,7 @@ export const doc: ComponentDoc = {
   since: '2026-11-14',
   summary: 'Buttons that belong together, apart or joined edge to edge, as one keyboard stop',
   description:
-    'ButtonGroup lays out Buttons and IconButtons that act on the same thing. Apart, they keep a gap and wrap; attached, they share edges and read as one shape. ' +
+    'ButtonGroup lays out Buttons and IconButtons that act on the same thing. Apart, they keep a gap; attached, they share edges and read as one shape. Either wraps when it does not fit. ' +
     'The group gives its buttons a size and a variant, can disable them all, and is a toolbar for assistive tech: one Tab stop, with the arrow keys moving among the buttons.',
   keywords: ['button group', 'toolbar', 'action group', 'attached buttons', 'split actions', 'button bar'],
   propsType: 'ButtonGroupProps',
@@ -38,11 +38,12 @@ export const doc: ComponentDoc = {
       'Attach buttons of one kind and equal weight: undo and redo, zoom out and in.',
       'Name the group for what its buttons share: "Text style", "Message actions".',
       'Set `size` and `variant` on the group, and on a button only to make one stand out.',
+      'At large text, expect a group to wrap onto more lines, attached ones too; keep an attached group to two or three short labels so it stays one shape at standard sizes.',
     ],
     dont: [
       'Attach a primary button to others; let it stand apart.',
       'Use a group to choose a value or a view; that is a SegmentedControl or Tabs.',
-      'Put more buttons in an attached group than fit one line; attached groups do not wrap.',
+      'Put more buttons in an attached group than fit one line; a wrapped attached group no longer reads as one shape.',
     ],
   },
   examples: [
@@ -54,9 +55,9 @@ export const doc: ComponentDoc = {
   ],
   gaps: [
     {
-      missing: 'An attached group that wraps or scrolls when it does not fit.',
+      missing: 'An attached group that folds the buttons that do not fit into a menu.',
       needs: 'reading a laid-out box\'s size (`useBox`) to fold buttons into a menu',
-      today: 'An attached group stays on one line and can be clipped; keep it short.',
+      today: 'An attached group that does not fit wraps onto another line; keep it short.',
     },
     {
       missing: 'A vertical group.',

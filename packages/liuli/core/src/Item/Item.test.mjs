@@ -148,3 +148,24 @@ test('startIcon: an icon by name in a 32 px tinted square before the text, not r
   assert.deepEqual([tile.props.width, tile.props.height, tile.props.background, tile.props.accessibilityHidden], [32, 32, 'accent-soft', 1]);
   assert.equal(tile.children[0].tag, 'vector');
 });
+
+test('At large text: the end content keeps its width; the text beside it yields and breaks long words', async () => {
+  const screen = await renderExample('Item/Item', 'Values');
+  const row = screen.getByTestId('version');
+  const [text, end] = [row.children.find(node => node.children.some(child => child.text === 'Version')), row.children.at(-1)];
+  assert.deepEqual([text.props.minWidth, text.props.basis ?? text.props.flexBasis, end.props.shrink], [0, 0, 0]);
+  assert.equal(text.children[0].props.overflowWrap, 'break-word');
+  assert.equal(row.props.height, undefined, 'the row grows with its text');
+});
+
+test('At large text: the start slot holds an avatar at its own size, so grown initials widen it', async () => {
+  const screen = await renderPage(`
+    import { Item } from '@liulidesign/core/Item';
+    import { Avatar } from '@liulidesign/core/Avatar';
+    export function render() { return <page><Item label="Ana Lima" startContent={<Avatar name="Ana Lima" isDecorative data-testid="al" />} /></page>; }
+  `);
+  const avatar = screen.getByTestId('al');
+  assert.deepEqual([avatar.props.widthKeyword, avatar.props.heightKeyword, avatar.props.minWidth], ['fit-content', 'fit-content', 40]);
+  const slot = screen.queryAll(node => node.children?.includes(avatar))[0];
+  assert.deepEqual([slot.props.shrink, slot.props.width, slot.props.height, slot.props.overflow], [0, undefined, undefined, undefined], 'a slot that never shrinks and never clamps');
+});

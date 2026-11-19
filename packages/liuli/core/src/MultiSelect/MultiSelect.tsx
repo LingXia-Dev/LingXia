@@ -1,6 +1,7 @@
 import { cx, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { DropdownMenu, DropdownMenuCheckboxItem } from '../DropdownMenu/DropdownMenu';
+import { IconButton } from '../IconButton/IconButton';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { Token } from '../Token/Token';
 import { multiSelectRecipe as r } from './MultiSelect.recipe';
@@ -96,16 +97,9 @@ export function MultiSelect(props: MultiSelectProps) {
           {shown.length === 0 && placeholder !== undefined && <text aria-hidden className={r.placeholder.base}>{placeholder}</text>}
           <DropdownMenu
             label={addLabel}
-            isLabelHidden
-            icon="add"
-            variant="ghost"
             size="sm"
             alignment="end"
-            isDisabled={isDisabled}
-            className={r.add.base}
-            data-testid={testId && `${testId}-add`}
-          >
-            {items.map(option => (
+            menu={items.map(option => (
               <DropdownMenuCheckboxItem
                 key={option.value}
                 label={option.label}
@@ -115,6 +109,8 @@ export function MultiSelect(props: MultiSelectProps) {
                 data-testid={testId && `${testId}-${option.value}`}
               />
             ))}
+          >
+            <IconButton label={addLabel} icon="add" size="sm" isDisabled={isDisabled} className={r.add.base} data-testid={testId && `${testId}-add`} />
           </DropdownMenu>
         </view>
       )}

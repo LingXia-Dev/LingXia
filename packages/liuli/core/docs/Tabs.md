@@ -8,7 +8,7 @@ A row of tabs over one panel, as an underline or a segmented control. Status: pr
 import { Tabs } from '@liulidesign/core/Tabs';
 ```
 
-Tabs switch one area between a few peers: sections of a page, or modes of one view. The tabs share the row equally, and a single indicator slides to the chosen one.
+Tabs switch one area between a few peers: sections of a page, or modes of one view. The tabs share the row equally, and a single indicator slides to the chosen one. No label is cut: a tab is never narrower than its label, and a row that cannot hold them scrolls.
 
 ## Examples
 
@@ -141,8 +141,8 @@ export function Fitted() {
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
-| frame | `<view>` | yes | The underline rule, or the sunken track of the segmented control. |
-| list | `<view>` | yes | The tab list: one Tab stop, named by `label`. |
+| frame | `<view>` | yes | What the row fits in, around the scroll that holds it; for the segmented control, the sunken track. |
+| list | `<view>` | yes | The tab list: one Tab stop, named by `label`; it carries the underline rule. |
 | track | `<view>` | yes | Holds the indicator; mirrors in right-to-left so it slides toward the end. |
 | indicator | `<view>` | yes | The underline or thumb, one tab wide, sliding to the chosen tab. |
 | tab | `<button>` | yes | One tab per item; its text is its name. |
@@ -181,7 +181,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
-- Do: Keep to two to five short labels that fit the row without truncating.
+- Do: Keep to two to five short labels that fit the row.
+- Do: At large text, expect the row to scroll rather than cut a label; put the tab people need first at the start.
 - Do: Use the underline for sections of a page and the segmented control for modes of one view.
 - Don't: Use tabs for steps someone must finish in order.
 - Don't: Put actions in a tab row; a tab only switches what is shown.

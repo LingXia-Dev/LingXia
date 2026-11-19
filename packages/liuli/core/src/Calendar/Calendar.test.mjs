@@ -24,7 +24,10 @@ test('Day: November 2026 from Monday, each day named in full, the chosen one sel
   assert.deepEqual(selected(screen), ['19']);
   assert.deepEqual([day('2026-11-19').props.background, day('2026-11-19').children[0].props.color], ['accent', 'on-accent']);
   assert.ok(day('2026-11-15').props.ring, 'a ring on today');
-  assert.deepEqual([day('2026-11-19').props.width, day('2026-11-19').props.height], [40, 40]);
+  assert.deepEqual([day('2026-11-19').props.minWidth, day('2026-11-19').props.minHeight], [40, 40]);
+  // At large text a two-digit day widens its circle, which stays square and inside its seventh of the row.
+  assert.deepEqual([day('2026-11-19').props.width, day('2026-11-19').props.aspectRatio, day('2026-11-19').props.maxWidthPercent, day('2026-11-19').props.paddingLeft], [undefined, 1, 100, 4]);
+  assert.equal(day('2026-11-19').parent.props.height, undefined, 'the week row grows with it');
   screen.press(day('2026-11-03'));
   assert.deepEqual(selected(screen), ['3']);
 });

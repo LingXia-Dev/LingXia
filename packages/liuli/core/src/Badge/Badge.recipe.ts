@@ -10,7 +10,8 @@ export const badgeParts = { root: 'view', icon: 'vector', dot: 'view', label: 't
 export const badgeRecipe = {
   root: {
     base: 'flex-row items-center-safe self-start rounded-full',
-    size: { sm: 'h-5 px-2 gap-1', md: 'h-6 px-2.5 gap-1.5' } satisfies Record<BadgeSize, string>,
+    // A least height, so a label at large text makes the pill taller instead of spilling out.
+    size: { sm: 'min-h-5 py-0.5 px-2 gap-1', md: 'min-h-6 py-0.5 px-2.5 gap-1.5' } satisfies Record<BadgeSize, string>,
     soft: {
       // A quiet tint of the text colour: it reads as a pill on any surface, where a sunken surface reads as a hole.
       neutral: 'bg-text/8 text-text',

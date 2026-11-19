@@ -46,6 +46,7 @@ export const doc: ComponentDoc = {
       'Always pass `resultsLabel` once there is text, including when nothing matches.',
       'Hide the results line with `isResultsLabelHidden` only when the list under the field already shows the count.',
       'Keep the field where it is while results change, so typing is never interrupted.',
+      'At large text, give the field a line of its own rather than squeezing it beside a button, where it shrinks to its magnifier.',
     ],
     dont: [
       'Use it to choose one value for a form; that is a Combobox.',

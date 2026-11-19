@@ -32,6 +32,7 @@ export * from './FormLayout/FormLayout';
 export * from './HoverCard/HoverCard';
 export * from './Icon/Icon';
 export * from './IconButton/IconButton';
+export * from './InfoTip/InfoTip';
 export * from './Item/Item';
 export * from './Kbd/Kbd';
 export * from './Lightbox/Lightbox';

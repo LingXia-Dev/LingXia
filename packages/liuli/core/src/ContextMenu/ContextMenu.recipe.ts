@@ -15,7 +15,7 @@ export const contextMenuRecipe = {
   target: {
     base: '',
   },
-  /** Placed in its layer, never `fixed`: a fixed panel is not pressed through its own backdrop. */
+  /** Placed in its layer, never `fixed`: a fixed box in a top layer stops at the bottom safe area. */
   menu: {
     base: 'absolute transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
     point: 'min-w-48 p-1 gap-0.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised',

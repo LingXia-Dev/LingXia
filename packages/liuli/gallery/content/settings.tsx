@@ -3,6 +3,7 @@ import { Avatar } from '@liulidesign/core/Avatar';
 import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
 import { Dialog } from '@liulidesign/core/Dialog';
+import { IconButton } from '@liulidesign/core/IconButton';
 import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';
 import { Said } from '@liulidesign/core/example';
 import { Item, ItemList } from '@liulidesign/core/Item';
@@ -46,10 +47,17 @@ function ChoiceRow({ label, help, value, options, onChange, testId }: { label: s
       label={label}
       description={help}
       endContent={
-        <DropdownMenu label={label} value={value} variant="ghost" size="sm" alignment="end" data-testid={testId}>
-          <DropdownMenuRadioGroup value={value} onChange={onChange}>
-            {options.map(option => <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`${testId}-${option.toLowerCase()}`} />)}
-          </DropdownMenuRadioGroup>
+        <DropdownMenu
+          label={label}
+          size="sm"
+          alignment="end"
+          menu={
+            <DropdownMenuRadioGroup value={value} onChange={onChange}>
+              {options.map(option => <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`${testId}-${option.toLowerCase()}`} />)}
+            </DropdownMenuRadioGroup>
+          }
+        >
+          <Button label={value} variant="ghost" size="sm" endIcon="chevron-down" edge="end" data-testid={testId} />
         </DropdownMenu>
       }
     />
@@ -130,13 +138,9 @@ export function Content() {
                   endContent={
                     <DropdownMenu
                       label={`${device.name} actions`}
-                      isLabelHidden
-                      icon="more"
-                      variant="ghost"
                       size="sm"
                       alignment="end"
-                      data-testid={`device-${device.id}`}
-                    >
+                      menu={<>
                       <DropdownMenuItem label="Rename" onClick={() => say(`Chose Rename for ${device.name}`)} />
                       <DropdownMenuDivider />
                       <DropdownMenuItem
@@ -146,6 +150,9 @@ export function Content() {
                         onClick={() => devices.set(devices.value.filter(id => id !== device.id))}
                         data-testid={`sign-out-${device.id}`}
                       />
+                      </>}
+                    >
+                      <IconButton label={`${device.name} actions`} icon="more" size="sm" edge="end" data-testid={`device-${device.id}`} />
                     </DropdownMenu>
                   }
                 />

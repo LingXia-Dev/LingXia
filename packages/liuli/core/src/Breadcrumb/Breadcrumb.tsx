@@ -1,5 +1,6 @@
 import { cx } from '@lingxia/view';
 import { DropdownMenu, DropdownMenuItem } from '../DropdownMenu/DropdownMenu';
+import { IconButton } from '../IconButton/IconButton';
 import { Glyph } from '../internal/Glyph';
 import { breadcrumbRecipe as r } from './Breadcrumb.recipe';
 
@@ -49,14 +50,10 @@ export function Breadcrumb({ label, items, maxItems = 4, moreLabel, className, '
             <>
               <DropdownMenu
                 label={moreLabel}
-                isLabelHidden
-                icon="more"
-                variant="ghost"
                 size="sm"
-                className={r.more.base}
-                data-testid={testId && `${testId}-more`}
+                menu={folded.map(each => <DropdownMenuItem key={each.key} label={each.label} onClick={each.onClick ?? (() => {})} isDisabled={!each.onClick} data-testid={testId && `${testId}-${each.key}`} />)}
               >
-                {folded.map(each => <DropdownMenuItem key={each.key} label={each.label} onClick={each.onClick ?? (() => {})} isDisabled={!each.onClick} data-testid={testId && `${testId}-${each.key}`} />)}
+                <IconButton label={moreLabel} icon="more" size="sm" className={r.more.base} data-testid={testId && `${testId}-more`} />
               </DropdownMenu>
               {separator}
             </>

@@ -3,7 +3,7 @@ import { segmentedControlRecipe as s } from '../SegmentedControl/SegmentedContro
 import { tabsRecipe as r } from './Tabs.recipe';
 
 export type TabsVariant = 'underline' | 'segmented';
-/** `equal` shares the row; `content` makes each tab as wide as its label, and the row scrolls when they do not fit. */
+/** `equal` shares the row; `content` makes each tab as wide as its label. Either row scrolls when the labels do not fit. */
 export type TabsWidth = 'equal' | 'content';
 
 export interface TabItem {
@@ -35,116 +35,69 @@ export interface TabsProps {
   'data-testid'?: string;
 }
 
-interface FittedListProps {
-  id: string;
-  label: string;
-  items: readonly TabItem[];
-  index: number;
-  onChange: (value: string) => void;
-  testId?: string;
-}
-
-// A fitted tab's side padding, both sides, in points: what its measured label leaves out.
-const tabPadding = 24;
-
-/**
- * Tabs as wide as their labels, in a row that scrolls. A button cannot be measured, so each
- * label is; the indicator sits under the chosen tab once every tab before it has a width.
- */
-function FittedList({ id, label, items, index, onChange, testId }: FittedListProps) {
-  const boxes = items.map(item => useBox(`tab-${item.value}`));
-  const widths = boxes.map(box => (box.value ? box.value.width + tabPadding : undefined));
-  const before = widths.slice(0, index);
-  const width = widths[index];
-  const isMeasured = width !== undefined && before.every(each => each !== undefined);
-  // A row wider than its frame fades at the edge it runs under, so a cut label reads as more
-  // tabs: at its end until the row has been drawn to its end, then at its start.
-  const frame = useBox('frame');
-  const edge = useLocal<'start' | 'end'>('edge', 'start');
-  const total = widths.reduce<number>((sum, each) => sum + (each ?? 0), 0);
-  const room = frame.value?.width;
-  const overflows = room !== undefined && widths.every(each => each !== undefined) && total > room + 0.5;
-  return (
-    <view box={frame} className={r.frame.fitted}>
-      <scroll className={cx(r.scroller.base, overflows && r.scroller.more[edge.value])} onReachStart={() => edge.set('start')} onReachEnd={() => edge.set('end')}>
-        <view role="tablist" aria-label={label} data-testid={testId} className={r.list.fitted}>
-          {isMeasured && (
-            <view aria-hidden className={r.track.base}>
-              <view dir="ltr" className={r.track.inner}>
-                <view className={cx(r.indicator.base, r.indicator.fitted)} style={{ width, translate: [before.reduce<number>((sum, each) => sum + (each ?? 0), 0), 0] }} />
-              </view>
-            </view>
-          )}
-          {items.map((item, at) => {
-            const isSelected = at === index;
-            const tabId = `${id}-${item.value}`;
-            return (
-              <button
-                key={item.value}
-                role="tab"
-                id={tabId}
-                aria-selected={isSelected}
-                data-state={isSelected ? 'active' : 'inactive'}
-                disabled={item.isDisabled}
-                data-testid={testId && `${testId}-${item.value}`}
-                // A tab chosen at the row's edge is brought fully into view.
-                onClick={() => { if (!isSelected) { onChange(item.value); reveal(tabId); } }}
-                className={r.tab.fitted}
-              >
-                <text box={boxes[at]} className={cx(r.label.base, r.label.whole, r.label.underline, isSelected ? r.label.selected : r.label.unselected)}>{item.label}</text>
-              </button>
-            );
-          })}
-        </view>
-      </scroll>
-    </view>
-  );
-}
-
 /** Tabs over one panel: one Tab stop for the row, arrows move between tabs and choose on arrival. */
 export function Tabs({ label, items, value, onChange, variant = 'underline', tabWidth = 'equal', children, className, 'data-testid': testId }: TabsProps) {
   const id = useId();
   const index = Math.max(0, items.findIndex(item => item.value === value));
   const chosen = items[index];
   const segmented = variant === 'segmented';
+  const width: TabsWidth = segmented ? 'equal' : tabWidth;
+  // Each tab is measured: a tab never narrower than its label leaves equal shares once one is long.
+  const frame = useBox('frame');
+  const boxes = items.map(item => useBox(`tab-${item.value}`));
+  const widths = boxes.map(box => box.value?.width);
+  const isMeasured = widths.every(each => each !== undefined);
+  const total = widths.reduce<number>((sum, each) => sum + (each ?? 0), 0);
+  const isEven = isMeasured && widths.every(each => Math.abs((each ?? 0) - (widths[0] ?? 0)) <= 0.5);
+  const room = frame.value?.width;
+  // A row wider than its frame fades at the edge it runs under, so a cut label reads as more
+  // tabs: at its end until the row has been drawn to its end, then at its start.
+  const edge = useLocal<'start' | 'end'>('edge', 'start');
+  const overflows = room !== undefined && isMeasured && total > room + 0.5;
+  const share = 100 / Math.max(1, items.length);
+  const place = width === 'equal' && (!isMeasured || isEven)
+    ? { width: `${share}%` as const, translate: [`${index * 100}%`, 0] as const }
+    : isMeasured
+      ? { width: widths[index], translate: [widths.slice(0, index).reduce<number>((sum, each) => sum + (each ?? 0), 0), 0] as const }
+      : undefined;
   return (
     <view className={cx(r.root.base, className)}>
-      {!segmented && tabWidth === 'content'
-        ? <FittedList id={id} label={label} items={items} index={index} onChange={onChange} testId={testId} />
-        : (
-          <view className={cx(r.frame.base, segmented ? s.root.base : r.frame.underline)}>
-            <view role="tablist" aria-label={label} data-testid={testId} className={r.list.base}>
-              {/* One box a tab wide, moved by its own width per tab. It moves in a left-to-right box that
-                  right-to-left mirrors, so the same translate slides it toward the end either way. */}
+      <view box={frame} className={cx(r.frame.base, segmented && cx(s.root.base, s.root.row))}>
+        <scroll className={cx(r.scroller.base, overflows && r.scroller.more[edge.value])} onReachStart={() => edge.set('start')} onReachEnd={() => edge.set('end')}>
+          <view role="tablist" aria-label={label} data-testid={testId} className={cx(r.list.base, !segmented && r.list.underline)}>
+            {/* One box a tab wide, moved along the row. It moves in a left-to-right box that
+                right-to-left mirrors, so the same translate slides it toward the end either way. */}
+            {place && (
               <view aria-hidden className={r.track.base}>
                 <view dir="ltr" className={r.track.inner}>
-                  <view
-                    className={cx(r.indicator.base, segmented ? s.thumb.base : r.indicator.underline)}
-                    style={{ width: `${100 / Math.max(1, items.length)}%`, translate: [`${index * 100}%`, 0] }}
-                  />
+                  <view className={cx(r.indicator.base, segmented ? cx(s.thumb.base, s.thumb.row) : r.indicator.underline)} style={place} />
                 </view>
               </view>
-              {items.map(item => {
-                const isSelected = item.value === chosen?.value;
-                return (
-                  <button
-                    key={item.value}
-                    role="tab"
-                    id={`${id}-${item.value}`}
-                    aria-selected={isSelected}
-                    data-state={isSelected ? 'active' : 'inactive'}
-                    disabled={item.isDisabled}
-                    data-testid={testId && `${testId}-${item.value}`}
-                    onClick={() => { if (!isSelected) onChange(item.value); }}
-                    className={cx(r.tab.base, segmented ? cx(s.segment.base, s.segment.size.md) : r.tab.underline)}
-                  >
-                    <text className={cx(r.label.base, r.label.cut, segmented ? s.label.size.md : r.label.underline, isSelected ? r.label.selected : r.label.unselected)}>{item.label}</text>
-                  </button>
-                );
-              })}
-            </view>
+            )}
+            {items.map((item, at) => {
+              const isSelected = at === index;
+              const tabId = `${id}-${item.value}`;
+              return (
+                <button
+                  key={item.value}
+                  role="tab"
+                  id={tabId}
+                  aria-selected={isSelected}
+                  data-state={isSelected ? 'active' : 'inactive'}
+                  disabled={item.isDisabled}
+                  data-testid={testId && `${testId}-${item.value}`}
+                  // A tab chosen at the row's edge is brought fully into view.
+                  onClick={() => { if (!isSelected) { onChange(item.value); reveal(tabId); } }}
+                  className={cx(r.tab.base, segmented ? cx(s.segment.base, s.segment.size.md, s.segment.row) : cx(r.tab[width], r.tab.underline, r.tab.pad[width]))}
+                >
+                  <text className={cx(r.label.base, segmented ? s.label.size.md : r.label.underline, isSelected ? r.label.selected : r.label.unselected)}>{item.label}</text>
+                  <view aria-hidden box={boxes[at]} className={r.tab.extent} />
+                </button>
+              );
+            })}
           </view>
-        )}
+        </scroll>
+      </view>
       {children !== undefined && chosen && (
         <view role="tabpanel" aria-label={chosen.label} data-testid={testId && `${testId}-panel`} className={r.panel.base}>
           {children}

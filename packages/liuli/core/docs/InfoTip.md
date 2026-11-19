@@ -1,0 +1,161 @@
+<!-- Generated from the doc file by scripts/generate.mjs; do not edit. -->
+
+# InfoTip
+
+An info button that opens a short note about what is beside it. Status: preview.
+
+```ts
+import { InfoTip } from '@liulidesign/core/InfoTip';
+```
+
+InfoTip explains something the screen cannot say in place: why a limit applies, what a term means. It opens on a press (a tap, Enter or Space), not on hover or focus, so it works the same with touch, mouse and keyboard. To name an icon button in words, use Tooltip.
+
+## Examples
+
+### Beside the thing it explains
+
+```tsx
+import { InfoTip } from '@liulidesign/core/InfoTip';
+
+/** Beside the thing it explains. */
+export function Storage() {
+  return (
+    <view className="flex-row items-center gap-1">
+      <text className="text-body text-text">Storage used: 9.6 of 10 GB</text>
+      <InfoTip label="About storage" content="Attachments count toward storage. Notes themselves do not." data-testid="storage" />
+    </view>
+  );
+}
+```
+
+### Opening below
+
+```tsx
+import { InfoTip } from '@liulidesign/core/InfoTip';
+
+/** Below the button, where there is no room above. */
+export function Below() {
+  return (
+    <view className="flex-row items-center gap-1">
+      <text className="text-body text-text">Two-step sign-in</text>
+      <InfoTip label="About two-step sign-in" content="A code from your phone, on top of your password." placement="bottom" data-testid="two-step" />
+    </view>
+  );
+}
+```
+
+### Next to a field label
+
+```tsx
+import { InfoTip } from '@liulidesign/core/InfoTip';
+
+/** Next to a field label, for what the label cannot say. */
+export function InForm() {
+  return (
+    <view className="gap-1.5">
+      <view className="flex-row items-center gap-0.5">
+        <text className="text-footnote font-medium text-text">Workspace URL</text>
+        <InfoTip label="About the workspace URL" content="People you invite open this address. You can change it once a month." size="sm" data-testid="url" />
+      </view>
+      <view className="min-h-control-md justify-center px-3 rounded-control border border-line-strong bg-surface">
+        <text className="text-body text-text">notes.example.com/atlas</text>
+      </view>
+    </view>
+  );
+}
+```
+
+### Sizes
+
+```tsx
+import { InfoTip } from '@liulidesign/core/InfoTip';
+
+export function Sizes() {
+  return (
+    <view className="flex-row items-center gap-4">
+      <InfoTip label="Small" content="Small." size="sm" />
+      <InfoTip label="Medium" content="Medium." />
+    </view>
+  );
+}
+```
+
+### Beside the button
+
+```tsx
+import { InfoTip } from '@liulidesign/core/InfoTip';
+
+/** Beside its button, where the note would cover what is above and below. */
+export function Beside() {
+  return (
+    <view className="flex-row items-center gap-1">
+      <text className="text-body text-text">Sync</text>
+      <InfoTip label="About sync" content="Notes are sent when you are online." placement="end" size="sm" data-testid="side" />
+    </view>
+  );
+}
+```
+
+## Props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `label` (required) | `string` |  | The info button's name: what the note is about ("About storage"). |
+| `content` (required) | `string` |  | The note: one or two short sentences. |
+| `placement` | `InfoTipPlacement` | `'top'` | Which side of the button the note opens on. |
+| `size` | `InfoTipSize` | `'md'` |  |
+| `isOpen` | `boolean` |  | Controlled open state; pass `onOpenChange` with it. |
+| `onOpenChange` | `((isOpen: boolean) => void)` |  |  |
+| `className` | `string` |  |  |
+| `data-testid` | `string` |  | On the info button; the note gets `<testid>-content`. |
+
+## Anatomy
+
+| Part | Element | Required | Description |
+| --- | --- | --- | --- |
+| trigger | `<button>` | yes | The info button, named by `label`; it reports whether the note is open. |
+| icon | `<vector>` | yes | The info glyph. |
+| bubble | `<view>` | yes | The note: a popover with the tooltip role beside the button, in the inverse of the page. |
+| text | `<text>` | yes | The note's text; the button is described by it while open. |
+
+## What an app may override
+
+- `className`: classes merged after the recipe's, so they win.
+- The recipe, `infoTipRecipe` from `@liulidesign/core/InfoTip/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--shadow-raised`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `focus`, `surface`, `text`, `text-muted`.
+
+## Accessibility
+
+- Pattern: button.
+- Name: label.
+- Description: the note, while open.
+- States: expanded (from isOpen, or a press).
+- Enter, Space: Opens or closes the note; focus alone does not open it..
+- Escape: Closes it..
+- Press target: sm 32 px, md 40 px.
+- A tap anywhere else closes the note, and that tap reaches nothing else.
+- Put only words in the note; anything to press belongs in a DropdownMenu or a Dialog.
+
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| note text | `surface` on `text` | 4.5:1 | 16.26:1 | 13.87:1 |
+| info glyph | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
+
+Ratios are computed from @lingxia/view/theme and rounded down.
+
+## Guidance
+
+- Do: Name the button for its subject: "About storage".
+- Do: Keep the note to one or two short sentences.
+- Don't: Hide what someone needs to finish a task in a note; write it on the page.
+- Don't: Give every label a note; add one only where people get stuck.
+
+## Not yet
+
+| Missing | Needs | Meanwhile |
+| --- | --- | --- |
+| A note beside its button, at the start or end side. | side values for a popover's `positionArea` (`inline-end`, `inline-start`) | Above or below the button. |
+| A live trigger shown pressed in the gallery. | a way to hold a view in a forced state (pressed, open) for display | The pressed and open pictures are still drawings. |
+
+Related: Tooltip, DropdownMenu, Dialog.

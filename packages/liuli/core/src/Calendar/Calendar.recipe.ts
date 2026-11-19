@@ -35,13 +35,14 @@ export const calendarRecipe = {
   },
   // A day's seventh of the row: the band of a span fills it, so the band runs unbroken along a week.
   slot: {
-    base: 'grow basis-0 h-10 items-center justify-center',
+    base: 'grow basis-0 min-w-0 min-h-10 items-center justify-center',
     between: 'bg-accent-soft',
     start: 'bg-accent-soft rounded-s-full',
     end: 'bg-accent-soft rounded-e-full',
   },
   day: {
-    base: 'size-10 items-center justify-center rounded-full transition-colors duration-fast ease-standard disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+    // At least 40 px; at large text a two-digit day widens it and it stays square, up to its seventh of the row.
+    base: 'min-w-10 min-h-10 max-w-full aspect-square px-1 items-center justify-center rounded-full transition-colors duration-fast ease-standard disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     idle: 'hover:bg-text/6 active:bg-text/10',
     chosen: 'bg-accent hover:bg-accent/92 active:bg-accent/88',
     today: 'inset-ring-1 inset-ring-line-strong',

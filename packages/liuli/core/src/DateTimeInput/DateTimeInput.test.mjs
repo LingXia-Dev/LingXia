@@ -33,3 +33,21 @@ test('Reminder: the pair wraps by base widths; each part grows to fill its line 
   // The View keeps an editor as wide as its widest value; a least width of the part's own would push it past a narrow container.
   assert.deepEqual([date.props.minWidth, time.props.minWidth], [undefined, undefined]);
 });
+
+test('At large text: measured values that no longer fit side by side put the time under the date, each the whole width', async () => {
+  const screen = await renderExample('DateTimeInput/DateTimeInput', 'Reminder');
+  const group = () => screen.getByTestId('remind');
+  const measured = () => group().children.at(-1).children;
+  const editor = screen.getByTestId('remind-date').props.fontSize;
+  assert.deepEqual(measured().map(node => [node.text, node.props.whiteSpace, node.props.fontSize]), [['Sep 30, 2026', 'nowrap', editor], ['12:00 PM', 'nowrap', editor]], 'set in the editors\' type');
+  const set = (date, time) => {
+    screen.layout(measured()[0], { width: date, height: 22 });
+    screen.layout(measured()[1], { width: time, height: 22 });
+  };
+  screen.layout(group(), { width: 296, height: 48 });
+  // Each part needs its value plus 50 pt of padding, border and mark; 8 pt between them.
+  set(100, 70);
+  assert.deepEqual(group().children.slice(0, 2).map(part => part.props.flexBasis), [160, 112], 'at the standard size they share the line');
+  set(130, 92);
+  assert.deepEqual(group().children.slice(0, 2).map(part => part.props.flexBasis), ['100%', '100%'], 'at 130 % the time moves under the date');
+});

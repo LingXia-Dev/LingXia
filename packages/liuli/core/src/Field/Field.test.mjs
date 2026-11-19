@@ -50,3 +50,12 @@ test('Info: an info button after the label, named by the app, opening the note',
   assert.equal(button.tag, 'button');
   screen.getByText('optional');
 });
+
+test('At large text: the optional mark and the info button stay on the label\'s first line when it wraps', async () => {
+  const screen = await renderExample('Field/Field', 'Info');
+  const button = screen.queryAll(node => node.tag === 'button' && node.props.accessibilityLabel === 'About the VAT number')[0];
+  const row = button.parent;
+  assert.deepEqual([row.props.flexDirection, row.props.align], ['row', 'baseline'], 'the label and the optional mark share a baseline, not a centre');
+  assert.equal(button.props.alignSelf, 'start');
+  assert.deepEqual([button.props.marginTop, button.props.marginBottom, button.props.height], [-7, -7, 32], 'centred on an 18 pt first line and no taller than it');
+});

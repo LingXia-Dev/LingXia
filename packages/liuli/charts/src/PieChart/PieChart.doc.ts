@@ -56,6 +56,7 @@ export const doc: ComponentDoc = {
       'Set `otherLabel` when there may be more parts; the rest are gathered into one neutral slice.',
       'Order the rows by amount, largest first, unless the parts have an order of their own.',
       'Pass `formatShare` so the legend shows each part\'s share.',
+      'At large text, a total too wide for the hole is written under the ring; keep `formatValue` short so it stays inside.',
     ],
     dont: [
       'Compare two pies; use a grouped BarChart.',

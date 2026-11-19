@@ -1,3 +1,4 @@
+import { registerPressable, useTrigger } from '../internal/trigger';
 import { linkRecipe as r } from './Link.recipe';
 
 export interface LinkProps {
@@ -12,9 +13,12 @@ export interface LinkProps {
 
 /** A link inside a sentence. It goes in a `<text>`, among its words. */
 export function Link({ label, onClick, isDisabled = false, 'data-testid': testId }: LinkProps) {
+  const trigger = useTrigger();
   return (
-    <link data-testid={testId} disabled={isDisabled || undefined} onClick={isDisabled ? undefined : onClick} className={isDisabled ? r.root.disabled : r.root.base}>
+    <link data-testid={testId} popoverTarget={trigger?.popoverTarget} interestFor={trigger?.interestFor} aria-describedby={trigger?.describedBy} disabled={isDisabled || undefined} onClick={isDisabled ? undefined : onClick} className={isDisabled ? r.root.disabled : r.root.base}>
       {label}
     </link>
   );
 }
+
+registerPressable(Link);

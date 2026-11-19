@@ -27,11 +27,15 @@ export const pieChartRecipe = {
     variant: { donut: '', pie: 'hidden' } satisfies Record<PieChartVariant, string>,
     // The hole's width at each plot height, less a margin; the smallest ring has no room for text.
     size: { xs: 'hidden', sm: 'max-w-14', md: 'max-w-[5.5rem]', lg: 'max-w-[7.5rem]' } satisfies Record<ChartSize, string>,
+    // Words too large for the hole, under the ring.
+    under: 'self-center max-w-full pt-2',
   },
   centreLabel: {
     base: 'max-w-full truncate text-caption text-muted',
   },
   centreValue: {
     base: 'text-callout font-semibold text-text tabular-nums',
+    // The figure laid out unseen at its own width, to tell whether the words fit in the hole.
+    ghost: 'absolute top-0 start-0 opacity-0 whitespace-nowrap',
   },
 } as const;

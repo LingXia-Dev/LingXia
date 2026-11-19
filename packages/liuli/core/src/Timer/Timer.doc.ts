@@ -30,7 +30,7 @@ export const doc: ComponentDoc = {
     ],
   },
   guidance: {
-    do: ['Say beside it what the time is: "Code expires in", "Recording".', 'Use `hasHours` where the time may pass an hour, so the digits do not jump wider.'],
+    do: ['Say beside it what the time is: "Code expires in", "Recording".', 'Use `hasHours` where the time may pass an hour, so the digits do not jump wider.', 'At large text, let the row around a Timer wrap (`flex-wrap`): its digits stay on one line and move under their words whole.'],
     dont: ['Use it for a time of day or a date; that is Timestamp.', 'Hide the only way to tell time is running out in the digits; change the screen when it is up.'],
   },
   examples: [

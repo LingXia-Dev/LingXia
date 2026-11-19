@@ -54,3 +54,14 @@ test('StateMixed: a dash on the filled box, read as mixed', async () => {
   const box = (await renderExample('CheckboxInput/CheckboxInput', 'StateMixed')).getByTestId('mixed');
   assert.deepEqual([box.props.mixed, JSON.parse(box.props.dataAttributes).state], [1, 'mixed']);
 });
+
+test('At large text: the box keeps its size and shape, never squeezed by its label', async () => {
+  const screen = await renderExample('CheckboxInput/CheckboxInput', 'Sizes');
+  const boxes = screen.queryAll(node => node.props.borderTopWidth === 2 && node.props.accessibilityHidden === 1);
+  assert.equal(boxes.length, 3);
+  for (const box of boxes) {
+    const { shrink, width, height } = box.props;
+    assert.equal(shrink, 0);
+    assert.ok(width > 0 && width === height);
+  }
+});

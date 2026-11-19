@@ -30,10 +30,8 @@ export const barChartRecipe = {
     floored: 'border-b border-text/8',
   },
   marks: {
+    // With figures, the figures' line is kept clear above the tallest bar, and below the deepest.
     base: 'absolute inset-0',
-    // The figures' line above the tallest bar, and below the deepest.
-    figured: 'top-5',
-    figuredBelow: 'bottom-5',
   },
   region: {
     base: 'relative basis-0 overflow-hidden',
@@ -58,19 +56,18 @@ export const barChartRecipe = {
   },
   slot: {
     base: 'grow basis-0 min-w-0 items-center rounded-[4px]',
-    above: 'pb-5',
-    below: 'pt-5',
     pressable: 'hover:bg-text/4 focus-visible:bg-text/7',
   },
   space: {
     base: 'basis-0',
   },
   valueSlot: {
-    // At large text a figure taller than its line grows down over the bar, not up out of the plot.
-    base: 'h-5 shrink-0 items-center justify-center-safe',
+    base: 'shrink-0 items-center justify-center-safe',
   },
   value: {
     base: 'text-footnote text-muted tabular-nums whitespace-nowrap',
+    // The longest figure, laid out unseen to tell whether the figures fit side by side.
+    ghost: 'absolute top-0 start-0 opacity-0',
   },
   labels: {
     row: 'pt-3',

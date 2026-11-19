@@ -63,10 +63,12 @@ function Menu() {
     <Said>
       {say => (
         <view className="flex-row">
-          <DropdownMenu label="Open menu" data-testid="open-menu">
+          <DropdownMenu label="Open menu" menu={<>
             <DropdownMenuItem label="Rename" onClick={() => say('Chose Rename')} />
             <DropdownMenuItem label="Duplicate" onClick={() => say('Chose Duplicate')} />
             <DropdownMenuItem label="Move to folder" onClick={() => say('Chose Move to folder')} />
+          </>}>
+            <Button label="Open menu" endIcon="chevron-down" data-testid="open-menu" />
           </DropdownMenu>
         </view>
       )}

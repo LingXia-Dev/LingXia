@@ -8,7 +8,7 @@ Buttons that belong together, apart or joined edge to edge, as one keyboard stop
 import { ButtonGroup } from '@liulidesign/core/ButtonGroup';
 ```
 
-ButtonGroup lays out Buttons and IconButtons that act on the same thing. Apart, they keep a gap and wrap; attached, they share edges and read as one shape. The group gives its buttons a size and a variant, can disable them all, and is a toolbar for assistive tech: one Tab stop, with the arrow keys moving among the buttons.
+ButtonGroup lays out Buttons and IconButtons that act on the same thing. Apart, they keep a gap; attached, they share edges and read as one shape. Either wraps when it does not fit. The group gives its buttons a size and a variant, can disable them all, and is a toolbar for assistive tech: one Tab stop, with the arrow keys moving among the buttons.
 
 ## Examples
 
@@ -122,7 +122,7 @@ export function Toolbar() {
   return (
     <Said>
       {say => (
-        <view className="flex-row items-center justify-between gap-3">
+        <view className="flex-row flex-wrap items-center justify-between gap-3">
           <ButtonGroup label="Message actions" size="sm" data-testid="message">
             <IconButton label="Reply" icon="message" onClick={() => say('Replied')} />
             <IconButton label="Forward" icon="send" onClick={() => say('Forwarded')} />
@@ -186,15 +186,16 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Attach buttons of one kind and equal weight: undo and redo, zoom out and in.
 - Do: Name the group for what its buttons share: "Text style", "Message actions".
 - Do: Set `size` and `variant` on the group, and on a button only to make one stand out.
+- Do: At large text, expect a group to wrap onto more lines, attached ones too; keep an attached group to two or three short labels so it stays one shape at standard sizes.
 - Don't: Attach a primary button to others; let it stand apart.
 - Don't: Use a group to choose a value or a view; that is a SegmentedControl or Tabs.
-- Don't: Put more buttons in an attached group than fit one line; attached groups do not wrap.
+- Don't: Put more buttons in an attached group than fit one line; a wrapped attached group no longer reads as one shape.
 
 ## Not yet
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| An attached group that wraps or scrolls when it does not fit. | reading a laid-out box's size (`useBox`) to fold buttons into a menu | An attached group stays on one line and can be clipped; keep it short. |
+| An attached group that folds the buttons that do not fit into a menu. | reading a laid-out box's size (`useBox`) to fold buttons into a menu | An attached group that does not fit wraps onto another line; keep it short. |
 | A vertical group. | nothing from the View | Rows only. |
 
 Related: Button, IconButton, SegmentedControl.

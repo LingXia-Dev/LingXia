@@ -22,8 +22,9 @@ export const metadataListRecipe = {
   },
   label: {
     base: 'text-footnote text-muted',
-    // A third of the row, so the values start on one line down the list.
-    layout: { rows: 'w-1/3 shrink-0 pt-0.5', stacked: '' } satisfies Record<MetadataListLayout, string>,
+    // A third of the row, so the values start on one line down the list. A basis, not a width: a
+    // word wider than a third, as at large text, widens the label instead of running into the value.
+    layout: { rows: 'basis-1/3 shrink-0 pt-0.5', stacked: '' } satisfies Record<MetadataListLayout, string>,
   },
   value: {
     base: 'text-body text-text',

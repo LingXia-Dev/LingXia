@@ -3,6 +3,7 @@ import type { CircularProgressSize } from './CircularProgress';
 
 export const circularProgressParts = {
   root: 'view',
+  ring: 'view',
   track: 'vector',
   fill: 'vector',
   value: 'text',
@@ -10,7 +11,11 @@ export const circularProgressParts = {
 
 /** A ring: the track in the same faint ink as ProgressBar's, the arc in the tone, the app's words in the middle. */
 export const circularProgressRecipe = {
+  /** The ring, and the words beside it when they outgrow its middle. */
   root: {
+    base: 'shrink-0 flex-row items-center gap-2',
+  },
+  ring: {
     base: 'relative shrink-0 items-center justify-center',
     size: { sm: 'size-6', md: 'size-12', lg: 'size-20' } satisfies Record<CircularProgressSize, string>,
   },
@@ -25,5 +30,7 @@ export const circularProgressRecipe = {
   value: {
     base: 'font-semibold text-text tabular-nums',
     size: { sm: '', md: 'text-caption', lg: 'text-callout' } satisfies Record<CircularProgressSize, string>,
+    /** An unseen copy on one line, measured against the ring's middle. */
+    ghost: 'absolute opacity-0 whitespace-nowrap',
   },
 } as const;

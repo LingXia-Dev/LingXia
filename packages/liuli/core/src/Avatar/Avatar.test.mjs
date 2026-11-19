@@ -50,7 +50,14 @@ test('Unread: a badge sits on the top end edge and is read by its own label', as
 
 test('Teams: a rounded square for a team, its corner a quarter of its size', async () => {
   const team = (await renderExample('Avatar/Avatar', 'Teams')).getByTestId('team');
-  assert.deepEqual([team.props.width, team.props.radius], [40, 10]);
+  assert.deepEqual([team.props.minWidth, team.props.radius], [40, 10]);
+});
+
+test('At large text: the avatar is a least size that its initials widen and heighten, never stretched by its row', async () => {
+  const screen = await renderExample('Avatar/Avatar', 'Teams');
+  const { props } = screen.getByTestId('team');
+  assert.deepEqual([props.widthKeyword, props.heightKeyword, props.minWidth, props.minHeight, props.aspectRatio], ['fit-content', 'fit-content', 40, 40, undefined]);
+  assert.deepEqual([props.paddingLeft, props.paddingRight], [8, 8], 'a fifth of the least size each side: grown initials keep clear of the curve');
 });
 
 test('Group: the count takes the group\'s shape, a circle like the avatars beside it', async () => {

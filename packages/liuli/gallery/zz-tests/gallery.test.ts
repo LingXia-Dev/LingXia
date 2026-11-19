@@ -15,7 +15,7 @@ const categories: Record<string, string[]> = {
   'category-selection': ['checkbox-input', 'radio-group', 'switch', 'select', 'segmented-control', 'combobox', 'checkbox-list', 'token', 'multi-select'],
   'category-navigation': ['tabs', 'nav-list', 'breadcrumb', 'pagination', 'stepper', 'link', 'page-control', 'tree-list'],
   'category-feedback': ['badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast', 'circular-progress', 'status-dot'],
-  'category-overlays': ['dialog', 'dropdown-menu', 'tooltip', 'bottom-sheet', 'popover', 'drawer', 'hover-card', 'context-menu', 'command-palette', 'tour'],
+  'category-overlays': ['dialog', 'dropdown-menu', 'tooltip', 'info-tip', 'bottom-sheet', 'popover', 'drawer', 'hover-card', 'context-menu', 'command-palette', 'tour'],
   'category-content': ['card', 'item', 'details', 'avatar', 'split-view', 'icon', 'table', 'markdown', 'metadata-list', 'section', 'divider', 'kbd', 'timer', 'code', 'timestamp', 'message-bubble'],
   'category-charts': ['stat', 'sparkline', 'bar-chart', 'line-chart', 'pie-chart', 'chart'],
   'category-media': ['video-player', 'video-controls', 'carousel', 'thumbnail', 'lightbox', 'web-view'],
@@ -333,7 +333,7 @@ spec('details: a row opens and closes; an accordion keeps one open', { start: { 
   await expect(summary('refunds')).not.toBeExpanded();
 });
 
-spec('tooltip: a press opens the note; a tap outside closes it', { start: { page: 'tooltip' }, timeout: 60_000 }, async (t) => {
+spec('info tip: a press opens the note; a tap outside closes it', { start: { page: 'info-tip' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const button = view.testId('storage');
   const note = view.testId('storage-content');

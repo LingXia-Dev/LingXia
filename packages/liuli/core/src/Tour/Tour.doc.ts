@@ -44,6 +44,7 @@ export const doc: ComponentDoc = {
     do: [
       'Keep a tour to three or four steps, about things already in view.',
       'Let people skip it, and offer it again from Help.',
+      'At large text, let the rows around a target wrap so the target keeps its size; the callout follows it to its new line.',
     ],
     dont: [
       'Use a tour to explain a screen that needs explaining; fix the screen.',
@@ -64,7 +65,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'Point things out',
-    order: 10,
+    order: 11,
     page: {
       lead: 'Use a tour to point out a few things the first time someone arrives.',
       hero: 'Welcome',

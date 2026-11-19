@@ -14,3 +14,15 @@ test('Inline: hours appear from an hour on', async () => {
   const screen = await renderExample('Timer/Timer', 'Inline');
   assert.deepEqual([screen.getByTestId('expires').text, screen.getByTestId('call').text], ['4:32', '1:12:05']);
 });
+
+test('At large text: the digits stay on one line, and the rows around them wrap', async () => {
+  const countdown = await renderExample('Timer/Timer', 'Countdown');
+  assert.equal(countdown.getByTestId('countdown').props.whiteSpace, 'nowrap');
+  const skip = countdown.getByTestId('skip');
+  assert.equal(countdown.queryAll(node => node.children.includes(skip))[0].props.flexWrap, 'wrap', 'Reset moves under Skip rather than past the card');
+  const inline = await renderExample('Timer/Timer', 'Inline');
+  for (const id of ['expires', 'call']) {
+    const timer = inline.getByTestId(id);
+    assert.deepEqual([timer.props.whiteSpace, inline.queryAll(node => node.children.includes(timer))[0].props.flexWrap], ['nowrap', 'wrap'], id);
+  }
+});

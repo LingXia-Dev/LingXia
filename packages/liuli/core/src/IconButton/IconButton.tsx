@@ -1,6 +1,7 @@
 import { cx, useContext } from '@lingxia/view';
-import { Button, ButtonGroupContext, type ButtonSize, type ButtonVariant } from '../Button/Button';
+import { Button, ButtonGroupContext, type ButtonSize, type ButtonVariant, type ButtonEdge } from '../Button/Button';
 import type { IconName } from '../Icon/Icon';
+import { registerPressable } from '../internal/trigger';
 import { iconButtonRecipe as r } from './IconButton.recipe';
 
 export interface IconButtonProps {
@@ -12,6 +13,8 @@ export interface IconButtonProps {
   variant?: ButtonVariant;
   /** 32, 40 or 48 points square. In a ButtonGroup the group's size, unless set here. @default 'md' */
   size?: ButtonSize;
+  /** At the edge of a row: the square's inset hangs past that side, so the icon's drawing lines up with the content edge. */
+  edge?: ButtonEdge;
   /** @default false */
   isDisabled?: boolean;
   /** Why it is disabled: read as its description while disabled; not drawn. */
@@ -31,3 +34,4 @@ export function IconButton({ label, icon, variant, size, className, ...rest }: I
   const grouped = useContext(ButtonGroupContext)?.variant;
   return <Button {...rest} label={label} startIcon={icon} isIconOnly variant={variant ?? (grouped ? undefined : 'ghost')} size={size} className={cx(r.root.base, className)} />;
 }
+registerPressable(IconButton);

@@ -21,9 +21,10 @@ export function Phones() {
       description="We call only about a delivery."
       rowKeys={phones.value.map(phone => phone.id)}
       renderRow={index => (
-        <view className="flex-row gap-2">
-          <Select label={`Kind of phone ${index + 1}`} isLabelHidden items={kinds} value={phones.value[index].kind} onChange={kind => change(index, { kind })} className="w-28" />
-          <TextInput label={`Phone ${index + 1}`} isLabelHidden type="tel" placeholder="Number" value={phones.value[index].number} onChange={number => change(index, { number })} className="grow basis-0" data-testid={`phone-${index + 1}`} />
+        // At large text the kind keeps its words whole and the number wraps under it.
+        <view className="flex-row flex-wrap gap-2">
+          <Select label={`Kind of phone ${index + 1}`} isLabelHidden items={kinds} value={phones.value[index].kind} onChange={kind => change(index, { kind })} className="min-w-28" />
+          <TextInput label={`Phone ${index + 1}`} isLabelHidden type="tel" placeholder="Number" value={phones.value[index].number} onChange={number => change(index, { number })} className="grow basis-32" data-testid={`phone-${index + 1}`} />
         </view>
       )}
       onAdd={() => { phones.set([...phones.value, { id: `p${next.value}`, kind: 'mobile', number: '' }]); next.set(next.value + 1); }}

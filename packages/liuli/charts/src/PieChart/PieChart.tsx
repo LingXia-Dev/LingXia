@@ -1,4 +1,4 @@
-import { cx, type VectorPath } from '@lingxia/view';
+import { cx, useBox, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, type ChartColor, type ChartLegendPosition, type ChartRow, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, textOf } from '../internal/data';
 import { box, circle, sector } from '../internal/geometry';
@@ -106,13 +106,26 @@ export function PieChart({
 
   const facts = seriesFacts(parts.map(part => ({ name: part.name, amount: part.amount })), 'name', { field: 'amount', label: '' }, formatValue, true);
   const centre = chosen ? [chosen.name, formatValue(chosen.amount)] : totalLabel !== undefined ? [totalLabel, formatValue(total)] : undefined;
+  const ring = useBox('ring');
+  const centreBox = useBox('centre');
+  const figure = useBox('figure');
+  // Words whose corners would cross the ring, as at large text, go under it instead.
+  const [across, high, wide] = [ring.value?.width ?? 0, centreBox.value?.height ?? 0, figure.value?.width ?? 0];
+  const isUnder = variant === 'donut' && across > 0 && wide > 0 && Math.hypot(wide, high) > (across * 2 * hole) / box;
+  const words = centre && (
+    <view box={centreBox} role="status" className={cx(r.centre.base, isUnder ? r.centre.under : cx(r.centre.variant[variant], r.centre.size[size]))}>
+      <text className={r.centreLabel.base}>{centre[0]}</text>
+      <text className={r.centreValue.base}>{centre[1]}</text>
+    </view>
+  );
   return (
     <Chart
       label={label}
       title={title}
       description={description}
       summary={summarize?.({ kind: 'pie', count: parts.length, series: facts ? [facts] : [] })}
-      size={size}
+      // Words under the ring add their height to the plot.
+      size={isUnder && !isLoading && error === undefined ? 'fit' : size}
       isLoading={isLoading}
       plotShape={variant === 'donut' ? 'ring' : 'disc'}
       error={error}
@@ -138,14 +151,11 @@ export function PieChart({
       )}
     >
       <view className={r.plot.base}>
-        {paths.length > 0 && <vector aria-hidden paths={paths} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, r.drawing.size[size])} />}
-        {centre && (
-          <view role="status" className={cx(r.centre.base, r.centre.variant[variant], r.centre.size[size])}>
-            <text className={r.centreLabel.base}>{centre[0]}</text>
-            <text className={r.centreValue.base}>{centre[1]}</text>
-          </view>
-        )}
+        {paths.length > 0 && <vector box={ring} aria-hidden paths={paths} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, r.drawing.size[size])} />}
+        {centre && variant === 'donut' && size !== 'xs' && <text aria-hidden box={figure} className={cx(r.centreValue.base, r.centreValue.ghost)}>{centre[1]}</text>}
+        {!isUnder && words}
       </view>
+      {isUnder && words}
     </Chart>
   );
 }

@@ -8,7 +8,8 @@ export const doc: ComponentDoc = {
   summary: 'One value from a few, as a row of segments with a thumb on the chosen one',
   description:
     'SegmentedControl sets one value from two to five short choices that fit a row: a unit, a theme, a sort order. It is a ' +
-    'radio group drawn as equal segments, with a raised thumb that slides to the chosen one. It sets a value; to switch ' +
+    'radio group drawn as equal segments, with a raised thumb that slides to the chosen one. A label is never cut: a long ' +
+    'one widens its segment, and when the row cannot hold them the segments stack. It sets a value; to switch ' +
     'what a panel shows, use Tabs.',
   keywords: ['segmented control', 'segments', 'radio', 'choice', 'switcher', 'units', 'mode', 'picker'],
   propsType: 'SegmentedControlProps',
@@ -18,7 +19,7 @@ export const doc: ComponentDoc = {
     { part: 'track', required: true, description: 'Holds the thumb; mirrors in right-to-left so it slides toward the end.' },
     { part: 'thumb', required: true, description: 'The raised box, one segment wide, under the chosen segment.' },
     { part: 'segment', required: true, description: 'A radio per option, named by its label.' },
-    { part: 'label', required: true, description: 'The option\'s text, cut short if its share of the row is too narrow.' },
+    { part: 'label', required: true, description: 'The option\'s text, whole; cut short only if a stacked segment cannot hold it.' },
   ],
   accessibility: {
     pattern: 'radioGroup',
@@ -46,6 +47,7 @@ export const doc: ComponentDoc = {
   guidance: {
     do: [
       'Keep to two to five labels short enough to fit their share of the row.',
+      'At large text, let it stack: a column of segments keeps every choice in view, where a scrolling row would hide some.',
       'Apply the choice at once, where people can see what it changed.',
     ],
     dont: [
@@ -60,11 +62,6 @@ export const doc: ComponentDoc = {
     { name: 'Sizes', title: 'Sizes' },
   ],
   gaps: [
-    {
-      missing: 'Segments as wide as their labels, with the thumb following.',
-      needs: 'a way to read a laid-out box\'s position and width from View, or a shared-element layout motion between siblings',
-      today: 'Segments share the row equally, so the thumb moves by a segment\'s width.',
-    },
     {
       missing: 'Icon-only segments.',
       needs: 'an icon set for Liuli',

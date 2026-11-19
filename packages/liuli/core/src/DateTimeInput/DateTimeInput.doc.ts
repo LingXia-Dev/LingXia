@@ -37,6 +37,7 @@ export const doc: ComponentDoc = {
     do: [
       'Name the parts in full: "Start date", "Start time".',
       'Use it when the day and the time are one answer: a reminder, a meeting, a deadline.',
+      'At large text, expect the time to move under the date: the parts are measured at the reader\'s text size and stack before either value is cut.',
     ],
     dont: [
       'Use it when only the day matters; that is a DateInput.',

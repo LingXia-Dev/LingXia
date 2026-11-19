@@ -36,6 +36,7 @@ export const doc: ComponentDoc = {
   },
   guidance: {
     do: [
+      'To open a Popover, DropdownMenu, HoverCard or Tooltip from words in a sentence, wrap the Link in it, inside the `<text>`.',
       'Link the words that name the destination: "terms of service".',
       'Keep a link to a few words; a whole sentence underlined is hard to read.',
     ],

@@ -113,6 +113,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
+- Do: To open a Popover, DropdownMenu, HoverCard or Tooltip from words in a sentence, wrap the Link in it, inside the `<text>`.
 - Do: Link the words that name the destination: "terms of service".
 - Do: Keep a link to a few words; a whole sentence underlined is hard to read.
 - Don't: Link "here" or "click here".

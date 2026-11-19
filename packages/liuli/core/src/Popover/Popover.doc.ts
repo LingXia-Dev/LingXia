@@ -5,11 +5,12 @@ export const doc: ComponentDoc = {
   category: 'overlays',
   status: 'preview',
   since: '2026-11-13',
-  summary: 'A button that opens a panel of content above or below it, closed by a tap outside',
+  summary: 'A panel of content that opens beside its trigger, closed by a tap outside',
   description:
-    'Popover shows a small panel beside the button that opened it: view options, a share link, a short form. It is not ' +
-    'modal; a tap outside, Escape or back closes it and focus goes back to the button. For a list of actions use ' +
-    'DropdownMenu; for a note about something use Tooltip; for a decision use Dialog.',
+    'Popover shows a small panel, its `content`, beside the trigger that opened it: view options, a share link, a short form. Its children are the trigger, ' +
+    'a Button or IconButton, or any element, which is wrapped in a plain button. It is not ' +
+    'modal; a tap outside, Escape or back closes it and focus goes back to the trigger. For a list of actions use ' +
+    'DropdownMenu; for a note about something use InfoTip; for a decision use Dialog.',
   keywords: ['popover', 'popup', 'panel', 'flyout', 'options', 'share', 'overlay', 'anchored'],
   propsType: 'PopoverProps',
   recipe: { map: 'popoverRecipe', parts: 'popoverParts' },
@@ -39,6 +40,7 @@ export const doc: ComponentDoc = {
   },
   guidance: {
     do: [
+      'Use a `Link` as the trigger for words in a sentence: put the overlay in the `<text>`, around the Link, and the panel opens from the linked words.',
       'Keep the panel short: a title and a few controls or lines.',
       'Apply its controls at once; it has no Save.',
       'Open it upward when the trigger sits near the bottom of the screen.',
@@ -53,6 +55,7 @@ export const doc: ComponentDoc = {
     { name: 'ViewOptions', title: 'View options under the trigger' },
     { name: 'Share', title: 'A share link above the trigger' },
     { name: 'Beside', title: 'Beside the trigger' },
+    { name: 'InSentence', title: 'On a link in a sentence' },
   ],
   gaps: [
     {
@@ -61,16 +64,17 @@ export const doc: ComponentDoc = {
       today: 'Above or below the trigger, lined up with its start, centre or end.',
     },
   ],
-  related: ['DropdownMenu', 'Tooltip', 'Dialog'],
+  related: ['DropdownMenu', 'InfoTip', 'Dialog'],
   gallery: {
     specimen: 'Specimen',
     tagline: 'A panel beside it',
-    order: 5,
+    order: 6,
     page: {
       lead: 'Use a popover for a few controls or lines that belong to the button that opens them.',
       hero: 'ViewOptions',
       parts: { name: 'Parts', title: 'The trigger, then the panel with its title' },
       variants: [{ name: 'Share', title: 'Above, lined up with the trigger\'s end' }, { name: 'Beside', title: 'At the side of the trigger; it flips or drops below when there is no room' }],
+      inContext: [{ name: 'InSentence', title: 'On a link in a sentence' }],
     },
   },
 };

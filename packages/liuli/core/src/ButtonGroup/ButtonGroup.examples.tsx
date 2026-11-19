@@ -83,7 +83,7 @@ export function Toolbar() {
   return (
     <Said>
       {say => (
-        <view className="flex-row items-center justify-between gap-3">
+        <view className="flex-row flex-wrap items-center justify-between gap-3">
           <ButtonGroup label="Message actions" size="sm" data-testid="message">
             <IconButton label="Reply" icon="message" onClick={() => say('Replied')} />
             <IconButton label="Forward" icon="send" onClick={() => say('Forwarded')} />

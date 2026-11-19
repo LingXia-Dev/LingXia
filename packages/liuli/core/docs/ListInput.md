@@ -36,9 +36,10 @@ export function Phones() {
       description="We call only about a delivery."
       rowKeys={phones.value.map(phone => phone.id)}
       renderRow={index => (
-        <view className="flex-row gap-2">
-          <Select label={`Kind of phone ${index + 1}`} isLabelHidden items={kinds} value={phones.value[index].kind} onChange={kind => change(index, { kind })} className="w-28" />
-          <TextInput label={`Phone ${index + 1}`} isLabelHidden type="tel" placeholder="Number" value={phones.value[index].number} onChange={number => change(index, { number })} className="grow basis-0" data-testid={`phone-${index + 1}`} />
+        // At large text the kind keeps its words whole and the number wraps under it.
+        <view className="flex-row flex-wrap gap-2">
+          <Select label={`Kind of phone ${index + 1}`} isLabelHidden items={kinds} value={phones.value[index].kind} onChange={kind => change(index, { kind })} className="min-w-28" />
+          <TextInput label={`Phone ${index + 1}`} isLabelHidden type="tel" placeholder="Number" value={phones.value[index].number} onChange={number => change(index, { number })} className="grow basis-32" data-testid={`phone-${index + 1}`} />
         </view>
       )}
       onAdd={() => { phones.set([...phones.value, { id: `p${next.value}`, kind: 'mobile', number: '' }]); next.set(next.value + 1); }}
@@ -148,6 +149,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Start with one empty row when at least one is needed, and set `min` to 1.
 - Do: Key rows by an id the app makes when a row is added, so a row keeps its text when another is removed.
+- Do: At large text, let a row of controls wrap (`flex-wrap`, least widths, no fixed widths) so each keeps its words whole.
 - Don't: Use it for choosing among known options; that is MultiSelect or CheckboxList.
 - Don't: Put more than two or three controls in a row on a phone; open the row in a sheet when it needs more.
 

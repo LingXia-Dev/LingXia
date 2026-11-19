@@ -60,20 +60,27 @@ export interface TableProps {
   'data-testid'?: string;
 }
 
-// A text column narrower than this breaks words, unless its values are shorter; the table stacks instead.
-const minText = 88;
+// A text column narrower than this many characters breaks words, unless its values are shorter; the table stacks instead.
+const minText = 11;
 // The row's side padding and the gap between columns, in points, as the recipe sets them.
 const [inset, gap] = [16, 12];
+// Measured for a character's width at the reader's text size; taken as 8 points until it is.
+const sample = 'abcdefghijklmnopqrstuvwxyz';
 const share = (column: TableColumn) => (typeof column.width === 'number' ? 0 : parseFloat(column.width ?? '1fr'));
 
 /**
- * Whether a text column of a table `width` points wide is too narrow: under 88 points, or under
- * its longest value where that is shorter, taking a character of body type as 8 points wide.
+ * Whether a column of a table `width` points wide is too narrow: a text column under 11 characters
+ * of `char` points or under its longest value, or a number column, which never wraps, under its
+ * widest value as measured.
  */
-function isCramped(columns: readonly TableColumn[], width: number, longest: (column: TableColumn) => number): boolean {
+function isCramped(columns: readonly TableColumn[], width: number, char: number, longest: (column: TableColumn) => number, widest: (column: TableColumn) => number | undefined): boolean {
   const fixed = columns.reduce((sum, column) => sum + (typeof column.width === 'number' ? column.width : 0), 0);
   const unit = (width - inset * 2 - gap * (columns.length - 1) - fixed) / Math.max(1e-6, columns.reduce((sum, column) => sum + share(column), 0));
-  return columns.some(column => share(column) > 0 && (column.align ?? 'start') === 'start' && unit * share(column) < Math.min(minText, longest(column) * 8));
+  return columns.some(column => {
+    const room = typeof column.width === 'number' ? column.width : unit * share(column);
+    if ((column.align ?? 'start') === 'end') return room < (widest(column) ?? 0);
+    return share(column) > 0 && room < Math.min(minText, longest(column)) * char;
+  });
 }
 
 const track = (column: TableColumn) => (typeof column.width === 'number' ? `${column.width}px` : `minmax(0,${column.width ?? '1fr'})`);
@@ -87,11 +94,18 @@ export function Table({
   const layer = useContext(LayerContext);
   const { env } = useView();
   const box = useBox('table');
+  const measured = useBox('sample');
+  const char = measured.value ? measured.value.width / sample.length : 8;
+  // A number column's longest value or heading, set in the cells' type and measured.
+  const figureBoxes = columns.map(column => useBox(`figure-${column.field}`));
   const textOf = (row: TableRow, column: TableColumn) => (column.format ? column.format(row[column.field], row) : String(row[column.field] ?? ''));
   const longest = (column: TableColumn) => rows.reduce((most, row) => Math.max(most, textOf(row, column).length), column.header.length);
+  const longestText = (column: TableColumn) => rows.reduce((most, row) => (textOf(row, column).length > most.length ? textOf(row, column) : most), column.header);
+  const isFigure = (column: TableColumn) => column.align === 'end' && column.cell === undefined;
+  const widest = (column: TableColumn) => figureBoxes[columns.indexOf(column)]?.value?.width;
   // Until the table is measured, a phone is taken to be 328 points wide inside its page's margins.
   const isStacked = layout === 'stacked'
-    || (layout === 'auto' && isCramped(columns, box.value?.width ?? (env.sizeClass === 'compact' ? 328 : 720), longest));
+    || (layout === 'auto' && isCramped(columns, box.value?.width ?? (env.sizeClass === 'compact' ? 328 : 720), char, longest, widest));
   // Stacked, the first field heads the record, the last number sits at the end of its line, the rest follow.
   const lead = columns[0];
   const figure = [...columns].reverse().find(column => column !== lead && column.align === 'end');
@@ -163,6 +177,10 @@ export function Table({
       {rows.length > 0 && (maxHeight === undefined
         ? <view className={r.body.base}>{body}</view>
         : <scroll style={{ maxHeight }} className={r.body.base}>{body}</scroll>)}
+      <view aria-hidden className={r.measure.base}>
+        <text box={measured} className={r.measure.sample}>{sample}</text>
+        {columns.map((column, at) => isFigure(column) && <text key={column.field} box={figureBoxes[at]} className={r.measure.sample}>{longestText(column)}</text>)}
+      </view>
     </view>
   );
 }

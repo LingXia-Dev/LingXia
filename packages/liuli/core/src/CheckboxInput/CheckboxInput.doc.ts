@@ -44,6 +44,7 @@ export const doc: ComponentDoc = {
   },
   guidance: {
     do: [
+      'At large text, expect the box to keep its size beside the label\'s first line; the label wraps, the mark is never squeezed.',
       'Phrase the label so that checked means yes.',
       'Use the help text for the consequence, not for a second question.',
     ],

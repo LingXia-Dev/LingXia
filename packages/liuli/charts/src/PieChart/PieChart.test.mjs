@@ -105,3 +105,20 @@ test('states: a part chosen from outside; one part is a whole ring; loading, emp
   assert.equal(error.getByText('Storage could not be read.').props.role, 'alert');
   assert.equal(error.queryAll(node => node.tag === 'vector').length, 1, 'the error mark alone: no plot');
 });
+
+test('At large text: words that would cross the ring go under it, and the plot grows to hold them', async () => {
+  const screen = await renderExample('PieChart/PieChart', 'Spending');
+  const status = () => screen.queryAll(node => node.props.role === 'status')[0];
+  const ghost = screen.queryAll(node => node.tag === 'text' && node.props.opacity === 0 && node.text === '$2,860')[0];
+  assert.ok(ghost, 'the figure is laid out unseen at its own width');
+  screen.layout(ring(screen), { width: 176, height: 176 });
+  screen.layout(ghost, { width: 50, height: 21 });
+  screen.layout(status(), { width: 50, height: 37 });
+  assert.equal(status().parent, ring(screen).parent, 'it fits in the 102 pt hole');
+  screen.layout(ghost, { width: 96, height: 40 });
+  screen.layout(status(), { width: 96, height: 72 });
+  assert.equal(status().parent, ring(screen).parent.parent, 'under the ring, out of its cell');
+  assert.equal(status().props.paddingTop, 8);
+  assert.equal(status().parent.props.height, undefined, 'the plot takes the height of the ring and the words');
+  assert.equal(centre(screen), 'Total$2,860');
+});

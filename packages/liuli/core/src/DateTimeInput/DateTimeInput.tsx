@@ -1,4 +1,4 @@
-import { cx, useLocal, type Local } from '@lingxia/view';
+import { cx, useBox, useLocal, useView, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { DateInput } from '../DateInput/DateInput';
 import { Field, type FieldOwnProps } from '../Field/Field';
@@ -36,6 +36,11 @@ export type DateTimeInputProps = FieldOwnProps & DateTimeInputBinding & {
   'data-testid'?: string;
 };
 
+// A long date and time as the editors set them; a part needs its value's width plus this, for its padding, border and mark.
+const longDate = 'Sep 30, 2026';
+const longTime = { h12: '12:00 PM', h23: '23:59' } as const;
+const [partChrome, partGap] = [50, 8];
+
 /** A day and a time of day as one value, under one label. */
 export function DateTimeInput(props: DateTimeInputProps) {
   const {
@@ -43,6 +48,10 @@ export function DateTimeInput(props: DateTimeInputProps) {
     dateLabel, timeLabel, minDate, maxDate, timeStep, className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
+  const { env } = useView();
+  const [groupBox, dateBox, timeBox] = [useBox('group'), useBox('date'), useBox('time')];
+  const isStacked = groupBox.value !== null && dateBox.value !== null && timeBox.value !== null
+    && dateBox.value.width + timeBox.value.width + partChrome * 2 + partGap > groupBox.value.width;
   const whole = props.bind ? props.bind.value : props.value;
   const [wholeDate = '', wholeTime = ''] = whole.split('T');
   // One part can be set before the other; the whole value exists only once both are.
@@ -75,7 +84,7 @@ export function DateTimeInput(props: DateTimeInputProps) {
       className={className}
     >
       {control => (
-        <view role="group" aria-label={control['aria-label']} aria-describedby={control['aria-describedby']} data-testid={testId} className={r.group.base}>
+        <view box={groupBox} role="group" aria-label={control['aria-label']} aria-describedby={control['aria-describedby']} data-testid={testId} className={r.group.base}>
           <DateInput
             label={dateLabel}
             isLabelHidden
@@ -87,7 +96,7 @@ export function DateTimeInput(props: DateTimeInputProps) {
             isRequired={isRequired}
             isDisabled={isDisabled}
             size={size}
-            className={r.date.base}
+            className={cx(r.date.base, isStacked && r.stacked)}
             data-testid={testId && `${testId}-date`}
           />
           <TimeInput
@@ -100,9 +109,13 @@ export function DateTimeInput(props: DateTimeInputProps) {
             isRequired={isRequired}
             isDisabled={isDisabled}
             size={size}
-            className={r.time.base}
+            className={cx(r.time.base, isStacked && r.stacked)}
             data-testid={testId && `${testId}-time`}
           />
+          <view aria-hidden className={r.measure.base}>
+            <text box={dateBox} className={cx(r.measure.sample, r.measure.size[size])}>{longDate}</text>
+            <text box={timeBox} className={cx(r.measure.sample, r.measure.size[size])}>{longTime[env.hourCycle]}</text>
+          </view>
         </view>
       )}
     </Field>

@@ -1,8 +1,8 @@
 import { createContext, cx, useContext, useId, useLocal, useView, type Child } from '@lingxia/view';
-import type { ButtonSize, ButtonVariant } from '../Button/Button';
-import { buttonRecipe as b } from '../Button/Button.recipe';
+import type { ButtonSize } from '../Button/Button';
 import type { IconName } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
+import { Trigger } from '../internal/trigger';
 import { dropdownMenuRecipe as r } from './DropdownMenu.recipe';
 
 export type DropdownMenuItemVariant = 'default' | 'destructive';
@@ -10,25 +10,14 @@ export type DropdownMenuPlacement = 'bottom' | 'top';
 export type DropdownMenuAlignment = 'start' | 'center' | 'end';
 
 export interface DropdownMenuProps {
-  /** The trigger's text, the trigger's accessible name and the menu's accessible name. */
-  label: string;
-  /**
-   * For a menu that sets a value: the current choice, drawn on the trigger in place of `label` and
-   * read after it as the trigger's description (label "Appearance", value "System").
-   */
-  value?: string;
-  /** Draws only `icon` on a square trigger; `label` stays the name. @default false */
-  isLabelHidden?: boolean;
-  /** An icon from the set, on the trigger before the label. */
-  icon?: IconName;
-  /** A down chevron after the label. Defaults to shown unless the label is hidden. */
-  hasChevron?: boolean;
-  /** The trigger's look, from Button. @default 'secondary' */
-  variant?: ButtonVariant;
-  /** The trigger's and the items' height. @default 'md' */
-  size?: ButtonSize;
-  /** `DropdownMenuItem`s and `DropdownMenuDivider`s, in order. */
+  /** The trigger: a Button or an IconButton, or any element, which is then wrapped in a plain button. */
   children: Child;
+  /** `DropdownMenuItem`s and `DropdownMenuDivider`s, in order. */
+  menu: Child;
+  /** The menu's accessible name. */
+  label: string;
+  /** The items' height; match the trigger's size. @default 'md' */
+  size?: ButtonSize;
   /**
    * Controls whether the menu is open; leave it out to let the trigger own it. Opened from code,
    * the menu is placed by its classes, not under the trigger.
@@ -39,13 +28,9 @@ export interface DropdownMenuProps {
   placement?: DropdownMenuPlacement;
   /** Which edge of the trigger the menu lines up with. @default 'start' */
   alignment?: DropdownMenuAlignment;
-  /** @default false */
-  isDisabled?: boolean;
-  /** Classes for the trigger. */
-  className?: string;
   /** Classes for the menu panel. */
   menuClassName?: string;
-  /** On the trigger. */
+  /** On a wrapped trigger; the menu gets `<testid>-menu`. */
   'data-testid'?: string;
 }
 
@@ -71,6 +56,8 @@ export interface DropdownMenuCheckboxItemProps {
   /** A second line, read as the item's description. */
   description?: string;
   value: boolean;
+  /** Stands for a set that is partly on, such as "All labels": draws a dash and is read as mixed. A press asks for all. @default false */
+  isIndeterminate?: boolean;
   /** Runs with the new state; the menu stays open. */
   onChange: (isChecked: boolean) => void;
   /** @default false */
@@ -125,45 +112,27 @@ export const MenuClose = createContext<(() => void) | null>(null);
 const RadioGroup = createContext<DropdownMenuRadioGroupProps | null>(null);
 
 /**
- * A button that opens a menu of actions. The menu has the View's menu keyboard: arrows, Home, End
- * and type-ahead, opened from the keyboard on its first item.
+ * A menu of actions that opens from its trigger. The menu has the View's menu keyboard: arrows,
+ * Home, End and type-ahead, opened from the keyboard on its first item.
  */
 export function DropdownMenu({
-  label,
-  value,
-  isLabelHidden = false,
-  icon,
-  hasChevron = !isLabelHidden,
-  variant = 'secondary',
-  size = 'md',
   children,
+  menu,
+  label,
+  size = 'md',
   isOpen,
   onOpenChange,
   placement = 'bottom',
   alignment = 'start',
-  isDisabled = false,
-  className,
   menuClassName,
   'data-testid': testId,
 }: DropdownMenuProps) {
   const id = useId();
-  const valueId = `${id}-value`;
   const drilled = useLocal<string | null>('drilled', null);
   const isCompact = useView().env.sizeClass === 'compact';
   return (
     <>
-      <button
-        popoverTarget={id}
-        aria-label={label}
-        aria-describedby={value !== undefined && !isLabelHidden ? valueId : undefined}
-        disabled={isDisabled}
-        data-testid={testId}
-        className={cx(b.root.base, b.root.variant[variant], b.root.disabled[variant], isLabelHidden ? b.root.square[size] : b.root.size[size], className)}
-      >
-        {icon !== undefined && <Glyph name={icon} className={b.glyph.size[size]} />}
-        {!isLabelHidden && <text id={value !== undefined ? valueId : undefined} className={cx(b.label.base, b.label.weight[variant], b.label.size[size])}>{value ?? label}</text>}
-        {hasChevron && <Glyph name="chevron-down" className={r.chevron.base} />}
-      </button>
+      <Trigger wiring={{ popoverTarget: id }} data-testid={testId}>{children}</Trigger>
       <MenuSize.Provider value={size}>
         <view
           id={id}
@@ -175,11 +144,12 @@ export function DropdownMenu({
           onToggle={next => { if (!next) drilled.set(null); onOpenChange?.(next); }}
           // Escape or back inside a submenu that took the panel goes up one level; from the top it closes the menu.
           onCloseRequest={() => { if (drilled.value === null) return true; drilled.set(null); return false; }}
+          data-testid={testId && `${testId}-menu`}
           style={{ positionArea: areas[placement][alignment] }}
           className={cx(r.menu.base, r.menu.offset[placement], isCompact && r.menu.drill, menuClassName)}
         >
           <Drill.Provider value={{ open: drilled.value, set: drilled.set, isCompact }}>
-            <view className={r.items.base}>{children}</view>
+            <view className={r.items.base}>{menu}</view>
           </Drill.Provider>
         </view>
       </MenuSize.Provider>
@@ -223,10 +193,11 @@ export function DropdownMenuItem({
 }
 
 /** An item that turns one option on or off, checked at its end. */
-export function DropdownMenuCheckboxItem({ label, description, value: isChecked, onChange: onCheckedChange, isDisabled = false, 'data-testid': testId }: DropdownMenuCheckboxItemProps) {
+export function DropdownMenuCheckboxItem({ label, description, value: isChecked, isIndeterminate = false, onChange: onCheckedChange, isDisabled = false, 'data-testid': testId }: DropdownMenuCheckboxItemProps) {
+  const isMixed = isIndeterminate && !isChecked;
   return (
-    <CheckableItem role="menuitemcheckbox" label={label} description={description} isChecked={isChecked} isDisabled={isDisabled}
-      onClick={() => onCheckedChange(!isChecked)} testId={testId} owner="DropdownMenuCheckboxItem" />
+    <CheckableItem role="menuitemcheckbox" label={label} description={description} isChecked={isChecked} isMixed={isMixed} isDisabled={isDisabled}
+      onClick={() => onCheckedChange(isMixed || !isChecked)} testId={testId} owner="DropdownMenuCheckboxItem" />
   );
 }
 
@@ -273,6 +244,7 @@ function CheckableItem(props: {
   label: string;
   description: string | undefined;
   isChecked: boolean;
+  isMixed?: boolean;
   isDisabled: boolean;
   onClick: () => void;
   testId: string | undefined;
@@ -286,7 +258,7 @@ function CheckableItem(props: {
   return (
     <button
       role={props.role}
-      aria-checked={props.isChecked}
+      aria-checked={props.isMixed ? 'mixed' : props.isChecked}
       aria-label={props.label}
       aria-describedby={props.description !== undefined ? descriptionId : undefined}
       disabled={props.isDisabled}
@@ -299,6 +271,7 @@ function CheckableItem(props: {
         {props.description !== undefined && <text id={descriptionId} className={r.itemDescription.base}>{props.description}</text>}
       </view>
       {props.isChecked && <Glyph name="check" weight={2.5} className={r.itemCheck.base} />}
+      {props.isMixed && <view aria-hidden className={r.itemDash.base} />}
     </button>
   );
 }

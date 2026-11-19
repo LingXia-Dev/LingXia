@@ -6,8 +6,9 @@ export const buttonGroupParts = { root: 'view' } as const;
  */
 export const buttonGroupRecipe = {
   root: {
-    base: 'flex-row items-center self-start',
-    apart: 'flex-wrap gap-2',
-    attached: 'gap-0',
+    base: 'flex-row flex-wrap items-center self-start max-w-full',
+    apart: 'gap-2',
+    // A line that no longer fits wraps rather than run past its card; the rows keep a gap between them.
+    attached: 'gap-x-0 gap-y-2',
   },
 } as const;

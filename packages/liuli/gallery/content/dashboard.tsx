@@ -59,6 +59,7 @@ function change(now: number, was: number, unit = '%') {
 export function Content() {
   const { env } = useView();
   const frame = useBox('frame');
+  const figure = useBox('figure');
   const period = useLocal<Period>('period', 'week');
   const day = useLocal<string | null>('day', null);
   const rows = series[period.value];
@@ -71,8 +72,12 @@ export function Content() {
     change(revenue, was.revenue), change(orders, was.orders), change(revenue / orders, was.revenue / was.orders), change(refundRate, was.refunds, ' pt'),
   ];
   const words = (name: string, by: ReturnType<typeof change>) => `${name} ${by.deltaDirection === 'flat' ? 'unchanged' : `${by.deltaDirection} ${by.text}`} ${versus[period.value]}`;
-  // Four figures in a row need about 170 px each; a phone gets two by two.
-  const isWide = (frame.value?.width ?? (env.sizeClass === 'regular' ? 900 : 328)) >= 640;
+  const width = frame.value?.width ?? (env.sizeClass === 'regular' ? 900 : 328);
+  const isWide = width >= 640;
+  // A tile holds its figure whole: the widest, measured in the Stat's type, plus the card's padding and border.
+  const figures = [euros(revenue), grouped(orders), `€${grouped(revenue / orders, 2)}`, `${refundRate.toFixed(1)}%`];
+  const tile = (figure.value?.width ?? 0) + 26;
+  const perRow = isWide && width >= tile * 4 + 36 ? 4 : width >= tile * 2 + 12 ? 2 : 1;
   const spark = (values: readonly number[], label: string) => <Sparkline values={values} variant="area" isSmooth hasEndDot label={label} />;
 
   return (
@@ -88,13 +93,13 @@ export function Content() {
           label="Period"
           value={period.value}
           onChange={next => { period.set(next as Period); day.set(null); }}
-          items={[{ value: 'week', label: '7 days' }, { value: 'month', label: '30 days' }, { value: 'year', label: '2026' }]}
+          items={[{ value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }, { value: 'year', label: 'Year' }]}
           className={isWide ? 'w-80' : undefined}
           data-testid="period"
         />
       </view>
 
-      <view className={isWide ? 'grid grid-cols-4 gap-3' : 'grid grid-cols-2 gap-3'}>
+      <view className={perRow === 4 ? 'grid grid-cols-4 gap-3' : perRow === 2 ? 'grid grid-cols-2 gap-3' : 'gap-3'} data-testid="stats">
         <Card padding="sm"><Stat label="Revenue" value={euros(revenue)} delta={byRevenue.delta} deltaDirection={byRevenue.deltaDirection} deltaLabel={words('Revenue', byRevenue)} description={versus[period.value]} chart={spark(rows.map(row => row.revenue), 'Revenue over the period')} size="sm" data-testid="stat-revenue" /></Card>
         <Card padding="sm"><Stat label="Orders" value={grouped(orders)} delta={byOrders.delta} deltaDirection={byOrders.deltaDirection} deltaLabel={words('Orders', byOrders)} description={versus[period.value]} chart={spark(rows.map(row => row.orders), 'Orders over the period')} size="sm" data-testid="stat-orders" /></Card>
         <Card padding="sm"><Stat label="Average order" value={`€${grouped(revenue / orders, 2)}`} delta={byBasket.delta} deltaDirection={byBasket.deltaDirection} deltaLabel={words('Average order', byBasket)} description={versus[period.value]} chart={spark(rows.map(row => row.revenue / row.orders), 'Average order over the period')} size="sm" data-testid="stat-basket" /></Card>
@@ -144,6 +149,9 @@ export function Content() {
           data-testid="products"
         />
       </Card>
+      <view aria-hidden className="absolute size-0 overflow-hidden opacity-0 flex-row">
+        <text box={figure} className="shrink-0 whitespace-nowrap text-title font-semibold tracking-tight tabular-nums">{figures.reduce((most, each) => (each.length > most.length ? each : most))}</text>
+      </view>
     </view>
   );
 }

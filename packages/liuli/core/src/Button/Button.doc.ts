@@ -46,10 +46,12 @@ export const doc: ComponentDoc = {
   },
   guidance: {
     do: [
+      'Give a ghost or link button at the start or end of a row `edge`, so its label or icon lines up with the text above and below instead of sitting in by its padding.',
       'Use one primary button per view, for the action most people take.',
       'Write the label as a verb phrase that names the outcome.',
       'Pass a Logic action to clickAction so the button shows progress by itself.',
       'Confirm destructive actions that cannot be undone with a Dialog.',
+      'At large text, set buttons side by side in a row that wraps (`flex-wrap`): a button keeps its label on one line and wraps it only when it alone is wider than the row.',
     ],
     dont: [
       'Put two primary buttons side by side.',

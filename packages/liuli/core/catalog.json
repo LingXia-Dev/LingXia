@@ -1333,7 +1333,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "In reach of a thumb",
-        "order": 4,
+        "order": 5,
         "page": {
           "lead": "Use a bottom sheet for a choice or a short task about the page under it.",
           "hero": "MoveTo",
@@ -1629,6 +1629,12 @@
           "type": "ButtonWidth",
           "required": false,
           "description": "`content` keeps its own width in a column; `fill` stretches across. Unset follows the parent."
+        },
+        {
+          "name": "edge",
+          "type": "ButtonEdge",
+          "required": false,
+          "description": "For a ghost or link button at the edge of a row: its padding hangs past that side, so the label or the icon's drawing lines up with the content edge, as the text above and below does."
         },
         {
           "name": "isDisabled",
@@ -1942,7 +1948,7 @@
       "status": "preview",
       "since": "2026-11-14",
       "summary": "Buttons that belong together, apart or joined edge to edge, as one keyboard stop",
-      "description": "ButtonGroup lays out Buttons and IconButtons that act on the same thing. Apart, they keep a gap and wrap; attached, they share edges and read as one shape. The group gives its buttons a size and a variant, can disable them all, and is a toolbar for assistive tech: one Tab stop, with the arrow keys moving among the buttons.",
+      "description": "ButtonGroup lays out Buttons and IconButtons that act on the same thing. Apart, they keep a gap; attached, they share edges and read as one shape. Either wraps when it does not fit. The group gives its buttons a size and a variant, can disable them all, and is a toolbar for assistive tech: one Tab stop, with the arrow keys moving among the buttons.",
       "keywords": [
         "button group",
         "toolbar",
@@ -2062,14 +2068,14 @@
         {
           "name": "Toolbar",
           "title": "A toolbar",
-          "source": "import { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { ButtonGroup } from '@liulidesign/core/ButtonGroup';\n\n/** A toolbar over content: icon buttons in a quiet group, a labelled action apart from it. */\nexport function Toolbar() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"flex-row items-center justify-between gap-3\">\n          <ButtonGroup label=\"Message actions\" size=\"sm\" data-testid=\"message\">\n            <IconButton label=\"Reply\" icon=\"message\" onClick={() => say('Replied')} />\n            <IconButton label=\"Forward\" icon=\"send\" onClick={() => say('Forwarded')} />\n            <IconButton label=\"Delete\" icon=\"delete\" onClick={() => say('Deleted the message')} />\n          </ButtonGroup>\n          <Button label=\"Archive\" size=\"sm\" startIcon=\"folder\" onClick={() => say('Archived the message')} />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { ButtonGroup } from '@liulidesign/core/ButtonGroup';\n\n/** A toolbar over content: icon buttons in a quiet group, a labelled action apart from it. */\nexport function Toolbar() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"flex-row flex-wrap items-center justify-between gap-3\">\n          <ButtonGroup label=\"Message actions\" size=\"sm\" data-testid=\"message\">\n            <IconButton label=\"Reply\" icon=\"message\" onClick={() => say('Replied')} />\n            <IconButton label=\"Forward\" icon=\"send\" onClick={() => say('Forwarded')} />\n            <IconButton label=\"Delete\" icon=\"delete\" onClick={() => say('Deleted the message')} />\n          </ButtonGroup>\n          <Button label=\"Archive\" size=\"sm\" startIcon=\"folder\" onClick={() => say('Archived the message')} />\n        </view>\n      )}\n    </Said>\n  );\n}"
         }
       ],
       "gaps": [
         {
-          "missing": "An attached group that wraps or scrolls when it does not fit.",
+          "missing": "An attached group that folds the buttons that do not fit into a menu.",
           "needs": "reading a laid-out box's size (`useBox`) to fold buttons into a menu",
-          "today": "An attached group stays on one line and can be clipped; keep it short."
+          "today": "An attached group that does not fit wraps onto another line; keep it short."
         },
         {
           "missing": "A vertical group.",
@@ -3538,13 +3544,14 @@
       "name": "CircularProgress",
       "import": "@liulidesign/core/CircularProgress",
       "exports": [
-        "CircularProgress"
+        "CircularProgress",
+        "CircularProgressGroup"
       ],
       "category": "feedback",
       "status": "preview",
       "since": "2026-11-15",
       "summary": "How much is done, as a ring",
-      "description": "CircularProgress shows an amount from 0 to `max` as an arc around a ring, with the app's own words in the middle at the larger sizes. Without `value` the arc spins: the task is running and its length is unknown. Use it where a ProgressBar has no room: a tile, the end of a row.",
+      "description": "CircularProgress shows an amount from 0 to `max` as an arc around a ring, with the app's own words in the middle at the larger sizes. Without `value` the arc spins: the task is running and its length is unknown. Use it where a ProgressBar has no room: a tile, the end of a row. CircularProgressGroup holds rings shown together, its rings as direct children, and keeps their words all inside or all beside.",
       "keywords": [
         "progress",
         "ring",
@@ -3610,6 +3617,7 @@
       "otherProps": {},
       "parts": {
         "root": "view",
+        "ring": "view",
         "track": "vector",
         "fill": "vector",
         "value": "text"
@@ -3683,7 +3691,7 @@
         {
           "name": "Goal",
           "title": "A goal on a tile",
-          "source": "import { CircularProgress } from '@liulidesign/core/CircularProgress';\n\n/** A goal on a tile: the ring, and the app's words in its middle. */\nexport function Goal() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <CircularProgress label=\"Steps today\" value={7200} max={10000} valueLabel=\"72%\" size=\"lg\" data-testid=\"steps\" />\n      <view className=\"gap-0.5\">\n        <text className=\"text-body font-medium text-text\">7,200 steps</text>\n        <text className=\"text-footnote text-muted\">2,800 to your goal of 10,000</text>\n      </view>\n    </view>\n  );\n}"
+          "source": "import { CircularProgress } from '@liulidesign/core/CircularProgress';\n\n/** A goal on a tile: the ring, and the app's words in its middle. */\nexport function Goal() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <CircularProgress label=\"Steps today\" value={7200} max={10000} valueLabel=\"72%\" size=\"lg\" data-testid=\"steps\" />\n      <view className=\"shrink min-w-0 gap-0.5\">\n        <text className=\"text-body font-medium text-text\">7,200 steps</text>\n        <text className=\"text-footnote text-muted\">2,800 to your goal of 10,000</text>\n      </view>\n    </view>\n  );\n}"
         },
         {
           "name": "InRows",
@@ -3693,12 +3701,12 @@
         {
           "name": "Sizes",
           "title": "Sizes",
-          "source": "import { CircularProgress } from '@liulidesign/core/CircularProgress';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row items-center gap-5\">\n      <CircularProgress label=\"Storage used\" value={40} valueLabel=\"40%\" size=\"sm\" />\n      <CircularProgress label=\"Storage used\" value={40} valueLabel=\"40%\" />\n      <CircularProgress label=\"Storage used\" value={40} valueLabel=\"40%\" size=\"lg\" />\n    </view>\n  );\n}"
+          "source": "import { CircularProgress, CircularProgressGroup } from '@liulidesign/core/CircularProgress';\n\nexport function Sizes() {\n  return (\n    <CircularProgressGroup className=\"flex-row flex-wrap items-center gap-5\">\n      <CircularProgress label=\"Storage used\" value={40} valueLabel=\"40%\" size=\"sm\" />\n      <CircularProgress label=\"Storage used\" value={40} valueLabel=\"40%\" />\n      <CircularProgress label=\"Storage used\" value={40} valueLabel=\"40%\" size=\"lg\" />\n    </CircularProgressGroup>\n  );\n}"
         },
         {
           "name": "Tones",
           "title": "Meters in a tone",
-          "source": "import { CircularProgress } from '@liulidesign/core/CircularProgress';\n\n/** A meter in a tone: the words say how it stands too. */\nexport function Tones() {\n  return (\n    <view className=\"flex-row items-center gap-5\">\n      <CircularProgress label=\"Monthly goal\" value={100} valueLabel=\"Done\" tone=\"success\" size=\"lg\" />\n      <CircularProgress label=\"Storage\" value={86} valueLabel=\"86%\" tone=\"warning\" size=\"lg\" />\n      <CircularProgress label=\"Data plan\" value={100} valueLabel=\"Over\" tone=\"danger\" size=\"lg\" data-testid=\"over\" />\n    </view>\n  );\n}"
+          "source": "import { CircularProgress, CircularProgressGroup } from '@liulidesign/core/CircularProgress';\n\n/** A meter in a tone: the words say how it stands too. */\nexport function Tones() {\n  return (\n    <CircularProgressGroup className=\"flex-row flex-wrap items-center gap-5\">\n      <CircularProgress label=\"Monthly goal\" value={100} valueLabel=\"Done\" tone=\"success\" size=\"lg\" />\n      <CircularProgress label=\"Storage\" value={86} valueLabel=\"86%\" tone=\"warning\" size=\"lg\" />\n      <CircularProgress label=\"Data plan\" value={100} valueLabel=\"Over\" tone=\"danger\" size=\"lg\" data-testid=\"over\" />\n    </CircularProgressGroup>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -4595,7 +4603,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "Find and run",
-        "order": 9,
+        "order": 10,
         "page": {
           "lead": "Use a command palette to reach any command or place by typing.",
           "hero": "Commands"
@@ -5026,7 +5034,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "Hold for actions",
-        "order": 8,
+        "order": 9,
         "page": {
           "lead": "Use a context menu as a shortcut to the actions for one thing.",
           "hero": "Rows"
@@ -5878,7 +5886,9 @@
       "parts": {
         "group": "view",
         "date": "DateInput",
-        "time": "TimeInput"
+        "time": "TimeInput",
+        "measure": "view",
+        "sample": "text"
       },
       "accessibility": {
         "pattern": null,
@@ -5939,7 +5949,11 @@
             "description": ""
           }
         ],
-        "tokens": [],
+        "tokens": [
+          "--text-footnote",
+          "--text-body",
+          "--text-callout"
+        ],
         "roles": []
       },
       "related": [
@@ -6823,7 +6837,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "A side panel",
-        "order": 6,
+        "order": 7,
         "page": {
           "lead": "Use a drawer for a panel of its own beside the page it came from.",
           "hero": "Filters",
@@ -6852,8 +6866,8 @@
       "category": "overlays",
       "status": "preview",
       "since": "2026-11-12",
-      "summary": "Button that opens a short menu of actions",
-      "description": "DropdownMenu groups a few related actions behind one button: sort options, a \"more\" menu on a row, account actions. Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu. DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one choice; both keep the menu open.",
+      "summary": "A short menu of actions that opens from its trigger",
+      "description": "DropdownMenu groups a few related actions behind one trigger: sort options, a \"more\" menu on a row, account actions. Its children are the trigger, a Button or IconButton; `menu` holds DropdownMenuItems and DropdownMenuDividers, and choosing an item runs its onClick and closes the menu. DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one choice; both keep the menu open.",
       "keywords": [
         "dropdown",
         "menu",
@@ -6866,55 +6880,29 @@
       ],
       "props": [
         {
+          "name": "children",
+          "type": "Child",
+          "required": true,
+          "description": "The trigger: a Button or an IconButton, or any element, which is then wrapped in a plain button."
+        },
+        {
+          "name": "menu",
+          "type": "Child",
+          "required": true,
+          "description": "`DropdownMenuItem`s and `DropdownMenuDivider`s, in order."
+        },
+        {
           "name": "label",
           "type": "string",
           "required": true,
-          "description": "The trigger's text, the trigger's accessible name and the menu's accessible name."
-        },
-        {
-          "name": "value",
-          "type": "string",
-          "required": false,
-          "description": "For a menu that sets a value: the current choice, drawn on the trigger in place of `label` and read after it as the trigger's description (label \"Appearance\", value \"System\")."
-        },
-        {
-          "name": "isLabelHidden",
-          "type": "boolean",
-          "required": false,
-          "description": "Draws only `icon` on a square trigger; `label` stays the name.",
-          "default": "false"
-        },
-        {
-          "name": "icon",
-          "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"checklist\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"click\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"compass\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"layers\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"palette\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"rows\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"stop\" | \"success\" | \"tag\" | \"template\" | \"text-input\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
-          "required": false,
-          "description": "An icon from the set, on the trigger before the label."
-        },
-        {
-          "name": "hasChevron",
-          "type": "boolean",
-          "required": false,
-          "description": "A down chevron after the label. Defaults to shown unless the label is hidden."
-        },
-        {
-          "name": "variant",
-          "type": "ButtonVariant",
-          "required": false,
-          "description": "The trigger's look, from Button.",
-          "default": "'secondary'"
+          "description": "The menu's accessible name."
         },
         {
           "name": "size",
           "type": "ButtonSize",
           "required": false,
-          "description": "The trigger's and the items' height.",
+          "description": "The items' height; match the trigger's size.",
           "default": "'md'"
-        },
-        {
-          "name": "children",
-          "type": "Child",
-          "required": true,
-          "description": "`DropdownMenuItem`s and `DropdownMenuDivider`s, in order."
         },
         {
           "name": "isOpen",
@@ -6943,19 +6931,6 @@
           "default": "'start'"
         },
         {
-          "name": "isDisabled",
-          "type": "boolean",
-          "required": false,
-          "description": "",
-          "default": "false"
-        },
-        {
-          "name": "className",
-          "type": "string",
-          "required": false,
-          "description": "Classes for the trigger."
-        },
-        {
           "name": "menuClassName",
           "type": "string",
           "required": false,
@@ -6965,7 +6940,7 @@
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": "On the trigger."
+          "description": "On a wrapped trigger; the menu gets `<testid>-menu`."
         }
       ],
       "otherProps": {
@@ -7033,6 +7008,13 @@
             "type": "boolean",
             "required": true,
             "description": ""
+          },
+          {
+            "name": "isIndeterminate",
+            "type": "boolean",
+            "required": false,
+            "description": "Stands for a set that is partly on, such as \"All labels\": draws a dash and is read as mixed. A press asks for all.",
+            "default": "false"
           },
           {
             "name": "onChange",
@@ -7115,7 +7097,6 @@
         ]
       },
       "parts": {
-        "chevron": "vector",
         "menu": "view",
         "items": "view",
         "item": "button",
@@ -7124,6 +7105,7 @@
         "itemLabel": "text",
         "itemDescription": "text",
         "itemCheck": "vector",
+        "itemDash": "view",
         "submenuChevron": "vector",
         "back": "button",
         "radioGroup": "view",
@@ -7146,7 +7128,7 @@
           },
           {
             "state": "disabled",
-            "from": "isDisabled; an item's isDisabled"
+            "from": "the trigger's isDisabled; an item's isDisabled"
           }
         ],
         "keyboard": [
@@ -7206,37 +7188,47 @@
         {
           "name": "Basic",
           "title": "Labelled trigger",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\n\n/** A labelled trigger; the menu lines up with its start edge. */\nexport function Basic() {\n  const order = useLocal('order', 'Name');\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <DropdownMenu label=\"Sort by\" data-testid=\"sort\">\n        <DropdownMenuItem label=\"Name\" onClick={() => order.set('Name')} data-testid=\"sort-name\" />\n        <DropdownMenuItem label=\"Last updated\" description=\"Newest first\" onClick={() => order.set('Last updated')} data-testid=\"sort-updated\" />\n        <DropdownMenuItem label=\"Size\" onClick={() => order.set('Size')} />\n      </DropdownMenu>\n      <text data-testid=\"order\" className=\"text-footnote text-muted\">{order.value}</text>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Button } from '@liulidesign/core/Button';\n\n/** A labelled trigger; the menu lines up with its start edge. */\nexport function Basic() {\n  const order = useLocal('order', 'Name');\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <DropdownMenu\n        label=\"Sort by\"\n        menu={<>\n          <DropdownMenuItem label=\"Name\" onClick={() => order.set('Name')} data-testid=\"sort-name\" />\n          <DropdownMenuItem label=\"Last updated\" description=\"Newest first\" onClick={() => order.set('Last updated')} data-testid=\"sort-updated\" />\n          <DropdownMenuItem label=\"Size\" onClick={() => order.set('Size')} />\n        </>}\n      >\n        <Button label=\"Sort by\" endIcon=\"chevron-down\" data-testid=\"sort\" />\n      </DropdownMenu>\n      <text data-testid=\"order\" className=\"text-footnote text-muted\">{order.value}</text>\n    </view>\n  );\n}"
         },
         {
           "name": "More",
           "title": "Icon-only \"more\" menu on a row",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Said, unused } from '../example';\n\n/** An icon-only \"more\" menu at the end of a row, aligned to the row's end edge. */\nexport function More() {\n  const removed = useLocal('removed', false);\n  return (\n    <Said>\n      {say => (\n        <view className=\"flex-row items-center gap-3\">\n          <text className=\"grow basis-0 text-body font-medium text-text\">{removed.value ? 'Removed' : 'Groceries'}</text>\n          <DropdownMenu\n            label=\"More actions\"\n            isLabelHidden\n            icon=\"more\"\n            variant=\"ghost\"\n            alignment=\"end\"\n            data-testid=\"more\"\n          >\n            <DropdownMenuItem label=\"Rename\" onClick={() => say('Chose Rename')} />\n            <DropdownMenuItem label=\"Share\" onClick={unused} isDisabled />\n            <DropdownMenuDivider />\n            <DropdownMenuItem\n              label=\"Delete\"\n              variant=\"destructive\"\n              icon=\"delete\"\n              onClick={() => removed.set(true)}\n              data-testid=\"delete\"\n            />\n          </DropdownMenu>\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Said, unused } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\n\n/** An icon-only \"more\" menu at the end of a row, aligned to the row's end edge. */\nexport function More() {\n  const removed = useLocal('removed', false);\n  return (\n    <Said>\n      {say => (\n        <view className=\"flex-row items-center gap-3\">\n          <text className=\"grow basis-0 text-body font-medium text-text\">{removed.value ? 'Removed' : 'Groceries'}</text>\n          <DropdownMenu\n            label=\"More actions\"\n            alignment=\"end\"\n            menu={<>\n              <DropdownMenuItem label=\"Rename\" onClick={() => say('Chose Rename')} />\n              <DropdownMenuItem label=\"Share\" onClick={unused} isDisabled />\n              <DropdownMenuDivider />\n              <DropdownMenuItem\n                label=\"Delete\"\n                variant=\"destructive\"\n                icon=\"delete\"\n                onClick={() => removed.set(true)}\n                data-testid=\"delete\"\n              />\n            </>}\n          >\n            <IconButton label=\"More actions\" icon=\"more\" data-testid=\"more\" />\n          </DropdownMenu>\n        </view>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "InList",
           "title": "A menu on every row",
-          "source": "import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Said } from '../example';\n\n/** Rows that each carry a menu: every menu gets its own id, so no row needs one. */\nexport function InList() {\n  const rows = ['Inbox', 'Archive'];\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-2\">\n          {rows.map(row => (\n            <view key={row} className=\"flex-row items-center gap-3\">\n              <text className=\"grow basis-0 text-body text-text\">{row}</text>\n              <DropdownMenu\n                label={`${row} actions`}\n                isLabelHidden\n                icon=\"more\"\n                variant=\"ghost\"\n                size=\"sm\"\n                alignment=\"end\"\n                data-testid={`menu-${row}`}\n              >\n                <DropdownMenuItem label=\"Open\" onClick={() => say(`Opened ${row}`)} />\n              </DropdownMenu>\n            </view>\n          ))}\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Said } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\n\n/** Rows that each carry a menu: every menu gets its own id, so no row needs one. */\nexport function InList() {\n  const rows = ['Inbox', 'Archive'];\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-2\">\n          {rows.map(row => (\n            <view key={row} className=\"flex-row items-center gap-3\">\n              <text className=\"grow basis-0 text-body text-text\">{row}</text>\n              <DropdownMenu label={`${row} actions`} size=\"sm\" alignment=\"end\" menu={<DropdownMenuItem label=\"Open\" onClick={() => say(`Opened ${row}`)} />}>\n                <IconButton label={`${row} actions`} icon=\"more\" size=\"sm\" data-testid={`menu-${row}`} />\n              </DropdownMenu>\n            </view>\n          ))}\n        </view>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "Value",
           "title": "A menu that sets a value",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';\n\n/** A menu that sets a value: the trigger shows the choice, and the menu checks it. */\nexport function Value() {\n  const appearance = useLocal('appearance', 'System');\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <text className=\"grow basis-0 text-body text-text\">Appearance</text>\n      <DropdownMenu label=\"Appearance\" value={appearance.value} variant=\"ghost\" size=\"sm\" alignment=\"end\" data-testid=\"appearance\">\n        <DropdownMenuRadioGroup value={appearance.value} onChange={next => appearance.set(next)}>\n          {['System', 'Light', 'Dark'].map(option => (\n            <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`appearance-${option}`} />\n          ))}\n        </DropdownMenuRadioGroup>\n      </DropdownMenu>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';\nimport { Button } from '@liulidesign/core/Button';\n\n/** A menu that sets a value: the trigger shows the choice, and the menu checks it. */\nexport function Value() {\n  const appearance = useLocal('appearance', 'System');\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <text className=\"grow basis-0 text-body text-text\">Appearance</text>\n      <DropdownMenu\n        label=\"Appearance\"\n        size=\"sm\"\n        alignment=\"end\"\n        menu={\n          <DropdownMenuRadioGroup value={appearance.value} onChange={next => appearance.set(next)}>\n            {['System', 'Light', 'Dark'].map(option => (\n              <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`appearance-${option}`} />\n            ))}\n          </DropdownMenuRadioGroup>\n        }\n      >\n        <Button label={appearance.value} variant=\"ghost\" size=\"sm\" endIcon=\"chevron-down\" data-testid=\"appearance\" />\n      </DropdownMenu>\n    </view>\n  );\n}"
         },
         {
           "name": "Checkable",
           "title": "Options and a choice, checked",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';\n\n/** Options turned on and off, and one choice among several, in one menu that stays open while they change. */\nexport function Checkable() {\n  const completed = useLocal('completed', true);\n  const archived = useLocal('archived', false);\n  const grouping = useLocal('grouping', 'Day');\n  return (\n    <DropdownMenu label=\"View\" data-testid=\"view-menu\">\n      <DropdownMenuCheckboxItem label=\"Show completed\" value={completed.value} onChange={next => completed.set(next)} data-testid=\"show-completed\" />\n      <DropdownMenuCheckboxItem label=\"Show archived\" value={archived.value} onChange={next => archived.set(next)} data-testid=\"show-archived\" />\n      <DropdownMenuDivider />\n      <DropdownMenuRadioGroup label=\"Group by\" value={grouping.value} onChange={next => grouping.set(next)}>\n        {['Day', 'Week', 'Month'].map(option => (\n          <DropdownMenuRadioItem key={option} value={option} label={`Group by ${option.toLowerCase()}`} data-testid={`group-${option}`} />\n        ))}\n      </DropdownMenuRadioGroup>\n    </DropdownMenu>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';\nimport { Button } from '@liulidesign/core/Button';\n\n/** Options turned on and off, and one choice among several, in one menu that stays open while they change. */\nexport function Checkable() {\n  const completed = useLocal('completed', true);\n  const archived = useLocal('archived', false);\n  const grouping = useLocal('grouping', 'Day');\n  return (\n    <DropdownMenu label=\"View\" menu={<>\n      <DropdownMenuCheckboxItem label=\"Show completed\" value={completed.value} onChange={next => completed.set(next)} data-testid=\"show-completed\" />\n      <DropdownMenuCheckboxItem label=\"Show archived\" value={archived.value} onChange={next => archived.set(next)} data-testid=\"show-archived\" />\n      <DropdownMenuDivider />\n      <DropdownMenuRadioGroup label=\"Group by\" value={grouping.value} onChange={next => grouping.set(next)}>\n        {['Day', 'Week', 'Month'].map(option => (\n          <DropdownMenuRadioItem key={option} value={option} label={`Group by ${option.toLowerCase()}`} data-testid={`group-${option}`} />\n        ))}\n      </DropdownMenuRadioGroup>\n    </>}>\n      <Button label=\"View\" endIcon=\"chevron-down\" data-testid=\"view-menu\" />\n    </DropdownMenu>\n  );\n}"
+        },
+        {
+          "name": "StateMixed",
+          "title": "An item for a set, partly on",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider } from '@liulidesign/core/DropdownMenu';\nimport { Button } from '@liulidesign/core/Button';\n\nconst labels = ['Work', 'Personal', 'Travel'] as const;\n\n/** An item that turns a set on and off: mixed while only some of the set is on. */\nexport function StateMixed() {\n  const shown = useLocal<readonly string[]>('labels', ['Work']);\n  const isAll = shown.value.length === labels.length;\n  return (\n    <view className=\"flex-row\">\n      <DropdownMenu label=\"Labels\" menu={<>\n        <DropdownMenuCheckboxItem label=\"All labels\" value={isAll} isIndeterminate={shown.value.length > 0} onChange={next => shown.set(next ? labels : [])} data-testid=\"labels-all\" />\n        <DropdownMenuDivider />\n        {labels.map(label => (\n          <DropdownMenuCheckboxItem key={label} label={label} value={shown.value.includes(label)}\n            onChange={next => shown.set(next ? [...shown.value, label] : shown.value.filter(each => each !== label))} data-testid={`label-${label}`} />\n        ))}\n      </>}>\n        <Button label=\"Labels\" endIcon=\"chevron-down\" data-testid=\"labels-menu\" />\n      </DropdownMenu>\n    </view>\n  );\n}"
         },
         {
           "name": "Grouped",
           "title": "Groups under headings",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';\n\n/** Groups under their headings, when a menu holds more than one kind of thing. */\nexport function Grouped() {\n  const sort = useLocal('sort', 'Edited');\n  const completed = useLocal('done', true);\n  return (\n    <DropdownMenu label=\"View options\" data-testid=\"options\">\n      <DropdownMenuGroup label=\"Sort by\">\n        <DropdownMenuRadioGroup value={sort.value} onChange={next => sort.set(next)}>\n          {['Edited', 'Created', 'Title'].map(option => (\n            <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`sort-${option}`} />\n          ))}\n        </DropdownMenuRadioGroup>\n      </DropdownMenuGroup>\n      <DropdownMenuDivider />\n      <DropdownMenuGroup label=\"Show\">\n        <DropdownMenuCheckboxItem label=\"Completed\" value={completed.value} onChange={next => completed.set(next)} data-testid=\"show-done\" />\n      </DropdownMenuGroup>\n    </DropdownMenu>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuDivider, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';\nimport { Button } from '@liulidesign/core/Button';\n\n/** Groups under their headings, when a menu holds more than one kind of thing. */\nexport function Grouped() {\n  const sort = useLocal('sort', 'Edited');\n  const completed = useLocal('done', true);\n  return (\n    <DropdownMenu label=\"View options\" menu={<>\n      <DropdownMenuGroup label=\"Sort by\">\n        <DropdownMenuRadioGroup value={sort.value} onChange={next => sort.set(next)}>\n          {['Edited', 'Created', 'Title'].map(option => (\n            <DropdownMenuRadioItem key={option} value={option} label={option} data-testid={`sort-${option}`} />\n          ))}\n        </DropdownMenuRadioGroup>\n      </DropdownMenuGroup>\n      <DropdownMenuDivider />\n      <DropdownMenuGroup label=\"Show\">\n        <DropdownMenuCheckboxItem label=\"Completed\" value={completed.value} onChange={next => completed.set(next)} data-testid=\"show-done\" />\n      </DropdownMenuGroup>\n    </>}>\n      <Button label=\"View options\" endIcon=\"chevron-down\" data-testid=\"options\" />\n    </DropdownMenu>\n  );\n}"
         },
         {
           "name": "Submenu",
           "title": "A submenu",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem, DropdownMenuSubmenu } from '@liulidesign/core/DropdownMenu';\nimport { Said } from '../example';\n\n/** A submenu for a few choices under one name; it opens at the item's side. */\nexport function Submenu() {\n  const moved = useLocal('moved', 'Notes');\n  return (\n    <Said>\n      {say => (\n        <view className=\"items-start gap-2\">\n          <DropdownMenu label=\"Note\" data-testid=\"note-menu\">\n            <DropdownMenuItem label=\"Rename\" onClick={() => say('Chose Rename')} />\n            <DropdownMenuSubmenu label=\"Move to\" data-testid=\"move\">\n              {['Notes', 'Travel', 'Recipes', 'Archive'].map(folder => (\n                <DropdownMenuItem key={folder} label={folder} onClick={() => moved.set(folder)} data-testid={`move-${folder.toLowerCase()}`} />\n              ))}\n            </DropdownMenuSubmenu>\n            <DropdownMenuDivider />\n            <DropdownMenuItem label=\"Delete\" variant=\"destructive\" onClick={() => say('Chose Delete')} />\n          </DropdownMenu>\n          <text role=\"status\" className=\"text-footnote text-muted\">{`In ${moved.value}`}</text>\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem, DropdownMenuSubmenu } from '@liulidesign/core/DropdownMenu';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\n\n/** A submenu for a few choices under one name; it opens at the item's side. */\nexport function Submenu() {\n  const moved = useLocal('moved', 'Notes');\n  return (\n    <Said>\n      {say => (\n        <view className=\"items-start gap-2\">\n          <DropdownMenu label=\"Note\" menu={<>\n            <DropdownMenuItem label=\"Rename\" onClick={() => say('Chose Rename')} />\n            <DropdownMenuSubmenu label=\"Move to\" data-testid=\"move\">\n              {['Notes', 'Travel', 'Recipes', 'Archive'].map(folder => (\n                <DropdownMenuItem key={folder} label={folder} onClick={() => moved.set(folder)} data-testid={`move-${folder.toLowerCase()}`} />\n              ))}\n            </DropdownMenuSubmenu>\n            <DropdownMenuDivider />\n            <DropdownMenuItem label=\"Delete\" variant=\"destructive\" onClick={() => say('Chose Delete')} />\n          </>}>\n            <Button label=\"Note\" endIcon=\"chevron-down\" data-testid=\"note-menu\" />\n          </DropdownMenu>\n          <text role=\"status\" className=\"text-footnote text-muted\">{`In ${moved.value}`}</text>\n        </view>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "InSentence",
+          "title": "On a link in a sentence",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Link } from '@liulidesign/core/Link';\n\n/** On a link in a sentence: the choice is made where it is read. */\nexport function InSentence() {\n  const order = useLocal('sentence-order', 'newest');\n  return (\n    <text className=\"text-body text-text\" data-testid=\"sentence\">\n      Showing notes,{' '}\n      <DropdownMenu\n        label=\"Order\"\n        menu={<>\n          <DropdownMenuItem label=\"Newest first\" onClick={() => order.set('newest')} />\n          <DropdownMenuItem label=\"Oldest first\" onClick={() => order.set('oldest')} />\n        </>}\n      >\n        <Link label={`${order.value} first`} data-testid=\"order-link\" />\n      </DropdownMenu>\n      .\n    </text>\n  );\n}"
         }
       ],
       "gaps": [
@@ -7258,11 +7250,6 @@
       ],
       "theming": {
         "classProps": [
-          {
-            "name": "className",
-            "on": "",
-            "description": "Classes for the trigger."
-          },
           {
             "name": "menuClassName",
             "on": "",
@@ -7335,12 +7322,20 @@
             {
               "name": "StateDisabled",
               "title": "Disabled"
+            },
+            {
+              "name": "StateMixed",
+              "title": "Mixed: an item for a set, partly on"
             }
           ],
           "inContext": [
             {
               "name": "InList",
               "title": "A menu on every row"
+            },
+            {
+              "name": "InSentence",
+              "title": "On a link in a sentence"
             }
           ]
         }
@@ -7680,6 +7675,7 @@
       "parts": {
         "root": "view",
         "labelRow": "view",
+        "info": "InfoTip",
         "label": "text",
         "required": "span",
         "optional": "text",
@@ -8281,22 +8277,22 @@
       ],
       "props": [
         {
-          "name": "label",
-          "type": "string",
+          "name": "children",
+          "type": "Child",
           "required": true,
-          "description": "The trigger\\'s words and accessible name: a person, a term, a reference."
+          "description": "The trigger: the words the card is about, as a `<text>`, or a Button. Text is wrapped in a plain button named by its words."
         },
         {
-          "name": "children",
+          "name": "content",
           "type": "Child",
           "required": true,
           "description": "The card: a few lines about what the trigger names. Nothing that must be reached to finish a task."
         },
         {
-          "name": "cardLabel",
+          "name": "label",
           "type": "string",
-          "required": false,
-          "description": "Names the card for assistive tech when the trigger\\'s words do not: \"About Ana Lima\"."
+          "required": true,
+          "description": "The card's accessible name: \"About Ana Lima\"."
         },
         {
           "name": "placement",
@@ -8306,22 +8302,15 @@
           "default": "'bottom'"
         },
         {
-          "name": "className",
-          "type": "string",
-          "required": false,
-          "description": "Classes for the trigger\\'s text, to match the text around it."
-        },
-        {
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": "On the trigger; the card gets `<testid>-card`."
+          "description": "On a wrapped trigger; the card gets `<testid>-card`."
         }
       ],
       "otherProps": {},
       "parts": {
         "trigger": "button",
-        "label": "text",
         "card": "view"
       },
       "accessibility": {
@@ -8359,7 +8348,7 @@
           }
         ],
         "notes": [
-          "The trigger is a button named by its words; the card is named by `cardLabel`, or the same words.",
+          "Words as the trigger are wrapped in one button named by them; the card is named by `label`.",
           "The card shows on keyboard focus as well as on hover, and on a tap on touch screens.",
           "Focus does not move into the card, so put nothing in it that needs focus."
         ]
@@ -8368,12 +8357,17 @@
         {
           "name": "Person",
           "title": "A person, from their name",
-          "source": "import { Avatar } from '@liulidesign/core/Avatar';\nimport { StatusDot } from '@liulidesign/core/StatusDot';\nimport { HoverCard } from '@liulidesign/core/HoverCard';\n\n/** A name in a line of activity: resting on it shows who that is. */\nexport function Person() {\n  return (\n    <view className=\"flex-row flex-wrap items-baseline gap-1\">\n      <HoverCard label=\"Ana Lima\" cardLabel=\"About Ana Lima\" className=\"text-body font-medium\" data-testid=\"ana\">\n        <view className=\"flex-row items-center gap-3\">\n          <Avatar name=\"Ana Lima\" isDecorative />\n          <view className=\"gap-0.5\">\n            <text className=\"text-body font-medium text-text\">Ana Lima</text>\n            <text className=\"text-footnote text-muted\">Design lead · Lisbon</text>\n          </view>\n        </view>\n        <StatusDot label=\"Online\" tone=\"success\" size=\"sm\" />\n      </HoverCard>\n      <text className=\"text-body text-text\">commented on Trip to the coast</text>\n    </view>\n  );\n}"
+          "source": "import { Avatar } from '@liulidesign/core/Avatar';\nimport { StatusDot } from '@liulidesign/core/StatusDot';\nimport { HoverCard } from '@liulidesign/core/HoverCard';\n\n/** A name in a line of activity: resting on it shows who that is. A dotted underline sets a term apart from a link. */\nexport function Person() {\n  return (\n    <view className=\"flex-row flex-wrap items-baseline gap-1\">\n      <HoverCard\n        label=\"About Ana Lima\"\n        content={<>\n          <view className=\"flex-row items-center gap-3\">\n            <Avatar name=\"Ana Lima\" isDecorative />\n            <view className=\"gap-0.5\">\n              <text className=\"text-body font-medium text-text\">Ana Lima</text>\n              <text className=\"text-footnote text-muted\">Design lead · Lisbon</text>\n            </view>\n          </view>\n          <StatusDot label=\"Online\" tone=\"success\" size=\"sm\" />\n        </>}\n        data-testid=\"ana\"\n      >\n        <text className=\"text-body font-medium text-text\">Ana Lima</text>\n      </HoverCard>\n      <text className=\"text-body text-text\">commented on Trip to the coast</text>\n    </view>\n  );\n}"
         },
         {
           "name": "Term",
           "title": "A term, opening beside it",
-          "source": "import { HoverCard } from '@liulidesign/core/HoverCard';\n\n/** A term explained where it is used, opening beside it. */\nexport function Term() {\n  return (\n    <view className=\"flex-row flex-wrap items-baseline gap-1\">\n      <text className=\"text-footnote text-muted\">Billed per</text>\n      <HoverCard label=\"seat\" placement=\"end\" className=\"text-footnote\" data-testid=\"seat\">\n        <text className=\"text-footnote text-text\">A seat is one person who can edit. People who only read are free.</text>\n      </HoverCard>\n    </view>\n  );\n}"
+          "source": "import { HoverCard } from '@liulidesign/core/HoverCard';\n\n/** A term explained where it is used, opening beside it. */\nexport function Term() {\n  return (\n    <view className=\"flex-row flex-wrap items-baseline gap-1\">\n      <text className=\"text-footnote text-muted\">Billed per</text>\n      <HoverCard label=\"Seat\" placement=\"end\" content={<text className=\"text-footnote text-text\">A seat is one person who can edit. People who only read are free.</text>} data-testid=\"seat\">\n        <text className=\"text-footnote text-text\">seat</text>\n      </HoverCard>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "InSentence",
+          "title": "On a link in a sentence",
+          "source": "import { HoverCard } from '@liulidesign/core/HoverCard';\nimport { Link } from '@liulidesign/core/Link';\n\n/** On a link in a sentence: a pointer resting on the name, or a press, shows the card. */\nexport function InSentence() {\n  return (\n    <text className=\"text-body text-text\">\n      Approved by{' '}\n      <HoverCard label=\"Ana Lima\" content={<text className=\"text-footnote text-text\">Ana Lima, Finance. Approves purchases over €500.</text>} data-testid=\"approver\">\n        <Link label=\"Ana Lima\" data-testid=\"approver-link\" />\n      </HoverCard>\n      {' '}yesterday.\n    </text>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -8381,20 +8375,13 @@
         "The trigger is its own row or wrapped word: it cannot sit inside a sentence as a run of text."
       ],
       "theming": {
-        "classProps": [
-          {
-            "name": "className",
-            "on": "",
-            "description": "Classes for the trigger\\'s text, to match the text around it."
-          }
-        ],
+        "classProps": [],
         "tokens": [
           "--shadow-raised",
           "--radius-container"
         ],
         "roles": [
           "focus",
-          "line-strong",
           "surface-overlay",
           "text"
         ]
@@ -8407,7 +8394,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "More, on rest",
-        "order": 7,
+        "order": 8,
         "page": {
           "lead": "Use a hover card to preview what a word names without leaving the page.",
           "hero": "Person",
@@ -8415,6 +8402,12 @@
             {
               "name": "Term",
               "title": "Beside the trigger, for a term in small text"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "InSentence",
+              "title": "On a link in a sentence"
             }
           ]
         }
@@ -8684,6 +8677,12 @@
           "default": "'md'"
         },
         {
+          "name": "edge",
+          "type": "ButtonEdge",
+          "required": false,
+          "description": "At the edge of a row: the square's inset hangs past that side, so the icon's drawing lines up with the content edge."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -8886,6 +8885,250 @@
             {
               "name": "InRows",
               "title": "At the end of a row, named with the row it acts on"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "InfoTip",
+      "import": "@liulidesign/core/InfoTip",
+      "exports": [
+        "InfoTip"
+      ],
+      "category": "overlays",
+      "status": "preview",
+      "since": "2026-11-12",
+      "summary": "An info button that opens a short note about what is beside it",
+      "description": "InfoTip explains something the screen cannot say in place: why a limit applies, what a term means. It opens on a press (a tap, Enter or Space), not on hover or focus, so it works the same with touch, mouse and keyboard. To name an icon button in words, use Tooltip.",
+      "keywords": [
+        "infotip",
+        "toggletip",
+        "tooltip",
+        "info",
+        "help",
+        "hint",
+        "explain",
+        "popover",
+        "note"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The info button's name: what the note is about (\"About storage\")."
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "required": true,
+          "description": "The note: one or two short sentences."
+        },
+        {
+          "name": "placement",
+          "type": "InfoTipPlacement",
+          "required": false,
+          "description": "Which side of the button the note opens on.",
+          "default": "'top'"
+        },
+        {
+          "name": "size",
+          "type": "InfoTipSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "Controlled open state; pass `onOpenChange` with it."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "((isOpen: boolean) => void)",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the info button; the note gets `<testid>-content`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "trigger": "button",
+        "icon": "vector",
+        "bubble": "view",
+        "text": "text"
+      },
+      "accessibility": {
+        "pattern": "button",
+        "name": "label",
+        "description": [
+          "the note, while open"
+        ],
+        "states": [
+          {
+            "state": "expanded",
+            "from": "isOpen, or a press"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Enter, Space",
+            "effect": "Opens or closes the note; focus alone does not open it."
+          },
+          {
+            "keys": "Escape",
+            "effect": "Closes it."
+          }
+        ],
+        "target": {
+          "sm": 32,
+          "md": 40
+        },
+        "contrast": [
+          {
+            "what": "note text",
+            "pair": [
+              "surface",
+              "text"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "info glyph",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "A tap anywhere else closes the note, and that tap reaches nothing else.",
+          "Put only words in the note; anything to press belongs in a DropdownMenu or a Dialog."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Storage",
+          "title": "Beside the thing it explains",
+          "source": "import { InfoTip } from '@liulidesign/core/InfoTip';\n\n/** Beside the thing it explains. */\nexport function Storage() {\n  return (\n    <view className=\"flex-row items-center gap-1\">\n      <text className=\"text-body text-text\">Storage used: 9.6 of 10 GB</text>\n      <InfoTip label=\"About storage\" content=\"Attachments count toward storage. Notes themselves do not.\" data-testid=\"storage\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Below",
+          "title": "Opening below",
+          "source": "import { InfoTip } from '@liulidesign/core/InfoTip';\n\n/** Below the button, where there is no room above. */\nexport function Below() {\n  return (\n    <view className=\"flex-row items-center gap-1\">\n      <text className=\"text-body text-text\">Two-step sign-in</text>\n      <InfoTip label=\"About two-step sign-in\" content=\"A code from your phone, on top of your password.\" placement=\"bottom\" data-testid=\"two-step\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "InForm",
+          "title": "Next to a field label",
+          "source": "import { InfoTip } from '@liulidesign/core/InfoTip';\n\n/** Next to a field label, for what the label cannot say. */\nexport function InForm() {\n  return (\n    <view className=\"gap-1.5\">\n      <view className=\"flex-row items-center gap-0.5\">\n        <text className=\"text-footnote font-medium text-text\">Workspace URL</text>\n        <InfoTip label=\"About the workspace URL\" content=\"People you invite open this address. You can change it once a month.\" size=\"sm\" data-testid=\"url\" />\n      </view>\n      <view className=\"min-h-control-md justify-center px-3 rounded-control border border-line-strong bg-surface\">\n        <text className=\"text-body text-text\">notes.example.com/atlas</text>\n      </view>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { InfoTip } from '@liulidesign/core/InfoTip';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <InfoTip label=\"Small\" content=\"Small.\" size=\"sm\" />\n      <InfoTip label=\"Medium\" content=\"Medium.\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Beside",
+          "title": "Beside the button",
+          "source": "import { InfoTip } from '@liulidesign/core/InfoTip';\n\n/** Beside its button, where the note would cover what is above and below. */\nexport function Beside() {\n  return (\n    <view className=\"flex-row items-center gap-1\">\n      <text className=\"text-body text-text\">Sync</text>\n      <InfoTip label=\"About sync\" content=\"Notes are sent when you are online.\" placement=\"end\" size=\"sm\" data-testid=\"side\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "A note beside its button, at the start or end side.",
+          "needs": "side values for a popover's `positionArea` (`inline-end`, `inline-start`)",
+          "today": "Above or below the button."
+        },
+        {
+          "missing": "A live trigger shown pressed in the gallery.",
+          "needs": "a way to hold a view in a forced state (pressed, open) for display",
+          "today": "The pressed and open pictures are still drawings."
+        }
+      ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-footnote",
+          "--shadow-raised",
+          "--radius-control"
+        ],
+        "roles": [
+          "focus",
+          "surface",
+          "text",
+          "text-muted"
+        ]
+      },
+      "related": [
+        "Tooltip",
+        "DropdownMenu",
+        "Dialog"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A note on demand",
+        "order": 4,
+        "page": {
+          "lead": "Use an info tip for a short note that explains what is beside it. Tap the info button to open it.",
+          "hero": "Storage",
+          "parts": {
+            "name": "Parts",
+            "title": "The note over its button"
+          },
+          "variants": [
+            {
+              "name": "Below",
+              "title": "Opening below, where there is no room above"
+            },
+            {
+              "name": "Beside",
+              "title": "At the side of the button"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateClosed",
+              "title": "Closed"
+            },
+            {
+              "name": "StatePressed",
+              "title": "Pressed"
+            },
+            {
+              "name": "StateOpen",
+              "title": "Open"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small and medium"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "InForm",
+              "title": "Next to a field label"
             }
           ]
         }
@@ -10049,7 +10292,7 @@
         {
           "name": "Phones",
           "title": "Rows of two controls, between one and four",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Select } from '@liulidesign/core/Select';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { ListInput } from '@liulidesign/core/ListInput';\n\nconst kinds = [{ value: 'mobile', label: 'Mobile' }, { value: 'home', label: 'Home' }, { value: 'work', label: 'Work' }];\n\n/** Phone numbers: each row is a kind and a number; one row always stays, and four is the most. */\nexport function Phones() {\n  const phones = useLocal<readonly Phone[]>('phones', [\n    { id: 'p1', kind: 'mobile', number: '912 345 678' },\n    { id: 'p2', kind: 'work', number: '' },\n  ]);\n  const next = useLocal('next', 3);\n  const change = (index: number, patch: Partial<Phone>) => phones.set(phones.value.map((phone, at) => (at === index ? { ...phone, ...patch } : phone)));\n  return (\n    <ListInput\n      label=\"Phone numbers\"\n      description=\"We call only about a delivery.\"\n      rowKeys={phones.value.map(phone => phone.id)}\n      renderRow={index => (\n        <view className=\"flex-row gap-2\">\n          <Select label={`Kind of phone ${index + 1}`} isLabelHidden items={kinds} value={phones.value[index].kind} onChange={kind => change(index, { kind })} className=\"w-28\" />\n          <TextInput label={`Phone ${index + 1}`} isLabelHidden type=\"tel\" placeholder=\"Number\" value={phones.value[index].number} onChange={number => change(index, { number })} className=\"grow basis-0\" data-testid={`phone-${index + 1}`} />\n        </view>\n      )}\n      onAdd={() => { phones.set([...phones.value, { id: `p${next.value}`, kind: 'mobile', number: '' }]); next.set(next.value + 1); }}\n      addLabel=\"Add a phone number\"\n      onRemove={index => phones.set(phones.value.filter((_, at) => at !== index))}\n      removeLabel={index => `Remove phone ${index + 1}`}\n      min={1}\n      max={4}\n      data-testid=\"phones\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Select } from '@liulidesign/core/Select';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { ListInput } from '@liulidesign/core/ListInput';\n\nconst kinds = [{ value: 'mobile', label: 'Mobile' }, { value: 'home', label: 'Home' }, { value: 'work', label: 'Work' }];\n\n/** Phone numbers: each row is a kind and a number; one row always stays, and four is the most. */\nexport function Phones() {\n  const phones = useLocal<readonly Phone[]>('phones', [\n    { id: 'p1', kind: 'mobile', number: '912 345 678' },\n    { id: 'p2', kind: 'work', number: '' },\n  ]);\n  const next = useLocal('next', 3);\n  const change = (index: number, patch: Partial<Phone>) => phones.set(phones.value.map((phone, at) => (at === index ? { ...phone, ...patch } : phone)));\n  return (\n    <ListInput\n      label=\"Phone numbers\"\n      description=\"We call only about a delivery.\"\n      rowKeys={phones.value.map(phone => phone.id)}\n      renderRow={index => (\n        // At large text the kind keeps its words whole and the number wraps under it.\n        <view className=\"flex-row flex-wrap gap-2\">\n          <Select label={`Kind of phone ${index + 1}`} isLabelHidden items={kinds} value={phones.value[index].kind} onChange={kind => change(index, { kind })} className=\"min-w-28\" />\n          <TextInput label={`Phone ${index + 1}`} isLabelHidden type=\"tel\" placeholder=\"Number\" value={phones.value[index].number} onChange={number => change(index, { number })} className=\"grow basis-32\" data-testid={`phone-${index + 1}`} />\n        </view>\n      )}\n      onAdd={() => { phones.set([...phones.value, { id: `p${next.value}`, kind: 'mobile', number: '' }]); next.set(next.value + 1); }}\n      addLabel=\"Add a phone number\"\n      onRemove={index => phones.set(phones.value.filter((_, at) => at !== index))}\n      removeLabel={index => `Remove phone ${index + 1}`}\n      min={1}\n      max={4}\n      data-testid=\"phones\"\n    />\n  );\n}"
         },
         {
           "name": "Links",
@@ -12200,8 +12443,8 @@
       "category": "overlays",
       "status": "preview",
       "since": "2026-11-13",
-      "summary": "A button that opens a panel of content above or below it, closed by a tap outside",
-      "description": "Popover shows a small panel beside the button that opened it: view options, a share link, a short form. It is not modal; a tap outside, Escape or back closes it and focus goes back to the button. For a list of actions use DropdownMenu; for a note about something use Tooltip; for a decision use Dialog.",
+      "summary": "A panel of content that opens beside its trigger, closed by a tap outside",
+      "description": "Popover shows a small panel, its `content`, beside the trigger that opened it: view options, a share link, a short form. Its children are the trigger, a Button or IconButton, or any element, which is wrapped in a plain button. It is not modal; a tap outside, Escape or back closes it and focus goes back to the trigger. For a list of actions use DropdownMenu; for a note about something use InfoTip; for a decision use Dialog.",
       "keywords": [
         "popover",
         "popup",
@@ -12214,49 +12457,28 @@
       ],
       "props": [
         {
+          "name": "children",
+          "type": "Child",
+          "required": true,
+          "description": "The trigger: a Button, an IconButton or any element, which is then wrapped in a plain button."
+        },
+        {
+          "name": "content",
+          "type": "Child",
+          "required": true,
+          "description": "The panel's content: a few lines, a short form, a handful of controls."
+        },
+        {
           "name": "label",
           "type": "string",
           "required": true,
-          "description": "The trigger's text and accessible name; the panel's name too, unless `title` is set."
+          "description": "The panel's accessible name, unless `title` is set."
         },
         {
           "name": "title",
           "type": "string",
           "required": false,
           "description": "A heading at the top of the panel, and its accessible name."
-        },
-        {
-          "name": "children",
-          "type": "Child",
-          "required": true,
-          "description": "The panel's content: a few lines, a short form, a handful of controls."
-        },
-        {
-          "name": "isLabelHidden",
-          "type": "boolean",
-          "required": false,
-          "description": "Draws only `icon` on a square trigger; `label` stays the name.",
-          "default": "false"
-        },
-        {
-          "name": "icon",
-          "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"checklist\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"click\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"compass\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"layers\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"palette\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"rows\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"stop\" | \"success\" | \"tag\" | \"template\" | \"text-input\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
-          "required": false,
-          "description": "An icon from the set, on the trigger before the label."
-        },
-        {
-          "name": "variant",
-          "type": "ButtonVariant",
-          "required": false,
-          "description": "The trigger's look, from Button.",
-          "default": "'secondary'"
-        },
-        {
-          "name": "size",
-          "type": "ButtonSize",
-          "required": false,
-          "description": "",
-          "default": "'md'"
         },
         {
           "name": "placement",
@@ -12285,19 +12507,6 @@
           "description": ""
         },
         {
-          "name": "isDisabled",
-          "type": "boolean",
-          "required": false,
-          "description": "",
-          "default": "false"
-        },
-        {
-          "name": "className",
-          "type": "string",
-          "required": false,
-          "description": "Classes for the trigger."
-        },
-        {
           "name": "panelClassName",
           "type": "string",
           "required": false,
@@ -12307,7 +12516,7 @@
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": "On the trigger; the panel gets `<testid>-panel`."
+          "description": "On the panel, as `<testid>-panel`, and on a wrapped trigger."
         }
       ],
       "otherProps": {},
@@ -12368,17 +12577,22 @@
         {
           "name": "ViewOptions",
           "title": "View options under the trigger",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Switch } from '@liulidesign/core/Switch';\nimport { Popover } from '@liulidesign/core/Popover';\n\n/** View options for a list: switches that apply at once, in a panel under the trigger. */\nexport function ViewOptions() {\n  const previews = useLocal('previews', true);\n  const dates = useLocal('dates', false);\n  return (\n    <view className=\"gap-3\">\n      <Popover label=\"View options\" title=\"Show in the list\" data-testid=\"options\">\n        <Switch bind={previews} label=\"Previews\" size=\"sm\" data-testid=\"previews\" />\n        <Switch bind={dates} label=\"Dates\" size=\"sm\" data-testid=\"dates\" />\n      </Popover>\n      <text className=\"text-footnote text-muted\" data-testid=\"summary\">\n        {[previews.value && 'Previews', dates.value && 'Dates'].filter(Boolean).join(' and ') || 'Titles only'}\n      </text>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Switch } from '@liulidesign/core/Switch';\nimport { Popover } from '@liulidesign/core/Popover';\n\n/** View options for a list: switches that apply at once, in a panel under the trigger. */\nexport function ViewOptions() {\n  const previews = useLocal('previews', true);\n  const dates = useLocal('dates', false);\n  return (\n    <view className=\"gap-3\">\n      <Popover\n        label=\"View options\"\n        title=\"Show in the list\"\n        content={<>\n          <Switch bind={previews} label=\"Previews\" size=\"sm\" data-testid=\"previews\" />\n          <Switch bind={dates} label=\"Dates\" size=\"sm\" data-testid=\"dates\" />\n        </>}\n        data-testid=\"options\"\n      >\n        <Button label=\"View options\" data-testid=\"options\" />\n      </Popover>\n      <text className=\"text-footnote text-muted\" data-testid=\"summary\">\n        {[previews.value && 'Previews', dates.value && 'Dates'].filter(Boolean).join(' and ') || 'Titles only'}\n      </text>\n    </view>\n  );\n}"
         },
         {
           "name": "Share",
           "title": "A share link above the trigger",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Popover } from '@liulidesign/core/Popover';\n\n/** Sharing a note: the link and one action, opening above a trigger that sits low on the page. */\nexport function Share() {\n  const copied = useLocal('copied', false);\n  return (\n    <view className=\"items-end\">\n      <Popover label=\"Share\" title=\"Anyone with the link can view\" placement=\"top\" alignment=\"end\" variant=\"primary\" data-testid=\"share\">\n        <text className=\"text-footnote text-muted select-text\">notes.example.com/s/q3-plan</text>\n        <Button label={copied.value ? 'Copied' : 'Copy link'} size=\"sm\" width=\"content\" onClick={() => copied.set(true)} data-testid=\"copy\" />\n      </Popover>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Popover } from '@liulidesign/core/Popover';\n\n/** Sharing a note: the link and one action, opening above a trigger that sits low on the page. */\nexport function Share() {\n  const copied = useLocal('copied', false);\n  return (\n    <view className=\"items-end\">\n      <Popover\n        label=\"Share\"\n        title=\"Anyone with the link can view\"\n        placement=\"top\"\n        alignment=\"end\"\n        content={<>\n          <text className=\"text-footnote text-muted select-text\">notes.example.com/s/q3-plan</text>\n          <Button label={copied.value ? 'Copied' : 'Copy link'} size=\"sm\" width=\"content\" onClick={() => copied.set(true)} data-testid=\"copy\" />\n        </>}\n        data-testid=\"share\"\n      >\n        <Button label=\"Share\" variant=\"primary\" data-testid=\"share\" />\n      </Popover>\n    </view>\n  );\n}"
         },
         {
           "name": "Beside",
           "title": "Beside the trigger",
-          "source": "import { Popover } from '@liulidesign/core/Popover';\n\n/** Beside its trigger: a tool at the edge of a canvas opens its options at its side. */\nexport function Beside() {\n  return (\n    <view className=\"items-start gap-2\">\n      <Popover label=\"Line\" title=\"Line\" placement=\"end\" data-testid=\"beside\">\n        <text className=\"text-footnote text-muted\">Weight and style for the shapes you draw next.</text>\n      </Popover>\n    </view>\n  );\n}"
+          "source": "import { Button } from '@liulidesign/core/Button';\nimport { Popover } from '@liulidesign/core/Popover';\n\n/** Beside its trigger: a tool at the edge of a canvas opens its options at its side. */\nexport function Beside() {\n  return (\n    <view className=\"items-start gap-2\">\n      <Popover label=\"Line\" title=\"Line\" placement=\"end\" content={<text className=\"text-footnote text-muted\">Weight and style for the shapes you draw next.</text>} data-testid=\"beside\">\n        <Button label=\"Line\" data-testid=\"beside\" />\n      </Popover>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "InSentence",
+          "title": "On a link in a sentence",
+          "source": "import { Popover } from '@liulidesign/core/Popover';\nimport { Link } from '@liulidesign/core/Link';\n\n/** On a link in a sentence: the panel opens from the linked words, which stay in their line. */\nexport function InSentence() {\n  return (\n    <text className=\"text-body text-text\">\n      Your parcel arrives{' '}\n      <Popover label=\"Delivery window\" content={<text className=\"text-footnote text-text\">Sunday between 18:00 and 20:00. Someone needs to be in to sign.</text>} data-testid=\"window\">\n        <Link label=\"on Sunday\" data-testid=\"window-link\" />\n      </Popover>\n      , at the front door.\n    </text>\n  );\n}"
         }
       ],
       "gaps": [
@@ -12390,11 +12604,6 @@
       ],
       "theming": {
         "classProps": [
-          {
-            "name": "className",
-            "on": "",
-            "description": "Classes for the trigger."
-          },
           {
             "name": "panelClassName",
             "on": "",
@@ -12413,13 +12622,13 @@
       },
       "related": [
         "DropdownMenu",
-        "Tooltip",
+        "InfoTip",
         "Dialog"
       ],
       "gallery": {
         "specimen": "Specimen",
         "tagline": "A panel beside it",
-        "order": 5,
+        "order": 6,
         "page": {
           "lead": "Use a popover for a few controls or lines that belong to the button that opens them.",
           "hero": "ViewOptions",
@@ -12435,6 +12644,12 @@
             {
               "name": "Beside",
               "title": "At the side of the trigger; it flips or drops below when there is no room"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "InSentence",
+              "title": "On a link in a sentence"
             }
           ]
         }
@@ -13619,7 +13834,7 @@
       "status": "preview",
       "since": "2026-11-13",
       "summary": "One value from a few, as a row of segments with a thumb on the chosen one",
-      "description": "SegmentedControl sets one value from two to five short choices that fit a row: a unit, a theme, a sort order. It is a radio group drawn as equal segments, with a raised thumb that slides to the chosen one. It sets a value; to switch what a panel shows, use Tabs.",
+      "description": "SegmentedControl sets one value from two to five short choices that fit a row: a unit, a theme, a sort order. It is a radio group drawn as equal segments, with a raised thumb that slides to the chosen one. A label is never cut: a long one widens its segment, and when the row cannot hold them the segments stack. It sets a value; to switch what a panel shows, use Tabs.",
       "keywords": [
         "segmented control",
         "segments",
@@ -13659,7 +13874,7 @@
           "name": "items",
           "type": "readonly SegmentedOption[]",
           "required": true,
-          "description": "Two to five choices, in order; they share the row equally."
+          "description": "Two to five choices, in order; they share the row equally, and stack when it cannot hold them."
         },
         {
           "name": "size",
@@ -13759,11 +13974,6 @@
         }
       ],
       "gaps": [
-        {
-          "missing": "Segments as wide as their labels, with the thumb following.",
-          "needs": "a way to read a laid-out box's position and width from View, or a shared-element layout motion between siblings",
-          "today": "Segments share the row equally, so the thumb moves by a segment's width."
-        },
         {
           "missing": "Icon-only segments.",
           "needs": "an icon set for Liuli",
@@ -15815,7 +16025,9 @@
         "pairs": "view",
         "pair": "view",
         "pairHeading": "text",
-        "pairValue": "text"
+        "pairValue": "text",
+        "measure": "view",
+        "sample": "text"
       },
       "accessibility": {
         "pattern": null,
@@ -15872,7 +16084,7 @@
           "With `onChange` a row is one button read as all its cells in order, and reports selected when its key is `value`.",
           "A cell drawn by `cell` is still read as its text, so a badge's meaning must be in the field's value or `format`.",
           "Stacked or in columns, a record is read the same way: each field with its heading. Stacked, the heading row is not drawn, since every field is beside its own heading or leads the record.",
-          "`auto` stacks when a text column would be narrower than 88 points, or narrower than its longest value where that is shorter; the value's width is an estimate from its length, since text cannot be measured before layout.",
+          "`auto` stacks when a text column would be narrower than 11 characters, or than its longest value where that is shorter, or a number column narrower than its widest value. Characters and numbers are measured at the reader's text size, so larger text stacks sooner.",
           "A comfortable row is at least 44 px tall; a `compact` row is 36 px, for tables read with a mouse.",
           "The hairlines between rows are decoration with no contrast minimum."
         ]
@@ -16005,7 +16217,7 @@
       "status": "preview",
       "since": "2026-11-12",
       "summary": "A row of tabs over one panel, as an underline or a segmented control",
-      "description": "Tabs switch one area between a few peers: sections of a page, or modes of one view. The tabs share the row equally, and a single indicator slides to the chosen one.",
+      "description": "Tabs switch one area between a few peers: sections of a page, or modes of one view. The tabs share the row equally, and a single indicator slides to the chosen one. No label is cut: a tab is never narrower than its label, and a row that cannot hold them scrolls.",
       "keywords": [
         "tabs",
         "tab bar",
@@ -17776,12 +17988,12 @@
         {
           "name": "Countdown",
           "title": "A countdown",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Timer } from '@liulidesign/core/Timer';\n\n/** A countdown the app runs: here each press takes fifteen seconds off. */\nexport function Countdown() {\n  const left = useLocal('left', 125);\n  return (\n    <view className=\"items-start gap-3\">\n      <Timer seconds={left.value} size=\"lg\" label={`${Math.floor(left.value / 60)} minutes ${left.value % 60} seconds left`} data-testid=\"countdown\" />\n      <view className=\"flex-row gap-2\">\n        <Button label=\"Skip 15 seconds\" onClick={() => left.set(Math.max(0, left.value - 15))} data-testid=\"skip\" />\n        <Button label=\"Reset\" variant=\"ghost\" onClick={() => left.set(125)} />\n      </view>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Timer } from '@liulidesign/core/Timer';\n\n/** A countdown the app runs: here each press takes fifteen seconds off. */\nexport function Countdown() {\n  const left = useLocal('left', 125);\n  return (\n    <view className=\"items-start gap-3\">\n      <Timer seconds={left.value} size=\"lg\" label={`${Math.floor(left.value / 60)} minutes ${left.value % 60} seconds left`} data-testid=\"countdown\" />\n      <view className=\"flex-row flex-wrap gap-2\">\n        <Button label=\"Skip 15 seconds\" onClick={() => left.set(Math.max(0, left.value - 15))} data-testid=\"skip\" />\n        <Button label=\"Reset\" variant=\"ghost\" onClick={() => left.set(125)} />\n      </view>\n    </view>\n  );\n}"
         },
         {
           "name": "Inline",
           "title": "In a line of text",
-          "source": "import { Timer } from '@liulidesign/core/Timer';\n\n/** In a line of text: how long a code stays valid, how long a call has run. */\nexport function Inline() {\n  return (\n    <view className=\"gap-2\">\n      <view className=\"flex-row items-baseline gap-1.5\">\n        <text className=\"text-footnote text-muted\">Code expires in</text>\n        <Timer seconds={272} size=\"sm\" data-testid=\"expires\" />\n      </view>\n      <view className=\"flex-row items-baseline gap-1.5\">\n        <text className=\"text-body text-text\">On a call</text>\n        <Timer seconds={4325} data-testid=\"call\" />\n      </view>\n    </view>\n  );\n}"
+          "source": "import { Timer } from '@liulidesign/core/Timer';\n\n/** In a line of text: how long a code stays valid, how long a call has run. */\nexport function Inline() {\n  return (\n    <view className=\"gap-2\">\n      <view className=\"flex-row flex-wrap items-baseline gap-x-1.5\">\n        <text className=\"text-footnote text-muted\">Code expires in</text>\n        <Timer seconds={272} size=\"sm\" data-testid=\"expires\" />\n      </view>\n      <view className=\"flex-row flex-wrap items-baseline gap-x-1.5\">\n        <text className=\"text-body text-text\">On a call</text>\n        <Timer seconds={4325} data-testid=\"call\" />\n      </view>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -18834,240 +19046,152 @@
       ],
       "category": "overlays",
       "status": "preview",
-      "since": "2026-11-12",
-      "summary": "An info button that opens a short note about what is beside it",
-      "description": "Tooltip explains something the screen cannot say in place: why a limit applies, what a term means. Today it opens on a press (a tap, Enter or Space), not on hover or focus, so it works the same with touch, mouse and keyboard.",
+      "since": "2026-11-18",
+      "summary": "A short hint naming its trigger, shown on hover, focus or a long press",
+      "description": "Tooltip wraps a trigger, usually an IconButton, and shows its name in words while a pointer rests on it or keyboard focus is on it. On a phone it shows on a long press and hides 1.5 s after release, never on a tap, so the tap still presses the trigger. For a note someone opens on purpose, use InfoTip.",
       "keywords": [
         "tooltip",
-        "toggletip",
-        "info",
-        "help",
         "hint",
-        "explain",
-        "popover",
-        "note"
+        "hover",
+        "label",
+        "icon button",
+        "title"
       ],
       "props": [
         {
-          "name": "label",
-          "type": "string",
+          "name": "children",
+          "type": "Child",
           "required": true,
-          "description": "The info button's name: what the note is about (\"About storage\")."
+          "description": "The trigger, usually an IconButton; any other element is wrapped in a plain button."
         },
         {
           "name": "content",
           "type": "string",
           "required": true,
-          "description": "The note: one or two short sentences."
+          "description": "The hint: the trigger's own name in words, a few at most. It never says what the trigger's label lacks."
         },
         {
           "name": "placement",
           "type": "TooltipPlacement",
           "required": false,
-          "description": "Which side of the button the note opens on.",
+          "description": "Which side of the trigger the hint opens on.",
           "default": "'top'"
-        },
-        {
-          "name": "size",
-          "type": "TooltipSize",
-          "required": false,
-          "description": "",
-          "default": "'md'"
-        },
-        {
-          "name": "isOpen",
-          "type": "boolean",
-          "required": false,
-          "description": "Controlled open state; pass `onOpenChange` with it."
-        },
-        {
-          "name": "onOpenChange",
-          "type": "((isOpen: boolean) => void)",
-          "required": false,
-          "description": ""
-        },
-        {
-          "name": "className",
-          "type": "string",
-          "required": false,
-          "description": ""
         },
         {
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": "On the info button; the note gets `<testid>-content`."
+          "description": "On a wrapped trigger; the hint gets `<testid>-content`."
         }
       ],
       "otherProps": {},
       "parts": {
-        "trigger": "button",
-        "icon": "vector",
         "bubble": "view",
         "text": "text"
       },
       "accessibility": {
-        "pattern": "button",
-        "name": "label",
+        "pattern": null,
+        "name": null,
         "description": [
-          "the note, while open"
+          "the hint, while shown"
         ],
-        "states": [
-          {
-            "state": "expanded",
-            "from": "isOpen, or a press"
-          }
-        ],
+        "states": [],
         "keyboard": [
           {
-            "keys": "Enter, Space",
-            "effect": "Opens or closes the note; focus alone does not open it."
+            "keys": "Tab",
+            "effect": "Focus on the trigger shows the hint; leaving it hides it."
           },
           {
             "keys": "Escape",
-            "effect": "Closes it."
+            "effect": "Hides the hint; focus stays on the trigger."
           }
         ],
-        "target": {
-          "sm": 32,
-          "md": 40
-        },
         "contrast": [
           {
-            "what": "note text",
+            "what": "hint text",
             "pair": [
               "surface",
               "text"
             ],
             "minimum": "4.5:1"
-          },
-          {
-            "what": "info glyph",
-            "pair": [
-              "text-muted",
-              "surface"
-            ],
-            "minimum": "3:1"
           }
         ],
         "notes": [
-          "A tap anywhere else closes the note, and that tap reaches nothing else.",
-          "Put only words in the note; anything to press belongs in a DropdownMenu or a Dialog."
+          "The trigger keeps its own name; the hint repeats it in words and never says what that name lacks.",
+          "A Button, IconButton or ToggleButton takes the hint itself; any other element is wrapped in one plain button, one focus stop."
         ]
       },
       "examples": [
         {
-          "name": "Storage",
-          "title": "Beside the thing it explains",
-          "source": "import { Tooltip } from '@liulidesign/core/Tooltip';\n\n/** Beside the thing it explains. */\nexport function Storage() {\n  return (\n    <view className=\"flex-row items-center gap-1\">\n      <text className=\"text-body text-text\">Storage used: 9.6 of 10 GB</text>\n      <Tooltip label=\"About storage\" content=\"Attachments count toward storage. Notes themselves do not.\" data-testid=\"storage\" />\n    </view>\n  );\n}"
+          "name": "Toolbar",
+          "title": "On icon buttons",
+          "source": "import { IconButton } from '@liulidesign/core/IconButton';\nimport { Tooltip } from '@liulidesign/core/Tooltip';\n\n/** A toolbar of icon buttons: each hint says the button's name in words. */\nexport function Toolbar() {\n  return (\n    <view className=\"flex-row items-center gap-1\">\n      <Tooltip content=\"Undo\" data-testid=\"undo\"><IconButton label=\"Undo\" icon=\"undo\" data-testid=\"undo\" /></Tooltip>\n      <Tooltip content=\"Redo\"><IconButton label=\"Redo\" icon=\"redo\" /></Tooltip>\n      <Tooltip content=\"Share\"><IconButton label=\"Share\" icon=\"share\" /></Tooltip>\n    </view>\n  );\n}"
         },
         {
           "name": "Below",
           "title": "Opening below",
-          "source": "import { Tooltip } from '@liulidesign/core/Tooltip';\n\n/** Below the button, where there is no room above. */\nexport function Below() {\n  return (\n    <view className=\"flex-row items-center gap-1\">\n      <text className=\"text-body text-text\">Two-step sign-in</text>\n      <Tooltip label=\"About two-step sign-in\" content=\"A code from your phone, on top of your password.\" placement=\"bottom\" data-testid=\"two-step\" />\n    </view>\n  );\n}"
+          "source": "import { IconButton } from '@liulidesign/core/IconButton';\nimport { Tooltip } from '@liulidesign/core/Tooltip';\n\n/** Below the trigger, where there is no room above. */\nexport function Below() {\n  return (\n    <view className=\"flex-row\">\n      <Tooltip content=\"Print\" placement=\"bottom\" data-testid=\"print\"><IconButton label=\"Print\" icon=\"print\" data-testid=\"print\" /></Tooltip>\n    </view>\n  );\n}"
         },
         {
-          "name": "InForm",
-          "title": "Next to a field label",
-          "source": "import { Tooltip } from '@liulidesign/core/Tooltip';\n\n/** Next to a field label, for what the label cannot say. */\nexport function InForm() {\n  return (\n    <view className=\"gap-1.5\">\n      <view className=\"flex-row items-center gap-0.5\">\n        <text className=\"text-footnote font-medium text-text\">Workspace URL</text>\n        <Tooltip label=\"About the workspace URL\" content=\"People you invite open this address. You can change it once a month.\" size=\"sm\" data-testid=\"url\" />\n      </view>\n      <view className=\"min-h-control-md justify-center px-3 rounded-control border border-line-strong bg-surface\">\n        <text className=\"text-body text-text\">notes.example.com/atlas</text>\n      </view>\n    </view>\n  );\n}"
+          "name": "OnWords",
+          "title": "On words",
+          "source": "import { Tooltip } from '@liulidesign/core/Tooltip';\n\n/** Words as the trigger: wrapped in one plain button, a single focus stop. */\nexport function OnWords() {\n  return (\n    <view className=\"flex-row\">\n      <Tooltip content=\"Last synced 2 minutes ago\" data-testid=\"synced\"><text className=\"text-footnote text-muted\">Synced</text></Tooltip>\n    </view>\n  );\n}"
         },
         {
-          "name": "Sizes",
-          "title": "Sizes",
-          "source": "import { Tooltip } from '@liulidesign/core/Tooltip';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <Tooltip label=\"Small\" content=\"Small.\" size=\"sm\" />\n      <Tooltip label=\"Medium\" content=\"Medium.\" />\n    </view>\n  );\n}"
-        },
-        {
-          "name": "Beside",
-          "title": "Beside the button",
-          "source": "import { Tooltip } from '@liulidesign/core/Tooltip';\n\n/** Beside its button, where the note would cover what is above and below. */\nexport function Beside() {\n  return (\n    <view className=\"flex-row items-center gap-1\">\n      <text className=\"text-body text-text\">Sync</text>\n      <Tooltip label=\"About sync\" content=\"Notes are sent when you are online.\" placement=\"end\" size=\"sm\" data-testid=\"side\" />\n    </view>\n  );\n}"
+          "name": "InSentence",
+          "title": "On a link in a sentence",
+          "source": "import { Tooltip } from '@liulidesign/core/Tooltip';\nimport { Link } from '@liulidesign/core/Link';\n\n/** On a link in a sentence: the hint spells out the short name the link shows. */\nexport function InSentence() {\n  return (\n    <text className=\"text-body text-text\">\n      Shipped by{' '}\n      <Tooltip content=\"United Parcel Service\">\n        <Link label=\"UPS\" data-testid=\"carrier-link\" />\n      </Tooltip>\n      {' '}this morning.\n    </text>\n  );\n}"
         }
       ],
       "gaps": [
         {
-          "missing": "A note beside its button, at the start or end side.",
-          "needs": "side values for a popover's `positionArea` (`inline-end`, `inline-start`)",
-          "today": "Above or below the button."
-        },
-        {
-          "missing": "Opening on hover with a mouse, after a short delay, and on keyboard focus.",
-          "needs": "a hint popover that a tap elsewhere closes, as a light-dismiss popover does",
-          "today": "The note opens on a press only."
-        },
-        {
-          "missing": "A live trigger shown pressed in the gallery.",
-          "needs": "a way to hold a view in a forced state (pressed, open) for display",
-          "today": "The pressed and open pictures are still drawings."
+          "missing": "Showing on a long press on a phone and hiding 1.5 s after release, never on a tap; where a ContextMenu shares the trigger, the long press opens the menu instead.",
+          "needs": "a hint popover that interest shows on a long press on touch",
+          "today": "Shown by the View's interest: a pointer resting or keyboard focus."
         }
       ],
       "theming": {
-        "classProps": [
-          {
-            "name": "className",
-            "on": "",
-            "description": ""
-          }
-        ],
+        "classProps": [],
         "tokens": [
           "--text-footnote",
           "--shadow-raised",
           "--radius-control"
         ],
         "roles": [
-          "focus",
           "surface",
-          "text",
-          "text-muted"
+          "text"
         ]
       },
       "related": [
-        "DropdownMenu",
-        "Dialog"
+        "InfoTip",
+        "IconButton",
+        "HoverCard"
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "A note on demand",
+        "tagline": "A hint on hover",
         "order": 3,
         "page": {
-          "lead": "Use a tooltip for a short note that explains what is beside it. Tap the info button to open it.",
-          "hero": "Storage",
+          "lead": "Use a tooltip to name an icon button in words. Rest a pointer on the button, or long-press it on a phone.",
+          "hero": "Toolbar",
           "parts": {
             "name": "Parts",
-            "title": "The note over its button"
+            "title": "The hint"
           },
           "variants": [
             {
               "name": "Below",
               "title": "Opening below, where there is no room above"
-            },
-            {
-              "name": "Beside",
-              "title": "At the side of the button"
-            }
-          ],
-          "states": [
-            {
-              "name": "StateClosed",
-              "title": "Closed"
-            },
-            {
-              "name": "StatePressed",
-              "title": "Pressed"
-            },
-            {
-              "name": "StateOpen",
-              "title": "Open"
-            }
-          ],
-          "sizes": [
-            {
-              "name": "Sizes",
-              "title": "Small and medium"
             }
           ],
           "inContext": [
             {
-              "name": "InForm",
-              "title": "Next to a field label"
+              "name": "OnWords",
+              "title": "On words: wrapped in one plain button"
+            },
+            {
+              "name": "InSentence",
+              "title": "On a link in a sentence"
             }
           ]
         }
@@ -19205,7 +19329,7 @@
         {
           "name": "Welcome",
           "title": "Three steps",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { Tour, type TourStep } from '@liulidesign/core/Tour';\n\nconst steps: TourStep[] = [\n  { target: 'tour-new', targetLabel: 'The New note button', title: 'Start a note', text: 'A note opens ready to type, and saves as you go.' },\n  { target: 'tour-search', targetLabel: 'The search field', title: 'Find anything', text: 'Search reads every note, list and photo.' },\n  { target: 'tour-share', targetLabel: 'The Share button', title: 'Share what you choose', text: 'A note is private until you invite someone.', placement: 'top' },\n];\n\n/** Three things on a small screen, shown one at a time; the tour can be skipped or stepped back. */\nexport function Welcome() {\n  const step = useLocal<number | null>('step', null);\n  const query = useLocal('query', '');\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-4\">\n          <view className=\"flex-row items-center gap-2\">\n            <view id=\"tour-new\"><Button label=\"New note\" variant=\"primary\" startIcon=\"add\" onClick={() => say('Created a note')} /></view>\n            <view id=\"tour-search\" className=\"grow basis-0 min-w-0\">\n              <SearchField label=\"Search notes\" isLabelHidden value={query.value} onChange={query.set} placeholder=\"Search\" clearLabel=\"Clear\" />\n            </view>\n          </view>\n          <view className=\"flex-row items-center justify-between gap-3\">\n            <text className=\"text-body text-text\">Trip to the coast</text>\n            <view id=\"tour-share\"><IconButton label=\"Share\" icon=\"share\" onClick={() => say('Shared Trip to the coast')} /></view>\n          </view>\n          <Button label=\"Show me around\" width=\"content\" onClick={() => step.set(0)} data-testid=\"tour-start\" />\n          {step.value !== null && <text role=\"status\" className=\"text-footnote text-muted\">{`On step ${step.value + 1}`}</text>}\n          <Tour\n            steps={steps}\n            value={step.value}\n            onChange={next => step.set(next)}\n            nextLabel=\"Next\"\n            backLabel=\"Back\"\n            skipLabel=\"Skip\"\n            doneLabel=\"Done\"\n            stepLabel={(at, count) => `${at + 1} of ${count}`}\n            data-testid=\"tour\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { Tour, type TourStep } from '@liulidesign/core/Tour';\n\nconst steps: TourStep[] = [\n  { target: 'tour-new', targetLabel: 'The New note button', title: 'Start a note', text: 'A note opens ready to type, and saves as you go.' },\n  { target: 'tour-search', targetLabel: 'The search field', title: 'Find anything', text: 'Search reads every note, list and photo.' },\n  { target: 'tour-share', targetLabel: 'The Share button', title: 'Share what you choose', text: 'A note is private until you invite someone.', placement: 'top' },\n];\n\n/** Three things on a small screen, shown one at a time; the tour can be skipped or stepped back. */\nexport function Welcome() {\n  const step = useLocal<number | null>('step', null);\n  const query = useLocal('query', '');\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-4\">\n          {/* At large text the field takes its own line rather than shrinking to its magnifier. */}\n          <view className=\"flex-row flex-wrap items-center gap-2\">\n            <view id=\"tour-new\"><Button label=\"New note\" variant=\"primary\" startIcon=\"add\" onClick={() => say('Created a note')} /></view>\n            <view id=\"tour-search\" className=\"grow basis-40\">\n              <SearchField label=\"Search notes\" isLabelHidden value={query.value} onChange={query.set} placeholder=\"Search\" clearLabel=\"Clear\" />\n            </view>\n          </view>\n          <view className=\"flex-row items-center justify-between gap-3\">\n            <text className=\"text-body text-text\">Trip to the coast</text>\n            <view id=\"tour-share\"><IconButton label=\"Share\" icon=\"share\" onClick={() => say('Shared Trip to the coast')} /></view>\n          </view>\n          <Button label=\"Show me around\" width=\"content\" onClick={() => step.set(0)} data-testid=\"tour-start\" />\n          {step.value !== null && <text role=\"status\" className=\"text-footnote text-muted\">{`On step ${step.value + 1}`}</text>}\n          <Tour\n            steps={steps}\n            value={step.value}\n            onChange={next => step.set(next)}\n            nextLabel=\"Next\"\n            backLabel=\"Back\"\n            skipLabel=\"Skip\"\n            doneLabel=\"Done\"\n            stepLabel={(at, count) => `${at + 1} of ${count}`}\n            data-testid=\"tour\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -19239,7 +19363,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "Point things out",
-        "order": 10,
+        "order": 11,
         "page": {
           "lead": "Use a tour to point out a few things the first time someone arrives.",
           "hero": "Welcome"

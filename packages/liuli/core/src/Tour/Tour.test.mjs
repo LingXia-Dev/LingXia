@@ -42,3 +42,10 @@ test('Welcome: a caret is anchored to the same target by itself, and is not read
   const callout = screen.getByTestId('tour');
   assert.equal(typeof callout.props.anchorTo, 'string', 'the callout hangs from the caret');
 });
+
+test('Welcome: the row around the search target wraps, so at large text the field takes its own line instead of shrinking', async () => {
+  const screen = await renderExample('Tour/Tour', 'Welcome');
+  const search = screen.queryAll(node => node.props.elementId === 'tour-search')[0];
+  assert.deepEqual([search.props.grow, search.props.flexBasis, search.props.minWidth], [1, 160, undefined]);
+  assert.equal(search.parent.props.flexWrap, 'wrap');
+});

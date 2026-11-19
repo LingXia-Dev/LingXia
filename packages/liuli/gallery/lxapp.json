@@ -73,6 +73,7 @@
     { "name": "dialog", "path": "pages/dialog/index" },
     { "name": "dropdown-menu", "path": "pages/dropdown-menu/index" },
     { "name": "tooltip", "path": "pages/tooltip/index" },
+    { "name": "info-tip", "path": "pages/info-tip/index" },
     { "name": "bottom-sheet", "path": "pages/bottom-sheet/index" },
     { "name": "popover", "path": "pages/popover/index" },
     { "name": "drawer", "path": "pages/drawer/index" },

@@ -5,10 +5,10 @@ export const doc: ComponentDoc = {
   category: 'overlays',
   status: 'preview',
   since: '2026-11-12',
-  summary: 'Button that opens a short menu of actions',
+  summary: 'A short menu of actions that opens from its trigger',
   description:
-    'DropdownMenu groups a few related actions behind one button: sort options, a "more" menu on a row, account actions. ' +
-    'Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu. ' +
+    'DropdownMenu groups a few related actions behind one trigger: sort options, a "more" menu on a row, account actions. ' +
+    'Its children are the trigger, a Button or IconButton; `menu` holds DropdownMenuItems and DropdownMenuDividers, and choosing an item runs its onClick and closes the menu. ' +
     'DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one ' +
     'choice; both keep the menu open.',
   keywords: ['dropdown', 'menu', 'more', 'overflow', 'kebab', 'actions', 'popover', 'context'],
@@ -16,7 +16,6 @@ export const doc: ComponentDoc = {
   otherPropsTypes: ['DropdownMenuItemProps', 'DropdownMenuCheckboxItemProps', 'DropdownMenuRadioGroupProps', 'DropdownMenuRadioItemProps'],
   recipe: { map: 'dropdownMenuRecipe', parts: 'dropdownMenuParts' },
   anatomy: [
-    { part: 'chevron', required: false, description: 'The trigger is a Button-styled popover invoker; the chevron marks it as opening a menu.' },
     { part: 'menu', required: true, description: 'A popover with the menu role, anchored to the trigger, in the top layer.' },
     { part: 'item', required: true, description: 'DropdownMenuItem: a menu item button with icon, label and description.' },
     { part: 'itemCheck', required: false, description: 'A check at the end of a checked checkbox or radio item; hidden from assistive tech.' },
@@ -31,7 +30,7 @@ export const doc: ComponentDoc = {
     states: [
       { state: 'expanded', from: 'the trigger, while the menu is open (set by the View)' },
       { state: 'checked', from: "a checkbox item's value; a radio item matching its group's value" },
-      { state: 'disabled', from: "isDisabled; an item's isDisabled" },
+      { state: 'disabled', from: "the trigger's isDisabled; an item's isDisabled" },
     ],
     keyboard: [
       { keys: 'Enter, Space on the trigger', effect: 'opens the menu on its first item' },
@@ -55,8 +54,11 @@ export const doc: ComponentDoc = {
   },
   guidance: {
     do: [
+      'At the end of a row, open it from a ghost Button with `edge="end"`: its padding hangs past the edge, so the chevron lines up with the values and badges in the rows around it.',
+      'Use a `Link` as the trigger for words in a sentence: put the overlay in the `<text>`, around the Link, and the panel opens from the linked words.',
       'Keep it to a handful of actions; put destructive ones last, after a divider.',
       'Use the end alignment for a trigger at the end of a row.',
+      'Give a labelled trigger the `chevron-down` end icon, so it reads as opening a menu.',
     ],
     dont: [
       'Use it to choose a value that should stay visible.',
@@ -70,8 +72,10 @@ export const doc: ComponentDoc = {
     { name: 'InList', title: 'A menu on every row' },
     { name: 'Value', title: 'A menu that sets a value' },
     { name: 'Checkable', title: 'Options and a choice, checked' },
+    { name: 'StateMixed', title: 'An item for a set, partly on' },
     { name: 'Grouped', title: 'Groups under headings' },
     { name: 'Submenu', title: 'A submenu' },
+    { name: 'InSentence', title: 'On a link in a sentence' },
   ],
   gaps: [
     {
@@ -109,8 +113,9 @@ export const doc: ComponentDoc = {
       states: [
         { name: 'StateEnabled', title: 'Default' },
         { name: 'StateDisabled', title: 'Disabled' },
+        { name: 'StateMixed', title: 'Mixed: an item for a set, partly on' },
       ],
-      inContext: [{ name: 'InList', title: 'A menu on every row' }],
+      inContext: [{ name: 'InList', title: 'A menu on every row' }, { name: 'InSentence', title: 'On a link in a sentence' }],
     },
   },
 };

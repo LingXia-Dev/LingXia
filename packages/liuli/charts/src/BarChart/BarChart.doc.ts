@@ -67,6 +67,7 @@ export const doc: ComponentDoc = {
       'Pass `summarize` so a screen reader gets the finding first.',
       'Keep to about twelve categories on a phone when each should be pressed.',
       'Give charts that are compared the same `domainMax`.',
+      'At large text, figures that would touch give way to the top of the scale, unless `valueLabels="always"`; their line grows with them.',
     ],
     dont: [
       'Use bars for a trend over many points in time; use LineChart.',

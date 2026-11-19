@@ -58,11 +58,12 @@ export const itemRecipe = {
   start: {
     base: 'shrink-0 items-center justify-center text-muted',
   },
+  /** The text gives way to the end content: an unbroken word such as an address breaks rather than push it out. */
   text: {
-    base: 'grow shrink basis-0 gap-0.5',
+    base: 'grow shrink basis-0 min-w-0 gap-0.5',
   },
   label: {
-    base: 'text-body',
+    base: 'text-body break-words',
     tone: {
       default: 'text-text',
       danger: 'text-danger',
@@ -70,7 +71,7 @@ export const itemRecipe = {
     selected: 'font-medium',
   },
   description: {
-    base: 'text-footnote text-muted',
+    base: 'text-footnote text-muted break-words',
   },
   end: {
     base: 'shrink-0 flex-row items-center gap-2 text-muted',

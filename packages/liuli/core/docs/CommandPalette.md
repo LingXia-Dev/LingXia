@@ -117,6 +117,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Offer every command somewhere else too; the palette is a shortcut.
 - Do: Start each label with the word people will type: "New note", not "Create a new note".
+- Do: At large text, open it from a Button, which stays inside its card: a label wider than the card wraps inside the button rather than being cut.
 - Don't: Use it to choose a value in a form; that is a Combobox.
 - Don't: Put more than a few dozen rows in it unfiltered; hand filtering to the app and fetch.
 

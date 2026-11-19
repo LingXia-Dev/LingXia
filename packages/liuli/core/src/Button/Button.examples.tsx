@@ -72,7 +72,7 @@ export function DisabledWithReason() {
 /** The home tile. */
 export function Specimen() {
   return (
-    <view className="flex-row gap-2">
+    <view className="flex-row flex-wrap gap-2">
       <Button label="Cancel" size="sm" onClick={unused} />
       <Button label="Save" variant="primary" size="sm" onClick={unused} />
     </view>
@@ -84,7 +84,7 @@ export function Hero() {
   return (
     <Said>
       {say => (
-        <view className="flex-row gap-2">
+        <view className="flex-row flex-wrap gap-2">
           <Button label="Discard" variant="ghost" onClick={() => say('Discarded changes')} />
           <Button label="Save changes" variant="primary" onClick={() => say('Saved changes')} />
         </view>
@@ -113,7 +113,7 @@ export function VariantsEveryday() {
   return (
     <Said>
       {say => (
-        <view className="flex-row gap-2">
+        <view className="flex-row flex-wrap gap-2">
           <Button label="Save" variant="primary" onClick={() => say('Saved')} />
           <Button label="Preview" onClick={() => say('Opened the preview')} />
           <Button label="Skip" variant="ghost" onClick={() => say('Skipped')} />

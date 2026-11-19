@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { ViewOptions, Parts, Share, Beside } from '../../core/src/Popover/Popover.examples';
+import { ViewOptions, Parts, Share, Beside, InSentence } from '../../core/src/Popover/Popover.examples';
 import { Lead, PageSection, Stage } from '../shared/Layout';
 
 export function Content() {
@@ -19,6 +19,11 @@ export function Content() {
         </Stage>
         <Stage caption={"At the side of the trigger; it flips or drops below when there is no room"}>
           <Beside />
+        </Stage>
+      </PageSection>
+      <PageSection title={"In context"}>
+        <Stage caption={"On a link in a sentence"}>
+          <InSentence />
         </Stage>
       </PageSection>
     </>

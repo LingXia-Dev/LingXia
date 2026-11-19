@@ -11,7 +11,8 @@ test('Invoice: a named list; each pair is read as one phrase, its label and valu
   assert.deepEqual([due.props.role, due.props.accessibilityLabel], ['listitem', 'Due: 9 November 2026']);
   assert.ok(due.children.every(node => node.props.accessibilityHidden === 1));
   const [label, value] = due.children;
-  assert.deepEqual([label.props.color, label.props.fontSize, Math.round(label.props.widthPercent), label.props.shrink], ['text-muted', 13, 33, 0], 'the labels share a third of the row');
+  assert.deepEqual([label.props.color, label.props.fontSize, label.props.flexBasis, label.props.shrink], ['text-muted', 13, '33.333333%', 0], 'the labels share a third of the row');
+  assert.equal(label.props.widthPercent, undefined, 'a basis, not a width: at large text a word wider than a third widens the label instead of running into the value');
   assert.deepEqual([value.props.color, value.props.grow], ['text', 1]);
 });
 

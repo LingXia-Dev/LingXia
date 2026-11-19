@@ -1,9 +1,6 @@
 import { cx, useId, type Child } from '@lingxia/view';
-import type { ButtonSize, ButtonVariant } from '../Button/Button';
-import { buttonRecipe as b } from '../Button/Button.recipe';
-import type { IconName } from '../Icon/Icon';
-import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
+import { Trigger } from '../internal/trigger';
 import { popoverRecipe as r } from './Popover.recipe';
 
 /** `end` and `start` open beside the trigger, where there is room at its side: a toolbar down an edge, a row in a sidebar. */
@@ -11,20 +8,14 @@ export type PopoverPlacement = 'bottom' | 'top' | 'end' | 'start';
 export type PopoverAlignment = 'start' | 'center' | 'end';
 
 export interface PopoverProps {
-  /** The trigger's text and accessible name; the panel's name too, unless `title` is set. */
+  /** The trigger: a Button, an IconButton or any element, which is then wrapped in a plain button. */
+  children: Child;
+  /** The panel's content: a few lines, a short form, a handful of controls. */
+  content: Child;
+  /** The panel's accessible name, unless `title` is set. */
   label: string;
   /** A heading at the top of the panel, and its accessible name. */
   title?: string;
-  /** The panel's content: a few lines, a short form, a handful of controls. */
-  children: Child;
-  /** Draws only `icon` on a square trigger; `label` stays the name. @default false */
-  isLabelHidden?: boolean;
-  /** An icon from the set, on the trigger before the label. */
-  icon?: IconName;
-  /** The trigger's look, from Button. @default 'secondary' */
-  variant?: ButtonVariant;
-  /** @default 'md' */
-  size?: ButtonSize;
   /** Which side of the trigger the panel opens on. Beside the trigger it flips to the other side for room, and falls back to below or above. @default 'bottom' */
   placement?: PopoverPlacement;
   /** Which edge of the trigger the panel lines up with: for `end` and `start`, `start` is the top of the trigger and `end` its bottom. @default 'start' */
@@ -32,13 +23,9 @@ export interface PopoverProps {
   /** Controls whether it is open; leave it out to let the trigger own it. */
   isOpen?: boolean;
   onOpenChange?: (isOpen: boolean) => void;
-  /** @default false */
-  isDisabled?: boolean;
-  /** Classes for the trigger. */
-  className?: string;
   /** Classes for the panel. */
   panelClassName?: string;
-  /** On the trigger; the panel gets `<testid>-panel`. */
+  /** On the panel, as `<testid>-panel`, and on a wrapped trigger. */
   'data-testid'?: string;
 }
 
@@ -51,39 +38,25 @@ const areas = {
 } as const satisfies Record<PopoverPlacement, Record<PopoverAlignment, string>>;
 
 /**
- * A button that opens a panel of content beside it, above or below. A tap outside, Escape or back
- * closes it, and focus goes back to the button. Not modal: the page stays live.
+ * A panel of content that opens beside its trigger, above or below. A tap outside, Escape or back
+ * closes it, and focus goes back to the trigger. Not modal: the page stays live.
  */
 export function Popover({
+  children,
+  content,
   label,
   title,
-  children,
-  isLabelHidden = false,
-  icon,
-  variant = 'secondary',
-  size = 'md',
   placement = 'bottom',
   alignment = 'start',
   isOpen,
   onOpenChange,
-  isDisabled = false,
-  className,
   panelClassName,
   'data-testid': testId,
 }: PopoverProps) {
   const id = useId();
   return (
     <>
-      <button
-        popoverTarget={id}
-        aria-label={label}
-        disabled={isDisabled}
-        data-testid={testId}
-        className={cx(b.root.base, b.root.variant[variant], b.root.disabled[variant], isLabelHidden ? b.root.square[size] : b.root.size[size], className)}
-      >
-        {icon !== undefined && <Glyph name={icon} className={b.glyph.size[size]} />}
-        {!isLabelHidden && <text className={cx(b.label.base, b.label.weight[variant], b.label.size[size])}>{label}</text>}
-      </button>
+      <Trigger wiring={{ popoverTarget: id }} data-testid={testId}>{children}</Trigger>
       <LayerContext.Provider value="overlay">
         <view
           id={id}
@@ -96,7 +69,7 @@ export function Popover({
           className={cx(r.panel.base, r.panel.offset[placement], panelClassName)}
         >
           {title !== undefined && <text role="heading" headingLevel={2} className={r.title.base}>{title}</text>}
-          {children}
+          {content}
         </view>
       </LayerContext.Provider>
     </>

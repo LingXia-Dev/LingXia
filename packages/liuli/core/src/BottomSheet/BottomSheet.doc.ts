@@ -62,7 +62,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'In reach of a thumb',
-    order: 4,
+    order: 5,
     page: {
       lead: 'Use a bottom sheet for a choice or a short task about the page under it.',
       hero: 'MoveTo',

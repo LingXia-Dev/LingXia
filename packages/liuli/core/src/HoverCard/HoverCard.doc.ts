@@ -13,7 +13,7 @@ export const doc: ComponentDoc = {
   propsType: 'HoverCardProps',
   recipe: { map: 'hoverCardRecipe', parts: 'hoverCardParts' },
   anatomy: [
-    { part: 'trigger', required: true, description: 'The words, under a dotted line that says there is more and is not a link.' },
+    { part: 'trigger', required: true, description: 'A plain button around the trigger the author gives: words under a dotted line that says there is more and is not a link.' },
     { part: 'card', required: true, description: 'A hint popover anchored to the trigger, in the top layer.' },
   ],
   accessibility: {
@@ -31,24 +31,26 @@ export const doc: ComponentDoc = {
       { what: 'card text', pair: ['text', 'surface-overlay'], minimum: '4.5:1' },
     ],
     notes: [
-      'The trigger is a button named by its words; the card is named by `cardLabel`, or the same words.',
+      'Words as the trigger are wrapped in one button named by them; the card is named by `label`.',
       'The card shows on keyboard focus as well as on hover, and on a tap on touch screens.',
       'Focus does not move into the card, so put nothing in it that needs focus.',
     ],
   },
   guidance: {
     do: [
+      'Use a `Link` as the trigger for words in a sentence: put the overlay in the `<text>`, around the Link, and the panel opens from the linked words.',
       'Keep the card to a few lines that add to the trigger: who, what, a status.',
       'Make sure everything in the card can also be reached another way, such as the page the trigger stands for.',
     ],
     dont: [
       'Put buttons, links or fields in the card; it goes away when the pointer leaves.',
-      'Use it for help about a control; that is a Tooltip.',
+      'Use it for help about a control; that is an InfoTip.',
     ],
   },
   examples: [
     { name: 'Person', title: 'A person, from their name' },
     { name: 'Term', title: 'A term, opening beside it' },
+    { name: 'InSentence', title: 'On a link in a sentence' },
   ],
   gaps: [],
   limits: [
@@ -58,11 +60,12 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'More, on rest',
-    order: 7,
+    order: 8,
     page: {
       lead: 'Use a hover card to preview what a word names without leaving the page.',
       hero: 'Person',
       variants: [{ name: 'Term', title: 'Beside the trigger, for a term in small text' }],
+      inContext: [{ name: 'InSentence', title: 'On a link in a sentence' }],
     },
   },
 };

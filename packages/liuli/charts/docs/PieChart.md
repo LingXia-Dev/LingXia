@@ -183,6 +183,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Set `otherLabel` when there may be more parts; the rest are gathered into one neutral slice.
 - Do: Order the rows by amount, largest first, unless the parts have an order of their own.
 - Do: Pass `formatShare` so the legend shows each part's share.
+- Do: At large text, a total too wide for the hole is written under the ring; keep `formatValue` short so it stays inside.
 - Don't: Compare two pies; use a grouped BarChart.
 - Don't: Use it for values that do not add up to a whole, or that can be negative.
 - Don't: Hide the legend unless the parts are named elsewhere; slices carry no labels.

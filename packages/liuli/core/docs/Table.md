@@ -195,7 +195,7 @@ export function MembersColumns() {
 | --- | --- | --- | --- |
 | root | `<view>` | yes | The bordered table, a grid named by `label`. |
 | header | `<view>` | yes | The row of headings; it stays above scrolling rows. |
-| heading | `<text>` | yes | One column's heading, in muted footnote type; cut short when its column is narrower. |
+| heading | `<text>` | yes | One column's heading, in muted footnote type; it wraps when its column is narrower. |
 | body | `<view>` | no | The rows, divided by hairlines; a scroll when `maxHeight` is set. |
 | row | `<view>` | no | One record: a grid of the same tracks as the headings. A `button` with `onChange`. |
 | cell | `<view>` | no | One field of one record; it wraps rather than truncating, except numbers. |
@@ -224,7 +224,7 @@ export function MembersColumns() {
 - With `onChange` a row is one button read as all its cells in order, and reports selected when its key is `value`.
 - A cell drawn by `cell` is still read as its text, so a badge's meaning must be in the field's value or `format`.
 - Stacked or in columns, a record is read the same way: each field with its heading. Stacked, the heading row is not drawn, since every field is beside its own heading or leads the record.
-- `auto` stacks when a text column would be narrower than 88 points, or narrower than its longest value where that is shorter; the value's width is an estimate from its length, since text cannot be measured before layout.
+- `auto` stacks when a text column would be narrower than 11 characters, or than its longest value where that is shorter, or a number column narrower than its widest value. Characters and numbers are measured at the reader's text size, so larger text stacks sooner.
 - A comfortable row is at least 44 px tall; a `compact` row is 36 px, for tables read with a mouse.
 - The hairlines between rows are decoration with no contrast minimum.
 
@@ -244,6 +244,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Give a narrow, fixed-content column (a date, a count) a width in points and let the text columns share the rest.
 - Do: Put the field that names the record first and its most compared number last: stacked, those two share the first line.
 - Do: Leave `layout` on `auto`: a table whose text columns fit stays in columns on a phone, and one whose do not stacks.
+- Do: At large text, leave `layout` on `auto`: the table stacks before a word breaks or a number is cut; `columns` holds and breaks words instead.
 - Don't: Use a table for layout, or for a list whose rows have one field; that is an ItemList.
 - Don't: Pass thousands of rows; page them, or filter first.
 - Don't: Set `isHeaderSticky` on a table that is not inside a `<scroll>`; the View refuses a sticky box there.

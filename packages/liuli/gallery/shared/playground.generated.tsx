@@ -249,6 +249,15 @@ export const playgroundEntries: PlaygroundEntry[] = [
         ]
       },
       {
+        "name": "edge",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "end",
+          "start"
+        ]
+      },
+      {
         "name": "isDisabled",
         "required": false,
         "kind": "boolean"

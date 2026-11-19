@@ -64,7 +64,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'A side panel',
-    order: 6,
+    order: 7,
     page: {
       lead: 'Use a drawer for a panel of its own beside the page it came from.',
       hero: 'Filters',
