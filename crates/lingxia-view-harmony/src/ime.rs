@@ -263,6 +263,9 @@ fn connect(mirror: Mirror) {
     let (page, caret) = (mirror.page, mirror.caret());
     *MIRROR.lock().unwrap_or_else(|p| p.into_inner()) = Some(mirror);
     pages::with(page, |host| host.caret(true, Some(caret)));
+    // A new editor attaches afresh, as ArkUI's own fields do: the IME reads its text config
+    // only on attach, and an attachment another input took over no longer delivers keys.
+    os::release();
     os::attach();
 }
 
@@ -278,7 +281,7 @@ fn focus(page: i64, identity: &str, generation: u64, then: Option<AfterFocus>) {
     *FOCUSING.lock().unwrap_or_else(|p| p.into_inner()) = Some(identity.to_owned());
     let request = json!({"op": "focus", "identity": identity, "generation": generation});
     let identity = identity.to_owned();
-    pages::with(page, move |host| {
+    let asked = pages::with(page, move |host| {
         host.input(request.to_string(), move |reply| {
             on_main(move || {
                 *FOCUSING.lock().unwrap_or_else(|p| p.into_inner()) = None;
@@ -311,6 +314,10 @@ fn focus(page: i64, identity: &str, generation: u64, then: Option<AfterFocus>) {
             });
         });
     });
+    // Gone, the page never answers: a pending focus would hold every frame and edit back.
+    if asked.is_none() {
+        *FOCUSING.lock().unwrap_or_else(|p| p.into_inner()) = None;
+    }
 }
 
 /// An accessibility or automation edit of the editor at frame `node`: replace its text, or with
@@ -433,6 +440,7 @@ fn drop_connection(page: i64) -> Option<Mirror> {
 
 /// The page ended: drop the connection without telling the core.
 pub(crate) fn reset(page: i64) {
+    *FOCUSING.lock().unwrap_or_else(|p| p.into_inner()) = None;
     BLURRED
         .lock()
         .unwrap_or_else(|p| p.into_inner())
@@ -456,6 +464,8 @@ mod os {
         proxy: *mut sys::InputMethod_InputMethodProxy,
         /// The caret rect the IME last got.
         cursor: Option<[f64; 4]>,
+        /// The enter key and text type the IME last got.
+        config: (i32, i32),
     }
     // SAFETY: both are IPC proxies the IME service allows from any thread.
     unsafe impl Send for Connection {}
@@ -749,9 +759,15 @@ mod os {
         let mut connection = CONNECTION.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(existing) = connection.as_ref() {
             // SAFETY: a live controller proxy.
-            unsafe { sys::OH_InputMethodProxy_ShowKeyboard(existing.proxy) };
+            let code = unsafe { sys::OH_InputMethodProxy_ShowKeyboard(existing.proxy) };
+            if code == 0 {
+                drop(connection);
+                return update();
+            }
+            log::warn!(target: "lingxia_view", "UI_INPUT: input method show failed ({code}); attaching again");
             drop(connection);
-            return update();
+            release();
+            connection = CONNECTION.lock().unwrap_or_else(|p| p.into_inner());
         }
         // SAFETY: the proxy gets every callback before attaching; both live until `detach`.
         unsafe {
@@ -786,6 +802,7 @@ mod os {
                 editor,
                 proxy,
                 cursor: None,
+                config: mirror(|m| (enter_key(m), text_type(m))).unwrap_or_default(),
             });
         }
         drop(connection);
@@ -794,29 +811,53 @@ mod os {
 
     /// The mirror changed outside the IME (a frame, an automation edit): tell the IME.
     pub(super) fn update() {
-        let mut connection = CONNECTION.lock().unwrap_or_else(|p| p.into_inner());
-        let Some(connection) = connection.as_mut() else {
+        let mut guard = CONNECTION.lock().unwrap_or_else(|p| p.into_inner());
+        let Some(connection) = guard.as_mut() else {
             return;
         };
-        let Some((mut text, start, end, cursor)) = mirror(|m| {
+        let Some((mut text, start, end, cursor, config)) = mirror(|m| {
             (
                 m.text.clone(),
                 m.anchor.min(m.focus) as i32,
                 m.anchor.max(m.focus) as i32,
                 m.cursor,
+                (enter_key(m), text_type(m)),
             )
         }) else {
             return;
         };
+        if config != connection.config {
+            connection.config = config;
+            // SAFETY: a live controller proxy.
+            let code = unsafe {
+                sys::OH_InputMethodProxy_NotifyConfigurationChange(
+                    connection.proxy,
+                    config.0,
+                    config.1,
+                )
+            };
+            if code != 0 {
+                log::warn!(target: "lingxia_view", "UI_INPUT: input method configuration refused ({code})");
+            }
+        }
         // SAFETY: a live controller proxy; the text outlives the call.
-        unsafe {
+        let code = unsafe {
             sys::OH_InputMethodProxy_NotifySelectionChange(
                 connection.proxy,
                 text.as_mut_ptr(),
                 text.len(),
                 start,
                 end,
-            );
+            )
+        };
+        if code == DETACHED {
+            // The IME went to another input; the next focus attaches again.
+            log::warn!(target: "lingxia_view", "UI_INPUT: input method detached from the editor");
+            if let Some(gone) = guard.take() {
+                // SAFETY: releases what `attach` created; the proxy is already detached.
+                unsafe { sys::OH_TextEditorProxy_Destroy(gone.editor) };
+            }
+            return;
         }
         if cursor.is_some() && cursor != connection.cursor {
             connection.cursor = cursor;
@@ -830,6 +871,21 @@ mod os {
                     sys::OH_CursorInfo_Destroy(info);
                 }
             }
+        }
+    }
+
+    /// `IME_ERR_DETACHED`: the proxy no longer holds the input method.
+    const DETACHED: i32 = 12800009;
+
+    /// Detach without hiding the keyboard, for an attachment that follows at once.
+    pub(super) fn release() {
+        let Some(connection) = CONNECTION.lock().unwrap_or_else(|p| p.into_inner()).take() else {
+            return;
+        };
+        // SAFETY: releases what `attach` created.
+        unsafe {
+            sys::OH_InputMethodController_Detach(connection.proxy);
+            sys::OH_TextEditorProxy_Destroy(connection.editor);
         }
     }
 
