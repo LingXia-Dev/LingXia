@@ -42,7 +42,7 @@ fn the_default_pack_proves_every_pair_in_both_appearances() {
 fn any_user_accent_derives_a_passing_family() {
     let pack = default_pack();
     for seed in [
-        "#ffeb3b", "#00e5ff", "#b4232c", "#7c4dff", "#808080", "#000000", "#ffffff",
+        "#ffeb3b", "#00e5ff", "#b4232c", "#7c4dff", "#808080", "#000000", "#ffffff", "#019954",
     ] {
         for appearance in [Appearance::Light, Appearance::Dark] {
             let prefs = Prefs {
@@ -61,6 +61,19 @@ fn any_user_accent_derives_a_passing_family() {
                 );
             }
             assert_eq!(theme.color(Role::Focus), theme.color(Role::Accent));
+            // A press deepens, under a dark label too; only a black fill has nowhere to go.
+            let [fill, hover, pressed] = [
+                Role::AccentSolid,
+                Role::AccentSolidHover,
+                Role::AccentSolidPressed,
+            ]
+            .map(|role| theme.color(role).oklch().l);
+            if fill > 0.1 {
+                assert!(
+                    fill > hover && hover > pressed,
+                    "{seed} {appearance:?}: press deepens"
+                );
+            }
         }
     }
 }
@@ -1309,25 +1322,34 @@ fn hover_and_pressed_solids_go_deeper_and_a_pack_cannot_write_them() {
             for (solid, hover, pressed) in shades {
                 let tag = format!("{} {name} {}", pack.name, solid.name());
                 let [fill, hover, pressed] = [solid, hover, pressed].map(|role| theme.color(role));
-                assert!(
-                    fill.luminance() > hover.luminance() && hover.luminance() > pressed.luminance(),
-                    "{tag}: press goes deeper"
-                );
+                let lightness = |color: Rgba| color.oklch().l;
+                for (from, to) in [(fill, hover), (hover, pressed)] {
+                    let step = lightness(from) - lightness(to);
+                    assert!(step >= 0.04, "{tag}: a state steps {step:.4} deeper");
+                }
+                let chroma = |color: Rgba| color.oklch().c / color.oklch().l;
                 for shade in [hover, pressed] {
+                    let hue = (fill.oklch().h - shade.oklch().h).abs();
+                    assert!(hue.min(360.0 - hue) < 2.0, "{tag}: hue held");
+                    let ratio = chroma(shade) / chroma(fill);
+                    assert!(
+                        (ratio - 1.0).abs() < 0.04,
+                        "{tag}: chroma {ratio:.3} of the fill's"
+                    );
                     assert!(contrast(theme.color(label(solid)), shade) >= 4.5, "{tag}");
                 }
             }
         });
     }
-    // The default pack's shades, 8% and 14% toward black.
+    // The default pack's shades.
     for (appearance, expected) in [
         (
             Appearance::Light,
-            ["#3255cb", "#2e4fbe", "#b93030", "#ad2d2d"],
+            ["#2f52c6", "#2948b0", "#b52e2e", "#a22828"],
         ),
         (
             Appearance::Dark,
-            ["#3a60d6", "#3659c8", "#ba3c40", "#ae383c"],
+            ["#385dd2", "#3152bc", "#b73a3f", "#a43337"],
         ),
     ] {
         let prefs = Prefs {
@@ -1356,5 +1378,5 @@ fn hover_and_pressed_solids_go_deeper_and_a_pack_cannot_write_them() {
         check(&own)
     );
     let theme = resolve(&own, &Prefs::default()).unwrap();
-    assert_eq!(theme.color(Role::AccentSolidPressed), hex("#2e4fbe"));
+    assert_eq!(theme.color(Role::AccentSolidPressed), hex("#2948b0"));
 }

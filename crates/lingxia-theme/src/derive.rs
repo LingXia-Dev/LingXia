@@ -103,7 +103,7 @@ const WHITE_BIAS: f64 = 1.25;
 /// How far overlays lift off `surface-raised` in dark, where a shadow alone does not separate them.
 const OVERLAY_LIFT: f64 = 0.045;
 /// Hover and pressed fills of each solid. A pack never writes them: a press must always go
-/// deeper than the fill, which an opacity over the page cannot promise.
+/// past hover from the fill, which an opacity over the page cannot promise.
 pub(crate) const SHADES: [(Role, Role, Role); 2] = [
     (
         Role::AccentSolid,
@@ -116,8 +116,8 @@ pub(crate) const SHADES: [(Role, Role, Role); 2] = [
         Role::DangerSolidPressed,
     ),
 ];
-pub(crate) const HOVER_SHADE: f64 = 0.08;
-pub(crate) const PRESSED_SHADE: f64 = 0.14;
+/// The least OKLab lightness each state moves past the one before: hover off the fill, press off hover.
+pub(crate) const SHADE_STEP: f64 = 0.04;
 
 pub(crate) fn is_shade(role: Role) -> bool {
     SHADES
@@ -125,10 +125,22 @@ pub(crate) fn is_shade(role: Role) -> bool {
         .any(|&(_, hover, pressed)| role == hover || role == pressed)
 }
 
-/// `color` mixed `amount` toward black in sRGB, alpha kept.
-pub(crate) fn toward_black(Rgba([r, g, b, a]): Rgba, amount: f64) -> Rgba {
-    let shade = |channel: u8| (f64::from(channel) * (1.0 - amount)).round() as u8;
-    Rgba([shade(r), shade(g), shade(b), a])
+/// `from` at least `SHADE_STEP` deeper, its hue and chroma-to-lightness ratio kept.
+fn deeper(from: Rgba) -> Rgba {
+    let start = from.oklch();
+    let mut l = start.l;
+    loop {
+        l -= 0.002;
+        let shade = Oklch {
+            l,
+            c: start.c * l.max(0.0) / start.l.max(f64::EPSILON),
+            h: start.h,
+        }
+        .rgba(from.0[3]);
+        if start.l - shade.oklch().l >= SHADE_STEP || l <= 0.0 {
+            return shade;
+        }
+    }
 }
 
 /// White on a dark-appearance solid fill: past the 4.5 it needs, so rounding never takes it under.
@@ -433,8 +445,9 @@ impl Build<'_> {
             danger,
         );
         for (solid, hover, pressed) in SHADES {
-            self.palette[hover as usize] = self.shade(solid, HOVER_SHADE);
-            self.palette[pressed as usize] = self.shade(solid, PRESSED_SHADE);
+            let [over, down] = self.shade(solid);
+            self.palette[hover as usize] = over;
+            self.palette[pressed as usize] = down;
         }
         self.info(seed);
         self.categorical(seed, sides);
@@ -515,18 +528,28 @@ impl Build<'_> {
             .unwrap_or(tries[0])
     }
 
-    /// `solid` taken `amount` toward black, or less where its label is dark and would stop reading.
-    fn shade(&self, solid: Role, amount: f64) -> Rgba {
-        let (fill, need) = (self.get(solid), self.need(4.5));
-        let label = self.get(if solid == Role::AccentSolid {
+    /// Hover and pressed fills of `solid`, each a step deeper than the state before it. A
+    /// derived solid whose dark label would not read on the pressed step carries white instead,
+    /// so a press, labelled or not (a switch track), always deepens.
+    fn shade(&mut self, solid: Role) -> [Rgba; 2] {
+        let need = self.need(4.5);
+        let on = if solid == Role::AccentSolid {
             Role::OnAccentSolid
         } else {
             Role::OnDangerSolid
-        });
-        (0..=100)
-            .map(|step| toward_black(fill, amount * f64::from(100 - step) / 100.0))
-            .find(|&shade| contrast(shade, label) >= need)
-            .unwrap_or(fill)
+        };
+        let steps = |fill: Rgba| {
+            let hover = deeper(fill);
+            [hover, deeper(hover)]
+        };
+        let [hover, pressed] = steps(self.get(solid));
+        if contrast(pressed, self.get(on)) >= need || self.has(solid) || self.has(on) {
+            return [hover, pressed];
+        }
+        let fill = carrying_white(self.get(solid), need.max(SOLID_WHITE));
+        self.put(solid, fill);
+        self.put(on, WHITE);
+        steps(fill)
     }
 
     /// The fill of a control that carries white marks and its text. In light the plain role is
