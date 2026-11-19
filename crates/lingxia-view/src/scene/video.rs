@@ -424,6 +424,18 @@ mod auto_cap_tests {
     }
 
     #[test]
+    fn auto_takes_the_smallest_rendition_that_covers_the_box_never_one_below_it() {
+        let ladder = [[640.0, 360.0], [1280.0, 720.0], [1920.0, 1080.0]];
+        let pick = |px: [f32; 2]| auto_cap(px, Fit::Contain, &ladder).map(|i| ladder[i][1]);
+        // The Pixel's inline box: 360p would upscale 1.55x.
+        assert_eq!(pick([993.0, 558.0]), Some(720.0));
+        assert_eq!(pick([640.0, 360.0]), Some(360.0));
+        // 1.6% past 720p is within the slack nobody sees; 6% past it climbs.
+        assert_eq!(pick([1300.0, 731.0]), Some(720.0));
+        assert_eq!(pick([1360.0, 765.0]), Some(1080.0));
+    }
+
+    #[test]
     fn a_box_larger_than_every_rendition_leaves_auto_uncapped() {
         assert_eq!(label([5120.0, 2880.0], Fit::Contain), None);
     }

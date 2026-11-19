@@ -244,12 +244,17 @@ impl Player for Video {
 
     // Media3's viewport keeps the smallest track that fills the box, which is the same cap as
     // `auto_cap` for a contained picture; the fit is not passed.
-    fn set_view(&mut self, px: [f32; 2], _fit: Fit) {
+    fn set_view(&mut self, px: [f32; 2], fit: Fit) {
         let view = px.map(|v| v.round().max(0.0) as u32);
         if view == self.view {
             return;
         }
         self.view = view;
+        // Device checks read this against the track Media3 picks: below a covering rendition
+        // with this viewport is its bandwidth estimate, not the cap. A web view's box picks no track.
+        if fit != Fit::Natural {
+            log::info!(target: "lingxia_view", "video auto viewport {}x{} px", view[0], view[1]);
+        }
         let sent = java(|env| {
             env.call_method(
                 &*self.java,

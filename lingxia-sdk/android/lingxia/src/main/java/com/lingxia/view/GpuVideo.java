@@ -113,6 +113,7 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
                 public void onVideoSizeChanged(VideoSize size) {
                     width = size.width;
                     height = size.height;
+                    Log.i(TAG, "GpuVideo: playing " + width + "x" + height + " in a viewport of " + viewWidth + "x" + viewHeight);
                 }
 
                 @Override

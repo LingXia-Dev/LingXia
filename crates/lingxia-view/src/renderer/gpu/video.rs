@@ -95,15 +95,23 @@ const VIEW_SETTLE: Duration = Duration::from_millis(500);
 /// The largest box each player of `display` is drawn in, in device pixels.
 fn views(display: &crate::DisplayList) -> HashMap<&str, ([f32; 2], Fit)> {
     let mut out: HashMap<&str, ([f32; 2], Fit)> = HashMap::new();
+    // Video bounds are logical and before transform: a scaled box shows more or fewer pixels.
+    let mut stretch = [1.0f32, 1.0];
     for paint in &display.commands {
-        if let Paint::Video {
+        if let Paint::Transform(matrix) = paint {
+            let [a, b, c, d, _, _] = matrix.as_coeffs();
+            stretch = [a.hypot(b) as f32, c.hypot(d) as f32];
+        } else if let Paint::Video {
             player,
             bounds,
             fit,
             ..
         } = paint
         {
-            let px = [bounds[2] * display.scale, bounds[3] * display.scale];
+            let px = [
+                bounds[2] * stretch[0] * display.scale,
+                bounds[3] * stretch[1] * display.scale,
+            ];
             let entry = out.entry(player.as_str()).or_insert((px, *fit));
             if px[0] * px[1] > entry.0[0] * entry.0[1] {
                 *entry = (px, *fit);
@@ -2963,5 +2971,29 @@ mod opener_tests {
         flights().tries.insert(key.into(), (5, Instant::now()));
         reset_backoff(key);
         assert!(!flights().tries.contains_key(key));
+    }
+}
+
+#[cfg(test)]
+mod view_tests {
+    use crate::ViewSession;
+
+    #[test]
+    fn auto_reads_the_box_in_device_pixels_under_its_transform() {
+        let module = crate::session::tests::source(
+            "function render(){const a=useVideo('a'),b=useVideo('b');return h('view',{},h('video',{player:a,src:'a.mp4',style:{width:160,height:90}}),h('view',{style:{scale:1.5}},h('video',{player:b,src:'b.mp4',style:{width:160,height:90}})))}",
+        );
+        let mut page = ViewSession::new(&module).unwrap();
+        let display = page.layout(400, 600, 2.0).unwrap();
+        let views = super::views(&display);
+        let px = |key: &str| {
+            views
+                .iter()
+                .find(|(player, _)| player.ends_with(key))
+                .map(|(_, (px, _))| px.map(f32::round))
+                .unwrap()
+        };
+        assert_eq!(px(":a"), [320.0, 180.0]);
+        assert_eq!(px(":b"), [480.0, 270.0], "a scaled box shows more pixels");
     }
 }
