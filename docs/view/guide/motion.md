@@ -11,7 +11,7 @@ export function render() {
   return (
     <page className="p-4 gap-4">
       <button onClick={() => shown.set(!shown.value)}
-        className="self-start rounded-xl bg-accent p-3 text-on-accent active:scale-95 transition-transform duration-150">
+        className="self-start rounded-xl bg-accent-solid p-3 text-on-accent-solid active:scale-95 transition-transform duration-150">
         {shown.value ? 'Fade out' : 'Fade in'}
       </button>
       <view className={`w-12 h-12 rounded-lg bg-accent transition-opacity duration-200 ease-out ${shown.value ? 'opacity-100' : 'opacity-0'}`} />
@@ -117,7 +117,7 @@ export function render() {
   const open = useLocal('open', false);
   return (
     <page className="p-4 gap-4">
-      <button onClick={() => open.set(!open.value)} className="self-start rounded-xl bg-accent text-on-accent px-4 py-2">Toggle</button>
+      <button onClick={() => open.set(!open.value)} className="self-start rounded-xl bg-accent-solid text-on-accent-solid px-4 py-2">Toggle</button>
       {open.value && (
         <view className="h-16 rounded-xl bg-surface-raised transition duration-200 starting:opacity-0 starting:translate-y-2 exit:opacity-0 exit:-translate-y-2" />
       )}
@@ -145,7 +145,7 @@ export function render() {
   const open = useLocal('open', false);
   return (
     <page className="p-4 gap-2">
-      <button onClick={() => open.set(!open.value)} className="h-11 rounded-lg bg-accent text-on-accent">Details</button>
+      <button onClick={() => open.set(!open.value)} className="h-11 rounded-lg bg-accent-solid text-on-accent-solid">Details</button>
       <view className={`overflow-hidden rounded-lg bg-surface-raised transition-size duration-200 ${open.value ? 'h-24' : 'h-0'}`}>
         <text className="p-3">Shipped on Tuesday.</text>
       </view>
@@ -177,7 +177,7 @@ export function render() {
   const rows = useLocal('rows', ['a', 'b', 'c']);
   return (
     <page className="p-4 gap-2">
-      <button onClick={() => rows.set([...rows.value].reverse())} className="self-start rounded-xl bg-accent text-on-accent px-4 py-2">Reverse</button>
+      <button onClick={() => rows.set([...rows.value].reverse())} className="self-start rounded-xl bg-accent-solid text-on-accent-solid px-4 py-2">Reverse</button>
       {rows.value.map(row => <view key={row} className="h-10 rounded-lg bg-surface-raised transition-layout duration-200" />)}
     </page>
   );

@@ -95,7 +95,7 @@ export const hasOverlay = () => Boolean(toast || modals.length || sheets.length)
 const RING = 'M14 0a14 14 0 0 1 14 14a14 14 0 0 1-14 14a14 14 0 0 1-14-14a14 14 0 0 1 14-14z';
 const icons = {
   success: [{ d: RING, fill: 'success' }, { d: 'M8.5 14.5l3.5 3.5 7.5-7.5', fill: 'none', stroke: '#ffffff', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' }],
-  error: [{ d: RING, fill: 'danger' }, { d: 'M10 10l8 8M18 10l-8 8', fill: 'none', stroke: '#ffffff', strokeWidth: 2.5, strokeLinecap: 'round' }],
+  error: [{ d: RING, fill: 'danger-solid' }, { d: 'M10 10l8 8M18 10l-8 8', fill: 'none', stroke: 'on-danger-solid', strokeWidth: 2.5, strokeLinecap: 'round' }],
   loading: [{ d: 'M14 3a11 11 0 0 1 11 11', fill: 'none', stroke: 'accent', strokeWidth: 2.5, strokeLinecap: 'round' }],
 };
 const spin = { name: 'lx-overlay-spin', durationMs: 800, delayMs: 0, iterations: null, whenReduced: 'base', easing: 'linear', opacity: null,

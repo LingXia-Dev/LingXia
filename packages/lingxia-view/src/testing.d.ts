@@ -78,11 +78,20 @@ export interface Screen {
 /** A phone: 390×844 light, ltr, `en-US`, coarse pointer, no insets; `overrides` replace fields. */
 export function defaultEnv(overrides?: Record<string, unknown>): Record<string, unknown>;
 
-/** Builds a GPU page with the View compiler and renders it in Node. */
-export function render(page: string, view?: ViewInput, options?: { root?: string }): Promise<Screen>;
+/**
+ * Builds a GPU page with the View compiler and renders it in Node. With `points`, every node's props
+ * read in points under the built-in pack (see `points`), across re-renders.
+ */
+export function render(page: string, view?: ViewInput, options?: { root?: string; points?: boolean }): Promise<Screen>;
 export function installHost(source: string): Host;
 export function describePage(host: Host, view?: ViewInput): unknown[];
 export function dispatch(host: Host, handle: number, value?: unknown): boolean;
 export function decode(buffer: unknown[]): WireNode[];
 export function find(root: WireNode, test: (node: WireNode) => boolean): WireNode | undefined;
 export function textOf(node: WireNode): string;
+/**
+ * `value` with every theme step (`[slot, times, plus]`: `p-4`, `text-sm`, `rounded-lg`, `duration-fast`)
+ * resolved as a host does under the built-in pack, at any depth; `em` steps stay as they are, and a
+ * list on a field that takes no step is left alone.
+ */
+export function points<T>(value: T): T;

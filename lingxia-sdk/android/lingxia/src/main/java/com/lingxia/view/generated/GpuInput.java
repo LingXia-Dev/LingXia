@@ -12,6 +12,7 @@ public final class GpuInput {
     public static final String KEYBOARD_SEARCH = "search";
     public static final String KEYBOARD_DATE = "date";
     public static final String KEYBOARD_TIME = "time";
+    public static final String KEYBOARD_DECIMAL = "decimal";
     public static final String ENTER_ENTER = "enter";
     public static final String ENTER_DONE = "done";
     public static final String ENTER_GO = "go";

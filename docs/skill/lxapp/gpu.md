@@ -16,7 +16,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   return <page className="p-4 gap-3">
     <text className="text-lg font-semibold truncate">{item.value?.title ?? 'Loading…'}</text>
     <input bind={draft} aria-label="Note" className="px-3 py-2 rounded-lg border" />
-    <button disabled={!draft.value} onClick={() => draft.set('')} className="rounded-lg bg-accent px-4 py-2 text-on-accent active:opacity-80">Clear</button>
+    <button disabled={!draft.value} onClick={() => draft.set('')} className="rounded-lg bg-accent-solid px-4 py-2 text-on-accent-solid active:opacity-80">Clear</button>
   </page>;
 }
 ```
@@ -35,7 +35,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - RTL: use `ps`/`ms`/`start-`/`text-start` etc.; they mirror with `env.direction` (from the
   display language) or a `dir` prop. Mirror icons with `rtl:-scale-x-100`.
 - Colours are theme roles, never hex: `bg-surface`, `text-muted`, `border-line` (decorative) or
-  `border-line-strong` (editors, controls), `bg-accent text-on-accent`, `bg-text/8`; plot series
+  `border-line-strong` (editors, controls), `bg-accent-solid text-on-accent-solid` (filled controls; `accent` is for text and rings), `bg-text/8`; plot series
   `chart-1`..`chart-5`; controls over video `bg-media text-on-media` (tracks `on-media/25`). Roles follow appearance, so `dark:` on a colour fails (`UI_COLOR`).
 - `lingxia gen tokens` writes the theme pack's type, radius and spacing scales to `theme/tokens.css`.
   It also writes the pack's `motion` block: use `duration-fast|base|slow` and `ease-standard|enter|exit|spring`, not milliseconds.

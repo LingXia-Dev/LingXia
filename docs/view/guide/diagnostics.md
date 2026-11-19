@@ -148,7 +148,7 @@ export function render() {
   };
   return (
     <page className="p-4 gap-3">
-      <button onClick={measure} className="rounded-lg bg-accent text-on-accent px-3 py-2">Measure 5 s</button>
+      <button onClick={measure} className="rounded-lg bg-accent-solid text-on-accent-solid px-3 py-2">Measure 5 s</button>
       <text className="text-sm">{result.value}</text>
     </page>
   );

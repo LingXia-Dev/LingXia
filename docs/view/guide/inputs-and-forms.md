@@ -29,7 +29,7 @@ export function render({ actions }: View<Actions>) {
       <slider bind={seats} min={1} max={20} step={1} aria-label="Seats" className="text-accent" />
       <switch bind={news} className="text-sm">Product news</switch>
       <button disabled={busy.value || !email.value} onClick={submit}
-        className="rounded-lg bg-accent p-3 text-on-accent disabled:bg-line disabled:text-muted">
+        className="rounded-lg bg-accent-solid p-3 text-on-accent-solid disabled:bg-line disabled:text-muted">
         {busy.value ? 'Signing up…' : `Sign up for ${seats.value} seats`}
       </button>
     </page>
@@ -72,8 +72,8 @@ editor finishes the composition, so the last composed text is the value.
 | Prop | Applies to | Effect |
 | --- | --- | --- |
 | `placeholder` | all | hint text; color it with `placeholder:text-*` |
-| `type` | `input` | `text`, `password` (masked, no learning), `email`, `number`, `tel`, `search`, `date`, `time` |
-| `inputMode` | `input`, `textarea` | keyboard only: `text`, `numeric`, `decimal`, `tel`, `email`; not with `type` `number`/`search`/`date`/`time` |
+| `type` | `input` | `text`, `password` (masked, no learning), `email`, `number` (a keyboard with a decimal point; `inputMode="numeric"` for digits only), `tel`, `search`, `date`, `time` |
+| `inputMode` | `input`, `textarea` | keyboard only: `text`, `numeric` (digits), `decimal` (digits and the locale's separator), `tel`, `email`; with `type="number"` only `numeric`/`decimal`, not with `search`/`date`/`time` |
 | `maxLength` | all | 1–65536 UTF-16 units; insertions are cut, existing text is kept |
 | `autoComplete` | all | HTML autocomplete token, mapped to platform autofill (`email`, `one-time-code`, `new-password`, …) |
 | `enterKeyHint` | all | the label of the keyboard's action key |

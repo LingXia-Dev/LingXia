@@ -8,7 +8,7 @@ import { moduleBanner } from '../compiler/compatibility.mjs';
 import { stabilizeClosures } from '../compiler/stable-closures.mjs';
 import { runInNewContext } from 'node:vm';
 import { maxField, minField } from '../src/generated/wire.js';
-import { tree, decode } from './support/wire.mjs';
+import { tree, decode, points } from './support/wire.mjs';
 
 globalThis.__lingxiaViewHost = { uiAbi: 1, maxField, features: ['candidate-transactions', 'bounded-jobs'] };
 const clean = source => assert.deepEqual(audit(source, 'page.tsx'), []);
@@ -255,7 +255,7 @@ test('class usage follows cx arguments, class maps and template pieces', async (
     await build();
     await load(root);
     const props = on => tree(describePage({ data: { on, off: false }, env: {} })).props;
-    assert.equal(props(true).paddingTop, 16);
+    assert.equal(points(props(true).paddingTop), 16);
     assert.equal(props(false).paddingTop, undefined);
   });
 });
@@ -390,7 +390,7 @@ test('bundled TSX classes lower roles, conditional strings and explicit style ov
     const source = await load(root);
     const label = (active, theme) => tree(describePage({ data: { active }, env: { theme } })).props;
     const light = label(true, 'light');
-    assert.deepEqual([light.color, light.fontSize, light.lineHeight], ['accent', 17, 17 * (1.25 / .875)]);
+    assert.deepEqual(points([light.color, light.fontSize, light.lineHeight]), ['accent', 17, 18], 'the pack\'s leading is a fixed height');
     assert.equal(label(true, 'dark').color, 'accent', 'roles follow appearance natively');
     assert.equal(label(false, 'dark').color, 'text-muted/60');
     assert.doesNotMatch(source, /function compileUtilities|function declarations\(/);

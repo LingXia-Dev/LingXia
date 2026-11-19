@@ -1,5 +1,6 @@
 // Every artifact derived from schema.json. `--check` fails on drift instead of writing.
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -33,6 +34,7 @@ function validate(schema) {
       if (!schema.tags.includes(tag)) throw Error(`schema.json: field ${field.key} names unknown tag ${tag}`);
     if (field.ignorable !== undefined && field.ignorable !== true) throw Error(`schema.json: field ${field.key} ignorable must be true or absent`);
   }
+  validateScales(schema);
   for (const [name, value] of Object.entries(schema.limits ?? {}))
     if (!Number.isSafeInteger(value) || value <= 0) throw Error(`schema.json: limit ${name} must be a positive integer`);
   for (const [key, entry] of Object.entries(schema.environment ?? {}))
@@ -58,6 +60,7 @@ const environmentChecks = {
   range: (key, entry) => `value[${JSON.stringify(key)}].as_f64().is_some_and(|n| n.is_finite() && (${entry.range[0]}.0..=${entry.range[1]}.0).contains(&n))`,
   name: key => `value[${JSON.stringify(key)}].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)`,
   edges: key => `["top", "right", "bottom", "left"].iter().all(|edge| value[${JSON.stringify(key)}][edge].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n)))`,
+  capsule: key => `(value[${JSON.stringify(key)}].is_null() || (["x", "y", "width", "height"].iter().all(|side| value[${JSON.stringify(key)}][side].as_f64().is_some_and(|n| n.is_finite() && (-16384.0..=16384.0).contains(&n))) && ["width", "height"].iter().all(|side| value[${JSON.stringify(key)}][side].as_f64().is_some_and(|n| n >= 0.0))))`,
   keyboard: key => `value[${JSON.stringify(key)}]["height"].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))`,
   renderer: key => `(matches!(value[${JSON.stringify(key)}]["fallback"].as_str(), None | Some("driver")) && value[${JSON.stringify(key)}].as_object().is_some_and(|r| r.len() == 1))`,
 };
@@ -82,6 +85,30 @@ pub fn check_environment(value: &serde_json::Value) -> bool {
 }
 
 const roleVariant = name => name.split('-').map(part => part[0].toUpperCase() + part.slice(1)).join('');
+
+function validateScales({ scales, scaledFields, fields }) {
+  const names = scales.map(slot => slot.name);
+  if (new Set(names).size !== names.length) throw Error('schema.json: scale slot names must be unique');
+  const keys = new Set(fields.map(field => field.key));
+  for (const slot of scales) {
+    if (!/^[a-z]+(?:\.[A-Za-z0-9]+)?$/.test(slot.name) || typeof slot.doc !== 'string') throw Error(`schema.json: scale ${slot.name} needs a dotted name and a doc`);
+    if (!scaledFields[slot.family]) throw Error(`schema.json: scale ${slot.name} has a family no field takes`);
+  }
+  for (const [family, members] of Object.entries(scaledFields))
+    for (const key of members) if (!keys.has(key)) throw Error(`schema.json: scaledFields.${family} names unknown field ${key}`);
+}
+
+// The built-in pack's value per slot; `em` has none, it is the element's own font size.
+function scaleDefaults({ scales }) {
+  const pack = JSON.parse(readFileSync(join(repositoryRoot, 'crates/lingxia-theme/packs/default.json'), 'utf8'));
+  return scales.map(({ pack: path }) => {
+    if (!path) return null;
+    const value = path.split('.').reduce((at, part) => at?.[part], pack);
+    if (value === undefined) throw Error(`schema.json: scale pack path ${path} is not in the default pack`);
+    const bezier = typeof value === 'string' && value.match(/^cubic-bezier\(([^)]*)\)$/);
+    return bezier ? bezier[1].split(',').map(Number) : value;
+  });
+}
 
 function validateRoles(roles) {
   const names = roles.map(role => role.name);
@@ -248,6 +275,16 @@ pub struct FieldAdmission {
 }
 
 /// Indexed by field id.
+/// Scale slots by wire index, with their family; append-only like field ids.
+pub const SCALES: &[(&str, &str)] = &[
+${schema.scales.map(slot => `    (${JSON.stringify(slot.name)}, ${JSON.stringify(slot.family)}),`).join('\n')}
+];
+
+/// Fields that take a \`[slot, times, plus]\` reference, by the family of the slot.
+pub const SCALED_FIELDS: &[(&str, &[usize])] = &[
+${Object.entries(schema.scaledFields).map(([family, keys]) => `    (${JSON.stringify(family)}, &[${keys.map(fieldConst).join(', ')}]),`).join('\n')}
+];
+
 pub const FIELD_ADMISSION: &[FieldAdmission] = &[
 ${fieldAdmission}
 ];
@@ -415,6 +452,12 @@ export const options = ${JSON.stringify(schema.options)};
 export const commonProps = ${JSON.stringify(common)};
 /** Colour roles in palette-slot order. */
 export const roles = ${JSON.stringify(schema.roles.map(role => role.name))};
+/** Scale slots in wire order: a \`[slot, times, plus]\` reference names one by index. */
+export const scales = ${JSON.stringify(schema.scales.map(({ name, family }) => ({ name, family })))};
+/** Each slot's value in the built-in pack: where a step cannot follow the pack, it takes this. */
+export const scaleDefaults = ${JSON.stringify(scaleDefaults(schema))};
+/** Scale family to the wire fields whose fields take its references. */
+export const scaledFields = ${JSON.stringify(schema.scaledFields)};
 `;
 }
 

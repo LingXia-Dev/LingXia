@@ -4,7 +4,7 @@ import { parse, formatHex8 } from 'culori';
 import { readFile } from 'node:fs/promises';
 import { tokenSelectorTheme, validateTokens, fontFaces, classRulesAsUtilities } from './stylesheets.mjs';
 import { lowerAnimation, transitionEasing as lowerEasing } from './animation.mjs';
-import { css as cssStyle, keywords, style as styleTable, limits, roles } from '../src/generated/contract.js';
+import { css as cssStyle, keywords, style as styleTable, limits, roles, scales, scaleDefaults } from '../src/generated/contract.js';
 
 // Tailwind owns utility expansion and cascade order; this module lowers each
 // rule's declarations to the CSS-named style the native renderer accepts and
@@ -30,12 +30,19 @@ function evaluate(text) {
     // `<page>` already pads by the safe-area insets, so content inside it sees none left.
     const env = source.slice(i).match(/^env\(\s*safe-area-inset-(?:top|right|bottom|left)\s*(?:,[^()]*)?\)/);
     if (env) { i += env[0].length; return { value: 0, unit: 'px' }; }
+    // `scale(space)`: one of a pack step, resolved by the host; it rides as a unit of its own.
+    const step = source.slice(i).match(/^scale\(\s*([\w.]+)\s*\)/);
+    if (step) {
+      if (!scales.some(slot => slot.name === step[1])) unsupported(`unknown scale step ${step[1]}`);
+      i += step[0].length; return { value: 1, unit: `@${step[1]}`, plus: 0 };
+    }
     const extreme = source.slice(i).match(/^(max|min)\(/);
     if (extreme) {
       i += extreme[0].length;
       const values = [sum()];
       for (space(); source[i] === ','; space()) { i++; values.push(sum()); }
       expect(')');
+      if (values.some(v => v.unit?.startsWith('@'))) scaled(text, 'min() or max()');
       const units = new Set(values.filter(v => v.value !== 0).map(v => v.unit));
       if (units.size > 1) unsupported(`unsupported calculation: ${text}`);
       const pick = Math[extreme[1]](...values.map(v => v.value));
@@ -46,6 +53,7 @@ function evaluate(text) {
     i += match[0].length;
     // The View viewport has no browser chrome, so dynamic, small and large units coincide.
     const unit = match[2]?.toLowerCase().replace(/^[dsl](v[wh])$/, '$1') ?? '';
+    if (unit === 'em') return { value: Number(match[1]), unit: '@em', plus: 0 };
     return unit === 'rem' ? { value: Number(match[1]) * 16, unit: 'px' } : { value: Number(match[1]), unit };
   };
   const product = () => {
@@ -57,11 +65,14 @@ function evaluate(text) {
       i++;
       const right = primary();
       if (op === '*') {
+        if (left.unit?.startsWith('@') && right.unit?.startsWith('@')) scaled(text, 'a product of two steps');
         if (left.unit && right.unit) unsupported(`unsupported calculation: ${text}`);
-        left = { value: left.value * right.value, unit: left.unit || right.unit };
+        const by = left.unit ? right.value : left.value, of = left.unit ? left : right;
+        left = { value: left.value * right.value, unit: left.unit || right.unit, plus: (of.plus ?? 0) * by };
       } else {
+        if (right.unit?.startsWith('@')) scaled(text, 'a division by a step');
         if (right.unit) unsupported(`unsupported calculation: ${text}`);
-        left = { value: left.value / right.value, unit: left.unit };
+        left = { value: left.value / right.value, unit: left.unit, plus: (left.plus ?? 0) / right.value };
       }
     }
   };
@@ -72,7 +83,18 @@ function evaluate(text) {
       const op = source[i];
       if ((op !== '+' && op !== '-') || !/\s/.test(source[i + 1] ?? '')) return left;
       i++;
-      const right = product();
+      const right = product(), sign = op === '+' ? 1 : -1;
+      // n x step + px folds to [step, n, px]; two different steps do not fold.
+      const step = [left, right].find(v => v.unit?.startsWith('@'));
+      if (step) {
+        const other = step === left ? right : left;
+        if (other.unit?.startsWith('@') && other.unit !== step.unit) scaled(text, `two scale steps (${left.unit.slice(1)}, ${right.unit.slice(1)})`);
+        if (other.unit !== step.unit && other.unit !== 'px' && other.value !== 0) unsupported(`unsupported calculation: ${text}`);
+        const times = (left.unit === step.unit ? left.value : 0) + sign * (right.unit === step.unit ? right.value : 0);
+        const plus = (left.plus ?? 0) + (left.unit === 'px' ? left.value : 0) + sign * ((right.plus ?? 0) + (right.unit === 'px' ? right.value : 0));
+        left = { value: times, unit: step.unit, plus };
+        continue;
+      }
       if (left.unit !== right.unit && left.value !== 0 && right.value !== 0) unsupported(`unsupported calculation: ${text}`);
       left = { value: op === '+' ? left.value + right.value : left.value - right.value, unit: left.unit || right.unit };
     }
@@ -82,9 +104,28 @@ function evaluate(text) {
   return result;
 }
 
+class ScaleError extends Unsupported {}
+const scaled = (text, op) => { throw new ScaleError(`UI_SCALE: "${text}" combines a scale step with ${op}; write the step, a multiple of the spacing unit, or a fixed length`); };
+
+// A step reference on the wire: `[slot, times, plus]`, resolved by the host against the pack.
+const reference = ({ value, unit, plus }) => [scales.findIndex(slot => slot.name === unit.slice(1)), value || 0, plus || 0];
+// Only the fields a step family lists follow the pack; elsewhere (transforms, borders, shadows)
+// a step takes the built-in pack's value at build time.
+let stepping = false;
+function folded({ value, unit, plus }) {
+  const slot = scales.findIndex(entry => entry.name === unit.slice(1));
+  if (scaleDefaults[slot] === null) unsupported(`${unit.slice(1)} sizes only width and height`);
+  return { value: value * scaleDefaults[slot] + plus, unit: 'px' };
+}
+
 // A length in pixels, or with `fraction` a unitless number where `%` means /100.
 function number(value, length = false) {
-  const { value: amount, unit } = evaluate(value);
+  let result = evaluate(value);
+  if (result.unit?.startsWith('@')) {
+    if (length && stepping) return reference(result);
+    result = folded(result);
+  }
+  const { value: amount, unit } = result;
   if (unit === 'px' || (unit === '' && (!length || amount === 0))) return amount;
   if (unit === '%' && !length) return amount / 100;
   return unsupported(`unsupported ${length ? 'length' : 'number'}: ${value}`);
@@ -95,7 +136,12 @@ function dimension(value) {
   // `ch` resolves natively against the advance of "0" in the node's font.
   const ch = value.match(/^((?:\d*\.)?\d+)ch$/);
   if (ch) return `${Number(ch[1])}ch`;
-  const { value: amount, unit } = evaluate(value);
+  let result = evaluate(value);
+  if (result.unit?.startsWith('@')) {
+    if (stepping) return reference(result);
+    result = folded(result);
+  }
+  const { value: amount, unit } = result;
   if (unit === '%' || unit === 'vw' || unit === 'vh') return `${Math.round(amount * 1e6) / 1e6}${unit}`;
   if (unit === 'px' || (unit === '' && amount === 0)) return amount;
   return unsupported(`unsupported length: ${value}`);
@@ -167,6 +213,13 @@ export const viewExtensions = `@custom-variant exit (&:where(.lx-exit));
   transition-duration: var(--tw-duration, var(--default-transition-duration));
 }`;
 export const roleTheme = `@theme inline {\n${roles.map(role => `  --color-${role.replace(/^text-/, '')}: role(${role});`).join('\n')}\n}`;
+
+// Steps stay symbolic: the host's pack decides their values at run time, as for colours.
+const themeName = { type: name => `--text-${name}`, leading: name => `--text-${name}--line-height`, radius: name => name === 'DEFAULT' ? '--radius' : `--radius-${name}`, space: () => '--spacing', duration: name => `--transition-duration-${name}`, ease: name => `--ease-${name}` };
+export const scaleTheme = `@theme inline {\n${scales.filter(slot => themeName[slot.family]).flatMap(slot => {
+  const name = themeName[slot.family](slot.name.split('.').slice(1).join('.'));
+  return [`  ${name}: scale(${slot.name});`];
+}).join('\n')}\n}`;
 
 function variables(value, vars, depth = 0) {
   if (depth > 32) unsupported('cyclic CSS variable');
@@ -460,7 +513,9 @@ function backdropValue(name, raw, vars) {
 // to a side, as alpha stops the renderer intersects. Radial and conic masks are refused.
 const maskSides = { top: 'top', bottom: 'bottom', left: 'left', right: 'right' };
 function maskPosition(text) {
-  const { value, unit } = evaluate(text);
+  let result = evaluate(text);
+  if (result.unit?.startsWith('@')) result = folded(result);
+  const { value, unit } = result;
   if (unit === '%') return { offset: value / 100 };
   if (unit === 'px' || (unit === '' && value === 0)) return { px: value };
   return unsupported(`unsupported mask position: ${text}`);
@@ -558,8 +613,14 @@ for (const family of ['padding', 'margin']) {
 }
 
 // One CSS longhand value lowered by the author style key it sets.
+const stepKinds = new Set(['dimension', 'basis', 'margin', 'inset', 'length', 'font-size', 'line-height']);
 function longhand(prop, value) {
   const key = cssStyle[prop];
+  stepping = stepKinds.has(styleTable[key].lower) && !/^border(?:-[a-z]+)*-width$/.test(prop);
+  try { return lowered(prop, key, value); } finally { stepping = false; }
+}
+
+function lowered(prop, key, value) {
   switch (styleTable[key].lower) {
     case 'dimension': return dimension(value);
     case 'basis': return value === 'auto' ? 'auto' : dimension(value);
@@ -611,7 +672,8 @@ function longhand(prop, value) {
       return em ? `${Number(em[1])}em` : value === 'normal' ? 0 : number(value, true);
     }
     case 'line-height': {
-      const { value: amount, unit } = evaluate(value);
+      const result = evaluate(value), { value: amount, unit } = result;
+      if (unit?.startsWith('@')) return reference(result);
       if (unit === 'px') return `${amount}px`;
       if (unit === '') return amount;
       return unsupported(`line-height: ${value}`);
@@ -638,7 +700,9 @@ function angle(text) {
 }
 
 function translateLength(text) {
-  const { value, unit } = evaluate(text);
+  let result = evaluate(text);
+  if (result.unit?.startsWith('@')) result = folded(result);
+  const { value, unit } = result;
   if (unit === '%') return `${Math.round(value * 1e6) / 1e6}%`;
   if (unit === 'px' || (unit === '' && value === 0)) return value;
   return unsupported(`unsupported translate: ${text}`);
@@ -687,11 +751,18 @@ const transitionInert = new Set(['outline-color', 'filter', '-webkit-backdrop-fi
 const layoutProperty = /^(?:width|height|min-|max-|padding|margin|inset|top|right|bottom|left|gap|row-gap|column-gap|flex|grid|font-size|line-height|letter-spacing|border(?:-[a-z]+)?-width|border-radius)/;
 
 function transitionMs(value) {
+  const step = value.trim().match(/^scale\((duration\.\w+)\)$/);
+  if (step) return reference({ value: 1, unit: `@${step[1]}`, plus: 0 });
   const match = value.trim().match(/^((?:\d*\.)?\d+)(ms|s)$/);
   if (!match) unsupported(`unsupported transition time: ${value}`);
   const ms = Number(match[1]) * (match[2] === 's' ? 1000 : 1);
   if (ms > limits.transitionMs) unsupported(`transition time over ${limits.transitionMs}ms: ${value}`);
   return ms;
+}
+
+function easing(value) {
+  const step = value.trim().match(/^scale\((ease\.\w+)\)$/);
+  return step ? reference({ value: 1, unit: `@${step[1]}`, plus: 0 }) : lowerEasing(value);
 }
 
 function transitionDeclaration(prop, raw, local, motion) {
@@ -713,10 +784,10 @@ function transitionDeclaration(prop, raw, local, motion) {
     if (raw.includes('var(--tw-duration')) motion.durationDefault = transitionMs(value);
     else motion.duration = transitionMs(value);
   } else if (prop === 'transition-delay') motion.delay = transitionMs(value);
-  else if (prop === '--tw-ease') motion.easing = lowerEasing(value);
+  else if (prop === '--tw-ease') motion.easing = easing(value);
   else if (prop === 'transition-timing-function') {
-    if (raw.includes('var(--tw-ease')) motion.easingDefault = lowerEasing(value);
-    else motion.easing = lowerEasing(value);
+    if (raw.includes('var(--tw-ease')) motion.easingDefault = easing(value);
+    else motion.easing = easing(value);
   } else unsupported(`${prop}: ${raw}`);
 }
 
@@ -823,7 +894,9 @@ function declarations(nodes, vars, root) {
       style[cssStyle[second]] = longhand(second, inline);
     }
     else if (prop === 'gap') {
+      stepping = true;
       const [row, column = row] = postcss.list.space(value).map(part => number(part, true));
+      stepping = false;
       if (row === column) style.gap = row; else Object.assign(style, { rowGap: row, columnGap: column });
     }
     else if (prop === 'flex') {
@@ -1001,7 +1074,7 @@ function compilerFor(theme) {
   let compiler = compilers.get(theme);
   if (!compiler) {
     compiler = readFile(new URL(import.meta.resolve('tailwindcss/theme.css')), 'utf8')
-      .then(defaults => compile(`${defaults}\n${viewExtensions}\n${theme}\n${roleTheme}\n@tailwind utilities;`));
+      .then(defaults => compile(`${defaults}\n${viewExtensions}\n${theme}\n${roleTheme}\n${scaleTheme}\n@tailwind utilities;`));
     compiler.catch(() => compilers.delete(theme));
     if (compilers.size >= 8) compilers.delete(compilers.keys().next().value);
     compilers.set(theme, compiler);

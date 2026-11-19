@@ -12,3 +12,6 @@ export const rendered = (render, view = {}) => tree(describe(render, view));
 
 export const byTestId = (root, id) => find(root, node => node.testId === id);
 export const byText = (root, text) => find(root, node => node.text === text);
+
+/** Theme steps resolved under the built-in pack, as `@lingxia/view/testing` exports it. */
+export { points } from '../../src/testing.js';

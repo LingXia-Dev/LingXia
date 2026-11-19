@@ -3,10 +3,14 @@ import assert from 'node:assert/strict';
 import { compileUtilities } from '../compiler/tailwind.mjs';
 import { configureClasses, resolveClasses } from '../src/style/classes.js';
 import { describe, h, listTag, prepare, discard } from '../src/internal.js';
-import { rendered, decode, byText } from './support/wire.mjs';
+import { rendered as renderedSteps, decode as decodeSteps, byText, points } from './support/wire.mjs';
+
+// Values as the host resolves them under the built-in pack; scales.test.mjs covers the step references.
+const rendered = (...args) => points(renderedSteps(...args));
+const decode = (...args) => points(decodeSteps(...args));
 
 // Tailwind rules lower to CSS-named style; rendering then lowers that to the native box.
-const classStyle = (name, env) => resolveClasses(name, env)?.base ?? {};
+const classStyle = (name, env) => points(resolveClasses(name, env)?.base ?? {});
 const use = async (names, theme) => configureClasses(await compileUtilities(new Set(names), theme));
 const env = (theme = 'light', width = 400) => ({ theme, viewport: { width, height: 800 } });
 const node = (tag, props, view = {}) => rendered(() => h(tag, props, ...(tag === 'text' ? ['x'] : [])), view).props;
@@ -158,7 +162,7 @@ test('flow-relative utilities stay logical on the wire and rtl:/ltr: follow the 
   const props = node('view', { className: 'ps-4 pe-2 ms-auto start-0 border-s-2 rounded-s-lg rounded-ee-md' });
   assert.deepEqual([props.paddingInlineStart, props.paddingInlineEnd, props.marginInlineStart, props.insetInlineStart, props.borderInlineStartWidth],
     [16, 8, 'auto', 0, 2]);
-  assert.deepEqual([props.radiusStartStart, props.radiusEndStart, props.radiusEndEnd], [8, 8, 6]);
+  assert.deepEqual([props.radiusStartStart, props.radiusEndStart, props.radiusEndEnd], [10, 10, 8]);
   assert.deepEqual(classStyle('rtl:-scale-x-100', { direction: 'ltr' }), {});
   assert.deepEqual(classStyle('rtl:-scale-x-100', { direction: 'rtl' }).scale, [-1, 1]);
   const tree = rendered(() => h('view', { dir: 'rtl' }, h('vector', { className: 'rtl:-scale-x-100 ltr:ml-2', paths: [{ d: 'M0 0h1' }] }),
@@ -254,7 +258,7 @@ test('flex growth, basis and shorthands retain independent cascade values', asyn
 });
 
 test('percentages, fractions, viewport units and sizing keywords preserve relative layout', async () => {
-  await use(['w-full', 'w-1/2', 'h-1/3', 'max-w-[72%]', 'min-h-full', 'md:w-1/2', 'gap-[10%]', 'w-screen', 'h-screen', 'w-fit', 'w-auto']);
+  await use(['w-full', 'w-1/2', 'h-1/3', 'max-w-[72%]', 'min-h-full', 'md:w-1/2', 'gap-[10%]', 'w-screen', 'h-screen', 'w-fit', 'w-auto', 'min-w-min', 'min-h-fit', 'max-w-max', 'max-h-min']);
   const { height, ...rest } = classStyle('w-full h-1/3 max-w-[72%] min-h-full');
   assert.deepEqual(rest, { width: '100%', maxWidth: '72%', minHeight: '100%' });
   assert.ok(Math.abs(parseFloat(height) - 100 / 3) < 1e-5);
@@ -263,6 +267,9 @@ test('percentages, fractions, viewport units and sizing keywords preserve relati
   const screen = node('view', { className: 'w-screen h-screen' }, { env: { viewport: { width: 390, height: 844 } } });
   assert.deepEqual([screen.width, screen.height], [390, 844]);
   assert.equal(node('view', { className: 'w-fit' }).widthKeyword, 'fit-content');
+  const keywords = node('view', { className: 'min-w-min min-h-fit max-w-max max-h-min' });
+  assert.deepEqual([keywords.minWidthKeyword, keywords.minHeightKeyword, keywords.maxWidthKeyword, keywords.maxHeightKeyword],
+    ['min-content', 'fit-content', 'max-content', 'min-content']);
   assert.deepEqual(classStyle('w-auto'), { width: 'auto' });
   assert.throws(() => classStyle('gap-[10%]'), /UI_CLASS/);
 });
@@ -286,8 +293,8 @@ test('margins, positioning, layering and line clamps are native utilities', asyn
 
 test('space and divide utilities target non-last children', async () => {
   await use(['space-y-2', 'space-x-3', 'divide-y', 'divide-line', 'gap-x-2', 'gap-y-4']);
-  assert.deepEqual(resolveClasses('space-y-2').children, { marginTop: 0, marginBottom: 8 });
-  assert.deepEqual(resolveClasses('space-x-3').children, { marginInlineStart: 0, marginInlineEnd: 12 });
+  assert.deepEqual(points(resolveClasses('space-y-2').children), { marginTop: 0, marginBottom: 8 });
+  assert.deepEqual(points(resolveClasses('space-x-3').children), { marginInlineStart: 0, marginInlineEnd: 12 });
   const list = rendered(() => h('view', { className: 'space-y-2 divide-y divide-line' }, h('text', {}, 'a'), h('text', {}, 'b')));
   assert.deepEqual(list.children.map(child => [child.props.marginBottom, child.props.borderBottomWidth]), [[8, 1], [undefined, undefined]]);
   assert.equal(list.children[0].props.borderColor, 'line');
@@ -551,9 +558,9 @@ test('radii: infinite radius clamps and corners cascade under shorthands', async
   await use(['rounded-full', 'rounded-none', 'rounded-3xl', 'rounded-br-md', 'rounded-t-none', 'rounded-br-full', '[width:calc(infinity*1px)]']);
   assert.deepEqual(classStyle('rounded-full'), { borderRadius: 16384 });
   assert.deepEqual(classStyle('rounded-none'), { borderRadius: 0 });
-  assert.deepEqual(classStyle('rounded-3xl rounded-br-md'), { borderRadius: 24, borderBottomRightRadius: 6 });
-  assert.deepEqual(classStyle('rounded-br-md rounded-3xl'), { borderRadius: 24 }, 'a later shorthand clears the corner');
-  assert.deepEqual(classStyle('rounded-3xl rounded-t-none'), { borderRadius: 24, borderTopLeftRadius: 0, borderTopRightRadius: 0 });
+  assert.deepEqual(classStyle('rounded-3xl rounded-br-md'), { borderRadius: 28, borderBottomRightRadius: 8 });
+  assert.deepEqual(classStyle('rounded-br-md rounded-3xl'), { borderRadius: 28 }, 'a later shorthand clears the corner');
+  assert.deepEqual(classStyle('rounded-3xl rounded-t-none'), { borderRadius: 28, borderTopLeftRadius: 0, borderTopRightRadius: 0 });
   assert.equal(classStyle('rounded-br-full').borderBottomRightRadius, 16384);
   const inline = node('view', { className: 'rounded-3xl rounded-br-md', style: { borderRadius: 8 } });
   assert.deepEqual([inline.radius, inline.radiusBottomRight], [8, 8], 'an inline shorthand resets class longhands');
@@ -563,10 +570,10 @@ test('radii: infinite radius clamps and corners cascade under shorthands', async
 test('real Tailwind utilities lower to native dimensions, typography and colors', async () => {
   await use(['p-6', 'gap-2', 'text-sm', 'font-semibold', 'rounded-xl', 'bg-accent/80', 'opacity-50']);
   assert.deepEqual(classStyle('p-6 gap-2 text-sm font-semibold rounded-xl opacity-50'), {
-    paddingTop: 24, paddingRight: 24, paddingBottom: 24, paddingLeft: 24, gap: 8, fontSize: 14, lineHeight: 1.25 / 0.875,
-    fontWeight: 600, borderRadius: 12, opacity: .5,
+    paddingTop: 24, paddingRight: 24, paddingBottom: 24, paddingLeft: 24, gap: 8, fontSize: 13, lineHeight: 18,
+    fontWeight: 600, borderRadius: 14, opacity: .5,
   });
-  assert.equal(node('text', { className: 'text-sm' }).lineHeight, 20);
+  assert.equal(node('text', { className: 'text-sm' }).lineHeight, 18);
   assert.equal(classStyle('bg-accent/80').backgroundColor, 'accent/80');
 });
 
@@ -581,9 +588,10 @@ test('conflicts go to the class written later; variants keep Tailwind order and 
 });
 
 test('custom theme tokens and arbitrary values retain Tailwind semantics', async () => {
-  await use(['bg-accent', 'rounded-xl', 'h-[50px]', 'text-[17px]'], '@theme { --color-accent: #007aff; --radius-xl: 16px; }');
-  // A project theme cannot redefine a role: the palette, not the build, decides its colour.
-  assert.deepEqual(classStyle('bg-accent rounded-xl h-[50px] text-[17px]'), { backgroundColor: 'accent', borderRadius: 16, height: 50, fontSize: 17 });
+  await use(['bg-accent', 'rounded-pill', 'rounded-xl', 'h-[50px]', 'text-[17px]'], '@theme { --color-accent: #007aff; --radius-pill: 16px; --radius-xl: 40px; }');
+  // A project theme cannot redefine a role or a scale slot: the pack decides those; its own tokens stay its own.
+  assert.deepEqual(classStyle('bg-accent rounded-pill h-[50px] text-[17px]'), { backgroundColor: 'accent', borderRadius: 16, height: 50, fontSize: 17 });
+  assert.deepEqual(classStyle('rounded-xl'), { borderRadius: 14 });
 });
 
 test('unsupported rendering and missing dynamic candidates fail visibly', async () => {
@@ -632,16 +640,17 @@ test('palette rules obey source order and diagnose invalid variables in either a
 
 test('relative line height and tracking follow font size across components and lists', async () => {
   await use(['text-sm', 'leading-normal', 'leading-5', 'text-[20px]', 'text-[21px]', 'text-[10px]', 'tracking-widest', 'tracking-tight', 'tracking-normal', 'tracking-[-1px]']);
-  assert.equal(node('text', { className: 'text-sm', style: { fontSize: 21 } }).lineHeight, 30);
-  const nested = rendered(() => h('view', { className: 'text-sm' }, h('text', { className: 'text-[20px]' }, 'child')));
-  assert.ok(Math.abs(nested.children[0].props.lineHeight - 20 * 20 / 14) < 1e-9);
+  // A pack's leading is a fixed height: a larger inline size keeps it.
+  assert.equal(node('text', { className: 'text-sm', style: { fontSize: 21 } }).lineHeight, 18);
+  const nested = rendered(() => h('view', { className: 'leading-normal' }, h('text', { className: 'text-[20px]' }, 'child')));
+  assert.equal(nested.children[0].props.lineHeight, 30, 'a multiplier follows the child\'s size');
   assert.equal(node('text', { className: 'leading-5', style: { fontSize: 21 } }).lineHeight, 20);
   assert.equal(node('text', { className: 'leading-normal', style: { fontSize: 20 } }).lineHeight, 30);
   assert.equal(node('text', { className: 'text-sm', style: { lineHeight: '40px' } }).lineHeight, 40);
   const Label = ({ children }) => h('text', { className: 'text-[21px]' }, children);
-  const texts = decode(describe(() => h('view', { className: 'text-sm' }, h(Label, {}, 'child'), h(listTag, { count: 1, row: () => h(Label, {}, 'row') })), {}))
+  const texts = decode(describe(() => h('view', { className: 'leading-normal' }, h(Label, {}, 'child'), h(listTag, { count: 1, row: () => h(Label, {}, 'row') })), {}))
     .filter(record => record.tag === 'text');
-  assert.deepEqual(texts.map(text => text.props.lineHeight), [30, 30]);
+  assert.deepEqual(texts.map(text => text.props.lineHeight), [31.5, 31.5]);
   assert.equal(node('text', { className: 'text-[10px] tracking-widest' }).letterSpacing, 1);
   assert.equal(node('text', { className: 'text-[10px] tracking-tight' }).letterSpacing, -0.25);
   assert.deepEqual([classStyle('tracking-normal').letterSpacing, classStyle('tracking-[-1px]').letterSpacing], ['0em', -1]);
@@ -811,7 +820,7 @@ test('a caller class overrides a component class of the same property; variants 
   await use(['h-10', 'px-4', 'rounded-md', 'bg-accent', 'text-on-accent', 'rounded-full', 'px-2', 'bg-danger', 'active:bg-accent', 'p-2', 'p-[3px]', 'md:px-6']);
   const component = 'h-10 px-4 rounded-md bg-accent text-on-accent active:bg-accent md:px-6';
   const merged = resolveClasses(`${component} rounded-full px-2 bg-danger`, env('light', 400));
-  assert.deepEqual([merged.base.borderRadius, merged.base.paddingLeft, merged.base.backgroundColor, merged.base.color], [16384, 8, 'danger', 'on-accent']);
+  assert.deepEqual(points([merged.base.borderRadius, merged.base.paddingLeft, merged.base.backgroundColor, merged.base.color]), [16384, 8, 'danger', 'on-accent']);
   assert.equal(merged.active.backgroundColor, 'accent', 'the pressed variant is not overridden by a base class');
   assert.equal(classStyle(`${component} px-2`, env('light', 900)).paddingLeft, 24, 'nor is a breakpoint');
   assert.equal(classStyle('p-2 p-[3px]').paddingTop, 3, 'arbitrary values take part');

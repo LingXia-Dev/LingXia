@@ -55,15 +55,18 @@ const HUE_SPARES: [Swatch; 4] = [
     swatch([80.0, 88.0], [0.14, 0.16], [3.7, 7.6]),
     swatch([38.0, 30.0], [0.17, 0.17], [4.3, 6.2]),
 ];
-/// Where a crowded series goes: the same blue, a grey at the muted text's angle, or violet. An
-/// accent that crowds two series sits between them and leaves no hue free; grey, the middle of
-/// the chroma plane, is the one place no hue reaches. The grey comes again, dimmer in dark,
-/// for where its first weight meets a dull neighbour of its own lightness.
-const SERIES_SPARES: [Swatch; 4] = [
+/// Where a crowded series goes: blue, teal, violet, gold, lime, sky, red or rose. Never a grey: a series
+/// must read as a colour beside the neutral hue and the page's text, so an accent that crowds two
+/// series may leave the second a little nearer its neighbours than the rest.
+const SERIES_SPARES: [Swatch; 8] = [
     swatch([267.0; 2], [0.202, 0.156], [5.6, 6.2]),
-    swatch([0.0; 2], HUE_NEUTRAL.chroma, [3.3, HUE_NEUTRAL.ratio[1]]),
+    swatch([180.0; 2], [0.11, 0.115], [4.6, 9.0]),
     swatch([290.0; 2], [0.19, 0.17], [9.5, 3.5]),
-    swatch([0.0; 2], HUE_NEUTRAL.chroma, [3.3, 3.3]),
+    swatch([85.0; 2], [0.13, 0.14], [3.4, 9.5]),
+    swatch([125.0; 2], [0.15, 0.15], [3.6, 9.0]),
+    swatch([240.0; 2], [0.13, 0.13], [4.0, 5.0]),
+    swatch([25.0; 2], [0.19, 0.17], [6.5, 4.0]),
+    swatch([340.0; 2], [0.17, 0.15], [4.0, 4.5]),
 ];
 /// Hues, then series, with a smaller [`gap`] than this crowd each other. Series are read side
 /// by side in one chart, so they keep further apart.
@@ -99,6 +102,8 @@ const WARNING_SHARE: [f64; 2] = [0.83, 0.7];
 const WHITE_BIAS: f64 = 1.25;
 /// How far overlays lift off `surface-raised` in dark, where a shadow alone does not separate them.
 const OVERLAY_LIFT: f64 = 0.045;
+/// White on a dark-appearance solid fill: past the 4.5 it needs, so rounding never takes it under.
+const SOLID_WHITE: f64 = 4.8;
 
 const HUE_ROLES: [(Role, Role); 8] = [
     (Role::Hue1, Role::Hue1Soft),
@@ -306,6 +311,21 @@ pub(crate) fn overlay(raised: Rgba, dark: bool) -> Rgba {
     .rgba(255)
 }
 
+/// The lightest tone of `source`'s hue and chroma that white stands `ratio` off.
+fn carrying_white(source: Rgba, ratio: f64) -> Rgba {
+    let Oklch { c, h, .. } = source.oklch();
+    let (mut low, mut high) = (0.0, 1.0);
+    for _ in 0..40 {
+        let mid = (low + high) / 2.0;
+        if contrast(WHITE, Oklch { l: mid, c, h }.rgba(255)) >= ratio {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+    Oklch { l: low, c, h }.rgba(255)
+}
+
 /// The tone of this hue and chroma that stands `ratio` off `surface`, by bisection in lightness.
 fn at_contrast(h: f64, c: f64, ratio: f64, surface: Rgba, dark: bool) -> Rgba {
     let edge = surface.oklch().l;
@@ -372,6 +392,17 @@ impl Build<'_> {
         for [status, on, soft, mark] in STATUSES {
             self.family(status, on, soft, mark, tint, self.movable);
         }
+        self.solid(
+            [Role::Accent, Role::OnAccent],
+            [Role::AccentSolid, Role::OnAccentSolid],
+            seed,
+        );
+        let danger = self.get(Role::Danger);
+        self.solid(
+            [Role::Danger, Role::OnDanger],
+            [Role::DangerSolid, Role::OnDangerSolid],
+            danger,
+        );
         self.info(seed);
         self.categorical(seed, sides);
     }
@@ -449,6 +480,27 @@ impl Build<'_> {
                     && grounds.iter().all(|&ground| contrast(moved, ground) >= off)
             })
             .unwrap_or(tries[0])
+    }
+
+    /// The fill of a control that carries white marks and its text. In light the plain role is
+    /// already that; in dark, where the plain role is a pastel for text and rings, a fill at
+    /// `source`'s hue and chroma, as light as white on it allows.
+    fn solid(&mut self, [plain, on_plain]: [Role; 2], [solid, on_solid]: [Role; 2], source: Rgba) {
+        if !self.dark && !self.has(solid) && !self.has(on_solid) {
+            self.put(solid, self.get(plain));
+            self.put(on_solid, self.get(on_plain));
+            return;
+        }
+        let fill = if self.has(solid) {
+            self.get(solid)
+        } else if self.dark {
+            carrying_white(source, self.need(4.5).max(SOLID_WHITE))
+        } else {
+            self.get(plain)
+        };
+        let (fill, text) = self.pair(fill, on_solid, &[], false);
+        self.put(solid, fill);
+        self.put(on_solid, text);
     }
 
     /// A tint `step` off the surface in lightness, moved back toward it until text reads on it.
@@ -609,10 +661,15 @@ impl Build<'_> {
             sides.surface,
             CROWDED[0],
         );
-        let mut spares = SERIES_SPARES;
-        (spares[1].angle, spares[3].angle) = (neutral.angle, neutral.angle);
         // Series do not give way to a status: a chart is its own context.
-        let series = spread(&SERIES, &spares, &[accents], &[], sides.surface, CROWDED[1]);
+        let series = spread(
+            &SERIES,
+            &SERIES_SPARES,
+            &[accents],
+            &[],
+            sides.surface,
+            CROWDED[1],
+        );
         let muted = self.get(Role::TextMuted).oklch().h;
         for (index, (hue, soft)) in HUE_ROLES.into_iter().enumerate() {
             let (angle, swatch, tint) = match index {

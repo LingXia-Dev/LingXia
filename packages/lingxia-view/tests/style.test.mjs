@@ -34,7 +34,9 @@ test('dimensions lower lengths, percentages, viewport units and sizing keywords'
   }
   assert.equal(style({ height: 'auto' }).heightAuto, 1);
   assert.equal(style({ width: 'fit-content' }).widthKeyword, 'fit-content');
-  rejects({ minWidth: 'fit-content' }, /UI_STYLE_VALUE/);
+  assert.equal(style({ minWidth: 'fit-content' }).minWidthKeyword, 'fit-content');
+  assert.equal(style({ maxHeight: 'min-content' }).maxHeightKeyword, 'min-content');
+  rejects({ flexBasis: 'fit-content' }, /UI_STYLE_VALUE/);
   const viewport = rendered(() => h('view', { style: { width: '100vw', height: '50vh' } }), { env: { viewport: { width: 360, height: 800 } } }).props;
   assert.deepEqual([viewport.width, viewport.height], [360, 400]);
   rejects({ widthPercent: 50 }, /UI_STYLE: unknown style property widthPercent/);

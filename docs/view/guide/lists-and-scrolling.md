@@ -44,7 +44,7 @@ export function render() {
     <page className="py-4 gap-3">
       <scroll className="overflow-x-auto">
         <view className="flex-row gap-2 px-4">
-          {chips.map(chip => <button key={chip} onClick={() => {}} className="rounded-full bg-accent px-3 py-1 text-sm text-on-accent">{chip}</button>)}
+          {chips.map(chip => <button key={chip} onClick={() => {}} className="rounded-full bg-accent-solid px-3 py-1 text-sm text-on-accent-solid">{chip}</button>)}
         </view>
       </scroll>
       <scroll className="grow" onReachEnd={() => {}}>

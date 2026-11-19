@@ -11,6 +11,7 @@ _Generated from the View schema (`schema.json`) and the compiler; do not edit._
 | `insets` | `Readonly<{ top: number; right: number; bottom: number; left: number }>` | System bars and host chrome over the surface, logical pixels. |
 | `safeArea` | `Readonly<{ top: number; right: number; bottom: number; left: number }>` | The system bars alone (status bar, cutout, home indicator), as CSS `env(safe-area-inset-*)`; a dialog covering host chrome pads by these, logical pixels. |
 | `keyboard` | `Readonly<{ height: number }>` |  |
+| `capsule` | `Readonly<{ x: number; y: number; width: number; height: number }> \| null` | The host's capsule (the ··· and close control) where it floats over the page, in page coordinates, logical pixels; `null` when the host shows none or it sits in a nav bar. The same box Web pages read as `--lx-page-chrome-capsule-*`. |
 | `pointer` | `"fine" \| "coarse"` | `fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not. |
 | `os` | `string` |  |
 | `formFactor` | `string` | `phone` or `tablet` from the smallest screen width; other hosts may report their own. |

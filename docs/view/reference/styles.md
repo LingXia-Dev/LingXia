@@ -10,11 +10,11 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | --- | --- | --- | --- | --- |
 | `width` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` \| "auto" \| "fit-content" \| "max-content" \| "min-content" `` | `width` |  | all but `<span>` `<link>` |
 | `height` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| "auto" \| "fit-content" \| "max-content" \| "min-content" `` | `height` |  | all but `<span>` `<link>` |
-| `minWidth` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` `` | `min-width` |  | all but `<span>` `<link>` |
-| `minHeight` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` `` | `min-height` |  | all but `<span>` `<link>` |
-| `maxWidth` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` `` | `max-width` |  | all but `<span>` `<link>` |
+| `minWidth` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` \| "fit-content" \| "max-content" \| "min-content" `` | `min-width` |  | all but `<span>` `<link>` |
+| `minHeight` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| "fit-content" \| "max-content" \| "min-content" `` | `min-height` |  | all but `<span>` `<link>` |
+| `maxWidth` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` \| "fit-content" \| "max-content" \| "min-content" `` | `max-width` |  | all but `<span>` `<link>` |
 | `aspectRatio` | `number \| "auto"` | `aspect-ratio` |  | all but `<span>` `<link>` |
-| `maxHeight` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` `` | `max-height` |  | all but `<span>` `<link>` |
+| `maxHeight` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| "fit-content" \| "max-content" \| "min-content" `` | `max-height` |  | all but `<span>` `<link>` |
 | `margin` | `number \| "auto"` |  |  | all but `<span>` `<link>` |
 | `marginTop` | `number \| "auto"` | `margin-top`, `margin-block-start` |  | all but `<span>` `<link>` |
 | `marginRight` | `number \| "auto"` | `margin-right` |  | all but `<span>` `<link>` |
@@ -249,7 +249,7 @@ authored ones and the accent seed, unless a pack sets them.
 | `on-warning` | derived | 4.5:1 on `warning` | Text and icons on warning. |
 | `warning-soft` | derived |  | Warning containers; text on it uses text. |
 | `focus` | derived | 3:1 on `surface`, 3:1 on `canvas` | Focus ring. |
-| `scrim` | fixed |  | Modal backdrop, translucent. |
+| `scrim` | fixed |  | Modal backdrop, translucent; a pack without it takes a near-black of its own neutral. |
 | `chart-1` | derived | 3:1 on `surface`, 3:1 on `canvas` | First categorical series. |
 | `chart-2` | derived | 3:1 on `surface`, 3:1 on `canvas` | Second categorical series. |
 | `chart-3` | derived | 3:1 on `surface`, 3:1 on `canvas` | Third categorical series. |
@@ -258,14 +258,14 @@ authored ones and the accent seed, unless a pack sets them.
 | `line-strong` | the pack | 3:1 on `surface`, 3:1 on `canvas` | Interactive boundaries: editor borders and control outlines. |
 | `selection` | derived | 3:1 on `surface`, 3:1 on `canvas` | Selected-text background, from the accent's soft tone. |
 | `shadow` | fixed |  | Elevation shadow ink; `shadow-*` layers take it at their alpha. |
-| `media` | fixed |  | Translucent dock over video and images; the same in both appearances. |
+| `media` | fixed |  | Translucent dock over video and images; the same in both appearances; a pack without it takes a near-black of its own neutral. |
 | `on-media` | fixed | 4.5:1 on `media`, 4.5:1 on `media-canvas` | Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`). |
 | `surface-overlay` | derived |  | Anything floating over the page: menus, popovers, toasts, dialogs and sheets; surface-raised, a step lighter in dark. |
 | `knob` | fixed |  | The thumb of a switch or slider, drawn on an accent track; white in both appearances by default. |
 | `success-mark` | derived | 3:1 on `surface`, 3:1 on `surface-sunken` | Success as a dot or shape, never text. |
 | `warning-mark` | derived | 3:1 on `surface`, 3:1 on `surface-sunken` | Warning as a dot or shape, never text. |
 | `danger-mark` | derived | 3:1 on `surface`, 3:1 on `surface-sunken` | Danger as a dot or shape, never text. |
-| `media-canvas` | fixed |  | The whole screen behind a full-screen picture or video: opaque, near-black in both appearances; a pack without it uses the darkest surface it has. |
+| `media-canvas` | fixed |  | The whole screen behind a full-screen picture or video: opaque, near-black in both appearances; a pack without it takes a near-black of its own neutral. |
 | `info` | derived | 3:1 on `surface` | Information that is neither good nor bad: notices and hints; a fixed blue at the accent's strength, or the accent family when the accent is that blue. |
 | `on-info` | derived | 4.5:1 on `info` | Text and icons on info. |
 | `info-soft` | derived |  | Information containers; text on it uses text. |
@@ -289,3 +289,7 @@ authored ones and the accent seed, unless a pack sets them.
 | `chart-6` | derived | 3:1 on `surface`, 3:1 on `canvas` | Sixth categorical series. |
 | `chart-7` | derived | 3:1 on `surface`, 3:1 on `canvas` | Seventh categorical series. |
 | `chart-8` | derived | 3:1 on `surface`, 3:1 on `canvas` | Eighth categorical series. |
+| `accent-solid` | derived |  | Fill of a control that carries white marks: primary buttons, checked boxes, solid badges, switch tracks; the accent in light, a deeper accent in dark. Accent text, icons and the focus ring keep accent. |
+| `on-accent-solid` | derived | 4.5:1 on `accent-solid` | Text and icons on accent-solid. |
+| `danger-solid` | derived |  | Fill of a destructive control that carries white marks; danger in light, a deeper danger in dark. |
+| `on-danger-solid` | derived | 4.5:1 on `danger-solid` | Text and icons on danger-solid. |

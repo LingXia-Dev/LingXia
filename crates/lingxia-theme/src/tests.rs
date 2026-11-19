@@ -379,34 +379,44 @@ fn the_resolved_default_palette_is_recorded_for_javascript() {
 }
 
 #[test]
-fn a_pack_without_a_media_canvas_uses_its_darkest_surface() {
-    let mut pack = default_pack();
-    for colors in [&mut pack.appearance.light, &mut pack.appearance.dark] {
-        colors.remove(Role::MediaCanvas.name());
-    }
-    assert_eq!(
-        check(&pack),
-        Vec::new(),
-        "it is not held to the media pairs on a borrowed surface"
-    );
+fn a_pack_without_its_near_blacks_takes_them_from_its_own_dark_canvas() {
+    let warm = warm_pack();
+    assert_eq!(check(&warm), Vec::new());
+    let canvas = warm.appearance.dark["canvas"].oklch();
     for appearance in [Appearance::Light, Appearance::Dark] {
         let prefs = Prefs {
             appearance,
             ..Prefs::default()
         };
-        let theme = resolve(&pack, &prefs).unwrap();
-        let darkest = [
-            Role::Canvas,
-            Role::Surface,
-            Role::SurfaceRaised,
-            Role::SurfaceSunken,
-        ]
-        .into_iter()
-        .map(|role| theme.color(role))
-        .min_by(|a, b| a.luminance().total_cmp(&b.luminance()))
-        .unwrap();
-        assert_eq!(theme.color(Role::MediaCanvas), darkest);
+        let (theme, default) = (
+            resolve(&warm, &prefs).unwrap(),
+            resolve(&default_pack(), &prefs).unwrap(),
+        );
+        for role in [Role::Scrim, Role::Media, Role::MediaCanvas] {
+            let color = theme.color(role);
+            if role == Role::Scrim && appearance == Appearance::Dark {
+                assert_eq!(color, default.color(role), "plain black");
+                continue;
+            }
+            assert_ne!(color, default.color(role), "{appearance:?} {}", role.name());
+            assert_eq!(color.0[3], default.color(role).0[3], "{}", role.name());
+            let tone = color.oklch();
+            assert!(
+                tone.l <= 0.19 && derive::apart(tone.h, canvas.h) < 15.0,
+                "{}",
+                role.name()
+            );
+        }
+        assert!(contrast(theme.color(Role::OnMedia), theme.color(Role::MediaCanvas)) >= 4.5);
     }
+    // The default pack writes its own, so it reads the same as before.
+    let mut bare = default_pack();
+    for colors in [&mut bare.appearance.light, &mut bare.appearance.dark] {
+        for role in [Role::Scrim, Role::Media, Role::MediaCanvas] {
+            colors.remove(role.name());
+        }
+    }
+    assert_eq!(check(&bare), Vec::new());
 }
 
 #[test]
@@ -628,8 +638,12 @@ fn completion_copies_authored_and_fixed_roles_and_never_a_derived_one() {
     assert_eq!(pack.accent, base.accent, "the seed is authored");
     assert_eq!(pack.appearance.light["surface-sunken"], hex("#f2ebe1"));
     assert_eq!(
-        pack.appearance.light["scrim"],
-        base.appearance.light["scrim"]
+        pack.appearance.light["shadow"],
+        base.appearance.light["shadow"]
+    );
+    assert!(
+        !pack.appearance.light.contains_key("scrim"),
+        "near-blacks are the pack's own"
     );
     for colors in [&pack.appearance.light, &pack.appearance.dark] {
         for name in colors.keys() {
@@ -726,14 +740,10 @@ fn a_crowded_colour_gives_way_to_a_spare_in_both_appearances() {
         assert!(near(angle(&theme, Role::Chart2), 267.0), "{appearance:?}");
         assert!(near(angle(&theme, Role::Hue3), 267.0), "{appearance:?}");
         assert!(near(angle(&theme, Role::Hue5), 150.0), "{appearance:?}");
-        // The brown series, crowded by the accent in dark, goes grey: blue is taken, and no
-        // other hue is free of the seven beside it.
-        let grey = theme.color(Role::Chart6).oklch();
-        assert!(grey.c < 0.04, "{appearance:?}: {}", grey.c);
-        assert!(
-            near(grey.h, angle(&theme, Role::TextMuted)),
-            "{appearance:?}"
-        );
+        // The brown series, crowded by the accent in dark, goes violet: blue is taken, and a
+        // series is never grey.
+        let violet = theme.color(Role::Chart6).oklch();
+        assert!(near(violet.h, 290.0) && violet.c > 0.1, "{appearance:?}");
         let default = resolve(&base, &prefs).unwrap();
         for role in [
             Role::Hue2,
@@ -842,7 +852,9 @@ fn hues_and_series_stand_apart_under_any_accent() {
                     for (found, floor) in [
                         (least(&theme, &hues, None), 9.4),
                         (least(&theme, &hues, Some(&own)), 9.4),
-                        (least(&theme, &series, None), 10.5),
+                        // An accent that crowds two series leaves the second's spare a little
+                        // nearer its neighbours: series stay colours, never grey.
+                        (least(&theme, &series, None), 9.5),
                     ] {
                         let (gap, a, b) = found;
                         assert!(
@@ -857,7 +869,7 @@ fn hues_and_series_stand_apart_under_any_accent() {
                     for (found, floor) in [
                         (least_by(plane, &theme, &hues, None), 4.7),
                         (least_by(plane, &theme, &hues, Some(&own)), 4.7),
-                        (least_by(plane, &theme, &series, None), 5.5),
+                        (least_by(plane, &theme, &series, None), 5.0),
                     ] {
                         let (gap, a, b) = found;
                         assert!(
@@ -871,6 +883,124 @@ fn hues_and_series_stand_apart_under_any_accent() {
             }
         }
     }
+}
+
+/// The packs that ship: the default and Liuli's warm.
+fn shipped_packs() -> [Pack; 2] {
+    let warm = include_str!("../../../packages/liuli/themes/warm/pack.json");
+    [
+        default_pack(),
+        complete(serde_json::from_str(warm).unwrap()),
+    ]
+}
+
+#[test]
+fn every_shipped_chart_colour_is_a_colour_apart_from_the_other_seven() {
+    let series = [
+        Role::Chart1,
+        Role::Chart2,
+        Role::Chart3,
+        Role::Chart4,
+        Role::Chart5,
+        Role::Chart6,
+        Role::Chart7,
+        Role::Chart8,
+    ];
+    for pack in shipped_packs() {
+        for appearance in [Appearance::Light, Appearance::Dark] {
+            let prefs = Prefs {
+                appearance,
+                ..Prefs::default()
+            };
+            let theme = resolve(&pack, &prefs).unwrap();
+            let label = format!("{} {appearance:?}", pack.name);
+            for role in series {
+                let chroma = theme.color(role).oklch().c;
+                assert!(
+                    chroma >= 0.08,
+                    "{label}: {} is grey ({chroma:.3})",
+                    role.name()
+                );
+            }
+            for (found, floor) in [
+                (least(&theme, &series, None), 10.5),
+                (least_by(derive::plane, &theme, &series, None), 5.5),
+            ] {
+                let (gap, a, b) = found;
+                assert!(
+                    gap >= floor,
+                    "{label}: {} and {} are {gap:.2} apart",
+                    a.name(),
+                    b.name()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn solid_fills_are_the_plain_roles_in_light_and_deeper_under_white_in_dark() {
+    let pairs = [
+        (
+            Role::Accent,
+            Role::OnAccent,
+            Role::AccentSolid,
+            Role::OnAccentSolid,
+        ),
+        (
+            Role::Danger,
+            Role::OnDanger,
+            Role::DangerSolid,
+            Role::OnDangerSolid,
+        ),
+    ];
+    for pack in shipped_packs() {
+        assert_eq!(check(&pack), Vec::new());
+        every(|prefs, label| {
+            let theme = resolve(&pack, &prefs).unwrap();
+            for (plain, on_plain, solid, on_solid) in pairs {
+                let label = format!("{} {label} {}", pack.name, solid.name());
+                if prefs.appearance == Appearance::Light {
+                    assert_eq!(theme.color(solid), theme.color(plain), "{label}");
+                    assert_eq!(theme.color(on_solid), theme.color(on_plain), "{label}");
+                    continue;
+                }
+                let (fill, tone) = (theme.color(solid), theme.color(solid).oklch());
+                let need = if prefs.high_contrast { 7.0 } else { 4.6 };
+                assert_eq!(theme.color(on_solid), hex("#ffffff"), "{label}");
+                assert!(contrast(hex("#ffffff"), fill) >= need, "{label}");
+                assert!(tone.c >= 0.12, "{label}: chroma {:.3}", tone.c);
+                let hue = theme.color(plain).oklch().h;
+                assert!(derive::apart(tone.h, hue) < 12.0, "{label}: hue");
+            }
+        });
+    }
+    // The default dark accent fill is a saturated blue near #3d63d6, not its pastel text tone.
+    let dark = Prefs {
+        appearance: Appearance::Dark,
+        ..Prefs::default()
+    };
+    let theme = resolve(&default_pack(), &dark).unwrap();
+    assert!(distance(theme.color(Role::AccentSolid), hex("#3d63d6")) < 5.0);
+    // A pack may write its own fill; its text is chosen to read on it.
+    let mut own = default_pack();
+    own.appearance
+        .dark
+        .insert("danger-solid".into(), hex("#9b1c1c"));
+    let theme = resolve(&own, &dark).unwrap();
+    assert_eq!(theme.color(Role::DangerSolid), hex("#9b1c1c"));
+    assert!(contrast(theme.color(Role::OnDangerSolid), hex("#9b1c1c")) >= 4.5);
+    // A user accent recolours the fill with the rest of the accent family.
+    let green = Prefs {
+        accent: Some(hex("#0f9d58")),
+        ..dark
+    };
+    let hue = resolve(&default_pack(), &green)
+        .unwrap()
+        .color(Role::AccentSolid)
+        .oklch()
+        .h;
+    assert!(derive::apart(hue, hex("#0f9d58").oklch().h) < 12.0);
 }
 
 #[test]
@@ -1076,7 +1206,31 @@ fn advice_names_a_status_colour_that_reads_as_a_hue() {
         .collect();
     assert_eq!(
         advice,
-        ["light: warning is 3.2 from hue-4; under 5 they read as one colour"]
+        [
+            "light: warning is 3.2 from hue-4; under 5 they read as one colour",
+            "light: accent is 4.22:1 on canvas; as link text it needs 4.5:1",
+            "light: accent is 4.48:1 on surface; as link text it needs 4.5:1",
+            "light: accent is 3.84:1 on surface-sunken; as link text it needs 4.5:1",
+            "light: accent is 3.90:1 on accent-soft; as link text it needs 4.5:1",
+        ]
+    );
+    // A solid fill lost on the surface is named too.
+    let mut faint = default_pack();
+    faint
+        .appearance
+        .dark
+        .insert("danger-solid".into(), hex("#2a2f3c"));
+    faint
+        .appearance
+        .dark
+        .insert("on-danger-solid".into(), hex("#ffffff"));
+    let advice: Vec<String> = advise(&faint).iter().map(ToString::to_string).collect();
+    assert!(
+        advice
+            .iter()
+            .any(|line| line.starts_with("dark: danger-solid is ")
+                && line.ends_with("on surface; a filled control's edge needs 3.0:1")),
+        "{advice:?}"
     );
     assert_eq!(check(&warm_pack()), Vec::new(), "advice is not a failure");
 }

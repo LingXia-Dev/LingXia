@@ -203,8 +203,9 @@ export function listKeys(props) {
 
 const iso = { date: /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, time: /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/ };
 
-const inputTypes = { text: 'text', password: 'text', email: 'email', number: 'number', tel: 'phone', search: 'search', date: 'date', time: 'time' };
-const inputModes = { text: 'text', numeric: 'number', decimal: 'number', tel: 'phone', email: 'email' };
+// A number field takes a decimal point unless its inputMode says digits only (`numeric`).
+const inputTypes = { text: 'text', password: 'text', email: 'email', number: 'decimal', tel: 'phone', search: 'search', date: 'date', time: 'time' };
+const inputModes = { text: 'text', numeric: 'number', decimal: 'decimal', tel: 'phone', email: 'email' };
 
 /** The wire keyboard and secure flag an editor's `type` and `inputMode` name. */
 export function editorKind(tag, props) {
@@ -250,13 +251,15 @@ export function editor(tag, props, keyboard) {
   const bounded = ['min', 'max', 'step'].filter(name => props[name] !== undefined);
   if (bounded.length) {
     if (tag !== 'input' || !['number', 'date', 'time'].includes(props.type)) throw Error('UI_INPUT: min, max and step need type="number", "date" or "time"');
-    const valid = value => keyboard === 'number' ? typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e15
-      : typeof value === 'string' && iso[keyboard].test(value);
-    for (const name of ['min', 'max']) if (props[name] !== undefined && !valid(props[name])) throw Error(`UI_INPUT: ${name} must be a ${keyboard === 'number' ? 'number' : `${keyboard} in ISO form`}`);
+    // The range follows the field's type; a decimal keyboard is still a number field.
+    const kind = props.type;
+    const valid = value => kind === 'number' ? typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e15
+      : typeof value === 'string' && iso[kind].test(value);
+    for (const name of ['min', 'max']) if (props[name] !== undefined && !valid(props[name])) throw Error(`UI_INPUT: ${name} must be a ${kind === 'number' ? 'number' : `${kind} in ISO form`}`);
     if (props.min !== undefined && props.max !== undefined && props.min > props.max) throw Error('UI_INPUT: min exceeds max');
     // A time's step is in seconds, as in HTML; its picker offers the minutes it allows.
-    if (props.step !== undefined && (keyboard === 'date' || typeof props.step !== 'number' || !(props.step > 0) || props.step > 1e15
-      || (keyboard === 'time' && (!Number.isInteger(props.step) || props.step > 86400))))
+    if (props.step !== undefined && (kind === 'date' || typeof props.step !== 'number' || !(props.step > 0) || props.step > 1e15
+      || (kind === 'time' && (!Number.isInteger(props.step) || props.step > 86400))))
       throw Error('UI_INPUT: step is a positive number on type="number", or whole seconds up to a day on type="time"');
     for (const [name, key] of [['min', 'inputMin'], ['max', 'inputMax'], ['step', 'inputStep']]) if (props[name] !== undefined) out.push([key, props[name]]);
   }

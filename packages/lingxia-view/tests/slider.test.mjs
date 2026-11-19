@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { h, describe, prepare, discard, dispatch, useLocal, reset } from '../src/internal.js';
-import { tree, rendered, byTestId } from './support/wire.mjs';
+import { tree, rendered, byTestId, points } from './support/wire.mjs';
 import { releasePress } from '../src/runtime/press.js';
 import { compileUtilities } from '../compiler/tailwind.mjs';
 import { configureClasses } from '../src/style/classes.js';
@@ -81,7 +81,7 @@ test('two values make a named group of two sliders over one track that cannot cr
   assert.deepEqual([upper.props.accessibilityLabel, upper.props.sliderValue, upper.props.sliderOther, upper.props.sliderThumb], ['To', 60, 20, 'upper']);
   assert.deepEqual([lower.props.accessibilityLabel, lower.props.sliderValue, lower.props.sliderOther, lower.props.sliderThumb], ['From', 20, 60, 'lower']);
   // Placement and the box go to the group; what the control draws with stays on each slider.
-  assert.deepEqual([group.props.width, group.props.height, lower.props.width, lower.props.height, upper.props.width], [256, 40, undefined, 40, undefined]);
+  assert.deepEqual(points([group.props.width, group.props.height, lower.props.width, lower.props.height, upper.props.width]), [256, 40, undefined, 40, undefined]);
   assert.ok(group.props.background !== undefined && upper.props.background === undefined && lower.props.background === undefined);
   assert.ok(group.props.thumbStyle === undefined && upper.props.thumbStyle !== undefined && lower.props.thumbStyle !== undefined);
   assert.deepEqual([upper.props.color, lower.props.color, upper.props.position], ['accent', 'accent', 'absolute']);

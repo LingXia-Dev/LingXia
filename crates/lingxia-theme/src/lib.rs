@@ -41,7 +41,7 @@ pub fn app_pack(key: &str) -> Option<Pack> {
 
 /// `pack` with every authored and fixed role, the accent seed and every scale step it leaves
 /// out taken from the default pack, so an lxapp pack may change only its accent. Derived roles
-/// are never copied: [`resolve`] computes them from the pack's own colours.
+/// and the near-blacks are never copied: [`resolve`] computes them from the pack's own colours.
 pub fn complete(mut pack: Pack) -> Pack {
     let base = default_pack();
     let own_accent = [&pack.appearance.light, &pack.appearance.dark]
@@ -55,7 +55,9 @@ pub fn complete(mut pack: Pack) -> Pack {
         (&mut pack.appearance.dark, &base.appearance.dark),
     ] {
         for (role, color) in defaults {
-            if Role::from_name(role).is_some_and(|role| role.tier() != Tier::Derived) {
+            if Role::from_name(role)
+                .is_some_and(|role| role.tier() != Tier::Derived && !NEAR_BLACKS.contains(&role))
+            {
                 colors.entry(role.clone()).or_insert(*color);
             }
         }
@@ -259,13 +261,18 @@ impl ResolvedTheme {
     }
 }
 
-const ACCENT_FAMILY: [Role; 5] = [
+const ACCENT_FAMILY: [Role; 7] = [
     Role::Accent,
     Role::OnAccent,
     Role::AccentSoft,
     Role::OnAccentSoft,
     Role::Focus,
+    Role::AccentSolid,
+    Role::OnAccentSolid,
 ];
+
+/// Fixed roles a pack may leave out, taken from its own dark canvas.
+const NEAR_BLACKS: [Role; 3] = [Role::Scrim, Role::Media, Role::MediaCanvas];
 
 /// The pack resolved for `prefs`: its authored and fixed roles as written, boosted under high
 /// contrast, then every derived role it left out, built to pass its pairs. A colour the pack
@@ -288,7 +295,7 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
         palette[slot] = match role {
             _ if role.tier() == Tier::Derived => continue,
             Role::Knob => Some(Rgba([255, 255, 255, 255])),
-            Role::MediaCanvas => darkest_surface(base),
+            _ if NEAR_BLACKS.contains(&role) => near_black(pack, base, role, prefs.appearance),
             _ => None,
         }
         .ok_or_else(|| format!("THEME: {} has no {}", pack.name, role.name()))?;
@@ -384,22 +391,30 @@ fn boosted(ratio: f32) -> f64 {
     }
 }
 
-/// The darkest of a pack's surfaces: where full-screen media sits in a pack without a canvas for it.
-fn darkest_surface(colors: &Colors) -> Option<Rgba> {
-    [
-        Role::Canvas,
-        Role::Surface,
-        Role::SurfaceRaised,
-        Role::SurfaceSunken,
-    ]
-    .into_iter()
-    .filter_map(|role| colors.get(role.name()).copied())
-    .min_by(|a, b| a.luminance().total_cmp(&b.luminance()))
-}
-
-/// A pack without a media canvas borrows a surface for it, and is not held to the media pairs on it.
-fn borrows_media_canvas(colors: &Colors, background: Role) -> bool {
-    background == Role::MediaCanvas && !colors.contains_key(background.name())
+/// A scrim, media dock or media canvas the pack left out: its dark canvas held to a near-black,
+/// so a warm pack does not dim to the default's blue-black. The dark scrim is plain black.
+fn near_black(pack: &Pack, colors: &Colors, role: Role, appearance: Appearance) -> Option<Rgba> {
+    if role == Role::Scrim && appearance == Appearance::Dark {
+        return Some(Rgba([0, 0, 0, 0xa0]));
+    }
+    let canvas = Role::Canvas.name();
+    let tone = pack
+        .appearance
+        .dark
+        .get(canvas)
+        .or(colors.get(canvas))?
+        .oklch();
+    let (l, alpha) = match role {
+        Role::Scrim => (0.19, 0x66),
+        Role::Media => (0.165, 0xb8),
+        _ => (0.155, 255),
+    };
+    let ink = Oklch {
+        l: tone.l.min(l),
+        c: tone.c.min(0.02),
+        h: tone.h,
+    };
+    Some(ink.rgba(alpha))
 }
 
 /// Selection pairs keep their base ratios under high contrast: text must stay readable on the
@@ -504,9 +519,6 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
             }
         };
         for &(foreground, background, ratio) in CONTRAST {
-            if borrows_media_canvas(colors, background) {
-                continue;
-            }
             let needed = if high_contrast && !involves_selection(foreground, background) {
                 boosted(ratio)
             } else {
@@ -572,7 +584,8 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
 /// Under this distance two colours read as one.
 pub(crate) const ALIKE: f64 = 5.0;
 
-/// Colours that pass every pair yet read alike: a status colour beside a hue or the accent.
+/// Colours that pass every pair yet read alike or poorly: a status colour beside a hue or the
+/// accent, the accent as link text on the page's grounds, a solid fill lost on the surface.
 /// Advice for the pack's author, not a failure.
 pub fn advise(pack: &Pack) -> Vec<Problem> {
     let mut advice = Vec::new();
@@ -602,6 +615,30 @@ pub fn advise(pack: &Pack) -> Vec<Problem> {
                     });
                 }
             }
+        }
+        let mut weak = |foreground: Role, background: Role, needed: f64, use_: &str| {
+            let ratio = contrast(theme.color(foreground), theme.color(background));
+            if ratio + 1e-9 < needed {
+                advice.push(Problem {
+                    appearance: name,
+                    message: format!(
+                        "{} is {ratio:.2}:1 on {}; {use_} needs {needed:.1}:1",
+                        foreground.name(),
+                        background.name()
+                    ),
+                });
+            }
+        };
+        for ground in [
+            Role::Canvas,
+            Role::Surface,
+            Role::SurfaceSunken,
+            Role::AccentSoft,
+        ] {
+            weak(Role::Accent, ground, 4.5, "as link text it");
+        }
+        for solid in [Role::AccentSolid, Role::DangerSolid] {
+            weak(solid, Role::Surface, 3.0, "a filled control's edge");
         }
     }
     advice

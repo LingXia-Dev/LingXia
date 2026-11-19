@@ -61,7 +61,11 @@
     "hue-8-soft": "#ebf0f9ff",
     "chart-6": "#7b4618ff",
     "chart-7": "#9b0057ff",
-    "chart-8": "#817100ff"
+    "chart-8": "#817100ff",
+    "accent-solid": "#365cddff",
+    "on-accent-solid": "#ffffffff",
+    "danger-solid": "#c93434ff",
+    "on-danger-solid": "#ffffffff"
   },
   "dark": {
     "canvas": "#0f131aff",
@@ -125,6 +129,10 @@
     "hue-8-soft": "#292e38ff",
     "chart-6": "#c08351ff",
     "chart-7": "#ff95b2ff",
-    "chart-8": "#c7d46fff"
+    "chart-8": "#c7d46fff",
+    "accent-solid": "#3f68e9ff",
+    "on-accent-solid": "#ffffffff",
+    "danger-solid": "#ca4146ff",
+    "on-danger-solid": "#ffffffff"
   }
 }

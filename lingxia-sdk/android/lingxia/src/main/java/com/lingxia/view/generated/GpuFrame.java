@@ -18,6 +18,7 @@ public final class GpuFrame {
     public static final String KEYBOARD_EMAIL = "email";
     public static final String KEYBOARD_PHONE = "phone";
     public static final String KEYBOARD_SEARCH = "search";
+    public static final String KEYBOARD_DECIMAL = "decimal";
     public static final String CAPITALIZE_NONE = "none";
     public static final String CAPITALIZE_SENTENCES = "sentences";
     public static final String CAPITALIZE_WORDS = "words";

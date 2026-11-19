@@ -1,7 +1,7 @@
 import { declaredFamily } from '../runtime/fonts.js';
 import { elements, style as table } from '../generated/contract.js';
 import { fieldOptions, field } from '../generated/wire.js';
-import { limits, options } from '../generated/contract.js';
+import { limits, options, scales, scaledFields, scaleDefaults } from '../generated/contract.js';
 import { normalizeRing, normalizeShadows } from './shadow.js';
 import { appliesTo } from './hints.js';
 import { normalizeGradient } from './gradient.js';
@@ -76,7 +76,19 @@ function invalid(name, value, takes) {
   throw Error(`UI_STYLE_VALUE: ${name} takes ${takes}; got ${got}`);
 }
 
+// A theme step the host resolves: `[slot, times, plus]`.
+const isStep = value => Array.isArray(value) && value.length === 3 && Number.isInteger(value[0]) && scales[value[0]] !== undefined && finite(value[1]) && finite(value[2]);
+// A step where the host cannot resolve one (a slider part) takes the built-in pack's value.
+const fold = value => isStep(value) && finite(scaleDefaults[value[0]]) ? value[1] * scaleDefaults[value[0]] + value[2] : value;
+// `value` scaled by `factor`, a step staying a step.
+const times = (value, factor) => isStep(value) ? [value[0], value[1] * factor, value[2] * factor] : value * factor;
+
 function length(name, value, { signed = false, max = 16384 } = {}) {
+  if (isStep(value)) {
+    // Steps are positive: a negative multiple with no positive offset can only resolve below 0.
+    if (!signed && value[1] < 0 && value[2] <= 0) invalid(name, value, 'a step that resolves to 0 or more');
+    return value;
+  }
   const min = signed ? -max : 0;
   if (!finite(value) || value > max || value < min) invalid(name, value, `a number from ${min} to ${max}`);
   return value;
@@ -102,7 +114,7 @@ function dimension(name, value, env, out, key) {
   } else if (percent(value) !== undefined) out[`${key}Percent`] = length(name, percent(value));
   else if (value === 'auto' && key === 'height') out.heightAuto = 1;
   else if (value === 'auto' && key === 'width') { /* CSS default */ }
-  else if (['fit-content', 'max-content', 'min-content'].includes(value) && (key === 'width' || key === 'height')) out[`${key}Keyword`] = value;
+  else if (['fit-content', 'max-content', 'min-content'].includes(value) && ['width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight'].includes(key)) out[`${key}Keyword`] = value;
   else out[key] = length(name, value);
 }
 
@@ -216,13 +228,19 @@ function transitionValue(value) {
   if (value === 'none') return undefined;
   const invalid = () => { throw Error('UI_STYLE_VALUE: transition'); };
   if (!value || typeof value !== 'object' || Object.keys(value).some(key => !['properties', 'durationMs', 'delayMs', 'easing'].includes(key))) invalid();
-  const { properties, durationMs, delayMs = 0, easing = [0.4, 0, 0.2, 1] } = value;
+  const { properties, delayMs = 0 } = value;
+  let { durationMs, easing = [0.4, 0, 0.2, 1] } = value;
+  const step = (ref, family) => isStep(ref) && scales[ref[0]].family === family && ref[1] === 1 && ref[2] === 0;
+  // A motion step resolves when the transition starts; check it as its smallest legal stand-in.
+  const durationStep = step(durationMs, 'duration'), easingStep = step(easing, 'ease');
+  if (durationStep) durationMs = 1;
+  if (easingStep) easing = 'linear';
   if (!Array.isArray(properties) || !properties.length || properties.length > options['transition-property'].length ||
       new Set(properties).size !== properties.length || properties.some(name => !options['transition-property'].includes(name)) ||
       !finite(durationMs) || durationMs <= 0 || durationMs > limits.transitionMs || !finite(delayMs) || delayMs < 0 || delayMs > limits.transitionMs ||
       !(easing === 'linear' || easing === 'step-end' || (Array.isArray(easing) && easing.length === 4 && easing.every(finite)) ||
         (easing && typeof easing === 'object' && Object.keys(easing).join() === 'spring' && finite(easing.spring) && easing.spring >= 0 && easing.spring <= 0.9))) invalid();
-  return JSON.stringify({ properties, durationMs, delayMs, easing });
+  return JSON.stringify({ properties, durationMs: durationStep ? value.durationMs : durationMs, delayMs, easing: easingStep ? value.easing : easing });
 }
 
 function animation(value) {
@@ -267,7 +285,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
   admitStyle(tag, style);
   const out = {};
   const fontSize = style.fontSize === undefined ? inherited.fontSize : length('fontSize', style.fontSize);
-  if (style.fontSize !== undefined && style.fontSize <= 0) invalid('fontSize', style.fontSize, 'a number above 0');
+  if (style.fontSize !== undefined && !isStep(style.fontSize) && style.fontSize <= 0) invalid('fontSize', style.fontSize, 'a number above 0');
   let lineHeight = inherited.lineHeight;
   const transform = {}, lines = {}, safe = { bits: 0 };
   const names = Object.keys(style).sort((a, b) => Number(shorthand(b)) - Number(shorthand(a)));
@@ -352,13 +370,14 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'justification': out[key] = aligned(name, key, value, justification, safe); break;
       case 'family': out[key] = family(name, value); break;
       case 'line-height':
-        if (typeof value === 'string' && /^\d+(?:\.\d+)?px$/.test(value)) lineHeight = length(name, Number(value.slice(0, -2)));
+        if (isStep(value)) lineHeight = value;
+        else if (typeof value === 'string' && /^\d+(?:\.\d+)?px$/.test(value)) lineHeight = length(name, Number(value.slice(0, -2)));
         else if (finite(value) && value > 0 && value <= 64) lineHeight = { multiplier: value };
         else invalid(name, value, 'a multiplier above 0 up to 64, or <n>px');
         break;
       case 'letter-spacing': {
         const em = typeof value === 'string' && value.match(/^(-?\d+(?:\.\d+)?)em$/);
-        const pixels = em ? fontSize * Number(em[1]) : value;
+        const pixels = em ? times(fontSize, Number(em[1])) : value;
         out[key] = length(name, pixels, { signed: true, max: 1024 });
         break;
       }
@@ -385,10 +404,17 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
     out[`grid${axis}`] = end === 'auto' ? start : `${start} / ${end}`;
   }
   // A multiplier recomputes against each node's font size; pixels inherit natively.
-  if (style.lineHeight !== undefined || typeof lineHeight === 'object') {
-    const pixels = typeof lineHeight === 'object' ? fontSize * lineHeight.multiplier : lineHeight;
-    if (!(pixels > 0 && pixels <= 16384)) invalid('lineHeight', pixels, 'a height above 0 up to 16384 points');
+  if (style.lineHeight !== undefined || (lineHeight && typeof lineHeight === 'object' && !isStep(lineHeight))) {
+    const pixels = lineHeight?.multiplier !== undefined ? times(fontSize, lineHeight.multiplier) : lineHeight;
+    if (!isStep(pixels) && !(pixels > 0 && pixels <= 16384)) invalid('lineHeight', pixels, 'a height above 0 up to 16384 points');
     out.lineHeight = pixels;
+  }
+  // Each step goes only where its family applies: a radius step never sizes a padding.
+  for (const key in out) {
+    const value = out[key];
+    if (!isStep(value)) continue;
+    const { name, family } = scales[value[0]];
+    if (!scaledFields[family].includes(key)) throw Error(`UI_SCALE: ${key} does not take the theme step ${name}; it takes ${Object.entries(scaledFields).filter(([, keys]) => keys.includes(key)).map(([family]) => family).join(', ') || 'no step'}`);
   }
   return { fields: out, typography: { fontSize, lineHeight } };
 }
@@ -396,6 +422,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
 // A slider part as `[field, value, …]` pairs; sizes are plain points, as the part has no box to resolve against.
 function partRecord(name, value, env) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) invalid(name, value, 'a style object');
+  value = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, fold(item)]));
   for (const key of ['width', 'height']) if (value[key] !== undefined && !(finite(value[key]) && value[key] >= 0 && value[key] <= 1024)) invalid(`${name}.${key}`, value[key], 'a number from 0 to 1024');
   const pairs = [];
   for (const [key, lowered] of Object.entries(lowerStyle('view', value, env).fields))

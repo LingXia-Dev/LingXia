@@ -149,9 +149,9 @@ function dateBody(words, env, titled) {
     return h('button', { key: id, 'data-testid': `lx-picker-day-${id}`, role: 'gridcell', 'aria-label': name, 'aria-selected': Boolean(selected),
       disabled: !enabled, onClick: () => { if (titled) settle(id); else picker.pick = picker.focus = date; },
       style: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
-        backgroundColor: selected ? 'accent' : focused ? 'surface-sunken' : 'transparent',
+        backgroundColor: selected ? 'accent-solid' : focused ? 'surface-sunken' : 'transparent',
         borderWidth: isToday && !selected ? 1 : 0, borderColor: 'accent',
-        color: selected ? 'on-accent' : !inMonth || !enabled ? 'text-faint' : 'text', fontSize: 14, fontWeight: selected || isToday ? 600 : 400 } },
+        color: selected ? 'on-accent-solid' : !inMonth || !enabled ? 'text-faint' : 'text', fontSize: 14, fontWeight: selected || isToday ? 600 : 400 } },
       String(date.day));
   };
   // Content-sized and centred, so a full-width sheet keeps the month compact.
@@ -256,7 +256,7 @@ export function pickerNode(env) {
   // A mouse: the time popover confirms with a button pair below its columns.
   const button = { paddingTop: 8, paddingBottom: 8, paddingLeft: 14, paddingRight: 14, borderRadius: 8, fontSize: 15 };
   const footer = !touch && picker.kind === 'time' && h('view', { style: { flexDirection: 'row', gap: 8, justifyContent: 'end' } },
-    cancel({ ...button, color: 'text' }), done({ ...button, backgroundColor: 'accent', color: 'on-accent', fontWeight: 600 }));
+    cancel({ ...button, color: 'text' }), done({ ...button, backgroundColor: 'accent-solid', color: 'on-accent-solid', fontWeight: 600 }));
   const name = picker.kind === 'date' ? monthTitle : picker.kind === 'time' ? words.hour : picker.label || 'Options';
   const panel = { 'data-testid': 'lx-picker', key: `picker-${picker.key}`, 'aria-label': name,
     style: { padding: 12, gap: 12, borderRadius: 14, backgroundColor: 'surface-overlay', borderWidth: touch ? 0 : 1, borderColor: 'line',

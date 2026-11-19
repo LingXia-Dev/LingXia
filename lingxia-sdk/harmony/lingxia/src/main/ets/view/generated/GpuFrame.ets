@@ -14,6 +14,7 @@ export class GpuFrameKeyboardValues {
   static readonly EMAIL: string = "email";
   static readonly PHONE: string = "phone";
   static readonly SEARCH: string = "search";
+  static readonly DECIMAL: string = "decimal";
 }
 
 /** `Capitalize` values. */

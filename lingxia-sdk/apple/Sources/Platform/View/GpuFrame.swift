@@ -35,6 +35,7 @@ public enum GpuFrameKeyboard: String, Sendable {
     case email = "email"
     case phone = "phone"
     case search = "search"
+    case decimal = "decimal"
 }
 
 /// `Capitalize` values.

@@ -202,7 +202,8 @@ export function syncData(from, revision, ops) {
 export function createView(data, env, revision) {
   const { actions, channels } = currentActions();
   hostContextRead = false;
-  const frozen = immutable(env);
+  // A host that does not report the capsule shows none.
+  const frozen = immutable(env && typeof env === 'object' && !Object.hasOwn(env, 'capsule') ? { ...env, capsule: null } : env);
   const watched = frozen && typeof frozen === 'object' ? new Proxy(frozen, {
     get(target, key, receiver) {
       if (hostContextKeys.has(key)) hostContextRead = true;

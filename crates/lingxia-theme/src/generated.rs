@@ -48,7 +48,7 @@ pub enum Role {
     WarningSoft = 20,
     /// Focus ring.
     Focus = 21,
-    /// Modal backdrop, translucent.
+    /// Modal backdrop, translucent; a pack without it takes a near-black of its own neutral.
     Scrim = 22,
     /// First categorical series.
     Chart1 = 23,
@@ -66,7 +66,7 @@ pub enum Role {
     Selection = 29,
     /// Elevation shadow ink; `shadow-*` layers take it at their alpha.
     Shadow = 30,
-    /// Translucent dock over video and images; the same in both appearances.
+    /// Translucent dock over video and images; the same in both appearances; a pack without it takes a near-black of its own neutral.
     Media = 31,
     /// Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`).
     OnMedia = 32,
@@ -80,7 +80,7 @@ pub enum Role {
     WarningMark = 36,
     /// Danger as a dot or shape, never text.
     DangerMark = 37,
-    /// The whole screen behind a full-screen picture or video: opaque, near-black in both appearances; a pack without it uses the darkest surface it has.
+    /// The whole screen behind a full-screen picture or video: opaque, near-black in both appearances; a pack without it takes a near-black of its own neutral.
     MediaCanvas = 38,
     /// Information that is neither good nor bad: notices and hints; a fixed blue at the accent's strength, or the accent family when the accent is that blue.
     Info = 39,
@@ -128,9 +128,17 @@ pub enum Role {
     Chart7 = 60,
     /// Eighth categorical series.
     Chart8 = 61,
+    /// Fill of a control that carries white marks: primary buttons, checked boxes, solid badges, switch tracks; the accent in light, a deeper accent in dark. Accent text, icons and the focus ring keep accent.
+    AccentSolid = 62,
+    /// Text and icons on accent-solid.
+    OnAccentSolid = 63,
+    /// Fill of a destructive control that carries white marks; danger in light, a deeper danger in dark.
+    DangerSolid = 64,
+    /// Text and icons on danger-solid.
+    OnDangerSolid = 65,
 }
 
-pub const ROLE_COUNT: usize = 62;
+pub const ROLE_COUNT: usize = 66;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -196,6 +204,10 @@ impl Role {
         Role::Chart6,
         Role::Chart7,
         Role::Chart8,
+        Role::AccentSolid,
+        Role::OnAccentSolid,
+        Role::DangerSolid,
+        Role::OnDangerSolid,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -262,6 +274,10 @@ impl Role {
             Role::Chart6 => "chart-6",
             Role::Chart7 => "chart-7",
             Role::Chart8 => "chart-8",
+            Role::AccentSolid => "accent-solid",
+            Role::OnAccentSolid => "on-accent-solid",
+            Role::DangerSolid => "danger-solid",
+            Role::OnDangerSolid => "on-danger-solid",
         }
     }
 
@@ -396,4 +412,6 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::Chart7, Role::Canvas, 3.0),
     (Role::Chart8, Role::Surface, 3.0),
     (Role::Chart8, Role::Canvas, 3.0),
+    (Role::OnAccentSolid, Role::AccentSolid, 4.5),
+    (Role::OnDangerSolid, Role::DangerSolid, 4.5),
 ];

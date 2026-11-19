@@ -13,7 +13,7 @@ a `style` object whose every value is fixed builds with a `UI_STYLE_STATIC` warn
 import { useLocal } from '@lingxia/view';
 import './theme.css';
 
-const tone = { neutral: 'bg-surface-raised text-text', accent: 'bg-accent text-on-accent' } as const;
+const tone = { neutral: 'bg-surface-raised text-text', accent: 'bg-accent-solid text-on-accent-solid' } as const;
 
 export function render() {
   const selected = useLocal<'neutral' | 'accent'>('selected', 'neutral');
@@ -66,7 +66,9 @@ the default theme defines is listed in [utilities](../reference/utilities.md) as
 ## Colours are roles
 
 Colours name a theme role, never a value: `bg-surface`, `text-muted`, `border-line`,
-`bg-accent text-on-accent`, with opacity modifiers (`bg-text/8`). The theme pack resolves roles per
+`bg-accent-solid text-on-accent-solid`, with opacity modifiers (`bg-text/8`). A filled control that
+carries white marks (a primary or destructive button, a solid badge) takes `accent-solid` or `danger-solid`:
+in dark they are a deeper fill than `accent` and `danger`, which stay for text, icons and rings. The theme pack resolves roles per
 appearance, so `dark:` on a colour, palette ladders (`gray-200`) and hex fail with `UI_COLOR`; so do hex
 colours in `style`. Complete CSS gradients (`bg-[radial-gradient(…)]`) and shadow layers may use literal
 colours. The roles are listed in [styles](../reference/styles.md#colour-roles).
@@ -107,6 +109,33 @@ export function render() {
 }
 ```
 
+## Scale steps
+
+These classes name a step of the theme pack and are resolved on the device, like colour roles, so
+a pack change restyles the page without a rebuild:
+
+| Steps | Classes | Follow the pack in |
+| --- | --- | --- |
+| type | `text-xs` … `text-4xl` (each sets size and line height) | font size, line height, letter spacing |
+| radius | `rounded`, `rounded-sm` … `rounded-3xl`, and the corner forms | corner radii |
+| spacing unit | `p-*`, `m-*` (negatives too), `gap-*`, `inset-*`/`top-*`…, `w-*`/`h-*`/`size-*`/`min-*`/`max-*`, `basis-*`, `leading-<n>` | padding, margins, gaps, insets, sizes, flex basis, line height |
+| motion | `duration-fast\|base\|slow`, `ease-standard\|enter\|exit` | transitions |
+
+A step is frozen at the built-in pack's value at build time in translations (`translate-*`), border widths,
+shadows and rings, mask edge positions and slider part sizes. `calc(var(--spacing) * 4 + 1px)` stays a step;
+a value that adds two steps, multiplies or divides by one, or takes `min()`/`max()` over one fails with
+`UI_SCALE`. Literals (`p-[13px]`, `text-[15px]`, inline `style`) and your own tokens are fixed.
+
+Two consequences of the pack deciding:
+
+- A `text-*` step's line height is the pack's fixed height, not a ratio: a child with a larger literal size
+  inherits it, so set its `leading-*` too.
+- `@theme` tokens that redefine a step (`--radius-xl`, `--text-sm`, `--spacing`) are ignored, and the
+  default values are the built-in pack's (`text-sm` 13/18, `rounded-lg` 10); name your own tokens instead.
+
+`size-[1em]` sizes an element (an icon) to its own font size as the device's text size scales it, growing
+up to 1.5× and no further.
+
 ## Arbitrary values
 
 `w-[72px]`, `text-[13px]`, `grid-cols-[1fr_auto]`, `bg-(--brand-image)` and opacity modifiers
@@ -120,7 +149,7 @@ share a unit. `env(safe-area-inset-*)` is 0, because `<page>` already pads by th
 A page imports at most one stylesheet (it may `@import` relative token files). It holds only tokens:
 
 - `@theme { … }` and `@theme inline { … }` define Tailwind tokens (`--radius-*`, `--text-*`, `--shadow-*`, …);
-  colour tokens never override a role.
+  colour tokens never override a role, and scale tokens never override a step (below).
 - `:root { … }` and `[data-theme='light' | 'dark'] { … }` define custom properties, such as shadow tints.
 - `@utility name { … }` defines a theme-owned class from plain declarations, where CSS would write
   `.brand-gradient { … }`. `background: <gradient> [<position> / <size>], <colour>` and
@@ -188,7 +217,7 @@ export function render() {
       <view className="relative w-16 h-10 rounded-lg bg-line">
         <view className="absolute top-0 right-0 w-4 h-4 rounded-full bg-danger translate-x-1/2 -translate-y-1/2" />
       </view>
-      <button onClick={() => {}} className="self-start rounded-xl bg-accent p-3 text-on-accent active:scale-95 active:opacity-90">Press</button>
+      <button onClick={() => {}} className="self-start rounded-xl bg-accent-solid p-3 text-on-accent-solid active:scale-95 active:opacity-90">Press</button>
     </page>
   );
 }

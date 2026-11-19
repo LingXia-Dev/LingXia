@@ -30,7 +30,7 @@ test('a spinbutton is a number input with a value; inputMode may pick the number
   assert.equal(node.props.role, 'spinbutton');
   assert.equal(node.props.ariaValueNow, 71.5);
   assert.equal(node.props.ariaValueText, '71.5 kg');
-  assert.equal(node.props.keyboard, 'number');
+  assert.equal(node.props.keyboard, 'decimal');
   refuses(() => h('input', { type: 'number', inputMode: 'email', value: '', 'aria-label': 'A' }), /UI_INPUT: type="number" picks its own keyboard/);
   refuses(() => h('input', { type: 'date', inputMode: 'numeric', value: '', 'aria-label': 'A' }), /UI_INPUT: type="date" picks its own keyboard/);
 });

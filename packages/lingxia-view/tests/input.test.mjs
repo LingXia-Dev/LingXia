@@ -96,7 +96,12 @@ test('type and inputMode pick the keyboard; password is secure', () => {
   assert.deepEqual([kind({ type: 'password' }).secure, kind({ type: 'password' }).keyboard], [1, 'text']);
   assert.equal(kind({ type: 'tel' }).keyboard, 'phone');
   assert.equal(kind({ type: 'password', inputMode: 'numeric' }).keyboard, 'number');
-  assert.equal(kind({ inputMode: 'decimal' }).keyboard, 'number');
+  assert.equal(kind({ inputMode: 'decimal' }).keyboard, 'decimal');
+  assert.deepEqual([kind({ type: 'number' }).keyboard, kind({ type: 'number', inputMode: 'numeric' }).keyboard], ['decimal', 'number']);
+  // A decimal keyboard is still a number field: its range is checked as numbers.
+  const decimal = kind({ type: 'number', inputMode: 'decimal', min: 0, max: 9.5, step: 0.5 });
+  assert.deepEqual([decimal.keyboard, decimal.inputMax, decimal.inputStep], ['decimal', 9.5, 0.5]);
+  assert.throws(() => describe(() => h('input', { value: '', type: 'number', inputMode: 'decimal', min: '1' }), {}), /UI_INPUT: min must be a number/);
   assert.equal(kind({}).secure, undefined);
   assert.equal(rendered(() => h('textarea', { inputMode: 'email' })).props.keyboard, 'email');
   assert.throws(() => describe(() => h('textarea', { type: 'email' }), {}), /UI_PROP/);

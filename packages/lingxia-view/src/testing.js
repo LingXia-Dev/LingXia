@@ -6,10 +6,31 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { createContext, runInContext } from 'node:vm';
 import { tags, field, maxField } from './generated/wire.js';
+import { scales, scaleDefaults, scaledFields } from './generated/contract.js';
 
 const tagNames = Object.fromEntries(Object.entries(tags).map(([name, id]) => [id, name]));
 const fieldNames = Object.fromEntries(Object.entries(field).map(([name, id]) => [id, name]));
 const states = new Set(['focusStyle', 'focusVisibleStyle', 'pressedStyle', 'hoverStyle']);
+
+// A `[slot, times, plus]` step reference, as theme-scaled lengths, durations and easings reach the wire.
+const isStep = value => Array.isArray(value) && value.length === 3 && Number.isInteger(value[0]) && scales[value[0]] !== undefined
+  && scaleDefaults[value[0]] !== null && value.every(Number.isFinite);
+
+// A list on a wire field that takes no step stays as it is, so three numbers there are never read as one.
+const scaled = new Set(Object.values(scaledFields).flat());
+const fixed = key => Object.hasOwn(field, key) && !scaled.has(key);
+
+/** `value` with every theme step resolved as a host does under the built-in pack, at any depth. */
+export function points(value) {
+  if (isStep(value)) {
+    const base = scaleDefaults[value[0]];
+    return Array.isArray(base) ? base : value[1] * base + value[2];
+  }
+  if (Array.isArray(value)) return value.map(points);
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype)
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, fixed(key) && Array.isArray(item) ? item : points(item)]));
+  return value;
+}
 
 /** Loads a compiled page module into its own context, announcing what a current native host does. */
 export function installHost(source) {
@@ -70,7 +91,7 @@ export const textOf = node => (node.text ?? '') + node.children.map(textOf).join
  * Builds `page` with the View compiler and renders it. `root` is the project the page belongs to,
  * by default the nearest directory above it with a package.json or lxapp.json.
  */
-export async function render(page, view = {}, { root } = {}) {
+export async function render(page, view = {}, { root, points: resolved = false } = {}) {
   const { buildPages } = await import('../compiler/index.mjs');
   const file = resolve(page);
   root = resolve(root ?? projectOf(file));
@@ -78,7 +99,7 @@ export async function render(page, view = {}, { root } = {}) {
   const out = await mkdtemp(join(tmpdir(), 'lingxia-view-testing-'));
   try {
     await buildPages(root, [entry], out);
-    return screen(installHost(await readFile(join(out, entry.replace(/\.[jt]sx?$/, '.js')), 'utf8')), view);
+    return screen(installHost(await readFile(join(out, entry.replace(/\.[jt]sx?$/, '.js')), 'utf8')), view, resolved);
   } finally { await rm(out, { recursive: true, force: true }); }
 }
 
@@ -94,7 +115,7 @@ export function defaultEnv(overrides = {}) {
   const viewport = overrides.viewport ?? { width: 390, height: 844 };
   const edges = { top: 0, right: 0, bottom: 0, left: 0 };
   return {
-    theme: 'light', viewport, insets: edges, safeArea: edges, keyboard: { height: 0 }, pointer: 'coarse', os: 'node',
+    theme: 'light', viewport, insets: edges, safeArea: edges, capsule: null, keyboard: { height: 0 }, pointer: 'coarse', os: 'node',
     formFactor: 'phone', sizeClass: viewport.width < 600 ? 'compact' : 'regular', displayLanguage: 'en-US',
     contentLanguage: overrides.displayLanguage ?? 'en-US',
     reducedMotion: false, highContrast: false, animatorDurationScale: 1, hourCycle: 'h12', firstWeekday: 1,
@@ -102,11 +123,17 @@ export function defaultEnv(overrides = {}) {
   };
 }
 
-function screen(host, view) {
+function screen(host, view, resolved) {
   let given = view.env ?? {};
   let current = { data: {}, ...view, env: defaultEnv(given) };
-  let nodes = decode(describePage(host, current));
-  const refresh = () => { nodes = decode(describePage(host, current)); };
+  // With `points`, every node's props read in points, as the built-in pack resolves them.
+  const read = () => {
+    const decoded = decode(describePage(host, current));
+    if (resolved) for (const node of decoded) node.props = points(node.props);
+    return decoded;
+  };
+  let nodes = read();
+  const refresh = () => { nodes = read(); };
   const single = (matches, what, onScreen) => {
     if (matches.length === 1) return matches[0];
     if (matches.length === 0) throw Error(`no node has ${what}; on screen: ${onScreen() || 'none'}`);

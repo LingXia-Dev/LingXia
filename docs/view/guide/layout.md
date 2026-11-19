@@ -20,7 +20,7 @@ export function render() {
           <text className="text-sm font-semibold tabular-nums">12.40</text>
         </view>
       </scroll>
-      <button onClick={() => {}} className="fixed bottom-6 end-6 rounded-full bg-accent text-on-accent px-5 py-3">Top up</button>
+      <button onClick={() => {}} className="fixed bottom-6 end-6 rounded-full bg-accent-solid text-on-accent-solid px-5 py-3">Top up</button>
     </page>
   );
 }
@@ -148,6 +148,10 @@ safe-area padding: a `fixed bottom-4` box sits 16 px above the page's bottom edg
 `env.insets.bottom` (and `env.keyboard.height` if it must clear the keyboard) through `style` when it
 has to stay clear of them.
 
+On a page without a nav bar, keep clear of the capsule (the host's ··· and close control):
+`env.capsule` is its box in page coordinates (`{ x, y, width, height }`), or `null` when none floats over
+the page. Pad a header's top by `capsule.y + capsule.height`, or keep the header's controls out of the box.
+
 ## Sizes and units
 
 | Unit | Meaning |
@@ -159,7 +163,7 @@ has to stay clear of them.
 | `ch` | only in `max-w-[Nch]`: N advances of "0" in the box's font |
 | `em` | only in `tracking-*` (letter spacing) |
 
-`w-fit`, `w-min`, `w-max` (and `h-*`) are the CSS sizing keywords; `h-auto` keeps an intrinsic height
+`w-fit`, `w-min`, `w-max` (and `h-*`, `min-w-*`, `min-h-*`, `max-w-*`, `max-h-*`) are the CSS sizing keywords; `h-auto` keeps an intrinsic height
 under `min-h-*`/`max-h-*`. `aspect-*` derives the free axis from the other. `calc()` is folded at build
 time when its operands share a unit; `w-[calc(100%-2rem)]` mixes units and is refused (use padding or
 `grow`).

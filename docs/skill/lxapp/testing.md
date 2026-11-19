@@ -397,6 +397,8 @@ A GPU View component is unit-tested in Node with `@lingxia/view/testing`: `rende
 compiles a page and runs it on the real View runtime, with a phone `env` you can override. Query by
 test id, text or the props you wrote; every element event has a screen method (`press`, `type`,
 `toggle`, `select`, `slide`, `escape`, …). Roles, names and layout need a device: use `lxdev test`.
+Theme steps (`p-4`, `text-sm`) reach the wire as `[slot, times, plus]`; `points(props)` resolves them
+under the built-in pack to compare with numbers, and `render(page, view, { points: true })` does so for every node.
 
 ```js
 import { render, textOf } from '@lingxia/view/testing';

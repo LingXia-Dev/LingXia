@@ -319,6 +319,8 @@ export interface Env {
   /** The system bars alone (status bar, cutout, home indicator), as CSS `env(safe-area-inset-*)`; a dialog covering host chrome pads by these, logical pixels. */
   readonly safeArea: Readonly<{ top: number; right: number; bottom: number; left: number }>;
   readonly keyboard: Readonly<{ height: number }>;
+  /** The host's capsule (the ··· and close control) where it floats over the page, in page coordinates, logical pixels; `null` when the host shows none or it sits in a nav bar. The same box Web pages read as `--lx-page-chrome-capsule-*`. */
+  readonly capsule: Readonly<{ x: number; y: number; width: number; height: number }> | null;
   /** `fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not. */
   readonly pointer: "fine" | "coarse";
   readonly os: string;
@@ -351,11 +353,11 @@ export interface Env {
 export interface Style {
   width?: number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch` | "auto" | "fit-content" | "max-content" | "min-content";
   height?: number | `${number}%` | `${number}vw` | `${number}vh` | "auto" | "fit-content" | "max-content" | "min-content";
-  minWidth?: number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch`;
-  minHeight?: number | `${number}%` | `${number}vw` | `${number}vh`;
-  maxWidth?: number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch`;
+  minWidth?: number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch` | "fit-content" | "max-content" | "min-content";
+  minHeight?: number | `${number}%` | `${number}vw` | `${number}vh` | "fit-content" | "max-content" | "min-content";
+  maxWidth?: number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch` | "fit-content" | "max-content" | "min-content";
   aspectRatio?: number | "auto";
-  maxHeight?: number | `${number}%` | `${number}vw` | `${number}vh`;
+  maxHeight?: number | `${number}%` | `${number}vw` | `${number}vh` | "fit-content" | "max-content" | "min-content";
   margin?: number | "auto";
   marginTop?: number | "auto";
   marginRight?: number | "auto";
