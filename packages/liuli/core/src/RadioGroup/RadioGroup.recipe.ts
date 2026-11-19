@@ -50,7 +50,7 @@ export const radioGroupRecipe = {
     size: { sm: 'text-footnote size-[1.25em]', md: 'text-body size-[1.33em]', lg: 'text-callout size-[1.4em]' } satisfies Record<FieldSize, string>,
     state: {
       on: 'bg-accent-solid border-accent-solid',
-      off: 'bg-surface border-line-strong shadow-[0_1px_2px_rgb(0_0_0/0.05)]',
+      off: 'bg-surface border-line-strong shadow-control',
       /** Disabled reads as off-but-checked: a neutral fill and a muted dot, never a faded accent. */
       onDisabled: 'bg-text/20 border-transparent',
       offDisabled: 'bg-text/4 border-text/12',

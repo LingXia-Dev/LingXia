@@ -43,6 +43,10 @@
   /* A thumb resting on its track: the contact shadow alone. */
   --shadow-contact: 0 1px 2px --alpha(var(--color-shadow) / 10%), 0 0 1px --alpha(var(--color-shadow) / 6%);
 
+  /* A control resting on its surface: a 1 px drop, stronger under a solid fill. */
+  --shadow-control: 0 1px 2px --alpha(var(--color-shadow) / 5%);
+  --shadow-control-solid: 0 1px 2px --alpha(var(--color-shadow) / 10%);
+
   /* Two elevations, each a tight contact shadow under a wide soft one. */
   --shadow-raised: 0 1px 2px --alpha(var(--color-shadow) / 6%), 0 8px 24px --alpha(var(--color-shadow) / 10%);
   --shadow-modal: 0 2px 6px --alpha(var(--color-shadow) / 8%), 0 24px 64px --alpha(var(--color-shadow) / 18%);

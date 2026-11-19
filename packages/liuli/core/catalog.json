@@ -1894,6 +1894,8 @@
           "--text-footnote",
           "--text-body",
           "--text-callout",
+          "--shadow-control",
+          "--shadow-control-solid",
           "--shadow-raised",
           "--radius-control"
         ],
@@ -3259,6 +3261,7 @@
           "--text-footnote",
           "--text-body",
           "--text-callout",
+          "--shadow-control",
           "--radius-control",
           "--radius-checkbox"
         ],
@@ -13357,6 +13360,7 @@
           "--text-footnote",
           "--text-body",
           "--text-callout",
+          "--shadow-control",
           "--radius-control",
           "--radius-container"
         ],
@@ -18622,6 +18626,7 @@
           "--text-footnote",
           "--text-body",
           "--text-callout",
+          "--shadow-control",
           "--radius-control"
         ],
         "roles": [
