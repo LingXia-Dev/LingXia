@@ -159,6 +159,11 @@ pub(crate) fn show(page: isize, failure: Option<&Failure>, dark: bool, text: Tex
         });
     }
     layout(page);
+    if failure.covers_page()
+        && let Some(page) = view::page_for(page)
+    {
+        page.settled();
+    }
 }
 
 fn clear(page: isize) {
@@ -170,6 +175,11 @@ fn clear(page: isize) {
         let _ = DestroyWindow(HWND(panel.window as *mut _));
         let _ = DeleteObject(HGDIOBJ(panel.font.0));
     }
+}
+
+/// Whether `page` shows a panel over all of it: a failed page that presents no frames.
+pub(crate) fn covers(page: isize) -> bool {
+    PANELS.with(|panels| panels.borrow().get(&page).is_some_and(|panel| panel.covers))
 }
 
 /// The page window went away: its panel's windows went with it.

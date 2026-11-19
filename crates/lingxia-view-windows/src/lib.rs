@@ -185,6 +185,14 @@ fn leaving() -> MutexGuard<'static, Vec<(isize, Dispatcher)>> {
     LEAVING.lock().unwrap_or_else(|p| p.into_inner())
 }
 
+/// Hide the pages left on screen for a page that settled, each on its own thread.
+fn release_left() {
+    let left = std::mem::take(&mut *leaving());
+    for (page, dispatcher) in left {
+        dispatcher.post(Box::new(move || hide_left(page)));
+    }
+}
+
 /// On `hwnd`'s thread: off screen unless shown again meanwhile.
 fn hide_left(hwnd: isize) {
     if let Some(page) = view::page_for(hwnd)
@@ -374,6 +382,15 @@ impl Page {
             self.show_window(true);
             return;
         }
+        // A failed page presents nothing to wait for: its recovery panel shows at once, and
+        // the page it replaces leaves now rather than over it.
+        if recovery::covers(self.hwnd) {
+            self.show_window(true);
+            if settling().is_empty() {
+                release_left();
+            }
+            return;
+        }
         let mut queue = settling();
         if !queue.contains(&self.hwnd) {
             queue.push(self.hwnd);
@@ -446,10 +463,7 @@ impl Page {
         }
         self.apply_region();
         if done {
-            let left = std::mem::take(&mut *leaving());
-            for (page, dispatcher) in left {
-                dispatcher.post(Box::new(move || hide_left(page)));
-            }
+            release_left();
         }
     }
 
