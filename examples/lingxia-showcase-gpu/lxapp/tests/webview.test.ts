@@ -2,6 +2,17 @@ import { expect, spec, type Fixture } from '@lingxia/test';
 import { openDemo } from './open-demo.js';
 import { decodePng } from './png.js';
 
+type Locator = ReturnType<Fixture['app']['view']['testId']>;
+
+/** Scrolls `target` wholly on screen and returns its box: a gesture or a pixel probe off screen misses on a short screen. */
+async function onScreen(t: Fixture, target: Locator) {
+  await target.scrollIntoView();
+  const [box, viewport] = await Promise.all([target.boundingBox(), t.app.view.viewport()]);
+  expect(box.y, 'top on screen').toBeGreaterThanOrEqual(viewport.top - 1);
+  expect(box.y + box.height, 'bottom on screen').toBeLessThanOrEqual(viewport.top + viewport.height + 1);
+  return box;
+}
+
 spec('embedded webview loads packaged HTML, syncs #hash without reload, enforces mailbox and source policies', { start: { page: 'spec-webview' } }, async (t) => {
   const view = t.app.view;
 
@@ -56,8 +67,8 @@ spec('embedded webview composites beneath View overlays, suppresses semantics un
   expect(epochBefore.length).toBeGreaterThan(3);
 
   // Composited screenshot shows the emerald HTML surface inside `<webview>` and the View FAB on top.
-  const wvBox = await view.testId('spec-webview-frame').boundingBox();
-  const fabBox = await view.testId('spec-webview-fab').boundingBox();
+  const wvBox = await onScreen(t, view.testId('spec-webview-frame'));
+  const fabBox = await onScreen(t, view.testId('spec-webview-fab'));
   const vp = await view.viewport();
   await expect.poll(async () => {
     const raw = await view.screenshot();
@@ -179,7 +190,7 @@ const skipWhenInjected = (t: Fixture, trace: { delivered: string }) => {
 spec('a drag on a web page that does not keep its drags scrolls the screen', { covers: ['view:webview', 'view:scroll'], start: openDemo('webDrags'), requires: { input: ['touch'] } }, async (t) => {
   const { view } = await webDrags(t);
   const frame = view.testId('lab-web-drags-plain');
-  const before = await frame.boundingBox();
+  const before = await onScreen(t, frame);
   const from: [number, number] = [before.x + before.width / 2, before.y + before.height - 12];
   skipWhenInjected(t, await view.swipe({ from, to: [from[0], from[1] - 140], durationMs: 400 }));
   await t.waitFor(() => frame.boundingBox(), { until: now => now.y < before.y - 40 });
@@ -188,7 +199,7 @@ spec('a drag on a web page that does not keep its drags scrolls the screen', { c
 spec('a web page with handlesDrags keeps a drag that starts on it: its pin follows and the screen stays', { covers: ['view:webview'], start: openDemo('webDrags'), requires: { input: ['touch'] } }, async (t) => {
   const { view, state } = await webDrags(t);
   const frame = view.testId('lab-web-drags-own');
-  const before = await frame.boundingBox();
+  const before = await onScreen(t, frame);
   // Mostly upward, which would scroll the screen if the web page did not keep it.
   const from: [number, number] = [before.x + 40, before.y + before.height - 16];
   const to: [number, number] = [before.x + 140, before.y + 20];
@@ -225,7 +236,7 @@ spec('a drag inside a scrollable web page scrolls it to its edge, then the scree
   const frame = view.testId('lab-web-scroll-frame');
   const state = view.testId('lab-web-scroll-state');
   await expect(state).toHaveAttribute('data-state', /^loads=1 top=0 end=false$/, { timeout: 8_000 });
-  const box = await frame.boundingBox();
+  const box = await onScreen(t, frame);
   const drag = async () => {
     const from: [number, number] = [box.x + box.width / 2, box.y + box.height - 16];
     skipWhenInjected(t, await view.swipe({ from, to: [from[0], box.y + 16], durationMs: 350 }));
