@@ -372,6 +372,10 @@ impl LxApp {
                 },
             );
         }
+        page.push_view_environment(crate::page::PageViewEnvironment::PageChrome {
+            capsule: capsule_rect.map(|rect| [rect.left, rect.top, rect.width, rect.height]),
+            revision,
+        });
         self.publish_page_chrome(page, revision, appearance)
     }
 

@@ -297,6 +297,13 @@ impl GpuPageView for Endpoint {
             PageViewEnvironment::SurfaceContext { context, revision } => {
                 serde_json::json!({"kind":"surface","revision":revision,"context":context})
             }
+            PageViewEnvironment::PageChrome { capsule, revision } => serde_json::json!({
+                "kind": "chrome",
+                "revision": revision,
+                "capsule": capsule.map(|[x, y, width, height]| {
+                    serde_json::json!({"x": x, "y": y, "width": width, "height": height})
+                }),
+            }),
         };
         self.native.update_environment(&update)
     }

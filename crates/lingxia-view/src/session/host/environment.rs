@@ -6,6 +6,8 @@ pub(super) struct HostEnvironment {
     /// Revision, display language, and the lxapp's narrowing of it.
     language: Option<(u64, String, Option<String>)>,
     surface: Option<(u64, SurfaceContext)>,
+    /// The capsule's box over the page, or `None` under a navigation bar.
+    chrome: Option<(u64, Option<Capsule>)>,
     /// The lxapp's theme pack, resolved into palette pushes for light, dark and their
     /// high-contrast variants.
     theme: Option<(u64, [serde_json::Value; 4], serde_json::Value)>,
@@ -48,6 +50,16 @@ struct SurfaceContext {
     height: f64,
 }
 
+/// The host capsule's box in page coordinates, points.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct Capsule {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum SizeClass {
@@ -71,6 +83,10 @@ enum Update {
     Theme {
         revision: u64,
         pack: Box<lingxia_theme::Pack>,
+    },
+    Chrome {
+        revision: u64,
+        capsule: Option<Capsule>,
     },
 }
 
@@ -117,6 +133,22 @@ impl HostEnvironment {
                 }
                 // A View that never read the host context waits for its next frame to see it.
                 newer && !self.ignores_host_context
+            }
+            Update::Chrome { revision, capsule } => {
+                if capsule.is_some_and(|c| {
+                    ![c.x, c.y, c.width, c.height].iter().all(|v| v.is_finite())
+                        || c.width < 0.0
+                        || c.height < 0.0
+                }) {
+                    return Err("UI_ENVIRONMENT: invalid capsule".into());
+                }
+                let newer = newer(self.chrome.as_ref().map(|c| c.0), revision);
+                let changed = newer && self.chrome.as_ref().is_none_or(|c| c.1 != capsule);
+                if newer {
+                    self.chrome = Some((revision, capsule));
+                }
+                // Not host context: the View's read tracking does not count `capsule`.
+                changed
             }
             Update::Theme { revision, pack } => {
                 let newer = newer(self.theme.as_ref().map(|t| t.0), revision);
@@ -265,6 +297,12 @@ impl HostEnvironment {
             .into();
         }
         env["canDock"] = surface.is_some_and(|c| c.can_dock).into();
+        if let Some((_, capsule)) = &self.chrome {
+            env["capsule"] = capsule.map_or(
+                serde_json::Value::Null,
+                |c| serde_json::json!({"x": c.x, "y": c.y, "width": c.width, "height": c.height}),
+            );
+        }
         // A palette the platform pushes (the host's theme) wins over the lxapp's own pack.
         if let Some((_, palettes, _)) = &self.theme
             && env.get("palette").is_none()
@@ -369,6 +407,33 @@ mod tests {
         assert!(host.set_test(None));
         assert_eq!(applied(&host)["theme"], "light");
         assert!(!host.still());
+    }
+
+    #[test]
+    fn a_chrome_push_sets_the_capsule_and_refuses_a_malformed_one() {
+        let mut host = HostEnvironment::default();
+        let chrome = |revision: u64, capsule: serde_json::Value| {
+            json!({"kind": "chrome", "revision": revision, "capsule": capsule}).to_string()
+        };
+        let applied = |host: &HostEnvironment| {
+            let mut env = json!({});
+            host.apply(&mut env);
+            env
+        };
+        assert!(applied(&host).get("capsule").is_none());
+        let rect = json!({"x": 280.0, "y": 50.0, "width": 87.0, "height": 32.0});
+        assert!(host.update(&chrome(1, rect.clone())).unwrap());
+        assert_eq!(applied(&host)["capsule"], rect);
+        assert!(!host.update(&chrome(2, rect.clone())).unwrap(), "unchanged");
+        assert!(!host.update(&chrome(1, json!(null))).unwrap(), "older");
+        assert!(host.update(&chrome(3, json!(null))).unwrap());
+        assert_eq!(applied(&host)["capsule"], json!(null));
+        for bad in [
+            json!({"x": 0.0, "y": 0.0, "width": -1.0, "height": 32.0}),
+            json!({"x": 0.0, "y": 0.0, "width": 87.0}),
+        ] {
+            assert!(host.update(&chrome(4, bad)).is_err());
+        }
     }
 
     #[test]

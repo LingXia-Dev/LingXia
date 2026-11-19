@@ -50,6 +50,12 @@ pub enum PageViewEnvironment {
         context: serde_json::Value,
         revision: u64,
     },
+    /// The capsule's box over the page, `[x, y, width, height]` in points; `None` when the page
+    /// has a navigation bar, which holds the capsule.
+    PageChrome {
+        capsule: Option<[f64; 4]>,
+        revision: u64,
+    },
 }
 
 /// Runtime-issued connection identity; the native worker must preserve it through queues.
@@ -346,6 +352,8 @@ impl PageView {
                             revision,
                         )
                     }
+                    // A web page reads the capsule from its page-chrome publication.
+                    PageViewEnvironment::PageChrome { .. } => return Ok(()),
                 };
                 view.exec_js(&script).map_err(LxAppError::from)
             }

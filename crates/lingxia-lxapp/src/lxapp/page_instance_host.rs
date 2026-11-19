@@ -941,6 +941,21 @@ impl LxApp {
         for page in self.live_page_instances() {
             page.push_surface_context_value(context_json, revision);
         }
+        // The capsule's place over the page moves with the window's size.
+        if let Ok(page) = self.current_page() {
+            let revision = self.next_page_chrome_revision();
+            let appearance = self.appearance_state().resolved;
+            let app = self.clone_arc();
+            std::mem::drop(crate::executor::spawn(async move {
+                if let Err(err) = app
+                    .publish_realized_page_chrome(&page, revision, appearance)
+                    .await
+                {
+                    warn!("Failed to publish Page Chrome after a resize: {}", err)
+                        .with_appid(app.appid.clone());
+                }
+            }));
+        }
     }
 
     /// Live instances on the navigation stack, oldest → newest.
