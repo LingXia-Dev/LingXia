@@ -4788,7 +4788,8 @@ fn apply_corner_alpha_mask(pixels: &mut [u32], width: i32, height: i32, radii: [
         let distance = (dx * dx + dy * dy).sqrt();
         ((radius as f32 - distance + 0.5).clamp(0.0, 1.0) * 255.0) as u32
     };
-    for y in 0..height {
+    let (top, bottom) = (tl.max(tr), height - br.max(bl));
+    for y in (0..height).filter(|y| *y < top || *y >= bottom) {
         for x in 0..width {
             let coverage = coverage_at(x, y);
             if coverage == 255 {
@@ -9379,8 +9380,21 @@ struct NavSnapshotSlide {
     source_dc: isize,
     source_bitmap: isize,
     source_old_bitmap: isize,
+    /// The overlay's own pixels, composed from the source each frame.
+    frame: NavSlideFrame,
+    /// The screen's corners, clipped out of every frame.
+    radii: [i32; 4],
     forward: bool,
     started: Option<Instant>,
+}
+
+#[cfg(feature = "components")]
+#[derive(Clone, Copy)]
+struct NavSlideFrame {
+    dc: isize,
+    bitmap: isize,
+    old_bitmap: isize,
+    bits: usize,
 }
 
 #[cfg(feature = "components")]
@@ -9423,13 +9437,30 @@ fn prepare_nav_snapshot_slide(host: HWND, prev_key: &str, forward: bool) -> bool
     let Ok(decoded) = image::load_from_memory(&png) else {
         return false;
     };
-    let rgba = decoded.into_rgba8();
+    let rect = content_rect_for_window(host, prev_key);
+    let mut rgba = decoded.into_rgba8();
+    // A GPU page on a simulated device captures at the device's pixels, not the shown size.
+    let (shown_width, shown_height) = (
+        (rect.right - rect.left).max(0) as u32,
+        (rect.bottom - rect.top).max(0) as u32,
+    );
+    if shown_width > 0
+        && shown_height > 0
+        && (rgba.width(), rgba.height()) != (shown_width, shown_height)
+    {
+        rgba = image::imageops::resize(
+            &rgba,
+            shown_width,
+            shown_height,
+            image::imageops::FilterType::Triangle,
+        );
+    }
     let (width, height) = (rgba.width() as i32, rgba.height() as i32);
     if width <= 0 || height <= 0 {
         return false;
     }
     // Premultiplied BGRA, as UpdateLayeredWindow's AC_SRC_ALPHA expects.
-    let mut pixels: Vec<u32> = rgba
+    let pixels: Vec<u32> = rgba
         .pixels()
         .map(|p| {
             let [r, g, b, a] = p.0;
@@ -9439,17 +9470,9 @@ fn prepare_nav_snapshot_slide(host: HWND, prev_key: &str, forward: bool) -> bool
         })
         .collect();
 
-    let rect = content_rect_for_window(host, prev_key);
-    // CapturePreview sees content pre-clip; carry the live surface's rounded
-    // corners into the snapshot so the slide doesn't ghost square ones.
-    if handler.is_composition_hosted() {
-        apply_corner_alpha_mask(
-            &mut pixels,
-            width,
-            height,
-            surface_clip_style(host, prev_key, rect).0,
-        );
-    }
+    // A capture is unclipped and the overlay is its own window: each frame takes the live
+    // surface's rounded corners, fixed to the screen while the image slides under them.
+    let radii = surface_clip_style(host, prev_key, rect).0;
     let mut origin = POINT {
         x: rect.left,
         y: rect.top,
@@ -9475,6 +9498,7 @@ fn prepare_nav_snapshot_slide(host: HWND, prev_key: &str, forward: bool) -> bool
                     height,
                     pixels,
                     forward,
+                    radii,
                 );
                 let _ = done_tx.send(mounted);
             }),
@@ -9484,7 +9508,7 @@ fn prepare_nav_snapshot_slide(host: HWND, prev_key: &str, forward: bool) -> bool
                 .recv_timeout(std::time::Duration::from_secs(5))
                 .unwrap_or(false);
     }
-    mount_nav_snapshot_overlay(host, origin, width, height, pixels, forward)
+    mount_nav_snapshot_overlay(host, origin, width, height, pixels, forward, radii)
 }
 
 /// Creates the layered overlay window on the host thread, uploads the snapshot
@@ -9499,6 +9523,7 @@ fn mount_nav_snapshot_overlay(
     height: i32,
     pixels: Vec<u32>,
     forward: bool,
+    radii: [i32; 4],
 ) -> bool {
     static NAV_OVERLAY_CLASS: OnceLock<()> = OnceLock::new();
     NAV_OVERLAY_CLASS.get_or_init(|| {
@@ -9548,6 +9573,13 @@ fn mount_nav_snapshot_overlay(
         }
         return false;
     };
+    let Some(frame) = create_nav_slide_dib(width, height) else {
+        release_nav_snapshot_source(source_dc, source_bitmap, source_old_bitmap);
+        unsafe {
+            let _ = WindowsAndMessaging::DestroyWindow(overlay);
+        }
+        return false;
+    };
     let start_src_x = if forward { 0 } else { width };
     let presented = present_nav_snapshot_frame(
         overlay,
@@ -9555,10 +9587,13 @@ fn mount_nav_snapshot_overlay(
         width,
         height,
         hdc_from_handle(source_dc),
+        frame,
+        radii,
         start_src_x,
     );
     if !presented {
         release_nav_snapshot_source(source_dc, source_bitmap, source_old_bitmap);
+        release_nav_snapshot_source(frame.dc, frame.bitmap, frame.old_bitmap);
         unsafe {
             let _ = WindowsAndMessaging::DestroyWindow(overlay);
         }
@@ -9592,6 +9627,8 @@ fn mount_nav_snapshot_overlay(
             source_dc,
             source_bitmap,
             source_old_bitmap,
+            frame,
+            radii,
             forward,
             started: None,
         },
@@ -9605,6 +9642,8 @@ fn mount_nav_snapshot_overlay(
             previous.source_bitmap,
             previous.source_old_bitmap,
         );
+        let frame = previous.frame;
+        release_nav_snapshot_source(frame.dc, frame.bitmap, frame.old_bitmap);
     }
     true
 }
@@ -9618,6 +9657,25 @@ fn create_nav_snapshot_source(
     pixels: &[u32],
     forward: bool,
 ) -> Option<(isize, isize, isize)> {
+    let source = create_nav_slide_dib(width * 2, height)?;
+    let (w, sw) = (width as usize, width as usize * 2);
+    // SAFETY: the DIB holds `sw × height` pixels and lives until the slide releases it.
+    let dst =
+        unsafe { std::slice::from_raw_parts_mut(source.bits as *mut u32, sw * height as usize) };
+    let image_col = if forward { 0 } else { w };
+    for y in 0..height as usize {
+        let src_row = y * w;
+        if src_row + w <= pixels.len() {
+            dst[y * sw + image_col..y * sw + image_col + w]
+                .copy_from_slice(&pixels[src_row..src_row + w]);
+        }
+    }
+    Some((source.dc, source.bitmap, source.old_bitmap))
+}
+
+/// A zeroed top-down 32-bit DIB selected into its own memory DC.
+#[cfg(feature = "components")]
+fn create_nav_slide_dib(width: i32, height: i32) -> Option<NavSlideFrame> {
     unsafe {
         let screen = GetDC(None);
         if screen.is_invalid() {
@@ -9628,11 +9686,10 @@ fn create_nav_snapshot_source(
             let _ = ReleaseDC(None, screen);
             return None;
         }
-        let source_width = width * 2;
         let info = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: source_width,
+                biWidth: width,
                 biHeight: -height,
                 biPlanes: 1,
                 biBitCount: 32,
@@ -9654,19 +9711,13 @@ fn create_nav_snapshot_source(
             return None;
         }
         let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
-
-        let (w, sw) = (width as usize, source_width as usize);
-        let dst = std::slice::from_raw_parts_mut(bits.cast::<u32>(), sw * height as usize);
-        dst.fill(0);
-        let image_col = if forward { 0 } else { w };
-        for y in 0..height as usize {
-            let src_row = y * w;
-            if src_row + w <= pixels.len() {
-                dst[y * sw + image_col..y * sw + image_col + w]
-                    .copy_from_slice(&pixels[src_row..src_row + w]);
-            }
-        }
-        Some((dc.0 as isize, bitmap.0 as isize, old_bitmap.0 as isize))
+        std::slice::from_raw_parts_mut(bits.cast::<u32>(), (width * height) as usize).fill(0);
+        Some(NavSlideFrame {
+            dc: dc.0 as isize,
+            bitmap: bitmap.0 as isize,
+            old_bitmap: old_bitmap.0 as isize,
+            bits: bits as usize,
+        })
     }
 }
 
@@ -9675,22 +9726,48 @@ fn hdc_from_handle(handle: isize) -> HDC {
     HDC(handle as *mut c_void)
 }
 
-/// Presents one slide frame: re-blends the fixed overlay window from the
-/// persistent source DC at horizontal offset `src_x`. No pixel copies.
+/// Presents one slide frame: copies the source at horizontal offset `src_x` into the fixed
+/// overlay's frame, clips the screen's corners out of it, and re-blends the overlay.
 #[cfg(feature = "components")]
+#[allow(clippy::too_many_arguments)]
 fn present_nav_snapshot_frame(
     overlay: HWND,
     origin: POINT,
     width: i32,
     height: i32,
     source_dc: HDC,
+    frame: NavSlideFrame,
+    radii: [i32; 4],
     src_x: i32,
 ) -> bool {
+    let frame_dc = hdc_from_handle(frame.dc);
+    unsafe {
+        if BitBlt(
+            frame_dc,
+            0,
+            0,
+            width,
+            height,
+            Some(source_dc),
+            src_x,
+            0,
+            SRCCOPY,
+        )
+        .is_err()
+        {
+            return false;
+        }
+        let _ = windows::Win32::Graphics::Gdi::GdiFlush();
+        // SAFETY: the frame DIB holds `width × height` pixels and outlives this call.
+        let pixels =
+            std::slice::from_raw_parts_mut(frame.bits as *mut u32, (width * height) as usize);
+        apply_corner_alpha_mask(pixels, width, height, radii);
+    }
     let size = SIZE {
         cx: width,
         cy: height,
     };
-    let src_origin = POINT { x: src_x, y: 0 };
+    let src_origin = POINT { x: 0, y: 0 };
     let blend = BLENDFUNCTION {
         BlendOp: AC_SRC_OVER as u8,
         BlendFlags: 0,
@@ -9703,7 +9780,7 @@ fn present_nav_snapshot_frame(
             None,
             Some(&origin),
             Some(&size),
-            Some(source_dc),
+            Some(frame_dc),
             Some(&src_origin),
             COLORREF(0),
             Some(&blend),
@@ -9827,6 +9904,8 @@ fn advance_nav_snapshot_slide(host: HWND) {
         state.width,
         state.height,
         hdc_from_handle(state.source_dc),
+        state.frame,
+        state.radii,
         src_x,
     );
     drop(slides_guard);
@@ -9863,6 +9942,7 @@ fn finish_nav_snapshot_slide(host: HWND) {
         state.source_bitmap,
         state.source_old_bitmap,
     );
+    release_nav_snapshot_source(state.frame.dc, state.frame.bitmap, state.frame.old_bitmap);
 }
 
 fn normal_group_webtags(active: &WebTag) -> Vec<WebTag> {
