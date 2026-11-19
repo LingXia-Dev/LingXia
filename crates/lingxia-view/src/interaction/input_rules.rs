@@ -23,6 +23,26 @@ impl Rules {
     }
 }
 
+/// What a `keyboard` editor holding `before` keeps of `text` typed at its end, as its own
+/// filter does; `None` when it drops a character.
+pub(crate) fn typed(keyboard: &str, before: &str, text: &str) -> Option<String> {
+    let rules = Rules {
+        keyboard: keyboard.to_owned(),
+        ..Rules::default()
+    };
+    let end = units(before) as u32;
+    let snapshot = Snapshot {
+        text: before.to_owned(),
+        selection: [end, end],
+        composition: None,
+        focused: true,
+        can_undo: false,
+        can_redo: false,
+    };
+    let kept = rules.filter(&snapshot, text);
+    (kept.chars().count() == text.chars().count()).then_some(kept)
+}
+
 /// Whether `text` is an ISO 8601 `date` (YYYY-MM-DD) or `time` (HH:MM[:SS]).
 pub(crate) fn iso(text: &str, kind: &str) -> bool {
     let digits = |part: &str, width: usize, max: u32| {

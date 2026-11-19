@@ -996,3 +996,34 @@ fn an_editor_reads_the_keyboard_it_asks_for_as_inputmode() {
     assert!(tree.contains(r#""inputmode":"numeric""#), "{tree}");
     assert_eq!(tree.matches(r#""inputmode""#).count(), 2, "{tree}");
 }
+
+#[test]
+fn a_typed_key_the_keyboard_has_no_place_for_fails_at_once() {
+    let mut i = interaction(
+        "h('view',{},h('input',{'data-testid':'n','aria-label':'Count',inputMode:'numeric',value:'7'}),h('input',{'data-testid':'d','aria-label':'Price',inputMode:'decimal',value:'7.0'}))",
+    );
+    let page = PageTicket::new(1);
+    let mut typed = |id: &str, text: &str| {
+        i.automate(
+            &format!("[data-testid=\"{id}\"]"),
+            None,
+            AutomationAct::Type(text.into()),
+            false,
+            page,
+        )
+    };
+    let refused = typed("n", ".").unwrap_err();
+    assert!(
+        refused.starts_with("E_EDIT_REFUSED") && refused.contains("number field"),
+        "{refused}"
+    );
+    // A decimal field takes one point.
+    assert!(typed("d", ".").unwrap_err().starts_with("E_EDIT_REFUSED"));
+    // A full-width digit is taken as its ASCII digit: the edit sends what the field will show.
+    let effects = typed("n", "\u{FF18}").unwrap();
+    assert!(
+        effects
+            .iter()
+            .any(|e| matches!(e, Effect::EditText { text: Some(t), .. } if t == "78")),
+    );
+}

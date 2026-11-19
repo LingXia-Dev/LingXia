@@ -353,7 +353,25 @@ impl ViewInteraction {
                 ));
             }
             AutomationAct::Fill(text) => AccessibilityAction::SetText(text),
-            AutomationAct::Type(text) => AccessibilityAction::SetText(value + &text),
+            AutomationAct::Type(text) => {
+                // A key the field's keyboard has no place for would wait out the edit's
+                // patience and fail late; it fails now, naming what the field takes.
+                let keyboard = self
+                    .frame
+                    .as_ref()
+                    .zip(self.ids.index(id))
+                    .and_then(|(frame, index)| frame.nodes[index].input.as_ref())
+                    .map(|input| input.keyboard.clone())
+                    .unwrap_or_default();
+                match crate::interaction::input_rules::typed(&keyboard, &value, &text) {
+                    Some(kept) => AccessibilityAction::SetText(value + &kept),
+                    None => {
+                        return Err(format!(
+                            "E_EDIT_REFUSED: {selector} is a {keyboard} field; it takes no part of {text:?} after {value:?}"
+                        ));
+                    }
+                }
+            }
         };
         let inert = self.inert;
         // Assistive input never reaches an `aria-hidden` control; a click lands as a tap does.
