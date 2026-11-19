@@ -1103,13 +1103,16 @@ impl Presenter {
         self.scene_cache_hit
     }
 
-    /// Keeps `display` as drawn for `revision` while it draws video or rasterizes off the
-    /// device's scale; true when it draws video.
+    /// Keeps `display` as drawn for `revision` while it draws video, rasterizes off the
+    /// device's scale or shows a `<webview>` (a capture draws it again with the pictures);
+    /// true when it draws video.
     pub(crate) fn retain(&mut self, revision: u64, display: Box<crate::DisplayList>) -> bool {
         self.page_drawn = Some(Instant::now());
         let video = self.surface.is_some() && video::draws_video(&display);
-        self.retained = (video || (self.surface.is_some() && display.device_raster().is_some()))
-            .then_some((revision, display));
+        let keep = video
+            || (self.surface.is_some() && display.device_raster().is_some())
+            || display.draws_webview();
+        self.retained = keep.then_some((revision, display));
         // The quad pipelines compile while the first video frames decode.
         if video {
             self.warm_video_pipelines(device::TARGET_FORMAT);
@@ -1766,11 +1769,26 @@ mod tests {
         }
         let key = crate::scene::webview::make_key(wv.scope, &wv.web_id);
         assert!(plain.bind_web_picture(&key, crate::scene::image::Bitmap::from_pixels(green)));
-        let mut capture = plain.layout(120, 120, 1.0).unwrap();
+        let shown = plain.layout(120, 120, 1.0).unwrap();
+        let mut capture = shown.clone();
         capture.web_pictures = true;
         let captured = draw(&capture);
         assert_eq!(captured(90, 90), [0, 255, 0, 255]);
         assert_eq!(captured(10, 10), [255, 0, 0, 255]);
+
+        // A frame shown at the device's scale is kept for a capture all the same: the target
+        // holds the hole, not the page under it.
+        assert!(!presenter.retain(2, Box::new(shown)));
+        let Capture::Offscreen(offscreen) = presenter.capture().unwrap() else {
+            panic!("a web view frame was not kept for its capture");
+        };
+        let (width, _, pixels) = offscreen.draw().unwrap();
+        let o = (90 * width as usize + 90) * 4;
+        assert_eq!(
+            pixels[o..o + 4],
+            [0, 255, 0, 255],
+            "the capture draws the picture"
+        );
         crate::scene::webview::set_ready(wv.scope, &wv.web_id, false);
     }
     #[test]
