@@ -553,9 +553,15 @@ async fn perform(request: AppGestureRequest) -> Result<AppGestureResult, Platfor
             })?),
             None => None,
         };
+    // A point held for later moves is a press that drags on a desktop; resting fingers on a
+    // trackpad would press nothing until they lift.
     let input = held_input
         .or(request.input)
-        .unwrap_or(GestureInput::Trackpad);
+        .unwrap_or(if request.end == GestureEnd::Hold {
+            GestureInput::Mouse
+        } else {
+            GestureInput::Trackpad
+        });
     if input == GestureInput::Mouse && request.end == GestureEnd::Cancel {
         return Err(PlatformError::InvalidParameter(
             "a mouse gesture cannot be cancelled; end it with up".into(),
