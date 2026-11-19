@@ -13,6 +13,14 @@ const VIRTUAL_ROOT: i32 = 0;
 /// ArkUI's parent id for a provider root: it hangs under the XComponent itself.
 const HOST_PARENT: i32 = -2_100_000;
 
+/// What a field driving a suggestion list adds to its description, in the system language;
+/// ArkTS sets it from its resources.
+static SUGGESTIONS: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+pub(crate) fn set_suggestions_hint(text: String) {
+    *SUGGESTIONS.lock().unwrap_or_else(|p| p.into_inner()) = text;
+}
+
 /// ArkUI component types; the screen reader speaks the role from these.
 fn component_type(role: Role) -> &'static CStr {
     match role {
@@ -139,8 +147,23 @@ unsafe fn populate(
             sys::OH_ArkUI_AccessibilityElementInfoSetAccessibilityText(info, name.as_ptr());
         }
         // ArkUI has no invalid or required state: an error reaches the reader through the
-        // description the field's `aria-describedby` names.
-        if let Some(description) = &node.description {
+        // description the field's `aria-describedby` names. Nor has it an `aria-controls`
+        // relation: a field driving a suggestion list says so there too.
+        let suggests = matches!(node.autocomplete.as_deref(), Some("list" | "both"))
+            && !node.controls.is_empty();
+        let hint = suggests
+            .then(|| {
+                SUGGESTIONS
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .clone()
+            })
+            .filter(|hint| !hint.is_empty());
+        let description = match (&node.description, hint) {
+            (Some(description), Some(hint)) => Some(format!("{description}, {hint}")),
+            (description, hint) => description.clone().or(hint),
+        };
+        if let Some(description) = &description {
             let description = c(description);
             sys::OH_ArkUI_AccessibilityElementInfoSetAccessibilityDescription(
                 info,

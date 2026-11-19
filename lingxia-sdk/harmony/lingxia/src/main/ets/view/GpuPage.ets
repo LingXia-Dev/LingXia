@@ -18,6 +18,7 @@ import {
   gpuPageRetry,
   gpuPageBack,
   gpuPageWebHandoff,
+  gpuPageAccessibilityStrings,
   gpuPageInputBlocked,
   gpuPageTextMenuAction,
   gpuPageTextMenuDismissed,
@@ -289,11 +290,13 @@ export struct GpuPage {
     }
     // The host starts hidden; `@Watch` only reports later changes.
     gpuPageSetVisible(this.page.token, this.pageVisible);
+    this.accessibilityStrings();
     const context = Lingxia.context as common.UIAbilityContext;
     // A system font size change reaches the page as new text-scale facts.
     const callback: EnvironmentCallback = {
       onConfigurationUpdated: (config: Configuration): void => {
         this.config = config;
+        this.accessibilityStrings();
         this.remeasure();
       },
       onMemoryLevel: (_level: number): void => {}
@@ -418,6 +421,11 @@ export struct GpuPage {
   /** The recovery panel as automation reads it: window chrome a tap reaches. */
   private recoverySource(): string {
     return `gpu-recovery-${this.page.token}`;
+  }
+
+  /** Phrases the native accessibility provider speaks, in the current language. */
+  private accessibilityStrings(): void {
+    gpuPageAccessibilityStrings(this.text($r('app.string.lx_gpu_a11y_suggestions')));
   }
 
   private text(resource: Resource): string {

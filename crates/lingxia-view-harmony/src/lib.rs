@@ -273,6 +273,11 @@ pub fn focus_by_key(token: i64) {
     xcomponent::focus::by_key(token);
 }
 
+/// The localized phrases the accessibility provider speaks; ArkTS reads them from resources.
+pub fn set_accessibility_strings(suggestions: String) {
+    accessibility::set_suggestions_hint(suggestions);
+}
+
 /// A drag an embedded `<webview>` yielded at its page's edge, which the page takes from where
 /// the finger went down: `phase` 0 down, 1 move, 2 up, 3 cancel; page vp and vp/s. Main thread.
 pub fn web_handoff(token: i64, phase: u8, point: [f32; 2], velocity: [f32; 2]) {
