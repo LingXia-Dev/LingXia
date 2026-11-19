@@ -642,6 +642,21 @@ test("locator reads are one-shot and traced: count, isVisible, textContent, inpu
   for (const verb of ["count", "isVisible", "textContent", "inputValue", "getAttribute"]) assert.ok(traced.has(`page.${verb}`), verb);
 });
 
+test("a read that finds nothing on a GPU page names the test ids on screen", async () => {
+  const world = createWorld();
+  for (const id of ["view-index", "view-row-text", "view-row-input"]) {
+    world.add({ testId: id, renderer: "gpu", attributes: { "data-testid": id } });
+  }
+  world.add({ testId: "below", renderer: "gpu", inViewport: false, attributes: { "data-testid": "below" } });
+  installFakeHost(world);
+  let message = "";
+  spec("miss", { forensics: false }, async (t) => {
+    try { await t.app.view.testId("view-group-overlays").boundingBox(); } catch (error) { message = error.message; }
+  });
+  await run();
+  assert.match(message, /^boundingBox\(\): locator .*view-group-overlays.* resolved to nothing; on screen: view-index, view-row-text, view-row-input$/);
+});
+
 test("t.app.view takes no options on testId, css or screenshot, and no page on eval or scroll", async () => {
   installFakeHost(createWorld());
   const messages = [];

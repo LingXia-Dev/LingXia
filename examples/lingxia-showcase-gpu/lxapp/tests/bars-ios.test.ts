@@ -13,6 +13,8 @@ async function dimsTheBar(t: Fixture) {
   if (os !== 'ios') t.skip('reads the UIKit tab bar from the iOS window capture');
   // iOS does not expose its chrome to automation: the bar is where the page's own insets put it.
   const lab = view.testId(rootOf('dialog'));
+  // The View tab shows the group once its Logic has read the start query; a one-shot read can land first.
+  await expect(lab).toBeVisible();
   const page = await lab.boundingBox();
   const inset = Number(await lab.getAttribute('data-inset-bottom'));
   const safe = Number(await lab.getAttribute('data-safe-bottom'));

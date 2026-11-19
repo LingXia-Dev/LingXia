@@ -459,9 +459,27 @@ export class PageLocator implements Locator {
     const resolved = await this.resolve(undefined, verb, attributes);
     if (resolved.count !== 1) {
       throw new Error(`${verb}(): ${this.missText(resolved)}` +
-        (resolved.kind === "many" ? "; narrow it with nth(), first(), last() or filter()" : ""));
+        (resolved.kind === "many" ? "; narrow it with nth(), first(), last() or filter()" : await this.onPage()));
     }
     return resolved;
+  }
+
+  /** For a read that found nothing: the test ids a GPU page shows instead, so a page that had not
+   *  rendered yet, or another page, reads as such. A WebView page answers no attributes in a query. */
+  private async onPage(): Promise<string> {
+    try {
+      const all = await this.page.query({ page: this.options.page, css: "[data-testid]", all: true });
+      const items = Array.isArray(all.items) ? all.items : [];
+      if (!items.some((item) => item.renderer === "gpu")) return "";
+      const ids = items.filter((item) => item.visible && item.inViewport !== false)
+        .map((item) => item.attributes?.["data-testid"])
+        .filter((id): id is string => typeof id === "string");
+      if (ids.length === 0) return "; no element with a test id is on screen";
+      const more = ids.length > 8 ? ` and ${ids.length - 8} more` : "";
+      return `; on screen: ${ids.slice(0, 8).join(", ")}${more}`;
+    } catch {
+      return "";
+    }
   }
 
   /**

@@ -188,6 +188,7 @@ export function createWorld(options = {}) {
       if (name === "type") return element.type === value;
       return element.href !== undefined;
     }
+    if (css === "[data-testid]") return element.testId !== undefined;
     const testId = testIdFromCss(css);
     if (testId) return element.testId === testId;
     if (css.startsWith("#")) return element.id === css.slice(1);
