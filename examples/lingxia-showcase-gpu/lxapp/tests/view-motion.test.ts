@@ -16,8 +16,9 @@ spec('a panel opens to its full height, the row after it moves down, and it clos
   await toggle.click();
   await expect(state).toHaveAttribute('data-state', 'open=true');
   expect(Math.round((await box.boundingBox()).height)).toBe(96);
-  expect(await gap() - before).toBe(96);
+  // The row is reported where it is drawn, which follows the layout motion for 300 ms.
+  await expect.poll(async () => await gap() - before).toBe(96);
   await toggle.click();
   await expect(state).toHaveAttribute('data-state', 'open=false');
-  expect(await gap() - before).toBe(0);
+  await expect.poll(async () => await gap() - before).toBe(0);
 });
