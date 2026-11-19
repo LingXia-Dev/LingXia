@@ -1,0 +1,12 @@
+# Harmony-only SDK strings.
+#
+# These keys feed `lingxia-sdk/harmony/.../resources/*/element/string.json` only.
+
+# The floating menu over a GPU page's text selection, in `MenuAction` order.
+text_menu:
+  cut: "Cut"
+  copy: "Copy"
+  paste: "Paste"
+  select_all: "Select All"
+  undo: "Undo"
+  redo: "Redo"
