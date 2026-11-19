@@ -67,6 +67,19 @@ export function render() {
 - At most 16 are open at once ([limits](../reference/limits.md)); another stays closed with a
   `UI_BUDGET` warning and calls no `onClose` or `onToggle`.
 
+## Hints
+
+- `popover="hint"` makes a popover a hint, and `interestFor="id"` on a `<button>`, or a `<link>` inside
+  text, is its trigger. Give the hint `role="tooltip"`.
+- It shows half a second after a mouse rests on the trigger or a key moves focus onto it, against the
+  trigger. Leaving hides it after a short grace, so the mouse can cross into
+  the hint. Escape or a press anywhere else hides it.
+- A finger never shows a hint. On a touch screen, put what must be read behind a control the user taps:
+  a `popoverTarget` button or link.
+- While it shows, assistive tech reads the hint as the trigger's description (`aria-describedby`),
+  unless the trigger has its own.
+- A hint closes other hints only; menus and auto popovers stay open.
+
 ## Floats and windows
 
 Use `<dialog>` and popovers for anything that belongs to the page. `lx.surface.openPage(page, { as:
