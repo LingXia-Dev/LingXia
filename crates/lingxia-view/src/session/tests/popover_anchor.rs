@@ -84,3 +84,41 @@ fn two_popovers_naming_one_element_both_sit_against_it() {
     );
     assert!(hint[0] >= field[0] && hint[0] + hint[2] <= field[0] + field[2]);
 }
+
+#[test]
+fn a_hint_anchored_to_a_link_run_keeps_clear_of_its_paragraph() {
+    let worker = ViewWorker::spawn("test-popover-anchor-run").unwrap();
+    let platform = Platform::new(&[&worker]);
+    // A link mid-paragraph shows a hint; lines follow it below.
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('page',{},h('view',{style:{height:40}}),h('text',{'data-testid':'para',style:{width:140}},'Some words run ahead of ',h('link',{interestFor:'hint','data-testid':'word'},'this'),' word and then keep going for a few more lines below it.'),h('view',{id:'hint',popover:'hint','data-testid':'hint',style:{width:60,height:20}}))}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    let (para, word) = (rect(&host, "para").unwrap(), rect(&host, "word").unwrap());
+    // Rest the pointer on the link (device pixels at the fake surface's scale of 2).
+    host.hover(Some([
+        ((word[0] + word[2] / 2.0) * 2.0) as f32,
+        ((word[1] + word[3] / 2.0) * 2.0) as f32,
+    ]));
+    platform.advance(Duration::from_millis(500));
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    let hint = rect(&host, "hint").expect("the hint shows");
+    assert!(
+        word[1] + word[3] < para[1] + para[3] - 1.0,
+        "the paragraph runs on below the link: {word:?} {para:?}"
+    );
+    assert_eq!(
+        hint[1],
+        para[1] + para[3] + 4.0,
+        "under the paragraph: {hint:?} {para:?}"
+    );
+    assert!(
+        hint[0] < word[0] + word[2] && word[0] < hint[0] + hint[2],
+        "in the link's column, kept on screen: {hint:?} {word:?}"
+    );
+}

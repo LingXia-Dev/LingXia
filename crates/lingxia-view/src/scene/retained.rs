@@ -588,7 +588,7 @@ impl RetainedLayout {
                 natural[1] -= translation[1];
                 let [dx, dy] = crate::scene::anchor::place(
                     natural,
-                    nodes[target].bounds,
+                    anchor_box(&nodes, &self.parents, target),
                     self.unobscured,
                     *area,
                 );
@@ -1497,6 +1497,24 @@ fn last_transform(layers: &[Paint]) -> Affine {
 
 /// Depth-first paint order with siblings stably sorted by z-index, then CSS
 /// `order`; subtrees stay contiguous.
+/// A run inside a paragraph anchors by its own columns but the paragraph's lines, so a popover
+/// above or below it keeps clear of the text around it.
+fn anchor_box(nodes: &[NodeSnapshot], parents: &[Option<usize>], target: usize) -> [f32; 4] {
+    let run = nodes[target].bounds;
+    let mut block = target;
+    while !nodes[block].hit_rects.is_empty() {
+        match parents[block] {
+            Some(parent) => block = parent,
+            None => return run,
+        }
+    }
+    if block == target {
+        return run;
+    }
+    let paragraph = nodes[block].bounds;
+    [run[0], paragraph[1], run[2], paragraph[3]]
+}
+
 pub(crate) fn paint_order(parents: &[Option<usize>], z: &[(i32, i32, i32)]) -> Vec<usize> {
     let mut children: Vec<Vec<usize>> = vec![Vec::new(); parents.len()];
     let mut roots = Vec::new();
