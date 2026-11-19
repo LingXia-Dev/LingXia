@@ -914,9 +914,9 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
               let capsule = floatingCapsuleContainer,
               !capsule.isHidden,
               capsule.window != nil,
-              let webView = RunnerSupport.WebView.current(),
-              webView.window === capsule.window else { return nil }
-        let rect = capsule.convert(capsule.bounds, to: webView)
+              let page = RunnerSupport.PageChrome.currentPageView(),
+              page.window === capsule.window else { return nil }
+        let rect = capsule.convert(capsule.bounds, to: page)
         guard rect.width > 0, rect.height > 0 else { return nil }
         return [
             "width": Double(rect.width),

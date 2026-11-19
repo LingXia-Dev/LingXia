@@ -193,6 +193,11 @@ import WebKit
             LxAppCapsuleButtons.capsuleRectProvider = provider
         }
 
+        /// The current page's content view, WebView or GPU view: the space a capsule rect is in.
+        public static func currentPageView() -> NSView? {
+            LxAppCore.getCurrentPageView()
+        }
+
         /// Recompute and publish Page Chrome after host-owned geometry changes.
         @discardableResult
         public static func republish(appId: String) -> Bool {

@@ -91,16 +91,16 @@ class LxAppCapsuleButtons {
         capsuleTopConstraint = nil
     }
 
-    /// Capsule in the current page WebView's CSS pixel space, or nil until laid out.
+    /// Capsule in the current page's coordinate space (WebView CSS pixels or View points), or nil until laid out.
     static func getMenuButtonBoundingRect() -> [String: Double]? {
         guard let capsule = capsuleButtonView,
               !capsule.isHidden,
               capsule.window != nil else { return nil }
         capsule.superview?.layoutIfNeeded()
         guard capsule.bounds.width > 0, capsule.bounds.height > 0,
-              let webView = LxAppCore.getCurrentWebView(),
-              webView.window === capsule.window else { return nil }
-        let rect = capsule.convert(capsule.bounds, to: webView)
+              let page = LxAppCore.getCurrentPageView(),
+              page.window === capsule.window else { return nil }
+        let rect = capsule.convert(capsule.bounds, to: page)
         guard rect.width > 0, rect.height > 0 else { return nil }
 
         os_log(

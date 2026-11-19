@@ -68,6 +68,10 @@ enum RunnerSupport {
             LingxiaRunnerSPI.PageChrome.setCapsuleRectProvider(provider)
         }
 
+        static func currentPageView() -> NSView? {
+            LingxiaRunnerSPI.PageChrome.currentPageView()
+        }
+
         @discardableResult
         static func republish(appId: String) -> Bool {
             LingxiaRunnerSPI.PageChrome.republish(appId: appId)

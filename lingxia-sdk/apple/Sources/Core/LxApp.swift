@@ -81,6 +81,7 @@ final class LxAppCore {
 
     /// Current WebView - cached to avoid frequent findWebView calls
     private static var currentWebView: WKWebView?
+    private static var currentPageInstanceId: String?
 
     private init() {}
 
@@ -362,6 +363,7 @@ final class LxAppCore {
     static func setCurrentApp(appId: String, path: String, pageInstanceId: String?) {
         currentAppId = appId
         currentPath = path
+        currentPageInstanceId = pageInstanceId
 
         // Update WebView cache when app/path changes
         if let sessionId = appSessions[appId], sessionId > 0 {
@@ -386,6 +388,7 @@ final class LxAppCore {
     static func setCurrentPath(_ path: String, pageInstanceId: String?) {
         guard let appId = currentAppId else { return }
         currentPath = path
+        currentPageInstanceId = pageInstanceId
 
         // Update WebView cache when path changes
         if let sessionId = appSessions[appId], sessionId > 0 {
@@ -402,6 +405,17 @@ final class LxAppCore {
     /// Get current WebView - cached for efficiency
     static func getCurrentWebView() -> WKWebView? {
         return currentWebView
+    }
+
+    /// The current page's content view: its WebView, or its GPU view for a View page.
+    static func getCurrentPageView() -> PlatformView? {
+        if let webView = currentWebView { return webView }
+        guard let appId = currentAppId, let sessionId = appSessions[appId], sessionId > 0 else {
+            return nil
+        }
+        let token = GpuPages.token(
+            appId: appId, sessionId: sessionId, pageInstanceId: currentPageInstanceId)
+        return token == 0 ? nil : GpuPages.view(for: token)
     }
 
     /// Get home LxApp ID
