@@ -374,8 +374,9 @@ impl Renderer {
         let fits = |cache: &mut crate::text::cache::TextCache,
                     layout: &mut crate::text::cache::ShapedText| {
             cache.break_lines(layout, if style.nowrap { None } else { Some(width) }, None);
+            // One word wider than the box still breaks into one line: a single line must fit too.
             lines.is_none_or(|limit| layout.len() <= limit)
-                && (!style.nowrap || layout.width() <= width + 0.5)
+                && (!(style.nowrap || lines == Some(1)) || layout.width() <= width + 0.5)
         };
         let mut whole = self.shape(record, style, text, runs)?;
         // Entries are evicted, never reused, so an entry id names one shaped text.

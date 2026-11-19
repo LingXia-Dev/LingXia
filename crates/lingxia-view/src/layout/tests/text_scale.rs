@@ -43,6 +43,39 @@ fn scaling_reflows_text_and_input_once_and_invalidates_retained_geometry() {
     );
 }
 
+/// The showcase's `w-40` billing select at text scale 2: its cut label stays clear of the chevron.
+#[test]
+fn a_grown_select_cuts_a_long_word_short_of_its_chevron() {
+    use crate::scene::paint::Paint;
+    let module = crate::session::tests::source(
+        "function render(){return h('view',{style:{alignItems:'flex-start'}},h('select',{'data-testid':'s','aria-label':'Billing',value:'q',options:[{value:'q',label:'Quarterly billing'}],style:{width:160,fontSize:14,paddingLeft:12,paddingRight:12,borderWidth:1}}))}",
+    );
+    let mut page = crate::ViewSession::new(&module).unwrap();
+    page.set_environment(json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"ios","formFactor":"phone","displayLanguage":"en","canDock":false,"textScale":[[0,0],[16384,32768]]}))
+        .unwrap();
+    let display = page.layout(400, 200, 1.0).unwrap();
+    let chevron_start = display
+        .commands
+        .iter()
+        .find_map(|paint| match paint {
+            Paint::Stroke { points, .. } if points.len() == 3 => Some(points[0][0]),
+            _ => None,
+        })
+        .unwrap();
+    let text_end = display
+        .commands
+        .iter()
+        .filter_map(|paint| match paint {
+            Paint::Text { glyphs, size, .. } => glyphs.last().map(|g| g.x + size * 0.5),
+            _ => None,
+        })
+        .fold(f32::MIN, f32::max);
+    assert!(
+        text_end <= chevron_start,
+        "the label reaches {text_end}, the chevron starts at {chevron_start}"
+    );
+}
+
 #[test]
 fn a_select_chevron_and_its_room_grow_with_the_text_to_one_and_a_half() {
     use crate::scene::paint::Paint;
