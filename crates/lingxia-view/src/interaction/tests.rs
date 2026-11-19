@@ -1177,3 +1177,37 @@ fn shared_fields_paint_like_deep_copies_and_rebind_without_comparing() {
     assert!(shared.retained.rebind(&records, &edited).is_none());
     assert_eq!(records[3].fields.len(), 4);
 }
+
+#[test]
+fn a_tap_inside_a_value_places_the_caret_there_in_every_input_kind() {
+    for props in ["", "type:'number',", "inputMode:'numeric',"] {
+        let module = crate::session::tests::source(&format!(
+            "function render(){{const v=useLocal('v','');return h('input',{{bind:v,{props}autoFocus:true,style:{{height:40,fontSize:20,padding:8}}}})}}"
+        ));
+        let mut page = crate::ViewSession::new(&module).unwrap();
+        let first = page.prepare_native(200, 80, 1.0, true, None, Ok).unwrap();
+        let id = first.nodes[0].identity.to_string();
+        let token = first.nodes[0].input.as_ref().unwrap().edit_token.unwrap();
+        let typed = crate::text::input::Edit::Replace {
+            text: "250".into(),
+            cursor: 1,
+            composing: false,
+        };
+        page.edit_input(token, &id, &[typed], false).unwrap();
+        let display = page.prepare_native(200, 80, 1.0, true, None, Ok).unwrap();
+        let node = &display.nodes[0];
+        let input = node.input.as_ref().unwrap();
+        let caret = input.geometry.as_ref().unwrap().caret;
+        let hits = InputHitMap::capture(&display);
+        // Halfway between the value's leading edge (the padding) and the caret at its end.
+        let middle = [
+            (node.bounds[0] + 8.0 + caret[0]) / 2.0,
+            caret[1] + caret[3] / 2.0,
+        ];
+        let at = hits.hit(&node.identity, middle, false).unwrap();
+        assert!(
+            at[0] == at[1] && (1..=2).contains(&at[0]),
+            "{props}: {at:?}"
+        );
+    }
+}

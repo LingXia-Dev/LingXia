@@ -224,3 +224,63 @@ fn the_two_thumbs_share_one_track_and_the_range_lies_between_them() {
         "{ranges:?} {thumbs:?}"
     );
 }
+
+#[test]
+fn every_native_filled_mark_takes_the_solid_accent_roles() {
+    use crate::scene::paint::Paint;
+    use lingxia_theme::Role;
+    let palette = crate::theme::Palette::builtin(false);
+    let (fill, ink) = (
+        palette.role(Role::AccentSolid),
+        palette.role(Role::OnAccentSolid),
+    );
+    // Each unstyled control with the roles its filled parts must take.
+    for (control, roles) in [
+        (
+            "h('switch',{value:true,onChange(){},'aria-label':'On'})",
+            vec![fill],
+        ),
+        (
+            "h('checkbox',{value:true,onChange(){},'aria-label':'On'})",
+            vec![fill, ink],
+        ),
+        (
+            "h('checkbox',{value:false,indeterminate:true,onChange(){},'aria-label':'Some'})",
+            vec![fill, ink],
+        ),
+        (
+            "h('radio',{value:'a',onChange(){},options:[{value:'a',label:'A'}]})",
+            vec![fill],
+        ),
+        (
+            "h('slider',{'aria-label':'Level',value:40,style:{width:200,height:40}})",
+            vec![fill],
+        ),
+        (
+            "h('slider',{'aria-label':'Price',thumbLabels:['From','To'],values:[20,60],style:{width:200,height:40}})",
+            vec![fill],
+        ),
+    ] {
+        let module = source(&format!(
+            "function render(){{return h('page',{{}},{control})}}"
+        ));
+        let display = crate::ViewSession::new(&module)
+            .unwrap()
+            .layout(400, 200, 1.0)
+            .unwrap();
+        let colors: Vec<[u8; 4]> = display
+            .commands
+            .iter()
+            .filter_map(|paint| match paint {
+                Paint::Rect { color, .. } | Paint::Stroke { color, .. } => Some(*color),
+                _ => None,
+            })
+            .collect();
+        for role in roles {
+            assert!(
+                colors.contains(&role),
+                "{control} paints {role:?}: {colors:?}"
+            );
+        }
+    }
+}
