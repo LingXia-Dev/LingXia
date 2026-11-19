@@ -180,6 +180,12 @@ pub struct NodeSnapshot {
     /// The ids of the elements whose text describes this one (`aria-describedby`).
     #[serde(skip)]
     pub described_by: Vec<String>,
+    /// The ids of the elements this one controls (`aria-controls`).
+    #[serde(skip)]
+    pub controls: Vec<String>,
+    /// `aria-autocomplete="list"`: the field offers suggestions in the list it controls.
+    #[serde(skip)]
+    pub autocomplete: Option<String>,
     /// Laid out right to left: a composite's Left and Right swap.
     #[serde(skip)]
     pub rtl: bool,
@@ -548,6 +554,8 @@ pub struct ScrollSnapshot {
     pub on_reach_start: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_reach_end: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on_scroll_edge: Option<u64>,
     pub id: String,
     pub parent: Option<String>,
     pub offset: f32,

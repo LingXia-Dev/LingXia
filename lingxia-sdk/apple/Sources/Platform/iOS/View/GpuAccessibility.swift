@@ -81,7 +81,10 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
         accessibilityLabel = node.name.isEmpty ? (node.textField?.hint ?? node.text) : node.name
         accessibilityValue = Self.value(node)
         accessibilityTraits = Self.traits(node)
-        accessibilityHint = node.description
+        // UIKit has no `aria-controls` relation: a field driving a suggestion list says so.
+        let suggests = ["list", "both"].contains(node.autocomplete ?? "") && !(node.controls ?? []).isEmpty
+        let hint = [node.description, suggests ? L10n.string("lx_gpu_a11y_suggestions") : nil].compactMap { $0 }
+        accessibilityHint = hint.isEmpty ? nil : hint.joined(separator: ", ")
         if node.bounds.count == 4 {
             accessibilityFrameInContainerSpace = CGRect(
                 x: CGFloat(node.bounds[0]), y: CGFloat(node.bounds[1]),

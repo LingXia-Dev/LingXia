@@ -208,6 +208,8 @@ pub enum Dispatch {
     Reach {
         commit: CommitTicket,
         handles: Vec<u64>,
+        /// `onScrollEdge` callbacks with their JSON payloads.
+        edges: Vec<(u64, String)>,
         more: bool,
     },
 }

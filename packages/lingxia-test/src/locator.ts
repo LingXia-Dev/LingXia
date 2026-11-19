@@ -57,7 +57,7 @@ export interface QueryMatch {
   expanded?: boolean | null;
   /** `aria-busy`; null when absent. */
   busy?: boolean | null;
-  /** On a GPU page: `data-testid`, the authored `data-*` props and `aria-invalid`/`-required`/`-describedby`. */
+  /** On a GPU page: `data-testid`, the authored `data-*` props and `aria-invalid`/`-required`/`-describedby`/`-controls`/`-autocomplete`. */
   attributes?: Record<string, string>;
   rect?: {
     left: number;

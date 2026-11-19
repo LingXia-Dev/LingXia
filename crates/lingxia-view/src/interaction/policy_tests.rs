@@ -35,6 +35,8 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         on_press: None,
         aria_actions: Vec::new(),
         described_by: Vec::new(),
+        controls: Vec::new(),
+        autocomplete: None,
         rtl: false,
         drag: None,
         identity: identity.into(),
@@ -93,6 +95,7 @@ pub(crate) fn region(id: &str, parent: Option<&str>, offset: f32, max: f32) -> S
         axis: ScrollAxis::Vertical,
         on_reach_start: None,
         on_reach_end: None,
+        on_scroll_edge: None,
         id: id.into(),
         parent: parent.map(str::to_owned),
         offset,
@@ -314,6 +317,60 @@ fn reach_edges_fire_once_per_arrival_in_bounded_batches() {
     }
     assert_eq!(delivered.len(), 80);
     assert!(!reach.presented(&many).more);
+}
+
+#[test]
+fn scroll_edge_reports_each_change_of_being_at_an_edge() {
+    let feed = |offset, max| {
+        let mut feed = node("feed", "scroll", [0.0, 0.0, 100.0, 100.0]);
+        let mut snapshot = region("feed", None, offset, max);
+        snapshot.on_scroll_edge = Some(7);
+        feed.scroll = Some(snapshot);
+        feed
+    };
+    let told = |reach: &mut ReachTracker, offset, max| {
+        reach
+            .presented(&frame(vec![feed(offset, max)]))
+            .edges
+            .into_iter()
+            .map(|(handle, payload)| {
+                assert_eq!(handle, 7);
+                payload
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut reach = ReachTracker::default();
+    assert_eq!(
+        told(&mut reach, 0.0, 0.0),
+        [
+            r#"{"edge":"start","at":true}"#,
+            r#"{"edge":"end","at":true}"#
+        ],
+        "content that fits is at both edges"
+    );
+    assert!(told(&mut reach, 0.0, 0.0).is_empty(), "once per change");
+    assert_eq!(
+        told(&mut reach, 0.0, 200.0),
+        [r#"{"edge":"end","at":false}"#],
+        "growing past the viewport leaves the end"
+    );
+    assert_eq!(
+        told(&mut reach, 200.0, 200.0),
+        [
+            r#"{"edge":"start","at":false}"#,
+            r#"{"edge":"end","at":true}"#
+        ]
+    );
+    assert!(
+        told(&mut reach, 199.995, 200.0).is_empty(),
+        "within the tolerance"
+    );
+    let mut reach = ReachTracker::default();
+    assert_eq!(
+        told(&mut reach, 0.0, 200.0),
+        [r#"{"edge":"start","at":true}"#],
+        "a new scroll that does not fit starts at its start only"
+    );
 }
 
 #[test]

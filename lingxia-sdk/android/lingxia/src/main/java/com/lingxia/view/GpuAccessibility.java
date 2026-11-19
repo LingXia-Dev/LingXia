@@ -177,14 +177,22 @@ final class GpuAccessibility {
         if (GpuSemantics.ROLE_DIALOG.equals(role) || GpuSemantics.ROLE_ALERT_DIALOG.equals(role)) {
             if (Build.VERSION.SDK_INT >= 28 && !name.isEmpty()) info.setPaneTitle(name);
         }
+        // `aria-controls`: the field labels the list it drives, so TalkBack names that list after it.
+        long[] controls = node.controls();
+        if (controls != null && controls.length > 0) info.setLabelFor(host, (int) controls[0]);
         // An invalid field speaks its description as the error; otherwise it is the hint TalkBack reads last.
         String description = text(node.description());
+        String autocomplete = text(node.autocomplete());
+        String hint = "";
+        if (controls != null && controls.length > 0 && ("list".equals(autocomplete) || "both".equals(autocomplete)))
+            hint = host.getContext().getString(com.lingxia.lxapp.R.string.lx_gpu_a11y_suggestions);
         if (Boolean.TRUE.equals(node.invalid())) {
             info.setContentInvalid(true);
             if (!description.isEmpty()) info.setError(description);
-        } else if (!description.isEmpty() && Build.VERSION.SDK_INT >= 28) {
-            info.setTooltipText(description);
+        } else if (!description.isEmpty()) {
+            hint = hint.isEmpty() ? description : description + ", " + hint;
         }
+        if (!hint.isEmpty() && Build.VERSION.SDK_INT >= 28) info.setTooltipText(hint);
         String live = node.liveRegion();
         if (GpuSemantics.LIVE_POLITE.equals(live)) info.setLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         else if (GpuSemantics.LIVE_ASSERTIVE.equals(live)) info.setLiveRegion(View.ACCESSIBILITY_LIVE_REGION_ASSERTIVE);

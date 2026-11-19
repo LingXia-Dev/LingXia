@@ -408,6 +408,12 @@ fn attributes(node: &NodeSnapshot) -> Value {
             json!(node.described_by.join(" ")),
         );
     }
+    if !node.controls.is_empty() {
+        out.insert("aria-controls".into(), json!(node.controls.join(" ")));
+    }
+    if let Some(value) = &node.autocomplete {
+        out.insert("aria-autocomplete".into(), json!(value));
+    }
     if let Some(text) = node.range.as_ref().and_then(|range| range.text.as_ref()) {
         out.insert("aria-valuetext".into(), json!(text));
     }
@@ -601,6 +607,20 @@ pub fn tree(projection: &Projection) -> Value {
         }
         if let Some(description) = &node.description {
             out.insert("description".into(), json!(description));
+        }
+        // Named by test id: semantic ids are not stable across dumps.
+        let controls: Vec<String> = node
+            .controls
+            .iter()
+            .filter_map(|id| projection.ids.index(*id))
+            .map(|index| projection.frame.nodes[index].test_id.clone())
+            .filter(|test_id| !test_id.is_empty())
+            .collect();
+        if !controls.is_empty() {
+            out.insert("controls".into(), json!(controls));
+        }
+        if let Some(autocomplete) = &node.autocomplete {
+            out.insert("autocomplete".into(), json!(autocomplete));
         }
         if let Some(field) = &node.text_field {
             out.insert("value".into(), json!(field.text));

@@ -407,6 +407,11 @@ export interface PageTreeNode {
   busy?: boolean;
   /** Heading level. */
   level?: number;
+  /** The text `aria-describedby` names. */
+  description?: string;
+  /** Test ids of the mounted nodes `aria-controls` names. */
+  controls?: string[];
+  autocomplete?: 'list';
   value?: string | number;
   /** Scroll offset and its maximum along the region's axis. */
   scroll?: [number, number];

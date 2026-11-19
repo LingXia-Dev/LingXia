@@ -175,6 +175,12 @@ pub struct SemanticNode {
     /// The text of the elements `aria-describedby` names, read after the name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// The nodes `aria-controls` names that are mounted, in order.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub controls: Vec<u32>,
+    /// `aria-autocomplete="list"`: the field offers suggestions in the list it controls.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub autocomplete: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub invalid: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -827,6 +833,8 @@ impl Projection<'_> {
                 horizontal: scroll.axis == ScrollAxis::Horizontal,
             }),
             description: self.description(node),
+            controls: self.controlled(node),
+            autocomplete: node.autocomplete.clone(),
             invalid: node.states[4],
             required: node.states[5],
         })
@@ -882,6 +890,26 @@ impl Projection<'_> {
             earlier.count()
         };
         Some((row, 1))
+    }
+
+    /// The semantic ids of the elements `node` controls; an id the frame lacks is dropped and
+    /// logged once.
+    fn controlled(&self, node: &NodeSnapshot) -> Vec<u32> {
+        node.controls
+            .iter()
+            .filter_map(|id| {
+                let found = self
+                    .frame
+                    .nodes
+                    .iter()
+                    .position(|other| other.element_id.as_ref() == Some(id))
+                    .and_then(|at| self.ids.id(at));
+                if found.is_none() {
+                    missing_control(id);
+                }
+                found
+            })
+            .collect()
     }
 
     /// What `aria-describedby` names, in order: each element's label, else its text and its
@@ -995,6 +1023,17 @@ pub enum Event {
 }
 
 /// What a live region says: its own text, else its visible descendants' text in order.
+fn missing_control(id: &str) {
+    static LOGGED: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
+        std::sync::Mutex::new(None);
+    let mut logged = LOGGED.lock().unwrap_or_else(|p| p.into_inner());
+    let logged = logged.get_or_insert_with(Default::default);
+    // Bounded: a page that renames ids forever stops logging rather than growing.
+    if logged.len() < 256 && logged.insert(id.to_owned()) {
+        log::warn!(target: "lingxia_view", "aria-controls names \"{id}\", which is not mounted");
+    }
+}
+
 fn spoken(frame: &PresentedFrame, node: &NodeSnapshot) -> String {
     if !node.text.is_empty() {
         return node.text.clone();

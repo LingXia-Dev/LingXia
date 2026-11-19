@@ -754,6 +754,7 @@ impl<A: PlatformAdapter> Inner<A> {
         let Dispatch::Reach {
             commit,
             handles,
+            edges,
             more,
         } = reach
         else {
@@ -766,6 +767,9 @@ impl<A: PlatformAdapter> Inner<A> {
                 for handle in handles {
                     // Edges a superseded frame reached are reached again by the current one.
                     changed |= session.event(commit, handle)?;
+                }
+                for (handle, payload) in edges {
+                    changed |= session.text_event(commit, handle, &payload)?;
                 }
                 let update = if changed {
                     inner.drained(session)?

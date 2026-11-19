@@ -134,6 +134,7 @@ impl RetainedLayout {
                                 field::ON_CLICK
                                     | field::ON_REACH_START
                                     | field::ON_REACH_END
+                                    | field::ON_SCROLL_EDGE
                                     | field::ON_INPUT
                                     | field::ON_SUBMIT
                                     | field::ON_CHECKED_CHANGE
@@ -171,6 +172,7 @@ impl RetainedLayout {
             if let Some(scroll) = &mut node.scroll {
                 scroll.on_reach_start = handle(17);
                 scroll.on_reach_end = handle(18);
+                scroll.on_scroll_edge = handle(field::ON_SCROLL_EDGE);
             }
             if let Some(range) = &mut node.range
                 && range.on_change.is_some()

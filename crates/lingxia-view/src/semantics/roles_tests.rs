@@ -286,6 +286,27 @@ fn described_invalid_required_fields_and_group_tooltip_roles_project() {
 }
 
 #[test]
+fn a_combobox_names_the_mounted_list_it_controls() {
+    let frame = frame(
+        "h('view',{},h('input',{'data-testid':'city','aria-label':'City',role:'combobox','aria-controls':'gone cities','aria-autocomplete':'list'}),h('view',{id:'cities',role:'listbox','aria-label':'Cities','data-testid':'list'},h('button',{role:'option',onClick(){}},'Oslo')))",
+    );
+    let mut ids = SemanticIds::default();
+    ids.update(frame.nodes.iter().map(|n| n.identity.as_ref()));
+    let list = frame
+        .nodes
+        .iter()
+        .position(|n| n.test_id == "list")
+        .unwrap();
+    let city = semantic(&frame, "city").unwrap();
+    assert_eq!(
+        city.controls,
+        [ids.id(list).unwrap()],
+        "an unmounted id is dropped"
+    );
+    assert_eq!(city.autocomplete.as_deref(), Some("list"));
+}
+
+#[test]
 fn an_alertdialog_is_modal_like_a_dialog() {
     let frame = frame(
         "h('page',{},h('button',{'data-testid':'behind',onClick(){}},'Behind'),h('dialog',{open:true,role:'alertdialog','aria-label':'Delete note?','data-testid':'d'},h('button',{'data-testid':'ok',onClick(){}},'Delete')))",

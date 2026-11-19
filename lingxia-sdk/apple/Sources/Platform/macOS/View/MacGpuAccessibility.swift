@@ -15,6 +15,7 @@ final class MacGpuAccessibility {
         if let order { return order }
         var seen = Set<UInt32>()
         var built: [MacGpuAccessibilityElement] = []
+        var controls: [(MacGpuAccessibilityElement, [UInt32])] = []
         func visit(_ id: UInt32) {
             guard seen.insert(id).inserted, let node = node(id) else { return }
             if node.visible {
@@ -22,12 +23,17 @@ final class MacGpuAccessibility {
                 element.apply(node)
                 elements[id] = element
                 built.append(element)
+                controls.append((element, node.controls ?? []))
             }
             node.children.forEach(visit)
         }
         let roots = gpuPageSemanticRoots(view.token)
         for index in 0..<roots.len() { visit(roots.get(index: UInt(index)) ?? 0) }
         elements = elements.filter { seen.contains($0.key) }
+        // `aria-controls`: VoiceOver's "jump to linked item" reaches the list a combobox drives.
+        for (element, ids) in controls {
+            element.setAccessibilityLinkedUIElements(ids.compactMap { elements[$0] })
+        }
         order = built
         return built
     }

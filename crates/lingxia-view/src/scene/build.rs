@@ -299,6 +299,11 @@ impl Renderer {
                         .iter()
                         .find(|(id, _)| *id == field::ON_REACH_END)
                         .and_then(|(_, v)| v.as_u64()),
+                    on_scroll_edge: record
+                        .fields
+                        .iter()
+                        .find(|(id, _)| *id == field::ON_SCROLL_EDGE)
+                        .and_then(|(_, v)| v.as_u64()),
                     snap_stop: record.string(field::SNAP_STOP) == Some("always"),
                     snap_index: record.number(field::SNAP_INDEX).map(|index| index as usize),
                     on_snap: record
@@ -1515,6 +1520,14 @@ impl Renderer {
                     .string(field::ARIA_DESCRIBED_BY)
                     .map(|ids| ids.split(' ').map(str::to_owned).collect())
                     .unwrap_or_default(),
+                controls: record
+                    .string(field::ARIA_CONTROLS)
+                    .map(|ids| ids.split(' ').map(str::to_owned).collect())
+                    .unwrap_or_default(),
+                autocomplete: record
+                    .string(field::ARIA_AUTOCOMPLETE)
+                    .filter(|value| *value != "none")
+                    .map(str::to_owned),
                 rtl: directions[index],
                 plot_local: None,
                 data: record

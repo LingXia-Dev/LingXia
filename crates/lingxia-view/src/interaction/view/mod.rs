@@ -679,10 +679,15 @@ impl ViewInteraction {
         if self.drag.accept(&next) {
             effects.push(Effect::Redraw);
         }
-        let Reached { handles, more } = self.reach.presented(&next);
-        let reach = (!handles.is_empty() || more).then(|| Dispatch::Reach {
+        let Reached {
+            handles,
+            edges,
+            more,
+        } = self.reach.presented(&next);
+        let reach = (!handles.is_empty() || !edges.is_empty() || more).then(|| Dispatch::Reach {
             commit: next.commit,
             handles,
+            edges,
             more,
         });
         self.frame = Some(next);

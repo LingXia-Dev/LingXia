@@ -594,6 +594,30 @@ fn reach_handles_are_published_without_running_callbacks_and_reject_stale_input(
 }
 
 #[test]
+fn a_scroll_edge_payload_reaches_the_callback_as_edge_and_at() {
+    let source = source(
+        "function render(){const seen=useLocal('seen','');return h('scroll',{onScrollEdge:({edge,at})=>seen.set(seen.value+edge+':'+at+';')},h('text',{},seen.value))}",
+    );
+    let mut page = ViewSession::new(&source).unwrap();
+    let first = page.layout(100, 100, 1.0).unwrap();
+    let handle = first.nodes[0]
+        .scroll
+        .as_ref()
+        .unwrap()
+        .on_scroll_edge
+        .unwrap();
+    let generation = page.generation();
+    assert!(
+        page.text_event(generation, handle, r#"{"edge":"end","at":false}"#)
+            .unwrap()
+    );
+    assert_eq!(
+        page.layout(100, 100, 1.0).unwrap().nodes[1].text,
+        "end:false;"
+    );
+}
+
+#[test]
 fn native_scroll_reuses_committed_description_and_preserves_click_handles() {
     let source = source(
         "let renders=0; function render(){renders++; const n=useLocal('n',0); return h('scroll',{'data-testid':'feed'},h('button',{style:{height:300},onClick:()=>n.set(n.value+1)},`${renders}:${n.value}`))}",
