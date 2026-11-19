@@ -68,6 +68,18 @@ fn touch_message() -> u32 {
     *MESSAGE.get_or_init(|| unsafe { RegisterWindowMessageW(w!("LingXiaViewTouch")) })
 }
 
+/// The high word of `wparam` on automation's posted mouse messages (`lingxia-webview`'s
+/// `SYNTHETIC_MOUSE_WPARAM_MARKER`).
+const SYNTHETIC_MOUSE: usize = 0x4c58_0000;
+
+/// Automation's precision-touchpad scroll: a phase over the fingers' travel in window pixels,
+/// which the content follows.
+fn scroll_message() -> u32 {
+    static MESSAGE: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    // SAFETY: a constant name.
+    *MESSAGE.get_or_init(|| unsafe { RegisterWindowMessageW(w!("LingXiaViewScroll")) })
+}
+
 thread_local! {
     static PAGES: RefCell<HashMap<isize, Weak<Page>>> = RefCell::new(HashMap::new());
 }
@@ -204,6 +216,31 @@ fn handle(
         touch(page, hwnd, SYNTHETIC_FINGER, phase, at(page, lparam));
         return Some(LRESULT(0));
     }
+    if msg == scroll_message() && msg != 0 {
+        let host = page.host();
+        if host.input_blocked() {
+            return Some(LRESULT(0));
+        }
+        let pixels = page.scale() / page.shown_scale();
+        let delta = |shift: usize| f32::from(((wparam.0 >> shift) & 0xffff) as u16 as i16) * pixels;
+        let phase = match wparam.0 >> 32 {
+            0 => WheelPhase::Began,
+            1 => WheelPhase::Changed,
+            2 => WheelPhase::Ended,
+            _ => WheelPhase::Momentum,
+        };
+        let (x, y) = at(page, lparam);
+        host.input_age(input_age());
+        host.wheel(Wheel {
+            x,
+            y,
+            dx: delta(0),
+            dy: delta(16),
+            precise: true,
+            phase,
+        });
+        return Some(LRESULT(0));
+    }
     if msg == crate::uia::CALL {
         return Some(crate::uia::call(lparam));
     }
@@ -277,7 +314,11 @@ fn handle(
         }
         WM_MOUSEMOVE => {
             let (x, y) = at(page, lparam);
-            let tracking = std::mem::replace(&mut page.input.borrow_mut().tracking, true);
+            // Automation's posted moves: tracking follows the physical cursor, which is
+            // elsewhere, and would leave at once.
+            let synthetic = wparam.0 & 0xffff_0000 == SYNTHETIC_MOUSE;
+            let tracking =
+                synthetic || std::mem::replace(&mut page.input.borrow_mut().tracking, true);
             if !tracking {
                 let mut track = TRACKMOUSEEVENT {
                     cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
