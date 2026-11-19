@@ -285,7 +285,14 @@ fn a_moved_web_view_stays_live_and_a_faded_one_or_a_capture_draws_its_picture() 
         pixel(&capture.rasterize().unwrap(), 50, 50),
         [0, 255, 0, 255]
     );
+    // Not drawn yet (or cleared): the capture shows the box, not an older picture.
     crate::scene::webview::set_ready(wv.scope, &wv.web_id, false);
+    let mut capture = page.layout(140, 120, 1.0).unwrap();
+    capture.web_pictures = true;
+    assert_ne!(
+        pixel(&capture.rasterize().unwrap(), 50, 50),
+        [0, 255, 0, 255]
+    );
 }
 
 #[test]

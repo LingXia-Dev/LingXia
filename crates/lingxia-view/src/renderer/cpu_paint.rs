@@ -307,7 +307,8 @@ impl DisplayList {
                         transform: None,
                     }
                     .path();
-                    if (degraded || self.web_pictures)
+                    if (degraded
+                        || (self.web_pictures && crate::scene::webview::is_ready_key(&key)))
                         && let Some(bitmap) = self.images.get(&picture)
                     {
                         let (rect, transform, clip) = image_geometry(

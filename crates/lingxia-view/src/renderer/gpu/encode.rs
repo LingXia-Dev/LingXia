@@ -484,7 +484,9 @@ impl DisplayList {
                     corners,
                     degraded,
                 } => {
-                    let bitmap = (*degraded || self.web_pictures)
+                    // A capture shows a view that has not drawn as its box's background.
+                    let bitmap = (*degraded
+                        || (self.web_pictures && crate::scene::webview::is_ready_key(key)))
                         .then(|| self.images.get(picture))
                         .flatten();
                     if let Some(bitmap) = bitmap {
