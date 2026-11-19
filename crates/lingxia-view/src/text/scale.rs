@@ -45,6 +45,15 @@ impl TextScale {
         Ok(Self(points))
     }
 
+    /// How far text of `size` grows, capped at 1.5×: control chrome grows with it, as `em` does.
+    pub(crate) fn growth(&self, size: f32) -> f32 {
+        if size > 0.0 {
+            (self.map(size) / size).min(1.5)
+        } else {
+            1.0
+        }
+    }
+
     pub(crate) fn map(&self, size: f32) -> f32 {
         if self.0.is_empty() || size <= 0.0 {
             return size;

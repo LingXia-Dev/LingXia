@@ -42,3 +42,38 @@ fn scaling_reflows_text_and_input_once_and_invalidates_retained_geometry() {
         24.0
     );
 }
+
+#[test]
+fn a_select_chevron_and_its_room_grow_with_the_text_to_one_and_a_half() {
+    use crate::scene::paint::Paint;
+    let module = crate::session::tests::source(
+        "function render(){return h('view',{style:{alignItems:'flex-start'}},h('select',{'data-testid':'s','aria-label':'Plan',options:[{value:'m',label:'Monthly'}],style:{fontSize:16}}))}",
+    );
+    let mut page = crate::ViewSession::new(&module).unwrap();
+    let chevron = |page: &mut crate::ViewSession| {
+        let display = page.layout(300, 200, 1.0).unwrap();
+        let select = display.nodes.iter().find(|n| n.test_id == "s").unwrap();
+        let [x, _, w, _] = select.bounds;
+        let points = display
+            .commands
+            .iter()
+            .find_map(|paint| match paint {
+                Paint::Stroke { points, .. } if points.len() == 3 => Some(points.clone()),
+                _ => None,
+            })
+            .unwrap();
+        // Chevron width and its centre's distance from the select's end.
+        (points[2][0] - points[0][0], x + w - points[1][0])
+    };
+    let (narrow, inset) = chevron(&mut page);
+    assert_eq!(narrow, 10.0);
+    let mut environment = json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"textScale":[[0,0],[16384,32768]]});
+    page.set_environment(environment.clone()).unwrap();
+    let (grown, grown_inset) = chevron(&mut page);
+    // Text doubles; the chevron stops at 1.5×.
+    assert_eq!(grown, 15.0);
+    assert_eq!(grown_inset - inset, 5.0);
+    environment.as_object_mut().unwrap().remove("textScale");
+    page.set_environment(environment).unwrap();
+    assert_eq!(chevron(&mut page).0, 10.0);
+}

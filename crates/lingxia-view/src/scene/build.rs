@@ -686,7 +686,7 @@ impl Renderer {
                 let content_width = (layout.size.width
                     - layout.padding.left
                     - layout.padding.right
-                    - check_reserve(record))
+                    - check_reserve(record, self.text_scale.growth(styles[index].size)))
                 .max(0.0);
                 // Overflowing single-line editors retain a nonnegative text origin;
                 // caret scrolling, not alignment, reveals the hidden text.
@@ -757,7 +757,7 @@ impl Renderer {
                 let label_x = if matches!(record.tag, tag::CHECKBOX | tag::RADIO_OPTION)
                     || (record.tag == tag::SELECT && directions[index])
                 {
-                    check_reserve(record)
+                    check_reserve(record, self.text_scale.growth(styles[index].size))
                 } else {
                     0.0
                 };
@@ -1110,7 +1110,7 @@ impl Renderer {
                         &crate::scene::slider::Switch {
                             right: x + layout.size.width - layout.padding.right
                                 + if crate::layout::style::composed_switch(records, index) {
-                                    check_reserve(record)
+                                    check_reserve(record, 1.0)
                                 } else {
                                     0.0
                                 },
@@ -1153,10 +1153,11 @@ impl Renderer {
                     + layout.padding.top
                     + (layout.size.height - layout.padding.top - layout.padding.bottom).max(0.0)
                         / 2.0;
+                let grown = self.text_scale.growth(styles[index].size);
                 let cx = if directions[index] {
-                    x + layout.padding.left + 10.0
+                    x + layout.padding.left + 10.0 * grown
                 } else {
-                    x + layout.size.width - layout.padding.right - 10.0
+                    x + layout.size.width - layout.padding.right - 10.0 * grown
                 };
                 // The chevron is chrome, quieter than the chosen label.
                 let chevron = if record.number(field::ENABLED) == Some(0.0) {
@@ -1167,8 +1168,12 @@ impl Renderer {
                 commands.push(Paint::Stroke {
                     round: true,
                     color: palette.role(chevron),
-                    points: vec![[cx - 5.0, cy - 2.5], [cx, cy + 2.5], [cx + 5.0, cy - 2.5]],
-                    width: 1.75,
+                    points: vec![
+                        [cx - 5.0 * grown, cy - 2.5 * grown],
+                        [cx, cy + 2.5 * grown],
+                        [cx + 5.0 * grown, cy - 2.5 * grown],
+                    ],
+                    width: 1.75 * grown,
                 });
             }
             if record.tag == tag::IMAGE {

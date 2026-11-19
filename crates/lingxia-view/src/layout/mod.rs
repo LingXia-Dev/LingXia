@@ -172,6 +172,10 @@ impl Renderer {
         let styles = crate::text::style::computed(records, &directions);
         let mut texts = crate::text::style::display_texts(records, &styles);
         let paragraphs = crate::text::runs::paragraphs(records, &styles);
+        let growth: Vec<f32> = styles
+            .iter()
+            .map(|s| self.text_scale.growth(s.size))
+            .collect();
         let mut layouts: Vec<Option<crate::text::cache::ShapedText>> =
             Vec::with_capacity(records.len());
         for (index, record) in records.iter().enumerate() {
@@ -338,6 +342,9 @@ impl Renderer {
                     |known, available| {
                         let tag = context.as_ref().map(|i| records[**i].tag).unwrap_or(0);
                         let control = context.as_ref().map(|i| &records[**i]);
+                        let reserve = context
+                            .as_ref()
+                            .map_or(0.0, |i| check_reserve(&records[**i], growth[**i]));
                         let single_line = matches!(tag, tag::INPUT | tag::SEARCH | tag::SELECT)
                             || context.as_ref().is_some_and(|i| styles[**i].nowrap);
                         let limit = context
@@ -368,7 +375,7 @@ impl Renderer {
                             if single_line {
                                 None
                             } else {
-                                max_width.map(|w| (w - control.map_or(0.0, check_reserve)).max(0.0))
+                                max_width.map(|w| (w - reserve).max(0.0))
                             },
                             None,
                         );
@@ -388,9 +395,7 @@ impl Renderer {
                             }
                         }
                         Size {
-                            width: known
-                                .width
-                                .unwrap_or(width.ceil() + control.map_or(0.0, check_reserve)),
+                            width: known.width.unwrap_or(width.ceil() + reserve),
                             height: known
                                 .height
                                 .unwrap_or(height.ceil().max(control.map_or(0.0, check_height))),
@@ -421,7 +426,7 @@ impl Renderer {
                                 - padding.right
                                 - border.left
                                 - border.right
-                                - check_reserve(record))
+                                - check_reserve(record, growth[index]))
                             .max(0.0),
                         )
                     };

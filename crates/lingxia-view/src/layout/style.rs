@@ -45,12 +45,13 @@ pub(crate) mod safe {
     pub const JUSTIFY_SELF: u64 = 32;
 }
 
-pub(crate) fn check_reserve(record: &Record) -> f32 {
+/// The inline room a control's own mark takes beside its label; a select's chevron grows with
+/// its text (`growth`, from `TextScale::growth`).
+pub(crate) fn check_reserve(record: &Record, growth: f32) -> f32 {
     match record.tag {
         tag::CHECKBOX | tag::RADIO_OPTION => 36.0,
         tag::SWITCH => crate::scene::slider::switch_track(record)[0] + 12.0,
-        // The chevron at the end of a select.
-        tag::SELECT => 28.0,
+        tag::SELECT => 28.0 * growth,
         _ => 0.0,
     }
 }
@@ -474,7 +475,7 @@ pub(crate) fn node_style(
     padding_left += bleed[3];
     let composed_switch = composed_switch(records, index);
     if composed_switch {
-        padding_right += check_reserve(record);
+        padding_right += check_reserve(record, 1.0);
     }
     let display = record.string(field::DISPLAY);
     // `block` children stretch down a column; inline boxes shrink to content.
@@ -697,7 +698,7 @@ pub(crate) fn node_style(
                         if composed_switch {
                             0.0
                         } else {
-                            check_reserve(record)
+                            check_reserve(record, 1.0)
                         } + padding_left
                             + padding_right
                             + border_left
