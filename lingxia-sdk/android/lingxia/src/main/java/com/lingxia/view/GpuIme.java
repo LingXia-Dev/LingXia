@@ -198,11 +198,13 @@ final class GpuIme {
         GpuFrame.Edit edit=input.edit();
         JSONObject editState=edit == null ? null : edit.json;
         if (connection != null && connection.token == token && connection.identity.equals(focused.identity())) {
-            if (ticket.connection == connection) connection.acceptFrame(ticket.revision,editState);
+            boolean replaced=ticket.connection == connection && connection.acceptFrame(ticket.revision,editState);
             String previous=ime().json.toString();
             config=input.json;
             configure(connection);
-            if (!previous.equals(ime().json.toString())) manager.restartInput(view);
+            // A value the page set drops the keyboard's own composing text, as EditText.setText does.
+            if (replaced) invalidateWrapper();
+            if (replaced || !previous.equals(ime().json.toString())) manager.restartInput(view);
             host.editingChanged();
         } else if (connection != null || (input.raiseKeyboard() && token != blurred)) {
             activate(focused.json,token,editState);

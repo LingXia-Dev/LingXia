@@ -83,18 +83,24 @@ final class GpuInputConnection extends BaseInputConnection {
         for (int bytes : pending.headMap(acknowledged, true).values()) pendingBytes -= bytes;
         pending.headMap(acknowledged, true).clear();
         if (acknowledged == revision && queued.length() == 0) {
+            String typed = text;
             install(state);
-            boolean resync=historyPending; historyPending=false;
+            // Undo, or a value the page set while answering (a submit clearing it): the IME re-reads.
+            boolean resync=historyPending || !text.equals(typed); historyPending=false;
             sink.changed();
             return resync;
         }
         return false;
     }
-    void acceptFrame(long capturedRevision, JSONObject state) {
+    /** True when the frame changed the text itself (a value the page set), which the IME must re-read. */
+    boolean acceptFrame(long capturedRevision, JSONObject state) {
         if (!closed && capturedRevision == revision && pending.isEmpty() && queued.length() == 0) {
+            String before = text;
             install(state);
             sink.changed();
+            return !text.equals(before);
         }
+        return false;
     }
     @Override public void closeConnection() {
         closed = true; queued = new JSONArray(); pending.clear();
