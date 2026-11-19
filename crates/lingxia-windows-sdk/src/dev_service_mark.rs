@@ -13,6 +13,7 @@ use windows::Win32::Graphics::Gdi::{
     GetDeviceCaps, HGDIOBJ, LOGPIXELSX, ReleaseDC, SelectObject,
 };
 use windows::Win32::System::LibraryLoader;
+use windows::Win32::System::Threading::GetCurrentProcessId;
 use windows::Win32::UI::WindowsAndMessaging::{
     self, CreateWindowExW, DefWindowProcW, DestroyWindow, GetWindow, GetWindowRect, HWND_TOP,
     IsIconic, IsWindowVisible, RegisterClassW, SWP_NOACTIVATE, SWP_NOSIZE, SWP_SHOWWINDOW,
@@ -108,6 +109,16 @@ pub(crate) fn sync(hwnd: HWND) {
         log::info!("dev service mark shown");
         window
     };
+    let mut placed = RECT::default();
+    let in_place = unsafe { GetWindowRect(from_handle(window), &mut placed) }.is_ok()
+        && placed.left == x
+        && placed.top == y
+        && placed.right - placed.left == width
+        && placed.bottom - placed.top == height
+        && unsafe { IsWindowVisible(from_handle(window)) }.as_bool();
+    if in_place && on_top(window) {
+        return;
+    }
     unsafe {
         let _ = SetWindowPos(
             from_handle(window),
@@ -144,6 +155,9 @@ pub(crate) fn raise_owner(hwnd: HWND) {
 
 /// After a float is brought to the top, put the chip back above it.
 pub(crate) fn raise(owner: HWND) {
+    thread_local! {
+        static RAISING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
     let Some(window) = marks()
         .lock()
         .ok()
@@ -151,7 +165,9 @@ pub(crate) fn raise(owner: HWND) {
     else {
         return;
     };
-    if !is_alive(window) {
+    // Raising the chip restacks its owner, whose position change raises the chip again: only
+    // move it when something of this app covers it, and never from inside that restack.
+    if !is_alive(window) || on_top(window) || RAISING.with(|raising| raising.replace(true)) {
         return;
     }
     unsafe {
@@ -165,6 +181,29 @@ pub(crate) fn raise(owner: HWND) {
             SWP_NOACTIVATE | SWP_NOSIZE | WindowsAndMessaging::SWP_NOMOVE,
         );
     }
+    RAISING.with(|raising| raising.set(false));
+}
+
+/// No visible, non-topmost window of this process is above `window`.
+fn on_top(window: isize) -> bool {
+    let pid = unsafe { GetCurrentProcessId() };
+    let mut above = unsafe { GetWindow(from_handle(window), WindowsAndMessaging::GW_HWNDPREV) };
+    while let Ok(hwnd) = above
+        && !hwnd.0.is_null()
+    {
+        let mut owner_pid = 0u32;
+        unsafe { WindowsAndMessaging::GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };
+        let topmost =
+            unsafe { WindowsAndMessaging::GetWindowLongW(hwnd, WindowsAndMessaging::GWL_EXSTYLE) }
+                as u32
+                & WindowsAndMessaging::WS_EX_TOPMOST.0
+                != 0;
+        if owner_pid == pid && !topmost && unsafe { IsWindowVisible(hwnd) }.as_bool() {
+            return false;
+        }
+        above = unsafe { GetWindow(hwnd, WindowsAndMessaging::GW_HWNDPREV) };
+    }
+    true
 }
 
 pub(crate) fn destroy(owner: HWND) {
