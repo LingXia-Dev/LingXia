@@ -58,6 +58,8 @@ struct Log {
     generations: Vec<CommitTicket>,
     /// The last prepared frame's filled rectangles: colour and bounds.
     rects: Vec<([u8; 4], [f32; 4])>,
+    /// The last prepared frame's strokes: their points and width.
+    strokes: Vec<(Vec<[f32; 2]>, f32)>,
     /// Generations the host reported presented (`HostEvents::presented`).
     shown: Vec<CommitTicket>,
     /// The feedback style each presented frame carried.
@@ -154,6 +156,16 @@ impl Presenter for Fake {
                 .filter_map(|paint| match paint {
                     crate::scene::paint::Paint::Rect { color, bounds, .. } => {
                         Some((*color, *bounds))
+                    }
+                    _ => None,
+                })
+                .collect();
+            log.strokes = display
+                .commands
+                .iter()
+                .filter_map(|paint| match paint {
+                    crate::scene::paint::Paint::Stroke { points, width, .. } => {
+                        Some((points.clone(), *width))
                     }
                     _ => None,
                 })
@@ -6275,4 +6287,238 @@ fn dragging_a_built_page_opens_only_players_it_brings_into_view() {
         let new = keys_after.iter().filter(|key| !keys.contains(key)).count() as u64;
         assert_eq!(after - before, new, "{path}: a drag asked for video opens");
     }
+}
+
+/// The device order: a test pin through `view.environment`, not a renderer field.
+#[test]
+fn a_pinned_text_scale_grows_a_select_chevron_and_its_room() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const b=useLocal('b','q');return h('view',{style:{alignItems:'flex-start'}},h('select',{'data-testid':'s',bind:b,'aria-label':'Billing',style:{width:160,paddingLeft:12,paddingRight:12,paddingTop:8,paddingBottom:8,fontSize:14,borderWidth:1},options:[{value:'q',label:'Quarterly billing with the annual discount applied'},{value:'m',label:'Monthly'}]}))}",
+        ),
+        false,
+    );
+    // Wide enough that the select's end is on screen.
+    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+        (environment.width, environment.height) = (400 * 2, 400 * 2);
+    }
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let chevron = |host: &ViewHost<Fake>| {
+        let log = host.adapter().log.lock().unwrap();
+        let (points, width) = log.strokes.last().cloned().expect("a chevron");
+        (points[2][0] - points[0][0], width)
+    };
+    assert_eq!(chevron(&host), (10.0, 1.75));
+    let pinned = host.automation_request(&serde_json::json!({"op": "environment", "textScale": 2}));
+    assert!(pinned.is_ok(), "{pinned:?}");
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    assert_eq!(chevron(&host), (15.0, 2.625), "1.5× at a 2.0 pin");
+}
+
+/// The device order: a tap focuses the field, then the keyboard's final frame arrives.
+#[test]
+fn a_tapped_field_clears_a_keyboard_that_rises_after_the_focus() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    // As the showcase lays a page out: a growing scroll in the page, which reads the keyboard.
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render({env}){const v=useLocal('v','');return h('page',{'data-keyboard':String(env.keyboard.height)},h('scroll',{style:{flexGrow:1}},h('view',{style:{padding:16,gap:16}},h('view',{style:{height:680}}),h('input',{'data-testid':'f',bind:v,'aria-label':'Amount',inputMode:'decimal',style:{height:48}}),h('view',{style:{height:40}}))))}",
+        ),
+        false,
+    );
+    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+        (environment.width, environment.height) = (414 * 2, 896 * 2);
+    }
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let field = |host: &ViewHost<Fake>| {
+        let rect = host
+            .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"f\"]"}))
+            .unwrap()["rect"]
+            .clone();
+        let at = |key: &str| rect[key].as_f64().unwrap() as f32;
+        [at("left"), at("top"), at("width"), at("height")]
+    };
+    let [x, y, w, h] = field(&host);
+    assert!(y + h < 896.0 && y > 896.0 - 318.0, "starts low: {y}");
+    tap(&host, (x + w / 2.0) * 2.0, (y + h / 2.0) * 2.0);
+    platform.settle(&[&host]);
+    assert!(
+        !host.adapter().log.lock().unwrap().editors.is_empty(),
+        "the tap asked the input method to focus the field"
+    );
+    // The input method focuses it, as a platform answers that dispatch.
+    let current: serde_json::Value = serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+    let identity = current["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["test_id"] == "f")
+        .unwrap()["identity"]
+        .clone();
+    let (tx, rx) = channel();
+    host.input(
+        serde_json::json!({"op": "focus", "identity": identity, "generation": current["generation"]})
+            .to_string(),
+        move |reply| {
+            let _ = tx.send(reply);
+        },
+    );
+    platform.settle(&[&host]);
+    let reply = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(reply.is_some());
+    host.redraw();
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    let element = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"f\"]"}))
+        .unwrap();
+    assert!(element["focused"] == true, "the tap focused the field");
+    assert_eq!(
+        element["selection"],
+        serde_json::json!([0, 0]),
+        "a caret in the empty field"
+    );
+    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+        environment.value["keyboard"]["height"] = 318.into();
+    }
+    host.environment_changed();
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    let [_, y, _, h] = field(&host);
+    assert!(
+        y + h <= 896.0 - 318.0,
+        "the field clears the keyboard: {y}..{}",
+        y + h
+    );
+}
+
+/// The showcase's own select, as a device draws it: a pinned text scale grows its chevron.
+#[cfg(feature = "hot-swap")]
+#[test]
+fn a_showcase_select_chevron_grows_under_a_pinned_text_scale() {
+    use crate::session::tests::hot_swap::showcase_page_module;
+    let worker = ViewWorker::spawn("test-lab-chevron").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(&worker, &showcase_page_module("view-controls"), false);
+    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+        (environment.width, environment.height, environment.scale) = (393 * 2, 852 * 2, 2.0);
+    }
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    host.automation_request(&serde_json::json!({"op": "act", "css": "[data-testid=\"lab-controls-billing\"]", "action": {"kind": "scroll"}}))
+        .unwrap();
+    platform.settle(&[&host]);
+    let chevron = |host: &ViewHost<Fake>| {
+        let rect = host
+            .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"lab-controls-billing\"]"}))
+            .unwrap()["rect"]
+            .clone();
+        let at = |key: &str| rect[key].as_f64().unwrap() as f32;
+        let (left, top, right, bottom) = (at("left"), at("top"), at("right"), at("bottom"));
+        let log = host.adapter().log.lock().unwrap();
+        log.strokes
+            .iter()
+            .filter(|(points, _)| points.len() == 3)
+            .find(|(points, _)| {
+                points
+                    .iter()
+                    .all(|[x, y]| (left..=right).contains(x) && (top..=bottom).contains(y))
+            })
+            .map(|(points, width)| (points[2][0] - points[0][0], *width))
+    };
+    assert_eq!(chevron(&host), Some((10.0, 1.75)));
+    host.automation_request(
+        &serde_json::json!({"op": "environment", "textScale": 2, "still": true}),
+    )
+    .unwrap();
+    platform.settle(&[&host]);
+    // Larger text pushes the select down the page; bring it back on screen.
+    host.automation_request(&serde_json::json!({"op": "act", "css": "[data-testid=\"lab-controls-billing\"]", "action": {"kind": "scroll"}}))
+        .unwrap();
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    assert_eq!(chevron(&host), Some((15.0, 2.625)), "1.5× at a 2.0 pin");
+}
+
+/// The showcase's own amount field: focused, then the keyboard's final frame arrives.
+#[cfg(feature = "hot-swap")]
+#[test]
+fn a_showcase_field_clears_a_keyboard_that_rises_after_the_focus() {
+    use crate::session::tests::hot_swap::showcase_page_module;
+    let worker = ViewWorker::spawn("test-lab-keyboard").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(&worker, &showcase_page_module("view-input"), false);
+    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+        (environment.width, environment.height, environment.scale) = (414 * 2, 896 * 2, 2.0);
+    }
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let act = |css: &str, kind: &str| {
+        host.automation_request(
+            &serde_json::json!({"op": "act", "css": css, "action": {"kind": kind, "force": true}}),
+        )
+        .unwrap();
+        platform.settle(&[&host]);
+    };
+    let field = "[data-testid=\"lab-input-amount\"]";
+    let rect = |host: &ViewHost<Fake>| {
+        let rect = host
+            .automation_request(&serde_json::json!({"op": "query", "css": field}))
+            .unwrap()["rect"]
+            .clone();
+        (
+            rect["top"].as_f64().unwrap() as f32,
+            rect["bottom"].as_f64().unwrap() as f32,
+        )
+    };
+    // Bring the field low on screen, where the keyboard will cover it.
+    act(field, "scroll");
+    let (top, _) = rect(&host);
+    if top < 896.0 - 318.0 {
+        host.automation_request(
+            &serde_json::json!({"op": "act", "css": field, "action": {"kind": "scroll"}}),
+        )
+        .unwrap();
+    }
+    let current: serde_json::Value = serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+    let identity = current["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["test_id"] == "lab-input-amount")
+        .unwrap()["identity"]
+        .clone();
+    let (tx, rx) = channel();
+    host.input(
+        serde_json::json!({"op": "focus", "identity": identity, "generation": current["generation"]})
+            .to_string(),
+        move |reply| {
+            let _ = tx.send(reply);
+        },
+    );
+    platform.settle(&[&host]);
+    assert!(rx.recv_timeout(Duration::from_secs(5)).unwrap().is_some());
+    host.redraw();
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    let before = rect(&host);
+    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+        environment.value["keyboard"]["height"] = 318.into();
+    }
+    host.environment_changed();
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    let (_, bottom) = rect(&host);
+    assert!(
+        bottom <= 896.0 - 318.0,
+        "the field clears the keyboard: {before:?} -> bottom {bottom}"
+    );
 }

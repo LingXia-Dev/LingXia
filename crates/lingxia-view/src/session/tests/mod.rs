@@ -2535,3 +2535,35 @@ fn element_ids_are_one_namespace_across_list_rows() {
         "{error}"
     );
 }
+
+#[test]
+fn a_list_at_its_end_that_shrinks_to_fit_is_at_both_edges() {
+    let source = source(
+        "function render(){const n=useLocal('n',6);return h('view',{},h('button',{onClick:()=>n.set(2)},'Two rows'),h('scroll',{style:{height:100}},...Array.from({length:n.value},(_,i)=>h('view',{key:String(i),style:{height:40}}))))}",
+    );
+    let mut page = ViewSession::new(&source).unwrap();
+    let first = page.layout(100, 300, 1.0).unwrap();
+    let scroll = first.nodes.iter().find(|n| n.scroll.is_some()).unwrap();
+    let id = scroll.scroll.as_ref().unwrap().id.clone();
+    let max = scroll.scroll.as_ref().unwrap().max_offset;
+    assert_eq!(max, 140.0);
+    // The host keeps passing the offset it scrolled to while the rows shrink.
+    let offsets = HashMap::from([(id, max)]);
+    let at_end = page
+        .prepare_native(100, 300, 1.0, false, Some(&offsets), Ok)
+        .unwrap();
+    let button = at_end.nodes.iter().find(|n| n.on_click.is_some()).unwrap();
+    assert!(
+        page.click(page.generation(), button.on_click.unwrap())
+            .unwrap()
+    );
+    let shrunk = page
+        .prepare_native(100, 300, 1.0, true, Some(&offsets), Ok)
+        .unwrap();
+    let scroll = shrunk.nodes.iter().find_map(|n| n.scroll.as_ref()).unwrap();
+    assert_eq!(
+        (scroll.offset, scroll.max_offset),
+        (0.0, 0.0),
+        "the offset clamps with the content"
+    );
+}

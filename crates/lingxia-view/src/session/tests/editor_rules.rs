@@ -137,3 +137,30 @@ fn the_frame_carries_the_keyboard_configuration_core_decided() {
     assert_eq!(json["ime"]["hide_on_submit"], true);
     assert_eq!(json["ime"]["auto_complete"], "current-password");
 }
+
+#[test]
+fn a_text_field_focused_after_a_numeric_one_takes_letters() {
+    let module = super::source(
+        "function render(){const n=useLocal('n','');const t=useLocal('t','');return h('view',{},h('input',{key:'n',bind:n,inputMode:'numeric'}),h('input',{key:'t',bind:t}),h('text',{},'['+n.value+'|'+t.value+']'))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let first = page.layout(300, 300, 1.0).unwrap();
+    let (number, text) = (
+        first.nodes[1].identity.to_string(),
+        first.nodes[2].identity.to_string(),
+    );
+    let focused = page
+        .focus_input(page.generation(), &number)
+        .unwrap()
+        .unwrap();
+    page.edit_input(focused.token, &number, &[replace("5a")], false)
+        .unwrap();
+    page.layout(300, 300, 1.0).unwrap();
+    let focused = page.focus_input(page.generation(), &text).unwrap().unwrap();
+    let reply = page
+        .edit_input(focused.token, &text, &[replace("a5")], false)
+        .unwrap()
+        .unwrap();
+    assert_eq!(reply.state.text, "a5");
+    assert_eq!(page.layout(300, 300, 1.0).unwrap().nodes[3].text, "[5|a5]");
+}
