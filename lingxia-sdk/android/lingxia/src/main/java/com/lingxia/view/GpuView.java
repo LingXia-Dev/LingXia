@@ -784,6 +784,14 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 x -= Math.round(((View) p).getTranslationX());
                 y -= Math.round(((View) p).getTranslationY());
             }
+            if (keyboard > 0) {
+                // The ime inset stops at the keyboard's content top; a suggestion or autofill
+                // strip above it is in the visible frame, which is what a field must clear.
+                android.graphics.Rect visible = new android.graphics.Rect();
+                getWindowVisibleDisplayFrame(visible);
+                int covered = rootOrigin[1] + getRootView().getHeight() - visible.bottom;
+                if (covered > keyboard && covered < getRootView().getHeight()) keyboard = covered;
+            }
             int trailingX = getRootView().getWidth() - x - surface.getWidth();
             int trailingY = getRootView().getHeight() - y - surface.getHeight();
             android.content.res.Configuration configuration = hostConfiguration;
