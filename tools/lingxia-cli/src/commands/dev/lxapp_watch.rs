@@ -604,10 +604,20 @@ fn hot_swap(
     }
     state.recheck_view_wire();
     let published = started.elapsed();
-    for page in &pages {
-        let path = super::gpu_swap::page_path(page);
-        match state.hot_swap_page(app_id, &path) {
-            Ok(RestartOutcome::Restarted) => println!(
+    let paths: Vec<String> = pages
+        .iter()
+        .map(|page| super::gpu_swap::page_path(page))
+        .collect();
+    let outcomes = match state.hot_swap_pages(app_id, &paths) {
+        Ok(outcomes) => outcomes,
+        Err(err) => {
+            eprintln!("  {} {app_id}: {err:#}; reloading instead", "✗".red());
+            return false;
+        }
+    };
+    for (path, outcome) in paths.iter().zip(outcomes) {
+        match outcome {
+            RestartOutcome::Restarted => println!(
                 "  {} swapped {} in {} ms (edit settled {} ms, compile {} ms {}, manifests {} ms, runtime {} ms)",
                 "✓".green(),
                 path.cyan(),
@@ -622,20 +632,16 @@ fn hot_swap(
                 (published - compiled).as_millis(),
                 (started.elapsed() - published).as_millis()
             ),
-            Ok(RestartOutcome::Failed(message)) => {
+            RestartOutcome::Failed(message) => {
                 eprintln!("  {} {path}: {message}", "✗".red());
             }
-            Ok(RestartOutcome::NotOpen) => println!(
+            RestartOutcome::NotOpen => println!(
                 "  {} compiled {}; it is not open, so its next open loads it",
                 "•".cyan(),
                 path.cyan()
             ),
             // No runtime, or a test run holds the app: the full reload path handles both.
-            Ok(RestartOutcome::NotConnected | RestartOutcome::Deferred) => return false,
-            Err(err) => {
-                eprintln!("  {} {path}: {err:#}; reloading instead", "✗".red());
-                return false;
-            }
+            RestartOutcome::NotConnected | RestartOutcome::Deferred => return false,
         }
     }
     true

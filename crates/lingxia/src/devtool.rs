@@ -488,17 +488,25 @@ fn register_bundle_source_override() {
     lxapp::register_dev_bundle_source(dev_config.identity.appid.clone(), dev_config.root.clone());
 }
 
-/// Dev sessions: pull `appid`'s latest bundle and swap the module of its live GPU
-/// pages at `path`, keeping their state. Returns how many pages took it.
-pub fn hot_swap_gpu_page(appid: &str, path: &str) -> Result<usize, String> {
+/// Dev sessions: pull `appid`'s latest bundle once and swap the module of its live GPU
+/// pages at each of `paths`, keeping their state. Per path: how many pages took it.
+pub fn hot_swap_gpu_pages(
+    appid: &str,
+    paths: &[String],
+) -> Result<Vec<Result<usize, String>>, String> {
     let started = std::time::Instant::now();
     sync_dev_bundle(appid)?;
     // Device-side swap timing: the bundle sync here, the module swap in the page host.
     log::info!(
         target: "lingxia_view",
-        "UI_SWAP page={path} sync_ms={}",
+        "UI_SWAP pages={} sync_ms={}",
+        paths.len(),
         started.elapsed().as_millis()
     );
+    Ok(paths.iter().map(|path| swap_one(appid, path)).collect())
+}
+
+fn swap_one(appid: &str, path: &str) -> Result<usize, String> {
     #[cfg(any(
         target_os = "android",
         target_os = "ios",
@@ -519,7 +527,7 @@ pub fn hot_swap_gpu_page(appid: &str, path: &str) -> Result<usize, String> {
         test
     )))]
     {
-        let _ = path;
+        let _ = (appid, path);
         Ok(0)
     }
 }

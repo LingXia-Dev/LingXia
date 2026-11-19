@@ -22,6 +22,8 @@ use tungstenite::{Error as WsError, WebSocket, accept_hdr};
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 /// A swap is one module eval; a runtime that has not answered by then never will.
 const HOT_SWAP_TIMEOUT: Duration = Duration::from_secs(10);
+/// Each page after the first: a swap the View rolls back waits up to 5 s for its report.
+const HOT_SWAP_PAGE_WAIT: Duration = Duration::from_secs(5);
 const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
 /// How long a relayed call waits for an app its host reports in the background.
 /// Long enough for a spec that leaves the app and comes back on purpose.
@@ -1244,36 +1246,77 @@ impl DevServerState {
         outcome
     }
 
-    /// Dev sessions: swap the GPU page at `path` in the running app, keeping its state.
-    /// `NotOpen` when no live page took it (the app shows it the next time it opens).
-    pub(crate) fn hot_swap_page(&self, appid: &str, path: &str) -> Result<RestartOutcome> {
+    /// Dev sessions: swap the GPU pages at `paths` in the running app, keeping their state,
+    /// after one bundle sync. One outcome per page in order, or a single `NotConnected` or
+    /// `Deferred` for all of them. `NotOpen` when no live page took one.
+    pub(crate) fn hot_swap_pages(
+        &self,
+        appid: &str,
+        paths: &[String],
+    ) -> Result<Vec<RestartOutcome>> {
+        let Some(first) = paths.first() else {
+            return Ok(Vec::new());
+        };
+        let wait = HOT_SWAP_TIMEOUT + HOT_SWAP_PAGE_WAIT * (paths.len() as u32 - 1);
+        let params = serde_json::json!({ "appid": appid, "path": first, "paths": paths });
+        let response = match self.hot_swap_request(params, wait)? {
+            Ok(response) => response,
+            Err(outcome) => return Ok(vec![outcome]),
+        };
+        let outcome = |result: &serde_json::Value| match result["error"].as_str() {
+            Some(error) => RestartOutcome::Failed(error.to_owned()),
+            None if result["pages"].as_u64() == Some(0) => RestartOutcome::NotOpen,
+            None => RestartOutcome::Restarted,
+        };
+        if let Some(results) = response["results"].as_array() {
+            return Ok(results.iter().map(outcome).collect());
+        }
+        // A host without batches swapped `path` alone (or failed it); the rest go one by one.
+        let mut outcomes = vec![outcome(&response)];
+        for path in &paths[1..] {
+            let params = serde_json::json!({ "appid": appid, "path": path });
+            match self.hot_swap_request(params, HOT_SWAP_TIMEOUT)? {
+                Ok(response) => outcomes.push(outcome(&response)),
+                Err(stop) => {
+                    outcomes.push(stop);
+                    break;
+                }
+            }
+        }
+        Ok(outcomes)
+    }
+
+    /// The runtime's answer to one hot swap request (an error reads as `{"error": message}`),
+    /// or why it was not sent.
+    fn hot_swap_request(
+        &self,
+        params: serde_json::Value,
+        wait: Duration,
+    ) -> Result<std::result::Result<serde_json::Value, RestartOutcome>> {
         let Some(sender) = self.runtime_sender() else {
-            return Ok(RestartOutcome::NotConnected);
+            return Ok(Err(RestartOutcome::NotConnected));
         };
         let id = uuid::Uuid::new_v4().to_string();
         let _guard = self.lock_command_forwarding();
         if self.watch_paused() {
-            return Ok(RestartOutcome::Deferred);
+            return Ok(Err(RestartOutcome::Deferred));
         }
         let (tx, rx) = mpsc::channel();
         self.register_pending_result(id.clone(), tx);
         let request = DevSessionMessage::Request(ControlRequest {
             id: id.clone(),
             method: lingxia_control_protocol::methods::lxapp::HOT_SWAP.to_string(),
-            params: Some(serde_json::json!({ "appid": appid, "path": path })),
+            params: Some(params),
         });
         if sender.send(request).is_err() {
             let _ = self.take_pending_result(&id);
             return Err(anyhow!("Failed to forward hot swap to runtime"));
         }
-        match rx.recv_timeout(HOT_SWAP_TIMEOUT) {
-            Ok(DevSessionMessage::Response(response)) => match response.error {
-                Some(error) => Ok(RestartOutcome::Failed(error.message)),
-                None if response.result.as_ref().and_then(|r| r["pages"].as_u64()) == Some(0) => {
-                    Ok(RestartOutcome::NotOpen)
-                }
-                None => Ok(RestartOutcome::Restarted),
-            },
+        match rx.recv_timeout(wait) {
+            Ok(DevSessionMessage::Response(response)) => Ok(Ok(match response.error {
+                Some(error) => serde_json::json!({ "error": error.message }),
+                None => response.result.unwrap_or_default(),
+            })),
             Ok(_) => Err(anyhow!("unexpected hot swap response")),
             Err(_) => {
                 let _ = self.take_pending_result(&id);
@@ -3516,6 +3559,81 @@ mod tests {
         state.pause_watch(pause("lease", 60_000, Some("run-2")));
         state.observe_test_response(test::CANCEL, &test_response("run-2", "cancelled"));
         assert!(!state.watch_paused());
+    }
+
+    #[test]
+    fn a_hot_swap_sends_the_whole_edit_once_and_falls_back_page_by_page_on_an_older_host() {
+        let answer = |batched: bool| {
+            let state = Arc::new(authenticated_state());
+            let (tx, rx) = mpsc::channel();
+            state.claim_runtime_sender(tx);
+            let runtime = {
+                let state = state.clone();
+                std::thread::spawn(move || {
+                    let mut seen = Vec::new();
+                    while let Ok(DevSessionMessage::Request(request)) =
+                        rx.recv_timeout(std::time::Duration::from_secs(2))
+                    {
+                        let params = request.params.unwrap();
+                        seen.push(params.clone());
+                        let result = if batched {
+                            serde_json::json!({ "pages": 1, "results": [
+                                { "path": "pages/a/index", "pages": 1 },
+                                { "path": "pages/b/index", "error": "rolled back" },
+                                { "path": "pages/c/index", "pages": 0 },
+                            ] })
+                        } else {
+                            serde_json::json!({ "pages": 1 })
+                        };
+                        let reply = state.take_pending_result(&request.id).unwrap();
+                        reply
+                            .send(DevSessionMessage::Response(
+                                lingxia_control_protocol::ControlResponse {
+                                    id: request.id,
+                                    result: Some(result),
+                                    error: None,
+                                },
+                            ))
+                            .unwrap();
+                    }
+                    seen
+                })
+            };
+            let paths = ["pages/a/index", "pages/b/index", "pages/c/index"].map(String::from);
+            let outcomes = state.hot_swap_pages("demo", &paths).unwrap();
+            *state.runtime_sender.lock().unwrap() = None;
+            (outcomes, runtime.join().unwrap())
+        };
+        let (outcomes, seen) = answer(true);
+        assert_eq!(seen.len(), 1, "one request carries the edit");
+        assert_eq!(seen[0]["paths"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            seen[0]["path"], "pages/a/index",
+            "an older host reads `path`"
+        );
+        assert_eq!(
+            outcomes,
+            [
+                super::RestartOutcome::Restarted,
+                super::RestartOutcome::Failed("rolled back".into()),
+                super::RestartOutcome::NotOpen,
+            ]
+        );
+        let (outcomes, seen) = answer(false);
+        assert_eq!(
+            seen.iter()
+                .map(|p| p["path"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["pages/a/index", "pages/b/index", "pages/c/index"]
+        );
+        assert_eq!(
+            outcomes,
+            [
+                super::RestartOutcome::Restarted,
+                super::RestartOutcome::Restarted,
+                super::RestartOutcome::Restarted,
+            ]
+        );
     }
 
     #[test]

@@ -226,10 +226,7 @@ fn handle_lxapp_page_command_impl(
         // Routed here by its `lxapp.page.` prefix.
         methods::lxapp::HOT_SWAP => {
             let args: HotSwapArgs = parse_args(handler, args)?;
-            let swapped = lingxia::dev::hot_swap_gpu_page(&args.appid, &args.path)?;
-            Ok(Some(
-                json!({ "ok": true, "action": "hot_swap", "pages": swapped }),
-            ))
+            Ok(Some(hot_swap_response(&args)?))
         }
         _ => Err(format!("unknown lxapp page handler: {}", handler)),
     }
@@ -411,4 +408,30 @@ mod tests {
 struct HotSwapArgs {
     appid: String,
     path: String,
+    /// Every page of one edit, `path` first: one bundle sync swaps them all. A host that
+    /// predates it swaps `path` alone and answers without `results`.
+    #[serde(default)]
+    paths: Vec<String>,
+}
+
+/// `pages` answers for `path`, as before batches; `results` for each of `paths`.
+fn hot_swap_response(args: &HotSwapArgs) -> Result<Value, String> {
+    if args.paths.is_empty() {
+        let swapped =
+            lingxia::dev::hot_swap_gpu_pages(&args.appid, std::slice::from_ref(&args.path))?
+                .remove(0)?;
+        return Ok(json!({ "ok": true, "action": "hot_swap", "pages": swapped }));
+    }
+    let outcomes = lingxia::dev::hot_swap_gpu_pages(&args.appid, &args.paths)?;
+    let results: Vec<Value> = args
+        .paths
+        .iter()
+        .zip(outcomes)
+        .map(|(path, outcome)| match outcome {
+            Ok(pages) => json!({ "path": path, "pages": pages }),
+            Err(error) => json!({ "path": path, "error": error }),
+        })
+        .collect();
+    let pages: u64 = results.iter().filter_map(|r| r["pages"].as_u64()).sum();
+    Ok(json!({ "ok": true, "action": "hot_swap", "pages": pages, "results": results }))
 }
