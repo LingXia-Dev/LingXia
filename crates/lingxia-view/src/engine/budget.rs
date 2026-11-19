@@ -252,14 +252,18 @@ mod tests {
             let _ = spinner.join();
         }
         assert!(waited.is_ok() && overrun.is_none(), "{waited:?}");
+        // Burn by this thread's CPU clock, which the budget charges: wall time under load may not be.
+        let burn = |cpu: Duration| {
+            let clock = ThreadClock::current().unwrap();
+            let started = clock.elapsed().unwrap();
+            while clock.elapsed().unwrap() - started < cpu {
+                std::hint::black_box(0u64);
+            }
+        };
         // Computing past the limit fails, naming both clocks.
         let (burned, _) = budget.run(limit, limit, || {
-            let started = Instant::now();
-            let mut sum = 0u64;
-            while started.elapsed() < limit * 3 {
-                sum = std::hint::black_box(sum.wrapping_add(1));
-            }
-            Ok(sum)
+            burn(limit * 3);
+            Ok(())
         });
         let error = burned.unwrap_err();
         assert!(
@@ -268,10 +272,7 @@ mod tests {
         );
         // Past the budget but within the limit, the work finishes and is reported as an overrun.
         let (over, overrun) = budget.run(limit, limit * 4, || {
-            let started = Instant::now();
-            while started.elapsed() < limit * 2 {
-                std::hint::black_box(0u64);
-            }
+            burn(limit * 2);
             Ok(())
         });
         assert!(over.is_ok() && overrun.is_some(), "{over:?}");
