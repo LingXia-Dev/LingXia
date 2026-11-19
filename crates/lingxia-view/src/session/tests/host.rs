@@ -455,6 +455,7 @@ impl Platform {
 
     /// `decodes: false` leaves image decodes in flight, as a stalled decode would.
     fn settle_with(&self, hosts: &[&ViewHost<Fake>], decodes: bool) {
+        let mut vsyncs = 0;
         loop {
             if decodes {
                 crate::session::host::decode::wait_idle();
@@ -475,6 +476,13 @@ impl Platform {
             }
             for host in hosts {
                 if std::mem::take(&mut host.adapter().log.lock().unwrap().vsync) {
+                    vsyncs += 1;
+                    // The clock never moves here, so a timed animation would ask for frames forever.
+                    assert!(
+                        vsyncs < 1_000,
+                        "settle: still asking for frames after 1000 vsyncs on a frozen clock; \
+                         a timed animation is running (advance the clock, or settle without it)"
+                    );
                     host.vsync();
                     ran = true;
                 }
