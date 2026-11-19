@@ -1020,6 +1020,9 @@ impl Renderer {
                         / 2.0;
                 let pressed = enabled
                     && pressed_identity.as_deref() == identities.get(index).map(String::as_str);
+                // A filled mark pressed deepens to the pressed solid; an empty one takes the layer.
+                let accent_pressed = palette.role(Role::AccentSolidPressed);
+                let fill = if pressed { accent_pressed } else { accent };
                 let focused = enabled
                     && self.focus_visible
                     && focused_identity.as_deref() == identities.get(index).map(String::as_str);
@@ -1036,7 +1039,7 @@ impl Renderer {
                     let cx = x + layout.padding.left;
                     commands.push(Paint::Rect {
                         corners: None,
-                        color: if checked { accent } else { neutral },
+                        color: if checked { fill } else { neutral },
                         bounds: [cx, cy - 12.0, 24.0, 24.0],
                         radius: 12.0,
                     });
@@ -1049,12 +1052,12 @@ impl Renderer {
                     if checked {
                         commands.push(Paint::Rect {
                             corners: None,
-                            color: accent,
+                            color: fill,
                             bounds: [cx + 6.0, cy - 6.0, 12.0, 12.0],
                             radius: 6.0,
                         });
                     }
-                    if pressed {
+                    if pressed && !checked {
                         commands.push(Paint::Rect {
                             corners: None,
                             color: press_layer,
@@ -1066,7 +1069,7 @@ impl Renderer {
                     let cx = x + layout.padding.left;
                     commands.push(Paint::Rect {
                         corners: None,
-                        color: if checked || mixed { accent } else { neutral },
+                        color: if checked || mixed { fill } else { neutral },
                         bounds: [cx, cy - 12.0, 24.0, 24.0],
                         radius: 5.0,
                     });
@@ -1097,7 +1100,7 @@ impl Renderer {
                             radius: 3.0,
                         });
                     }
-                    if pressed {
+                    if pressed && !(checked || mixed) {
                         commands.push(Paint::Rect {
                             corners: None,
                             color: press_layer,
@@ -1118,6 +1121,7 @@ impl Renderer {
                             checked,
                             pressed,
                             on: accent,
+                            on_pressed: accent_pressed,
                             off: neutral,
                             press_layer,
                         },

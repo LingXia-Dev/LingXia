@@ -1031,3 +1031,53 @@ fn a_clipped_text_box_falls_back_to_the_glyphs_reach_without_usable_ink() {
     assert_eq!(clip_text_box(Some(ink), &glyphs, 20.0, 0.0), Some(ink));
     assert_eq!(clip_text_box(Some(ink), &[], 20.0, 0.0), None);
 }
+
+#[test]
+fn a_pressed_filled_mark_deepens_to_the_pressed_solid_and_an_empty_one_takes_the_layer() {
+    use lingxia_theme::Role;
+    let source = crate::session::tests::source(
+        "function render(){return h('view',{},h('checkbox',{'data-testid':'on',value:true,onChange(){},'aria-label':'On'}),h('checkbox',{'data-testid':'off',value:false,onChange(){},'aria-label':'Off'}),h('switch',{'data-testid':'sw',value:true,onChange(){},'aria-label':'Wi-Fi'}),h('radio',{'aria-label':'Pick',value:'a',onChange(){},options:[{value:'a',label:'A','data-testid':'r'}]}))}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let display = page.layout(300, 300, 1.0).unwrap();
+    let identity = |id: &str| {
+        display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == id)
+            .unwrap()
+            .identity
+            .to_string()
+    };
+    let (on, off, sw, radio) = (
+        identity("on"),
+        identity("off"),
+        identity("sw"),
+        identity("r"),
+    );
+    let palette = crate::theme::Palette::builtin(false);
+    let solid = palette.role(Role::AccentSolid);
+    let deep = palette.role(Role::AccentSolidPressed);
+    let layer = crate::interaction::chrome::FeedbackStyle::press_layer(&palette, false);
+    let rects = |page: &mut crate::ViewSession, pressed: &str| -> Vec<[u8; 4]> {
+        page.set_pointer_state(Some(pressed), None);
+        page.layout(300, 300, 1.0)
+            .unwrap()
+            .commands
+            .iter()
+            .filter_map(|paint| match paint {
+                Paint::Rect { color, .. } => Some(*color),
+                _ => None,
+            })
+            .collect()
+    };
+    for filled in [&on, &sw, &radio] {
+        let painted = rects(&mut page, filled);
+        assert!(painted.contains(&deep), "{filled} pressed deepens");
+        assert!(!painted.contains(&layer), "{filled} pressed takes no layer");
+    }
+    let painted = rects(&mut page, &off);
+    assert!(painted.contains(&layer), "an empty mark takes the layer");
+    assert!(!painted.contains(&deep));
+    assert!(painted.contains(&solid), "the others keep their fill");
+}

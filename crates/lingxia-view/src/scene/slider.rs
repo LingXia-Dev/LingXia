@@ -508,8 +508,9 @@ pub(crate) struct Switch {
     pub center: f32,
     pub checked: bool,
     pub pressed: bool,
-    /// The track when on, and when off.
+    /// The track when on, when on and pressed, and when off.
     pub on: [u8; 4],
+    pub on_pressed: [u8; 4],
     pub off: [u8; 4],
     pub press_layer: [u8; 4],
 }
@@ -533,21 +534,23 @@ pub(crate) fn paint_switch(
         Some(value) => palette.resolve(value),
         None => Ok(default),
     };
+    // The engine's own on track deepens when pressed; an authored or off track takes the layer.
+    let deepened = switch.pressed && switch.checked && track.background.is_none();
     slots.0[0] = Some(commands.len());
     commands.push(Paint::Rect {
         corners: None,
         color: fill(
             &track,
-            if switch.checked {
-                switch.on
-            } else {
-                switch.off
+            match (switch.checked, deepened) {
+                (true, true) => switch.on_pressed,
+                (true, false) => switch.on,
+                (false, _) => switch.off,
             },
         )?,
         bounds,
         radius,
     });
-    if switch.pressed {
+    if switch.pressed && !deepened {
         commands.push(Paint::Rect {
             corners: None,
             color: switch.press_layer,

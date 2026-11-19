@@ -68,7 +68,8 @@ fn pressed_states_may_scale_through_the_paint_delta() {
 fn a_pressed_switch_paints_its_track_not_a_box() {
     use crate::scene::paint::Paint;
     let module = super::source(
-        "function render(){const on=useLocal('on',true);return h('page',{},h('switch',{'data-testid':'s',bind:on,'aria-label':'Wi-Fi'}))}",
+        // Off: an on track deepens to the pressed solid instead.
+        "function render(){const on=useLocal('on',false);return h('page',{},h('switch',{'data-testid':'s',bind:on,'aria-label':'Wi-Fi'}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let display = page.layout(400, 200, 1.0).unwrap();
