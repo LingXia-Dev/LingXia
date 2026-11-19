@@ -456,7 +456,8 @@ impl Build<'_> {
     fn accent(&mut self, seed: Rgba) {
         let tone = seed.oklch();
         let (surface, canvas) = (self.get(Role::Surface), self.get(Role::Canvas));
-        let off = self.need(3.0);
+        // Links and text buttons are accent text, so it reads as text on both floors.
+        let off = self.need(4.5);
         if self.has(Role::Accent) {
             let (_, on) = self.pair(self.get(Role::Accent), Role::OnAccent, &[], false);
             self.put(Role::OnAccent, on);
@@ -706,7 +707,7 @@ impl Build<'_> {
                 seed,
                 sides.surface[side],
                 sides.canvas[side],
-                3.0,
+                4.5,
                 side == 1,
             )
         });

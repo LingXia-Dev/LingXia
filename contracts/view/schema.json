@@ -408,7 +408,7 @@
     {"name": "text", "tier": "authored", "on": {"canvas": 4.5, "surface": 4.5, "surface-raised": 4.5, "surface-sunken": 4.5, "selection": 4.5, "surface-overlay": 4.5, "hue-1-soft": 4.5, "hue-2-soft": 4.5, "hue-3-soft": 4.5, "hue-4-soft": 4.5, "hue-5-soft": 4.5, "hue-6-soft": 4.5, "hue-7-soft": 4.5, "hue-8-soft": 4.5}, "doc": "Body text."},
     {"name": "text-muted", "tier": "authored", "on": {"canvas": 4.5, "surface": 4.5, "surface-overlay": 4.5}, "doc": "Secondary text."},
     {"name": "text-faint", "tier": "authored", "on": {"surface": 3, "surface-overlay": 3}, "doc": "Hints and disabled text."},
-    {"name": "accent", "tier": "derived", "on": {"surface": 3, "canvas": 3}, "doc": "Primary actions, selection and links."},
+    {"name": "accent", "tier": "derived", "on": {"surface": 4.5, "canvas": 4.5}, "doc": "Primary actions, selection, links and text buttons: reads as text on canvas and surface."},
     {"name": "on-accent", "tier": "derived", "on": {"accent": 4.5}, "doc": "Text and icons on accent."},
     {"name": "accent-soft", "tier": "derived", "doc": "Tinted containers and selected rows."},
     {"name": "on-accent-soft", "tier": "derived", "on": {"accent-soft": 4.5}, "doc": "Text on accent-soft."},

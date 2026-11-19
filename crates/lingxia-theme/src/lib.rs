@@ -593,7 +593,7 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
 pub(crate) const ALIKE: f64 = 5.0;
 
 /// Colours that pass every pair yet read alike or poorly: a status colour beside a hue or the
-/// accent, the accent as link text on the page's grounds, a solid fill lost on the surface.
+/// accent, the accent as link text on sunken and tinted grounds, a solid fill lost on the surface.
 /// Advice for the pack's author, not a failure.
 pub fn advise(pack: &Pack) -> Vec<Problem> {
     let mut advice = Vec::new();
@@ -637,12 +637,8 @@ pub fn advise(pack: &Pack) -> Vec<Problem> {
                 });
             }
         };
-        for ground in [
-            Role::Canvas,
-            Role::Surface,
-            Role::SurfaceSunken,
-            Role::AccentSoft,
-        ] {
+        // Canvas and surface are proven by the accent's contract.
+        for ground in [Role::SurfaceSunken, Role::AccentSoft] {
             weak(Role::Accent, ground, 4.5, "as link text it");
         }
         for solid in [Role::AccentSolid, Role::DangerSolid] {

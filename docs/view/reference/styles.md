@@ -235,7 +235,7 @@ authored ones and the accent seed, unless a pack sets them.
 | `text` | the pack | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-raised`, 4.5:1 on `surface-sunken`, 4.5:1 on `selection`, 4.5:1 on `surface-overlay`, 4.5:1 on `hue-1-soft`, 4.5:1 on `hue-2-soft`, 4.5:1 on `hue-3-soft`, 4.5:1 on `hue-4-soft`, 4.5:1 on `hue-5-soft`, 4.5:1 on `hue-6-soft`, 4.5:1 on `hue-7-soft`, 4.5:1 on `hue-8-soft` | Body text. |
 | `text-muted` | the pack | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-overlay` | Secondary text. |
 | `text-faint` | the pack | 3:1 on `surface`, 3:1 on `surface-overlay` | Hints and disabled text. |
-| `accent` | derived | 3:1 on `surface`, 3:1 on `canvas` | Primary actions, selection and links. |
+| `accent` | derived | 4.5:1 on `surface`, 4.5:1 on `canvas` | Primary actions, selection, links and text buttons: reads as text on canvas and surface. |
 | `on-accent` | derived | 4.5:1 on `accent` | Text and icons on accent. |
 | `accent-soft` | derived |  | Tinted containers and selected rows. |
 | `on-accent-soft` | derived | 4.5:1 on `accent-soft` | Text on accent-soft. |

@@ -1221,10 +1221,8 @@ fn advice_names_a_status_colour_that_reads_as_a_hue() {
         advice,
         [
             "light: warning is 3.2 from hue-4; under 5 they read as one colour",
-            "light: accent is 4.22:1 on canvas; as link text it needs 4.5:1",
-            "light: accent is 4.48:1 on surface; as link text it needs 4.5:1",
-            "light: accent is 3.84:1 on surface-sunken; as link text it needs 4.5:1",
-            "light: accent is 3.90:1 on accent-soft; as link text it needs 4.5:1",
+            "light: accent is 4.10:1 on surface-sunken; as link text it needs 4.5:1",
+            "light: accent is 4.16:1 on accent-soft; as link text it needs 4.5:1",
         ]
     );
     // A solid fill lost on the surface is named too.

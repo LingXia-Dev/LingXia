@@ -20,7 +20,7 @@ pub enum Role {
     TextMuted = 6,
     /// Hints and disabled text.
     TextFaint = 7,
-    /// Primary actions, selection and links.
+    /// Primary actions, selection, links and text buttons: reads as text on canvas and surface.
     Accent = 8,
     /// Text and icons on accent.
     OnAccent = 9,
@@ -360,8 +360,8 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::TextMuted, Role::SurfaceOverlay, 4.5),
     (Role::TextFaint, Role::Surface, 3.0),
     (Role::TextFaint, Role::SurfaceOverlay, 3.0),
-    (Role::Accent, Role::Surface, 3.0),
-    (Role::Accent, Role::Canvas, 3.0),
+    (Role::Accent, Role::Surface, 4.5),
+    (Role::Accent, Role::Canvas, 4.5),
     (Role::OnAccent, Role::Accent, 4.5),
     (Role::OnAccentSoft, Role::AccentSoft, 4.5),
     (Role::Danger, Role::Surface, 3.0),
