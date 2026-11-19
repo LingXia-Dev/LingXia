@@ -267,9 +267,12 @@ impl JSPageGesture {
         if let Ok(device) = lxapp::device::device_get()
             && device.group != "desktop"
         {
-            let state = lxapp::device::device_set(None, Some(landscape), None)
-                .await
-                .map_err(auto_err)?;
+            let state = lxapp::device::device_set(lxapp::device::DeviceChange {
+                landscape: Some(landscape),
+                ..Default::default()
+            })
+            .await
+            .map_err(auto_err)?;
             return json_to_js(
                 &ctx,
                 &serde_json::json!({ "width": state.width, "height": state.height }),
