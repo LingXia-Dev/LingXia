@@ -24,19 +24,30 @@ pub fn post_main(task: lingxia_view::platform::Task) {
 }
 
 thread_local! {
-    static PRESENT_TURN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// The main-thread turn that presented a frame in its layer transaction, numbered.
+    static PRESENT_TURN: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
 }
 
 /// Main thread: this turn presented a frame in its layer transaction, so native views moved
 /// now (not posted) show on screen with that frame.
 pub fn presenting_with_transaction() -> bool {
+    present_turn().is_some()
+}
+
+/// The number of this main-thread presenting turn, for the web view sync log.
+pub fn present_turn() -> Option<u64> {
     PRESENT_TURN.with(std::cell::Cell::get)
 }
 
-pub(crate) fn mark_present_turn() {
-    if !PRESENT_TURN.with(|turn| turn.replace(true)) {
-        post_main(Box::new(|| PRESENT_TURN.with(|turn| turn.set(false))));
+pub(crate) fn mark_present_turn() -> u64 {
+    static TURNS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    if let Some(turn) = present_turn() {
+        return turn;
     }
+    let turn = TURNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    PRESENT_TURN.with(|cell| cell.set(Some(turn)));
+    post_main(Box::new(|| PRESENT_TURN.with(|cell| cell.set(None))));
+    turn
 }
 
 /// The embedding host's half: the Swift view and the lxapp page binding.

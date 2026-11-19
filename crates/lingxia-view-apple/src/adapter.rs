@@ -217,11 +217,18 @@ impl Presenter for AppleAdapter {
                                 CommitTicket::new(revision),
                                 gpu,
                                 Box::new(move || {
-                                    crate::mark_present_turn();
-                                    lingxia_view::renderer::surfaces::present_in_transaction(
-                                        surface, revision,
-                                    )
-                                    .map(|shown| shown.is_some())
+                                    let turn = crate::mark_present_turn();
+                                    let shown =
+                                        lingxia_view::renderer::surfaces::present_in_transaction(
+                                            surface, revision,
+                                        )
+                                        .map(|shown| shown.is_some());
+                                    // Pairs with the `move` lines: one turn, one transaction.
+                                    #[cfg(debug_assertions)]
+                                    log::info!(target: "lingxia_view::websync", "present revision={revision} turn={turn} shown={shown:?}");
+                                    #[cfg(not(debug_assertions))]
+                                    let _ = turn;
+                                    shown
                                 }),
                             ),
                             Ok(shown) => {

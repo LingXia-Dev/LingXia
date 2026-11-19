@@ -1195,6 +1195,15 @@ mod live {
             })
             .collect();
         let json = serde_json::Value::Array(items).to_string();
+        // iOS debug builds: with the adapter's `present` lines, shows each move lands in its
+        // frame's turn (`turn=None` is a posted move, a frame late).
+        #[cfg(all(debug_assertions, target_os = "ios"))]
+        log::info!(
+            target: "lingxia_view::websync",
+            "move turn={:?} y={:?}",
+            lingxia_view_apple::present_turn(),
+            mounts.first().map(|m| m.bounds[1])
+        );
         // Moved in the turn that presented their frame, the views and the frame show together.
         if lingxia_view_apple::presenting_with_transaction() {
             super::bridge::gpu_pages_sync_webviews(token, &json);
