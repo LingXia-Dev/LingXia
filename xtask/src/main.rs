@@ -364,7 +364,7 @@ fn build_harmony(root: &Path, out: &Path, version: &str) -> Result<PathBuf> {
     let workspace_har = root.join("target/ohpm/lingxia.har");
     let _ = fs::remove_file(&workspace_har);
     let _ = fs::remove_dir_all(module.join("build"));
-    run_in(&sdk, &tool("hvigorw"), &["assembleHar"], &[])?;
+    run_in(&sdk, &tool("hvigorw"), &["assembleHar", "--no-daemon"], &[])?;
     let har = find_file(&module.join("build"), "har")
         .context("no .har under lingxia-sdk/harmony/lingxia/build")?;
     // The workspace copy example apps depend on through `file:`.
