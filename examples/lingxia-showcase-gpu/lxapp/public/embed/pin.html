@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Pin</title>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+    body {
+      position: relative;
+      touch-action: none;
+      background: #eef2ff;
+      color: #3730a3;
+      font: 500 12px system-ui, -apple-system, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) { body { background: #1e1b4b; color: #c7d2fe; } }
+    #where { position: absolute; left: 10px; bottom: 8px; }
+    #pin {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      margin: -11px 0 0 -11px;
+      border-radius: 50%;
+      background: #4f46e5;
+      box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.25);
+    }
+  </style>
+</head>
+<body>
+  <div id="pin"></div>
+  <div id="where"></div>
+  <script>
+    (function () {
+      // The page cannot scroll; a drag anywhere moves the pin and reports where it is.
+      var pin = document.getElementById('pin');
+      var where = document.getElementById('where');
+      var moves = 0;
+      var lastX = 0, lastY = 0;
+      function place(x, y) {
+        lastX = x; lastY = y;
+        pin.style.left = x + 'px';
+        pin.style.top = y + 'px';
+        where.textContent = Math.round(x) + ', ' + Math.round(y);
+      }
+      function send(x, y, done) {
+        if (window.lingxia && typeof window.lingxia.postMessage === 'function')
+          window.lingxia.postMessage({ kind: 'pin', x: Math.round(x), y: Math.round(y), moves: moves, done: done }, done ? { queue: true } : undefined);
+      }
+      var down = false;
+      document.body.addEventListener('pointerdown', function (ev) { down = true; place(ev.clientX, ev.clientY); send(ev.clientX, ev.clientY, false); });
+      document.body.addEventListener('pointermove', function (ev) {
+        if (!down) return;
+        moves += 1;
+        place(ev.clientX, ev.clientY);
+        send(ev.clientX, ev.clientY, false);
+      });
+      // A cancel (the page took the gesture) keeps the pin where it last was.
+      function up() { if (!down) return; down = false; send(lastX, lastY, true); }
+      document.body.addEventListener('pointerup', up);
+      document.body.addEventListener('pointercancel', up);
+      place(window.innerWidth / 2, window.innerHeight / 2);
+    })();
+  </script>
+</body>
+</html>

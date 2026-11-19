@@ -184,6 +184,44 @@ export function PartlyDemo() {
   );
 }
 
+// A link's trigger and its note from one component, mid-sentence: the note takes no room in the line.
+function Conditions() {
+  const t = useSay();
+  return (
+    <>
+      <link data-testid="lab-notes-link" popoverTarget="lab-notes-note">{t(labels.notesLink)}</link>
+      <view id="lab-notes-note" popover data-testid="lab-notes-note" className="max-w-60 px-3 py-2 rounded-lg border border-line bg-surface-raised">
+        <text className="text-xs text-text">{t(labels.notesBody)}</text>
+      </view>
+    </>
+  );
+}
+
+// A link that opens a note, one that shows a hint, and a hint on a link that wraps onto two lines.
+export function LinkNotesDemo() {
+  const t = useSay();
+  const hint = 'max-w-56 px-3 py-2 rounded-lg border border-line bg-surface-raised';
+  return (
+    <>
+      <text data-testid="lab-notes-sentence" className="text-sm leading-relaxed">
+        {t(labels.notesLead)}<Conditions />{t(labels.notesEnd)}
+      </text>
+      <text data-testid="lab-hint-sentence" className="text-sm leading-relaxed">
+        {t(labels.hintLead)}<link data-testid="lab-hint-link" interestFor="lab-hint-note" onClick={() => {}}>{t(labels.hintLink)}</link>{t(labels.hintEnd)}
+      </text>
+      <text data-testid="lab-wrap-sentence" className="w-44 text-sm leading-relaxed">
+        {t(labels.wrapLead)}<link data-testid="lab-wrap-link" interestFor="lab-wrap-note" onClick={() => {}}>{t(labels.wrapLink)}</link>{t(labels.notesEnd)}
+      </text>
+      <view id="lab-hint-note" popover="hint" role="tooltip" data-testid="lab-hint-note" className={hint}>
+        <text className="text-xs text-text">{t(labels.hintBody)}</text>
+      </view>
+      <view id="lab-wrap-note" popover="hint" role="tooltip" data-testid="lab-wrap-note" className={hint}>
+        <text className="text-xs text-text">{t(labels.wrapBody)}</text>
+      </view>
+    </>
+  );
+}
+
 // A link that takes no press beside one that does.
 export function LinkOffDemo() {
   const taps = useLocal('lab-link-taps', 0);
@@ -265,6 +303,7 @@ export const textDemos = {
   document: DocumentDemo,
   selecting: SelectionDemo,
   underlines: UnderlinesDemo,
+  linkNotes: LinkNotesDemo,
   linkOff: LinkOffDemo,
 };
 export const inputDemos = {

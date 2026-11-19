@@ -90,6 +90,34 @@ export function ContainedDemo() {
   );
 }
 
+// A shadow at each edge with more content beyond it, from the edges the scroll reports.
+export function EdgesDemo() {
+  const many = useLocal('lab-edges-many', true);
+  const start = useLocal('lab-edges-start', true);
+  const end = useLocal('lab-edges-end', false);
+  const t = useSay();
+  const rows = many.value ? 12 : 2;
+  return (
+    <>
+      <view className="relative h-32 rounded-lg border border-line overflow-hidden">
+        <scroll data-testid="lab-edges-scroll" className="h-full"
+          onScrollEdge={({ edge, at }) => (edge === 'start' ? start : end).set(at)}>
+          <view className="p-3 gap-2">
+            {Array.from({ length: rows }, (_, i) => <text key={String(i)} className="text-sm">{`${t(labels.edgeRow)} ${i + 1}`}</text>)}
+          </view>
+        </scroll>
+        <view aria-hidden data-testid="lab-edges-top" className={`absolute top-0 left-0 right-0 h-3 bg-linear-to-b from-text/10 to-transparent transition-opacity duration-150 ${start.value ? 'opacity-0' : 'opacity-100'}`} />
+        <view aria-hidden data-testid="lab-edges-bottom" className={`absolute bottom-0 left-0 right-0 h-3 bg-linear-to-t from-text/10 to-transparent transition-opacity duration-150 ${end.value ? 'opacity-0' : 'opacity-100'}`} />
+      </view>
+      <view className="flex-row items-center gap-2">
+        <Button testId="lab-edges-few" size="sm" variant="secondary" onClick={() => many.set(false)}>{t(labels.edgesFew)}</Button>
+        <Button testId="lab-edges-many" size="sm" variant="secondary" onClick={() => many.set(true)}>{t(labels.edgesMany)}</Button>
+        <Readout testId="lab-edges-state" state={`start=${start.value} end=${end.value}`}>{t(readouts.edges(start.value, end.value))}</Readout>
+      </view>
+    </>
+  );
+}
+
 // Frozen rows in a frozen array: a List reuses the rows it already rendered.
 const rows = Object.freeze(Array.from({ length: 40 }, (_, index) => Object.freeze({ id: `row-${index + 1}`, label: `Row ${index + 1}` })));
 
@@ -118,5 +146,6 @@ export const scrollingDemos = {
   snap: SnapDemo,
   dots: DotsDemo,
   contained: ContainedDemo,
+  edges: EdgesDemo,
   filter: FilterDemo,
 };

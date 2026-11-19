@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, spec, type Fixture } from '@lingxia/test';
 import { openDemo } from './open-demo.js';
 import { decodePng } from './png.js';
 
@@ -153,4 +153,48 @@ spec('view-media webview demo opens a 70% sheet via floating button and exits vi
   await expect(view.testId('lab-webview-sheet')).not.toBeAttached({ timeout: 5_000 });
   await expect(readout).toHaveAttribute('data-state', 'title=Embed Demo hash=#part-1 taps=0 sheet=false', { timeout: 3_000 });
   expect((await t.app.nav.current()).path).toContain('view-media');
+});
+
+// `handlesDrags`: two copies of a page that cannot scroll. A drag on the plain one belongs to the
+// screen; the other keeps every drag that starts on it. On iOS the runner injects its drag into the
+// View page, never into the native web view, so both legs there are checked by hand on a device.
+async function webDrags(t: Fixture) {
+  const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
+  if (os === 'ios') t.skip('iOS: the runner\'s drag never reaches the native web view; check by hand on a device');
+  const view = t.app.view;
+  // A press on Reset brings both pages on screen above it.
+  await view.testId('lab-web-drags-reset').click();
+  const state = view.testId('lab-web-drags-state');
+  await expect(state).toHaveAttribute('data-state', /^loaded=2 /, { timeout: 8_000 });
+  return { view, state };
+}
+
+const skipWhenInjected = (t: Fixture, trace: { delivered: string }) => {
+  if (trace.delivered === 'view') t.skip('the drag was injected into the View page and never reached the native web view; check by hand on a device');
+};
+
+spec('a drag on a web page that does not keep its drags scrolls the screen', { covers: ['view:webview', 'view:scroll'], start: openDemo('webDrags'), requires: { input: ['touch'] } }, async (t) => {
+  const { view } = await webDrags(t);
+  const frame = view.testId('lab-web-drags-plain');
+  const before = await frame.boundingBox();
+  const from: [number, number] = [before.x + before.width / 2, before.y + before.height - 12];
+  skipWhenInjected(t, await view.swipe({ from, to: [from[0], from[1] - 140], durationMs: 400 }));
+  await t.waitFor(() => frame.boundingBox(), { until: now => now.y < before.y - 40 });
+});
+
+spec('a web page with handlesDrags keeps a drag that starts on it: its pin follows and the screen stays', { covers: ['view:webview'], start: openDemo('webDrags'), requires: { input: ['touch'] } }, async (t) => {
+  const { view, state } = await webDrags(t);
+  const frame = view.testId('lab-web-drags-own');
+  const before = await frame.boundingBox();
+  // Mostly upward, which would scroll the screen if the web page did not keep it.
+  const from: [number, number] = [before.x + 40, before.y + before.height - 16];
+  const to: [number, number] = [before.x + 140, before.y + 20];
+  skipWhenInjected(t, await view.swipe({ from, to, durationMs: 500 }));
+  await expect(state).toHaveAttribute('data-state', /own=\d+,\d+ moves=[1-9]\d* done/, { timeout: 5_000 });
+  const [, x, y] = /own=(\d+),(\d+)/.exec((await state.getAttribute('data-state')) ?? '') ?? [];
+  // The pin is where the finger let go, in the web page's own pixels.
+  expect(Math.abs(Number(x) - 140)).toBeLessThan(16);
+  expect(Math.abs(Number(y) - 20)).toBeLessThan(16);
+  const after = await frame.boundingBox();
+  expect(Math.abs(after.y - before.y)).toBeLessThan(2);
 });

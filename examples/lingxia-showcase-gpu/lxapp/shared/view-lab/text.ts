@@ -32,6 +32,7 @@ export const demos = {
   media: {
     video: { testId: 'lab-video', title: { en: 'Video', zh: '视频' }, try: { en: 'Tap Play: the picture starts and the time counts. Tap Pause and both stop.', zh: '点“播放”：画面开始，时间走动；点“暂停”则都停下。' } },
     webview: { testId: 'lab-webview', title: { en: 'Embedded web page', zh: '内嵌网页' }, try: { en: 'Tap inside the green page: its message reaches View. Switch section or open the 70% sheet without reloading; dismiss via Close, the backdrop, or Back.', zh: '点绿色网页内部：消息传回 View；切换章节或打开七分屏面板都不会重新加载，可用关闭按钮、点背景或系统返回收起。' } },
+    webDrags: { testId: 'lab-web-drags', title: { en: 'A web page that keeps its drags', zh: '自己接收拖动的网页' }, try: { en: 'Drag up on the first page: the screen scrolls. Drag on the second: its pin follows your finger and the screen stays.', zh: '在第一个网页上向上拖：屏幕滚动。在第二个网页上拖：圆点跟着手指移动，屏幕不动。' } },
     plot: { testId: 'lab-plots', title: { en: 'Plot', zh: '图表' }, try: { en: 'Bars, a pie and a line drawn from numbers. Tap a bar to select it.', zh: '由数字画出的柱状图、饼图和折线图。点一根柱子即可选中。' } },
     progress: { testId: 'lab-progress', title: { en: 'Progress', zh: '进度' }, try: { en: 'A bar and a ring with a value, and both without one. Tap More to add 20.', zh: '有数值的进度条和进度环，以及没有数值的两种。点“增加”加 20。' } },
   },
@@ -55,6 +56,7 @@ export const demos = {
     document: { testId: 'lab-document', title: { en: 'A long document', zh: '长文档' }, try: { en: 'Scroll the box: headings, clamped previews and a two-column list of terms, all from one set of data.', zh: '滚动这个方框：同一份数据排出标题、截断的摘要和两列的术语表。' } },
     selecting: { testId: 'lab-selection', title: { en: 'Selecting text', zh: '选择文字' }, try: { en: 'Long-press or double-click a word, then drag to extend and copy.', zh: '长按或双击一个词，再拖动扩展选区并复制。' } },
     underlines: { testId: 'lab-underlines', title: { en: 'Underlines in other styles', zh: '其他样式的下划线' }, try: { en: 'A dotted line under a term, a dashed one under a link, and a strike, each in a colour of its own.', zh: '术语下的点线、链接下的虚线和删除线，各用自己的颜色。' } },
+    linkNotes: { testId: 'lab-link-notes', title: { en: 'Links that open a note', zh: '打开说明的链接' }, try: { en: 'Tap "conditions": a note opens against the link. Tab to "cloud backup", or rest a mouse on it: a hint appears; the long link that wraps does the same.', zh: '点“条件”：说明贴着链接打开。用 Tab 移到“云备份”或把鼠标停在上面：出现提示；换行的长链接也一样。' } },
     linkOff: { testId: 'lab-link-off', title: { en: 'A link that is switched off', zh: '已停用的链接' }, try: { en: 'The first link does nothing and reads as unavailable; the second counts its taps.', zh: '第一个链接点了没有反应，读屏软件读作不可用；第二个会计数。' } },
   },
   input: {
@@ -95,6 +97,7 @@ export const demos = {
     sticky: { testId: 'lab-sticky', title: { en: 'Headers that stick', zh: '吸顶的标题' }, try: { en: 'Scroll the list: each day stays at the top until the next one pushes it away.', zh: '滚动列表：每个日期停在顶部，直到下一个把它推走。' } },
     filter: { testId: 'lab-filter', title: { en: 'A long list you filter', zh: '可筛选的长列表' }, try: { en: 'Type "Row 3": only matching rows remain. Tap a row to choose it. Only the rows on screen are built.', zh: '输入“Row 3”：只剩匹配的行。点一行即选中。只有屏幕上的行才会被创建。' } },
     dots: { testId: 'lab-kit-pager', title: { en: 'Pages with dots', zh: '带圆点的翻页' }, try: { en: 'Swipe between the pages: the dots follow. Tap a dot to jump to its page.', zh: '在页面间滑动：圆点随之变化。点一个圆点跳到对应的页。' } },
+    edges: { testId: 'lab-edges', title: { en: 'Shadows at the edges', zh: '边缘的阴影' }, try: { en: 'Scroll the list: a shadow shows at each edge with more beyond it. "Two rows" makes it fit and both shadows go.', zh: '滚动列表：哪一边还有内容，哪一边就有阴影。“两行”让内容放得下，两边阴影都消失。' } },
     contained: { testId: 'lab-contained', title: { en: 'A scroll that keeps to itself', zh: '不带动页面的滚动区' }, try: { en: 'Scroll the small list past its end: the page behind does not move.', zh: '把小列表滚过尽头：后面的页面不会跟着动。' } },
   },
   appearance: {
@@ -220,6 +223,11 @@ export const readouts = {
   showing: (range: string): Words => ({ en: `Showing the ${range}`, zh: `显示：${range}` }),
   chosen: (choice: string): Words => ({ en: `Chosen: ${choice}`, zh: `已选择：${none(choice)}` }),
   crossings: (log: string): Words => (log ? { en: log, zh: log } : { en: 'Move a mouse over this box', zh: '把鼠标移到这个方块上' }),
+  pins: (plain: string, own: string): Words => ({ en: `First pin ${plain} · second pin ${own}`, zh: `第一个圆点 ${plain} · 第二个圆点 ${own}` }),
+  edges: (start: boolean, end: boolean): Words => ({
+    en: start && end ? 'All rows fit' : start ? 'At the top' : end ? 'At the bottom' : 'In the middle',
+    zh: start && end ? '全部放得下' : start ? '在顶部' : end ? '在底部' : '在中间',
+  }),
   presses: (n: number): Words => ({ en: `Link pressed ${n} times`, zh: `链接已点 ${n} 次` }),
   suggestions: (open: boolean, active: number, last: string): Words => ({
     en: `List ${yes(open).en} · option ${active + 1} active · last: ${last}`,
@@ -365,6 +373,23 @@ export const labels = {
   fruit: { en: 'Fruit', zh: '水果（英文）' },
   definitions: { en: 'Definitions', zh: '术语' },
   updated: { en: 'Updated', zh: '更新于' },
+  reset: { en: 'Reset', zh: '重置' },
+  webPlain: { en: 'Page that scrolls with the screen', zh: '随屏幕滚动的网页' },
+  webOwn: { en: 'Page that keeps its drags', zh: '自己接收拖动的网页' },
+  edgeRow: { en: 'Message', zh: '消息' },
+  edgesFew: { en: 'Two rows', zh: '两行' },
+  edgesMany: { en: 'Twelve rows', zh: '十二行' },
+  notesLead: { en: 'Delivery is free over 30 €; see the ', zh: '满 30 欧元免运费，请看' },
+  notesLink: { en: 'conditions', zh: '条件' },
+  notesEnd: { en: '.', zh: '。' },
+  notesBody: { en: 'Free delivery covers one address per order and excludes bulky items.', zh: '免运费仅限每单一个地址，不含大件商品。' },
+  hintLead: { en: 'Your plan includes ', zh: '你的套餐包含' },
+  hintLink: { en: 'cloud backup', zh: '云备份' },
+  hintEnd: { en: ' for every device.', zh: '，适用于每台设备。' },
+  hintBody: { en: '50 GB, kept for 30 days.', zh: '50 GB，保留 30 天。' },
+  wrapLead: { en: 'Read ', zh: '请阅读' },
+  wrapLink: { en: 'how we keep your photos safe and private', zh: '我们如何保护你的照片安全与隐私' },
+  wrapBody: { en: 'Encrypted on your device before upload.', zh: '上传前在你的设备上加密。' },
 } as const;
 
 /** Picks the side of `words` for the display language the page is in. */

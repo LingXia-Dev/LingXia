@@ -188,6 +188,41 @@ export function WebViewDemo() {
   );
 }
 
+type Pin = { x: number; y: number; moves: number; done: boolean };
+const pinText = (pin: Pin | null) => (pin ? `${pin.x},${pin.y} moves=${pin.moves}${pin.done ? ' done' : ''}` : 'none');
+
+// The same page twice, which cannot scroll: a drag on the first passes to the screen, the second
+// keeps every drag that starts on it and moves its pin.
+export function WebDragsDemo() {
+  const plainWeb = useWebView('lab-web-plain');
+  const ownWeb = useWebView('lab-web-own');
+  const plain = useLocal<Pin | null>('lab-web-plain-pin', null);
+  const own = useLocal<Pin | null>('lab-web-own-pin', null);
+  const loaded = useLocal('lab-web-drags-loaded', 0);
+  const t = useSay();
+  const take = (into: Local<Pin | null>) => (ev: { data: unknown }) => {
+    const msg = ev.data as Partial<Pin> & { kind?: string } | null;
+    if (msg?.kind === 'pin' && typeof msg.x === 'number' && typeof msg.y === 'number')
+      into.set({ x: msg.x, y: msg.y, moves: msg.moves ?? 0, done: msg.done === true });
+  };
+  return (
+    <>
+      <text className="text-xs text-muted">{t(labels.webPlain)}</text>
+      <webview web={plainWeb} data-testid="lab-web-drags-plain" src="public/embed/pin.html" aria-label={t(labels.webPlain)}
+        onMessage={take(plain)} onLoad={() => loaded.set(loaded.value + 1)} className="w-full h-28 rounded-xl border border-line" />
+      <text className="text-xs text-muted">{t(labels.webOwn)}</text>
+      <webview web={ownWeb} data-testid="lab-web-drags-own" src="public/embed/pin.html" aria-label={t(labels.webOwn)} handlesDrags
+        onMessage={take(own)} onLoad={() => loaded.set(loaded.value + 1)} className="w-full h-28 rounded-xl border border-line" />
+      <view className="flex-row items-center gap-3">
+        <Button testId="lab-web-drags-reset" size="sm" variant="secondary" onClick={() => { plain.set(null); own.set(null); }}>{t(labels.reset)}</Button>
+        <Readout testId="lab-web-drags-state" state={`loaded=${loaded.value} plain=${pinText(plain.value)} own=${pinText(own.value)}`}>
+          {t(readouts.pins(plain.value ? `${plain.value.x}, ${plain.value.y}` : '-', own.value ? `${own.value.x}, ${own.value.y}` : '-'))}
+        </Readout>
+      </view>
+    </>
+  );
+}
+
 // Bar, pie and line plots drawn from the page's series; a bar takes the selection.
 export function PlotDemo() {
   const { plots } = useView().data as unknown as LabPageData;
@@ -345,6 +380,7 @@ export const drawingDemos = {
 export const mediaDemos = {
   video: VideoDemo,
   webview: WebViewDemo,
+  webDrags: WebDragsDemo,
   plot: PlotDemo,
   progress: ProgressDemo,
 };
