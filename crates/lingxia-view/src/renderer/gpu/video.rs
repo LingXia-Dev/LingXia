@@ -1,6 +1,7 @@
 //! The renderer's video players. A `Paint::Video` key opens one platform player off the render
 //! thread; the render thread imports each new frame as an external texture, with no CPU copy.
 //! Players nothing drew for 2 s stop and close on the opener thread.
+use crate::scene::image::Fit;
 use crate::scene::paint::Paint;
 use crate::scene::video::{Settings, Source, Status, VideoError, VideoOp};
 use std::collections::HashMap;
@@ -80,6 +81,36 @@ pub trait Player: Send {
             "this video has one quality; give `sources` to choose between files",
         ))
     }
+    /// The picture's size in device pixels and its fit, at every drawn frame: "auto" stays
+    /// within it ([`crate::scene::video::auto_cap`]); a pin ignores it.
+    fn set_view(&mut self, px: [f32; 2], fit: Fit) {
+        let _ = (px, fit);
+    }
+}
+
+/// A smaller box than the largest drawn lately waits this long, so a player drawn in two places
+/// (inline and full screen) keeps the larger, and leaving full screen lowers it once.
+const VIEW_SETTLE: Duration = Duration::from_millis(500);
+
+/// The largest box each player of `display` is drawn in, in device pixels.
+fn views(display: &crate::DisplayList) -> HashMap<&str, ([f32; 2], Fit)> {
+    let mut out: HashMap<&str, ([f32; 2], Fit)> = HashMap::new();
+    for paint in &display.commands {
+        if let Paint::Video {
+            player,
+            bounds,
+            fit,
+            ..
+        } = paint
+        {
+            let px = [bounds[2] * display.scale, bounds[3] * display.scale];
+            let entry = out.entry(player.as_str()).or_insert((px, *fit));
+            if px[0] * px[1] > entry.0[0] * entry.0[1] {
+                *entry = (px, *fit);
+            }
+        }
+    }
+    out
 }
 
 /// How far ahead of the playing position a new quality is parked, in ms of media time, for
@@ -113,14 +144,57 @@ pub fn install(opener: Opener) {
     let _ = INSTALLED.set(opener);
 }
 
+/// The Apple player for `url` outside the registry, for the frame-pull memory test in
+/// `tests/video_memory.rs`.
+#[doc(hidden)]
+#[cfg(target_vendor = "apple")]
+pub fn measure_player(url: &str) -> Result<Box<dyn Player>, String> {
+    platform::open(url)
+}
+
 /// The opener tests' players, for their own URLs only, beside whichever opener another test
 /// installed.
 #[cfg(test)]
 static TEST_OPENER: std::sync::OnceLock<Opener> = std::sync::OnceLock::new();
 
+/// Every URL goes to [`TEST_OPENER`], for host tests driving built pages.
+#[cfg(test)]
+pub(crate) static TEST_OPENS_ALL: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Opens asked so far, and the keys with a player, for host tests.
+#[cfg(test)]
+pub(crate) fn opens_asked() -> (u64, Vec<String>) {
+    let mut keys: Vec<String> = players().keys().cloned().collect();
+    keys.sort();
+    (
+        OPENS[0].load(Ordering::Relaxed) + OPENS[1].load(Ordering::Relaxed),
+        keys,
+    )
+}
+
+/// Routes every open to a player that never shows a frame.
+#[cfg(test)]
+pub(crate) fn open_nothing_real() {
+    struct Blank;
+    impl Player for Blank {
+        fn has_new(&self) -> bool {
+            false
+        }
+        fn next_frame(
+            &mut self,
+            _: &wgpu::Device,
+        ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
+            Ok(None)
+        }
+    }
+    TEST_OPENS_ALL.store(true, Ordering::SeqCst);
+    let _ = TEST_OPENER.set(|_| Ok(Box::new(Blank)));
+}
+
 fn open(source: &str) -> Result<Box<dyn Player>, String> {
     #[cfg(test)]
-    if source.starts_with("https://example.invalid/")
+    if (source.starts_with("https://example.invalid/") || TEST_OPENS_ALL.load(Ordering::SeqCst))
         && let Some(opener) = TEST_OPENER.get()
     {
         return opener(source);
@@ -661,6 +735,8 @@ struct Entry {
     frame_errors: u8,
     /// A play waiting for its first picture: since when, and when a page last polled it.
     waiting: Option<(Instant, Instant)>,
+    /// The box "auto" stays within, and when it was last drawn that large.
+    view: Option<([f32; 2], Fit, Instant)>,
 }
 
 static PLAYERS: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(Default::default);
@@ -1296,8 +1372,21 @@ pub(crate) fn frame_view(player: &str) -> Option<wgpu::TextureView> {
 pub(crate) fn has_new(display: &crate::DisplayList) -> bool {
     let mut players = players();
     let mut new = false;
+    let views = views(display);
     for key in keys(display) {
         if let Some(entry) = touch(&mut players, key) {
+            if let Some(&(px, fit)) = views.get(key) {
+                let now = Instant::now();
+                let larger = entry.view.is_none_or(|(held, _, at)| {
+                    px[0] * px[1] >= held[0] * held[1] || now.duration_since(at) > VIEW_SETTLE
+                });
+                if larger {
+                    entry.view = Some((px, fit, now));
+                }
+            }
+            if let (State::Ready(player), Some((px, fit, _))) = (&mut entry.state, entry.view) {
+                player.set_view(px, fit);
+            }
             if let State::Ready(player) = &entry.state {
                 if entry.frame.is_none()
                     && entry.loaded_at.is_none()
@@ -1384,6 +1473,7 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
                 import_us: [0; 2],
                 frame_errors: 0,
                 waiting: None,
+                view: None,
             },
         );
         if !synchronous {
@@ -1792,6 +1882,9 @@ mod platform {
         output: Id,
         cache: *mut c_void,
         renditions: Vec<Rendition>,
+        /// The page pinned a rendition; otherwise auto stays within `view`.
+        pinned: bool,
+        view: Option<([f32; 2], super::Fit)>,
         looped: std::cell::Cell<bool>,
         ended: std::cell::Cell<bool>,
         rate: f32,
@@ -1895,34 +1988,30 @@ mod platform {
         }
 
         fn set_quality(&mut self, label: Option<&str>) -> Result<(), VideoError> {
-            let rendition = match label {
-                None => None,
-                Some(label) => Some(
-                    self.renditions
-                        .iter()
-                        .find(|r| r.label == label)
-                        .ok_or_else(|| {
-                            VideoError::new("VIDEO_SOURCE", format!("no rendition {label}"))
-                        })?,
-                ),
+            let Some(label) = label else {
+                self.pinned = false;
+                self.cap();
+                return Ok(());
             };
-            let (size, peak) = rendition.map_or(([0.0, 0.0], 0.0), |r| (r.size, r.peak));
-            unsafe {
-                let set_size: unsafe extern "C" fn(Id, *const c_void, CGSize) =
-                    std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
-                set_size(
-                    self.item,
-                    sel(c"setPreferredMaximumResolution:"),
-                    CGSize {
-                        width: size[0],
-                        height: size[1],
-                    },
-                );
-                let set_double: unsafe extern "C" fn(Id, *const c_void, f64) =
-                    std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
-                set_double(self.item, sel(c"setPreferredPeakBitRate:"), peak);
-            }
+            let rendition = self
+                .renditions
+                .iter()
+                .find(|r| r.label == label)
+                .ok_or_else(|| VideoError::new("VIDEO_SOURCE", format!("no rendition {label}")))?;
+            let (size, peak) = (rendition.size, rendition.peak);
+            self.pinned = true;
+            self.prefer(size, peak);
             Ok(())
+        }
+
+        fn set_view(&mut self, px: [f32; 2], fit: super::Fit) {
+            if self.view == Some((px, fit)) {
+                return;
+            }
+            self.view = Some((px, fit));
+            if !self.pinned {
+                self.cap();
+            }
         }
 
         fn status(&self) -> Status {
@@ -2135,11 +2224,46 @@ mod platform {
                     output,
                     cache: std::ptr::null_mut(),
                     renditions,
+                    pinned: false,
+                    view: None,
                     looped: std::cell::Cell::new(false),
                     ended: std::cell::Cell::new(false),
                     rate: 1.0,
                     first: std::cell::Cell::new(first),
                 })
+            }
+        }
+
+        /// Auto within the picture's box: the item's largest resolution is the cap rendition's,
+        /// zero (none) before layout or past every rendition. The bit rate stays the player's.
+        fn cap(&mut self) {
+            let sizes: Vec<[f32; 2]> = self
+                .renditions
+                .iter()
+                .map(|r| [r.size[0] as f32, r.size[1] as f32])
+                .collect();
+            let cap = self
+                .view
+                .and_then(|(px, fit)| crate::scene::video::auto_cap(px, fit, &sizes));
+            self.prefer(cap.map_or([0.0, 0.0], |i| self.renditions[i].size), 0.0);
+        }
+
+        /// The item's largest resolution and peak bit rate; zero lifts either limit.
+        fn prefer(&mut self, size: [f64; 2], peak: f64) {
+            unsafe {
+                let set_size: unsafe extern "C" fn(Id, *const c_void, CGSize) =
+                    std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                set_size(
+                    self.item,
+                    sel(c"setPreferredMaximumResolution:"),
+                    CGSize {
+                        width: size[0],
+                        height: size[1],
+                    },
+                );
+                let set_double: unsafe extern "C" fn(Id, *const c_void, f64) =
+                    std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                set_double(self.item, sel(c"setPreferredPeakBitRate:"), peak);
             }
         }
 

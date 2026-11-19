@@ -130,6 +130,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - The build fails with `UI_A11Y` when an editor, slider, radio group, select, plot or dialog lacks `aria-label`,
   a button, link, checkbox or switch has neither text nor a label, or an `<image>` lacks `alt`; a placeholder is not a name.
 - Remote `<image>` sources follow HTTP caching: revalidated, and shown stale while offline.
+- `<video>` HLS at quality `auto` never fetches a rendition larger than the picture shows (HarmonyOS: the system player
+  chooses); `setQuality(label)` pins past it. HarmonyOS starts some streams slowly; no picture 15 s after play is `VIDEO_NETWORK`.
 - Text follows the system font size, up to 2× by default: lxapp.json `maxTextScale` (1 to 3) sets the cap and a
   page's json may lower it. Prefer `min-h-*` over fixed heights. Whitespace
   collapses as in CSS: use `whitespace-pre-line`/`pre-wrap` for authored newlines.

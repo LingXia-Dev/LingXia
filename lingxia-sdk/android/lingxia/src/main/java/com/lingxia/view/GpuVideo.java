@@ -47,6 +47,10 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
     private boolean ended;
     private boolean muted;
     private float volume = 1f;
+    /** The pinned rendition's height, 0 for adaptive; and the picture's box in device pixels. */
+    private int pinned;
+    private int viewWidth;
+    private int viewHeight;
     /** An adaptive stream's video heights, highest first, as "720p,360p". */
     private volatile String qualities = "";
     private static final long SAMPLE_MS = 100;
@@ -185,12 +189,36 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
 
     /** Pins the video rendition of this height; 0 gives adaptive selection back. Needs no tracks yet. */
     private void pinHeight(int height) {
+        pinned = height;
+        selectVideoSize();
+    }
+
+    /** The picture's box in device pixels: adaptive selection climbs no higher than fills it. */
+    void viewport(int width, int height) {
+        handler.post(() -> {
+            if (player == null || (width == viewWidth && height == viewHeight)) {
+                return;
+            }
+            viewWidth = width;
+            viewHeight = height;
+            if (pinned == 0) {
+                selectVideoSize();
+            }
+        });
+    }
+
+    private void selectVideoSize() {
         androidx.media3.common.TrackSelectionParameters.Builder params =
             player.getTrackSelectionParameters().buildUpon().clearOverridesOfType(C.TRACK_TYPE_VIDEO);
-        if (height > 0) {
-            params.setMinVideoSize(0, height).setMaxVideoSize(Integer.MAX_VALUE, height);
+        if (pinned > 0) {
+            params.setMinVideoSize(0, pinned).setMaxVideoSize(Integer.MAX_VALUE, pinned)
+                .clearViewportSizeConstraints();
         } else {
             params.clearVideoSizeConstraints().setMinVideoSize(0, 0);
+            // The smallest track at least this large stays allowed, so the picture never upscales.
+            if (viewWidth > 0 && viewHeight > 0) {
+                params.setViewportSize(viewWidth, viewHeight, false);
+            }
         }
         player.setTrackSelectionParameters(params.build());
     }

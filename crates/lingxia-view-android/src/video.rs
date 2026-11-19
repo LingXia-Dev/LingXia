@@ -9,6 +9,7 @@ use jni::{Env, JValue, JavaVM, jni_sig, jni_str};
 use lingxia_view::renderer::gpu::video::gles::{self, Drawn, Frames};
 use lingxia_view::renderer::gpu::video::{Player, import_hardware_buffer, install};
 use lingxia_view::renderer::gpu::wgpu;
+use lingxia_view::scene::image::Fit;
 use lingxia_view::scene::video::{Settings, Status, VideoError, VideoOp};
 use std::ffi::{CStr, c_void};
 use std::sync::{Mutex, OnceLock};
@@ -65,6 +66,7 @@ fn open(source: &str) -> Result<Box<dyn Player>, String> {
         latched: false,
         posted: false,
         frames: Frames::default(),
+        view: [0, 0],
     }))
 }
 
@@ -85,6 +87,8 @@ struct Video {
     posted: bool,
     /// Frames drawn in wgpu's context, on a GLES device.
     frames: Frames,
+    /// The picture's box last sent, in device pixels.
+    view: [u32; 2],
 }
 
 // The GL names and buffers are used on the render thread only; drop defers their GL half.
@@ -236,6 +240,28 @@ impl Player for Video {
         };
         self.send("quality", height)
             .map_err(|error| VideoError::new("VIDEO_NO_PLAYER", error))
+    }
+
+    // Media3's viewport keeps the smallest track that fills the box, which is the same cap as
+    // `auto_cap` for a contained picture; the fit is not passed.
+    fn set_view(&mut self, px: [f32; 2], _fit: Fit) {
+        let view = px.map(|v| v.round().max(0.0) as u32);
+        if view == self.view {
+            return;
+        }
+        self.view = view;
+        let sent = java(|env| {
+            env.call_method(
+                &*self.java,
+                jni_str!("viewport"),
+                jni_sig!("(II)V"),
+                &[JValue::Int(view[0] as i32), JValue::Int(view[1] as i32)],
+            )
+            .map(drop)
+        });
+        if let Err(error) = sent {
+            log::warn!(target: "lingxia_view", "video viewport: {error}");
+        }
     }
 
     fn status(&self) -> Status {

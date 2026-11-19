@@ -224,6 +224,41 @@ pub fn resume_ms(prepared: bool, seeking: bool, target: i64, parked: i64, curren
     }
 }
 
+/// Upscale nobody sees: a 1080-row rendition fills a 1084-px box rather than fetching 1440p.
+const UPSCALE_SLACK: f32 = 1.05;
+
+/// The rendition "auto" may climb to for a picture of `px` device pixels drawn with `fit`: the
+/// smallest of `renditions` (width, height) that draws without visible upscaling, so auto never
+/// fetches more pixels than the picture shows. `None` leaves auto uncapped: no layout yet, or no
+/// rendition is that large.
+pub fn auto_cap(
+    px: [f32; 2],
+    fit: crate::scene::image::Fit,
+    renditions: &[[f32; 2]],
+) -> Option<usize> {
+    use crate::scene::image::Fit;
+    let px = px.map(f32::round);
+    if !(px[0] >= 1.0 && px[1] >= 1.0) {
+        return None;
+    }
+    let draws_unscaled = |r: &[f32; 2]| {
+        let (sx, sy) = (px[0] / r[0], px[1] / r[1]);
+        r[0] > 0.0
+            && r[1] > 0.0
+            && match fit {
+                Fit::Contain => sx.min(sy) <= UPSCALE_SLACK,
+                Fit::Cover => sx.max(sy) <= UPSCALE_SLACK,
+                Fit::Fill => sx <= UPSCALE_SLACK && sy <= UPSCALE_SLACK,
+            }
+    };
+    renditions
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| draws_unscaled(r))
+        .min_by(|(_, a), (_, b)| (a[0] * a[1]).total_cmp(&(b[0] * b[1])))
+        .map(|(index, _)| index)
+}
+
 /// The window orientation a full-screen video asks for: the shape of its picture.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -338,6 +373,72 @@ impl Drop for Sources {
 
 pub(crate) fn key(scope: u64, player: &str) -> String {
     format!("{scope}/{player}")
+}
+
+#[cfg(test)]
+mod auto_cap_tests {
+    use super::auto_cap;
+    use crate::scene::image::Fit;
+
+    /// vodobox's ladder, highest first: 2160p down to 144p.
+    const LADDER: [[f32; 2]; 8] = [
+        [3840.0, 2160.0],
+        [2560.0, 1440.0],
+        [1920.0, 1080.0],
+        [1280.0, 720.0],
+        [854.0, 480.0],
+        [640.0, 360.0],
+        [426.0, 240.0],
+        [256.0, 144.0],
+    ];
+
+    fn label(px: [f32; 2], fit: Fit) -> Option<f32> {
+        auto_cap(px, fit, &LADDER).map(|i| LADDER[i][1])
+    }
+
+    #[test]
+    fn a_portrait_phone_inline_player_stops_at_the_first_rendition_its_box_does_not_upscale() {
+        // 390 pt wide 16:9 box at 3x: 1170 x 658 px.
+        assert_eq!(label([390.0 * 3.0, 219.4 * 3.0], Fit::Contain), Some(720.0));
+        // The same box at 2x: 780 x 439 px.
+        assert_eq!(label([780.0, 438.8], Fit::Contain), Some(480.0));
+    }
+
+    #[test]
+    fn full_screen_on_a_landscape_phone_climbs_to_the_screen() {
+        // 2400 x 1080 px screen, letterboxed 16:9 picture.
+        assert_eq!(label([2400.0, 1080.0], Fit::Contain), Some(1080.0));
+        // Cover fills the wider screen: 1920 x 1080 would stretch past its width.
+        assert_eq!(label([2400.0, 1080.0], Fit::Cover), Some(1440.0));
+    }
+
+    #[test]
+    fn a_few_pixels_short_still_counts_as_filled() {
+        // A 1084 x 2412 phone in landscape: 1080 rows upscale 0.4%, not worth 1.8x the pixels.
+        assert_eq!(label([2412.0, 1084.0], Fit::Contain), Some(1080.0));
+        // 1242 rows are 15% short of 1080: the next rung up.
+        assert_eq!(label([2208.0, 1242.0], Fit::Contain), Some(1440.0));
+        // Exact fits are unchanged.
+        assert_eq!(label([1920.0, 1080.0], Fit::Contain), Some(1080.0));
+        assert_eq!(label([1280.0, 720.0], Fit::Cover), Some(720.0));
+    }
+
+    #[test]
+    fn a_box_larger_than_every_rendition_leaves_auto_uncapped() {
+        assert_eq!(label([5120.0, 2880.0], Fit::Contain), None);
+    }
+
+    #[test]
+    fn no_layout_yet_is_no_cap_yet() {
+        assert_eq!(label([0.0, 0.0], Fit::Contain), None);
+        assert_eq!(label([1170.0, 0.0], Fit::Contain), None);
+        assert_eq!(label([f32::NAN, 600.0], Fit::Contain), None);
+    }
+
+    #[test]
+    fn subpixel_layout_does_not_skip_a_rung() {
+        assert_eq!(label([1920.3, 1080.2], Fit::Fill), Some(1080.0));
+    }
 }
 
 #[cfg(test)]
