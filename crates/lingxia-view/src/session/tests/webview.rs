@@ -210,7 +210,14 @@ fn a_moved_web_view_stays_live_and_a_faded_one_or_a_capture_draws_its_picture() 
     );
     let mut page = ViewSession::new(&module).unwrap();
     let first = page.layout(140, 120, 1.0).unwrap();
-    let wv = first.nodes.iter().find(|n| n.test_id == "wv").unwrap().webview.clone().unwrap();
+    let wv = first
+        .nodes
+        .iter()
+        .find(|n| n.test_id == "wv")
+        .unwrap()
+        .webview
+        .clone()
+        .unwrap();
     let key = crate::scene::webview::make_key(wv.scope, &wv.web_id);
     crate::scene::webview::set_ready(wv.scope, &wv.web_id, true);
     let mut green = vello_cpu::Pixmap::new(50, 50);
@@ -220,20 +227,36 @@ fn a_moved_web_view_stays_live_and_a_faded_one_or_a_capture_draws_its_picture() 
     assert!(page.bind_web_picture(&key, crate::scene::image::Bitmap::from_pixels(green)));
     let pixel = |frame: &crate::Frame, x: usize, y: usize| -> [u8; 4] {
         let offset = (y * usize::from(frame.pixels.width()) + x) * 4;
-        frame.pixels.data_as_u8_slice()[offset..offset + 4].try_into().unwrap()
+        frame.pixels.data_as_u8_slice()[offset..offset + 4]
+            .try_into()
+            .unwrap()
     };
     let webview = |display: &crate::DisplayList| {
-        display.nodes.iter().find(|n| n.test_id == "wv").unwrap().clone()
+        display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == "wv")
+            .unwrap()
+            .clone()
     };
 
     // Live: the hole shows the native view, wherever a translation moves it.
     let live = page.layout(140, 120, 1.0).unwrap();
-    assert_eq!(pixel(&live.clone().rasterize().unwrap(), 50, 50), [0, 0, 0, 0]);
+    assert_eq!(
+        pixel(&live.clone().rasterize().unwrap(), 50, 50),
+        [0, 0, 0, 0]
+    );
     page.eval("globalThis.motion='move'").unwrap();
     let moved = page.layout(140, 120, 1.0).unwrap();
     let node = webview(&moved);
-    assert!(!node.webview.as_ref().unwrap().degraded, "a translation keeps the view live");
-    assert_eq!(crate::scene::webview::mount_of(&node).unwrap().bounds[0], 20.0);
+    assert!(
+        !node.webview.as_ref().unwrap().degraded,
+        "a translation keeps the view live"
+    );
+    assert_eq!(
+        crate::scene::webview::mount_of(&node).unwrap().bounds[0],
+        20.0
+    );
     let shot = moved.rasterize().unwrap();
     assert_eq!(pixel(&shot, 115, 50), [0, 0, 0, 0]);
     assert_eq!(pixel(&shot, 10, 50), [255, 255, 255, 255]);
@@ -242,16 +265,26 @@ fn a_moved_web_view_stays_live_and_a_faded_one_or_a_capture_draws_its_picture() 
     for motion in ["fade", "turn"] {
         page.eval(&format!("globalThis.motion='{motion}'")).unwrap();
         let display = page.layout(140, 120, 1.0).unwrap();
-        assert!(webview(&display).webview.as_ref().unwrap().degraded, "{motion}");
+        assert!(
+            webview(&display).webview.as_ref().unwrap().degraded,
+            "{motion}"
+        );
         let [r, g, b, a] = pixel(&display.rasterize().unwrap(), 50, 50);
-        assert!(g > 120 && r < 140 && b < 140 && a == 255, "{motion}: {:?}", [r, g, b, a]);
+        assert!(
+            g > 120 && r < 140 && b < 140 && a == 255,
+            "{motion}: {:?}",
+            [r, g, b, a]
+        );
     }
 
     // A capture of a live view draws the picture instead of a hole.
     page.eval("globalThis.motion='none'").unwrap();
     let mut capture = page.layout(140, 120, 1.0).unwrap();
     capture.web_pictures = true;
-    assert_eq!(pixel(&capture.rasterize().unwrap(), 50, 50), [0, 255, 0, 255]);
+    assert_eq!(
+        pixel(&capture.rasterize().unwrap(), 50, 50),
+        [0, 255, 0, 255]
+    );
     crate::scene::webview::set_ready(wv.scope, &wv.web_id, false);
 }
 
@@ -282,7 +315,9 @@ fn a_web_view_is_masked_where_a_later_ready_web_view_shows_through() {
     for id in ["page", "sheet", "faded"] {
         set_ready(9_100, id, true);
     }
-    assert!(!crate::scene::webview::is_ready_key(&make_key(9_100, "loading")));
+    assert!(!crate::scene::webview::is_ready_key(&make_key(
+        9_100, "loading"
+    )));
     occlude(&mut mounts);
     // Only the sheet's hole shows a native view over the page's; a loading or faded view
     // punches none.

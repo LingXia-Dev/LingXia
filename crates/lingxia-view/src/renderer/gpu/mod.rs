@@ -1326,9 +1326,11 @@ impl Presenter {
     pub fn capture(&mut self) -> Result<Capture, String> {
         // A `<webview>` shows through a hole the target holds no pixels for: such a frame is
         // drawn again with each web view's picture in its place.
-        let Some((revision, display)) = self.retained.as_ref().filter(|(_, display)| {
-            display.device_raster().is_some() || display.draws_webview()
-        }) else {
+        let Some((revision, display)) = self
+            .retained
+            .as_ref()
+            .filter(|(_, display)| display.device_raster().is_some() || display.draws_webview())
+        else {
             return self.readback().map(Capture::Pixels);
         };
         let mut display = (**display).clone();
@@ -1721,7 +1723,14 @@ mod tests {
             ));
             let mut page = crate::ViewSession::new(&module).unwrap();
             let first = page.layout(120, 120, 1.0).unwrap();
-            let wv = first.nodes.iter().find(|n| n.test_id == "wv").unwrap().webview.clone().unwrap();
+            let wv = first
+                .nodes
+                .iter()
+                .find(|n| n.test_id == "wv")
+                .unwrap()
+                .webview
+                .clone()
+                .unwrap();
             crate::scene::webview::set_ready(wv.scope, &wv.web_id, true);
             (page, wv)
         };
@@ -1736,7 +1745,11 @@ mod tests {
         let (mut plain, wv) = page(false);
         let open = draw(&plain.layout(120, 120, 1.0).unwrap());
         assert_eq!(open(90, 90), [0, 0, 0, 0], "the hole");
-        assert_eq!(open(10, 10), [255, 0, 0, 255], "a box painted over the hole");
+        assert_eq!(
+            open(10, 10),
+            [255, 0, 0, 255],
+            "a box painted over the hole"
+        );
 
         let (mut covered, covered_wv) = page(true);
         let modal = covered.layout(120, 120, 1.0).unwrap();
@@ -1767,7 +1780,10 @@ mod tests {
             let module = crate::session::tests::source(&format!(
                 "function render(){{return h('view',{{style:{{padding:4,backgroundColor:'#ffffff'}}}},h('text',{{style:{{fontSize:24{style}}}}},'evening'))}}"
             ));
-            crate::ViewSession::new(&module).unwrap().layout(160, 48, 2.0).unwrap()
+            crate::ViewSession::new(&module)
+                .unwrap()
+                .layout(160, 48, 2.0)
+                .unwrap()
         };
         let upright = page("");
         let slanted = page(",fontStyle:'italic'");
@@ -1777,7 +1793,10 @@ mod tests {
         let first = shared.draw_offscreen(1, &upright).unwrap().2;
         assert_ne!(first, alone, "the slant shows");
         let after = shared.draw_offscreen(1, &slanted).unwrap().2;
-        assert!(after == alone, "a slanted glyph drew from its upright twin's atlas entry");
+        assert!(
+            after == alone,
+            "a slanted glyph drew from its upright twin's atlas entry"
+        );
     }
     /// A page laid out at 3x shown at another scale: its capture is still the device's pixels,
     /// the same bytes as a draw at 3x, and the kept frame goes on drawing at the shown scale.
