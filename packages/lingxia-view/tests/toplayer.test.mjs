@@ -244,11 +244,12 @@ test('a dialog backdrop fades in and leaves with its dialog, on the dialog\'s ti
   const backdropOf = className => byId(render(() => h('page', {}, h('dialog', { open: true, 'aria-label': 'x', 'data-testid': 'd', className }))), 'd-backdrop').props;
   const timing = props => { const { durationMs, easing } = JSON.parse(props.transition); return [durationMs, easing]; };
   const plain = backdropOf(undefined);
-  assert.deepEqual([plain.startingStyle, plain.exitStyle], ['[58,0]', '[58,0]'], 'enters from and leaves toward opacity 0');
+  assert.deepEqual([plain.startingStyle, plain.exitStyle], [undefined, undefined], 'a dialog that comes and goes at once takes its backdrop with it');
   assert.deepEqual(timing(plain), [200, [0, 0, 0.58, 1]]);
   const timed = backdropOf('transition duration-300 ease-in exit:opacity-0');
   assert.deepEqual(timing(timed), [300, [0.4, 0, 1, 1]], 'the dialog\'s duration and easing');
-  assert.equal(timed.exitStyle, '[58,0]');
+  assert.deepEqual([timed.startingStyle, timed.exitStyle], [undefined, '[58,0]'], 'it fades out with a dialog that fades out');
+  assert.equal(backdropOf('exit:opacity-0').exitStyle, '[58,0]', 'on the default timing when the dialog sets none');
   const own = backdropOf('transition duration-300 ease-in backdrop:starting:opacity-20 backdrop:exit:opacity-50 backdrop:duration-500');
   assert.deepEqual(timing(own), [500, [0.4, 0, 1, 1]], 'backdrop:duration-* wins; the easing stays the dialog\'s');
   assert.deepEqual([own.startingStyle, own.exitStyle], ['[58,0.2]', '[58,0.5]']);

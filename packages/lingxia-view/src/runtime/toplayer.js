@@ -80,14 +80,16 @@ function clearOfBars(env) {
 
 const backdropTiming = { durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] };
 
-// The backdrop fades in and out on the dialog's own transition timing, so it leaves when the
-// panel's exit ends; `backdrop:` classes override its look, timing and presence.
+// The backdrop fades in and out with the dialog, on its transition timing: only when the dialog
+// itself has `starting:`/`exit:` paint, so a dialog that appears or leaves at once takes its
+// backdrop with it. `backdrop:` classes override its look, timing and presence.
 function backdropOf(classes) {
   const own = classes?.base?.transition;
   const timing = { ...(own && typeof own === 'object' ? { durationMs: own.durationMs, delayMs: own.delayMs, easing: own.easing } : backdropTiming), ...classes?.backdrop?.timing };
+  const fades = name => classes?.[name] && Object.keys(classes[name]).length ? { opacity: 0 } : {};
   return {
     style: { opacity: 1, backgroundColor: 'scrim', transition: { properties: ['opacity'], ...timing }, ...classes?.backdrop?.base },
-    presence: { starting: { opacity: 0, ...classes?.backdrop?.starting }, exit: { opacity: 0, ...classes?.backdrop?.exit } },
+    presence: { starting: { ...fades('starting'), ...classes?.backdrop?.starting }, exit: { ...fades('exit'), ...classes?.backdrop?.exit } },
   };
 }
 

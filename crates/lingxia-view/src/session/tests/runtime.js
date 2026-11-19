@@ -1255,9 +1255,10 @@
   function backdropOf(classes) {
     const own2 = classes?.base?.transition;
     const timing = { ...own2 && typeof own2 === "object" ? { durationMs: own2.durationMs, delayMs: own2.delayMs, easing: own2.easing } : backdropTiming, ...classes?.backdrop?.timing };
+    const fades = (name) => classes?.[name] && Object.keys(classes[name]).length ? { opacity: 0 } : {};
     return {
       style: { opacity: 1, backgroundColor: "scrim", transition: { properties: ["opacity"], ...timing }, ...classes?.backdrop?.base },
-      presence: { starting: { opacity: 0, ...classes?.backdrop?.starting }, exit: { opacity: 0, ...classes?.backdrop?.exit } }
+      presence: { starting: { ...fades("starting"), ...classes?.backdrop?.starting }, exit: { ...fades("exit"), ...classes?.backdrop?.exit } }
     };
   }
   var popoverProps = ["open", "onToggle", "onCloseRequest", "closeAfter", "anchor"];

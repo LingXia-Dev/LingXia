@@ -116,6 +116,24 @@ fn a_shown_dialog_holds_the_top_layer_until_its_exit_ends() {
 }
 
 #[test]
+fn a_dialog_without_exit_paint_leaves_at_once_with_its_backdrop_and_schedules_nothing() {
+    let module = super::source(
+        "function render(){const shown=useLocal('shown',true);return h('page',{},h('dialog',{open:shown.value,onClose(){shown.set(false)},closedby:'any','aria-label':'Sheet','data-testid':'sheet',style:{width:100,height:30}}))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    page.set_environment(environment()).unwrap();
+    page.set_animation_surface(Some(SURFACE), Duration::ZERO)
+        .unwrap();
+    let shot = run(&mut page, 0).pop().unwrap();
+    assert!(shot.open);
+    click(&mut page, &shot, "sheet-backdrop");
+    let shots = run(&mut page, 100);
+    assert_eq!(shots.len(), 1, "nothing is left to animate");
+    assert!(!shots[0].open);
+    assert!(shots[0].nodes.iter().all(|n| n.test_id != "sheet-backdrop"));
+}
+
+#[test]
 fn an_anchored_popover_stays_clear_of_the_bars_over_the_page() {
     let module = super::source(
         "function render(){return h('page',{},h('button',{popoverTarget:'menu','data-testid':'more',style:{position:'absolute',left:10,top:60,width:40,height:10}},'M'),h('view',{id:'menu',popover:'auto','data-testid':'menu',style:{width:60,height:15}}))}",

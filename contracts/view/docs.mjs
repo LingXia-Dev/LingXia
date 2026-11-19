@@ -273,7 +273,7 @@ function variants(schema, system, rules) {
     hover: 'any element, while a mouse, stylus or trackpad is over it; paint only', disabled: `${disableable}; replaces the whole class cascade`,
     placeholder: `editors; \`text-*\` color only`,
     dark: 'any element; not on colours, which follow appearance',
-    backdrop: '`<dialog>` only; styles its scrim, which fades in and out on the dialog\'s own timing; `backdrop:starting:`/`backdrop:exit:` (paint only) and `backdrop:duration-*`/`ease-*`/`delay-*` change that',
+    backdrop: '`<dialog>` only; styles its scrim, which fades in and out with a dialog that has `starting:`/`exit:` styles, on its timing; `backdrop:starting:`/`backdrop:exit:` (paint only) and `backdrop:duration-*`/`ease-*`/`delay-*` change that',
     'group-active': 'any element inside a pressable control; while that control is pressed; paint only',
     starting: 'any element; paint only, the values it enters from',
     has: 'any element, alone; `has-checked:`, `has-disabled:` (a descendant checkbox, switch, answered radio or disabled element) and `has-focus:`; paint only',
