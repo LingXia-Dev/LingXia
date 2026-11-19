@@ -378,7 +378,7 @@ Children: none.
 
 ## `<webview>`
 
-Children: none. Not allowed inside a pressable control (`UI_BUTTON`). Moves live with a translation. Under opacity, a mask, a blur, a scale or a rotation it shows a still picture of the page and takes no input until the effect ends. Scaling or rotating it outside entering and leaving fails the build (`UI_TRANSFORM`); a scale or rotation applied at run time shows the still picture.
+Children: none. Not allowed inside a pressable control (`UI_BUTTON`). Moves live with a translation. Under opacity, a mask, a blur, a scale or a rotation it shows a still picture of the page and takes no input until the effect ends. Scaling or rotating it outside entering and leaving fails the build (`UI_TRANSFORM`); a scale or rotation applied at run time shows the still picture. Its page's `prefers-color-scheme` follows the View page's appearance, live.
 
 | Prop | Type | Required |
 | --- | --- | --- |

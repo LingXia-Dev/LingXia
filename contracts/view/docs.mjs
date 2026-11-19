@@ -71,6 +71,7 @@ async function elements(schema) {
     // Controls nest inside a pressable control; scrolls, lists and webviews are refused there.
     if (name === 'scroll' || element.wire === 'list' || name === 'webview') facts.push('Not allowed inside a pressable control (`UI_BUTTON`).');
     if (name === 'webview') facts.push('Moves live with a translation. Under opacity, a mask, a blur, a scale or a rotation it shows a still picture of the page and takes no input until the effect ends. Scaling or rotating it outside entering and leaving fails the build (`UI_TRANSFORM`); a scale or rotation applied at run time shows the still picture.');
+    if (name === 'webview') facts.push('Its page\'s `prefers-color-scheme` follows the View page\'s appearance, live.');
     out.push(facts.join(' '), '');
     if (element.binding) {
       const { type, event } = element.binding;
