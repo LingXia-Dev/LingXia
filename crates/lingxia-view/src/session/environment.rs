@@ -102,6 +102,13 @@ impl ViewSession {
             keyboard: value["keyboard"]["height"].as_f64().unwrap_or(0.0) as f32,
         };
         if self.renderer.safe_area != safe_area {
+            if self.renderer.safe_area.keyboard != safe_area.keyboard {
+                log::info!(
+                    target: "lingxia_view",
+                    "keyboard inset: {} -> {} (bottom inset {})",
+                    self.renderer.safe_area.keyboard, safe_area.keyboard, safe_area.insets[2]
+                );
+            }
             self.renderer.safe_area = safe_area;
             self.retained = None;
         }

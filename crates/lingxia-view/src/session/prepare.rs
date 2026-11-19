@@ -4,6 +4,9 @@ use crate::session::state::PatchOp;
 /// Where the whole data tree waits for the frame's `__lingxiaCreateView` to take it.
 const VIEW_DATA: &str = "__lingxiaViewData";
 
+/// Room a focused field keeps from the keyboard and the scroller's edges when revealed.
+const FIELD_REVEAL_MARGIN: f32 = 12.0;
+
 impl ViewSession {
     /// The `data` argument for `__lingxiaCreateView`: `undefined` when the isolate's own copy
     /// was brought current by replaying the writes since its last frame, else the whole tree.
@@ -317,6 +320,17 @@ impl ViewSession {
         )
     }
 
+    /// A focused field waits for a frame to be revealed.
+    pub fn wants_reveal(&self) -> bool {
+        self.reveal_input
+    }
+
+    /// The host's scroll input revision for the frames it requests next: a reveal holds its
+    /// offsets over older requests made under the same revision.
+    pub fn set_offsets_revision(&mut self, revision: u64) {
+        self.offsets_revision = Some(revision);
+    }
+
     /// Like `prepare_view_animated`, sampling at `sample` (when the frame is expected on
     /// screen). With `ahead`, the frame builds on the newest unpresented frame instead of
     /// replacing it; at most one frame may wait under it.
@@ -494,6 +508,20 @@ impl ViewSession {
                 offsets.insert(id.clone(), *offset);
             }
         }
+        // A reveal the host has not seen yet holds; scroll input since the reveal wins, and an
+        // offset the host already requests needs no holding.
+        if self.revealed_revision.is_none() || self.revealed_revision != self.offsets_revision {
+            self.revealed_offsets.clear();
+        }
+        self.revealed_offsets.retain(|id, to| {
+            let requested = offsets.get(id).copied().unwrap_or(0.0);
+            if (requested - *to).abs() < 0.5 {
+                false
+            } else {
+                offsets.insert(id.clone(), *to);
+                true
+            }
+        });
         if offsets.len() > 4096 || offsets.values().any(|offset| !offset.is_finite()) {
             return Err("UI_SCROLL: invalid offsets".into());
         }
@@ -583,6 +611,7 @@ impl ViewSession {
             self.render_invoke(width, height, scale, &encoded_windows, metrics)?
         };
         let mut prepared_js = !native_input;
+        let mut revealed = HashMap::new();
         let candidate = (|| {
             let mut records = if native_input {
                 self.input_records.as_ref().unwrap().clone()
@@ -653,8 +682,16 @@ impl ViewSession {
                 }
                 if reveal_input && let Some(identity) = inputs.focused() {
                     let started = std::time::Instant::now();
-                    display = display.reveal(identity, &mut offsets)?;
+                    let before = offsets.clone();
+                    display = display.reveal(identity, FIELD_REVEAL_MARGIN, &mut offsets)?;
+                    for (id, to) in &offsets {
+                        if (to - before.get(id).copied().unwrap_or(0.0)).abs() > 0.01 {
+                            revealed.insert(id.clone(), *to);
+                        }
+                    }
                     metrics.compose_us += crate::session::metrics::micros(started);
+                } else if reveal_input && self.renderer.safe_area.keyboard > 0.0 {
+                    log::info!(target: "lingxia_view", "reveal: keyboard up, no editor focused yet");
                 }
                 let old_focus = inputs.focused().map(str::to_owned);
                 inputs.decorate(&mut display, &mut self.renderer)?;
@@ -782,6 +819,10 @@ impl ViewSession {
                 self.lists = lists;
                 self.viewport = Some((width, height, scale));
                 self.scroll_offsets = applied;
+                if !revealed.is_empty() && self.offsets_revision.is_some() {
+                    self.revealed_offsets.extend(revealed);
+                    self.revealed_revision = self.offsets_revision;
+                }
                 self.advance();
                 if relaid {
                     self.layout_commit = self.generation;
@@ -806,7 +847,12 @@ impl ViewSession {
                         "__lingxiaDiscard()"
                     });
                 }
-                if let Some(mut previous) = self.pending_inputs.take() {
+                // A frame the target declined or dropped is not the user's mistake: the focus
+                // and text they gave stay, and the next frame shows them (and reveals the field).
+                let kept = error == FRAME_DECLINED || error.starts_with(OVERRUN);
+                if kept {
+                    self.input_dirty = true;
+                } else if let Some(mut previous) = self.pending_inputs.take() {
                     previous.invalidate_after(&self.inputs)?;
                     self.inputs = previous;
                     self.input_dirty = true;

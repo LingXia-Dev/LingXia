@@ -3,9 +3,11 @@ use crate::scene::display::*;
 use std::collections::HashMap;
 
 impl DisplayList {
+    /// `margin` is room kept around the node, so a field does not sit flush on the keyboard.
     pub(crate) fn reveal(
         self,
         identity: &str,
+        margin: f32,
         offsets: &mut HashMap<String, f32>,
     ) -> Result<Self, String> {
         let Some(target) = self.nodes.iter().find(|node| node.identity == identity) else {
@@ -13,8 +15,11 @@ impl DisplayList {
         };
         let mut chain = Vec::new();
         let mut parent = target.scroll_parent.as_deref();
-        let mut starts = [target.bounds[0], target.bounds[1]];
-        let mut ends = [starts[0] + target.bounds[2], starts[1] + target.bounds[3]];
+        let mut starts = [target.bounds[0] - margin, target.bounds[1] - margin];
+        let mut ends = [
+            target.bounds[0] + target.bounds[2] + margin,
+            target.bounds[1] + target.bounds[3] + margin,
+        ];
         while let Some(id) = parent {
             let Some(owner) = self
                 .nodes
@@ -52,6 +57,12 @@ impl DisplayList {
                 (ends[axis] - end).max(0.0)
             };
             let next = (scroll.offset + delta).clamp(0.0, scroll.max_offset);
+            // Device runs read this to see why a field did or did not scroll clear.
+            log::info!(
+                target: "lingxia_view",
+                "reveal: {identity} in {}: target {:.0}..{:.0}, visible {start:.0}..{end:.0}, offset {:.0} -> {next:.0} of {:.0}",
+                scroll.id, starts[axis], ends[axis], scroll.offset, scroll.max_offset
+            );
             let movement = next - scroll.offset;
             if movement.abs() > 0.01 {
                 changes.push((scroll.id.clone(), next));

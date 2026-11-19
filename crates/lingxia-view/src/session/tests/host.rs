@@ -6368,6 +6368,178 @@ fn a_pinned_text_scale_grows_a_select_chevron_and_its_room() {
     assert_eq!(chevron(&host), (15.0, 2.625), "1.5× at a 2.0 pin");
 }
 
+/// The field last in a page's content, on an iPhone 11 (414 x 896, bottom inset 34, keyboard
+/// 318): whether the keyboard's height reaches the core before the focus or with it, the
+/// field ends above the keyboard.
+#[test]
+fn a_last_field_clears_a_keyboard_that_arrives_before_or_with_the_focus() {
+    for order in ["keyboard first", "same frame"] {
+        let worker = ViewWorker::spawn("test-view").unwrap();
+        let platform = Platform::new(&[&worker]);
+        let host = platform.host(
+            &worker,
+            &source(
+                "function render(){const v=useLocal('v','');return h('page',{},h('scroll',{style:{flexGrow:1,flexBasis:0}},h('view',{style:{padding:16,paddingBottom:40,gap:16}},h('view',{style:{height:700}}),h('input',{'data-testid':'f',bind:v,'aria-label':'Amount',inputMode:'decimal',style:{height:48}}))))}",
+            ),
+            false,
+        );
+        if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+            (environment.width, environment.height) = (414 * 2, 896 * 2);
+            environment.value["insets"]["bottom"] = 34.into();
+        }
+        host.set_visible(true);
+        platform.settle(&[&host]);
+        let field = |host: &ViewHost<Fake>| {
+            let rect = host
+                .automation_request(
+                    &serde_json::json!({"op": "query", "css": "[data-testid=\"f\"]"}),
+                )
+                .unwrap()["rect"]
+                .clone();
+            let at = |key: &str| rect[key].as_f64().unwrap() as f32;
+            [at("left"), at("top"), at("width"), at("height")]
+        };
+        let [x, y, w, h] = field(&host);
+        assert!(
+            y + h < 896.0 - 34.0 && y + h > 896.0 - 318.0,
+            "{order}: starts low: {y}"
+        );
+        let keyboard = |host: &ViewHost<Fake>| {
+            if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+                environment.value["keyboard"]["height"] = 318.into();
+            }
+            host.environment_changed();
+        };
+        let focus = |host: &ViewHost<Fake>| {
+            let current: serde_json::Value =
+                serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+            let identity = current["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["test_id"] == "f")
+                .unwrap()["identity"]
+                .clone();
+            host.input(
+                serde_json::json!({"op": "focus", "identity": identity, "generation": current["generation"]})
+                    .to_string(),
+                |_| {},
+            );
+        };
+        if order == "keyboard first" {
+            keyboard(&host);
+            platform.settle(&[&host]);
+            run_frames(&platform, &host, 2);
+            tap(&host, (x + w / 2.0) * 2.0, (y + h / 2.0) * 2.0);
+            platform.settle(&[&host]);
+            focus(&host);
+        } else {
+            tap(&host, (x + w / 2.0) * 2.0, (y + h / 2.0) * 2.0);
+            focus(&host);
+            keyboard(&host);
+        }
+        // No redraw or input after the focus: the reveal must reach the screen on its own.
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 4);
+        let [_, y, _, h] = field(&host);
+        // The field clears the keyboard with room to spare, as native fields do.
+        assert!(
+            y + h <= 896.0 - 318.0 - 12.0 + 0.5,
+            "{order}: the field clears the keyboard: {y}..{}",
+            y + h
+        );
+        // Nothing clamps the revealed offset back.
+        host.redraw();
+        run_frames(&platform, &host, 2);
+        assert_eq!(field(&host)[1], y, "{order}: the reveal stays");
+    }
+}
+
+/// Gboard's two steps (the keyboard, then its suggestion strip) around a tap's focus: each
+/// presented frame shows the field clear of the keyboard with no redraw or input, and a second
+/// reveal starts from the first, never from the offset before the keyboard.
+#[test]
+fn a_field_stays_clear_of_a_keyboard_that_grows_in_two_steps() {
+    {
+        let worker = ViewWorker::spawn("test-view").unwrap();
+        let platform = Platform::new(&[&worker]);
+        let host = platform.host(
+            &worker,
+            &source(
+                "function render(){const v=useLocal('v','');return h('page',{},h('scroll',{style:{flexGrow:1,flexBasis:0}},h('view',{style:{padding:16,paddingBottom:40,gap:16}},h('view',{style:{height:700}}),h('input',{'data-testid':'f',bind:v,'aria-label':'Amount',inputMode:'decimal',style:{height:48}}))))}",
+            ),
+            false,
+        );
+        if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+            (environment.width, environment.height) = (414 * 2, 896 * 2);
+            environment.value["insets"]["bottom"] = 34.into();
+        }
+        host.set_visible(true);
+        platform.settle(&[&host]);
+        let field = |host: &ViewHost<Fake>| {
+            let rect = host
+                .automation_request(
+                    &serde_json::json!({"op": "query", "css": "[data-testid=\"f\"]"}),
+                )
+                .unwrap()["rect"]
+                .clone();
+            rect["top"].as_f64().unwrap() as f32 + rect["height"].as_f64().unwrap() as f32
+        };
+        let keyboard = |host: &ViewHost<Fake>, height: f64| {
+            if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+                environment.value["keyboard"]["height"] = height.into();
+            }
+            host.environment_changed();
+        };
+        keyboard(&host, 293.8);
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 2);
+        let rect = host
+            .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"f\"]"}))
+            .unwrap()["rect"]
+            .clone();
+        let at = |key: &str| rect[key].as_f64().unwrap() as f32;
+        tap(
+            &host,
+            (at("left") + at("width") / 2.0) * 2.0,
+            (at("top") + at("height") / 2.0) * 2.0,
+        );
+        platform.settle(&[&host]);
+        // The platform focuses the field it raised the keyboard for, as adapters do.
+        let current: serde_json::Value =
+            serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+        let identity = current["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["test_id"] == "f")
+            .unwrap()["identity"]
+            .clone();
+        host.input(
+            serde_json::json!({"op": "focus", "identity": identity, "generation": current["generation"]})
+                .to_string(),
+            |_| {},
+        );
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 4);
+        let first = field(&host);
+        assert!(
+            first <= 896.0 - 293.8 - 12.0 + 0.5,
+            "clear of the keyboard: {first}"
+        );
+        keyboard(&host, 337.8);
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 4);
+        let second = field(&host);
+        assert!(
+            second <= 896.0 - 337.8 - 12.0 + 0.5 && second < first,
+            "clear of the taller keyboard, moved from the first reveal: {first} -> {second}"
+        );
+        run_frames(&platform, &host, 4);
+        assert_eq!(field(&host), second, "the reveal stays");
+    }
+}
+
 /// The device order: a tap focuses the field, then the keyboard's final frame arrives.
 #[test]
 fn a_tapped_field_clears_a_keyboard_that_rises_after_the_focus() {

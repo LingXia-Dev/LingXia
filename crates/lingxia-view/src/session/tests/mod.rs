@@ -1068,7 +1068,8 @@ fn viewport_reveal_preserves_editor_and_rolls_back_failed_frames() {
             frame.nodes[2].input.as_ref().unwrap().edit_token,
             Some(token)
         );
-        assert_eq!(frame.nodes[0].scroll.as_ref().unwrap().offset, 224.0);
+        // Revealed with the 12 pt room a focused field keeps from the keyboard.
+        assert_eq!(frame.nodes[0].scroll.as_ref().unwrap().offset, 236.0);
         assert!(
             page.edit_input(
                 token,
@@ -1115,7 +1116,7 @@ fn viewport_reveal_preserves_editor_and_rolls_back_failed_frames() {
         let back = page
             .prepare_native(width, (120.0 * scale) as u16, scale, false, None, Ok)
             .unwrap();
-        assert_eq!(back.nodes[0].scroll.as_ref().unwrap().offset, 224.0);
+        assert_eq!(back.nodes[0].scroll.as_ref().unwrap().offset, 236.0);
         assert!(back.nodes[2].input.as_ref().unwrap().geometry.is_some());
     }
 }
@@ -1155,7 +1156,8 @@ fn keyboard_occlusion_reveals_without_surface_resize() {
         frame.nodes[3].input.as_ref().unwrap().edit_token,
         Some(token)
     );
-    assert_eq!(frame.nodes[1].scroll.as_ref().unwrap().offset, 224.0);
+    // Revealed with the 12 pt room a focused field keeps from the keyboard.
+    assert_eq!(frame.nodes[1].scroll.as_ref().unwrap().offset, 236.0);
 }
 
 #[test]
@@ -1305,7 +1307,6 @@ fn autofocus_waits_for_visibility_and_does_not_repeat_after_blur() {
     let id = first.nodes[2].identity.clone();
     let scroll = first.nodes[0].scroll.as_ref().unwrap().id.clone();
     assert_eq!(first.nodes[2].input.as_ref().unwrap().edit_token, None);
-    assert!(page.focus_input(page.generation(), &id).unwrap().is_none());
     let visible = page
         .prepare_native(
             200,

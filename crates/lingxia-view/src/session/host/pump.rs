@@ -91,6 +91,9 @@ pub(super) struct Deferred {
 // An internal signal, never surfaced; the frame is simply skipped.
 use crate::session::FRAME_DECLINED as DECLINED;
 
+/// Declined frames retried at the next vsync with nothing else pending.
+const DECLINED_RETRIES: u32 = 4;
+
 fn micros(duration: Duration) -> u64 {
     u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
 }
@@ -456,7 +459,16 @@ impl<A: PlatformAdapter> Inner<A> {
                                 && !main.declined
                                 && !main.disposed;
                             let owed = std::mem::take(&mut main.retarget);
-                            (retry, (main.pending || owed) && !main.disposed)
+                            let pending = (main.pending || owed) && !main.disposed;
+                            // A declined frame may carry the only change (a reveal after the
+                            // keyboard): when nothing else asks for another, a few come on their own.
+                            main.declined_retries += 1;
+                            let alone = !retry
+                                && !pending
+                                && !main.declined
+                                && !main.disposed
+                                && main.declined_retries <= DECLINED_RETRIES;
+                            (retry || alone, pending)
                         };
                         if retry {
                             let host = inner.clone();
@@ -608,6 +620,7 @@ impl<A: PlatformAdapter> Inner<A> {
         });
         // A frame the target declines is a failed candidate: the session keeps its previous
         // commit (layout, viewport, generation) and the next attempt starts from it.
+        session.set_offsets_revision(request.revision);
         let prepared = session.prepare_view_sampled(
             width,
             height,
@@ -1086,6 +1099,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let mut main = self.main();
             main.snapshot = Some(snapshot.clone());
             main.presented_flight = flight;
+            main.declined_retries = 0;
             // Repainting an old frame (caret, scroll) is not recovery.
             let recovered = rebuild && main.failure.take().is_some();
             if recovered {

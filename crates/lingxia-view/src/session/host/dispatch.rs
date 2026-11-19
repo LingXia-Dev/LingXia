@@ -878,18 +878,23 @@ impl<A: PlatformAdapter> Inner<A> {
                 } else {
                     None
                 };
-                Ok((result, update))
+                Ok((result, update, session.wants_reveal()))
             },
             move |inner, result| {
                 inner.main().inputs_in_flight -= 1;
                 let Some(result) = result else {
                     return;
                 };
-                let (value, update, error) = match result {
-                    Ok((Ok(value), update)) => (Some(value), update, None),
-                    Ok((Err(error), update)) => (None, update, Some(error)),
-                    Err(error) => (None, None, Some(error)),
+                let (value, update, error, reveal) = match result {
+                    Ok((Ok(value), update, reveal)) => (Some(value), update, None, reveal),
+                    Ok((Err(error), update, reveal)) => (None, update, Some(error), reveal),
+                    Err(error) => (None, None, Some(error), false),
                 };
+                // A focus under a keyboard already up moves nothing else: its reveal needs a frame.
+                if reveal && inner.lifecycle.is_current_page(page) {
+                    inner.main().dirty = true;
+                    inner.schedule();
+                }
                 if let Some((connection, update)) = update {
                     inner.publish(connection, update);
                 }

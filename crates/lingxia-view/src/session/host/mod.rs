@@ -466,6 +466,8 @@ struct Main<F> {
     declined: bool,
     /// Consecutive refusals of a frame that had a newer one prepared behind it.
     stale_declines: u32,
+    /// Consecutive declines retried on their own; a presented frame resets it.
+    declined_retries: u32,
     /// The presenter keeps only its newest frame; nothing is prepared ahead any more.
     single_target: bool,
     /// A pointer is pressed on the page.
@@ -694,6 +696,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     chrome: None,
                     declined: false,
                     stale_declines: 0,
+                    declined_retries: 0,
                     single_target: false,
                     pointer_down: false,
                     last_build: Duration::ZERO,

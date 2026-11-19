@@ -82,6 +82,13 @@ pub struct ViewSession {
     input_hits: Option<crate::interaction::input_hits::InputHitMap>,
     viewport: Option<(u16, u16, f32)>,
     scroll_offsets: HashMap<String, f32>,
+    /// Offsets a reveal moved, held while the host's scroll revision stays the one the reveal
+    /// was made under: a frame requested before the host saw the reveal carries the old offset
+    /// and must not put the field back, while any scroll input since wins.
+    revealed_offsets: HashMap<String, f32>,
+    revealed_revision: Option<u64>,
+    /// The host's scroll input revision for the frame being prepared, when it has one.
+    offsets_revision: Option<u64>,
     lists: crate::layout::list_layout::Lists,
     images: HashMap<String, crate::scene::image::Bitmap>,
     image_sources: std::collections::HashSet<String>,
@@ -338,6 +345,9 @@ impl ViewSession {
             input_hits: None,
             viewport: None,
             scroll_offsets: HashMap::new(),
+            revealed_offsets: HashMap::new(),
+            revealed_revision: None,
+            offsets_revision: None,
             lists: HashMap::new(),
             images: HashMap::new(),
             image_sources: Default::default(),
@@ -400,6 +410,7 @@ impl ViewSession {
         self.input_hits = None;
         self.viewport = None;
         self.scroll_offsets.clear();
+        self.revealed_offsets.clear();
         self.images.clear();
         self.image_sources.clear();
         self.image_status.clear();

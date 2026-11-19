@@ -25,6 +25,8 @@ struct Entry {
     editor: Editor,
     enabled: bool,
     visible: bool,
+    /// Laid out with a size, though maybe scrolled or covered out of view.
+    sized: bool,
     autofocus: bool,
     /// A `focus()` request moves focus here even from another editor.
     refocus: bool,
@@ -143,6 +145,7 @@ impl Inputs {
                         editor: Editor::new(value).map_err(|e| format!("UI_INPUT: {e:?}"))?,
                         enabled: true,
                         visible: false,
+                        sized: false,
                         autofocus: record.number(field::AUTO_FOCUS) == Some(1.0),
                         refocus: false,
                         focus_request,
@@ -222,10 +225,12 @@ impl Inputs {
     ) -> Result<(), String> {
         for entry in self.entries.values_mut() {
             entry.visible = false;
+            entry.sized = false;
         }
         for node in &display.nodes {
             if let Some(entry) = self.entries.get_mut(&*node.identity) {
                 entry.visible = node.visible_bounds[2] > 0.0 && node.visible_bounds[3] > 0.0;
+                entry.sized = node.bounds[2] > 0.0 && node.bounds[3] > 0.0;
             }
         }
         // An editor scrolled out of view keeps focus and its keyboard, as on iOS and Android;
@@ -307,8 +312,10 @@ impl Inputs {
         })
     }
 
+    /// A field out of view takes focus too: a keyboard that rose before the focus can cover
+    /// the tapped field, and the focus reveals it.
     pub fn focus(&mut self, id: &str, renderer: &mut Renderer) -> Result<bool, String> {
-        if !self.entries.get(id).is_some_and(|e| e.enabled && e.visible) {
+        if !self.entries.get(id).is_some_and(|e| e.enabled && (e.visible || e.sized)) {
             return Ok(false);
         }
         if self.focused.as_deref() == Some(id) {
