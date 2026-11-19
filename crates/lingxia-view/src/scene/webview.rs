@@ -92,6 +92,8 @@ pub struct WebViewNode {
     pub in_top_layer: bool,
     pub degraded: bool,
     pub on_event: Option<u64>,
+    /// The page handles its own drags: one starting on it never passes to the View page.
+    pub handles_drags: bool,
 }
 
 /// Mounted `<webview>` geometry and state delivered to [`crate::platform::HostEvents::sync_webviews`].
@@ -103,6 +105,7 @@ pub struct WebViewMount {
     pub in_top_layer: bool,
     pub degraded: bool,
     pub accessibility_hidden: bool,
+    pub handles_drags: bool,
     /// Inner content box `[x, y, width, height]` in logical surface coordinates.
     pub bounds: [f32; 4],
     /// Intersection of `bounds` with ancestor scroll/viewport clips.
@@ -135,6 +138,7 @@ pub fn mount_of(node: &crate::scene::node::NodeSnapshot) -> Option<WebViewMount>
         in_top_layer: wv.in_top_layer,
         degraded: wv.degraded,
         accessibility_hidden: node.accessibility_hidden.unwrap_or(false) || wv.degraded,
+        handles_drags: wv.handles_drags,
         bounds,
         visible_bounds,
         clips: node.clips.clone(),

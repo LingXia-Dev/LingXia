@@ -270,6 +270,7 @@ fn sync_harmony_webviews_ui(
                 "clips": m.clips,
                 "degraded": m.degraded,
                 "accessibilityHidden": m.accessibility_hidden,
+                "handlesDrags": m.handles_drags,
             })
         })
         .collect();

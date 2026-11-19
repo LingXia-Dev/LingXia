@@ -60,3 +60,25 @@ fn host_inputs_outside_their_contract_fail_by_code() {
         "UI_FILTER"
     );
 }
+
+#[test]
+fn every_field_of_a_common_kind_decodes_without_an_arm_of_its_own() {
+    use crate::protocol::generated::{FIELDS, field, tag};
+    for (id, (name, kind)) in FIELDS.iter().enumerate() {
+        let (good, bad) = match *kind {
+            "flag" => (json!(1), json!("x")),
+            "handle" => (json!(7), json!("x")),
+            "element-id" => (json!("a"), json!("a b")),
+            "element-ids" => (json!("a b"), json!("")),
+            _ => continue,
+        };
+        let tag = if id == field::WEB_HANDLES_DRAGS {
+            tag::WEBVIEW
+        } else {
+            tag::COLUMN
+        };
+        let check = |value: &Value| super::super::values::check(tag, id, value);
+        assert!(check(&good).is_ok(), "{name}: {:?}", check(&good));
+        assert!(check(&bad).is_err(), "{name}");
+    }
+}

@@ -561,21 +561,16 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         | field::INTEREST_FOR
         | field::ARIA_ACTIVE_DESCENDANT
         | field::ARIA_ACTIONS
-        | field::ARIA_DESCRIBED_BY => ensure(
-            value.as_str().is_some_and(|ids| {
-                let count = ids.split(' ').count();
-                (1..=if matches!(
-                    id,
-                    field::ELEMENT_ID | field::INTEREST_FOR | field::ARIA_ACTIVE_DESCENDANT
-                ) {
-                    1
-                } else {
-                    8
-                })
-                    .contains(&count)
-                    && ids.split(' ').all(|id| (1..=256).contains(&id.len()))
-            }),
-            "UI_PROP: invalid element id",
+        | field::ARIA_DESCRIBED_BY => element_ids(
+            value,
+            if matches!(
+                id,
+                field::ELEMENT_ID | field::INTEREST_FOR | field::ARIA_ACTIVE_DESCENDANT
+            ) {
+                1
+            } else {
+                8
+            },
         ),
         field::DRAG => ensure(
             value
@@ -583,9 +578,6 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
                 .is_some_and(|source| source.len() <= 1024 && drag(source)),
             "UI_PROP: invalid drag",
         ),
-        field::ENABLED | field::DRAG_SCRIM | field::HINT | field::MIXED => {
-            ensure(flag(value), "UI_PROP: invalid handle or flag")
-        }
         // 1 takes close requests (Escape, back); 2 is a manual popover, which does not.
         field::TOP_LAYER => ensure(
             matches!(value.as_u64(), Some(1 | 2)),
@@ -613,6 +605,11 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             "state-style" => focus_style(value).map(drop),
             "part-style" => part_style(value).map(drop),
             "number" => number(id, value),
+            // A field of a common kind needs no arm of its own above.
+            "flag" => ensure(flag(value), "UI_PROP: invalid handle or flag"),
+            "handle" => ensure(handle(value), "UI_PROP: invalid handle or flag"),
+            "element-id" => element_ids(value, 1),
+            "element-ids" => element_ids(value, 8),
             // A popover's anchor: a node's native identity, or a CSS anchor name (`--…`).
             "anchor" => ensure(
                 value.as_str().is_some_and(|s| {
@@ -637,6 +634,16 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             }
         },
     }
+}
+
+fn element_ids(value: &Value, max: usize) -> Result<(), String> {
+    ensure(
+        value.as_str().is_some_and(|ids| {
+            (1..=max).contains(&ids.split(' ').count())
+                && ids.split(' ').all(|id| (1..=256).contains(&id.len()))
+        }),
+        "UI_PROP: invalid element id",
+    )
 }
 
 fn number(id: usize, value: &Value) -> Result<(), String> {

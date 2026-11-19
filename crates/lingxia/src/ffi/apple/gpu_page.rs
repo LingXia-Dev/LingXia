@@ -1165,6 +1165,7 @@ mod live {
                     "clips": clips,
                     "degraded": m.degraded,
                     "accessibilityHidden": m.accessibility_hidden,
+                    "handlesDrags": m.handles_drags,
                 })
             })
             .collect();
