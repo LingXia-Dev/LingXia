@@ -183,6 +183,11 @@ pub struct PageConfig {
     /// Lowers the lxapp's `maxTextScale` for this page; a higher value has no effect.
     #[serde(default)]
     pub max_text_scale: Option<f64>,
+
+    /// Dev sessions only: Logic never sends this page its first state, so the View shows the
+    /// slow-load recovery panel. Ignored outside `lingxia dev`.
+    #[serde(default)]
+    pub dev_hold_first_state: bool,
 }
 
 impl PageConfig {
@@ -355,6 +360,17 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("lxapp.json"), "{error}");
+    }
+
+    #[test]
+    fn a_page_may_ask_a_dev_session_to_hold_its_first_state() {
+        let held = PageConfig::from_value(
+            "pages/fault/index.json",
+            serde_json::json!({"devHoldFirstState": true}),
+        )
+        .unwrap();
+        assert!(held.dev_hold_first_state);
+        assert!(!PageConfig::default().dev_hold_first_state);
     }
 
     #[test]

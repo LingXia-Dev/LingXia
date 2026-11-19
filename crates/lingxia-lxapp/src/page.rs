@@ -279,6 +279,8 @@ pub struct PageState {
     pub(crate) orientation_override: OrientationOverride,
     /// The page's own `maxTextScale`, which may only lower the lxapp's.
     max_text_scale: Option<f64>,
+    /// `devHoldFirstState` from page.json; honoured only in a dev session.
+    dev_hold_first_state: bool,
     /// A full-screen video's lock; it outranks the page and app orientation while set.
     presentation_orientation: Option<PageOrientation>,
     // Query parameters
@@ -531,6 +533,7 @@ impl PageInstance {
             presentation_orientation: None,
             orientation_override: page_config.get_orientation_override(),
             max_text_scale: page_config.max_text_scale,
+            dev_hold_first_state: page_config.dev_hold_first_state,
             query: serde_json::json!({}),
         }
     }
@@ -1241,6 +1244,7 @@ impl PageInstance {
             state.enable_pull_down_refresh = page_config.is_pull_down_refresh_enabled();
             state.orientation_override = page_config.get_orientation_override();
             state.max_text_scale = page_config.max_text_scale;
+            state.dev_hold_first_state = page_config.dev_hold_first_state;
         }
         self.push_text_scale_limit();
     }
@@ -1606,6 +1610,16 @@ impl PageInstance {
                 warn!("Invalid View surface context: {}", error).with_appid(self.appid());
             }
         }
+    }
+
+    /// A dev session holds this page's first state back, to show the slow-load recovery panel.
+    pub(crate) fn holds_first_state(&self) -> bool {
+        crate::is_dev_session()
+            && self
+                .inner
+                .state
+                .lock()
+                .is_ok_and(|state| state.dev_hold_first_state)
     }
 
     /// Hand the View the largest text scale this page allows: the lxapp's, or the page's when lower.
@@ -3050,6 +3064,7 @@ mod tests {
             presentation_orientation: None,
             orientation_override: OrientationOverride::default(),
             max_text_scale: None,
+            dev_hold_first_state: false,
             query: serde_json::json!({}),
         }
     }

@@ -8,6 +8,7 @@ use crate::error;
 use crate::error::LxAppError;
 use crate::lxapp::LxApp;
 use crate::page::PageInstance;
+use crate::warn;
 use lingxia_webview::{DocumentGeneration, DocumentOutboundGate};
 use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, JsonToJSValue, RongJSError,
@@ -2013,6 +2014,11 @@ impl PageSvc {
         // A language change made while this document loaded was pushed
         // before its bridge existed; hand it the current one.
         self.page.push_display_language();
+        if self.page.holds_first_state() {
+            warn!("devHoldFirstState: holding this page's first state")
+                .with_appid(self.page.appid());
+            return Ok(());
+        }
         let mut state = self.state.lock().await;
 
         if std::mem::take(&mut state.initial_snapshot_pending) {

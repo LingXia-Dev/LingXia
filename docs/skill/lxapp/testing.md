@@ -582,6 +582,7 @@ lxdev test args --preset ci                 # show the effective arguments
 - **`fill` updates framework state**; assert the state, not only the DOM.
 - **`fill` on a GPU date or time input sets it as its picker would**: ISO text only, and a value past `min`/`max` fails naming the bound (`E_EDIT_FAILED: 'back' takes a date from 2026-12-18`).
 - **`type` into a GPU number field** fails at once with `E_EDIT_REFUSED` when the field's keyboard has no such key (`.` in `inputMode="numeric"`, a second `.` in a decimal field).
+- **To see the slow-load recovery panel**, set `"devHoldFirstState": true` in a page's `index.json`: under `lingxia dev` that page never gets its first state. Ignored outside a dev session.
 - **A GPU page whose first render threw, or that stopped rendering after repeated failures,** fails a locator or an action at once with code `E_PAGE_FAILED` and the error, not a timeout. A failure that still retries under its last frame keeps waiting.
 - **GPU `<List>` rows off screen** answer `testId()` locators as attached; actions scroll them in, and
   text assertions wait until the row draws.

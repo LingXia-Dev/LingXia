@@ -186,6 +186,7 @@ fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
                 "navigationBar",
                 "enablePullDownRefresh",
                 "pageOrientation",
+                "devHoldFirstState",
             ]
             .contains(&key.as_str())
             {
@@ -194,6 +195,15 @@ fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
                     relative.display()
                 ));
             }
+        }
+        if object
+            .get("devHoldFirstState")
+            .is_some_and(|held| !held.is_boolean())
+        {
+            return Err(anyhow!(
+                "{} devHoldFirstState: must be a boolean",
+                relative.display()
+            ));
         }
         if let Some(style) = object.get("navigationStyle")
             && !matches!(style.as_str(), Some("default" | "custom"))
