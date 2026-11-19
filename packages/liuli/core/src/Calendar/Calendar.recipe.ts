@@ -44,7 +44,7 @@ export const calendarRecipe = {
     // At least 40 px; at large text a two-digit day widens it and it stays square, up to its seventh of the row.
     base: 'min-w-10 min-h-10 max-w-full aspect-square px-1 items-center justify-center rounded-full transition-colors duration-fast ease-standard disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     idle: 'hover:bg-text/6 active:bg-text/10',
-    chosen: 'bg-accent-solid hover:bg-accent-solid/92 active:bg-accent-solid/88',
+    chosen: 'bg-accent-solid hover:bg-accent-solid-hover active:bg-accent-solid-pressed',
     today: 'inset-ring-1 inset-ring-line-strong',
   },
   dayLabel: {

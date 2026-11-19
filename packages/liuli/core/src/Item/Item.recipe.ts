@@ -90,8 +90,8 @@ export const itemRecipe = {
     base: 'w-[72px] items-center justify-center gap-0.5 px-1 transition-colors duration-fast ease-standard focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
     tone: {
       neutral: 'bg-text/8 text-text hover:bg-text/12 active:bg-text/16',
-      accent: 'bg-accent-solid text-on-accent-solid hover:bg-accent-solid/92 active:bg-accent-solid/88',
-      danger: 'bg-danger-solid text-on-danger-solid hover:bg-danger-solid/92 active:bg-danger-solid/88',
+      accent: 'bg-accent-solid text-on-accent-solid hover:bg-accent-solid-hover active:bg-accent-solid-pressed',
+      danger: 'bg-danger-solid text-on-danger-solid hover:bg-danger-solid-hover active:bg-danger-solid-pressed',
     } satisfies Record<ItemSwipeTone, string>,
   },
   actionIcon: {

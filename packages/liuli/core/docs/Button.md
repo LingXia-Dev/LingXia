@@ -204,7 +204,7 @@ export function Floating() {
 - `className`: Merged last, so its classes win over the recipe's.
 - The recipe, `buttonRecipe` from `@liulidesign/core/Button/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--spacing-control-lg`, `--text-footnote`, `--text-body`, `--text-callout`, `--shadow-raised`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-solid`, `danger-solid`, `focus`, `on-accent-solid`, `on-danger-solid`, `surface`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-solid`, `accent-solid-hover`, `accent-solid-pressed`, `danger-solid`, `danger-solid-hover`, `danger-solid-pressed`, `focus`, `on-accent-solid`, `on-danger-solid`, `surface`, `text`, `text-muted`.
 
 ## Accessibility
 
