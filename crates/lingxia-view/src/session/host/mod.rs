@@ -1649,6 +1649,13 @@ impl<A: PlatformAdapter> ViewHost<A> {
         };
         let (changed, restart) = {
             let mut main = self.inner.main();
+            // A pin the cap would clamp would test a text size the page never shows.
+            let max = main.host_environment.max_text_scale();
+            if let Some(scale) = test.and_then(|test| test.text_scale).filter(|scale| *scale > max) {
+                return Err(format!(
+                    "E_INVALID_ARG: environment textScale {scale} is above this page's maxTextScale {max} (lxapp.json, default 2); raise maxTextScale to test it"
+                ));
+            }
             let was_still = main.host_environment.still();
             let changed = main.host_environment.set_test(test);
             let still = main.host_environment.still();

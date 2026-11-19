@@ -111,6 +111,16 @@ fn a_test_override_pins_the_text_scale_and_the_contrast() {
         assert!(request(bad).unwrap_err().starts_with("E_INVALID_ARG"));
     }
 
+    // Above the page's maxTextScale (2 by default) a pin fails rather than clamping unseen.
+    let above = request(serde_json::json!({"textScale": 2.5})).unwrap_err();
+    assert!(
+        above.starts_with("E_INVALID_ARG") && above.contains("maxTextScale 2"),
+        "{above}"
+    );
+    host.update_environment(r#"{"kind":"textScaleLimit","max":3}"#)
+        .unwrap();
+    request(serde_json::json!({"textScale": 2.5})).unwrap();
+
     let pinned = request(serde_json::json!({"textScale": 2, "contrast": "high"})).unwrap();
     assert_eq!(pinned["contrast"], "high");
     platform.settle(&[&host]);
@@ -121,7 +131,10 @@ fn a_test_override_pins_the_text_scale_and_the_contrast() {
         "text at twice its size: {plain} -> {doubled}"
     );
     let read = request(serde_json::json!({"read": true})).unwrap();
-    assert_eq!(read["textScale"], serde_json::json!([[0.0, 0.0], [16384.0, 32768.0]]));
+    assert_eq!(
+        read["textScale"],
+        serde_json::json!([[0.0, 0.0], [16384.0, 32768.0]])
+    );
 
     request(serde_json::json!({"clear": true})).unwrap();
     platform.settle(&[&host]);

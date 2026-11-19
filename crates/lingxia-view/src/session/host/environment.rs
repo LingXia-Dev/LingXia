@@ -178,6 +178,11 @@ impl HostEnvironment {
         std::mem::replace(&mut self.test, test) != test
     }
 
+    /// The largest text scale this page allows.
+    pub(super) fn max_text_scale(&self) -> f32 {
+        self.max_text_scale.unwrap_or(DEFAULT_MAX_TEXT_SCALE)
+    }
+
     pub(super) fn test(&self) -> Option<TestOverride> {
         self.test
     }
@@ -337,7 +342,7 @@ impl HostEnvironment {
     /// Caps the measured text size mapping at the allowed factor. Capped at its points, the
     /// mapping stays rising and stays under the cap between them.
     fn limit_text_scale(&self, env: &mut serde_json::Value) {
-        let max = self.max_text_scale.unwrap_or(DEFAULT_MAX_TEXT_SCALE);
+        let max = self.max_text_scale();
         let Some(rows) = env
             .get_mut("textScale")
             .and_then(|rows| rows.as_array_mut())

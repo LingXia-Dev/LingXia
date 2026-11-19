@@ -114,7 +114,7 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 | Toasts, confirm dialogs, action sheets | `t.app.dialogs`; [Dialogs](#dialogs) |
 | GPU page frame pacing | `t.app.metrics({ windowMs? })`: frame time p50/p95/p99 ms, `dropped`, `jank`, `inputToPresent`, `firstPresentMs`, `revealMs`, `firstPresentAt`, `reveal` counters; `t.app.hud(true)` draws them over the page |
 | Compare screens against baselines | `t.visual.shot(name, { mask })`; [Visual baselines](#visual-baselines) |
-| GPU page look for screenshots | `t.app.view.environment({ theme: 'dark', still: true })` pins theme and stills motion for this spec only (device settings untouched; `null` clears); `textScale: 1.3` (0.5 to 3) and `contrast: 'high'` pin the system text size and contrast the same way; `t.app.view.settled()` waits until no frame presents for 500 ms |
+| GPU page look for screenshots | `t.app.view.environment({ theme: 'dark', still: true })` pins theme and stills motion for this spec only (device settings untouched; `null` clears); `textScale: 1.3` (0.5 up to the lxapp's `maxTextScale`, default 2; above it fails) and `contrast: 'high'` pin the system text size and contrast the same way; `t.app.view.settled()` waits until no frame presents for 500 ms |
 | Inputs | `t.arg('k')` from `--arg` / `--secret-arg`; [Secrets](#secrets) |
 | Cleanup | `t.defer(fn)` (LIFO, always runs); `spec.afterEach` |
 | Restore state before each attempt | `spec.reset(async (t) => { ... })` (required by `--retries`) |
