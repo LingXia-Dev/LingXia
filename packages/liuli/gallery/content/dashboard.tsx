@@ -78,7 +78,8 @@ export function Content() {
   const figures = [euros(revenue), grouped(orders), `€${grouped(revenue / orders, 2)}`, `${refundRate.toFixed(1)}%`];
   const tile = (figure.value?.width ?? 0) + 26;
   const perRow = isWide && width >= tile * 4 + 36 ? 4 : width >= tile * 2 + 12 ? 2 : 1;
-  const spark = (values: readonly number[], label: string) => <Sparkline values={values} variant="area" isSmooth hasEndDot label={label} />;
+  // Each tile shows its trend, so its sparkline fits its own range: an area would be measured from zero.
+  const spark = (values: readonly number[], label: string) => <Sparkline values={values} isSmooth hasEndDot label={label} />;
 
   return (
     <view box={frame} className="gap-5">

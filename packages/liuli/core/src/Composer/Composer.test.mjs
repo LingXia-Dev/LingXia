@@ -95,3 +95,10 @@ test('Attached: what is attached sits inside the surface over the text, and can 
   assert.equal(screen.queryAll(node => node.text === 'Route.gpx').length, 0);
   screen.getByText('Packing list.pdf');
 });
+
+test('the send button is concentric with the box: its corner is the box\'s less the padding', async () => {
+  const screen = await renderExample('Composer/Composer', 'Reply');
+  const send = screen.getByTestId('reply-send');
+  const box = screen.queryAll(node => node.children.includes(send))[0];
+  assert.deepEqual([box.props.radius, box.props.paddingTop, send.props.radius], [14, 6, 8]);
+});
