@@ -70,14 +70,25 @@ export function Lead({ text, bare = false, children }: { text: string; bare?: bo
 
 /** The home page's opening block. */
 export function Masthead({ version, status }: { version: string; status: string }) {
+  const { env } = useView();
+  // The title row shares the top with the host's capsule: a long title stops 8 short of it, on the
+  // side it floats (less the page's 16 gutter). Nothing else sits in that band.
+  const capsule = env.capsule;
+  const clear = capsule === null
+    ? undefined
+    : capsule.x > env.viewport.width / 2
+      ? { paddingRight: Math.max(0, env.viewport.width - capsule.x - 16 + 8) }
+      : { paddingLeft: Math.max(0, capsule.x + capsule.width - 16 + 8) };
   return (
     <view className="gap-1">
-      <view className="flex-row items-baseline gap-2">
+      <view className="flex-row items-baseline gap-2" style={clear}>
         <text className="text-display font-semibold tracking-tight text-text">Liuli</text>
         <text className="text-title text-muted">琉璃</text>
-        <text className="ms-auto text-footnote text-faint">{`${version} · ${status}`}</text>
       </view>
-      <text className="text-body text-muted">LingXia's design system for GPU pages.</text>
+      <view className="flex-row flex-wrap items-baseline gap-x-2">
+        <text className="text-body text-muted">LingXia's design system for GPU pages.</text>
+        <text className="text-footnote text-faint" data-testid="masthead-version">{`${version} · ${status}`}</text>
+      </view>
     </view>
   );
 }
