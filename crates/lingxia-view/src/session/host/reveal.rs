@@ -26,6 +26,8 @@ pub(super) struct Reveal {
     window_covered: bool,
     /// Covered, yet something still reads the page: looping animations run on.
     window_watched: bool,
+    /// The surface refused a frame while covered: presents wait until the window shows.
+    covered_refused: bool,
     deadlines: u64,
     watchdogs: u64,
     /// Why and when (since the platform clock's origin) the page was last revealed.
@@ -133,7 +135,8 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     /// A window other windows cover still has a live surface: its frames tick at the refresh
-    /// interval and count, finite animations run to completion and looping keyframe ones park.
+    /// interval, count and present (until the surface refuses one), finite animations run to
+    /// completion and looping keyframe ones park.
     pub(super) fn window_covered(self: &Arc<Self>, covered: bool, watched: bool) {
         self.main().reveal.window_watched = watched;
         self.set_window(covered, covered);
@@ -147,6 +150,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let was_covered = reveal.window_covered;
             reveal.window_hidden = hidden;
             reveal.window_covered = covered;
+            reveal.covered_refused = false;
             (changed, was_covered, covered && !reveal.window_watched)
         };
         if !changed {
@@ -181,6 +185,19 @@ impl<A: PlatformAdapter> Inner<A> {
 
     pub(super) fn window_hidden(&self) -> bool {
         self.main().reveal.window_hidden
+    }
+
+    /// Frames complete without presenting: the window stopped, or its covered surface
+    /// refused one. A covered window still presents, since platforms report windows covered
+    /// that are on screen (macOS occlusion of an app that is not active).
+    pub(super) fn presents_held(&self) -> bool {
+        let reveal = &self.main().reveal;
+        reveal.window_hidden && (!reveal.window_covered || reveal.covered_refused)
+    }
+
+    pub(super) fn covered_refusal(&self) {
+        let reveal = &mut self.main().reveal;
+        reveal.covered_refused |= reveal.window_covered;
     }
 
     /// Nobody sees or reads the page: its countdowns hold.

@@ -2218,6 +2218,80 @@ fn a_covered_window_completes_frames_on_the_refresh_tick_and_counts_them() {
 }
 
 #[test]
+fn a_window_reported_covered_still_presents_and_a_stopped_one_counts_held_frames() {
+    let worker = ViewWorker::spawn("test-window-covered-presents").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    platform.settle(&[&host]);
+    let frame = |key: &str| {
+        host.automation_request(&serde_json::json!({"op": "frame"}))
+            .unwrap()[key]
+            .as_u64()
+            .unwrap()
+    };
+    // macOS reports a window on screen as occluded while its app is not active.
+    host.window_covered(true);
+    let shown = presents(&host);
+    let frames = frame("frames");
+    resize(&host, 180);
+    host.surface_changed();
+    platform.settle(&[&host]);
+    platform.advance(Duration::from_millis(17));
+    platform.settle(&[&host]);
+    assert!(
+        presents(&host) > shown,
+        "a covered window's frame reaches the screen"
+    );
+    assert!(frame("frames") > frames);
+    assert_eq!(frame("held"), 0);
+
+    // A stopped window holds: its frames complete but neither show nor count as presented.
+    host.window_covered(false);
+    host.window_visible(false);
+    let shown = presents(&host);
+    let frames = frame("frames");
+    resize(&host, 160);
+    host.surface_changed();
+    platform.settle(&[&host]);
+    assert_eq!(presents(&host), shown);
+    assert_eq!(
+        frame("frames"),
+        frames,
+        "a held frame is not a presented one"
+    );
+    assert!(frame("held") > 0);
+}
+
+#[test]
+fn a_covered_window_whose_surface_refuses_a_frame_holds_until_it_shows_again() {
+    let worker = ViewWorker::spawn("test-window-covered-refused").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = costly_spinner(&platform, &worker, false);
+    host.window_covered_watched(true);
+    run_timed(&platform, &host, 10);
+    let shown = presents(&host);
+    assert!(shown > 0, "a watched covered window presents");
+    host.adapter()
+        .costs
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .decline = 1;
+    run_timed(&platform, &host, 20);
+    let held = presents(&host);
+    run_timed(&platform, &host, 20);
+    assert_eq!(
+        presents(&host),
+        held,
+        "after a refusal the covered window holds"
+    );
+    host.window_covered_watched(false);
+    run_timed(&platform, &host, 10);
+    assert!(presents(&host) > held, "shown again, it presents");
+}
+
+#[test]
 fn a_covered_window_parks_a_looping_animation_unless_it_is_watched() {
     let worker = ViewWorker::spawn("test-window-watched").unwrap();
     let platform = Platform::new(&[&worker]);

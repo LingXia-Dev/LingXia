@@ -516,7 +516,8 @@ impl HostEvents for AppleAdapter {
         }
         log::debug!(
             target: "lingxia_view",
-            "present token={} generation={} size={}x{} workerMs={} nodes={}",
+            "{} token={} generation={} size={}x{} workerMs={} nodes={}",
+            if timing.held { "held" } else { "present" },
             self.token,
             frame.generation.get(),
             frame.width,

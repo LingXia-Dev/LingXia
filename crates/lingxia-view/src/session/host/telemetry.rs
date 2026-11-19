@@ -15,6 +15,8 @@ pub(super) struct Telemetry {
     first_present: Option<Duration>,
     last_present: Option<Duration>,
     frames: u64,
+    /// Frames completed while the window held presents.
+    held: u64,
     commit: u64,
     queue: VecDeque<u64>,
     queue_max: u64,
@@ -77,10 +79,15 @@ impl Telemetry {
         snapshot: &FrameSnapshot,
         timing: &FrameTiming,
     ) {
+        self.commit = snapshot.generation.get();
+        // Only frames on screen count as presented: a page that only ever held shows nothing.
+        if timing.held {
+            self.held += 1;
+            return;
+        }
         self.first_present.get_or_insert(at);
         self.last_present = Some(at);
         self.frames += 1;
-        self.commit = snapshot.generation.get();
         if self.queue.len() == SAMPLES {
             self.queue.pop_front();
         }
@@ -295,6 +302,7 @@ impl<A: PlatformAdapter> Inner<A> {
             "firstPresentAt": telemetry.since_open(telemetry.first_present),
             "lastPresentAt": telemetry.since_open(telemetry.last_present),
             "frames": telemetry.frames,
+            "held": telemetry.held,
             "workerQueueUs": {
                 "last": telemetry.queue.back().copied().unwrap_or(0),
                 "p50": p50,

@@ -383,12 +383,18 @@ final class GpuWebViewContainer: UIView {
 #elseif os(macOS)
 @MainActor
 final class GpuMetalSurfaceView: NSView {
+    /// The view hosts its layer, whose delegate answers no window: wgpu then never refuses a
+    /// drawable over the window's occlusion state, which AppKit reports for a window on screen
+    /// while its app is not active. The page decides when to present.
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        let metal = CAMetalLayer()
+        metal.isOpaque = true
+        metal.maximumDrawableCount = 3
+        metal.contentsGravity = .topLeft
+        metal.delegate = GpuSurfaceLayerDelegate.shared
+        layer = metal
         wantsLayer = true
-        layerContentsRedrawPolicy = .never
-        layer?.contentsGravity = .topLeft
-        layer?.isOpaque = true
     }
 
     @available(*, unavailable)
@@ -396,14 +402,14 @@ final class GpuMetalSurfaceView: NSView {
 
     override var isFlipped: Bool { true }
 
-    override func makeBackingLayer() -> CALayer {
-        let layer = CAMetalLayer()
-        layer.isOpaque = true
-        layer.maximumDrawableCount = 3
-        return layer
-    }
-
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// A hosted layer's delegate: no implicit animations, and no window for wgpu to read.
+private final class GpuSurfaceLayerDelegate: NSObject, CALayerDelegate, @unchecked Sendable {
+    static let shared = GpuSurfaceLayerDelegate()
+    @objc var window: AnyObject? { nil }
+    func action(for layer: CALayer, forKey event: String) -> CAAction? { NSNull() }
 }
 
 @MainActor

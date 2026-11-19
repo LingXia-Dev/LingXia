@@ -815,7 +815,7 @@ impl<A: PlatformAdapter> Inner<A> {
         self.flush_webviews();
         // A window nothing of which shows still completes its frames, so the page's lifecycle,
         // hit-testing and readback advance, but nothing reaches a drawable that may not return.
-        let hidden = self.window_hidden();
+        let hidden = self.presents_held();
         let paced = self.paced_hidden();
         let vsync = Instant::now();
         let at = self.adapter.now();
@@ -910,6 +910,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 let main = self.main();
                 main.prepared.is_some() || main.in_flight.is_some_and(|f| f.ahead)
             };
+            timing.held = hidden;
             let shown = if hidden {
                 Ok(true)
             } else {
@@ -946,6 +947,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 }
                 Ok(false) => {
                     retry = true;
+                    self.covered_refusal();
                     self.main().release_input(pacing.input);
                     if newer {
                         self.stale_decline();
@@ -1041,6 +1043,9 @@ impl<A: PlatformAdapter> Inner<A> {
                 snapshot, surface, page, revision, offsets, timing, vsync, pacing, flight,
             );
         } else {
+            if !shown {
+                self.covered_refusal();
+            }
             // Frames built on the dropped one cannot present either.
             let mut main = self.main();
             main.release_input(deferred.pacing.input);

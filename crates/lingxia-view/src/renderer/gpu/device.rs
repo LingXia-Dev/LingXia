@@ -316,6 +316,14 @@ fn configure(
 ) -> Result<(), String> {
     let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     surface.configure(device, config);
+    // A covered window presents too, and its drawables may not come back: an acquire then
+    // times out (refused, and the page holds) rather than blocking every page's render thread.
+    #[cfg(target_vendor = "apple")]
+    // SAFETY: only a layer property is set; the surface stays alive for the call.
+    if let Some(hal) = unsafe { surface.as_hal::<wgpu::hal::api::Metal>() } {
+        let layer = hal.render_layer().lock();
+        let _: () = unsafe { objc2::msg_send![&**layer, setAllowsNextDrawableTimeout: true] };
+    }
     match pollster::block_on(scope.pop()) {
         None => Ok(()),
         Some(error) => Err(format!("{SURFACE_REFUSED}: {error}")),

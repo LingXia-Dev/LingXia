@@ -146,6 +146,8 @@ pub struct FrameTiming {
     pub main_work_us: u64,
     /// An adapter that draws off the worker: scene, encode, submit and present µs.
     pub gpu_us: [u64; 4],
+    /// Completed while the window held presents: it never reached the screen.
+    pub held: bool,
 }
 
 /// Which host message recovery chrome shows.

@@ -234,11 +234,13 @@ final class GpuPageView: NSView {
         layer.drawableSize = CGSize(width: 1, height: 1)
     }
 
-    /// Core holds frames while nothing of the window can be seen; a minimized or hidden window
-    /// also releases its presenter.
+    /// A covered window's page keeps presenting on a slower tick; a minimized, ordered-out or
+    /// hidden window releases its presenter.
     @objc private func visibilityChanged() {
         guard let window else { return }
-        let shown = !window.isMiniaturized && !NSApp.isHidden
+        let shown = window.isVisible && !window.isMiniaturized && !NSApp.isHidden
+        // Occlusion only paces the page: AppKit reports a window on screen as occluded while
+        // its app is not active, and the page still presents there.
         let visible = shown && window.occlusionState.contains(.visible)
         // A frame asked of a display link that has just stopped comes now instead.
         if !visible, #available(macOS 14.0, *), let link = vsyncLink as? CADisplayLink, !link.isPaused {
