@@ -391,7 +391,7 @@ fn attach_after(
                     Target::Unavailable
                 }
             };
-            host.surface_changed();
+            host.surface_attached();
         }));
     });
 }

@@ -749,6 +749,13 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.sync_autoclose();
     }
 
+    /// A new presentation target bound after [`Self::surface_lost`]: platforms create one only
+    /// for a showing window, so this also ends a window stop whose start never arrived.
+    pub fn surface_attached(&self) {
+        self.inner.surface_returned();
+        self.surface_changed();
+    }
+
     /// The presentation target was replaced or resized. A frame being built for the same size,
     /// scale and environment still presents; one built for other inputs is rebuilt.
     pub fn surface_changed(&self) {
@@ -823,6 +830,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
     pub fn surface_lost(&self) {
         // Off screen like a hidden page: its videos pause and keep their place.
         self.inner.hide_videos(true);
+        self.inner.note_surface_lost();
         self.inner.lifecycle.invalidate_surface();
         self.inner.main().presented_environment = None;
         self.inner.park_animations();

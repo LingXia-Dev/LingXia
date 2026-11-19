@@ -28,6 +28,8 @@ pub(super) struct Reveal {
     window_watched: bool,
     /// The surface refused a frame while covered: presents wait until the window shows.
     covered_refused: bool,
+    /// The surface went away; one coming back means the window shows again.
+    surface_lost: bool,
     deadlines: u64,
     watchdogs: u64,
     /// Why and when (since the platform clock's origin) the page was last revealed.
@@ -204,6 +206,25 @@ impl<A: PlatformAdapter> Inner<A> {
     pub(super) fn window_unwatched(&self) -> bool {
         let reveal = &self.main().reveal;
         reveal.window_hidden && !(reveal.window_covered && reveal.window_watched)
+    }
+
+    pub(super) fn note_surface_lost(&self) {
+        self.main().reveal.surface_lost = true;
+    }
+
+    /// A stop whose start never arrived ends with a returning surface, rather than hiding the
+    /// page's videos and holding its presents for good.
+    pub(super) fn surface_returned(self: &Arc<Self>) {
+        let restart = {
+            let mut main = self.main();
+            std::mem::take(&mut main.reveal.surface_lost)
+                && main.reveal.window_hidden
+                && !main.reveal.window_covered
+        };
+        if restart {
+            log::info!(target: "lingxia_view", "window start inferred from a returning surface");
+            self.window_visible(true);
+        }
     }
 
     /// Stopped, not merely covered: a covered window's videos keep playing.

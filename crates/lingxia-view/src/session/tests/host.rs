@@ -6196,3 +6196,32 @@ fn webview_host_coalesces_messages_caps_fifo_queue_and_reconciles_fullscreen_wit
         cleared_before + 1
     );
 }
+
+#[test]
+fn a_surface_bound_after_a_stop_whose_start_never_came_shows_the_page_again() {
+    let worker = ViewWorker::shared("test:stop-without-start").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'S')}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let presented = || host.adapter().log.lock().unwrap().presented.len();
+    // Backgrounded: the window stops and its surface goes; the start is never delivered.
+    host.window_visible(false);
+    host.surface_lost();
+    host.surface_changed();
+    host.redraw();
+    platform.settle(&[&host]);
+    let stopped = presented();
+    host.redraw();
+    platform.settle(&[&host]);
+    assert_eq!(presented(), stopped, "a resize alone does not end the stop");
+    // Foregrounded: a new surface binds, which platforms do only for a showing window.
+    host.surface_attached();
+    host.redraw();
+    platform.settle(&[&host]);
+    assert!(presented() > stopped, "the page presents again");
+}
