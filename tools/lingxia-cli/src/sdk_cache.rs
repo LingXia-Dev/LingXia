@@ -452,7 +452,11 @@ fn build_in_checkout(
     }
     let packages = checkout.join("packages");
     if !packages.join("node_modules").is_dir() {
-        run_in(&packages, "npm", &["ci", "--no-audit", "--no-fund"])?;
+        run_in(
+            &packages,
+            crate::npm::command(),
+            &["ci", "--no-audit", "--no-fund"],
+        )?;
     }
     let out = checkout.join(SOURCE_BUILD_OUT);
     let _ = fs::remove_dir_all(&out);
