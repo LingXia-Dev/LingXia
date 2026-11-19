@@ -143,7 +143,7 @@ export function Sizes() {
 | text | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | placeholder, magnifier and results line | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 | results line on the page | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
-| field edge | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| field edge | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

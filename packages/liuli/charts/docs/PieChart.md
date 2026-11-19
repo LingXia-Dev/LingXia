@@ -172,8 +172,8 @@ export function Merged() {
 | third mark colour, straight on the page | `chart-3` on `canvas` | 3:1 | 4.07:1 | 8.39:1 |
 | title and figures | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | description, labels and legend | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
-| a merged remainder slice | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
-| a merged remainder slice, straight on the page | `line-strong` on `canvas` | 3:1 | 3.42:1 | 4.07:1 |
+| a merged remainder slice | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
+| a merged remainder slice, straight on the page | `line-strong` on `canvas` | 3:1 | 3.24:1 | 3.90:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

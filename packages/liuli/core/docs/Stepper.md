@@ -108,7 +108,7 @@ export function Across() {
 | --- | --- | --- | --- | --- |
 | tick on a finished step | `on-accent-solid` on `accent-solid` | 3:1 | 5.62:1 | 4.80:1 |
 | number and ring of the step in progress | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
-| ring of a step ahead | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| ring of a step ahead | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | label of a step ahead, numbers and second lines | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 

@@ -143,7 +143,7 @@ export function StateMixed() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| box boundary, unchecked | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| box boundary, unchecked | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
 | box fill, checked | `accent-solid` on `surface` | 3:1 | 5.62:1 | 3.50:1 |
 | check mark | `on-accent-solid` on `accent-solid` | 3:1 | 5.62:1 | 4.80:1 |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |

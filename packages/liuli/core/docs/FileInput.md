@@ -129,7 +129,7 @@ export function Empty() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| button boundary | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| button boundary | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
 | file name | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | failure line | `danger` on `surface` | 4.5:1 | 5.21:1 | 5.42:1 |
 

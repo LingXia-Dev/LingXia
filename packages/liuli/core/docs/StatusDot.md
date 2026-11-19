@@ -142,7 +142,7 @@ export function DotOnly() {
 | hue 6 dot | `hue-6` on `surface` | 3:1 | 6.42:1 | 5.15:1 |
 | hue 7 dot | `hue-7` on `surface` | 3:1 | 7.35:1 | 7.44:1 |
 | hue 8 dot | `hue-8` on `surface` | 3:1 | 3.72:1 | 5.44:1 |
-| neutral ring | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| neutral ring | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

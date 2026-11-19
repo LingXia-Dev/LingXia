@@ -161,7 +161,7 @@ export function Chinese() {
 | chosen day | `on-accent-solid` on `accent-solid` | 4.5:1 | 5.62:1 | 4.80:1 |
 | day inside a span | `text` on `accent-soft` | 4.5:1 | 14.25:1 | 11.26:1 |
 | weekday names | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
-| ring on today | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| ring on today | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

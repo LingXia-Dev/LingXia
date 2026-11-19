@@ -144,7 +144,7 @@ export function Comment() {
 | inline code on its tint | `text` on `text/8` over `surface` | 4.5:1 | 13.91:1 | 11.29:1 |
 | code block on its tint | `text` on `text/6` over `surface` | 4.5:1 | 14.47:1 | 11.94:1 |
 | ticked task mark | `on-accent-solid` on `accent-solid` | 3:1 | 5.62:1 | 4.80:1 |
-| empty task mark | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| empty task mark | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

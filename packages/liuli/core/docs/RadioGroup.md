@@ -190,7 +190,7 @@ export function Inline() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| circle boundary, not chosen | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| circle boundary, not chosen | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
 | circle fill, chosen | `accent-solid` on `surface` | 3:1 | 5.62:1 | 3.50:1 |
 | chosen card edge | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 

@@ -222,7 +222,7 @@ export function Floating() {
 | primary label | `on-accent-solid` on `accent-solid` | 4.5:1 | 5.62:1 | 4.80:1 |
 | destructive label | `on-danger-solid` on `danger-solid` | 4.5:1 | 5.21:1 | 4.82:1 |
 | secondary label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
-| secondary boundary | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| secondary boundary | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
 | link label | `accent` on `canvas` | 4.5:1 | 5.25:1 | 6.83:1 |
 | disabled label on its 6% ink fill, on the page | `text-muted` on `text/6` over `canvas` | 4.5:1 | 4.90:1 | 6.45:1 |
 | disabled label on its 6% ink fill, on a card | `text-muted` on `text/6` over `surface` | 4.5:1 | 5.24:1 | 5.72:1 |

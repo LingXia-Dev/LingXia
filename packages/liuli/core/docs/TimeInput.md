@@ -122,7 +122,7 @@ export function Sizes() {
 | --- | --- | --- | --- | --- |
 | value | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | placeholder | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
-| box boundary | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| box boundary | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
 | end mark | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
