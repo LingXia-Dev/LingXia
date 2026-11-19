@@ -991,4 +991,8 @@ fn an_editor_reads_the_keyboard_it_asks_for_as_inputmode() {
     assert_eq!(mode("mail").as_deref(), Some("email"));
     assert_eq!(mode("name"), None, "plain text asks for nothing");
     assert_eq!(mode("day"), None, "a date field has a picker, not a keyboard");
+    // The tree dump carries the same key.
+    let tree = i.automation_tree().unwrap().to_string();
+    assert!(tree.contains(r#""inputmode":"numeric""#), "{tree}");
+    assert_eq!(tree.matches(r#""inputmode""#).count(), 2, "{tree}");
 }

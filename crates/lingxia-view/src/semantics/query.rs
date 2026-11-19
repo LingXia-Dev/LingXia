@@ -417,19 +417,24 @@ fn attributes(node: &NodeSnapshot) -> Value {
     if let Some(text) = node.range.as_ref().and_then(|range| range.text.as_ref()) {
         out.insert("aria-valuetext".into(), json!(text));
     }
-    // The keyboard an editor asks for, by its HTML `inputmode` name; plain text has none.
-    let mode = node.input.as_ref().and_then(|input| match input.keyboard.as_str() {
-        "number" => Some("numeric"),
-        "decimal" => Some("decimal"),
-        "phone" => Some("tel"),
-        "email" => Some("email"),
-        "search" if node.tag != "search" => Some("search"),
-        _ => None,
-    });
-    if let Some(mode) = mode {
+    if let Some(mode) = input_mode(node) {
         out.insert("inputmode".into(), json!(mode));
     }
     Value::Object(out)
+}
+
+/// The keyboard an editor asks for, by its HTML `inputmode` name; plain text has none.
+fn input_mode(node: &NodeSnapshot) -> Option<&'static str> {
+    node.input
+        .as_ref()
+        .and_then(|input| match input.keyboard.as_str() {
+            "number" => Some("numeric"),
+            "decimal" => Some("decimal"),
+            "phone" => Some("tel"),
+            "email" => Some("email"),
+            "search" if node.tag != "search" => Some("search"),
+            _ => None,
+        })
 }
 
 /// One match in the WebView query payload shape.
@@ -512,6 +517,8 @@ pub fn describe(
         "enabled": semantic.as_ref().is_none_or(|s| s.enabled),
         "editable": input.is_some_and(|i| i.enabled),
         "focused": semantic.as_ref().is_some_and(|s| s.focused),
+        // A focused editor's UTF-16 [start, end]; equal at a caret.
+        "selection": semantic.as_ref().and_then(|s| s.text_field.as_ref()?.selection),
         // The states `aria-*` sets, as the semantics tree reads them; null where the element has none.
         "checked": if node.mixed {
             json!("mixed")
@@ -633,6 +640,9 @@ pub fn tree(projection: &Projection) -> Value {
         }
         if let Some(autocomplete) = &node.autocomplete {
             out.insert("autocomplete".into(), json!(autocomplete));
+        }
+        if let Some(mode) = input_mode(&projection.frame.nodes[node.index]) {
+            out.insert("inputmode".into(), json!(mode));
         }
         if let Some(field) = &node.text_field {
             out.insert("value".into(), json!(field.text));
