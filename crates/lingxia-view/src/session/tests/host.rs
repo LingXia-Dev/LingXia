@@ -38,7 +38,6 @@ struct Log {
     messages: Vec<(u64, String)>,
     signals: Vec<(u64, StateSignal)>,
     recovery: Vec<Option<Failure>>,
-    overdue: Vec<bool>,
     warnings: Vec<String>,
     loaded: usize,
     clicked: usize,
@@ -374,9 +373,6 @@ impl HostEvents for Fake {
     }
     fn recovery(&self, failure: Option<&Failure>) {
         self.main().recovery.push(failure.cloned());
-    }
-    fn bootstrap_overdue(&self, overdue: bool) {
-        self.main().overdue.push(overdue);
     }
     fn revealed(&self, hold_surface: bool) {
         self.main().revealed.push(hold_surface);
@@ -733,6 +729,45 @@ fn removed_images_cancel_their_transport_and_failures_stop_input() {
     platform.settle(&[&host]);
     assert!(host.failure().is_none());
     assert_eq!(last(&host), ["spin"]);
+}
+
+/// A retry whose attempt fails the same way shows the panel again, its action live, never a
+/// stuck "Retrying…".
+#[test]
+fn a_retry_that_fails_again_shows_the_panel_again() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'ok')}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let error = "UI_LAYOUT: the platform declined the frame".to_string();
+    host.fail(error.clone());
+    assert_eq!(
+        host.failure().map(|f| f.action),
+        Some(Some(RecoveryAction::Retry))
+    );
+    let shown = |host: &ViewHost<Fake>| {
+        host.adapter()
+            .log
+            .lock()
+            .unwrap()
+            .recovery
+            .iter()
+            .filter(|r| r.is_some())
+            .count()
+    };
+    let before = shown(&host);
+    host.retry();
+    host.fail(error);
+    assert_eq!(
+        shown(&host),
+        before + 1,
+        "the failed retry shows the panel again"
+    );
 }
 
 #[test]
@@ -1475,14 +1510,31 @@ fn connections_report_connected_and_an_overdue_bootstrap() {
         "a Logic page waits for its state"
     );
     platform.advance(Duration::from_secs(5));
-    assert!(host.adapter().log.lock().unwrap().overdue.contains(&true));
     if bounded_jobs() {
-        // Never a blank page: recovery covers it and offers a Logic restart.
+        // Never a blank page: the slow-load panel covers it, on the page's own canvas.
         let failure = host.failure().expect("an overdue bootstrap shows recovery");
         assert!(failure.error.starts_with("UI_BOOTSTRAP_TIMEOUT:"));
         assert!(failure.covers_page());
-        assert_eq!(failure.action, Some(RecoveryAction::Retry));
-        assert_eq!(failure.recovery.retry, Retry::Restart);
+        assert_eq!(failure.message, RecoveryMessage::SlowLoad);
+        assert_eq!(failure.action, Some(RecoveryAction::Wait));
+        assert!(
+            !host.adapter().log.lock().unwrap().chrome.is_empty(),
+            "the panel has the page's colours before any frame"
+        );
+        // Keep waiting closes the panel and waits as long again, on the same connection.
+        host.retry();
+        assert!(host.failure().is_none());
+        assert_eq!(
+            host.adapter().log.lock().unwrap().recovery.last(),
+            Some(&None)
+        );
+        platform.advance(Duration::from_secs(4));
+        assert!(host.failure().is_none(), "the wait starts over");
+        platform.advance(Duration::from_secs(1));
+        assert_eq!(
+            host.failure().map(|failure| failure.message),
+            Some(RecoveryMessage::SlowLoad)
+        );
     }
     deliver(
         &host,
@@ -1495,10 +1547,6 @@ fn connections_report_connected_and_an_overdue_bootstrap() {
         assert!(
             host.failure().is_none(),
             "a late first state clears recovery"
-        );
-        assert_eq!(
-            host.adapter().log.lock().unwrap().overdue.last(),
-            Some(&false)
         );
         // A superseded connection's frames are ignored.
         host.connect(ConnectionTicket::new(2));

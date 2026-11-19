@@ -121,7 +121,6 @@ impl<A: PlatformAdapter> Inner<A> {
         self.lifecycle.set_bridge_ready(connection, update.ready);
         if update.ready {
             self.main().bootstrap_timer += 1;
-            self.adapter.bootstrap_overdue(false);
         }
         if update.changed {
             self.revive();
@@ -170,18 +169,14 @@ impl<A: PlatformAdapter> Inner<A> {
         );
     }
 
-    pub(super) fn connect(self: &Arc<Self>, connection: ConnectionTicket) {
-        if self.main().disposed || !self.lifecycle.connect(connection) {
-            return;
-        }
+    /// Never a blank page: a first state that is overdue shows the slow-load panel, whose
+    /// Keep waiting calls this again; a late first state still draws and clears it.
+    pub(super) fn watch_bootstrap(self: &Arc<Self>, connection: ConnectionTicket) {
         let timer = {
             let mut main = self.main();
-            main.failure = None;
             main.bootstrap_timer += 1;
             main.bootstrap_timer
         };
-        self.adapter.recovery(None);
-        self.adapter.bootstrap_overdue(false);
         let inner = self.clone();
         self.adapter.post_after(
             BOOTSTRAP,
@@ -190,13 +185,19 @@ impl<A: PlatformAdapter> Inner<A> {
                     && inner.lifecycle.is_current_connection(connection)
                     && !inner.lifecycle.bridge_ready()
                 {
-                    inner.adapter.bootstrap_overdue(true);
-                    // Never a blank page: recovery offers a Logic restart, and a late first
-                    // state still draws and clears it.
                     inner.fail(crate::session::lifecycle::BOOTSTRAP_TIMEOUT.into());
                 }
             }),
         );
+    }
+
+    pub(super) fn connect(self: &Arc<Self>, connection: ConnectionTicket) {
+        if self.main().disposed || !self.lifecycle.connect(connection) {
+            return;
+        }
+        self.main().failure = None;
+        self.adapter.recovery(None);
+        self.watch_bootstrap(connection);
         self.work(
             Guard::Connection(connection),
             // Logic loads the page only after this, so its first write finds the View connected.

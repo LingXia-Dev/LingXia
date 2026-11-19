@@ -67,6 +67,7 @@ final class GpuPageView: UIView {
     var hostChrome: GpuHostChrome? {
         didSet {
             layer.backgroundColor = hostChrome?.canvas.cgColor
+            recolorRecovery()
             NotificationCenter.default.post(name: GpuHostChrome.changed, object: self)
             // The bars take the page's colours: the snapshots under a dialog follow.
             recaptureBars()

@@ -1096,36 +1096,18 @@ mod live {
             token: i64,
             failure: Option<&lingxia_view_apple::lingxia_view::session::host::Failure>,
         ) {
-            use lingxia_view_apple::lingxia_view::session::host::{
-                RecoveryAction, RecoveryMessage,
-            };
+            use lingxia_view_apple::lingxia_view::session::host::RecoveryAction;
             let Some(failure) = failure else {
                 return super::bridge::gpu_pages_recovery(token, -1, -1, false, false);
             };
             log::warn!("GPU page {token} failed: {}", failure.error);
-            let message = match failure.message {
-                RecoveryMessage::UpdateRequired => 0,
-                RecoveryMessage::SessionFailed => 1,
-                RecoveryMessage::UpdateFailed => 2,
-                RecoveryMessage::DisplayFailed => 3,
-            };
-            let action = match failure.action {
-                None => -1,
-                Some(RecoveryAction::Retry) => 0,
-                Some(RecoveryAction::Reload) => 1,
-            };
             super::bridge::gpu_pages_recovery(
                 token,
-                message,
-                action,
+                failure.message.code(),
+                RecoveryAction::code(failure.action),
                 failure.covers_page(),
                 crate::gpu_page::can_go_back(token),
             );
-        }
-        fn bootstrap_overdue(&self, token: i64, overdue: bool) {
-            if overdue {
-                log::warn!("GPU page {token}: Logic bootstrap overdue");
-            }
         }
         fn load_image(
             &self,

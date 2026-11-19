@@ -15,20 +15,41 @@ import static org.junit.Assert.*;
 @Config(manifest=Config.NONE,sdk=28)
 @org.robolectric.annotation.LooperMode(org.robolectric.annotation.LooperMode.Mode.PAUSED)
 public class GpuRecoveryTest {
-    private static final int UPDATE_REQUIRED = 0, SESSION_FAILED = 1, UPDATE_FAILED = 2, DISPLAY_FAILED = 3;
-    private static final int NONE = -1, RETRY = 0, RELOAD = 1;
+    private static final int UPDATE_REQUIRED = 0, SESSION_FAILED = 1, UPDATE_FAILED = 2, DISPLAY_FAILED = 3, SLOW_LOAD = 4;
+    private static final int NONE = -1, RETRY = 0, RELOAD = 1, KEEP_WAITING = 2;
+
+    @Test public void aSlowLoadOffersKeepWaitingAndBackOnThePagesCanvas() {
+        FrameLayout host = new FrameLayout(RuntimeEnvironment.getApplication());
+        GpuRecovery recovery = new GpuRecovery(host);
+        recovery.setColors(0xFFF5F6FA, 0xFF141821, 0xFF008347);
+        AtomicInteger waits = new AtomicInteger();
+        recovery.show(false, SLOW_LOAD, KEEP_WAITING, waits::incrementAndGet, () -> true);
+        LinearLayout panel = (LinearLayout)host.getChildAt(0);
+        android.widget.TextView message = recovery.message();
+        assertEquals("This page is taking longer than usual to load.", message.getText().toString());
+        assertEquals(0xFF141821, message.getCurrentTextColor());
+        assertEquals(0xFFF5F6FA, ((android.graphics.drawable.ColorDrawable)panel.getBackground()).getColor());
+        Button wait = recovery.action();
+        assertEquals("Keep waiting", wait.getText().toString());
+        assertEquals("text buttons in the accent colour", 0xFF008347, wait.getCurrentTextColor());
+        assertEquals("Go back", recovery.back().getText().toString());
+        float density = RuntimeEnvironment.getApplication().getResources().getDisplayMetrics().density;
+        assertTrue("a 48 dp touch target", wait.getMinimumHeight() >= Math.round(48 * density));
+        wait.performClick();
+        assertEquals(1, waits.get());
+        assertEquals("the label stays while the panel closes", "Keep waiting", wait.getText().toString());
+    }
 
     @Test public void retriesOnceAndRevokesDetachedActions() {
         FrameLayout host = new FrameLayout(RuntimeEnvironment.getApplication());
         GpuRecovery recovery = new GpuRecovery(host);
         AtomicInteger calls = new AtomicInteger();
         recovery.show(true, UPDATE_FAILED, RETRY, calls::incrementAndGet, null);
-        LinearLayout panel = (LinearLayout)host.getChildAt(0);
-        Button retry = (Button)panel.getChildAt(1);
+        Button retry = recovery.action();
         retry.performClick(); retry.performClick();
         assertEquals(1, calls.get());
         recovery.show(true, UPDATE_FAILED, RETRY, calls::incrementAndGet, null);
-        retry = (Button)((LinearLayout)host.getChildAt(0)).getChildAt(1);
+        retry = recovery.action();
         recovery.clear();
         retry.performClick();
         assertEquals(1, calls.get());
@@ -39,9 +60,9 @@ public class GpuRecoveryTest {
         FrameLayout host = new FrameLayout(RuntimeEnvironment.getApplication());
         GpuRecovery recovery = new GpuRecovery(host);
         recovery.show(false, UPDATE_REQUIRED, NONE, () -> fail("Incompatible modules cannot be retried"), null);
-        LinearLayout panel = (LinearLayout)host.getChildAt(0);
-        assertEquals(1, panel.getChildCount());
-        assertTrue(((android.widget.TextView)panel.getChildAt(0)).getText().toString().contains("Update the app"));
+        assertNull(recovery.action());
+        assertNull(recovery.back());
+        assertTrue(recovery.message().getText().toString().contains("Update the app"));
     }
 
     @Test public void backShowsOnlyWhenOfferedAndRetriesAfterARefusal() {
@@ -49,9 +70,8 @@ public class GpuRecoveryTest {
         GpuRecovery recovery = new GpuRecovery(host);
         AtomicInteger backs = new AtomicInteger();
         recovery.show(false, DISPLAY_FAILED, RETRY, () -> { }, () -> backs.incrementAndGet() > 1);
-        LinearLayout panel = (LinearLayout)host.getChildAt(0);
-        assertEquals("message, retry, back", 3, panel.getChildCount());
-        Button back = (Button)panel.getChildAt(2);
+        assertNotNull(recovery.action());
+        Button back = recovery.back();
         assertEquals("Go back", back.getText().toString());
         back.performClick();
         assertTrue("a refused back can be pressed again", back.isEnabled());
@@ -59,7 +79,7 @@ public class GpuRecoveryTest {
         assertFalse(back.isEnabled());
         assertEquals(2, backs.get());
         recovery.show(false, UPDATE_REQUIRED, NONE, null, null);
-        assertEquals("nowhere to go back to", 1, ((LinearLayout)host.getChildAt(0)).getChildCount());
+        assertNull("nowhere to go back to", recovery.back());
     }
 
     @Test public void interruptedSessionsOfferAnExplicitReload() {
@@ -67,7 +87,7 @@ public class GpuRecoveryTest {
         GpuRecovery recovery = new GpuRecovery(host);
         AtomicInteger restarts = new AtomicInteger();
         recovery.show(true, SESSION_FAILED, RELOAD, restarts::incrementAndGet, null);
-        Button action = (Button)((LinearLayout)host.getChildAt(0)).getChildAt(1);
+        Button action = recovery.action();
         assertEquals("Reload page", action.getText().toString());
         action.performClick();
         assertEquals(1, restarts.get());

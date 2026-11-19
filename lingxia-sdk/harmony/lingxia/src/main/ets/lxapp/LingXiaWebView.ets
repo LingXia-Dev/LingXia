@@ -595,11 +595,18 @@ export struct LingXiaWebView {
             // gets a touchcancel rather than a touchend that would finish its gesture.
             const id = this.webInspectorId();
             const touches: Array<TouchRecognizer> = touchRecognizers ?? [];
+            const targets: string[] = [];
+            let cancelled = 0;
             for (const touch of touches) {
-              if (touch.getEventTargetInfo().getId() === id) {
+              const target = touch.getEventTargetInfo().getId();
+              targets.push(target);
+              if (target === id) {
                 touch.cancelTouch();
+                cancelled++;
               }
             }
+            // Device runs read whether the page's touch recognizer was found and cancelled.
+            hilog.info(DOMAIN, TAG, `webview yields pan ${id}: touch recognizers [${targets.join(',')}], cancelled ${cancelled}`);
             return GestureJudgeResult.REJECT;
           }
         }

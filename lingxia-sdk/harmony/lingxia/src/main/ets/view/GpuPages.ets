@@ -254,8 +254,6 @@ export class GpuPages {
           page.revealed = false;
         }
         break;
-      case 'bootstrapOverdue':
-        break;
       case 'webviews':
         page.webViews = payload.length > 0 ? JSON.parse(payload) as GpuWebViewMount[] : [];
         break;

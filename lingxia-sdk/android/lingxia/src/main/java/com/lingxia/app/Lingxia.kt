@@ -295,6 +295,7 @@ object Lingxia {
      * language is a LingXia preference that can disagree with it.
      */
     @JvmStatic
+    @JvmName("localizedString")
     internal fun localizedString(context: Context, @StringRes id: Int): String {
         val locale = localeForDisplayLanguage(getDisplayLanguage())
         val config = Configuration(context.resources.configuration)

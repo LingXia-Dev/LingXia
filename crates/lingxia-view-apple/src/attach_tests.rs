@@ -48,7 +48,6 @@ impl Shell for Quiet {
         false
     }
     fn recovery(&self, _: i64, _: Option<&Failure>) {}
-    fn bootstrap_overdue(&self, _: i64, _: bool) {}
     fn load_image(
         &self,
         _: i64,

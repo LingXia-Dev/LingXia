@@ -145,8 +145,6 @@ pub trait HostEvents {
     fn restart(&self, connection: ConnectionTicket) -> bool;
     /// Show host recovery chrome, or clear it with `None`.
     fn recovery(&self, failure: Option<&Failure>);
-    /// The bridge has not become ready within the bootstrap deadline, or it has now.
-    fn bootstrap_overdue(&self, overdue: bool);
     /// Put this page on screen in place of the outgoing one, from [`ViewHost::reveal`].
     /// `hold_surface`: no current frame yet, so keep the target hidden until a
     /// later `revealed(false)`.

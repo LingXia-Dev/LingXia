@@ -148,11 +148,12 @@ gpu:
   reload: "重新载入页面"
   retrying: "正在重试…"
   back: "返回"
+  # A GPU page whose first state is overdue; it may still arrive.
+  slow_load: "页面加载时间比平时长。"
+  keep_waiting: "继续等待"
   # Spoken role of a GPU page link.
   a11y_link: "链接"
   # Appended to a GPU page element that reports itself busy (aria-busy).
   a11y_busy: "忙碌"
   # Read after a GPU page field whose suggestions list follows (aria-controls + aria-autocomplete).
   a11y_suggestions: "有可选建议"
-  # Shown over a GPU page whose first frame is overdue.
-  bootstrap_overdue: "页面加载时间较长，你可以返回后重试。"

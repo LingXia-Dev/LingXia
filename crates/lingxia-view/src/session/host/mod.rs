@@ -161,6 +161,21 @@ pub enum RecoveryMessage {
     UpdateFailed,
     /// Nothing could be presented.
     DisplayFailed,
+    /// Logic has not sent the first state yet; the page may still arrive.
+    SlowLoad,
+}
+
+impl RecoveryMessage {
+    /// The index of the platforms' recovery message strings.
+    pub fn code(self) -> i32 {
+        match self {
+            RecoveryMessage::UpdateRequired => 0,
+            RecoveryMessage::SessionFailed => 1,
+            RecoveryMessage::UpdateFailed => 2,
+            RecoveryMessage::DisplayFailed => 3,
+            RecoveryMessage::SlowLoad => 4,
+        }
+    }
 }
 
 /// The recovery button; it calls [`ViewHost::retry`].
@@ -168,6 +183,20 @@ pub enum RecoveryMessage {
 pub enum RecoveryAction {
     Retry,
     Reload,
+    /// Close the panel and wait for the page as long again.
+    Wait,
+}
+
+impl RecoveryAction {
+    /// The index of the platforms' recovery action strings; -1 for none.
+    pub fn code(action: Option<RecoveryAction>) -> i32 {
+        match action {
+            None => -1,
+            Some(RecoveryAction::Retry) => 0,
+            Some(RecoveryAction::Reload) => 1,
+            Some(RecoveryAction::Wait) => 2,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -184,21 +213,31 @@ impl Failure {
     /// Recovery chrome covers the whole page: nothing was presented, or what was is an
     /// interrupted page that no longer takes input and must not pass for a live one.
     pub fn covers_page(&self) -> bool {
-        !self.retained || self.message == RecoveryMessage::SessionFailed
+        !self.retained
+            || matches!(
+                self.message,
+                RecoveryMessage::SessionFailed | RecoveryMessage::SlowLoad
+            )
     }
 
     fn new(error: String, recovery: Recovery, retained: bool) -> Self {
         let message = match recovery.kind {
+            _ if recovery.retry == Retry::Wait => RecoveryMessage::SlowLoad,
             FailureKind::Compatibility => RecoveryMessage::UpdateRequired,
             FailureKind::Session => RecoveryMessage::SessionFailed,
             FailureKind::Candidate if retained => RecoveryMessage::UpdateFailed,
             FailureKind::Candidate => RecoveryMessage::DisplayFailed,
         };
         let action = (recovery.kind != FailureKind::Compatibility && recovery.retry != Retry::None)
-            .then_some(if recovery.kind == FailureKind::Session {
-                RecoveryAction::Reload
-            } else {
-                RecoveryAction::Retry
+            .then_some(match recovery {
+                Recovery {
+                    retry: Retry::Wait, ..
+                } => RecoveryAction::Wait,
+                Recovery {
+                    kind: FailureKind::Session,
+                    ..
+                } => RecoveryAction::Reload,
+                _ => RecoveryAction::Retry,
             });
         Self {
             error,
@@ -444,6 +483,8 @@ struct Main<F> {
     failure: Option<Failure>,
     /// How many times in a row the current failure's error repeated.
     failure_repeats: u32,
+    /// The panel's action ran: the next failure shows again, its button live.
+    retried: bool,
     /// Frames in a row dropped because preparing them panicked.
     panics: u32,
     /// Where rendering stalled after repeated failures; another size or look renders again.
@@ -664,6 +705,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     modelled_build: None,
                     failure: None,
                     failure_repeats: 0,
+                    retried: false,
                     panics: 0,
                     stalled_at: None,
                     styled_press: None,
@@ -2095,7 +2137,6 @@ impl<A: PlatformAdapter> Inner<A> {
             (page, main.source.clone(), effects, cancelled)
         };
         self.adapter.recovery(None);
-        self.adapter.bootstrap_overdue(false);
         self.adapter.reset();
         self.adapter.clear_webviews();
         self.deliver(effects);
@@ -2180,7 +2221,6 @@ impl<A: PlatformAdapter> Inner<A> {
             (page, effects, cancelled)
         };
         self.adapter.recovery(None);
-        self.adapter.bootstrap_overdue(false);
         self.adapter.clear_webviews();
         self.deliver(effects);
         for token in cancelled {
@@ -2325,6 +2365,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.stalled_at = None;
             main.failure_repeats = 0;
             main.panics = 0;
+            main.retried = true;
         }
         match failure.recovery.retry {
             Retry::None => {}
@@ -2333,6 +2374,11 @@ impl<A: PlatformAdapter> Inner<A> {
                 self.schedule();
             }
             Retry::Reload => self.load(None),
+            Retry::Wait => {
+                self.main().failure = None;
+                self.adapter.recovery(None);
+                self.watch_bootstrap(self.lifecycle.connection());
+            }
             Retry::Restart => {
                 if !self.adapter.restart(self.lifecycle.connection()) {
                     let failure = Failure {
@@ -2383,7 +2429,8 @@ impl<A: PlatformAdapter> Inner<A> {
             let repeated = main
                 .failure
                 .as_ref()
-                .is_some_and(|last| last.error == error);
+                .is_some_and(|last| last.error == error)
+                && !std::mem::take(&mut main.retried);
             main.failure_repeats = if stall {
                 STALL_AFTER
             } else if repeated {
@@ -2410,7 +2457,15 @@ impl<A: PlatformAdapter> Inner<A> {
             self.adapter.reset();
         }
         self.deliver(effects);
-        self.adapter.bootstrap_overdue(false);
+        // A panel shown before any frame still wears the page's theme.
+        if let Some(environment) = self.adapter.environment() {
+            let mut value = environment.value;
+            self.main().host_environment.apply(&mut value);
+            let chrome = crate::platform::HostChrome::from_environment(&value);
+            if self.main().chrome.replace(chrome) != Some(chrome) {
+                self.adapter.host_chrome(&chrome);
+            }
+        }
         // A repeat is already shown and logged; the stall is said once.
         if !shown {
             self.adapter.recovery(Some(&failure));

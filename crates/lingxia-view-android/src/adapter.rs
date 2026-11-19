@@ -7,7 +7,7 @@ use lingxia_view::interaction::view::{AccessibilityEffect, Dispatch, Effect};
 use lingxia_view::platform::*;
 use lingxia_view::semantics::projection::Event;
 use lingxia_view::session::host::{
-    Failure, FrameSnapshot, FrameTiming, RecoveryAction, RecoveryMessage, WeakViewHost,
+    Failure, FrameSnapshot, FrameTiming, RecoveryAction, WeakViewHost,
 };
 use lingxia_view::session::lifecycle::{CommitTicket, ConnectionTicket, SurfaceTicket};
 use std::collections::HashMap;
@@ -788,18 +788,7 @@ impl Feedback for AndroidAdapter {
 
 /// `GpuPlatform.recovery` codes; -1 clears.
 fn recovery_codes(failure: &Failure) -> (i32, i32) {
-    let message = match failure.message {
-        RecoveryMessage::UpdateRequired => 0,
-        RecoveryMessage::SessionFailed => 1,
-        RecoveryMessage::UpdateFailed => 2,
-        RecoveryMessage::DisplayFailed => 3,
-    };
-    let action = match failure.action {
-        None => -1,
-        Some(RecoveryAction::Retry) => 0,
-        Some(RecoveryAction::Reload) => 1,
-    };
-    (message, action)
+    (failure.message.code(), RecoveryAction::code(failure.action))
 }
 
 impl HostEvents for AndroidAdapter {
@@ -907,9 +896,6 @@ impl HostEvents for AndroidAdapter {
             )?;
             Ok(())
         })
-    }
-    fn bootstrap_overdue(&self, overdue: bool) {
-        self.flag(jni_str!("bootstrapOverdue"), overdue);
     }
     fn text_menu(&self, menu: Option<&lingxia_view::session::host::TextMenu>) {
         let encoded = menu.and_then(|menu| serde_json::to_string(menu).ok());

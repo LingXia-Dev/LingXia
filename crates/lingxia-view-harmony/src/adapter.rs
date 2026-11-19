@@ -849,9 +849,6 @@ impl HostEvents for HarmonyAdapter {
     fn recovery(&self, failure: Option<&Failure>) {
         self.shell.recovery(self.token, failure);
     }
-    fn bootstrap_overdue(&self, overdue: bool) {
-        self.shell.bootstrap_overdue(self.token, overdue);
-    }
     fn copy_text(&self, text: &str) {
         self.shell.copy_text(text);
     }

@@ -7,6 +7,7 @@ import { Lingxia } from '../app/Lingxia';
 import { GpuFeedback, GpuPageModel, GpuRecovery, GpuSelectionHandles, GpuWebViewMount } from './GpuPages';
 import { GpuFrameTextMenu, GpuFrameTextMenuTargetKinds } from './generated/GpuFrame';
 import { HostOverlays } from '../lxapp/HostOverlays';
+import { localizedString } from '../app/DisplayLanguageResources';
 import { LingXiaWebView } from '../lxapp/LingXiaWebView';
 import { WebViewInfo, WebViewManager } from '../lxapp/WebViewBridge';
 import { GpuRect, sampleFacts } from './GpuEnvironment';
@@ -273,9 +274,11 @@ export struct GpuPage {
   /** The grabbed handle: which end, and the finger's offset from its line middle. */
   private grabbed: number = -1;
   private grabOffset: number[] = [0, 0];
-  private messages: Resource[] = [$r('app.string.lx_gpu_update_required'), $r('app.string.lx_gpu_session_failed'),
-    $r('app.string.lx_gpu_update_failed'), $r('app.string.lx_gpu_display_failed')];
-  private actions: Resource[] = [$r('app.string.lx_gpu_retry'), $r('app.string.lx_gpu_reload')];
+  /** Recovery strings by name, read in the app's display language as the page is. */
+  private messages: string[] = ['lx_gpu_update_required', 'lx_gpu_session_failed', 'lx_gpu_update_failed',
+    'lx_gpu_display_failed', 'lx_gpu_slow_load'];
+  private actions: string[] = ['lx_gpu_retry', 'lx_gpu_reload', 'lx_gpu_keep_waiting'];
+  private static readonly KEEP_WAITING = 2;
 
   private keyboardFocus: () => boolean = () => this.getUIContext().getFocusController().isActive();
   /** The system's reduce-motion setting changed: the page's `reducedMotion` follows. */
@@ -428,6 +431,11 @@ export struct GpuPage {
     gpuPageAccessibilityStrings(this.text($r('app.string.lx_gpu_a11y_suggestions')));
   }
 
+  private appText(name: string): string {
+    const resources = this.getUIContext().getHostContext()?.resourceManager;
+    return resources ? localizedString(resources, name) : name;
+  }
+
   private text(resource: Resource): string {
     return this.getUIContext().getHostContext()?.resourceManager.getStringSync(resource.id) ?? '';
   }
@@ -450,51 +458,91 @@ export struct GpuPage {
     }
   }
 
+  /** The panel sits on the page's own canvas, in its text and accent colours, once the
+   *  palette is known. */
+  private recoveryCanvas(): ResourceColor {
+    // Before the page ever showed, the floor is what the user has seen: the panel keeps it.
+    if (!this.page.revealed || this.page.holdSurface) {
+      return this.floor;
+    }
+    return this.page.chrome ? this.page.chrome.canvas : Color.White;
+  }
+
+  private recoveryText(): ResourceColor {
+    return this.page.chrome ? this.page.chrome.content : '#202226';
+  }
+
+  private recoveryAccent(): ResourceColor {
+    return this.page.chrome ? this.page.chrome.accent : '#007AFF';
+  }
+
+  /** A text button, as every platform's panel draws it: no plate, the accent colour. */
+  @Builder
+  recoveryButton(label: ResourceStr, enabled: boolean, press: () => void, part: string, read: () => string) {
+    // Message 17, buttons 16 medium: the panel reads the same on every platform.
+    Button(label, { type: ButtonType.Normal, stateEffect: true })
+      .fontSize(16)
+      .fontWeight(FontWeight.Medium)
+      .fontColor(this.recoveryAccent())
+      .backgroundColor(Color.Transparent)
+      .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+      .constraintSize({ minWidth: 44, minHeight: 44 })
+      .enabled(enabled)
+      .onClick(press)
+      .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.recoverySource(), part, read, 'button', area,
+        press))
+  }
+
   @Builder
   recoveryPanel(recovery: GpuRecovery) {
     // Host-owned: page content cannot replace its action. A failure over a kept frame sits at
-    // the bottom; one with nothing worth showing covers the page.
+    // the bottom; one with nothing worth showing covers the page, its message centred.
     Column() {
-      Column({ space: 12 }) {
-        Text(this.messages[recovery.message] ?? this.messages[3])
-          .fontSize(16)
-          .fontColor(this.page.chrome?.dark ? Color.White : '#202226')
-          .width('100%')
+      Column({ space: 4 }) {
+        Text(this.appText(this.messages[recovery.message] ?? this.messages[3]))
+          .fontSize(17)
+          .fontColor(this.recoveryText())
+          .textAlign(TextAlign.Center)
           .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.recoverySource(), 'message',
-            () => this.text(this.messages[recovery.message] ?? this.messages[3]), 'text', area))
-        if (recovery.action >= 0) {
-          Button(this.retried === recovery ? $r('app.string.lx_gpu_retrying') : this.actions[recovery.action])
-            .enabled(this.retried !== recovery)
-            .onClick(() => this.retry(recovery))
-            .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.recoverySource(), 'action',
-              () => this.text(this.actions[recovery.action]), 'button', area, () => this.retry(recovery)))
-        }
-        if (recovery.back) {
-          Button($r('app.string.lx_gpu_back'))
-            .enabled(this.backed !== recovery)
-            .onClick(() => this.recoveryBack(recovery))
-            .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.recoverySource(), 'back',
-              () => this.text($r('app.string.lx_gpu_back')), 'button', area, () => this.recoveryBack(recovery)))
+            () => this.appText(this.messages[recovery.message] ?? this.messages[3]), 'text', area))
+        if (recovery.back || recovery.action >= 0) {
+          Row() {
+            if (recovery.back) {
+              this.recoveryButton(this.appText('lx_gpu_back'), this.backed !== recovery,
+                () => this.recoveryBack(recovery), 'back', () => this.appText('lx_gpu_back'))
+            }
+            if (recovery.action >= 0) {
+              this.recoveryButton(this.retried === recovery && recovery.action !== GpuPage.KEEP_WAITING
+                ? this.appText('lx_gpu_retrying') : this.appText(this.actions[recovery.action]),
+                this.retried !== recovery, () => this.retry(recovery), 'action',
+                () => this.appText(this.actions[recovery.action]))
+            }
+          }
+          .justifyContent(FlexAlign.Center)
         }
       }
       .width('100%')
-      .padding(16)
-      .backgroundColor(this.page.chrome?.dark ? '#202226' : Color.White)
+      // A banner's plate runs to the screen's edge, its buttons above the bottom inset.
+      .padding({ left: 16, right: 16, top: 16,
+        bottom: 16 + (recovery.retained ? px2vp(this.chromeInsets[2]) : 0) })
+      .alignItems(HorizontalAlign.Center)
+      .backgroundColor(this.recoveryCanvas())
     }
     .width('100%')
     .height('100%')
-    .justifyContent(recovery.retained ? FlexAlign.End : FlexAlign.Start)
-    .backgroundColor(recovery.retained ? Color.Transparent : (this.page.chrome?.dark ? '#202226' : Color.White))
+    .justifyContent(recovery.retained ? FlexAlign.End : FlexAlign.Center)
+    .backgroundColor(recovery.retained ? Color.Transparent : this.recoveryCanvas())
     .hitTestBehavior(recovery.retained ? HitTestMode.Transparent : HitTestMode.Default)
     .padding({
       top: px2vp(this.chromeInsets[0]), right: px2vp(this.chromeInsets[1]),
-      bottom: px2vp(this.chromeInsets[2]), left: px2vp(this.chromeInsets[3]),
+      bottom: recovery.retained ? 0 : px2vp(this.chromeInsets[2]), left: px2vp(this.chromeInsets[3]),
     })
     .onAppear(() => HostOverlays.show(this.recoverySource()))
     .onDisAppear(() => {
       HostOverlays.hide(this.recoverySource());
       HostOverlays.forget(this.recoverySource(), 'message');
       HostOverlays.forget(this.recoverySource(), 'action');
+      HostOverlays.forget(this.recoverySource(), 'back');
     })
   }
 

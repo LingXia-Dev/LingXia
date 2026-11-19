@@ -5,9 +5,10 @@ import CLingXiaRustAPI
 
 /// Host-owned recovery chrome; page content cannot replace its action.
 extension GpuPageView {
-    /// The core's message codes, then its action codes (0 retry, 1 reload).
-    private static let messages = ["update_required", "session_failed", "update_failed", "display_failed"]
-    private static let actions = ["retry", "reload"]
+    /// The core's message codes, then its action codes (0 retry, 1 reload, 2 keep waiting).
+    private static let messages = ["update_required", "session_failed", "update_failed", "display_failed", "slow_load"]
+    private static let actions = ["retry", "reload", "keep_waiting"]
+    private static let keepWaiting = 2
 
     func showRecovery(message: Int32, action: Int32, covers: Bool, back: Bool) {
         recoveryPanel?.removeFromSuperview()
@@ -16,7 +17,6 @@ extension GpuPageView {
         guard Self.messages.indices.contains(Int(message)) else { return }
         let panel = NSView()
         panel.wantsLayer = true
-        panel.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         panel.setAccessibilityElement(true)
         panel.setAccessibilityRole(.group)
         panel.setAccessibilityIdentifier("lx-recovery")
@@ -30,11 +30,11 @@ extension GpuPageView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         let buttons = NSStackView()
         buttons.orientation = .horizontal
-        buttons.spacing = 12
+        buttons.spacing = 24
         if back {
             let button = NSButton(
                 title: L10n.string("lx_gpu_recovery_back"), target: self, action: #selector(recoveryBack(_:)))
-            button.bezelStyle = .rounded
+            button.isBordered = false
             button.setAccessibilityIdentifier("lx-recovery-back")
             buttons.addArrangedSubview(button)
         }
@@ -42,8 +42,9 @@ extension GpuPageView {
             let button = NSButton(
                 title: L10n.string("lx_gpu_recovery_\(Self.actions[Int(action)])"), target: self,
                 action: #selector(recoveryAction(_:)))
-            button.bezelStyle = .rounded
+            button.isBordered = false
             button.setAccessibilityIdentifier("lx-recovery-action")
+            button.tag = Int(action)
             buttons.addArrangedSubview(button)
         }
         if !buttons.arrangedSubviews.isEmpty {
@@ -59,6 +60,7 @@ extension GpuPageView {
         ])
         recoveryPanel = panel
         recoveryCovers = covers
+        recolorRecovery()
         layoutRecovery()
         NSAccessibility.post(element: panel, notification: .layoutChanged)
     }
@@ -76,10 +78,25 @@ extension GpuPageView {
         panel.frame = frame
     }
 
+    /// The panel sits on the page's own canvas, in its text colour, with text buttons in its
+    /// accent: the same panel every platform draws.
+    func recolorRecovery() {
+        guard let panel = recoveryPanel else { return }
+        panel.layer?.backgroundColor = (chrome?.canvas ?? .windowBackgroundColor).cgColor
+        func walk(_ view: NSView) {
+            if let label = view as? NSTextField { label.textColor = chrome?.content ?? .labelColor }
+            if let button = view as? NSButton { button.contentTintColor = chrome?.accent ?? .controlAccentColor }
+            view.subviews.forEach(walk)
+        }
+        walk(panel)
+    }
+
     @objc private func recoveryAction(_ sender: NSButton) {
         guard sender.isEnabled else { return }
         sender.isEnabled = false
-        sender.title = L10n.string("lx_gpu_recovery_retrying")
+        if sender.tag != Self.keepWaiting {
+            sender.title = L10n.string("lx_gpu_recovery_retrying")
+        }
         gpuPageRetry(token)
     }
 

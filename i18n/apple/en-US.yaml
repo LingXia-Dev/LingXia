@@ -57,3 +57,5 @@ gpu_recovery:
   reload: "Reload page"
   retrying: "Retrying…"
   back: "Go back"
+  slow_load: "This page is taking longer than usual to load."
+  keep_waiting: "Keep waiting"

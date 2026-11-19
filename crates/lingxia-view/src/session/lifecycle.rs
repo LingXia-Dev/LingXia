@@ -94,6 +94,8 @@ pub enum Retry {
     Reload,
     /// Ask the host to restart the Logic connection.
     Restart,
+    /// Keep the connection and wait for its first state as long again.
+    Wait,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -295,7 +297,7 @@ impl Lifecycle {
                     Retry::Redraw
                 }
                 FailureKind::Candidate if self.logic && loaded && error == BOOTSTRAP_TIMEOUT => {
-                    Retry::Restart
+                    Retry::Wait
                 }
                 FailureKind::Candidate => Retry::None,
                 // A session that failed again before reloading still offers the restart.

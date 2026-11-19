@@ -54,3 +54,5 @@ gpu_recovery:
   reload: "重新载入页面"
   retrying: "正在重试…"
   back: "返回"
+  slow_load: "页面加载时间比平时长。"
+  keep_waiting: "继续等待"

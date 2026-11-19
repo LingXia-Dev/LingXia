@@ -20,6 +20,7 @@ final class GpuPageView: NSView {
         didSet {
             layer?.backgroundColor = chrome?.canvas.cgColor
             paintCanvas()
+            recolorRecovery()
             NotificationCenter.default.post(name: GpuHostChrome.changed, object: self)
         }
     }

@@ -148,11 +148,12 @@ gpu:
   reload: "Reload page"
   retrying: "Retrying…"
   back: "Go back"
+  # A GPU page whose first state is overdue; it may still arrive.
+  slow_load: "This page is taking longer than usual to load."
+  keep_waiting: "Keep waiting"
   # Spoken role of a GPU page link.
   a11y_link: "Link"
   # Appended to a GPU page element that reports itself busy (aria-busy).
   a11y_busy: "Busy"
   # Read after a GPU page field whose suggestions list follows (aria-controls + aria-autocomplete).
   a11y_suggestions: "Suggestions available"
-  # Shown over a GPU page whose first frame is overdue.
-  bootstrap_overdue: "This page is taking longer to load. You can go back and try again."

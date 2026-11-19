@@ -40,7 +40,6 @@ pub trait Shell: Send + Sync + 'static {
     /// Restart the Logic connection after a session failure; false when it cannot.
     fn restart(&self, token: i64, connection: u64) -> bool;
     fn recovery(&self, token: i64, failure: Option<&Failure>);
-    fn bootstrap_overdue(&self, token: i64, overdue: bool);
     /// Show the page in place of the outgoing one; see `HostEvents::revealed`.
     fn revealed(&self, token: i64, hold_surface: bool);
     /// Load authorized image bytes; `done` runs once unless the handle is dropped first.

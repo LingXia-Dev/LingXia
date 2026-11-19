@@ -198,8 +198,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         }
         return false;
     }
-    private TextView bootstrapMessage;
-    private int bootstrapSurfaceImportance;
     private final Listener listener;
     private final UiSurface surface;
     private final GpuWebView webviews;
@@ -653,29 +651,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     public void connect(long generation) { if (!destroyed) nativeConnect(host, generation); }
     public void requestLeave(long generation, String reason) { if (!destroyed) nativeRequestLeave(host, generation, reason); }
 
-    private void showBootstrapMessage(boolean overdue) {
-        if (!overdue) {
-            if (bootstrapMessage != null) {
-                removeView(bootstrapMessage);
-                bootstrapMessage = null;
-                surface.setImportantForAccessibility(bootstrapSurfaceImportance);
-            }
-            return;
-        }
-        if (bootstrapMessage != null) return;
-        bootstrapMessage = new TextView(getContext());
-        bootstrapMessage.setText(com.lingxia.lxapp.R.string.lx_gpu_bootstrap_overdue);
-        // The core picks the notice colours for the page's theme; before any frame, the light pair.
-        GpuFrame.FeedbackStyle style = !hasFrame() ? null : frame().feedback();
-        bootstrapMessage.setTextColor(style == null ? android.graphics.Color.BLACK : (int)style.noticeText());
-        bootstrapMessage.setBackgroundColor(style == null ? android.graphics.Color.WHITE : (int)style.noticeBackground());
-        int padding = Math.round(16 * getResources().getDisplayMetrics().density);
-        bootstrapMessage.setPadding(padding, padding, padding, padding);
-        bootstrapMessage.setClickable(true);
-        bootstrapSurfaceImportance = surface.getImportantForAccessibility();
-        surface.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-        addView(bootstrapMessage, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
-    }
     private final android.database.ContentObserver animatorScale = new android.database.ContentObserver(main) {
         @Override public void onChange(boolean selfChange) { requestFrame(); }
     };
@@ -838,7 +813,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     public void dispose() {
         if (destroyed) return;
         finishSurfaceRedraws();
-        showBootstrapMessage(false);
         recovery.clear();
         webviews.clearAll();
         cancel();
@@ -1024,7 +998,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void recovery(int message, int action, boolean retained, String error) { onMain(() -> {
             showFailure(message, action, retained, error);
         }); }
-        @Override public void bootstrapOverdue(boolean overdue) { onMain(() -> { showBootstrapMessage(overdue); }); }
         @Override public void copyText(String text) { onMain(() -> { if (!destroyed) writeClipboard(text); }); }
         @Override public void textMenu(String menu) { onMain(() -> {
             if (destroyed) return;
@@ -1041,6 +1014,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void hostChrome(int canvas, int bar, int barLine, int content, int contentMuted, int accent, boolean dark) { onMain(() -> {
             if (destroyed) return;
             chrome = new Chrome(canvas, bar, barLine, content, contentMuted, accent, dark);
+            recovery.setColors(canvas, content, accent);
             if (listener != null) listener.onChrome(chrome);
         }); }
     }
