@@ -2324,6 +2324,13 @@ impl<A: PlatformAdapter> Inner<A> {
 
     /// `stall` stops rendering now instead of after the failure repeats.
     fn fail_with(self: &Arc<Self>, error: String, stall: bool) {
+        // Not drawable yet, from whichever path asked: the first snapshot schedules the page,
+        // and the bootstrap watchdog reports one that never comes.
+        if error.starts_with(crate::session::NOT_READY) {
+            log::warn!(target: "lingxia_view", "{error}; waiting for the snapshot");
+            self.main().dirty = true;
+            return;
+        }
         let (failure, effects, repeats, shown) = {
             let mut main = self.main();
             if main.disposed {
