@@ -54,3 +54,8 @@ objc2-metal = { version = "0.3.2", optional = true, default-features = false, fe
 [target.'cfg(unix)'.dependencies]
 # The View JS budget measures the worker thread's CPU time.
 libc = { workspace = true }
+
+# Runs its own main: AVPlayer needs the main run loop.
+[[test]]
+name = "video_memory"
+harness = false

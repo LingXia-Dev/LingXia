@@ -6225,3 +6225,59 @@ fn a_surface_bound_after_a_stop_whose_start_never_came_shows_the_page_again() {
     platform.settle(&[&host]);
     assert!(presented() > stopped, "the page presents again");
 }
+
+/// Drags a built page 60 frames each way and reports the video opens it asked for. Needs the
+/// bundles built: `LXV_DRAG_BUNDLES` lists their paths, `:`-separated.
+#[cfg(feature = "gpu")]
+#[test]
+#[ignore]
+fn dragging_a_built_page_opens_only_players_it_brings_into_view() {
+    use crate::renderer::gpu::video::{open_nothing_real, opens_asked};
+    open_nothing_real();
+    let bundles = std::env::var("LXV_DRAG_BUNDLES").expect("LXV_DRAG_BUNDLES");
+    for path in bundles.split(':') {
+        let module = std::fs::read_to_string(path).unwrap();
+        let worker = ViewWorker::spawn("test-drag-opens").unwrap();
+        let platform = Platform::new(&[&worker]);
+        let host = platform.host(&worker, &module, false);
+        host.set_visible(true);
+        platform.settle(&[&host]);
+        let (before, keys) = opens_asked();
+        let frames = host.adapter().log.lock().unwrap().presented.len();
+        eprintln!(
+            "{path}: {frames} frames at load; scrolls down: {} at the drag point: {}",
+            host.can_scroll_vertically(1),
+            host.can_scroll_vertically_at([100.0, 300.0], 1)
+        );
+        let pointer = |phase, y: f32| {
+            host.pointer(Pointer {
+                phase,
+                x: 100.0,
+                y,
+                slop: 8.0,
+                velocity: [0.0; 2],
+                min_fling: 50.0,
+            });
+            run_frames(&platform, &host, 1);
+        };
+        // The fake display is 200 x 400 device pixels.
+        for (from, step) in [(360.0, -5.0), (60.0, 5.0)] {
+            pointer(PointerPhase::Down, from);
+            for n in 1..=60 {
+                pointer(PointerPhase::Move, from + step * n as f32);
+            }
+            pointer(PointerPhase::Up, from + step * 60.0);
+            run_frames(&platform, &host, 30);
+        }
+        let (after, keys_after) = opens_asked();
+        let moved = host.adapter().log.lock().unwrap().presented.len() - frames;
+        eprintln!(
+            "{path}: opens asked {before} after load, {} more over a 120-step drag ({moved} frames presented); players {keys:?} -> {keys_after:?}",
+            after - before
+        );
+        assert!(moved >= 60, "{path}: the drag moved the page");
+        // Only a player scrolled into view for the first time opens.
+        let new = keys_after.iter().filter(|key| !keys.contains(key)).count() as u64;
+        assert_eq!(after - before, new, "{path}: a drag asked for video opens");
+    }
+}
