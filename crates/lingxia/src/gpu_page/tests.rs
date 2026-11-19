@@ -237,7 +237,7 @@ fn automation_requests_reach_the_shell_until_the_page_goes() {
         ["automation \"query\"", "automation \"act\""]
     );
     drop((native, shell));
-    let gone = runtime.block_on(automation.screenshot()).unwrap_err();
+    let gone = runtime.block_on(automation.screenshot(false)).unwrap_err();
     assert!(gone.starts_with("page is not active:"), "{gone}");
 }
 
@@ -455,7 +455,7 @@ fn shoot(results: fn(AutomationReply)) -> Result<Vec<u8>, String> {
         .enable_time()
         .build()
         .unwrap()
-        .block_on(automation.screenshot())
+        .block_on(automation.screenshot(false))
 }
 
 #[cfg(feature = "automation")]
