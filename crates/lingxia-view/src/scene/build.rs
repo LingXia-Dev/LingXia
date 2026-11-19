@@ -1438,7 +1438,12 @@ impl Renderer {
                         .find_map(|child| child.string(field::ELEMENT_ID))?;
                     Some((id.to_owned(), ms as u32))
                 }),
-                interest_for: record.string(field::INTEREST_FOR).map(str::to_owned),
+                // A link's later pieces are not triggers of their own: the first answers for
+                // the whole link, so it is one Tab stop and one hover.
+                interest_for: record
+                    .string(field::INTEREST_FOR)
+                    .filter(|_| !piece)
+                    .map(str::to_owned),
                 on_press: record
                     .fields
                     .iter()

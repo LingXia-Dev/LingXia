@@ -618,6 +618,23 @@ fn a_scroll_edge_payload_reaches_the_callback_as_edge_and_at() {
 }
 
 #[test]
+fn a_styled_link_is_one_interest_trigger() {
+    let source = source(
+        "function render(){return h('page',{},h('text',{},'See ',h('link',{interestFor:'tip',onClick(){}},'the ',h('span',{style:{fontWeight:700}},'terms')),' here'),h('view',{id:'tip',popover:'hint'},h('text',{},'Tip')))}",
+    );
+    let mut page = ViewSession::new(&source).unwrap();
+    let display = page.layout(300, 200, 1.0).unwrap();
+    let links = display.nodes.iter().filter(|n| n.tag == "link").count();
+    assert!(links >= 2, "the styled link arrives as pieces");
+    let triggers = display
+        .nodes
+        .iter()
+        .filter(|n| n.interest_for.as_deref() == Some("tip"))
+        .count();
+    assert_eq!(triggers, 1);
+}
+
+#[test]
 fn native_scroll_reuses_committed_description_and_preserves_click_handles() {
     let source = source(
         "let renders=0; function render(){renders++; const n=useLocal('n',0); return h('scroll',{'data-testid':'feed'},h('button',{style:{height:300},onClick:()=>n.set(n.value+1)},`${renders}:${n.value}`))}",
