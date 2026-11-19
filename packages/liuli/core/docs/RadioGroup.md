@@ -174,7 +174,7 @@ export function Inline() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `radioGroupRecipe` from `@liulidesign/core/RadioGroup/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--text-callout`, `--radius-control`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-solid`, `danger`, `focus`, `line-strong`, `on-accent-solid`, `surface`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-solid`, `danger`, `focus`, `line-strong`, `on-accent-solid`, `surface`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 

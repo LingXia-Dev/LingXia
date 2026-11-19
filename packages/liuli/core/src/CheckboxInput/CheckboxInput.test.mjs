@@ -84,3 +84,10 @@ test('At large text: the box is centred on the label\'s first line, in a line bo
     assert.equal(box.props.marginTop, undefined, 'no fixed nudge: the line centres it');
   }
 });
+
+test('StateDisabled: checked reads as off-but-checked, a neutral fill and a muted mark, not a faded accent', async () => {
+  const screen = await renderExample('CheckboxInput/CheckboxInput', 'StateDisabled');
+  const box = screen.queryAll(node => node.props.borderTopWidth === 2)[0];
+  assert.deepEqual([box.props.background, box.props.color], ['text/20', 'text-muted']);
+  assert.equal(screen.queryAll(node => node.tag === 'checkbox')[0].props.opacity, undefined, 'the row is not faded');
+});

@@ -3263,6 +3263,7 @@
           "on-accent-solid",
           "surface",
           "text",
+          "text-faint",
           "text-muted"
         ]
       },
@@ -13360,6 +13361,7 @@
           "on-accent-solid",
           "surface",
           "text",
+          "text-faint",
           "text-muted"
         ]
       },

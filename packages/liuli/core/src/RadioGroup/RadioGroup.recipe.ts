@@ -23,7 +23,7 @@ export const radioGroupRecipe = {
     horizontal: { list: 'flex-row flex-wrap gap-x-6 gap-y-1', card: 'flex-row flex-wrap gap-2' } satisfies Record<RadioGroupVariant, string>,
   },
   option: {
-    base: 'flex-row items-start gap-3 text-start disabled:opacity-40',
+    base: 'flex-row items-start gap-3 text-start',
     variant: {
       /** A row: keyboard focus is a fill, with room past the circle and text. */
       list: '-mx-2 px-2 py-1.5 rounded-control transition-colors duration-fast ease-standard hover:bg-text/4 focus-visible:bg-text/7',
@@ -51,17 +51,22 @@ export const radioGroupRecipe = {
     state: {
       on: 'bg-accent-solid border-accent-solid',
       off: 'bg-surface border-line-strong shadow-[0_1px_2px_rgb(0_0_0/0.05)]',
-    } satisfies Record<'on' | 'off', string>,
+      /** Disabled reads as off-but-checked: a neutral fill and a muted dot, never a faded accent. */
+      onDisabled: 'bg-text/20 border-transparent',
+      offDisabled: 'bg-text/4 border-text/12',
+    } satisfies Record<'on' | 'off' | 'onDisabled' | 'offDisabled', string>,
     invalid: 'border-danger',
   },
   dot: {
     base: 'size-[0.53em] rounded-full bg-on-accent-solid transition duration-fast ease-standard starting:scale-50 starting:opacity-0',
+    disabled: 'bg-muted',
   },
   text: {
     base: 'grow shrink min-w-0 gap-0.5',
   },
   label: {
     base: 'text-text',
+    disabled: 'text-faint',
     variant: { list: '', card: 'font-medium' } satisfies Record<RadioGroupVariant, string>,
     size: { sm: 'text-footnote', md: 'text-body', lg: 'text-callout' } satisfies Record<FieldSize, string>,
   },

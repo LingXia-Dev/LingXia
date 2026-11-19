@@ -21,9 +21,9 @@ export const switchRecipe = {
     variant: { standalone: '', row: 'self-stretch px-4 py-2.5 min-h-control-lg justify-center' } satisfies Record<SwitchVariant, string>,
   },
   control: {
-    base: 'min-h-8 track:rounded-full track:bg-line-strong/45 checked:track:bg-accent-solid thumb:rounded-full thumb:bg-knob thumb:border thumb:border-text/12 thumb:shadow-contact disabled:checked:track:bg-accent-solid/40 disabled:thumb:shadow-none',
+    base: 'min-h-8 track:rounded-full track:bg-line-strong/45 checked:track:bg-accent-solid thumb:rounded-full thumb:bg-knob thumb:border thumb:border-text/12 thumb:shadow-contact disabled:track:bg-text/12 disabled:checked:track:bg-text/20',
     /** Busy, not unavailable: the track keeps its colour while presses are held off. */
-    loading: 'disabled:checked:track:bg-accent-solid disabled:thumb:shadow-contact',
+    loading: 'disabled:track:bg-line-strong/45 disabled:checked:track:bg-accent-solid',
     size: {
       sm: 'track:w-9 track:h-5 thumb:size-4',
       md: 'track:w-11 track:h-[26px] thumb:size-[22px]',

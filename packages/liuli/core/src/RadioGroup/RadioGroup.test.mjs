@@ -60,3 +60,11 @@ test('At large text: each radio mark is centred on its label\'s first line, in a
     assert.equal(circle.props.marginTop, undefined, 'no fixed nudge: the line centres it');
   }
 });
+
+test('StateDisabled: the chosen circle is a neutral fill with a muted dot, not a faded accent', async () => {
+  const screen = await renderExample('RadioGroup/RadioGroup', 'StateDisabled');
+  const chosen = screen.queryAll(node => node.props.role === 'radio' && node.props.stateChecked)[0] ?? screen.queryAll(node => node.props.role === 'radio')[0];
+  const circle = chosen.children[0].children[1];
+  assert.deepEqual([circle.props.background, circle.children[0].props.background], ['text/20', 'text-muted']);
+  assert.equal(chosen.props.opacity, undefined, 'the row is not faded');
+});

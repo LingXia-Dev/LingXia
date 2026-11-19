@@ -73,6 +73,7 @@ export function RadioGroup(props: RadioGroupProps) {
         >
           {items.map(option => {
             const isChecked = option.value === chosen;
+            const off = isDisabled || option.isDisabled === true;
             const helpId = `${id}-${option.value}-help`;
             return (
               <button
@@ -82,19 +83,19 @@ export function RadioGroup(props: RadioGroupProps) {
                 data-state={isChecked ? 'checked' : 'unchecked'}
                 aria-label={option.label}
                 aria-describedby={option.description !== undefined ? helpId : undefined}
-                disabled={isDisabled || option.isDisabled}
+                disabled={off}
                 data-testid={testId && `${testId}-${option.value}`}
                 onClick={() => choose(option.value)}
-                className={cx(r.option.base, r.option.variant[variant], variant === 'card' && r.option.card[isChecked ? 'on' : 'off'])}
+                className={cx(r.option.base, r.option.variant[variant], variant === 'card' && r.option.card[isChecked && !off ? 'on' : 'off'])}
               >
                 <view aria-hidden className={r.line.base}>
                   <text className={cx(r.ghost.base, r.label.variant[variant], r.label.size[size])}>{'\u200B'}</text>
-                  <view className={cx(r.circle.base, r.circle.size[size], r.circle.state[isChecked ? 'on' : 'off'], !isChecked && status?.type === 'error' && r.circle.invalid)}>
-                    {isChecked && <view className={r.dot.base} />}
+                  <view className={cx(r.circle.base, r.circle.size[size], r.circle.state[`${isChecked ? 'on' : 'off'}${off ? 'Disabled' : ''}` as const], !isChecked && status?.type === 'error' && r.circle.invalid)}>
+                    {isChecked && <view className={cx(r.dot.base, off && r.dot.disabled)} />}
                   </view>
                 </view>
                 <view className={r.text.base}>
-                  <text aria-hidden className={cx(r.label.base, r.label.variant[variant], r.label.size[size])}>{option.label}</text>
+                  <text aria-hidden className={cx(r.label.base, r.label.variant[variant], r.label.size[size], off && r.label.disabled)}>{option.label}</text>
                   {option.description !== undefined && <text id={helpId} className={r.description.base}>{option.description}</text>}
                 </view>
               </button>

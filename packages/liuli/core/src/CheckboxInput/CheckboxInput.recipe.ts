@@ -25,7 +25,7 @@ export const checkboxInputRecipe = {
   },
   control: {
     /** A row: keyboard focus is a fill, given room past the box and text by the negative margins. */
-    base: '-mx-2 px-2 -my-1 py-1 rounded-control transition-colors duration-fast ease-standard disabled:opacity-40 hover:bg-text/4 focus-visible:bg-text/7',
+    base: '-mx-2 px-2 -my-1 py-1 rounded-control transition-colors duration-fast ease-standard hover:bg-text/4 focus-visible:bg-text/7',
   },
   /** Centred in the primitive's minimum height when the content is shorter. */
   row: {
@@ -47,7 +47,10 @@ export const checkboxInputRecipe = {
     state: {
       on: 'bg-accent-solid border-accent-solid text-on-accent-solid',
       off: 'bg-surface border-line-strong shadow-[0_1px_2px_rgb(0_0_0/0.05)]',
-    } satisfies Record<'on' | 'off', string>,
+      /** Disabled reads as off-but-checked: a neutral fill and a muted mark, never a faded accent. */
+      onDisabled: 'bg-text/20 border-transparent text-muted',
+      offDisabled: 'bg-text/4 border-text/12',
+    } satisfies Record<'on' | 'off' | 'onDisabled' | 'offDisabled', string>,
     invalid: 'border-danger',
   },
   mark: {
@@ -56,12 +59,14 @@ export const checkboxInputRecipe = {
   /** Partly chosen: a dash on the filled box. */
   dash: {
     base: 'h-0.5 w-[0.66em] rounded-full bg-on-accent-solid',
+    disabled: 'bg-muted',
   },
   text: {
     base: 'grow shrink min-w-0 gap-0.5',
   },
   label: {
     base: 'text-text',
+    disabled: 'text-faint',
     size: { sm: 'text-footnote', md: 'text-body', lg: 'text-callout' } satisfies Record<FieldSize, string>,
     hidden: 'sr-only',
   },
