@@ -269,6 +269,7 @@ impl ViewInteraction {
             return Ok(effects);
         }
         let click = matches!(act, AutomationAct::Click | AutomationAct::DoubleClick);
+        let mut caret_after = None;
         let action = match act {
             AutomationAct::Click | AutomationAct::DoubleClick => AccessibilityAction::Click,
             AutomationAct::ScrollIntoView
@@ -354,20 +355,43 @@ impl ViewInteraction {
             }
             AutomationAct::Fill(text) => AccessibilityAction::SetText(text),
             AutomationAct::Type(text) => {
-                // A key the field's keyboard has no place for would wait out the edit's
-                // patience and fail late; it fails now, naming what the field takes.
-                let keyboard = self
+                let input = self
                     .frame
                     .as_ref()
                     .zip(self.ids.index(id))
-                    .and_then(|(frame, index)| frame.nodes[index].input.as_ref())
+                    .and_then(|(frame, index)| frame.nodes[index].input.clone());
+                let keyboard = input
+                    .as_ref()
                     .map(|input| input.keyboard.clone())
                     .unwrap_or_default();
-                match crate::interaction::input_rules::typed(&keyboard, &value, &text) {
-                    Some(kept) => AccessibilityAction::SetText(value + &kept),
+                // Keys replace a focused editor's selection and leave the caret after them;
+                // an unfocused field takes them at its end.
+                let units: Vec<u16> = value.encode_utf16().collect();
+                let [start, end] = input
+                    .as_ref()
+                    .and_then(|input| input.edit.as_ref())
+                    .filter(|edit| edit.text == value)
+                    .map(|edit| {
+                        let [a, b] = edit.selection.map(|v| (v as usize).min(units.len()));
+                        [a.min(b), a.max(b)]
+                    })
+                    .unwrap_or([units.len(); 2]);
+                let focused = input.as_ref().is_some_and(|input| input.edit.is_some());
+                let before = String::from_utf16_lossy(&units[..start]);
+                let after = String::from_utf16_lossy(&units[end..]);
+                // A key the field's keyboard has no place for would wait out the edit's
+                // patience and fail late; it fails now, naming what the field takes.
+                match crate::interaction::input_rules::typed(&keyboard, &before, &after, &text) {
+                    Some(kept) => {
+                        if focused {
+                            let caret = (start + kept.encode_utf16().count()) as i32;
+                            caret_after = Some(caret);
+                        }
+                        AccessibilityAction::SetText(format!("{before}{kept}{after}"))
+                    }
                     None => {
                         return Err(format!(
-                            "E_EDIT_REFUSED: {selector} is a {keyboard} field; it takes no part of {text:?} after {value:?}"
+                            "E_EDIT_REFUSED: {selector} is a {keyboard} field; it takes no part of {text:?} at {start} in {value:?}"
                         ));
                     }
                 }
@@ -387,6 +411,15 @@ impl ViewInteraction {
             }
             _ => self.accessibility(id, action, page),
         };
+        let mut effects = effects;
+        if handled && let (Some(caret), Some(index)) = (caret_after, self.ids.index(id)) {
+            effects.push(Effect::EditText {
+                node: index,
+                text: None,
+                start: caret,
+                end: caret,
+            });
+        }
         if !handled {
             let reason = if inert {
                 "the page is behind an open dialog; act inside the dialog or close it"

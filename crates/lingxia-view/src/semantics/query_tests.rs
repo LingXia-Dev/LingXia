@@ -1037,3 +1037,58 @@ fn hidden_text_is_never_read_into_a_description_or_a_name() {
     assert!(tree.contains(r#""description":"Saved""#), "{tree}");
     assert!(!tree.contains("HIDDEN"), "{tree}");
 }
+
+#[test]
+fn typing_inserts_at_a_focused_editors_selection_and_moves_the_caret_past_it() {
+    let page = PageTicket::new(1);
+    let typed = |selection: [u32; 2], text: &str| {
+        let source = crate::session::tests::source(
+            "function render(){return h('input',{'data-testid':'a','aria-label':'Amount',inputMode:'decimal',value:'2.5'})}",
+        );
+        let mut session = crate::ViewSession::new(&source).unwrap();
+        let mut display = session.layout(300, 400, 1.0).unwrap();
+        for node in &mut display.nodes {
+            if let Some(input) = &mut node.input {
+                input.edit_token = Some(1);
+                input.edit = Some(crate::text::input::Snapshot {
+                    text: "2.5".into(),
+                    selection,
+                    composition: None,
+                    focused: true,
+                    can_undo: false,
+                    can_redo: false,
+                });
+            }
+        }
+        let mut focused = ViewInteraction::default();
+        focused.presented(
+            Arc::new(PresentedFrame::new(
+                CommitTicket::new(1),
+                1.0,
+                display.nodes,
+            )),
+            0,
+            &Default::default(),
+            page,
+        );
+        focused
+            .automate(
+                "[data-testid=\"a\"]",
+                None,
+                AutomationAct::Type(text.into()),
+                false,
+                page,
+            )
+            .unwrap()
+            .into_iter()
+            .filter_map(|e| match e {
+                Effect::EditText { text, start, .. } => Some((text, start)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    // The caret between "." and "5", as a tap there leaves it.
+    assert_eq!(typed([2, 2], "9"), [(Some("2.95".into()), -1), (None, 3)]);
+    // A selection is replaced.
+    assert_eq!(typed([0, 3], "7"), [(Some("7".into()), -1), (None, 1)]);
+}

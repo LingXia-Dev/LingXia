@@ -23,17 +23,17 @@ impl Rules {
     }
 }
 
-/// What a `keyboard` editor holding `before` keeps of `text` typed at its end, as its own
+/// What a `keyboard` editor keeps of `text` typed between `before` and `after`, as its own
 /// filter does; `None` when it drops a character.
-pub(crate) fn typed(keyboard: &str, before: &str, text: &str) -> Option<String> {
+pub(crate) fn typed(keyboard: &str, before: &str, after: &str, text: &str) -> Option<String> {
     let rules = Rules {
         keyboard: keyboard.to_owned(),
         ..Rules::default()
     };
-    let end = units(before) as u32;
+    let caret = units(before) as u32;
     let snapshot = Snapshot {
-        text: before.to_owned(),
-        selection: [end, end],
+        text: format!("{before}{after}"),
+        selection: [caret, caret],
         composition: None,
         focused: true,
         can_undo: false,
