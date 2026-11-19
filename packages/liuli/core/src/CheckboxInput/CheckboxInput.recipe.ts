@@ -54,7 +54,7 @@ export const checkboxInputRecipe = {
   },
   /** Partly chosen: a dash on the filled box. */
   dash: {
-    base: 'h-0.5 rounded-full bg-on-accent',
+    base: 'h-0.5 rounded-full bg-on-accent-solid',
     size: { sm: 'w-2', md: 'w-2.5', lg: 'w-3' } satisfies Record<FieldSize, string>,
   },
   text: {

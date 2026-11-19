@@ -26,8 +26,8 @@ export const doc: ComponentDoc = {
     contrast: [
       { what: 'quiet icon on a card', pair: ['text', 'surface'], minimum: '3:1' },
       { what: 'quiet icon under the pointer', pair: ['text', 'text/5'], over: 'surface', minimum: '3:1' },
-      { what: 'primary icon', pair: ['on-accent', 'accent'], minimum: '3:1' },
-      { what: 'destructive icon', pair: ['on-danger', 'danger'], minimum: '3:1' },
+      { what: 'primary icon', pair: ['on-accent-solid', 'accent-solid'], minimum: '3:1' },
+      { what: 'destructive icon', pair: ['on-danger-solid', 'danger-solid'], minimum: '3:1' },
       { what: 'disabled icon', pair: ['text-muted', 'text/6'], over: 'surface', minimum: '3:1' },
     ],
     notes: [

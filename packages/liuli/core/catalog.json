@@ -3260,7 +3260,6 @@
           "accent-solid",
           "danger",
           "line-strong",
-          "on-accent",
           "on-accent-solid",
           "surface",
           "text",
@@ -8820,16 +8819,16 @@
           {
             "what": "primary icon",
             "pair": [
-              "on-accent",
-              "accent"
+              "on-accent-solid",
+              "accent-solid"
             ],
             "minimum": "3:1"
           },
           {
             "what": "destructive icon",
             "pair": [
-              "on-danger",
-              "danger"
+              "on-danger-solid",
+              "danger-solid"
             ],
             "minimum": "3:1"
           },

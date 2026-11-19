@@ -72,8 +72,8 @@ export function PlaygroundSpecimen() {
     <view className="w-full gap-2">
       <view className="flex-row items-center justify-between">
         <view className="h-1.5 w-10 rounded-full bg-text/20" />
-        <view className="h-4 w-7 items-end justify-center rounded-full bg-accent px-0.5">
-          <view className="size-3 rounded-full bg-on-accent" />
+        <view className="h-4 w-7 items-end justify-center rounded-full bg-accent-solid px-0.5">
+          <view className="size-3 rounded-full bg-knob" />
         </view>
       </view>
       <Button label="Save" variant="primary" size="sm" width="fill" onClick={unused} />

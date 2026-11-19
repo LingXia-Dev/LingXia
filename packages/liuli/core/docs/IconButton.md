@@ -152,8 +152,8 @@ export function InRows() {
 | --- | --- | --- | --- | --- |
 | quiet icon on a card | `text` on `surface` | 3:1 | 16.26:1 | 13.87:1 |
 | quiet icon under the pointer | `text` on `text/5` over `surface` | 3:1 | 14.76:1 | 12.27:1 |
-| primary icon | `on-accent` on `accent` | 3:1 | 5.62:1 | 7.12:1 |
-| destructive icon | `on-danger` on `danger` | 3:1 | 5.21:1 | 6.27:1 |
+| primary icon | `on-accent-solid` on `accent-solid` | 3:1 | 5.62:1 | 4.80:1 |
+| destructive icon | `on-danger-solid` on `danger-solid` | 3:1 | 5.21:1 | 4.82:1 |
 | disabled icon | `text-muted` on `text/6` over `surface` | 3:1 | 5.24:1 | 5.72:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
