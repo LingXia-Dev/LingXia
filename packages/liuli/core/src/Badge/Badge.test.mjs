@@ -15,8 +15,8 @@ test('Tones: soft tints, text in the text role except on accent', async () => {
 
 test('Solid: fill with its on- role', async () => {
   const screen = await renderExample('Badge/Badge', 'Solid');
-  assert.equal(screen.getByTestId('solid').props.background, 'accent-solid');
-  assert.equal(screen.getByTestId('solid').props.color, 'on-accent-solid');
+  assert.equal(screen.getByTestId('solid').props.background, 'accent');
+  assert.equal(screen.getByTestId('solid').props.color, 'on-accent');
 });
 
 test('Sizes: heights 20 and 24 at the least, grown by the label at large text; the icon is hidden', async () => {

@@ -568,8 +568,8 @@
           {
             "what": "solid accent",
             "pair": [
-              "on-accent-solid",
-              "accent-solid"
+              "on-accent",
+              "accent"
             ],
             "minimum": "4.5:1"
           },
@@ -600,8 +600,8 @@
           {
             "what": "solid danger",
             "pair": [
-              "on-danger-solid",
-              "danger-solid"
+              "on-danger",
+              "danger"
             ],
             "minimum": "4.5:1"
           },
@@ -737,7 +737,8 @@
         "notes": [
           "Not a control and not announced on change. A badge whose change matters sits next to a status region the app keeps.",
           "The tone is colour only; the label carries the meaning in words.",
-          "A hue is colour only too: the label names the category, and the dot is not read."
+          "A hue is colour only too: the label names the category, and the dot is not read.",
+          "A solid badge is a label, so it takes its tone's own pair, not the solid fills of pressed controls: a row of solid badges reads as one family in both appearances."
         ]
       },
       "examples": [
@@ -788,10 +789,10 @@
           "--text-footnote"
         ],
         "roles": [
+          "accent",
           "accent-soft",
-          "accent-solid",
+          "danger",
           "danger-soft",
-          "danger-solid",
           "hue-1",
           "hue-1-soft",
           "hue-2",
@@ -810,9 +811,9 @@
           "hue-8-soft",
           "info",
           "info-soft",
+          "on-accent",
           "on-accent-soft",
-          "on-accent-solid",
-          "on-danger-solid",
+          "on-danger",
           "on-info",
           "on-success",
           "on-warning",
