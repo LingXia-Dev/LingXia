@@ -30,8 +30,8 @@ export const doc: ComponentDoc = {
     keyboard: [],
     target: { sm: 32, md: 40, lg: 48 },
     contrast: [
-      { what: 'primary label', pair: ['on-accent', 'accent'], minimum: '4.5:1' },
-      { what: 'destructive label', pair: ['on-danger', 'danger'], minimum: '4.5:1' },
+      { what: 'primary label', pair: ['on-accent-solid', 'accent-solid'], minimum: '4.5:1' },
+      { what: 'destructive label', pair: ['on-danger-solid', 'danger-solid'], minimum: '4.5:1' },
       { what: 'secondary label', pair: ['text', 'surface'], minimum: '4.5:1' },
       { what: 'secondary boundary', pair: ['line-strong', 'surface'], minimum: '3:1' },
       { what: 'link label', pair: ['accent', 'canvas'], minimum: '4.5:1' },

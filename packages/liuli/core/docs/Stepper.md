@@ -89,7 +89,7 @@ export function Across() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `stepperRecipe` from `@liulidesign/core/Stepper/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `line-strong`, `on-accent`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-solid`, `focus`, `line-strong`, `on-accent-solid`, `text`, `text-muted`.
 
 ## Accessibility
 
@@ -106,7 +106,7 @@ export function Across() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| tick on a finished step | `on-accent` on `accent` | 3:1 | 5.62:1 | 7.12:1 |
+| tick on a finished step | `on-accent-solid` on `accent-solid` | 3:1 | 5.62:1 | 4.80:1 |
 | number and ring of the step in progress | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 | ring of a step ahead | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |

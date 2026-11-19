@@ -32,7 +32,7 @@ export const doc: ComponentDoc = {
     ],
     target: {},
     contrast: [
-      { what: 'tick on a finished step', pair: ['on-accent', 'accent'], minimum: '3:1' },
+      { what: 'tick on a finished step', pair: ['on-accent-solid', 'accent-solid'], minimum: '3:1' },
       { what: 'number and ring of the step in progress', pair: ['accent', 'surface'], minimum: '3:1' },
       { what: 'ring of a step ahead', pair: ['line-strong', 'surface'], minimum: '3:1' },
       { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1' },

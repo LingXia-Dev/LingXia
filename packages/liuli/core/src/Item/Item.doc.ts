@@ -52,8 +52,8 @@ export const doc: ComponentDoc = {
       { what: 'chevron, selected', pair: ['text-muted', 'accent-soft'], minimum: '3:1' },
       { what: 'list heading and the line under it', pair: ['text-muted', 'canvas'], minimum: '4.5:1' },
       { what: 'swipe action, neutral', pair: ['text', 'text/8'], over: 'surface', minimum: '4.5:1' },
-      { what: 'swipe action, accent', pair: ['on-accent', 'accent'], minimum: '4.5:1' },
-      { what: 'swipe action, danger', pair: ['on-danger', 'danger'], minimum: '4.5:1' },
+      { what: 'swipe action, accent', pair: ['on-accent-solid', 'accent-solid'], minimum: '4.5:1' },
+      { what: 'swipe action, danger', pair: ['on-danger-solid', 'danger-solid'], minimum: '4.5:1' },
     ],
     notes: [
       'The button pattern applies to a row with `onClick`. A plain row is not a control; its texts are read in order.',

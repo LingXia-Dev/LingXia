@@ -568,8 +568,8 @@
           {
             "what": "solid accent",
             "pair": [
-              "on-accent",
-              "accent"
+              "on-accent-solid",
+              "accent-solid"
             ],
             "minimum": "4.5:1"
           },
@@ -600,8 +600,8 @@
           {
             "what": "solid danger",
             "pair": [
-              "on-danger",
-              "danger"
+              "on-danger-solid",
+              "danger-solid"
             ],
             "minimum": "4.5:1"
           },
@@ -788,10 +788,10 @@
           "--text-footnote"
         ],
         "roles": [
-          "accent",
           "accent-soft",
-          "danger",
+          "accent-solid",
           "danger-soft",
+          "danger-solid",
           "hue-1",
           "hue-1-soft",
           "hue-2",
@@ -810,9 +810,9 @@
           "hue-8-soft",
           "info",
           "info-soft",
-          "on-accent",
           "on-accent-soft",
-          "on-danger",
+          "on-accent-solid",
+          "on-danger-solid",
           "on-info",
           "on-success",
           "on-warning",
@@ -1757,16 +1757,16 @@
           {
             "what": "primary label",
             "pair": [
-              "on-accent",
-              "accent"
+              "on-accent-solid",
+              "accent-solid"
             ],
             "minimum": "4.5:1"
           },
           {
             "what": "destructive label",
             "pair": [
-              "on-danger",
-              "danger"
+              "on-danger-solid",
+              "danger-solid"
             ],
             "minimum": "4.5:1"
           },
@@ -1898,10 +1898,11 @@
         ],
         "roles": [
           "accent",
-          "danger",
+          "accent-solid",
+          "danger-solid",
           "focus",
-          "on-accent",
-          "on-danger",
+          "on-accent-solid",
+          "on-danger-solid",
           "surface",
           "text",
           "text-muted"
@@ -2395,8 +2396,8 @@
           {
             "what": "chosen day",
             "pair": [
-              "on-accent",
-              "accent"
+              "on-accent-solid",
+              "accent-solid"
             ],
             "minimum": "4.5:1"
           },
@@ -2485,11 +2486,11 @@
           "--text-body"
         ],
         "roles": [
-          "accent",
           "accent-soft",
+          "accent-solid",
           "focus",
           "line-strong",
-          "on-accent",
+          "on-accent-solid",
           "text",
           "text-muted"
         ]
@@ -3180,7 +3181,7 @@
           {
             "what": "box fill, checked",
             "pair": [
-              "accent",
+              "accent-solid",
               "surface"
             ],
             "minimum": "3:1"
@@ -3188,8 +3189,8 @@
           {
             "what": "check mark",
             "pair": [
-              "on-accent",
-              "accent"
+              "on-accent-solid",
+              "accent-solid"
             ],
             "minimum": "3:1"
           },
@@ -3253,10 +3254,11 @@
           "--radius-checkbox"
         ],
         "roles": [
-          "accent",
+          "accent-solid",
           "danger",
           "line-strong",
           "on-accent",
+          "on-accent-solid",
           "surface",
           "text",
           "text-muted"
@@ -9496,16 +9498,16 @@
           {
             "what": "swipe action, accent",
             "pair": [
-              "on-accent",
-              "accent"
+              "on-accent-solid",
+              "accent-solid"
             ],
             "minimum": "4.5:1"
           },
           {
             "what": "swipe action, danger",
             "pair": [
-              "on-danger",
-              "danger"
+              "on-danger-solid",
+              "danger-solid"
             ],
             "minimum": "4.5:1"
           }
@@ -9594,11 +9596,13 @@
         "roles": [
           "accent",
           "accent-soft",
+          "accent-solid",
           "danger",
+          "danger-solid",
           "focus",
-          "on-accent",
           "on-accent-soft",
-          "on-danger",
+          "on-accent-solid",
+          "on-danger-solid",
           "surface",
           "surface-overlay",
           "text",
@@ -10535,8 +10539,8 @@
           {
             "what": "ticked task mark",
             "pair": [
-              "on-accent",
-              "accent"
+              "on-accent-solid",
+              "accent-solid"
             ],
             "minimum": "3:1"
           },
@@ -10618,8 +10622,9 @@
         ],
         "roles": [
           "accent",
+          "accent-solid",
           "line-strong",
-          "on-accent",
+          "on-accent-solid",
           "text",
           "text-muted"
         ]
@@ -13274,7 +13279,7 @@
           {
             "what": "circle fill, chosen",
             "pair": [
-              "accent",
+              "accent-solid",
               "surface"
             ],
             "minimum": "3:1"
@@ -13343,10 +13348,11 @@
         ],
         "roles": [
           "accent",
+          "accent-solid",
           "danger",
           "focus",
           "line-strong",
-          "on-accent",
+          "on-accent-solid",
           "surface",
           "text",
           "text-muted"
@@ -15498,8 +15504,8 @@
           {
             "what": "tick on a finished step",
             "pair": [
-              "on-accent",
-              "accent"
+              "on-accent-solid",
+              "accent-solid"
             ],
             "minimum": "3:1"
           },
@@ -15582,9 +15588,10 @@
         ],
         "roles": [
           "accent",
+          "accent-solid",
           "focus",
           "line-strong",
-          "on-accent",
+          "on-accent-solid",
           "text",
           "text-muted"
         ]
@@ -15743,36 +15750,16 @@
             "what": "track, on, against the surface",
             "pair": [
               "surface",
-              "accent/80"
+              "accent-solid"
             ],
-            "over": "surface",
             "minimum": "3:1"
           },
           {
             "what": "thumb against the track, on",
             "pair": [
               "knob",
-              "accent/80"
+              "accent-solid"
             ],
-            "over": "surface",
-            "minimum": "3:1"
-          },
-          {
-            "what": "thumb against the track, on, straight on the page",
-            "pair": [
-              "knob",
-              "accent/80"
-            ],
-            "over": "canvas",
-            "minimum": "3:1"
-          },
-          {
-            "what": "thumb against the track, on, inside a popover or sheet",
-            "pair": [
-              "knob",
-              "accent/80"
-            ],
-            "over": "surface-overlay",
             "minimum": "3:1"
           },
           {
@@ -15797,7 +15784,7 @@
           "The standalone switch is 32 px tall at both sizes; the row variant gives it a 48 px row.",
           "The off track is decorative and has no contrast minimum: off is carried by the thumb at the start and the missing accent.",
           "Disabled and on, the track keeps its accent at reduced strength, so the state still reads.",
-          "The thumb is the `knob` role, white in both appearances. On the solid dark accent it would fall to 2.72:1, so the on track is the accent at 80 %.",
+          "The thumb is the `knob` role, white in both appearances; the on track is `accent-solid`, the fill made to carry white.",
           "Keyboard focus rings a standalone switch; on a row it is a fill across the row and its help text, as on an Item."
         ]
       },
@@ -15845,7 +15832,7 @@
           "--shadow-contact"
         ],
         "roles": [
-          "accent",
+          "accent-solid",
           "focus",
           "knob",
           "line-strong",
@@ -19880,8 +19867,8 @@
           {
             "what": "chosen speed or quality under the picture",
             "pair": [
-              "on-accent",
-              "accent"
+              "on-accent-solid",
+              "accent-solid"
             ],
             "minimum": "4.5:1"
           }
@@ -19935,13 +19922,14 @@
         ],
         "roles": [
           "accent",
+          "accent-solid",
           "danger",
           "focus",
           "knob",
           "line",
           "line-strong",
           "media",
-          "on-accent",
+          "on-accent-solid",
           "on-media",
           "text",
           "text-muted"

@@ -174,7 +174,7 @@ export function Inline() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `radioGroupRecipe` from `@liulidesign/core/RadioGroup/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--text-callout`, `--radius-control`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `focus`, `line-strong`, `on-accent`, `surface`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-solid`, `danger`, `focus`, `line-strong`, `on-accent-solid`, `surface`, `text`, `text-muted`.
 
 ## Accessibility
 
@@ -191,7 +191,7 @@ export function Inline() {
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | circle boundary, not chosen | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
-| circle fill, chosen | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
+| circle fill, chosen | `accent-solid` on `surface` | 3:1 | 5.62:1 | 3.50:1 |
 | chosen card edge | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

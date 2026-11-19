@@ -22,7 +22,7 @@ test('Day: November 2026 from Monday, each day named in full, the chosen one sel
   assert.equal(day('2026-11-19').props.accessibilityLabel, 'Thursday 19 November 2026');
   assert.equal(day('2026-11-15').props.accessibilityLabel, 'Today, Sunday 15 November 2026');
   assert.deepEqual(selected(screen), ['19']);
-  assert.deepEqual([day('2026-11-19').props.background, day('2026-11-19').children[0].props.color], ['accent', 'on-accent']);
+  assert.deepEqual([day('2026-11-19').props.background, day('2026-11-19').children[0].props.color], ['accent-solid', 'on-accent-solid']);
   assert.ok(day('2026-11-15').props.ring, 'a ring on today');
   assert.deepEqual([day('2026-11-19').props.minWidth, day('2026-11-19').props.minHeight], [40, 40]);
   // At large text a two-digit day widens its circle, which stays square and inside its seventh of the row.
@@ -51,7 +51,7 @@ test('Stay: a span is selected end to end with a band between; a press starts ov
   const day = date => screen.getByTestId(`stay-${date}`);
   assert.deepEqual(selected(screen), ['18', '19', '20', '21', '22', '23', '24']);
   assert.deepEqual(['18', '21', '24'].map(d => day(`2026-11-${d}`).parent.props.background), ['accent-soft', 'accent-soft', 'accent-soft']);
-  assert.deepEqual(['18', '21', '24'].map(d => day(`2026-11-${d}`).props.background), ['accent', undefined, 'accent'], 'the ends are filled, the days between sit on the band');
+  assert.deepEqual(['18', '21', '24'].map(d => day(`2026-11-${d}`).props.background), ['accent-solid', undefined, 'accent-solid'], 'the ends are filled, the days between sit on the band');
   screen.press(day('2026-11-27'));
   assert.deepEqual(selected(screen), ['27']);
   assert.equal(day('2026-11-27').parent.props.background, undefined, 'one day has no band');

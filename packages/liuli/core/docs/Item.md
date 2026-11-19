@@ -322,7 +322,7 @@ export function Compact() {
 - `className` on ItemList: classes merged after the recipe's, so they win.
 - The recipe, `itemRecipe` from `@liulidesign/core/Item/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-md`, `--spacing-control-lg`, `--text-caption`, `--text-footnote`, `--text-body`, `--radius-control`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `danger`, `focus`, `on-accent`, `on-accent-soft`, `on-danger`, `surface`, `surface-overlay`, `text`, `text-faint`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `accent-solid`, `danger`, `danger-solid`, `focus`, `on-accent-soft`, `on-accent-solid`, `on-danger-solid`, `surface`, `surface-overlay`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 
@@ -351,8 +351,8 @@ export function Compact() {
 | chevron, selected | `text-muted` on `accent-soft` | 3:1 | 5.16:1 | 5.39:1 |
 | list heading and the line under it | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
 | swipe action, neutral | `text` on `text/8` over `surface` | 4.5:1 | 13.91:1 | 11.29:1 |
-| swipe action, accent | `on-accent` on `accent` | 4.5:1 | 5.62:1 | 7.12:1 |
-| swipe action, danger | `on-danger` on `danger` | 4.5:1 | 5.21:1 | 6.27:1 |
+| swipe action, accent | `on-accent-solid` on `accent-solid` | 4.5:1 | 5.62:1 | 4.80:1 |
+| swipe action, danger | `on-danger-solid` on `danger-solid` | 4.5:1 | 5.21:1 | 4.82:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

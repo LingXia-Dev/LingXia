@@ -12,11 +12,11 @@ export const buttonRecipe = {
     // Neighbours never squeeze a button into wrapping its label; only a button wider than its whole row wraps it.
     base: 'flex-row items-center justify-center-safe shrink-0 max-w-full rounded-control transition-colors duration-fast ease-standard focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     variant: {
-      primary: 'bg-accent text-on-accent border border-transparent shadow-[0_1px_2px_rgb(0_0_0/0.10)] hover:bg-accent/92 active:bg-accent/88',
+      primary: 'bg-accent-solid text-on-accent-solid border border-transparent shadow-[0_1px_2px_rgb(0_0_0/0.10)] hover:bg-accent-solid/92 active:bg-accent-solid/88',
       secondary: 'bg-surface text-text border border-text/12 shadow-[0_1px_2px_rgb(0_0_0/0.05)] hover:bg-text/5 active:bg-text/8',
       ghost: 'bg-transparent text-text border border-transparent hover:bg-text/5 active:bg-text/8',
       link: 'bg-transparent text-accent border border-transparent hover:bg-accent/6 active:bg-accent/10',
-      destructive: 'bg-danger text-on-danger border border-transparent shadow-[0_1px_2px_rgb(0_0_0/0.10)] hover:bg-danger/92 active:bg-danger/88',
+      destructive: 'bg-danger-solid text-on-danger-solid border border-transparent shadow-[0_1px_2px_rgb(0_0_0/0.10)] hover:bg-danger-solid/92 active:bg-danger-solid/88',
     } satisfies Record<ButtonVariant, string>,
     /**
      * Disabled drops the variant's colour for a faint ink fill and muted text, which stays above

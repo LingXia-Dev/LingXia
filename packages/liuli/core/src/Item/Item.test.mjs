@@ -106,7 +106,7 @@ test('Swipe: a row with actions slides over them; a reader is offered them by na
   assert.equal(row.tag, 'button');
   assert.equal(row.parent, slide(), 'the pressable row moves inside the slide');
   const remove = screen.getByTestId('mail-m2-delete');
-  assert.deepEqual([remove.props.width, remove.props.background, remove.props.color], [72, 'danger', 'on-danger']);
+  assert.deepEqual([remove.props.width, remove.props.background, remove.props.color], [72, 'danger-solid', 'on-danger-solid']);
   assert.equal(remove.children.filter(node => node.tag === 'vector').length, 1, 'an icon over the label');
   screen.press(screen.getByTestId('mail-m2-flag'));
   assert.equal(textOf(screen.getByTestId('mail-m2')).includes('Flagged'), true);

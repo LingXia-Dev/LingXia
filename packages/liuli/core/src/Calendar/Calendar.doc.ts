@@ -38,7 +38,7 @@ export const doc: ComponentDoc = {
     target: { md: 40 },
     contrast: [
       { what: 'day', pair: ['text', 'surface'], minimum: '4.5:1' },
-      { what: 'chosen day', pair: ['on-accent', 'accent'], minimum: '4.5:1' },
+      { what: 'chosen day', pair: ['on-accent-solid', 'accent-solid'], minimum: '4.5:1' },
       { what: 'day inside a span', pair: ['text', 'accent-soft'], minimum: '4.5:1' },
       { what: 'weekday names', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
       { what: 'ring on today', pair: ['line-strong', 'surface'], minimum: '3:1' },

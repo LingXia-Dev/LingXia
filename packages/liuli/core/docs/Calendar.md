@@ -135,7 +135,7 @@ export function Chinese() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `calendarRecipe` from `@liulidesign/core/Calendar/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-body`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `focus`, `line-strong`, `on-accent`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent-soft`, `accent-solid`, `focus`, `line-strong`, `on-accent-solid`, `text`, `text-muted`.
 
 ## Accessibility
 
@@ -158,7 +158,7 @@ export function Chinese() {
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | day | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
-| chosen day | `on-accent` on `accent` | 4.5:1 | 5.62:1 | 7.12:1 |
+| chosen day | `on-accent-solid` on `accent-solid` | 4.5:1 | 5.62:1 | 4.80:1 |
 | day inside a span | `text` on `accent-soft` | 4.5:1 | 14.25:1 | 11.26:1 |
 | weekday names | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 | ring on today | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |

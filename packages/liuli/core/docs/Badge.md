@@ -142,7 +142,7 @@ export function InARow() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `badgeRecipe` from `@liulidesign/core/Badge/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `danger`, `danger-soft`, `hue-1`, `hue-1-soft`, `hue-2`, `hue-2-soft`, `hue-3`, `hue-3-soft`, `hue-4`, `hue-4-soft`, `hue-5`, `hue-5-soft`, `hue-6`, `hue-6-soft`, `hue-7`, `hue-7-soft`, `hue-8`, `hue-8-soft`, `info`, `info-soft`, `on-accent`, `on-accent-soft`, `on-danger`, `on-info`, `on-success`, `on-warning`, `success`, `success-soft`, `text`, `warning`, `warning-soft`.
+- Colour roles it paints with, set by the theme pack: `accent-soft`, `accent-solid`, `danger-soft`, `danger-solid`, `hue-1`, `hue-1-soft`, `hue-2`, `hue-2-soft`, `hue-3`, `hue-3-soft`, `hue-4`, `hue-4-soft`, `hue-5`, `hue-5-soft`, `hue-6`, `hue-6-soft`, `hue-7`, `hue-7-soft`, `hue-8`, `hue-8-soft`, `info`, `info-soft`, `on-accent-soft`, `on-accent-solid`, `on-danger-solid`, `on-info`, `on-success`, `on-warning`, `success`, `success-soft`, `text`, `warning`, `warning-soft`.
 
 ## Accessibility
 
@@ -162,11 +162,11 @@ export function InARow() {
 | soft success | `text` on `success-soft` | 4.5:1 | 14.33:1 | 11.76:1 |
 | soft warning | `text` on `warning-soft` | 4.5:1 | 14.59:1 | 11.36:1 |
 | soft danger | `text` on `danger-soft` | 4.5:1 | 14.12:1 | 12.22:1 |
-| solid accent | `on-accent` on `accent` | 4.5:1 | 5.62:1 | 7.12:1 |
+| solid accent | `on-accent-solid` on `accent-solid` | 4.5:1 | 5.62:1 | 4.80:1 |
 | solid info | `on-info` on `info` | 4.5:1 | 5.62:1 | 7.12:1 |
 | solid success | `on-success` on `success` | 4.5:1 | 5.31:1 | 8.72:1 |
 | solid warning | `on-warning` on `warning` | 4.5:1 | 5.40:1 | 9.41:1 |
-| solid danger | `on-danger` on `danger` | 4.5:1 | 5.21:1 | 6.27:1 |
+| solid danger | `on-danger-solid` on `danger-solid` | 4.5:1 | 5.21:1 | 4.82:1 |
 | hue 1, text on its fill | `text` on `hue-1-soft` | 4.5:1 | 14.25:1 | 11.24:1 |
 | hue 1, the dot on its fill | `hue-1` on `hue-1-soft` | 3:1 | 3.26:1 | 8.07:1 |
 | hue 2, text on its fill | `text` on `hue-2-soft` | 4.5:1 | 14.42:1 | 11.00:1 |

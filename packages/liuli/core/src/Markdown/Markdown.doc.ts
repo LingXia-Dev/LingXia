@@ -38,7 +38,7 @@ export const doc: ComponentDoc = {
       { what: 'links', pair: ['accent', 'surface'], minimum: '4.5:1' },
       { what: 'inline code on its tint', pair: ['text', 'text/8'], over: 'surface', minimum: '4.5:1' },
       { what: 'code block on its tint', pair: ['text', 'text/6'], over: 'surface', minimum: '4.5:1' },
-      { what: 'ticked task mark', pair: ['on-accent', 'accent'], minimum: '3:1' },
+      { what: 'ticked task mark', pair: ['on-accent-solid', 'accent-solid'], minimum: '3:1' },
       { what: 'empty task mark', pair: ['line-strong', 'surface'], minimum: '3:1' },
     ],
     notes: [

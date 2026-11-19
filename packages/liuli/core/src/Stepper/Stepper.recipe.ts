@@ -37,7 +37,7 @@ export const stepperRecipe = {
   marker: {
     base: 'size-6 shrink-0 items-center justify-center rounded-full',
     state: {
-      done: 'bg-accent text-on-accent',
+      done: 'bg-accent-solid text-on-accent-solid',
       current: 'inset-ring-2 inset-ring-accent',
       upcoming: 'inset-ring-1 inset-ring-line-strong',
     } satisfies Record<State, string>,
@@ -50,7 +50,7 @@ export const stepperRecipe = {
   line: {
     base: 'rounded-full',
     orientation: { horizontal: 'grow h-0.5 mx-1.5', vertical: 'grow w-0.5 my-1 min-h-3' } satisfies Record<StepperOrientation, string>,
-    done: 'bg-accent',
+    done: 'bg-accent-solid',
     ahead: 'bg-text/12',
   },
   body: {

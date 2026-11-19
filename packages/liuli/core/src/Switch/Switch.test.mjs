@@ -24,7 +24,7 @@ test('InList: each row is its own switch', async () => {
 test('the track turns to the deepened accent when on, and the thumb rings on keyboard focus', async () => {
   const screen = await renderExample('Switch/Switch', 'Basic');
   const control = screen.getByTestId('sync');
-  assert.match(control.props.trackStyle, /"accent\/80"/);
+  assert.match(control.props.trackStyle, /"accent-solid"/);
   screen.toggle(control, false);
   assert.match(screen.getByTestId('sync').props.trackStyle, /"line-strong\/45"/);
   assert.match(control.props.focusVisibleStyle.thumbStyle, /focus/);

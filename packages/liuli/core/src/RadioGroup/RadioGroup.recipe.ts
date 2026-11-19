@@ -39,13 +39,13 @@ export const radioGroupRecipe = {
     /** Centred on the label's first line. */
     size: { sm: 'size-4 mt-px', md: 'size-5 mt-px', lg: 'size-6' } satisfies Record<FieldSize, string>,
     state: {
-      on: 'bg-accent border-accent',
+      on: 'bg-accent-solid border-accent-solid',
       off: 'bg-surface border-line-strong shadow-[0_1px_2px_rgb(0_0_0/0.05)]',
     } satisfies Record<'on' | 'off', string>,
     invalid: 'border-danger',
   },
   dot: {
-    base: 'rounded-full bg-on-accent transition duration-fast ease-standard starting:scale-50 starting:opacity-0',
+    base: 'rounded-full bg-on-accent-solid transition duration-fast ease-standard starting:scale-50 starting:opacity-0',
     size: { sm: 'size-1.5', md: 'size-2', lg: 'size-2.5' } satisfies Record<FieldSize, string>,
   },
   text: {

@@ -10,7 +10,7 @@ test('Actions: a toolbar named by its label; the buttons keep a gap, their own v
   assert.equal(group.props.accessibilityLabel, 'Draft actions');
   assert.equal(group.props.gap, 8);
   assert.deepEqual(group.children.map(button => button.props.accessibilityLabel), ['Discard', 'Save', 'Publish']);
-  assert.equal(screen.getByTestId('publish').props.background, 'accent');
+  assert.equal(screen.getByTestId('publish').props.background, 'accent-solid');
   assert.equal(screen.getByTestId('save').props.radius, 10, 'apart, each button keeps its own corners');
   screen.press(screen.getByTestId('publish'));
   assert.equal(textOf(screen.getByTestId('outcome')), 'Published');

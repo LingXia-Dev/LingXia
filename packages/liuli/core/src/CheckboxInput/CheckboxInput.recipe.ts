@@ -35,7 +35,7 @@ export const checkboxInputRecipe = {
     /** Centred on the label's first line. */
     size: { sm: 'size-4 mt-px', md: 'size-5 mt-px', lg: 'size-6' } satisfies Record<FieldSize, string>,
     state: {
-      on: 'bg-accent border-accent text-on-accent',
+      on: 'bg-accent-solid border-accent-solid text-on-accent-solid',
       off: 'bg-surface border-line-strong shadow-[0_1px_2px_rgb(0_0_0/0.05)]',
     } satisfies Record<'on' | 'off', string>,
     invalid: 'border-danger',

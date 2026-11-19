@@ -45,16 +45,18 @@ const groups: { title: string; note?: string; swatches: Swatch[] }[] = [
   {
     title: 'Accent',
     swatches: [
-      { role: 'accent', use: 'The primary action, with on-accent', sample: 'bg-accent', ink: 'text-on-accent' },
+      { role: 'accent', use: 'Links, selection and marks; text that reads on any surface', sample: 'bg-accent', ink: 'text-on-accent' },
+      { role: 'accent-solid', use: 'The primary action and checked controls, with on-accent-solid', sample: 'bg-accent-solid', ink: 'text-on-accent-solid' },
       { role: 'accent-soft', use: 'Quiet highlights, with on-accent-soft', sample: 'bg-accent-soft', ink: 'text-on-accent-soft' },
-      { role: 'knob', use: 'Switch and slider thumbs, white in both appearances', sample: 'bg-accent/80', ink: 'text-knob' },
+      { role: 'knob', use: 'Switch and slider thumbs, white in both appearances', sample: 'bg-accent-solid', ink: 'text-knob' },
     ],
   },
   {
     title: 'Status',
-    note: 'Each status has three tones: the status colour for words and filled buttons, its mark for dots and shapes, its soft for fills behind text. A mark is never used for text. Information has no colour of its own: it takes the accent.',
+    note: 'Each status has three tones: the status colour for words and filled badges, its mark for dots and shapes, its soft for fills behind text. A mark is never used for text.',
     swatches: [
-      { role: 'danger', use: 'Destructive actions and errors, in words', sample: 'bg-danger', ink: 'text-on-danger' },
+      { role: 'danger', use: 'Errors, in words', sample: 'bg-danger', ink: 'text-on-danger' },
+      { role: 'danger-solid', use: 'A destructive action, with on-danger-solid', sample: 'bg-danger-solid', ink: 'text-on-danger-solid' },
       { role: 'danger-mark', use: 'A dot or a shape that says danger', sample: 'bg-danger-mark' },
       { role: 'danger-soft', use: 'Behind an error label', sample: 'bg-danger-soft', ink: 'text-text' },
       { role: 'warning', use: 'Something needs a look, in words', sample: 'bg-warning', ink: 'text-on-warning' },

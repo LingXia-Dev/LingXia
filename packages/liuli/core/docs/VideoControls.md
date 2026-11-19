@@ -116,7 +116,7 @@ export function Bar() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `videoControlsRecipe` from `@liulidesign/core/VideoControls/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-md`, `--text-caption`, `--text-footnote`, `--text-body`, `--shadow-contact`, `--radius-container`, `--radius-dialog`.
-- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `focus`, `knob`, `line`, `line-strong`, `media`, `on-accent`, `on-media`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-solid`, `danger`, `focus`, `knob`, `line`, `line-strong`, `media`, `on-accent-solid`, `on-media`, `text`, `text-muted`.
 
 ## Accessibility
 
@@ -137,7 +137,7 @@ export function Bar() {
 | progress against the unplayed track | `on-media` on `on-media/25` over `media` | 3:1 | 4.14:1 | 4.14:1 |
 | chosen speed or quality | `media` on `on-media` | 4.5:1 | 7.94:1 | 7.94:1 |
 | speed or quality under the picture | `text` on `text/8` over `surface` | 4.5:1 | 13.91:1 | 11.29:1 |
-| chosen speed or quality under the picture | `on-accent` on `accent` | 4.5:1 | 5.62:1 | 7.12:1 |
+| chosen speed or quality under the picture | `on-accent-solid` on `accent-solid` | 4.5:1 | 5.62:1 | 4.80:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

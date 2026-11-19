@@ -121,7 +121,7 @@ export function Comment() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `markdownRecipe` from `@liulidesign/core/Markdown/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--text-callout`, `--text-title`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent`, `line-strong`, `on-accent`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-solid`, `line-strong`, `on-accent-solid`, `text`, `text-muted`.
 
 ## Accessibility
 
@@ -143,7 +143,7 @@ export function Comment() {
 | links | `accent` on `surface` | 4.5:1 | 5.62:1 | 6.19:1 |
 | inline code on its tint | `text` on `text/8` over `surface` | 4.5:1 | 13.91:1 | 11.29:1 |
 | code block on its tint | `text` on `text/6` over `surface` | 4.5:1 | 14.47:1 | 11.94:1 |
-| ticked task mark | `on-accent` on `accent` | 3:1 | 5.62:1 | 7.12:1 |
+| ticked task mark | `on-accent-solid` on `accent-solid` | 3:1 | 5.62:1 | 4.80:1 |
 | empty task mark | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.

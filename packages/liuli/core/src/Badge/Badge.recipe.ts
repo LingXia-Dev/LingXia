@@ -22,11 +22,11 @@ export const badgeRecipe = {
       danger: 'bg-danger-soft text-text',
     } satisfies Record<BadgeTone, string>,
     solid: {
-      accent: 'bg-accent text-on-accent',
+      accent: 'bg-accent-solid text-on-accent-solid',
       info: 'bg-info text-on-info',
       success: 'bg-success text-on-success',
       warning: 'bg-warning text-on-warning',
-      danger: 'bg-danger text-on-danger',
+      danger: 'bg-danger-solid text-on-danger-solid',
     } satisfies Record<BadgeStatusTone, string>,
     hue: { 1: 'bg-hue-1-soft text-text', 2: 'bg-hue-2-soft text-text', 3: 'bg-hue-3-soft text-text', 4: 'bg-hue-4-soft text-text', 5: 'bg-hue-5-soft text-text', 6: 'bg-hue-6-soft text-text', 7: 'bg-hue-7-soft text-text', 8: 'bg-hue-8-soft text-text' } satisfies Record<Hue, string>,
   },

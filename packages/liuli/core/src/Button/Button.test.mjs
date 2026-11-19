@@ -9,8 +9,8 @@ test('Variants: each button is named by its label and is not busy at rest', asyn
   assert.deepEqual(buttons.map(node => node.props.accessibilityLabel), ['Save changes', 'Preview', 'Skip', 'Delete draft']);
   assert.ok(buttons.every(node => !node.props.stateBusy));
   const primary = screen.getByTestId('primary');
-  assert.equal(primary.props.background, 'accent');
-  assert.equal(primary.props.color, 'on-accent');
+  assert.equal(primary.props.background, 'accent-solid');
+  assert.equal(primary.props.color, 'on-accent-solid');
 });
 
 test('Sizes: heights come from the control tokens', async () => {

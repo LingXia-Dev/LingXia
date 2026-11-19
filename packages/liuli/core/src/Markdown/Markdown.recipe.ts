@@ -65,7 +65,7 @@ export const markdownRecipe = {
   task: {
     base: 'size-4 shrink-0 items-center justify-center rounded-[4px] border-2',
     open: 'border-line-strong',
-    done: 'border-accent bg-accent text-on-accent',
+    done: 'border-accent-solid bg-accent-solid text-on-accent-solid',
     tick: 'size-3',
   },
   quote: {

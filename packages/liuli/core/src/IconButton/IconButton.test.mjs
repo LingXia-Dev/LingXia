@@ -22,7 +22,7 @@ test('Toolbar: a button named by its label, with nothing drawn but the icon; a p
 
 test('Variants: Button\'s fills, with the icon in the fill\'s text colour', async () => {
   const screen = await renderExample('IconButton/IconButton', 'Variants');
-  assert.deepEqual([screen.getByTestId('add').props.background, screen.getByTestId('add').props.color], ['accent', 'on-accent']);
+  assert.deepEqual([screen.getByTestId('add').props.background, screen.getByTestId('add').props.color], ['accent-solid', 'on-accent-solid']);
   assert.equal(screen.getByTestId('quiet').props.background, '#00000000');
 });
 
