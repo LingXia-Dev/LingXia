@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { render } from '@lingxia/view/testing';
+import { points, render } from '@lingxia/view/testing';
 
 const gallery = resolve(dirname(fileURLToPath(import.meta.url)), '../../../gallery');
 const pages = JSON.parse(readFileSync(resolve(gallery, 'lxapp.json'), 'utf8')).pages;
@@ -58,7 +58,7 @@ test('gallery device spec: walks every category and page', { skip: !existsSync(d
 });
 
 test('gallery home: search lists matches by name, summary or category, and says when nothing matches', async () => {
-  const screen = await render(resolve(gallery, 'pages/home/index.tsx'), {}, { root: gallery });
+  const screen = await render(resolve(gallery, 'pages/home/index.tsx'), {}, { root: gallery, points: true });
   screen.type(screen.getByTestId('home-search'), 'date');
   const results = () => screen.queryAll(node => node.testId?.startsWith('result-')).map(node => node.testId.slice('result-'.length));
   assert.ok(results().includes('date-input'));
@@ -71,7 +71,7 @@ test('gallery home: search lists matches by name, summary or category, and says 
 });
 
 test('gallery home: a table of contents in three groups, each row with its icon, line and count; nothing is dated', async () => {
-  const screen = await render(resolve(gallery, 'pages/home/index.tsx'), {}, { root: gallery });
+  const screen = await render(resolve(gallery, 'pages/home/index.tsx'), {}, { root: gallery, points: true });
   const lists = screen.queryAll(node => node.props.role === 'list');
   assert.deepEqual(lists.map(list => list.props.accessibilityLabel), ['Foundations', 'Components', 'Patterns']);
   assert.deepEqual(lists.map(list => list.children.length), [1, categoryPages.length - 2, 1]);
@@ -88,9 +88,10 @@ test('gallery home: a table of contents in three groups, each row with its icon,
 });
 
 test('gallery motion: each control plays what its caption says', async () => {
-  const screen = await render(resolve(gallery, 'pages/motion/index.tsx'), {}, { root: gallery });
+  const screen = await render(resolve(gallery, 'pages/motion/index.tsx'), {}, { root: gallery, points: true });
   const said = text => screen.queryAll(node => node.text === text).length > 0;
-  const motion = node => JSON.parse(node.props.transition);
+  // A transition reaches the screen as JSON text; its duration is a theme step.
+  const motion = node => points(JSON.parse(node.props.transition));
   const named = label => screen.queryAll(node => node.props.accessibilityLabel === label && node.tag !== 'text')[0];
   // Press: the fill eases out in 150 ms.
   assert.equal(motion(screen.getByTestId('press-primary')).durationMs, 150);

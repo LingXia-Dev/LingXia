@@ -35,7 +35,8 @@ export function harnessFor(packageDir) {
       }
       const linked = join(app, 'node_modules', links[0].name);
       await writeFile(join(app, 'page.tsx'), typeof page === 'function' ? page(linked) : page);
-      return await render(join(app, 'page.tsx'), view, { root: app });
+      // Theme steps read as the built-in pack's points, the numbers these tests state.
+      return await render(join(app, 'page.tsx'), view, { root: app, points: true });
     } finally {
       await rm(app, { recursive: true, force: true });
     }
