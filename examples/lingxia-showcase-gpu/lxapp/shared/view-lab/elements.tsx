@@ -276,11 +276,11 @@ export function ControlsDemo() {
       <radio data-testid="lab-controls-size" bind={size} aria-label="Size" className="gap-1 text-sm"
         options={[{ value: 's', label: small, 'data-testid': 'lab-controls-size-s' }, { value: 'm', label: medium, 'data-testid': 'lab-controls-size-m' },
           { value: 'l', label: large, 'data-testid': 'lab-controls-size-l' }, { value: 'xl', label: extra, disabled: true, 'data-testid': 'lab-controls-size-xl' }]} />
-      <slider data-testid="lab-controls-volume" bind={volume} min={0} max={100} step={10} aria-label="Volume" className="text-accent" />
+      <slider data-testid="lab-controls-volume" bind={volume} min={0} max={100} step={10} aria-label="Volume" />
       <slider data-testid="lab-controls-scrub" bind={scrub} max={180} secondaryValue={Math.min(180, scrub.value + 45)} aria-label="Scrub"
         aria-valuetext={`${Math.floor(scrub.value / 60)}:${String(scrub.value % 60).padStart(2, '0')} of 3:00`}
-        className="text-accent px-0 track:h-[3px] active:track:h-[6px] thumb:size-0 active:thumb:size-4 focus-visible:thumb:size-4 focus-visible:thumb:ring-2 focus-visible:thumb:ring-accent/40" />
-      <switch data-testid="lab-controls-power" bind={power} aria-label="Power" className="text-sm track:w-11 track:h-6 checked:track:bg-success thumb:size-5 active:thumb:w-6">{t(labels.power)}</switch>
+        className="text-accent-solid px-0 track:h-[3px] active:track:h-[6px] thumb:size-0 active:thumb:size-4 focus-visible:thumb:size-4 focus-visible:thumb:ring-2 focus-visible:thumb:ring-accent/40" />
+      <switch data-testid="lab-controls-power" bind={power} aria-label="Power" className="text-sm track:w-11 track:h-6 checked:track:bg-accent-solid thumb:size-5 active:thumb:w-6">{t(labels.power)}</switch>
       <switch data-testid="lab-controls-locked" value disabled onChange={() => {}} aria-label="Locked on" className="text-sm">{t(labels.lockedOn)}</switch>
       <textarea data-testid="lab-controls-notes" bind={notes} rows={3} maxRows={6} aria-label="Notes" placeholder={t(labels.severalLines)} className={field} />
       <Readout testId="lab-controls-values" state={`size=${size.value} volume=${volume.value} notes=${notes.value.length}`}>
