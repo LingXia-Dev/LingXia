@@ -412,6 +412,8 @@ export interface PageTreeNode {
   /** Test ids of the mounted nodes `aria-controls` names. */
   controls?: string[];
   autocomplete?: 'list';
+  /** The keyboard an editor asks for, as `getAttribute('inputmode')` reads it; plain text has none. */
+  inputmode?: 'numeric' | 'decimal' | 'tel' | 'email' | 'search';
   value?: string | number;
   /** Scroll offset and its maximum along the region's axis. */
   scroll?: [number, number];
@@ -648,6 +650,8 @@ export interface PageElement {
   visibleRect?: { left: number; top: number; width: number; height: number } | null;
   /** On a GPU page: the box a finger reaches when nothing else lies under it. A control smaller than the platform's touch target is grown to it around its centre; the drawn box otherwise, and for a mouse. */
   targetRect?: { left: number; top: number; width: number; height: number };
+  /** On a GPU page: a focused editor's selection as `[start, end]` offsets into its value, equal at a caret; null or absent otherwise. */
+  selection?: [number, number] | null;
 }
 
 /** Returned when no element matches (single-element mode). */

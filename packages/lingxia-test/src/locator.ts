@@ -71,6 +71,8 @@ export interface QueryMatch {
   visibleRect?: { left: number; top: number; width: number; height: number } | null;
   /** On a GPU page: the box a finger reaches when nothing else lies under it. */
   targetRect?: { left: number; top: number; width: number; height: number };
+  /** On a GPU page: a focused editor's `[start, end]` selection, equal at a caret; null or absent otherwise. */
+  selection?: [number, number] | null;
   items?: QueryMatch[];
 }
 
@@ -140,6 +142,7 @@ export interface LocatorResolve {
   rect?: QueryMatch["rect"];
   visibleRect?: QueryMatch["visibleRect"];
   targetRect?: QueryMatch["targetRect"];
+  selection?: QueryMatch["selection"];
   renderer?: "gpu";
   /** Attribute values read for the single match, by name (`null`: absent). */
   attributes?: Record<string, string | null>;
@@ -470,6 +473,10 @@ export class PageLocator implements Locator {
       return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
     });
   }
+  selection(): Promise<[number, number] | null> {
+    return this.read("selection", async () => (await this.single("selection")).selection ?? null);
+  }
+
 
   /** A traced one-shot read. */
   private read<T>(verb: string, op: () => Promise<T>): Promise<T> {
@@ -582,6 +589,7 @@ export class PageLocator implements Locator {
         ...states(unique),
         ...(unique.visibleRect !== undefined ? { visibleRect: unique.visibleRect } : {}),
         ...(unique.targetRect ? { targetRect: unique.targetRect } : {}),
+        ...(unique.selection ? { selection: unique.selection } : {}),
         ...(unique.renderer ? { renderer: unique.renderer } : {}),
         kind: "unique",
       };

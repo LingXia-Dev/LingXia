@@ -521,6 +521,7 @@ export interface GpuFrameAutomationElement {
   rect?: GpuFrameAutomationRect | null;
   visibleRect?: GpuFrameAutomationArea | null;
   targetRect?: GpuFrameAutomationArea | null;
+  selection?: number[] | null;
   attributes?: Object | null;
 }
 
@@ -676,6 +677,7 @@ export interface GpuFrameAutomationTreeNode {
   description?: string | null;
   controls?: string[] | null;
   autocomplete?: string | null;
+  inputmode?: string | null;
   level?: number | null;
   value?: Object | null;
   scroll?: number[] | null;

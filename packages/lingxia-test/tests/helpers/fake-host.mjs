@@ -527,6 +527,7 @@ export function createWorld(options = {}) {
       rect: element.rect ?? { left: 0, top: 0, width: 10, height: 10, right: 10, bottom: 10, centerX: 5, centerY: 5, viewportWidth: 100, viewportHeight: 100 },
       ...(element.renderer ? { renderer: element.renderer } : {}),
       ...(element.visibleRect !== undefined ? { visibleRect: element.visibleRect } : {}),
+      ...(element.selection !== undefined ? { selection: element.selection } : {}),
       // A GPU page answers its data-* attributes in the query; it has no DOM to eval.
       ...(element.renderer === "gpu" ? { attributes: element.attributes ?? {} } : {}),
     };

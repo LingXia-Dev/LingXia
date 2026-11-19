@@ -313,6 +313,8 @@ export interface Locator {
    * centre; otherwise, with a mouse and on a WebView page, this is `boundingBox()`.
    */
   touchTarget(): Promise<{ x: number; y: number; width: number; height: number }>;
+  /** The single match's selection as `[start, end]` when it is a focused editor on a GPU page (equal at a caret), else `null`. */
+  selection(): Promise<[number, number] | null>;
 }
 
 /** A value that crosses the eval boundary unchanged. */

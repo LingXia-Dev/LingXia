@@ -588,10 +588,10 @@ test("failure forensics record the page's visibility", async () => {
   assert.match(report.failures[0].page.hidden, /no animation frame/);
 });
 
-test("locator reads are one-shot and traced: count, isVisible, textContent, inputValue, getAttribute", async () => {
+test("locator reads are one-shot and traced: count, isVisible, textContent, inputValue, getAttribute, selection", async () => {
   const world = createWorld();
   world.add({ testId: "title", text: "  Hello\n  world ", attributes: { "aria-level": "1" } });
-  world.add({ testId: "name", text: "", value: "Ada" });
+  world.add({ testId: "name", text: "", value: "Ada", selection: [1, 3] });
   world.add({ testId: "row", text: "a" });
   world.add({ testId: "row", text: "b" });
   world.add({ testId: "folded", visible: false, text: "x" });
@@ -610,6 +610,7 @@ test("locator reads are one-shot and traced: count, isVisible, textContent, inpu
       seen.value = await view.testId("name").inputValue();
       seen.attributes = [await view.testId("title").getAttribute("aria-level"), await view.testId("title").getAttribute("hidden")];
       seen.nth = await view.testId("row").nth(1).textContent();
+      seen.selection = [await view.testId("name").selection(), await view.testId("title").selection()];
       await failure("isVisibleMany", () => view.testId("row").isVisible());
       await failure("textMany", () => view.testId("row").textContent());
       await failure("textNone", () => view.testId("missing").textContent());
@@ -630,6 +631,7 @@ test("locator reads are one-shot and traced: count, isVisible, textContent, inpu
   assert.equal(seen.value, "Ada");
   assert.deepEqual(seen.attributes, ["1", null]);
   assert.equal(seen.nth, "b");
+  assert.deepEqual(seen.selection, [[1, 3], null]);
   assert.equal(seen.late, 0);
   assert.equal(seen.query, "undefined");
   assert.match(errors.isVisibleMany, /^isVisible\(\): locator .* resolved to 2 matches; narrow it with nth\(\)/);
@@ -639,7 +641,7 @@ test("locator reads are one-shot and traced: count, isVisible, textContent, inpu
   assert.match(errors.attributeMany, /^getAttribute\(\): locator .* resolved to 2 matches/);
   assert.match(errors.attributeName, /getAttribute\(name\) takes an attribute name/);
   const traced = new Set(result.steps.map((step) => step.name));
-  for (const verb of ["count", "isVisible", "textContent", "inputValue", "getAttribute"]) assert.ok(traced.has(`page.${verb}`), verb);
+  for (const verb of ["count", "isVisible", "textContent", "inputValue", "getAttribute", "selection"]) assert.ok(traced.has(`page.${verb}`), verb);
 });
 
 test("a read that finds nothing on a GPU page names the test ids on screen", async () => {

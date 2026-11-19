@@ -813,6 +813,7 @@ public struct GpuFrameAutomationElement: Decodable, Sendable {
     public let rect: GpuFrameAutomationRect?
     public let visibleRect: GpuFrameAutomationArea?
     public let targetRect: GpuFrameAutomationArea?
+    public let selection: [UInt32]?
     public let attributes: GpuJSON?
 
     enum CodingKeys: String, CodingKey {
@@ -844,6 +845,7 @@ public struct GpuFrameAutomationElement: Decodable, Sendable {
         case rect = "rect"
         case visibleRect = "visibleRect"
         case targetRect = "targetRect"
+        case selection = "selection"
         case attributes = "attributes"
     }
 }
@@ -1120,6 +1122,7 @@ public struct GpuFrameAutomationTreeNode: Decodable, Sendable {
     public let description: String?
     public let controls: [String]?
     public let autocomplete: String?
+    public let inputmode: String?
     public let level: UInt8?
     public let value: GpuJSON?
     public let scroll: [Float]?
@@ -1144,6 +1147,7 @@ public struct GpuFrameAutomationTreeNode: Decodable, Sendable {
         case description = "description"
         case controls = "controls"
         case autocomplete = "autocomplete"
+        case inputmode = "inputmode"
         case level = "level"
         case value = "value"
         case scroll = "scroll"

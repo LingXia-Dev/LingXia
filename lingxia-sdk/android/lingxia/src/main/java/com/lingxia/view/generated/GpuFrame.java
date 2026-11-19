@@ -826,6 +826,8 @@ public final class GpuFrame {
         public AutomationArea visibleRect() { JSONObject o = json.optJSONObject("visibleRect"); return o == null ? null : new AutomationArea(o); }
         /** `targetRect`: AutomationArea? */
         public AutomationArea targetRect() { JSONObject o = json.optJSONObject("targetRect"); return o == null ? null : new AutomationArea(o); }
+        /** `selection`: u32[2]? */
+        public long[] selection() { return (long[]) GpuFrame.array(json.optJSONArray("selection"), 1, "long"); }
         /** `attributes`: any? */
         public Object attributes() { return json.isNull("attributes") ? null : json.opt("attributes"); }
     }
@@ -1097,6 +1099,8 @@ public final class GpuFrame {
         public String[] controls() { return (String[]) GpuFrame.array(json.optJSONArray("controls"), 1, "String"); }
         /** `autocomplete`: string? */
         public String autocomplete() { return json.isNull("autocomplete") ? null : json.optString("autocomplete", null); }
+        /** `inputmode`: string? */
+        public String inputmode() { return json.isNull("inputmode") ? null : json.optString("inputmode", null); }
         /** `level`: u8? */
         public Long level() { if (json.isNull("level")) return null; return json.optLong("level"); }
         /** `value`: any? */
