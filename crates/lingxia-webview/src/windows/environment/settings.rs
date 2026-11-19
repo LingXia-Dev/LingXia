@@ -93,7 +93,8 @@ pub(crate) fn configure_settings(
                 WebViewError::WebView(format!("SetAreDefaultContextMenusEnabled failed: {err}"))
             })?;
         // Off, `chrome.webview.postMessage` does not exist in the page.
-        let web_messages = effective_options.rules().bridge_transport;
+        let rules = effective_options.rules();
+        let web_messages = rules.bridge_transport || rules.embed_mailbox;
         settings
             .SetIsWebMessageEnabled(web_messages)
             .map_err(|err| {

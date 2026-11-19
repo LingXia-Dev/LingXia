@@ -2034,7 +2034,6 @@ impl WebView {
     }
 
     /// Deliver a validated wire payload from the embedded-document mailbox.
-    #[cfg_attr(target_os = "windows", allow(dead_code))]
     pub(crate) fn dispatch_embed_wire(&self, raw_wire: &str, raw_origin: &str) {
         if !self.effective_options.rules().embed_mailbox {
             return;
@@ -2061,7 +2060,6 @@ impl WebView {
         }
     }
 
-    #[cfg_attr(target_os = "windows", allow(dead_code))]
     pub(crate) fn handle_fullscreen_change(&self, fullscreen: bool) {
         if let Ok(guard) = self.fullscreen_handler.read()
             && let Some(handler) = guard.as_ref()

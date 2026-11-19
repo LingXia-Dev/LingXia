@@ -648,6 +648,10 @@ pub(crate) fn register_event_handlers(
                     let mut source = PWSTR::null();
                     args.Source(&mut source)?;
                     let source = CoTaskMemPWSTR::from(source).to_string();
+                    if webview.effective_options().rules().embed_mailbox {
+                        webview.dispatch_embed_wire(&payload, &source);
+                        return Ok(());
+                    }
 
                     // The CoreWebView2 event is emitted only by the main
                     // document. Snapshot the normalizer's committed
