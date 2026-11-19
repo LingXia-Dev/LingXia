@@ -131,6 +131,7 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
 
     @MainActor private static func role(_ node: GpuFrameSemanticNode) -> NSAccessibility.Role {
         switch node.role {
+        case "combo-box" where node.textField != nil: return .comboBox
         case "button", "combo-box": return .button
         case "check-box", "switch": return .checkBox
         case "radio-button": return .radioButton

@@ -125,6 +125,8 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
     @MainActor private static func traits(_ node: GpuFrameSemanticNode) -> UIAccessibilityTraits {
         var traits: UIAccessibilityTraits = []
         switch node.role {
+        // An editable combobox is a text field to VoiceOver; its hint names the suggestions.
+        case "combo-box" where node.textField != nil: break
         case "button", "combo-box", "radio-button": traits.insert(.button)
         case "check-box", "switch":
             if #available(iOS 17.0, *) { traits.insert(.toggleButton) } else { traits.insert(.button) }

@@ -91,7 +91,9 @@ final class GpuAccessibility {
         GpuFrame.SemanticNode node = new GpuFrame.SemanticNode(json);
         String role = text(node.role());
         info.setPackageName(packageName);
-        info.setClassName(className(role));
+        // A Spinner is a button to TalkBack: an editable combobox stays an EditText.
+        info.setClassName(GpuSemantics.ROLE_COMBO_BOX.equals(role) && node.textField() != null
+            ? className(GpuSemantics.ROLE_TEXT_FIELD) : className(role));
         info.setText(text(node.text()));
         // TalkBack speaks this in place of the class role; a link has no widget class of its own.
         if (GpuSemantics.ROLE_LINK.equals(role))

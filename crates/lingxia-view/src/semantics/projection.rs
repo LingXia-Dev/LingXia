@@ -419,7 +419,12 @@ impl Projection<'_> {
         let role = if select.is_some() {
             Role::ComboBox
         } else if input.is_some() {
-            Role::TextField
+            // An editable combobox (a typeahead) keeps its text field; platforms read both.
+            if node.role.as_deref() == Some("combobox") {
+                Role::ComboBox
+            } else {
+                Role::TextField
+            }
         } else if let Some(scroll) = &node.scroll {
             if scroll.axis == ScrollAxis::Horizontal {
                 Role::HorizontalScrollView

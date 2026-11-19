@@ -304,6 +304,8 @@ fn a_combobox_names_the_mounted_list_it_controls() {
         "an unmounted id is dropped"
     );
     assert_eq!(city.autocomplete.as_deref(), Some("list"));
+    assert_eq!(city.role, Role::ComboBox, "a typeahead reads as a combobox");
+    assert!(city.text_field.is_some(), "and stays editable");
 }
 
 #[test]

@@ -124,7 +124,15 @@ unsafe fn populate(
         );
         sys::OH_ArkUI_AccessibilityElementInfoSetComponentType(
             info,
-            component_type(node.role).as_ptr(),
+            // ArkUI's Select is a button: an editable combobox stays a text input.
+            component_type(
+                if node.text_field.is_some() && node.role == Role::ComboBox {
+                    Role::TextField
+                } else {
+                    node.role
+                },
+            )
+            .as_ptr(),
         );
         sys::OH_ArkUI_AccessibilityElementInfoSetContents(info, contents.as_ptr());
         if !node.name.is_empty() {
