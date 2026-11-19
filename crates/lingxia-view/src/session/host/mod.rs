@@ -328,6 +328,9 @@ struct Inner<A: PlatformAdapter> {
     logic: bool,
     /// Worker only: this page's context in the worker's isolate.
     page: Mutex<Option<ViewPageId>>,
+    /// Worker only: the connection whose state the session holds, which lags the lifecycle's
+    /// until the worker runs the connect.
+    session_connection: std::sync::atomic::AtomicU64,
     /// Input resolved on the presented frame, oldest first; every worker frame runs it before
     /// it renders.
     input: Mutex<std::collections::VecDeque<dispatch::Queued<A>>>,
@@ -593,6 +596,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 lifecycle: Lifecycle::new(logic),
                 logic,
                 page: Mutex::new(None),
+                session_connection: Default::default(),
                 input: Mutex::new(Default::default()),
                 stale: StaleMark(Default::default()),
                 main: Mutex::new(Main {

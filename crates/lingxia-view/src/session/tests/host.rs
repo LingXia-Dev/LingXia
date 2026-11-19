@@ -1463,19 +1463,15 @@ fn connections_report_connected_and_an_overdue_bootstrap() {
         "a Logic page waits for its state"
     );
     platform.advance(Duration::from_secs(5));
-    assert_eq!(
-        host.adapter().log.lock().unwrap().overdue.last(),
-        Some(&true)
-    );
-    assert!(
-        host.adapter()
-            .log
-            .lock()
-            .unwrap()
-            .warnings
-            .iter()
-            .any(|w| w.starts_with("UI_BOOTSTRAP_TIMEOUT:"))
-    );
+    assert!(host.adapter().log.lock().unwrap().overdue.contains(&true));
+    if bounded_jobs() {
+        // Never a blank page: recovery covers it and offers a Logic restart.
+        let failure = host.failure().expect("an overdue bootstrap shows recovery");
+        assert!(failure.error.starts_with("UI_BOOTSTRAP_TIMEOUT:"));
+        assert!(failure.covers_page());
+        assert_eq!(failure.action, Some(RecoveryAction::Retry));
+        assert_eq!(failure.recovery.retry, Retry::Restart);
+    }
     deliver(
         &host,
         connection,
@@ -1484,6 +1480,10 @@ fn connections_report_connected_and_an_overdue_bootstrap() {
     platform.settle(&[&host]);
     if bounded_jobs() {
         assert_eq!(last(&host), ["count 3"]);
+        assert!(
+            host.failure().is_none(),
+            "a late first state clears recovery"
+        );
         assert_eq!(
             host.adapter().log.lock().unwrap().overdue.last(),
             Some(&false)
@@ -1497,6 +1497,12 @@ fn connections_report_connected_and_an_overdue_bootstrap() {
         );
         platform.settle(&[&host]);
         assert_eq!(last(&host), ["count 3"]);
+        // The new connection has no state of its own, whatever the old one drew.
+        platform.advance(Duration::from_secs(5));
+        let failure = host
+            .failure()
+            .expect("a reconnect without state shows recovery");
+        assert!(failure.error.starts_with("UI_BOOTSTRAP_TIMEOUT:"));
     } else {
         // Engines without bounded jobs refuse Logic actions; the failure is recoverable chrome.
         let failure = host.failure().unwrap();

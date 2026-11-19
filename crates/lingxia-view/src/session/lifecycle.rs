@@ -133,6 +133,10 @@ pub struct Lifecycle {
     state: Arc<Mutex<State>>,
 }
 
+/// Logic sent no first state for the current connection in time.
+pub const BOOTSTRAP_TIMEOUT: &str =
+    "UI_BOOTSTRAP_TIMEOUT: initial state not received within 5 seconds";
+
 impl Lifecycle {
     pub fn new(logic: bool) -> Self {
         Self {
@@ -289,6 +293,9 @@ impl Lifecycle {
                 FailureKind::Compatibility => Retry::None,
                 FailureKind::Candidate if loaded && (!self.logic || state.bridge_ready) => {
                     Retry::Redraw
+                }
+                FailureKind::Candidate if self.logic && loaded && error == BOOTSTRAP_TIMEOUT => {
+                    Retry::Restart
                 }
                 FailureKind::Candidate => Retry::None,
                 // A session that failed again before reloading still offers the restart.

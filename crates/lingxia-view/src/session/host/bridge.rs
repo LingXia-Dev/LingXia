@@ -68,7 +68,10 @@ impl<A: PlatformAdapter> Inner<A> {
                 ..Default::default()
             },
         )?;
-        Ok(Some((self.lifecycle.connection(), update)))
+        let connection = self
+            .session_connection
+            .load(std::sync::atomic::Ordering::SeqCst);
+        Ok(Some((ConnectionTicket::new(connection), update)))
     }
 
     /// State acknowledgements leave the View before any rendering attempt.
@@ -187,10 +190,10 @@ impl<A: PlatformAdapter> Inner<A> {
                     && inner.lifecycle.is_current_connection(connection)
                     && !inner.lifecycle.bridge_ready()
                 {
-                    inner
-                        .adapter
-                        .warn("UI_BOOTSTRAP_TIMEOUT: initial state not received within 5 seconds");
                     inner.adapter.bootstrap_overdue(true);
+                    // Never a blank page: recovery offers a Logic restart, and a late first
+                    // state still draws and clears it.
+                    inner.fail(crate::session::lifecycle::BOOTSTRAP_TIMEOUT.into());
                 }
             }),
         );
@@ -199,6 +202,9 @@ impl<A: PlatformAdapter> Inner<A> {
             // Logic loads the page only after this, so its first write finds the View connected.
             move |inner, session| {
                 session.begin_bridge()?;
+                inner
+                    .session_connection
+                    .store(connection.get(), std::sync::atomic::Ordering::SeqCst);
                 if inner.lifecycle.is_current_connection(connection) {
                     inner
                         .adapter
