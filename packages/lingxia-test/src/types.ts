@@ -313,6 +313,11 @@ export interface Locator {
    * centre; otherwise, with a mouse and on a WebView page, this is `boundingBox()`.
    */
   touchTarget(): Promise<{ x: number; y: number; width: number; height: number }>;
+  /**
+   * Scroll the single match wholly on screen, as far as it fits; resolves with no wait. Actions
+   * reveal what they act on themselves: this is for a gesture or a read that needs it in view.
+   */
+  scrollIntoView(options?: { timeout?: number }): Promise<void>;
   /** The single match's selection as `[start, end]` when it is a focused editor on a GPU page (equal at a caret), else `null`. */
   selection(): Promise<[number, number] | null>;
 }

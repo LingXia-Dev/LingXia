@@ -473,6 +473,18 @@ export class PageLocator implements Locator {
       return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
     });
   }
+  scrollIntoView(options?: { timeout?: number }): Promise<void> {
+    const timeout = options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
+    if (!Number.isFinite(timeout) || timeout <= 0) {
+      return Promise.reject(new TypeError("scrollIntoView timeout must be a positive finite number"));
+    }
+    const deadline = new ActionDeadline(timeout, this.room());
+    return this.read("scrollIntoView", async () => {
+      const resolved = await this.single("scrollIntoView");
+      await this.reveal(resolved.index, "scrollIntoView", deadline);
+    });
+  }
+
   selection(): Promise<[number, number] | null> {
     return this.read("selection", async () => (await this.single("selection")).selection ?? null);
   }

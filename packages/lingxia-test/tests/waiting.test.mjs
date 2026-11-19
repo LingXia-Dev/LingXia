@@ -942,6 +942,24 @@ test("app.page() waits for a page to open, times out naming it, refuses an ambig
   assert.ok(bind.includes("detail"), JSON.stringify(bind));
 });
 
+test("scrollIntoView reveals the single match and nothing else", async () => {
+  const world = createWorld();
+  const frame = world.add({ testId: "frame", inViewport: false, renderer: "gpu" });
+  world.add({ testId: "row", renderer: "gpu" });
+  world.add({ testId: "row", renderer: "gpu" });
+  const { attachments } = installFakeHost(world);
+  let many = "";
+  spec("reveal", async (t) => {
+    await t.app.view.testId("frame").scrollIntoView();
+    many = await t.app.view.testId("row").scrollIntoView().then(() => "resolved", (error) => error.message);
+  });
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
+  assert.equal(frame.scrolledTo, 1);
+  assert.equal(frame.clicked, undefined);
+  assert.match(many, /^scrollIntoView\(\): locator .* resolved to 2 matches/);
+});
+
 test("a GPU page brings the match on screen and acts without a DOM probe", async () => {
   const world = createWorld();
   const save = world.add({ testId: "save", inViewport: false, renderer: "gpu", text: "Save" });
