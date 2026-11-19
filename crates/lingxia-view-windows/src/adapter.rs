@@ -56,6 +56,8 @@ pub struct WindowsAdapter {
     raster: OnceLock<Arc<Mailbox<(DisplayList, CommitTicket)>>>,
     /// The attached GPU presenter, or 0.
     pub(crate) gpu: AtomicU64,
+    /// Display frames keep coming for a playing video's new frames.
+    ticking: Arc<AtomicBool>,
     pub(crate) target: Mutex<Target>,
     pub(crate) cpu_frame: Mutex<Option<CpuFrame>>,
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
@@ -87,6 +89,7 @@ impl WindowsAdapter {
             raster_scale: Mutex::new(None),
             raster: OnceLock::new(),
             gpu: AtomicU64::new(0),
+            ticking: Default::default(),
             // CPU frames until the window attaches a presenter.
             target: Mutex::new(Target::Unavailable),
             cpu_frame: Mutex::new(None),
@@ -292,13 +295,26 @@ impl Presenter for WindowsAdapter {
                 revision,
                 drawn,
             } => {
+                let ticking = self.ticking.clone();
                 lingxia_view::renderer::render_thread::present(
                     surface,
                     revision,
                     drawn,
                     true,
                     move |shown, gpu| {
-                        let Some(host) = host.upgrade() else { return };
+                        let Some(strong) = host.upgrade() else { return };
+                        // The first frame that draws video starts display frames for its frames.
+                        if lingxia_view::renderer::surfaces::keeps_video(surface)
+                            && !ticking.swap(true, Ordering::AcqRel)
+                        {
+                            let host = host.clone();
+                            strong.adapter().dispatcher.post(Box::new(move || {
+                                if let Some(host) = host.upgrade() {
+                                    host.tick();
+                                }
+                            }));
+                        }
+                        let host = strong;
                         match shown {
                             Ok(shown) => {
                                 host.deferred_drawn(CommitTicket::new(revision), shown, gpu)
@@ -369,6 +385,12 @@ fn rasterize(host: &WeakViewHost<WindowsAdapter>, display: DisplayList, generati
 }
 
 impl FrameScheduler for WindowsAdapter {
+    fn tick(&self) -> bool {
+        let ticking = lingxia_view::renderer::surfaces::tick(self.gpu.load(Ordering::Acquire));
+        self.ticking.store(ticking, Ordering::Release);
+        ticking
+    }
+
     fn request_vsync(&self) {
         let Some(host) = self.weak() else {
             return;
@@ -436,6 +458,56 @@ impl ImageProvider for WindowsAdapter {
     fn cancel(&self, id: u64) {
         let handle = self.images().remove(&id);
         drop(handle);
+    }
+    fn video_resolver(&self) -> Option<lingxia_view::scene::video::VideoResolver> {
+        let (shell, token) = (self.shell.clone(), self.token);
+        Some(Arc::new(move |source: &str| {
+            let url = shell.video_url(token, source)?;
+            if lingxia_view::renderer::gpu::hls::is_playlist(&url)
+                && !crate::video::has_manifest(&url)
+            {
+                read_manifest(&*shell, token, &url);
+            }
+            Ok(url)
+        }))
+    }
+}
+
+/// Playlist reads in flight by URL; dropping a handle cancels its read.
+static MANIFEST_READS: std::sync::LazyLock<Mutex<HashMap<String, Box<dyn Send>>>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn manifest_reads() -> std::sync::MutexGuard<'static, HashMap<String, Box<dyn Send>>> {
+    MANIFEST_READS.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Reads `url`'s master playlist under the page's authority, so its player can list and pin
+/// renditions. A failed read is retried at the next resolve.
+fn read_manifest(shell: &dyn Shell, token: i64, url: &str) {
+    if manifest_reads().contains_key(url) {
+        return;
+    }
+    let finished = Arc::new(AtomicBool::new(false));
+    let done = {
+        let (url, finished) = (url.to_owned(), finished.clone());
+        Box::new(move |result: Result<Vec<u8>, String>| {
+            finished.store(true, Ordering::Release);
+            match result {
+                Ok(bytes) => crate::video::store_manifest(&url, &String::from_utf8_lossy(&bytes)),
+                Err(error) => log::debug!(target: "lingxia_view", "video playlist {url}: {error}"),
+            }
+            let handle = manifest_reads().remove(&url);
+            drop(handle);
+        })
+    };
+    let handle = shell.load_image(token, url.to_owned(), done);
+    if !finished.load(Ordering::Acquire) {
+        manifest_reads().insert(url.to_owned(), handle);
+        // The read may have finished between the check and the insert.
+        if finished.load(Ordering::Acquire) {
+            let handle = manifest_reads().remove(url);
+            drop(handle);
+        }
     }
 }
 

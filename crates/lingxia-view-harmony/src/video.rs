@@ -414,6 +414,7 @@ impl Player for Video {
     fn next_frame(
         &mut self,
         device: &wgpu::Device,
+        _queue: &wgpu::Queue,
     ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
         if self.shared().frames.load(Ordering::Acquire) == 0 {
             return Ok(None);

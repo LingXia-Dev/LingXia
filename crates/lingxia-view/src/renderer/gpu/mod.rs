@@ -277,7 +277,7 @@ impl PrepareJob {
         let (has_video, imported) = if self.capture {
             (video::draws_video(display), false)
         } else {
-            video::import_frames(&self.device, display)
+            video::import_frames(&self.device, &self.queue, display)
         };
         self.imported = imported;
         let rests = video_rests(has_video, imported, self.quiet);
@@ -1196,7 +1196,7 @@ impl Presenter {
             return Ok(None);
         };
         let started = Instant::now();
-        let (_, imported) = video::import_frames(&device, display);
+        let (_, imported) = video::import_frames(&device, &queue, display);
         let import_us = crate::session::metrics::micros(started);
         let started = Instant::now();
         if !self

@@ -32,6 +32,7 @@ mod surface;
 mod text_menu;
 mod touch;
 mod uia;
+mod video;
 mod view;
 mod vsync;
 
@@ -83,6 +84,8 @@ pub trait Shell: Send + Sync + 'static {
         source: String,
         done: Box<dyn FnOnce(Result<Vec<u8>, String>) + Send>,
     ) -> Box<dyn Send>;
+    /// The URL the player opens for the page's `<video src>`.
+    fn video_url(&self, token: i64, source: &str) -> Result<String, String>;
 }
 
 /// Pump this thread's messages until [`quit_message_loop`] runs on it.
@@ -254,6 +257,7 @@ impl Page {
         let dispatcher = Dispatcher::current()?;
         let worker = ViewWorker::shared(worker)?;
         let hwnd = view::create(parent)?;
+        video::install();
         let host = ViewHost::new(WindowsAdapter::new(token, shell, dispatcher), worker, logic);
         let _ = host.adapter().host.set(host.downgrade());
         host.adapter().hwnd.store(hwnd, Ordering::Release);

@@ -15,6 +15,7 @@ impl Player for Fake {
     fn next_frame(
         &mut self,
         _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
     ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
         Ok(None)
     }

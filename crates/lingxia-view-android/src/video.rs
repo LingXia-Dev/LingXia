@@ -118,6 +118,7 @@ impl Player for Video {
     fn next_frame(
         &mut self,
         device: &wgpu::Device,
+        _queue: &wgpu::Queue,
     ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
         if gles::applies(device) {
             return self.next_gles_frame(device);
