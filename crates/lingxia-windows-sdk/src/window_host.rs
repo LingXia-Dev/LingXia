@@ -348,6 +348,28 @@ struct TransparentTabbarOverlay {
     rect: RECT,
 }
 
+/// Native (GPU) pages span the whole screen under the host's bars, which draw over them: set
+/// while the Runner simulates a phone, whose pages pad by the bars themselves.
+static NATIVE_PAGES_SPAN_SCREEN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Lay native pages out across the whole screen, the host's bars drawn over them, as a phone's
+/// host does; `false` restores the WebView layout below the navigation bar.
+pub fn set_native_pages_span_screen(span: bool) {
+    NATIVE_PAGES_SPAN_SCREEN.store(span, std::sync::atomic::Ordering::Release);
+}
+
+fn spans_screen(webtag_key: &str) -> bool {
+    NATIVE_PAGES_SPAN_SCREEN.load(std::sync::atomic::Ordering::Acquire)
+        && webtag_for_key(webtag_key)
+            .and_then(|tag| find_webview_handler(&tag))
+            .is_some_and(|handler| handler.content_window().is_some())
+}
+
+#[cfg(feature = "shell-chrome")]
+static NAVIGATION_BAR_OVERLAYS: OnceLock<Mutex<HashMap<isize, TransparentTabbarOverlay>>> =
+    OnceLock::new();
+
 #[cfg(feature = "shell-chrome")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SidebarPopupContent {
@@ -3024,6 +3046,9 @@ fn content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
             return normalize_rect(rect);
         }
     }
+    if spans_screen(webtag_key) {
+        return client;
+    }
     normalize_rect(renderer.content_rect(client, &current_window_layout(webtag_key)))
 }
 
@@ -3297,8 +3322,241 @@ fn sync_window_layout(hwnd: HWND) {
 fn sync_chrome_overlays(hwnd: HWND, webtag_key: Option<&str>) {
     sidebar_peek::sync(hwnd);
     sync_transparent_tabbar_overlay(hwnd, webtag_key);
+    sync_navigation_bar_overlay(hwnd, webtag_key);
     full_chrome_caption::sync_full_chrome_caption_overlay(hwnd);
     tabbar_overflow::reposition_tabbar_overflow(hwnd);
+}
+
+/// The navigation bar over a page that spans the screen, in its own window above the page.
+#[cfg(feature = "shell-chrome")]
+fn sync_navigation_bar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
+    let placed = webtag_key
+        .filter(|key| spans_screen(key))
+        .filter(|_| is_window_visible(hwnd) && !is_minimized(hwnd))
+        .and_then(|key| {
+            let mut client = RECT::default();
+            unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.ok()?;
+            let layout = current_window_layout(key);
+            crate::shell::navigation_bar_rect(client, &layout).map(|rect| (layout, rect))
+        })
+        .filter(|(_, rect)| rect.right > rect.left && rect.bottom > rect.top);
+    let overlays = NAVIGATION_BAR_OVERLAYS.get_or_init(|| Mutex::new(HashMap::new()));
+    let existing = overlays
+        .lock()
+        .ok()
+        .and_then(|overlays| overlays.get(&hwnd_handle(hwnd)).copied())
+        .filter(|overlay| is_window_handle_valid(overlay.window));
+    let Some((layout, rect)) = placed else {
+        if let Some(overlay) = existing {
+            unsafe {
+                let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(overlay.window));
+            }
+        }
+        if let Ok(mut overlays) = overlays.lock() {
+            overlays.remove(&hwnd_handle(hwnd));
+        }
+        return;
+    };
+    let window = match existing {
+        Some(overlay) => overlay.window,
+        None => create_chrome_overlay_window(hwnd, navigation_bar_overlay_class(), rect),
+    };
+    if window == 0 {
+        return;
+    }
+    if let Ok(mut overlays) = overlays.lock() {
+        overlays.insert(hwnd_handle(hwnd), TransparentTabbarOverlay { window, rect });
+    }
+    let mut origin = POINT {
+        x: rect.left,
+        y: rect.top,
+    };
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut origin);
+        let _ = WindowsAndMessaging::SetWindowPos(
+            hwnd_from_handle(window),
+            Some(WindowsAndMessaging::HWND_TOP),
+            origin.x,
+            origin.y,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
+        );
+    }
+    upload_navigation_bar_overlay(hwnd_from_handle(window), &layout);
+}
+
+#[cfg(feature = "shell-chrome")]
+fn navigation_bar_overlay_class() -> PCWSTR {
+    static CLASS: OnceLock<()> = OnceLock::new();
+    CLASS.get_or_init(|| {
+        let class = WNDCLASSW {
+            style: WindowsAndMessaging::CS_DBLCLKS,
+            lpfnWndProc: Some(navigation_bar_overlay_proc),
+            hInstance: unsafe { LibraryLoader::GetModuleHandleW(None) }
+                .map(|module| HINSTANCE(module.0))
+                .unwrap_or_default(),
+            hCursor: unsafe {
+                WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW)
+            }
+            .unwrap_or_default(),
+            lpszClassName: w!("LingXiaNavigationBarOverlay"),
+            ..Default::default()
+        };
+        unsafe {
+            WindowsAndMessaging::RegisterClassW(&class);
+        }
+    });
+    w!("LingXiaNavigationBarOverlay")
+}
+
+#[cfg(feature = "shell-chrome")]
+fn navigation_bar_overlay_entry(hwnd: HWND) -> Option<(HWND, RECT)> {
+    let overlay = hwnd_handle(hwnd);
+    NAVIGATION_BAR_OVERLAYS
+        .get()?
+        .lock()
+        .ok()?
+        .iter()
+        .find(|(_, entry)| entry.window == overlay)
+        .map(|(host, entry)| (hwnd_from_handle(*host), entry.rect))
+}
+
+#[cfg(feature = "shell-chrome")]
+unsafe extern "system" fn navigation_bar_overlay_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    let host_point = || {
+        navigation_bar_overlay_entry(hwnd).map(|(host, rect)| {
+            let local = lparam_client_point(lparam);
+            (host, (rect.left + local.0, rect.top + local.1))
+        })
+    };
+    match msg {
+        WindowsAndMessaging::WM_PAINT => {
+            validate_empty_paint(hwnd);
+            if let Some((host, _)) = navigation_bar_overlay_entry(hwnd)
+                && let Some(key) = active_webtag_key_for_window(host)
+            {
+                upload_navigation_bar_overlay(hwnd, &current_window_layout(&key));
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_ERASEBKGND => LRESULT(1),
+        WindowsAndMessaging::WM_NCHITTEST => LRESULT(WindowsAndMessaging::HTCLIENT as isize),
+        WindowsAndMessaging::WM_MOUSEMOVE => {
+            if let Some((host, point)) = host_point() {
+                let _ = handle_chrome_mouse_move(host, point, false);
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_LBUTTONDOWN => {
+            if let Some((host, point)) = host_point() {
+                unsafe {
+                    let _ = SetFocus(Some(host));
+                }
+                let _ = handle_chrome_left_down(host, point);
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_LBUTTONUP => {
+            if let Some((host, point)) = host_point() {
+                let _ = handle_chrome_left_up(host, point);
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_LBUTTONDBLCLK => {
+            if let Some((host, point)) = host_point() {
+                let _ = handle_chrome_left_double_click(host, point);
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_RBUTTONUP => {
+            if let Some((host, point)) = host_point() {
+                let _ = handle_chrome_right_up(host, point);
+            }
+            LRESULT(0)
+        }
+        _ => unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
+/// The bar is opaque: paint it, then make every pixel solid.
+#[cfg(feature = "shell-chrome")]
+fn upload_navigation_bar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
+    let mut client = RECT::default();
+    if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
+        return;
+    }
+    let width = (client.right - client.left).max(1);
+    let height = (client.bottom - client.top).max(1);
+    unsafe {
+        let screen = GetDC(None);
+        if screen.is_invalid() {
+            return;
+        }
+        let dc = CreateCompatibleDC(Some(screen));
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits: *mut c_void = std::ptr::null_mut();
+        let bitmap = CreateDIBSection(Some(screen), &info, DIB_RGB_COLORS, &mut bits, None, 0);
+        if let Ok(bitmap) = bitmap
+            && !dc.is_invalid()
+            && !bits.is_null()
+        {
+            let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
+            crate::shell::paint_navigation_bar_overlay(dc, layout, width, height);
+            let _ = windows::Win32::Graphics::Gdi::GdiFlush();
+            let pixels =
+                std::slice::from_raw_parts_mut(bits.cast::<u32>(), (width * height) as usize);
+            for pixel in pixels {
+                *pixel |= 0xff00_0000;
+            }
+            let size = SIZE {
+                cx: width,
+                cy: height,
+            };
+            let origin = POINT { x: 0, y: 0 };
+            let blend = BLENDFUNCTION {
+                BlendOp: AC_SRC_OVER as u8,
+                BlendFlags: 0,
+                SourceConstantAlpha: 255,
+                AlphaFormat: AC_SRC_ALPHA as u8,
+            };
+            let _ = WindowsAndMessaging::UpdateLayeredWindow(
+                hwnd,
+                Some(screen),
+                None,
+                Some(&size),
+                Some(dc),
+                Some(&origin),
+                COLORREF(0),
+                Some(&blend),
+                WindowsAndMessaging::ULW_ALPHA,
+            );
+            if !old_bitmap.is_invalid() {
+                let _ = SelectObject(dc, old_bitmap);
+            }
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        }
+        if !dc.is_invalid() {
+            let _ = DeleteDC(dc);
+        }
+        let _ = ReleaseDC(None, screen);
+    }
 }
 
 #[cfg(feature = "shell-chrome")]
@@ -3630,7 +3888,12 @@ fn ensure_transparent_tabbar_overlay(hwnd: HWND, rect: RECT) -> isize {
         return existing.window;
     }
 
-    let class = transparent_tabbar_overlay_class();
+    create_chrome_overlay_window(hwnd, transparent_tabbar_overlay_class(), rect)
+}
+
+/// A layered popup owned by `hwnd`, for chrome drawn over its pages.
+#[cfg(feature = "shell-chrome")]
+fn create_chrome_overlay_window(hwnd: HWND, class: PCWSTR, rect: RECT) -> isize {
     let instance = unsafe { LibraryLoader::GetModuleHandleW(None) }
         .ok()
         .map(|module| HINSTANCE(module.0));

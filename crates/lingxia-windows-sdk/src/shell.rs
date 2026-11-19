@@ -98,9 +98,9 @@ pub(crate) use chrome::{
 pub(crate) use chrome::{aside_tab_drag_source, set_aside_tab_drop_targeted, sidebar_drop_rect};
 pub(crate) use chrome::{
     bottom_tabbar_rect, collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tabbar_popup,
-    collapsed_sidebar_tabbar_popup_hit, paint_collapsed_sidebar_tabbar_popup,
-    paint_sidebar_tooltip, paint_transparent_tabbar_overlay, rail_expand_hit,
-    sidebar_rail_tooltip_radius, sidebar_tabbar_popup_radius, sidebar_tooltip,
+    collapsed_sidebar_tabbar_popup_hit, navigation_bar_rect, paint_collapsed_sidebar_tabbar_popup,
+    paint_navigation_bar_overlay, paint_sidebar_tooltip, paint_transparent_tabbar_overlay,
+    rail_expand_hit, sidebar_rail_tooltip_radius, sidebar_tabbar_popup_radius, sidebar_tooltip,
     transparent_tabbar_overlay_rect,
 };
 pub(crate) use runtime::promote_aside_tab;

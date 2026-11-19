@@ -1,13 +1,13 @@
 use crate::device::{
     ABOUT_COMMAND, APPEARANCE_COMMAND, CAPSULE_CLOSE_COMMAND, CLEAN_CACHE_COMMAND,
     DEVICE_COMMAND_BASE, MORE_ACTION_COMMAND_BASE, OPEN_DEVTOOLS_COMMAND, RESTART_LXAPP_COMMAND,
-    ROTATE_COMMAND, browser_frame_spec, frame_spec, initial_device_index, is_phone, is_tablet,
-    presets,
+    ROTATE_COMMAND, browser_frame_spec, frame_spec, gpu_simulation, initial_device_index, is_phone,
+    is_tablet, presets,
 };
 use lingxia_windows_sdk::WindowsShellTabBarPosition;
 use lxapp::{LxAppDelegate, LxAppUiEventType};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 /// The device + orientation the simulator currently shows. The toolbar's
@@ -19,6 +19,10 @@ static LANDSCAPE: AtomicBool = AtomicBool::new(false);
 /// (0 system / 1 light / 2 dark), applied through the WebView2 profile's
 /// preferred color scheme, `lx.appearance` Auto, and `runner.get`.
 static APPEARANCE: AtomicUsize = AtomicUsize::new(0);
+/// The simulated system text size (`f64` bits) and increased-contrast setting, which GPU pages
+/// read; WebView pages take Windows' own.
+static TEXT_SCALE: AtomicU64 = AtomicU64::new(0x3FF0_0000_0000_0000);
+static HIGH_CONTRAST: AtomicBool = AtomicBool::new(false);
 /// The enclosing host's home lxapp, when `lingxia dev` launched it: like the
 /// real host, it gets no capsule. Only from the launch argument, never an
 /// inherited environment variable.
@@ -115,6 +119,8 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     let initial_landscape = is_tablet(default_device);
     CURRENT_DEVICE.store(default_device, Ordering::Release);
     LANDSCAPE.store(initial_landscape, Ordering::Release);
+    lingxia_windows_sdk::window_host::set_native_pages_span_screen(is_phone(default_device));
+    simulate_gpu_pages();
     let web_url = std::env::var(ENV_WEB_URL).ok();
     let initial_frame = if web_url.is_some() {
         browser_frame_spec(default_device, initial_landscape)
@@ -300,11 +306,10 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
         Ok(device_state(index, landscape))
     }
 
-    fn set(&self, change: &lingxia::dev::DeviceChange) -> Result<lingxia::dev::DeviceState, String> {
-        // WebView pages take their text size and contrast from Windows itself.
-        if change.text_scale.is_some() || change.contrast.is_some() {
-            return Err("this Runner does not simulate text scale or contrast".into());
-        }
+    fn set(
+        &self,
+        change: &lingxia::dev::DeviceChange,
+    ) -> Result<lingxia::dev::DeviceState, String> {
         let (id, landscape, appearance) =
             (change.id.as_deref(), change.landscape, change.appearance);
         // Validate the preset before any side effect so a typo cannot leave a
@@ -332,6 +337,14 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
         if id.is_some() || landscape.is_some() {
             apply_device(index, landscape_value)?;
         }
+        // GPU pages only: WebView pages take their text size and contrast from Windows.
+        if let Some(scale) = change.text_scale {
+            TEXT_SCALE.store(scale.to_bits(), Ordering::Release);
+        }
+        if let Some(contrast) = change.contrast {
+            HIGH_CONTRAST.store(contrast == lingxia::dev::Contrast::High, Ordering::Release);
+        }
+        simulate_gpu_pages();
         Ok(device_state(index, landscape_value))
     }
 }
@@ -354,9 +367,23 @@ fn device_state(index: usize, landscape: bool) -> lingxia::dev::DeviceState {
         pixel_ratio: preset.pixel_ratio,
         landscape,
         appearance: simulated_appearance(),
-        text_scale: 1.0,
-        contrast: lingxia::dev::Contrast::Standard,
+        text_scale: f64::from_bits(TEXT_SCALE.load(Ordering::Acquire)),
+        contrast: if HIGH_CONTRAST.load(Ordering::Acquire) {
+            lingxia::dev::Contrast::High
+        } else {
+            lingxia::dev::Contrast::Standard
+        },
     }
+}
+
+/// GPU pages measure the current device as it is, whatever size its frame is shown at.
+fn simulate_gpu_pages() {
+    lingxia::windows::set_gpu_simulation(gpu_simulation(
+        CURRENT_DEVICE.load(Ordering::Acquire),
+        LANDSCAPE.load(Ordering::Acquire),
+        f64::from_bits(TEXT_SCALE.load(Ordering::Acquire)) as f32,
+        HIGH_CONTRAST.load(Ordering::Acquire),
+    ));
 }
 
 /// Whether `appid`'s frame draws the capsule: every lxapp but the host's
@@ -460,6 +487,7 @@ fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
         presets()[previous_index].browser_profile() != presets()[index].browser_profile();
     let tabbar_position = tabbar_position_for_device(index);
     apply_simulated_host_class(index);
+    lingxia_windows_sdk::window_host::set_native_pages_span_screen(is_phone(index));
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position);
 
     if let Some(host) = BROWSER_HOST.get() {
