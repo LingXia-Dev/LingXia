@@ -1980,6 +1980,7 @@ mod tests {
         assert_eq!(background_session_target(false, None).unwrap(), None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_background_start_returns_its_own_session_once_ready() {
         let dir = tempfile::tempdir().unwrap();
