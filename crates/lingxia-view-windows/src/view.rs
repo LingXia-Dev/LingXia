@@ -44,7 +44,7 @@ const CHAR_BASE: i64 = 0x1_0000;
 #[derive(Default)]
 pub(crate) struct InputState {
     /// The left button went down in the page and is held.
-    pressed: bool,
+    pub(crate) pressed: bool,
     /// The press was the second of a double click.
     double: bool,
     /// `WM_MOUSELEAVE` is armed.
@@ -54,6 +54,7 @@ pub(crate) struct InputState {
     /// The finger (pointer id) the page follows; one at a time.
     finger: Option<u32>,
     velocity: crate::touch::Velocity,
+    pub(crate) web: crate::web_input::WebInput,
 }
 
 /// The finger id synthetic touch uses; real pointer ids are small.
@@ -70,7 +71,7 @@ fn touch_message() -> u32 {
 
 /// The high word of `wparam` on automation's posted mouse messages (`lingxia-webview`'s
 /// `SYNTHETIC_MOUSE_WPARAM_MARKER`).
-const SYNTHETIC_MOUSE: usize = 0x4c58_0000;
+pub(crate) const SYNTHETIC_MOUSE: usize = 0x4c58_0000;
 
 /// Automation's precision-touchpad scroll: a phase over the fingers' travel in window pixels,
 /// which the content follows.
@@ -244,6 +245,9 @@ fn handle(
     if msg == crate::uia::CALL {
         return Some(crate::uia::call(lparam));
     }
+    if !host.input_blocked() && crate::web_input::route(page, hwnd, msg, wparam, lparam) {
+        return Some(LRESULT(0));
+    }
     match msg {
         WM_GETOBJECT => crate::uia::get_object(hwnd, wparam, lparam),
         WM_POINTERDOWN | WM_POINTERUPDATE | WM_POINTERUP | WM_POINTERCAPTURECHANGED => {
@@ -285,6 +289,7 @@ fn handle(
         // A host that destroys the window holding the page destroys the page's window too.
         WM_DESTROY => {
             crate::recovery::forget(hwnd.0 as isize);
+            crate::composition::forget(hwnd.0 as isize);
             crate::uia::window_destroyed(hwnd);
             page.window_destroyed();
             None
@@ -355,6 +360,7 @@ fn handle(
             Some(LRESULT(0))
         }
         WM_CAPTURECHANGED => {
+            crate::web_input::release(page);
             if std::mem::take(&mut page.input.borrow_mut().pressed) {
                 pointer(page, PointerPhase::Cancel, LPARAM(0));
             }

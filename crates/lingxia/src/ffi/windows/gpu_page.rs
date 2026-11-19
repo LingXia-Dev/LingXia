@@ -2,6 +2,7 @@
 //! WebView2 page does, and registers as native content under its webtag: the host presents,
 //! moves and reparents it through the same handler it uses for WebViews.
 use crate::gpu_page::{self, AutomationReply, Creation, NativeFactory, NativePage, Token};
+use lingxia_view_windows::lingxia_view::scene::webview::WebViewMount;
 use lingxia_view_windows::lingxia_view::session::host::{Failure, LogicPort, StaleMark};
 use lingxia_view_windows::lingxia_view::session::lifecycle::ConnectionTicket;
 use lingxia_view_windows::{Dispatcher, Page, Scheme, Shell};
@@ -397,6 +398,165 @@ impl Shell for Bridge {
     }
     fn video_url(&self, token: i64, source: &str) -> Result<String, String> {
         gpu_page::video_url(token, source)
+    }
+    fn sync_webviews(&self, token: i64, mounts: &[WebViewMount]) {
+        gpu_page::webviews::sync_webviews(token, mounts, embedded::deliver, embedded::place);
+    }
+    fn picture_webviews(&self, token: i64, web_ids: &[String], _scale: f32) {
+        embedded::picture(token, web_ids);
+    }
+    fn exit_webview_fullscreen(&self, token: i64, web_id: &str) {
+        gpu_page::webviews::exit_webview_fullscreen(token, web_id);
+    }
+    fn clear_webviews(&self, token: i64) {
+        gpu_page::webviews::clear_webviews(token, Some(embedded::clear));
+    }
+}
+
+/// Embedded `<webview>`s: each one's composition surface window becomes a child of its page's
+/// window, which composes its frames above it and leaves it a transparent cutout.
+mod embedded {
+    use super::{Token, WebViewMount, on_page};
+    use crate::gpu_page::webviews::child_webtag;
+    use lingxia_view_windows::lingxia_view::WebViewInbound;
+    use lingxia_webview::WebTag;
+    use lingxia_webview::platform::windows::find_webview_handler;
+    use std::collections::HashMap;
+    use std::sync::mpsc::{Receiver, Sender, channel};
+    use std::sync::{LazyLock, Mutex};
+
+    pub(super) fn deliver(token: Token, web_id: String, event: WebViewInbound) {
+        on_page(token, move |page| page.host().webview_event(web_id, event));
+    }
+
+    /// Where a page's web views go, in its window's pixels.
+    struct Placement {
+        token: Token,
+        window: isize,
+        views: Vec<(WebTag, [i32; 4], bool)>,
+    }
+
+    /// Placing waits on each web view's own thread, so it runs off the page's.
+    static PLACER: LazyLock<Mutex<Sender<Placement>>> = LazyLock::new(|| {
+        let (sender, receiver) = channel();
+        let _ = std::thread::Builder::new()
+            .name("lingxia-gpu-webviews".into())
+            .spawn(move || run(receiver));
+        Mutex::new(sender)
+    });
+
+    pub(super) fn place(token: Token, mounts: &[WebViewMount]) {
+        let mounts: Vec<_> = mounts
+            .iter()
+            .map(|m| (m.web_id.clone(), m.bounds, !m.degraded))
+            .collect();
+        on_page(token, move |page| {
+            let scale = page.window_scale();
+            let px = |v: f32| (v * scale).round() as i32;
+            let views = mounts
+                .into_iter()
+                .filter_map(|(web_id, [x, y, w, h], shown)| {
+                    let webtag = child_webtag(token, &web_id)?;
+                    Some((webtag, [px(x), px(y), px(w), px(h)], shown))
+                })
+                .collect();
+            send(Placement {
+                token,
+                window: page.hwnd(),
+                views,
+            });
+        });
+    }
+
+    pub(super) fn clear(token: Token) {
+        on_page(token, move |page| {
+            send(Placement {
+                token,
+                window: page.hwnd(),
+                views: Vec::new(),
+            })
+        });
+    }
+
+    fn send(placement: Placement) {
+        let _ = PLACER
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .send(placement);
+    }
+
+    fn run(receiver: Receiver<Placement>) {
+        let mut placed: HashMap<Token, Vec<WebTag>> = HashMap::new();
+        while let Ok(first) = receiver.recv() {
+            // Only each page's latest placement matters.
+            let mut latest = vec![first];
+            while let Ok(next) = receiver.try_recv() {
+                match latest.iter_mut().find(|p| p.token == next.token) {
+                    Some(slot) => *slot = next,
+                    None => latest.push(next),
+                }
+            }
+            for placement in latest {
+                apply(&mut placed, placement);
+            }
+        }
+    }
+
+    fn apply(placed: &mut HashMap<Token, Vec<WebTag>>, placement: Placement) {
+        let Placement {
+            token,
+            window,
+            views,
+        } = placement;
+        for gone in placed.remove(&token).unwrap_or_default() {
+            if views.iter().all(|(webtag, ..)| *webtag != gone)
+                && let Some(view) = find_webview_handler(&gone)
+                && view.has_parent_window(window)
+            {
+                let _ = view.set_content_visible(false);
+            }
+        }
+        for (webtag, [x, y, width, height], shown) in &views {
+            let Some(view) = find_webview_handler(webtag) else {
+                continue;
+            };
+            if !view.has_parent_window(window)
+                && let Err(error) = view.set_parent_window(window)
+            {
+                log::warn!("embedded webview {webtag:?}: {error}");
+                continue;
+            }
+            let _ = view.set_content_geometry(*x, *y, *width, *height, [0; 4], 0);
+            let _ = view.set_content_visible(*shown);
+        }
+        lingxia_view_windows::adopt_web_surfaces(window);
+        if !views.is_empty() {
+            placed.insert(
+                token,
+                views.into_iter().map(|(webtag, ..)| webtag).collect(),
+            );
+        }
+    }
+
+    /// What each web view shows, for the boxes that stand in for it.
+    pub(super) fn picture(token: Token, web_ids: &[String]) {
+        let views: Vec<_> = web_ids
+            .iter()
+            .filter_map(|web_id| Some((web_id.clone(), child_webtag(token, web_id)?)))
+            .collect();
+        let _ = std::thread::Builder::new()
+            .name("lingxia-gpu-webview-picture".into())
+            .spawn(move || {
+                for (web_id, webtag) in views {
+                    let Some(png) = find_webview_handler(&webtag)
+                        .and_then(|view| view.capture_png().ok())
+                        .filter(|png| !png.is_empty())
+                    else {
+                        continue;
+                    };
+                    on_page(token, move |page| page.host().webview_picture(web_id, png));
+                }
+            });
     }
 }
 

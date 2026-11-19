@@ -33,7 +33,8 @@ pub(crate) mod state;
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
-    target_env = "ohos"
+    target_env = "ohos",
+    windows
 ))]
 pub(crate) mod webviews;
 

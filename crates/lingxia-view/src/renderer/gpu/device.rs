@@ -46,6 +46,8 @@ pub(crate) struct RenderSurface<'s> {
     pub config: wgpu::SurfaceConfiguration,
     pub dev_id: usize,
     transparent_alpha_mode: Option<wgpu::CompositeAlphaMode>,
+    /// A composition swapchain keeps the alpha mode it was made with: a resize cannot change it.
+    fixed_alpha: bool,
     /// `None` while trimmed; drawing creates them again.
     targets: Option<[wgpu::TextureView; 2]>,
     /// The real size while configured at 1x1 to free wgpu's GLES renderbuffer.
@@ -72,9 +74,12 @@ impl RenderSurface<'_> {
         self.parked
     }
 
-    pub fn transparent_alpha_mode_or_auto(&self) -> wgpu::CompositeAlphaMode {
-        self.transparent_alpha_mode
-            .unwrap_or(wgpu::CompositeAlphaMode::Auto)
+    /// The composite alpha mode for a frame with or without a `<webview>` cutout.
+    pub fn alpha_mode(&self, holes: bool) -> wgpu::CompositeAlphaMode {
+        match self.transparent_alpha_mode {
+            Some(mode) if holes || self.fixed_alpha => mode,
+            _ => wgpu::CompositeAlphaMode::Auto,
+        }
     }
 }
 
@@ -124,10 +129,14 @@ impl Devices {
             present_mode: wgpu::PresentMode::Fifo,
             color_space: wgpu::SurfaceColorSpace::Auto,
             desired_maximum_frame_latency: 2,
-            alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            alpha_mode: match transparent_alpha_mode {
+                Some(mode) if source.fixed_alpha() => mode,
+                _ => wgpu::CompositeAlphaMode::Auto,
+            },
             view_formats: vec![],
         };
         configure(&surface, &handle.device, &config)?;
+        source.configured();
         Ok(RenderSurface {
             targets: Some(new_targets(&handle.device, width, height)),
             parked: None,
@@ -136,6 +145,7 @@ impl Devices {
             config,
             dev_id,
             transparent_alpha_mode,
+            fixed_alpha: source.fixed_alpha(),
         })
     }
 
@@ -147,13 +157,7 @@ impl Devices {
         surface: &mut RenderSurface<'_>,
         transparent: bool,
     ) -> Result<bool, String> {
-        let desired = if transparent {
-            surface
-                .transparent_alpha_mode
-                .unwrap_or(wgpu::CompositeAlphaMode::Auto)
-        } else {
-            wgpu::CompositeAlphaMode::Auto
-        };
+        let desired = surface.alpha_mode(transparent);
         if surface.config.alpha_mode == desired {
             return Ok(false);
         }

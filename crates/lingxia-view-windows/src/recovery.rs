@@ -175,6 +175,7 @@ fn clear(page: isize) {
         let _ = DestroyWindow(HWND(panel.window as *mut _));
         let _ = DeleteObject(HGDIOBJ(panel.font.0));
     }
+    crate::composition::clip_above(page, None);
 }
 
 /// Whether `page` shows a panel over all of it: a failed page that presents no frames.
@@ -270,6 +271,8 @@ pub(crate) fn layout(page: isize) {
         }
         let _ = InvalidateRect(Some(HWND(window as *mut _)), None, true);
     }
+    // The page's frames compose above its child windows; they stop where the panel starts.
+    crate::composition::clip_above(page, Some((height - panel_height) as f32));
 }
 
 fn page_of_panel(window: HWND) -> Option<isize> {

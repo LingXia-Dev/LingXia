@@ -585,6 +585,18 @@ pub enum SurfaceSource {
     /// a layer from any thread.
     #[cfg(target_vendor = "apple")]
     Layer(Arc<dyn MetalLayer>),
+    /// A DirectComposition visual: wgpu makes a composition swapchain its content.
+    #[cfg(windows)]
+    Visual(Arc<dyn CompositionVisual>),
+}
+
+/// Owns a DirectComposition visual for as long as it lives.
+#[cfg(windows)]
+pub trait CompositionVisual: Send + Sync {
+    /// The `IDCompositionVisual`.
+    fn visual(&self) -> std::ptr::NonNull<std::ffi::c_void>;
+    /// The visual took a new swapchain, which shows only once its device commits.
+    fn commit(&self);
 }
 
 /// Keeps a CAMetalLayer retained for as long as it lives.
@@ -612,8 +624,32 @@ impl SurfaceSource {
                     layer.layer().as_ptr(),
                 ))
             },
+            // SAFETY: the source retains the visual, and the surface retains it too.
+            #[cfg(windows)]
+            Self::Visual(visual) => unsafe {
+                instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CompositionVisual(
+                    visual.visual().as_ptr(),
+                ))
+            },
         }
         .map_err(|e| e.to_string())
+    }
+
+    /// A composition swapchain is made transparent where `<webview>` cutouts show through:
+    /// it cannot switch alpha modes later.
+    pub(crate) fn fixed_alpha(&self) -> bool {
+        #[cfg(windows)]
+        if matches!(self, Self::Visual(_)) {
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn configured(&self) {
+        #[cfg(windows)]
+        if let Self::Visual(visual) = self {
+            visual.commit();
+        }
     }
 }
 
@@ -917,11 +953,7 @@ impl Presenter {
         };
         let context = self.context.lock()?;
         if surface.config.width != width || surface.config.height != height {
-            surface.config.alpha_mode = if display.has_web_hole() {
-                surface.transparent_alpha_mode_or_auto()
-            } else {
-                wgpu::CompositeAlphaMode::Auto
-            };
+            surface.config.alpha_mode = surface.alpha_mode(display.has_web_hole());
             context.resize_surface(surface, width, height)?;
             self.depth = Some(depth_view(surface, &context.devices[surface.dev_id].device));
             self.prepared = [None; 2];

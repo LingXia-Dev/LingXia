@@ -23,6 +23,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 mod adapter;
 mod clipboard;
+mod composition;
 mod dispatch;
 mod environment;
 mod fonts;
@@ -35,6 +36,8 @@ mod uia;
 mod video;
 mod view;
 mod vsync;
+mod web_input;
+pub use web_input::adopt_web_surfaces;
 
 pub use adapter::WindowsAdapter;
 pub use dispatch::Dispatcher;
@@ -86,6 +89,13 @@ pub trait Shell: Send + Sync + 'static {
     ) -> Box<dyn Send>;
     /// The URL the player opens for the page's `<video src>`.
     fn video_url(&self, token: i64, source: &str) -> Result<String, String>;
+    /// Reconcile the page's embedded `<webview>` mounts; on the page's thread.
+    fn sync_webviews(&self, token: i64, mounts: &[lingxia_view::scene::webview::WebViewMount]);
+    /// Capture each web view for `ViewHost::webview_picture`.
+    fn picture_webviews(&self, token: i64, web_ids: &[String], scale: f32);
+    fn exit_webview_fullscreen(&self, token: i64, web_id: &str);
+    /// Tear down every embedded `<webview>` of the page.
+    fn clear_webviews(&self, token: i64);
 }
 
 /// Pump this thread's messages until [`quit_message_loop`] runs on it.
@@ -300,6 +310,11 @@ impl Page {
 
     pub fn hwnd(&self) -> isize {
         self.hwnd
+    }
+
+    /// Window pixels per point of the page.
+    pub fn window_scale(&self) -> f32 {
+        self.shown_scale()
     }
 
     fn window(&self) -> HWND {
@@ -733,6 +748,7 @@ impl Page {
         let Some(window) = surface::Hwnd::new(self.hwnd) else {
             return;
         };
+        let tree = composition::tree(self.hwnd);
         let existing = adapter.gpu.load(Ordering::Acquire);
         *adapter.target.lock().unwrap_or_else(|p| p.into_inner()) = Target::Waiting;
         let host = self.host.downgrade();
@@ -745,7 +761,10 @@ impl Page {
                 presenter.running.store(false, Ordering::Release);
                 return;
             }
-            let source = SurfaceSource::window(Arc::new(window));
+            let source = match tree {
+                Some(tree) => SurfaceSource::Visual(tree),
+                None => SurfaceSource::window(Arc::new(window)),
+            };
             let attached = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 surfaces::attach(source, width, height, existing)
             }));

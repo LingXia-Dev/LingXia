@@ -1,10 +1,13 @@
-//! Embedded `<webview>` document lifecycle for GPU pages across Android, Apple, and HarmonyOS.
+//! Embedded `<webview>` document lifecycle for GPU pages across Android, Apple, HarmonyOS and
+//! Windows.
 #[cfg(target_os = "android")]
 use lingxia_view_android::lingxia_view;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 use lingxia_view_apple::lingxia_view;
 #[cfg(target_env = "ohos")]
 use lingxia_view_harmony::lingxia_view;
+#[cfg(windows)]
+use lingxia_view_windows::lingxia_view;
 
 use super::{Token, page_of};
 use lingxia_view::scene::webview::{WebViewInbound, WebViewMount};
@@ -425,6 +428,12 @@ pub(crate) fn has_webviews(token: Token) -> bool {
     web_registry()
         .get(&token)
         .is_some_and(|p| !p.entries.is_empty())
+}
+
+#[cfg(windows)]
+pub(crate) fn child_webtag(token: Token, web_id: &str) -> Option<lingxia_webview::WebTag> {
+    let doc_id = doc_id_of(token, web_id)?;
+    page_of(token)?.webtag().child(&doc_id)
 }
 
 #[cfg(target_env = "ohos")]

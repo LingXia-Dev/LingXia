@@ -700,6 +700,36 @@ impl HostEvents for WindowsAdapter {
     fn debug(&self, message: &str) {
         log::debug!(target: "lingxia_view", "{message}");
     }
+    fn sync_webviews(&self, mounts: &[lingxia_view::scene::webview::WebViewMount]) {
+        // A web view shows through the page's frames only where they compose over it.
+        let unavailable = *self.target.lock().unwrap_or_else(|p| p.into_inner())
+            == Target::Unavailable
+            || crate::composition::existing(self.hwnd.load(Ordering::Acquire)).is_none();
+        if unavailable {
+            if let Some(host) = self.host.get().and_then(WeakViewHost::upgrade) {
+                for mount in mounts {
+                    host.webview_event(
+                        mount.web_id.clone(),
+                        lingxia_view::WebViewInbound::Error {
+                            code: "WEBVIEW_UNSUPPORTED".into(),
+                            message: "GPU composition is unavailable on this device".into(),
+                        },
+                    );
+                }
+            }
+            return;
+        }
+        self.shell.sync_webviews(self.token, mounts);
+    }
+    fn picture_webviews(&self, web_ids: &[String], scale: f32) {
+        self.shell.picture_webviews(self.token, web_ids, scale);
+    }
+    fn exit_webview_fullscreen(&self, web_id: &str) {
+        self.shell.exit_webview_fullscreen(self.token, web_id);
+    }
+    fn clear_webviews(&self) {
+        self.shell.clear_webviews(self.token);
+    }
 }
 
 impl Clock for WindowsAdapter {
