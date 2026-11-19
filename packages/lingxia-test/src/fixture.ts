@@ -18,7 +18,7 @@ import { Gestures, type GestureScope } from "./gesture.js";
 import { watchDialogs, wrapDialogs, type DialogWatch } from "./dialogs.js";
 import { activeOpenApi } from "./openapi.js";
 import { ActionDeadline, TimeoutError, asFixtureTimeout } from "./deadline.js";
-import { isTransientTransportError, matchesErrorCode } from "./deadline.js";
+import { errorCode, isTransientTransportError, matchesErrorCode } from "./deadline.js";
 import { checkJsonArgs, explainRemoteError, isRetryableRemoteError, functionDetail, logicScript, pageScript, type RemoteTarget } from "./remote.js";
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
 import {
@@ -1488,6 +1488,15 @@ export class LiveFixture implements Fixture {
       dblclick: (options) => counted(() => page().dblclick(options)),
       blur: (options) => counted(() => page().blur(options)),
       semanticAction: (options) => counted(() => page().semanticAction(options)),
+      hover: (options) => counted(() => hoverPointer(page(), options)),
+      pinState: (options) => counted(() => {
+        // The native call lands separately; until then the host binding has no `pinState`.
+        const driver = page() as PageDriver & { pinState?: (options: { css: string; page?: string; index?: number; hover: boolean }) => Promise<void> };
+        if (typeof driver.pinState !== "function") {
+          throw unsupported("pin() needs a host that holds a pointer state (page.pinState); this one predates it");
+        }
+        return driver.pinState(options);
+      }),
     };
     const input = lazyDriver(() => ({ owner: page() as object, value: page() }), this, "page.") as PageDriver;
     const target = bound === undefined ? {} : { page: bound };
@@ -2292,6 +2301,25 @@ function safeJson(data: unknown): string {
     return JSON.stringify(data, null, 2) ?? String(data);
   } catch {
     return String(data);
+  }
+}
+
+const unsupported = (message: string) => Object.assign(new Error(`E_UNSUPPORTED: ${message}`), { code: "E_UNSUPPORTED" });
+
+/** Rests the app-window pointer on the match's visible center. The host injects the move into
+ *  the app's window, so the system cursor and window order stay as the user left them. */
+async function hoverPointer(driver: PageDriver, options: { css: string; page?: string; index?: number }): Promise<void> {
+  const match = await driver.query({ ...options }) as QueryMatch;
+  const rect = match.visibleRect ?? match.rect;
+  if (!match.exists || !rect || rect.width <= 0 || rect.height <= 0) throw new Error(`Element not interactable: ${options.css} is not visible`);
+  try {
+    await driver.pointer.move({ at: [rect.left + rect.width / 2, rect.top + rect.height / 2] });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (errorCode(error) === "E_UNSUPPORTED" || /not (implemented|supported)/i.test(message)) {
+      throw unsupported("hover() needs a mouse (macOS, Windows); hold the state with pin({ hover: true }) instead");
+    }
+    throw error;
   }
 }
 

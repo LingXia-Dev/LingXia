@@ -657,6 +657,63 @@ test("a read that finds nothing on a GPU page names the test ids on screen", asy
   assert.match(message, /^boundingBox\(\): locator .*view-group-overlays.* resolved to nothing; on screen: view-index, view-row-text, view-row-input$/);
 });
 
+test("hover rests the app pointer on the visible center, even of a disabled control", async () => {
+  const world = createWorld();
+  world.add({ testId: "save", renderer: "gpu", enabled: false,
+    rect: { left: 10, top: 20, width: 100, height: 40 }, visibleRect: { left: 10, top: 20, width: 100, height: 30 } });
+  installFakeHost(world);
+  spec("hover", { forensics: false }, async (t) => { await t.app.view.testId("save").hover(); });
+  const report = await run();
+  assert.equal(report.cases[0].status, "passed", report.cases[0].error?.message);
+  assert.deepEqual(world.pointerMoves, [[60, 35]]);
+});
+
+test("hover on a host without a mouse refuses with E_UNSUPPORTED and names the pin", async () => {
+  const world = createWorld({ mouse: false });
+  world.add({ testId: "save", renderer: "gpu" });
+  installFakeHost(world);
+  let error;
+  spec("hover", { forensics: false }, async (t) => {
+    try { await t.app.view.testId("save").hover(); } catch (caught) { error = caught; }
+  });
+  await run();
+  assert.equal(error?.code, "E_UNSUPPORTED");
+  assert.match(error.message, /hover\(\) needs a mouse .*pin\(\{ hover: true \}\)/);
+  assert.deepEqual(world.pointerMoves, []);
+});
+
+test("pin holds a pointer state through the host, and a host without it refuses with E_UNSUPPORTED", async () => {
+  const world = createWorld({ pinState: true });
+  world.add({ testId: "help", renderer: "gpu" });
+  installFakeHost(world);
+  const messages = [];
+  spec("pin", { forensics: false }, async (t) => {
+    const help = t.app.view.testId("help");
+    await help.pin({ hover: true });
+    await help.pin({ hover: false });
+    for (const bad of [undefined, {}, { hover: "yes" }]) {
+      try { await help.pin(bad); } catch (error) { messages.push(error.message); }
+    }
+  });
+  const report = await run();
+  assert.equal(report.cases[0].status, "passed", report.cases[0].error?.message);
+  assert.deepEqual(world.pins.map(({ css, index, hover }) => ({ css, index, hover })),
+    [{ css: '[data-testid="help"]', index: 0, hover: true }, { css: '[data-testid="help"]', index: 0, hover: false }]);
+  assert.deepEqual(messages, Array(3).fill("pin() takes { hover: boolean }"));
+
+  reset();
+  const older = createWorld();
+  older.add({ testId: "help", renderer: "gpu" });
+  installFakeHost(older);
+  let error;
+  spec("pin", { forensics: false }, async (t) => {
+    try { await t.app.view.testId("help").pin({ hover: true }); } catch (caught) { error = caught; }
+  });
+  await run();
+  assert.equal(error?.code, "E_UNSUPPORTED");
+  assert.match(error.message, /pin\(\) needs a host that holds a pointer state/);
+});
+
 test("t.app.view takes no options on testId or css, only allowNotReady on screenshot, and no page on eval or scroll", async () => {
   installFakeHost(createWorld());
   const messages = [];

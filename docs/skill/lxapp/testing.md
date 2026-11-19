@@ -97,6 +97,7 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 | Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.getByRole(role, { name, selected })`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`; `locator.getByRole(...)` searches inside every match of an un-narrowed locator |
 | Another page (below the current one, on a surface) | `(await t.app.page({ name })).view`; [Pages](#pages) |
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)` |
+| Hover | `locator.hover()` moves a mouse onto it on macOS/Windows (into the app window: the system cursor and window order stay put; `E_UNSUPPORTED` elsewhere); `locator.pin({ hover: true })` holds `hover:` styles and `interestFor` hints with no pointer, on every platform, until `{ hover: false }` or the spec's end |
 | Read an element once | `locator.textContent()` / `.inputValue()` / `.getAttribute(name)` / `.boundingBox()` / `.touchTarget()` (the box a finger reaches) / `.count()` / `.isVisible()`; no retry, so assert with `expect(locator)` |
 | Native window input | `t.app.window.pointer` / `.key`; independent of pages |
 | Swipe, drag, fling, pull to refresh, edge back | `t.app.view.swipe` / `.drag` / `.scrub` / `.fling` / `.pullToRefresh` / `.touch`, `t.app.gesture.*`; [Gestures](#gestures) |

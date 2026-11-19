@@ -103,7 +103,14 @@ export interface PageLike {
   semanticAction?(options: { css: string; page?: string; index?: number; name: string }): Promise<void>;
   /** Bring a match on screen; GPU pages need it before an action. */
   scrollTo?(options: { css: string; page?: string; index?: number }): Promise<void>;
+  /** Rest the app's pointer on a match. */
+  hover?(options: { css: string; page?: string; index?: number }): Promise<void>;
+  /** Hold a match in a pointer state without a pointer; `hover: false` lets go. */
+  pinState?(options: { css: string; page?: string; index?: number; hover: boolean }): Promise<void>;
 }
+
+// A disabled control still shows hover (a tooltip on a greyed-out button), so these skip the enabled wait.
+const POINTER_STATE_VERBS = new Set(["hover", "pin"]);
 
 export type Guard = <T>(op: () => T | Promise<T>) => Promise<T>;
 /** Records one locator action in the report's trace. */
@@ -329,6 +336,20 @@ export class PageLocator implements Locator {
     const force = options?.force === true;
     return this.act("click", options, (css, index) =>
       this.page.click({ page: this.options.page, css, index, ...(force ? { force } : {}) }));
+  }
+
+  hover(options?: ActionOptions): Promise<void> {
+    if (!this.page.hover) return Promise.reject(new Error("This page driver does not support hover"));
+    return this.act("hover", options, (css, index) => this.page.hover!({ page: this.options.page, css, index }));
+  }
+
+  pin(state: { hover: boolean }, options?: ActionOptions): Promise<void> {
+    if (!state || typeof state !== "object" || typeof state.hover !== "boolean") {
+      return Promise.reject(new TypeError("pin() takes { hover: boolean }"));
+    }
+    if (!this.page.pinState) return Promise.reject(new Error("This page driver does not support pin"));
+    return this.act("pin", options, (css, index) =>
+      this.page.pinState!({ page: this.options.page, css, index, hover: state.hover }), `hover=${state.hover}`);
   }
 
   performAction(name: string, options?: InputOptions): Promise<void> {
@@ -672,7 +693,7 @@ export class PageLocator implements Locator {
       const el = document.querySelectorAll(${JSON.stringify(this.selector)})[${index}];
       if (!el || !el.isConnected) return "element detached";
       el.scrollIntoView({block:"center", inline:"center", behavior:"instant"});
-      if (el.matches(":disabled") || el.closest('[aria-disabled="true"]')) return "element is disabled";
+      if (${JSON.stringify(!POINTER_STATE_VERBS.has(verb))} && (el.matches(":disabled") || el.closest('[aria-disabled="true"]'))) return "element is disabled";
       if ((${JSON.stringify(verb)} === "fill" || ${JSON.stringify(verb)} === "type") && (el.readOnly || el.getAttribute("aria-readonly") === "true")) return "element is readonly";
       const r = el.getBoundingClientRect();
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
@@ -719,7 +740,7 @@ export class PageLocator implements Locator {
             } else if (force && last.count === 1) {
               // Forced: attached and enabled are enough; no viewport, stability
               // or hit-test wait.
-              if (last.enabled === false) reason = "element is disabled";
+              if (last.enabled === false && !POINTER_STATE_VERBS.has(verb)) reason = "element is disabled";
               else if ((verb === "fill" || verb === "type") && last.editable === false) reason = "element is not editable";
               else {
                 try {
@@ -738,7 +759,7 @@ export class PageLocator implements Locator {
               const rect = JSON.stringify(last.rect);
               const stable = last.rect === undefined || previousRect === rect;
               previousRect = rect;
-              if (last.enabled === false) reason = "element is disabled";
+              if (last.enabled === false && !POINTER_STATE_VERBS.has(verb)) reason = "element is disabled";
               else if ((verb === "fill" || verb === "type") && last.editable === false) reason = "element is not editable";
               else if (!stable) {
                 reason = refusal?.reason ?? "element is moving";

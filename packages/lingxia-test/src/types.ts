@@ -261,6 +261,19 @@ export interface Locator {
   /** Double-click: on text and editors, selects the word at the center (a long press on touch). */
   dblclick(options?: ActionOptions): Promise<void>;
   /**
+   * Rest the app's pointer on the match's center, as a mouse does: `hover:` styles,
+   * enter/leave handlers and `interestFor` hints follow. The pointer is injected into the app
+   * window (macOS, Windows); the system cursor stays put and the window is not raised. A host
+   * without a mouse rejects `E_UNSUPPORTED`: use `pin({ hover: true })` there.
+   */
+  hover(options?: ActionOptions): Promise<void>;
+  /**
+   * Hold the match hovered with no pointer, on every platform: its `hover:` styles show and an
+   * `interestFor` hint opens as for a resting mouse. Real pointer moves do not end it;
+   * `{ hover: false }` and the spec's end do.
+   */
+  pin(state: { hover: boolean }, options?: ActionOptions): Promise<void>;
+  /**
    * Perform a semantic action by name, as a screen reader does: a swipe row's
    * `aria-actions` control (by its name), `increment`, `decrement` or `dismiss`.
    */

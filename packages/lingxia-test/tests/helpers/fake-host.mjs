@@ -252,8 +252,25 @@ export function createWorld(options = {}) {
     async edgeBack() { throw Object.assign(new Error("E_UNSUPPORTED: edge back is a system gesture"), { code: "E_UNSUPPORTED" }); },
   };
 
+  /** `pointer.move` points, and `pinState` calls, in order. */
+  const pointerMoves = [];
+  const pins = [];
   const page = {
     gesture,
+    pointer: {
+      async move({ at }) {
+        // Desktop hosts inject into the window; others have no app mouse.
+        if (options.mouse === false) throw new Error("not supported: app mouse input is not implemented for this platform");
+        pointerMoves.push(at);
+        return {};
+      },
+    },
+    ...(options.pinState ? {
+      async pinState(pin) {
+        pageEntry("pinState", pin.page);
+        pins.push(pin);
+      },
+    } : {}),
     async query({ css, all, index = 0, page: pageName }) {
       // A GPU host built before descendant chains refuses them by name.
       if (options.scopedQueries === false && /\S\s+\S/.test(css.replace(/"[^"]*"/g, '""'))) {
@@ -521,6 +538,8 @@ export function createWorld(options = {}) {
     app,
     get hud() { return hudOn; },
     environments,
+    pointerMoves,
+    pins,
     /** The app's Logic opening dialogs (`logic`), and whether the runner watches them. */
     dialogs,
     navCalls,
