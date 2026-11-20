@@ -1357,9 +1357,11 @@ mod ios {
                             text(msg_send![view, text])
                         };
                     }
-                    if !name.trim().is_empty() {
-                        let bounds: CGRect = msg_send![view, bounds];
-                        let frame: CGRect = msg_send![view, convertRect: bounds, toView: window];
+                    let bounds: CGRect = msg_send![view, bounds];
+                    let frame: CGRect = msg_send![view, convertRect: bounds, toView: window];
+                    // A control with no size yet would send a tap to the window's corner.
+                    let sized = frame.size.width > 0.0 && frame.size.height > 0.0;
+                    if sized && !name.trim().is_empty() {
                         out.push(ChromeElement {
                             label: name,
                             role: if button { "button" } else { "text" }.into(),
@@ -1393,6 +1395,8 @@ mod ios {
                     let child: *mut AnyObject = msg_send![subviews, objectAtIndex: index];
                     if is_gpu_page(view) {
                         if text(msg_send![child, accessibilityIdentifier]) == "lx-recovery" {
+                            // A panel added this run loop has no frames until laid out.
+                            let _: () = msg_send![child, layoutIfNeeded];
                             collect(child, window, out);
                         }
                     } else {
