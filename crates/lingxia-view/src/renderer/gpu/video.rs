@@ -267,6 +267,8 @@ pub(crate) fn configure(key: &str, source: Result<Source, VideoError>) {
             entry.applied = None;
             entry.switch = None;
             entry.quality = None;
+            entry.auto = None;
+            entry.auto_decided = false;
             let _closed = std::mem::replace(&mut entry.state, State::Opening);
             request(key, &mut entry.state, Reason::Reopen);
         }
@@ -392,7 +394,7 @@ fn landed(key: &str) {
         return;
     }
     let current = source_of(key).map(|source| {
-        let quality = players().get(key).and_then(|entry| entry.quality.clone());
+        let quality = players().get(key).and_then(wanted);
         source.url(quality.as_deref()).to_owned()
     });
     let mut players = players();
@@ -574,6 +576,48 @@ pub(crate) fn command(key: &str, op: VideoOp) -> Result<(), VideoError> {
     }
 }
 
+/// The label a player's file resolves from: its pin, else what auto chose.
+fn wanted(entry: &Entry) -> Option<String> {
+    entry.quality.clone().or_else(|| entry.auto.clone())
+}
+
+/// Auto's file for a box `height` device px tall, chosen when the box is first laid out: a
+/// player with no picture yet reopens on it; one already showing play keeps its file rather than
+/// rebuffer.
+fn choose_auto(key: &str, entry: &mut Entry, height: f32) {
+    if entry.auto_decided || entry.quality.is_some() || !(height >= 1.0) {
+        return;
+    }
+    entry.auto_decided = true;
+    let Some(source) = source_of(key) else {
+        return;
+    };
+    let auto = source.auto_label(height).map(str::to_owned);
+    if auto == entry.auto {
+        return;
+    }
+    if let State::Ready(player) = &entry.state
+        && entry.frame.is_some()
+    {
+        let now = player.status();
+        if !(now.paused && now.current_time == 0.0) {
+            return;
+        }
+    }
+    let url = source.url(auto.as_deref()).to_owned();
+    entry.auto = auto;
+    if url == entry.url {
+        return;
+    }
+    if matches!(entry.state, State::Ready(_)) {
+        entry.url = url;
+        entry.applied = None;
+        let _closed = std::mem::replace(&mut entry.state, State::Opening);
+    }
+    // An open in flight lands on the first file and reopens on this one.
+    request(key, &mut entry.state, Reason::Quality);
+}
+
 /// Picks quality `label` of player `key`: a file of `sources` opens beside the playing one and
 /// takes over at the same position; an adaptive stream switches renditions itself.
 fn set_quality(key: &str, entry: &mut Entry, label: Option<String>) -> Result<(), VideoError> {
@@ -618,7 +662,17 @@ fn set_quality(key: &str, entry: &mut Entry, label: Option<String>) -> Result<()
     {
         return Err(unknown_quality(label, &labels));
     }
-    let url = source.url(label.as_deref()).to_owned();
+    if label.is_none() {
+        // An explicit auto chooses again for the box as it is now.
+        entry.auto = entry
+            .view
+            .and_then(|(px, _, _)| source.auto_label(px[1]))
+            .map(str::to_owned);
+        entry.auto_decided |= entry.view.is_some();
+    }
+    let url = source
+        .url(label.as_deref().or(entry.auto.as_deref()))
+        .to_owned();
     if entry
         .switch
         .as_ref()
@@ -739,6 +793,9 @@ struct Entry {
     /// The URL playing; the chosen quality (`None`: auto) and a switch to another.
     url: String,
     quality: Option<String>,
+    /// The file auto chose for the box (`None`: the first), and whether the box has chosen.
+    auto: Option<String>,
+    auto_decided: bool,
     switch: Option<Switch>,
     /// When the last frame was imported.
     imported: Option<Instant>,
@@ -1033,7 +1090,7 @@ pub(crate) fn forget_key(key: &str) {
 fn open_player(key: &str) {
     let picked = Instant::now();
     let source = sources().get(key).cloned();
-    let quality = players().get(key).and_then(|entry| entry.quality.clone());
+    let quality = players().get(key).and_then(wanted);
     let mut url = String::new();
     let mut state = match source {
         Some(Ok(source)) => {
@@ -1054,7 +1111,7 @@ fn open_player(key: &str) {
     };
     // Opens run in parallel: one overtaken by a newer source for the key closes unused.
     let current = source_of(key).map(|source| {
-        let quality = players().get(key).and_then(|entry| entry.quality.clone());
+        let quality = players().get(key).and_then(wanted);
         source.url(quality.as_deref()).to_owned()
     });
     if !url.is_empty() && current.as_deref() != Some(url.as_str()) {
@@ -1413,6 +1470,7 @@ pub(crate) fn has_new(display: &crate::DisplayList) -> bool {
                 if larger {
                     entry.view = Some((px, fit, now));
                 }
+                choose_auto(key, entry, px[1]);
             }
             if let (State::Ready(player), Some((px, fit, _))) = (&mut entry.state, entry.view) {
                 player.set_view(px, fit);
@@ -1473,6 +1531,8 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
                 pending: Vec::new(),
                 url,
                 quality: None,
+                auto: None,
+                auto_decided: false,
                 switch: None,
                 imported: None,
                 resume: false,
@@ -3255,6 +3315,60 @@ mod opener_tests {
             Some(&Some("360p".to_owned())),
             "the new player is pinned"
         );
+    }
+
+    #[test]
+    fn auto_opens_the_file_that_fills_the_box_once_and_again_only_when_asked() {
+        let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _ = TEST_OPENER.set(counted);
+        GATE.store(true, Ordering::SeqCst);
+        let key = crate::scene::video::key(7_700_009, "name:auto-files");
+        let (low, high) = (
+            "https://example.invalid/auto-360.mp4",
+            "https://example.invalid/auto-720.mp4",
+        );
+        configure(&key, files(&[("360p", low), ("720p", high)]));
+        settle();
+        opens();
+        settle();
+        assert_eq!(players()[&key].url, low, "no box yet: the first file");
+        {
+            let mut players = players();
+            let entry = players.get_mut(&key).unwrap();
+            entry.view = Some(([993.0, 558.0], Fit::Contain, Instant::now()));
+            choose_auto(&key, entry, 558.0);
+        }
+        settle();
+        opens();
+        settle();
+        assert_eq!(
+            players()[&key].url,
+            high,
+            "a 558 px box takes the 720p file"
+        );
+        assert_eq!(players()[&key].quality, None, "still auto");
+        // A smaller box later changes nothing until auto is asked for again.
+        let mut players = players();
+        let entry = players.get_mut(&key).unwrap();
+        entry.view = Some(([400.0, 225.0], Fit::Contain, Instant::now()));
+        choose_auto(&key, entry, 225.0);
+        assert!(
+            entry.switch.is_none() && entry.url == high,
+            "auto chose once"
+        );
+        set_quality(&key, entry, None).unwrap();
+        assert_eq!(
+            entry.switch.as_ref().map(|s| s.url.as_str()),
+            Some(low),
+            "an explicit auto chooses for the box now"
+        );
+        // The latest choice wins: a pin replaces the switch auto started.
+        set_quality(&key, entry, Some("720p".into())).unwrap();
+        assert!(entry.switch.is_none(), "the pin is the file playing");
+        assert_eq!(entry.quality.as_deref(), Some("720p"));
+        entry.state = State::Opening;
+        drop(players);
+        settle();
     }
 
     fn opened(url: &str) -> usize {

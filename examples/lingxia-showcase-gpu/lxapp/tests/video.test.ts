@@ -79,7 +79,10 @@ test('a quality switch keeps the position and the frames moving', { start: { pag
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-quality-state');
-  await expect(state).toContainText('auto · 360p');
+  // Auto plays the shortest file at least as tall as the box in device pixels, else the tallest.
+  const box = await view.testId('video-quality').boundingBox();
+  const ratio = (await view.screenshot()).width / (await view.viewport()).width;
+  await expect(state).toContainText(`auto · ${Math.round(box.height * ratio) <= 360 ? 360 : 720}p`);
   await expect.poll(async () => seconds(await state.textContent()), { timeout: 5_000 }).toBeGreaterThan(1);
   const before = seconds(await state.textContent());
   const asked = Date.now();

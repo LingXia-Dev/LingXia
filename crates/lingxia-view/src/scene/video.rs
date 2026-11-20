@@ -49,6 +49,31 @@ impl Source {
             .map_or("", |(_, url)| url)
     }
 
+    /// The label "auto" plays in a box `height` device px tall: the shortest file at least that
+    /// tall, else the tallest. `None` plays the first file: a label that is not a height
+    /// ("720p", "720"), one file, or no layout yet.
+    pub fn auto_label(&self, height: f32) -> Option<&str> {
+        fn height_of(label: &str) -> Option<u32> {
+            let digits = label.strip_suffix(['p', 'P']).unwrap_or(label);
+            digits.parse().ok().filter(|h| *h > 0)
+        }
+        let heights = self
+            .variants
+            .iter()
+            .map(|(label, _)| Some((height_of(label)?, label.as_str())))
+            .collect::<Option<Vec<_>>>()?;
+        if heights.len() < 2 || !(height >= 1.0) {
+            return None;
+        }
+        let height = height.round();
+        heights
+            .iter()
+            .filter(|(h, _)| *h as f32 >= height)
+            .min_by_key(|(h, _)| *h)
+            .or_else(|| heights.iter().max_by_key(|(h, _)| *h))
+            .map(|(_, label)| *label)
+    }
+
     /// The labels a page can pick between; empty for a plain `src`.
     pub fn labels(&self) -> Vec<String> {
         self.variants
@@ -472,5 +497,40 @@ mod tests {
     fn a_fresh_player_starts_at_zero() {
         assert_eq!(resume_ms(false, false, -1, -1, 0), 0);
         assert_eq!(resume_ms(true, true, -1, -1, 1200), 1200);
+    }
+}
+
+#[cfg(test)]
+mod auto_label_tests {
+    use super::{Settings, Source};
+
+    fn files(labels: &[&str]) -> Source {
+        Source {
+            variants: labels
+                .iter()
+                .map(|l| (l.to_string(), format!("{l}.mp4")))
+                .collect(),
+            settings: Settings::default(),
+        }
+    }
+
+    #[test]
+    fn auto_takes_the_shortest_file_that_fills_the_box() {
+        let source = files(&["360p", "720p", "1080p"]);
+        assert_eq!(source.auto_label(558.0), Some("720p"));
+        assert_eq!(source.auto_label(720.0), Some("720p"));
+        assert_eq!(source.auto_label(200.0), Some("360p"));
+    }
+
+    #[test]
+    fn auto_takes_the_tallest_file_when_none_fills_the_box() {
+        assert_eq!(files(&["360p", "720"]).auto_label(1600.0), Some("720"));
+    }
+
+    #[test]
+    fn auto_keeps_the_first_file_without_heights_or_layout() {
+        assert_eq!(files(&["360p", "HD"]).auto_label(558.0), None);
+        assert_eq!(files(&["720p"]).auto_label(558.0), None);
+        assert_eq!(files(&["360p", "720p"]).auto_label(0.0), None);
     }
 }
