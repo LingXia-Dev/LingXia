@@ -17,7 +17,7 @@ stay on platform flows. Session classes (Control app vs guest) are separate:
 - **The home lxapp** is never looked up; the host vouched for it by loading it.
   A package `appId` cannot claim home trust. The Runner's project is a guest,
   even in the home slot.
-- **Some privileges need more.** `destination: "downloads"` also needs the
+- **Some privileges need more.** `lx.network.download(url, { to: "downloads" })` also needs the
   native `AppResourceGrant::Downloads`
   ([`issue_app_resource_grants`](./development.md#host-addon)); app-owned
   downloads need only the network.

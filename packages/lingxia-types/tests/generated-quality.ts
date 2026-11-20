@@ -70,8 +70,8 @@ lx.nav.go({ path: "/pages/chat/index" });
 lx.nav.go({ page: "detail", query: {} });
 // @ts-expect-error going back is lx.nav.back(n)
 lx.nav.go(-1);
-const appDownloadResult: DownloadTask<AppDownloadResult> = lx.network.download(appDownload);
-const downloadsResult: DownloadTask<DownloadsDownloadResult> = lx.network.download(downloadsDownload);
+const appDownloadResult: DownloadTask<AppDownloadResult> = lx.network.download("https://example.com/a.bin", appDownload);
+const downloadsResult: DownloadTask<DownloadsDownloadResult> = lx.network.download("https://example.com/a.bin", downloadsDownload);
 const previewResult: PreviewMediaHandle = lx.media.preview(previewOptions);
 const managedFile: LxFile = files.file("lx://userdata/notes.txt");
 const textResult: Promise<string> = managedFile.text();

@@ -270,7 +270,7 @@ export default definePage({
             if (task && typeof task.cancel === "function") {
               task.cancel().catch(() => {});
             }
-            task = lx.network.download({ url });
+            task = lx.network.download(url);
             pdfDownloadTask = task;
             pdfDownloadUrl = url;
           }

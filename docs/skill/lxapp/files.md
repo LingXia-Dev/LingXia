@@ -17,33 +17,31 @@ host downloads center, not to these classes.
 
 ## `lx.network.download`
 
-The result's `storage` (`temp` | `userdata` | `downloads`) says where it went.
+`download(url, options?)`: `to` picks where the file goes, and the result's
+`storage` (`temp` | `userdata` | `downloads`) says where it went.
 
 ```ts
-const result = await lx.network.download({ url, headers, timeoutMs, signal }).result;
+const result = await lx.network.download(url, { headers, timeoutMs, signal }).result;
 result.uri; // lx://temp/<opaque_id>
 ```
 
 ```ts
-const result = await lx.network.download({
-  url,
-  filePath: "videos/video.mp4",
-}).result;
+const result = await lx.network.download(url, { to: "videos/video.mp4" }).result;
 result.uri; // lx://userdata/videos/video.mp4
 ```
 
 ```ts
-const task = lx.network.download({
-  url,
-  destination: "downloads",
+const task = lx.network.download(url, {
+  to: "downloads",
   suggestedName: "video.mp4",
 });
 ```
 
-- `filePath` is relative or `lx://userdata/...`. Rejected: `lx://usercache`,
-  native absolute or drive paths, backslashes, empty, `.` or `..` segments, and
-  the userdata root.
-- `destination: "downloads"` saves to the user's Downloads (shown in the
+- A `to` path is relative or `lx://userdata/...` and must not exist yet.
+  Rejected: `lx://usercache`, native absolute or drive paths, backslashes,
+  empty, `.` or `..` segments, and the userdata root. A file literally named
+  `downloads` needs `lx://userdata/downloads`.
+- `to: "downloads"` saves to the user's Downloads (shown in the
   downloads page) and needs the `downloads` host grant **and** a native session
   grant ([permissions](../native/permissions.md)); without it the call fails.
   `suggestedName` is sanitized and never overwrites. A `downloads` URI is
@@ -97,7 +95,8 @@ await lx.fs.rename(
 
 ## `lx.network.upload`
 
-Call from Logic; the file streams without entering JavaScript memory.
+`upload(url, { file, ... })`, from Logic; the file streams without entering
+JavaScript memory.
 
 - Form endpoint: default `bodyMode: 'multipart'`, method `POST`; `name`,
   `fileName`, `formData` build the envelope.
@@ -105,9 +104,8 @@ Call from Logic; the file streams without entering JavaScript memory.
   MIME type, and no form fields.
 
 ```ts
-const task = lx.network.upload({
-  url: presignedUrl,
-  filePath,
+const task = lx.network.upload(presignedUrl, {
+  file: filePath,
   method: 'PUT',
   bodyMode: 'raw',
   mimeType: contentType,

@@ -206,20 +206,14 @@ export interface ChannelHandle<TSend = unknown, TReceive = unknown> {
 }
 
 /**
- * Download options.
+ * Where `lx.network.download` writes, chosen by `to`:
  *
- * - `app`: app-owned temporary output, or durable `lx://userdata` output when
- *   `filePath` is set
- * - `downloads`: user-visible system Downloads output, requiring a host
- *   privilege grant and a native Downloads grant
- *
- * Default: `app`.
+ * - omitted: a temporary file this lxapp owns
+ * - a path: durable output under `lx://userdata` (relative paths resolve there)
+ * - `'downloads'`: the user's Downloads folder, which needs the host's
+ *   downloads grant
  */
-export type DownloadOptions<TDestination extends DownloadDestination = DownloadDestination> =
-  TDestination extends 'downloads' ? DownloadsDownloadOptions : AppDownloadOptions;
-
-export type DownloadResultForDestination<TDestination extends DownloadDestination> =
-  TDestination extends 'downloads' ? DownloadsDownloadResult : AppDownloadResult;
+export type DownloadOptions = AppDownloadOptions | DownloadsDownloadOptions;
 
 export type DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> =
   | {
@@ -416,22 +410,24 @@ declare global {
   }
 
   interface NetworkApi {
-    /** Download to the downloads directory. */
-    download(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
-    /** Download to a durable app-owned path. */
+    /**
+     * Download over HTTP(S), streamed to disk. Returns the task before the
+     * transfer starts: `result` settles once, `progress` streams, `cancel()`
+     * aborts.
+     */
+    download(url: string, options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
+    /** Download to a durable path under `lx://userdata`. */
     download(
-      options: AppDownloadOptions & { filePath: string },
+      url: string,
+      options: AppDownloadOptions & { to: string },
     ): DownloadTask<AppPersistedDownloadResult>;
-    /** Download to a temporary app-owned path. */
+    /** Download to a temporary file this lxapp owns. */
     download(
-      options: AppDownloadOptions & { filePath?: undefined },
+      url: string,
+      options?: AppDownloadOptions & { to?: undefined },
     ): DownloadTask<AppTempDownloadResult>;
-    /** Download to the lxapp-managed app directory. */
-    download(options: AppDownloadOptions): DownloadTask<AppDownloadResult>;
-    /** Download with a destination-correlated result type. */
-    download<TDestination extends DownloadDestination = "app">(
-      options: DownloadOptions<TDestination>,
-    ): DownloadTask<DownloadResultForDestination<TDestination>>;
+    download(url: string, options?: AppDownloadOptions): DownloadTask<AppDownloadResult>;
+    download(url: string, options?: DownloadOptions): DownloadTask<DownloadResult>;
   }
 
   interface Lx {
@@ -565,17 +561,12 @@ export type AppDownloadFilePath = string & {
 
 export type AppDownloadOptions = DownloadOptionsBase & {
     /**
-     * Optional app-owned durable output path.
-     *
-     * Omit `filePath` to receive a temporary result in `uri`. Relative
-     * paths resolve under user data. `lx://` paths must target `lx://userdata`;
-     * `lx://usercache` is not accepted here.
+     * Durable output path under `lx://userdata`; relative paths resolve there.
+     * The file must not exist yet. Omit for a temporary file. `'downloads'`
+     * is the user's Downloads folder instead (`DownloadsDownloadOptions`).
      */
-    filePath?: string;
-    /**
-     * App-owned output. Omit to use a temporary output unless `filePath` is set.
-     */
-    destination?: 'app';
+    to?: string;
+    suggestedName?: never;
 };
 
 export type AppDownloadResult = {
@@ -1027,11 +1018,7 @@ export type DisplayLanguageApi = {
  */
 export type DisplayLanguagePreference = 'auto' | (string & {});
 
-export type DownloadDestination = 'app' | 'downloads';
-
 export type DownloadOptionsBase = {
-    /** HTTP(S) source URL. */
-    url: string;
     /**
      * Optional request headers.
      * Restricted headers such as `Referer` are ignored by the runtime.
@@ -1046,14 +1033,10 @@ export type DownloadOptionsBase = {
 export type DownloadResult = AppDownloadResult | DownloadsDownloadResult;
 
 export type DownloadsDownloadOptions = DownloadOptionsBase & {
-    /**
-     * Optional filename hint for the system Downloads destination.
-     * This is not an app-owned `lx.fs` path.
-     */
+    /** The user's Downloads folder. Needs the host's downloads grant. */
+    to: 'downloads';
+    /** Filename hint; the host picks a free name next to it. */
     suggestedName?: string;
-    filePath?: never;
-    /** Save into the user's system Downloads directory. */
-    destination: 'downloads';
 };
 
 export type DownloadsDownloadResult = {
@@ -2606,9 +2589,8 @@ export type UploadIteratorResult = IteratorResult<UploadProgressEvent, void>;
  * ```ts
  * // A presigned URL is signed for one method and one Content-Type,
  * // so both have to match whatever the signer used.
- * const task = lx.network.upload({
- * url: presignedUrl,
- * filePath: 'lx://media/clip.mp4',
+ * const task = lx.network.upload(presignedUrl, {
+ * file: 'lx://media/clip.mp4',
  * method: 'PUT',
  * bodyMode: 'raw',
  * mimeType: 'video/mp4',
@@ -2618,10 +2600,8 @@ export type UploadIteratorResult = IteratorResult<UploadProgressEvent, void>;
  * ```
  */
 export type UploadOptions = {
-    /** HTTP(S) destination URL. */
-    url: string;
-    /** Local file path or runtime-managed URI to upload. */
-    filePath: string;
+    /** The file to send: an `lx://` path from a LingXia API, or a path relative to `lx://userdata`. */
+    file: string;
     /**
      * HTTP method. Default: `POST`.
      * A presigned URL is signed for exactly one method, usually `PUT`.
@@ -3320,7 +3300,7 @@ declare global {
     status(): Promise<NetworkInfo>;
     /** Subscribes to network changes and returns the unsubscribe fn. */
     watch(callback: NetworkChangeCallback): () => void;
-    download(options: never): never;
+    download(url: never): never;
     /**
      * Upload a file over HTTP, streamed from disk.
      * Defaults to a `POST` with a `multipart/form-data` body. Set
@@ -3330,7 +3310,7 @@ declare global {
      * progress and cancellation can be wired up without racing it: `result` settles
      * once, `progress` streams to one consumer, and `cancel()` aborts.
      */
-    upload(options: UploadOptions): UploadTask;
+    upload(url: string, options: UploadOptions): UploadTask;
   }
 }
 

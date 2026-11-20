@@ -442,7 +442,7 @@ URLs, `file:` URLs, `..`, and absolute paths are rejected. Download remote art
 first, and re-download `lx://temp` art after each Logic launch:
 
 ```ts
-const { uri } = await lx.network.download({ url: brand.logoUrl }).result;
+const { uri } = await lx.network.download(brand.logoUrl).result;
 await lx.app.tabBar.update({
   items: [{ index: 0, text: brand.shortName, iconPath: uri }],
 });

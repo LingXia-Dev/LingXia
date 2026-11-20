@@ -291,10 +291,11 @@ fn read_string_map(obj: &JSObject, field: &str, api_name: &str) -> JSResult<Vec<
     Ok(entries)
 }
 
-fn parse_upload_options(options: JSValue) -> JSResult<ParsedUploadOptions> {
+fn parse_upload_options(url: JSValue, options: JSValue) -> JSResult<ParsedUploadOptions> {
+    let url = super::download::read_url_argument(&url, "network.upload")?;
     let Some(obj) = options.into_object() else {
         return Err(js_invalid_parameter_error(
-            "network.upload expects an options object",
+            "network.upload expects an options object with file",
         ));
     };
     let body_mode = read_upload_body_mode_field(&obj)?;
@@ -336,8 +337,8 @@ fn parse_upload_options(options: JSValue) -> JSResult<ParsedUploadOptions> {
         }
     }
     Ok(ParsedUploadOptions {
-        url: read_required_string_field(&obj, "url", "network.upload")?,
-        file_path: read_required_string_field(&obj, "filePath", "network.upload")?,
+        url,
+        file_path: read_required_string_field(&obj, "file", "network.upload")?,
         method: read_upload_method_field(&obj)?,
         body_mode,
         field_name,
@@ -386,7 +387,7 @@ fn resolve_upload_path(
     if trimmed.is_empty() {
         return Err(js_error_from_business_code_with_detail(
             1002,
-            "network.upload requires filePath",
+            "network.upload requires file",
         ));
     }
 
@@ -394,13 +395,13 @@ fn resolve_upload_path(
     let resolved = if trimmed.starts_with("lx://") || path.is_absolute() || trimmed.contains(':') {
         resolve_accessible_path(trimmed)?
     } else {
-        let relative = normalize_relative_path(trimmed, "network.upload", "filePath")?;
+        let relative = normalize_relative_path(trimmed, "network.upload", "file")?;
         user_data_dir.join(relative)
     };
 
     if !resolved.exists() {
         return Err(js_invalid_parameter_error(
-            "network.upload filePath does not exist",
+            "network.upload file does not exist",
         ));
     }
     Ok(resolved)
@@ -520,9 +521,9 @@ fn spawn_upload_worker(state: Arc<Mutex<UploadIteratorState>>) {
 /// Returns the task handle synchronously, before the transfer starts, so
 /// progress and cancellation can be wired up without racing it: `result` settles
 /// once, `progress` streams to one consumer, and `cancel()` aborts.
-fn upload_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
+fn upload_file(ctx: JSContext, url: JSValue, options: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let options = parse_upload_options(options)?;
+    let options = parse_upload_options(url, options)?;
     crate::task_object::validate_abort_signal(options.signal.as_ref())?;
     let url = options.url.trim().to_string();
     if url.is_empty() {
@@ -805,15 +806,18 @@ mod tests {
         (runtime, ctx)
     }
 
-    /// Options carrying the two fields every upload needs, plus `extra`.
+    /// Options carrying the file every upload needs, plus `extra`.
     fn options(ctx: &rong::JSContext, extra: &[(&str, JSValue)]) -> JSValue {
         let obj = JSObject::new(ctx);
-        obj.set("url", "https://example.com/upload").unwrap();
-        obj.set("filePath", "clip.mp4").unwrap();
+        obj.set("file", "clip.mp4").unwrap();
         for (key, value) in extra {
             obj.set(*key, value.clone()).unwrap();
         }
         JSValue::from_raw(ctx, obj.into_value())
+    }
+
+    fn url(ctx: &rong::JSContext) -> JSValue {
+        JSValue::from_rust(ctx, "https://example.com/upload")
     }
 
     fn string(ctx: &rong::JSContext, value: &str) -> JSValue {
@@ -828,7 +832,7 @@ mod tests {
     fn upload_method_defaults_to_post_and_reads_any_case() {
         let (_runtime, ctx) = js_context();
 
-        let parsed = parse_upload_options(options(&ctx, &[])).unwrap();
+        let parsed = parse_upload_options(url(&ctx), options(&ctx, &[])).unwrap();
         assert_eq!(parsed.method, UploadMethod::Post);
 
         for (input, expected) in [
@@ -838,7 +842,8 @@ mod tests {
             ("post", UploadMethod::Post),
         ] {
             let value = string(&ctx, input);
-            let parsed = parse_upload_options(options(&ctx, &[("method", value)])).unwrap();
+            let parsed =
+                parse_upload_options(url(&ctx), options(&ctx, &[("method", value)])).unwrap();
             assert_eq!(parsed.method, expected, "method {input}");
         }
     }
@@ -850,21 +855,21 @@ mod tests {
         for input in ["DELETE", "GET", ""] {
             let value = string(&ctx, input);
             assert!(
-                parse_upload_options(options(&ctx, &[("method", value)])).is_err(),
+                parse_upload_options(url(&ctx), options(&ctx, &[("method", value)])).is_err(),
                 "method {input} should be rejected"
             );
         }
 
         // A non-string reaches the same rejection, not a silent default.
         let value = number(&ctx, 5.0);
-        assert!(parse_upload_options(options(&ctx, &[("method", value)])).is_err());
+        assert!(parse_upload_options(url(&ctx), options(&ctx, &[("method", value)])).is_err());
     }
 
     #[test]
     fn body_mode_defaults_to_multipart_and_reads_any_case() {
         let (_runtime, ctx) = js_context();
 
-        let parsed = parse_upload_options(options(&ctx, &[])).unwrap();
+        let parsed = parse_upload_options(url(&ctx), options(&ctx, &[])).unwrap();
         assert_eq!(parsed.body_mode, UploadBodyMode::Multipart);
 
         for (input, expected) in [
@@ -873,12 +878,13 @@ mod tests {
             (" Multipart ", UploadBodyMode::Multipart),
         ] {
             let value = string(&ctx, input);
-            let parsed = parse_upload_options(options(&ctx, &[("bodyMode", value)])).unwrap();
+            let parsed =
+                parse_upload_options(url(&ctx), options(&ctx, &[("bodyMode", value)])).unwrap();
             assert_eq!(parsed.body_mode, expected, "bodyMode {input}");
         }
 
         let value = string(&ctx, "binary");
-        assert!(parse_upload_options(options(&ctx, &[("bodyMode", value)])).is_err());
+        assert!(parse_upload_options(url(&ctx), options(&ctx, &[("bodyMode", value)])).is_err());
     }
 
     #[test]
@@ -890,24 +896,32 @@ mod tests {
         form_data.set("note", "spec").unwrap();
         let form_data = JSValue::from_raw(&ctx, form_data.into_value());
         assert!(
-            parse_upload_options(options(
-                &ctx,
-                &[("bodyMode", raw()), ("formData", form_data.clone())]
-            ))
+            parse_upload_options(
+                url(&ctx),
+                options(
+                    &ctx,
+                    &[("bodyMode", raw()), ("formData", form_data.clone())]
+                )
+            )
             .is_err(),
             "formData has nowhere to go in an unframed body"
         );
 
         let name = string(&ctx, "asset");
         assert!(
-            parse_upload_options(options(&ctx, &[("bodyMode", raw()), ("name", name)])).is_err(),
+            parse_upload_options(
+                url(&ctx),
+                options(&ctx, &[("bodyMode", raw()), ("name", name)])
+            )
+            .is_err(),
             "a field name has nowhere to go in an unframed body"
         );
 
         // Populated formData stays legal under the multipart default, and raw
         // alone is fine.
-        assert!(parse_upload_options(options(&ctx, &[("formData", form_data)])).is_ok());
-        let parsed = parse_upload_options(options(&ctx, &[("bodyMode", raw())])).unwrap();
+        assert!(parse_upload_options(url(&ctx), options(&ctx, &[("formData", form_data)])).is_ok());
+        let parsed =
+            parse_upload_options(url(&ctx), options(&ctx, &[("bodyMode", raw())])).unwrap();
         assert_eq!(parsed.body_mode, UploadBodyMode::Raw);
         assert_eq!(parsed.field_name, None);
     }
@@ -927,13 +941,15 @@ mod tests {
         for form_data in [empty, nulls] {
             let raw = string(&ctx, "raw");
             assert!(
-                parse_upload_options(options(
-                    &ctx,
-                    &[("bodyMode", raw), ("formData", form_data.clone())]
-                ))
+                parse_upload_options(
+                    url(&ctx),
+                    options(&ctx, &[("bodyMode", raw), ("formData", form_data.clone())])
+                )
                 .is_err()
             );
-            assert!(parse_upload_options(options(&ctx, &[("formData", form_data)])).is_err());
+            assert!(
+                parse_upload_options(url(&ctx), options(&ctx, &[("formData", form_data)])).is_err()
+            );
         }
     }
 
@@ -943,8 +959,11 @@ mod tests {
         let raw = string(&ctx, "raw");
         let file_name = string(&ctx, "clip.mp4");
         assert!(
-            parse_upload_options(options(&ctx, &[("bodyMode", raw), ("fileName", file_name)]))
-                .is_err()
+            parse_upload_options(
+                url(&ctx),
+                options(&ctx, &[("bodyMode", raw), ("fileName", file_name)])
+            )
+            .is_err()
         );
     }
 
@@ -953,19 +972,20 @@ mod tests {
         let (_runtime, ctx) = js_context();
 
         let value = number(&ctx, 1500.6);
-        let parsed = parse_upload_options(options(&ctx, &[("timeoutMs", value)])).unwrap();
+        let parsed =
+            parse_upload_options(url(&ctx), options(&ctx, &[("timeoutMs", value)])).unwrap();
         assert_eq!(parsed.timeout_ms, Some(1501));
 
         for input in [0.0, -1.0, f64::NAN, f64::INFINITY] {
             let value = number(&ctx, input);
             assert!(
-                parse_upload_options(options(&ctx, &[("timeoutMs", value)])).is_err(),
+                parse_upload_options(url(&ctx), options(&ctx, &[("timeoutMs", value)])).is_err(),
                 "timeout {input} should be rejected"
             );
         }
 
         let value = string(&ctx, "3000");
-        assert!(parse_upload_options(options(&ctx, &[("timeoutMs", value)])).is_err());
+        assert!(parse_upload_options(url(&ctx), options(&ctx, &[("timeoutMs", value)])).is_err());
     }
 
     #[test]
@@ -973,12 +993,14 @@ mod tests {
         let (_runtime, ctx) = js_context();
 
         let not_a_map = string(&ctx, "x-token: dev");
-        assert!(parse_upload_options(options(&ctx, &[("headers", not_a_map)])).is_err());
+        assert!(parse_upload_options(url(&ctx), options(&ctx, &[("headers", not_a_map)])).is_err());
 
         let numeric_value = JSObject::new(&ctx);
         numeric_value.set("x-retry", 3).unwrap();
         let numeric_value = JSValue::from_raw(&ctx, numeric_value.into_value());
-        assert!(parse_upload_options(options(&ctx, &[("headers", numeric_value)])).is_err());
+        assert!(
+            parse_upload_options(url(&ctx), options(&ctx, &[("headers", numeric_value)])).is_err()
+        );
 
         // A null entry is absent, not an error -- callers build these maps
         // conditionally.
@@ -986,7 +1008,8 @@ mod tests {
         with_null.set("x-token", "dev").unwrap();
         with_null.set("x-absent", JSValue::null(&ctx)).unwrap();
         let with_null = JSValue::from_raw(&ctx, with_null.into_value());
-        let parsed = parse_upload_options(options(&ctx, &[("headers", with_null)])).unwrap();
+        let parsed =
+            parse_upload_options(url(&ctx), options(&ctx, &[("headers", with_null)])).unwrap();
         assert_eq!(
             parsed.headers,
             vec![("x-token".to_string(), "dev".to_string())]
@@ -994,26 +1017,15 @@ mod tests {
     }
 
     #[test]
-    fn url_and_file_path_are_required_and_must_be_strings() {
+    fn url_comes_first_and_file_is_required() {
         let (_runtime, ctx) = js_context();
+        let empty = || JSValue::from_raw(&ctx, JSObject::new(&ctx).into_value());
 
-        let empty = JSObject::new(&ctx);
-        let empty = JSValue::from_raw(&ctx, empty.into_value());
-        assert!(parse_upload_options(empty).is_err());
-
-        let url_only = JSObject::new(&ctx);
-        url_only.set("url", "https://example.com/upload").unwrap();
-        let url_only = JSValue::from_raw(&ctx, url_only.into_value());
-        assert!(parse_upload_options(url_only).is_err());
-
-        let numeric_url = JSObject::new(&ctx);
-        numeric_url.set("url", 42).unwrap();
-        numeric_url.set("filePath", "clip.mp4").unwrap();
-        let numeric_url = JSValue::from_raw(&ctx, numeric_url.into_value());
-        assert!(parse_upload_options(numeric_url).is_err());
-
-        // Not an object at all.
-        assert!(parse_upload_options(string(&ctx, "https://example.com/upload")).is_err());
+        assert!(parse_upload_options(url(&ctx), empty()).is_err());
+        assert!(parse_upload_options(number(&ctx, 42.0), options(&ctx, &[])).is_err());
+        // The old single-object shape is refused with a pointer to the new one.
+        assert!(parse_upload_options(options(&ctx, &[]), empty()).is_err());
+        assert!(parse_upload_options(url(&ctx), string(&ctx, "clip.mp4")).is_err());
     }
 
     #[test]
@@ -1037,7 +1049,7 @@ rong::js_api! {
     fn register_api(ctx) {
         namespace NetworkApi = crate::namespace::network(ctx)?;
         fn upload(
-            ts_params = "options: UploadOptions",
+            ts_params = "url: string, options: UploadOptions",
             ts_return = "UploadTask"
         ) = upload_file;
     }

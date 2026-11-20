@@ -420,7 +420,7 @@ runs once even with a URL/native main, without a hidden WebView. Icons follow
 tab-bar [`iconPath`](../lxapp/guide.md#icons); download remote art first.
 
 ```ts
-const { uri } = await lx.network.download({ url: activeBrand.logoUrl }).result;
+const { uri } = await lx.network.download(activeBrand.logoUrl).result;
 await lx.shell.sidebarActions.replace([
   {
     id: 'agent',

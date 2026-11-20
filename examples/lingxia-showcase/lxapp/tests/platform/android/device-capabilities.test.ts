@@ -102,8 +102,8 @@ test('save an image and a video into the photo library', {
   // Android 10+ writes an app's own media through MediaStore with no permission
   // prompt, so this is a complete contract with no external UI.
   const saved = await app.logic.eval({ timeout: 40_000 }, async ({ lx }, base) => {
-    const png = await lx.network.download({ url: base + '/media/sample.png' }).result;
-    const mp4 = await lx.network.download({ url: base + '/media/sample.mp4' }).result;
+    const png = await lx.network.download(base + '/media/sample.png').result;
+    const mp4 = await lx.network.download(base + '/media/sample.mp4').result;
     await lx.media.saveToLibrary(png.uri);
     await lx.media.saveToLibrary(mp4.uri);
     return { image: png.sizeBytes, video: mp4.sizeBytes };

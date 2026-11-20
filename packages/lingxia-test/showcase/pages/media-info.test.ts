@@ -43,8 +43,8 @@ test('read info, thumbnail, and compress local media', {
   const { app } = bindFixture(t, 'MEDIA-PROCESS-001');
 
   const result: MediaResult = await app.logic.eval({ timeout: 45_000 }, async ({ lx }, base) => {
-    const vid = await lx.network.download({ url: base + '/media/sample.mp4' }).result;
-    const png = await lx.network.download({ url: base + '/media/sample.png' }).result;
+    const vid = await lx.network.download(base + '/media/sample.mp4').result;
+    const png = await lx.network.download(base + '/media/sample.png').result;
     const video = await lx.media.videoInfo({ path: vid.uri });
     const thumb = await lx.media.videoThumbnail({ path: vid.uri, timeMs: 500 });
     const compressedImage = await lx.media.compressImage({ path: png.uri, quality: 60 });
@@ -137,7 +137,7 @@ test('cancel an in-flight compressVideo and reject with E_ABORT', {
 
   const outcome: Caught = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, base) => {
     try {
-      const vid = await lx.network.download({ url: base + '/media/sample.mp4' }).result;
+      const vid = await lx.network.download(base + '/media/sample.mp4').result;
       const task = lx.media.compressVideo({ path: vid.uri, quality: 'high' });
       task.cancel();
       return { ok: true, value: await task.result };

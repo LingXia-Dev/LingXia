@@ -47,17 +47,12 @@ rong::js_api! {
 
         type AppDownloadOptions = r###"DownloadOptionsBase & {
     /**
-     * Optional app-owned durable output path.
-     *
-     * Omit `filePath` to receive a temporary result in `uri`. Relative
-     * paths resolve under user data. `lx://` paths must target `lx://userdata`;
-     * `lx://usercache` is not accepted here.
+     * Durable output path under `lx://userdata`; relative paths resolve there.
+     * The file must not exist yet. Omit for a temporary file. `'downloads'`
+     * is the user's Downloads folder instead (`DownloadsDownloadOptions`).
      */
-    filePath?: string;
-    /**
-     * App-owned output. Omit to use a temporary output unless `filePath` is set.
-     */
-    destination?: 'app';
+    to?: string;
+    suggestedName?: never;
 }"###;
 
         type AppDownloadResult = r###"{
@@ -893,11 +888,7 @@ rong::js_api! {
     value: DeviceOrientation;
 }"###;
 
-        type DownloadDestination = r###"'app' | 'downloads'"###;
-
         type DownloadOptionsBase = r###"{
-    /** HTTP(S) source URL. */
-    url: string;
     /**
      * Optional request headers.
      * Restricted headers such as `Referer` are ignored by the runtime.
@@ -912,14 +903,10 @@ rong::js_api! {
         type DownloadResult = r###"AppDownloadResult | DownloadsDownloadResult"###;
 
         type DownloadsDownloadOptions = r###"DownloadOptionsBase & {
-    /**
-     * Optional filename hint for the system Downloads destination.
-     * This is not an app-owned `lx.fs` path.
-     */
+    /** The user's Downloads folder. Needs the host's downloads grant. */
+    to: 'downloads';
+    /** Filename hint; the host picks a free name next to it. */
     suggestedName?: string;
-    filePath?: never;
-    /** Save into the user's system Downloads directory. */
-    destination: 'downloads';
 }"###;
 
         type DownloadsDownloadResult = r###"{
@@ -2036,9 +2023,8 @@ true
         /// ```ts
         /// // A presigned URL is signed for one method and one Content-Type,
         /// // so both have to match whatever the signer used.
-        /// const task = lx.network.upload({
-        ///   url: presignedUrl,
-        ///   filePath: 'lx://media/clip.mp4',
+        /// const task = lx.network.upload(presignedUrl, {
+        ///   file: 'lx://media/clip.mp4',
         ///   method: 'PUT',
         ///   bodyMode: 'raw',
         ///   mimeType: 'video/mp4',
@@ -2048,10 +2034,8 @@ true
         /// ```
         ///
         type UploadOptions = r###"{
-    /** HTTP(S) destination URL. */
-    url: string;
-    /** Local file path or runtime-managed URI to upload. */
-    filePath: string;
+    /** The file to send: an `lx://` path from a LingXia API, or a path relative to `lx://userdata`. */
+    file: string;
     /**
      * HTTP method. Default: `POST`.
      * A presigned URL is signed for exactly one method, usually `PUT`.

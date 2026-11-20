@@ -203,20 +203,14 @@ export interface ChannelHandle<TSend = unknown, TReceive = unknown> {
 }
 
 /**
- * Download options.
+ * Where `lx.network.download` writes, chosen by `to`:
  *
- * - `app`: app-owned temporary output, or durable `lx://userdata` output when
- *   `filePath` is set
- * - `downloads`: user-visible system Downloads output, requiring a host
- *   privilege grant and a native Downloads grant
- *
- * Default: `app`.
+ * - omitted: a temporary file this lxapp owns
+ * - a path: durable output under `lx://userdata` (relative paths resolve there)
+ * - `'downloads'`: the user's Downloads folder, which needs the host's
+ *   downloads grant
  */
-export type DownloadOptions<TDestination extends DownloadDestination = DownloadDestination> =
-  TDestination extends 'downloads' ? DownloadsDownloadOptions : AppDownloadOptions;
-
-export type DownloadResultForDestination<TDestination extends DownloadDestination> =
-  TDestination extends 'downloads' ? DownloadsDownloadResult : AppDownloadResult;
+export type DownloadOptions = AppDownloadOptions | DownloadsDownloadOptions;
 
 export type DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> =
   | {
@@ -413,22 +407,24 @@ declare global {
   }
 
   interface NetworkApi {
-    /** Download to the downloads directory. */
-    download(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
-    /** Download to a durable app-owned path. */
+    /**
+     * Download over HTTP(S), streamed to disk. Returns the task before the
+     * transfer starts: `result` settles once, `progress` streams, `cancel()`
+     * aborts.
+     */
+    download(url: string, options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
+    /** Download to a durable path under `lx://userdata`. */
     download(
-      options: AppDownloadOptions & { filePath: string },
+      url: string,
+      options: AppDownloadOptions & { to: string },
     ): DownloadTask<AppPersistedDownloadResult>;
-    /** Download to a temporary app-owned path. */
+    /** Download to a temporary file this lxapp owns. */
     download(
-      options: AppDownloadOptions & { filePath?: undefined },
+      url: string,
+      options?: AppDownloadOptions & { to?: undefined },
     ): DownloadTask<AppTempDownloadResult>;
-    /** Download to the lxapp-managed app directory. */
-    download(options: AppDownloadOptions): DownloadTask<AppDownloadResult>;
-    /** Download with a destination-correlated result type. */
-    download<TDestination extends DownloadDestination = "app">(
-      options: DownloadOptions<TDestination>,
-    ): DownloadTask<DownloadResultForDestination<TDestination>>;
+    download(url: string, options?: AppDownloadOptions): DownloadTask<AppDownloadResult>;
+    download(url: string, options?: DownloadOptions): DownloadTask<DownloadResult>;
   }
 
   interface Lx {
