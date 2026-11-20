@@ -95,7 +95,7 @@ const shown = (schema, name) => schema.elements[name]?.component?.name ?? name;
 
 // What a prop does where its type does not say it.
 const propNotes = {
-  webview: '`handlesDrags`: the web page handles its own drags (a map, a canvas); a drag starting on it never passes to the page. Off by default.',
+  webview: '`handlesDrags`: the web page handles its own drags (a map, a canvas); a drag starting on it never passes to the page. Off by default. When the screen takes a drag the page had started, the page gets `pointercancel` and `touchcancel`; on HarmonyOS they are synthetic (`isTrusted` false), and the page\'s own overflow scrolling, fixed when the finger lands, keeps scrolling.',
 };
 
 // ---- styles ---------------------------------------------------------------------------

@@ -114,6 +114,79 @@ interface ApplyNodeLayoutsResult {
   nextMap: Map<string, NodeLayoutState>;
 }
 
+/**
+ * A drag the screen takes from a GPU page's `<webview>`: ArkWeb gives the page no cancel, so the
+ * page is told here. Tracks the live touches and pointers; `__lingxiaHandOff()` sends each target
+ * a `touchcancel` / `pointercancel` at its last point (`isTrusted` false), then swallows the rest
+ * of that gesture until every touch ends.
+ */
+const HAND_OFF_SCRIPT: string = `(function(){
+  if (window !== window.top || window.__lingxiaHandOff) return;
+  var touches = {}, pointers = {}, swallowing = false, ours = false;
+  var touchTypes = ['touchstart', 'touchmove', 'touchend', 'touchcancel'];
+  var pointerTypes = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'mousedown', 'mousemove', 'mouseup', 'click'];
+  function onTouch(e) {
+    if (ours) return;
+    // A fresh first finger starts a new gesture even if the old one's end never came.
+    if (swallowing && e.type === 'touchstart' && e.touches.length === e.changedTouches.length) swallowing = false;
+    if (swallowing) {
+      e.stopImmediatePropagation();
+      if (e.touches.length === 0) { swallowing = false; touches = {}; pointers = {}; }
+      return;
+    }
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      var t = e.changedTouches[i];
+      if (e.type === 'touchend' || e.type === 'touchcancel') delete touches[t.identifier];
+      else touches[t.identifier] = { touch: t, target: (touches[t.identifier] || {}).target || t.target };
+    }
+  }
+  function onPointer(e) {
+    if (ours) return;
+    if (swallowing) { e.stopImmediatePropagation(); return; }
+    if (!e.pointerId && e.pointerId !== 0) return;
+    if (e.type === 'pointerup' || e.type === 'pointercancel') delete pointers[e.pointerId];
+    else if (e.type === 'pointerdown' || pointers[e.pointerId]) {
+      var held = pointers[e.pointerId];
+      pointers[e.pointerId] = { event: e, target: held ? held.target : e.target, captured: held ? held.captured : null };
+    }
+  }
+  function send(target, event) { try { target.dispatchEvent(event); } catch (_) {} }
+  touchTypes.forEach(function(type) { window.addEventListener(type, onTouch, { capture: true, passive: true }); });
+  pointerTypes.forEach(function(type) { window.addEventListener(type, onPointer, true); });
+  window.addEventListener('gotpointercapture', function(e) { if (pointers[e.pointerId]) pointers[e.pointerId].captured = e.target; }, true);
+  window.addEventListener('lostpointercapture', function(e) { if (pointers[e.pointerId]) pointers[e.pointerId].captured = null; }, true);
+  Object.defineProperty(window, '__lingxiaHandOff', { value: function() {
+    var liveTouches = Object.keys(touches).map(function(id) { return touches[id]; });
+    var livePointers = Object.keys(pointers).map(function(id) { return pointers[id]; });
+    if (liveTouches.length === 0 && livePointers.length === 0) return;
+    ours = true;
+    try {
+      livePointers.forEach(function(held) {
+        var e = held.event, at = held.captured || held.target;
+        var init = { bubbles: true, composed: true, pointerId: e.pointerId, pointerType: e.pointerType,
+          isPrimary: e.isPrimary, clientX: e.clientX, clientY: e.clientY, screenX: e.screenX, screenY: e.screenY };
+        send(at, new PointerEvent('pointercancel', init));
+        if (held.captured) send(held.captured, new PointerEvent('lostpointercapture', init));
+      });
+      if (liveTouches.length > 0 && typeof Touch === 'function') {
+        var byTarget = new Map();
+        liveTouches.forEach(function(held) {
+          var t = held.touch;
+          var copy = new Touch({ identifier: t.identifier, target: held.target, clientX: t.clientX, clientY: t.clientY,
+            screenX: t.screenX, screenY: t.screenY, pageX: t.pageX, pageY: t.pageY });
+          if (!byTarget.has(held.target)) byTarget.set(held.target, []);
+          byTarget.get(held.target).push(copy);
+        });
+        byTarget.forEach(function(changed, target) {
+          send(target, new TouchEvent('touchcancel', { bubbles: true, composed: true, changedTouches: changed, touches: [], targetTouches: [] }));
+        });
+      }
+    } finally { ours = false; }
+    swallowing = liveTouches.length > 0;
+    touches = {}; pointers = {};
+  } });
+})();`
+
 @Component
 export struct LingXiaWebView {
   @Prop webTag: string = ''
@@ -197,18 +270,34 @@ export struct LingXiaWebView {
   }
 
   private documentStartScripts(): Array<ScriptItem> {
+    const items: Array<ScriptItem> = [];
+    if (this.yieldsPan !== undefined) {
+      const handOff: ScriptItem = { script: HAND_OFF_SCRIPT, scriptRules: ['*'] };
+      items.push(handOff);
+    }
     if (!this.rules().embedMailbox) {
-      return [];
+      return items;
     }
     const initToken: string = embedPortInit(this.webTag);
     if (initToken.length === 0) {
-      return [];
+      return items;
     }
     const item: ScriptItem = {
       script: buildEmbedBootstrapScript(initToken),
       scriptRules: ['*']
     };
-    return [item];
+    items.push(item);
+    return items;
+  }
+
+  private handOff(): void {
+    try {
+      this.controller.runJavaScript('window.__lingxiaHandOff && window.__lingxiaHandOff()')
+        .catch((e: Error) => LxLog.w(TAG, `webview hand-off cancel failed: ${e.message}`));
+      LxLog.i(TAG, `webview yields pan ${this.webTag}: page told to cancel`);
+    } catch (e) {
+      LxLog.w(TAG, `webview hand-off cancel failed: ${e}`);
+    }
   }
 
   /** The same document: equal URLs once any fragment is dropped, never about:blank. */
@@ -593,21 +682,8 @@ export struct LingXiaWebView {
           const pan = event as PanGestureEvent;
           if (this.yieldsPan(pan.offsetX, pan.offsetY)) {
             // The page saw the finger go down and move; the screen takes the drag, so the page
-            // gets a touchcancel rather than a touchend that would finish its gesture.
-            const id = this.webInspectorId();
-            const touches: Array<TouchRecognizer> = touchRecognizers ?? [];
-            const targets: string[] = [];
-            let cancelled = 0;
-            for (const touch of touches) {
-              const target = touch.getEventTargetInfo().getId();
-              targets.push(target);
-              if (target === id) {
-                touch.cancelTouch();
-                cancelled++;
-              }
-            }
-            // Device runs read whether the page's touch recognizer was found and cancelled.
-            LxLog.i(TAG, `webview yields pan ${id}: touch recognizers [${targets.join(',')}], cancelled ${cancelled}`);
+            // gets a cancel rather than a touchend that would finish its gesture.
+            this.handOff();
             return GestureJudgeResult.REJECT;
           }
         }

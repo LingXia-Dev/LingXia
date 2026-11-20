@@ -392,4 +392,4 @@ Children: none. Not allowed inside a pressable control (`UI_BUTTON`). Moves live
 | `onBlocked` | `(event: WebViewBlocked) => void` |  |
 | `onError` | `(error: WebViewError) => void` |  |
 
-`handlesDrags`: the web page handles its own drags (a map, a canvas); a drag starting on it never passes to the page. Off by default.
+`handlesDrags`: the web page handles its own drags (a map, a canvas); a drag starting on it never passes to the page. Off by default. When the screen takes a drag the page had started, the page gets `pointercancel` and `touchcancel`; on HarmonyOS they are synthetic (`isTrusted` false), and the page's own overflow scrolling, fixed when the finger lands, keeps scrolling.
