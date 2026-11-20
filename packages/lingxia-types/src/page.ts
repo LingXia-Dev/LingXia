@@ -1,5 +1,5 @@
 /**
- * `T` where every value survives the JSON transfer `setData` makes to the
+ * `T` where every value survives the JSON transfer of page data to the
  * View; a function, Date, Map, Set, promise or class instance becomes
  * `never`, so a contract holding one does not compile. `undefined` members
  * are allowed: the transfer drops them, as an optional member reads.
@@ -81,7 +81,10 @@ export interface PageApi<Data, Params, Result> {
    * another `update`; ignored after the page unloads.
    */
   update(recipe: UpdateRecipe<Data>): void;
-  /** Resolves when the View has everything updated so far. Rejects on unload. */
+  /**
+   * Resolves when the View has everything updated so far. Rejects on unload.
+   * Throws while `setup` runs; call it from a hook or an action.
+   */
   flush(): Promise<void>;
   /** The params this instance was opened with. */
   readonly params: Params;
@@ -92,14 +95,17 @@ export interface PageApi<Data, Params, Result> {
   /**
    * Leave, with `value` as the opener's result. A pushed page goes back; a
    * surface page closes its surface. Throws for a root or tab page, or a
-   * pushed page that is not on top.
+   * pushed page that is not on top, and while `setup` runs.
    */
   close(value?: Result): Promise<void>;
-  /** What the opener's result is when this page leaves another way (Back, a dismiss). */
+  /** What the opener's result is when this page leaves another way (Back, a dismiss). Throws while `setup` runs. */
   setResult(value: Result): void;
-  /** The page that opened this one by navigation; absent for a root, a tab, or after a restart. */
+  /**
+   * The page that opened this one by navigation; absent for a root, a tab,
+   * after a restart, and while `setup` runs (read it in a hook or an action).
+   */
   readonly opener?: PageMessagePort;
-  /** This page's surface when it was opened by `lx.surface.openPage`. */
+  /** This page's surface when it was opened by `lx.surface.openPage`; absent while `setup` runs. */
   readonly surface?: PageSurface;
 }
 
