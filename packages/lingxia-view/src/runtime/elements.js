@@ -651,10 +651,16 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       // The box shows the chosen label, else the placeholder in placeholder colour.
       result.text = chosen?.label ?? props.placeholder ?? '';
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
-      wire('inputValue', chosen ? chosen.value : '');
+      // Unbound (no value or bind): the core keeps the choice and shows its label.
+      const unbound = props.value === undefined;
+      if (!unbound) wire('inputValue', chosen ? chosen.value : '');
       if (props.placeholder !== undefined) wire('placeholder', props.placeholder);
       wire('selectOptions', JSON.stringify(options));
-      if (props.onChange && !disabled) on('onSelect', value => { if (value !== props.value) props.onChange(value); }, 'text');
+      // The core sends an unbound select only a new choice; without onChange it still needs the handler.
+      if ((props.onChange || unbound) && !disabled) {
+        const { onChange } = props;
+        on('onSelect', value => { if (unbound || value !== props.value) onChange?.(value); }, 'text');
+      }
       break;
     }
     case 'image':

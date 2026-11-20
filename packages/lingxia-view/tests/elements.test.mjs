@@ -302,6 +302,24 @@ test('an unbound checkbox or switch leaves its state to the core and reports the
   }
 });
 
+test('an unbound select leaves its choice to the core and reports each choice the core sends', () => {
+  const options = [{ value: 'a', label: 'Apple' }, { value: 'b', label: 'Banana' }];
+  const seen = [];
+  const free = rendered(() => h('select', { options, placeholder: 'Fruit', onChange: value => seen.push(value), 'aria-label': 'Fruit' }));
+  // No `inputValue` on the wire marks it unbound; it shows the placeholder until the core picks.
+  assert.equal(free.props.inputValue, undefined); assert.equal(free.text, 'Fruit');
+  assert.equal(dispatch(free.props.onSelect, 'b'), true);
+  assert.equal(dispatch(free.props.onSelect, 'a'), true);
+  assert.deepEqual(seen, ['b', 'a']);
+  const silent = rendered(() => h('select', { options, 'aria-label': 'Silent' }));
+  assert.equal(silent.props.inputValue, undefined); assert.equal(silent.props.enabled, undefined);
+  assert.equal(dispatch(silent.props.onSelect, 'a'), true);
+  // A controlled select is unchanged: its value wired, no handler without onChange.
+  const fixed = rendered(() => h('select', { options, value: 'a', 'aria-label': 'Fixed' }));
+  assert.equal(fixed.props.inputValue, 'a'); assert.equal(fixed.text, 'Apple'); assert.equal(fixed.props.onSelect, undefined);
+  assert.equal(rendered(() => h('select', { options, disabled: true, 'aria-label': 'Off' })).props.onSelect, undefined);
+});
+
 test('boolean control bindings persist and reject invalid values or children', () => {
   const render = () => h('switch', { bind: useLocal('preference', false), 'aria-label': 'Sync' }, 'Preference');
   const first = rendered(render);
@@ -515,7 +533,7 @@ test('select sends its options and shows the chosen label or its placeholder', (
   assert.ok(chosen.props.onSelect > 0);
   const empty = rendered(() => h('select', { options, placeholder: 'Choose a plan', 'aria-label': 'Plan' }));
   assert.equal(empty.text, 'Choose a plan');
-  assert.equal(empty.props.inputValue, '');
+  assert.equal(empty.props.inputValue, undefined, 'unbound: the core keeps the choice');
   for (const bad of [[], [{ value: 'a', label: 'A' }, { value: 'a', label: 'B' }], [{ value: '', label: 'x' }]])
     assert.throws(() => describe(() => h('select', { options: bad, 'aria-label': 'Plan' }), {}), /UI_SELECT/);
   const loose = { value: 'm', set() {} };

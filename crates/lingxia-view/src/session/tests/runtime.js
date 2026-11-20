@@ -5119,12 +5119,16 @@
         const chosen = options2.find((option2) => option2.value === props.value);
         result.text = chosen?.label ?? props.placeholder ?? "";
         if (props.accessibilityLabel !== void 0) wire("accessibilityLabel", props.accessibilityLabel);
-        wire("inputValue", chosen ? chosen.value : "");
+        const unbound = props.value === void 0;
+        if (!unbound) wire("inputValue", chosen ? chosen.value : "");
         if (props.placeholder !== void 0) wire("placeholder", props.placeholder);
         wire("selectOptions", JSON.stringify(options2));
-        if (props.onChange && !disabled) on("onSelect", (value) => {
-          if (value !== props.value) props.onChange(value);
-        }, "text");
+        if ((props.onChange || unbound) && !disabled) {
+          const { onChange } = props;
+          on("onSelect", (value) => {
+            if (unbound || value !== props.value) onChange?.(value);
+          }, "text");
+        }
         break;
       }
       case "image":
