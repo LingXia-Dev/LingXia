@@ -125,3 +125,14 @@ assert.throws(
 );
 run('orderSvc._cancelPendingSetData(); orderPage.update(d => { d.meta.a = 0; });');
 assert.equal(run('orderPage.data.meta.a'), 10, 'update after unload is ignored');
+
+// A View `<link to>`: back pops, a push settles when the page is on screen.
+run(`globalThis.navs = [];
+globalThis.lx = { nav: {
+  back(n) { navs.push(['back', n]); return Promise.resolve(); },
+  go(target) { navs.push(['go', target.page ?? target.tab]); return target.page ? { opened: Promise.resolve() } : Promise.resolve(); },
+} };`);
+await run(`__lxNavForView({ back: 2 })`);
+await run(`__lxNavForView({ page: 'detail' })`);
+await run(`__lxNavForView({ tab: 'home' })`);
+assert.equal(run('JSON.stringify(navs)'), JSON.stringify([['back', 2], ['go', 'detail'], ['go', 'home']]));

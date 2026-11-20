@@ -139,6 +139,16 @@ function callLeaveHost(method, params) {
   return promise;
 }
 
+/** A `<link to>` press: Logic navigates; a failure reports like a failed action. */
+export function requestNavigation(to) {
+  outsideRender('link');
+  admit('actions');
+  const id = `ui-action:${nextRequest++}`;
+  const promise = new Promise((resolve, reject) => pendingActions.set(id, { resolve, reject }));
+  promise.catch(report);
+  requests.push({ kind: 'req', id, method: 'nav.go', params: bounded(to, 'link') });
+}
+
 export function requestLeave(reason) {
   outsideRender('leave request');
   leaveGuards.request(reason);

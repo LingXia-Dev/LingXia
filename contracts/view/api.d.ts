@@ -213,6 +213,14 @@ export declare function useVideo(name: string): Video;
  * adjust send `increment` or `decrement` with `pointer: "keyboard"` and no position.
  */
 /** A request for an element's menu: a long press, a secondary click, or the Menu key. */
+/** Where a `<link to>` goes: a target of `lx.nav.go`, or `{ back: n }`. Logic navigates. */
+export type LinkTarget =
+  | { readonly page: string; readonly params?: Readonly<Record<string, unknown>> }
+  | { readonly tab: string }
+  | { readonly app: string; readonly page?: string; readonly params?: Readonly<Record<string, unknown>>; readonly channel?: "release" | "draft"; readonly version?: string }
+  | { readonly url: string }
+  | { readonly back: number };
+
 export interface ContextMenuEvent {
   /** The point in page coordinates; the element's centre from the keyboard. */
   readonly x: number;

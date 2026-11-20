@@ -509,6 +509,11 @@ impl PageSvc {
                 .open_surface_for_view(name, payload_arg(&ctx, params), &mut cancel_rx)
                 .await;
         }
+        if method == "nav.go" {
+            return self
+                .navigate_for_view(payload_arg(&ctx, params), &mut cancel_rx)
+                .await;
+        }
 
         let Some(js_func) = self.get_js_func(method) else {
             return Err(RpcError::new(
@@ -650,6 +655,30 @@ impl PageSvc {
                 .get::<_, JSObject>("surface")?
                 .get::<_, JSFunc>(name)?;
             open.call_async::<_, JSValue>(None, (target, options)).await
+        };
+        await_js_call_or_cancel(cancel_rx, call).await?;
+        Ok(Payload::Tree(serde_json::Value::Null))
+    }
+
+    /// A View `<link to>`: Logic navigates, so the GPU host allowlist stays
+    /// at the leave controls. Settles once the target is on screen.
+    async fn navigate_for_view(
+        &self,
+        target: Option<JSValue>,
+        cancel_rx: &mut oneshot::Receiver<()>,
+    ) -> Result<Payload, RpcError> {
+        let ctx = self
+            .get_ctx()
+            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
+        let target = target.filter(|value| value.is_object()).ok_or_else(|| {
+            RpcError::new(
+                BRIDGE_MALFORMED_MESSAGE,
+                Some("nav.go requires a target object".to_string()),
+            )
+        })?;
+        let call = async {
+            let navigate = ctx.global().get::<_, JSFunc>("__lxNavForView")?;
+            navigate.call_async::<_, JSValue>(None, (target,)).await
         };
         await_js_call_or_cancel(cancel_rx, call).await?;
         Ok(Payload::Tree(serde_json::Value::Null))

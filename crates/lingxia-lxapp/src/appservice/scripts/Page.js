@@ -13,6 +13,16 @@
     }
     realTimers = { set, clear };
   }
+  // A View `<link to>`: `{ back: n }` or a target of `lx.nav.go`, settled
+  // once the destination is on screen.
+  Object.defineProperty(globalThis, "__lxNavForView", {
+    value: async (target) => {
+      if (target.back !== undefined) return lx.nav.back(target.back);
+      const went = lx.nav.go(target);
+      await (went && went.opened ? went.opened : went);
+    },
+    configurable: true,
+  });
   Object.defineProperty(globalThis, "__lxCaptureTimers", {
     value: captureTimers,
     enumerable: false,

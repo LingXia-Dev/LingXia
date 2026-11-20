@@ -8,6 +8,7 @@ import { render, page } from './state.js';
 import { cellOf, envOf } from './hooks.js';
 import { located } from './errors.js';
 import { pageFamily } from './fonts.js';
+import { requestNavigation } from './actions.js';
 import { has, validInputText } from './data.js';
 import { fieldOptions, field as fieldIds, ignorableFields } from '../generated/wire.js';
 import * as check from './validate.js';
@@ -86,6 +87,19 @@ function dataOf(props) {
     (data ??= {})[key.slice(5)] = value === true ? '' : String(value);
   }
   return data;
+}
+
+const linkKeys = ['page', 'tab', 'app', 'url', 'back'];
+/** A `<link to>` target: one of `lx.nav.go`'s, or `{ back: n }`. Checked here so a typo fails at render. */
+function linkTarget(to, props) {
+  if (props.onClick !== undefined || props.popoverTarget !== undefined) throw Error('UI_PROP: a link takes to, onClick or popoverTarget, not two');
+  if (!to || typeof to !== 'object' || Array.isArray(to)) throw Error('UI_PROP: to is a target object');
+  const named = linkKeys.filter(key => to[key] !== undefined && !(key === 'page' && to.app !== undefined));
+  if (named.length !== 1) throw Error('UI_PROP: to names exactly one of page, tab, app, url or back');
+  const [key] = named;
+  if (key === 'back' ? !Number.isInteger(to.back) || to.back < 1 : typeof to[key] !== 'string' || !to[key])
+    throw Error(`UI_PROP: to.${key} must be ${key === 'back' ? 'a positive integer' : 'a non-empty string'}`);
+  return to;
 }
 
 function admit(tag, element, props) {
@@ -525,7 +539,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       check.label(props.accessibilityLabel, 'UI_TEXT');
       if (props.onClick !== undefined && typeof props.onClick !== 'function') throw Error('UI_PROP: onClick');
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
-      const click = invokerHandler(props, identity, parent.popovers ?? []);
+      const to = props.to === undefined ? undefined : linkTarget(props.to, props);
+      const click = to ? () => requestNavigation(to) : invokerHandler(props, identity, parent.popovers ?? []);
       interestTrigger(props, identity, parent.popovers ?? []);
       if (props.interestFor !== undefined) wire('interestFor', props.interestFor);
       if (click && !disabled) on('onClick', click);
