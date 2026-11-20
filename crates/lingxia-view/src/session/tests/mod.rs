@@ -1,4 +1,5 @@
 mod animation;
+mod checked_style;
 mod decoration;
 mod drag;
 mod flex_direction;

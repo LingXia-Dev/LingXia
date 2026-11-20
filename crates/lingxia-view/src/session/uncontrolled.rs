@@ -85,7 +85,9 @@ impl Uncontrolled {
     /// Takes the unbound controls of `records`. A control that left, or that the page now
     /// binds, drops its own value.
     pub(crate) fn reconcile(&mut self, records: &[Record]) {
-        self.unbound.clear();
+        // A default seeds a control the first time it is seen; a later default changes nothing.
+        let seen: std::collections::HashSet<String> =
+            std::mem::take(&mut self.unbound).into_keys().collect();
         let ids = identities(records);
         for (record, id) in records.iter().zip(ids) {
             let Some((value, callback)) = fields(record.tag) else {
@@ -108,6 +110,16 @@ impl Uncontrolled {
                 tag::SELECT => Kind::Choice(options(record)),
                 _ => Kind::Toggle,
             };
+            if !seen.contains(&id)
+                && !self.values.contains_key(&id)
+                && let Some(start) = record
+                    .fields
+                    .iter()
+                    .find(|(field, _)| *field == field::DEFAULT_VALUE)
+                    .and_then(|(_, start)| seed(&kind, start))
+            {
+                self.values.insert(id.clone(), start);
+            }
             self.unbound.insert(id, Unbound { handle, kind });
         }
         self.values.retain(|id, _| self.unbound.contains_key(id));
@@ -203,6 +215,24 @@ impl Uncontrolled {
         let json = next.json();
         self.values.insert(id.clone(), next);
         Proposal::Changed(json)
+    }
+}
+
+/// A control's starting value from its `defaultValue`, when it fits the control.
+fn seed(kind: &Kind, start: &serde_json::Value) -> Option<ControlValue> {
+    match kind {
+        // Flags travel as 0 or 1.
+        Kind::Toggle => start
+            .as_bool()
+            .or_else(|| start.as_f64().map(|on| on == 1.0))
+            .map(ControlValue::Checked),
+        Kind::Range(range) => start
+            .as_f64()
+            .map(|value| ControlValue::Number(range.normalize(value))),
+        Kind::Choice(options) => start
+            .as_str()
+            .filter(|value| options.iter().any(|(option, _)| option == value))
+            .map(|value| ControlValue::Text(value.to_owned())),
     }
 }
 

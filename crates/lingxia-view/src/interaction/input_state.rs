@@ -602,6 +602,59 @@ pub(crate) fn apply_group_pressed(records: &mut [Record], identity: &str) -> Res
     Ok(())
 }
 
+/// `checked:` and `has-checked:`: laid over the base before pressed, hover and focus styles,
+/// which the runtime keeps from overlapping them. A control reads checked from its bound value
+/// or its own; a mixed checkbox is not `checked:`, though it counts for an ancestor's
+/// `has-checked:` as CSS `:checked` does.
+pub(crate) fn apply_checked_styles(records: &mut [Record]) -> Result<(), String> {
+    let styled = |record: &Record| {
+        record
+            .fields
+            .iter()
+            .any(|(field, _)| *field == field::CHECKED_STYLE || *field == field::HAS_CHECKED_STYLE)
+    };
+    if !records.iter().any(styled) {
+        return Ok(());
+    }
+    let checked: Vec<bool> = records
+        .iter()
+        .map(|record| record.number(field::CHECKED) == Some(1.0))
+        .collect();
+    let mut holds = vec![false; records.len()];
+    for index in (0..records.len()).rev() {
+        if let Some(parent) = records[index].parent.filter(|parent| *parent < index) {
+            holds[parent] |= checked[index] || holds[index];
+        }
+    }
+    for (index, record) in records.iter_mut().enumerate() {
+        let mixed = record.number(field::MIXED) == Some(1.0);
+        for (state, on) in [
+            (field::CHECKED_STYLE, checked[index] && !mixed),
+            (field::HAS_CHECKED_STYLE, holds[index]),
+        ] {
+            if !on {
+                continue;
+            }
+            let Some(style) = record
+                .fields
+                .iter()
+                .find(|(field, _)| *field == state)
+                .map(|(_, style)| style.clone())
+            else {
+                continue;
+            };
+            for (field, value) in crate::protocol::focus_style(&style)? {
+                if let Some((_, old)) = record.fields.iter_mut().find(|(id, _)| *id == field) {
+                    *old = value;
+                } else {
+                    record.fields.push((field, value));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn apply_state_style(
     records: &mut [Record],
     identity: &str,

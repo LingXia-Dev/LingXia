@@ -607,6 +607,15 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             ),
             "state-style" => focus_style(value).map(drop),
             "part-style" => part_style(value).map(drop),
+            // Where an unbound control starts: checked (0 or 1), a number, or an option's value.
+            "default-value" => ensure(
+                value.is_boolean()
+                    || value
+                        .as_f64()
+                        .is_some_and(|v| v.is_finite() && v.abs() <= 1e9)
+                    || value.as_str().is_some_and(|s| s.len() <= 4096),
+                "UI_PROP: invalid default value",
+            ),
             "number" => number(id, value),
             // A field of a common kind needs no arm of its own above.
             "flag" => ensure(flag(value), "UI_PROP: invalid handle or flag"),

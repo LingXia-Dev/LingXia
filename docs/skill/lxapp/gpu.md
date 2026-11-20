@@ -122,7 +122,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `role="grid"` > `role="row"` > `role="gridcell"`: one Tab stop, arrows by row and column, Home/End to the row's ends; `onPage("previous" | "next")` on the grid takes PageUp/PageDown.
 - `onContextMenu={e => …}` on `view`/`button`/`link`/`text`: long press, secondary click or `locator.performAction('contextmenu')`; `e = { x, y, pointer }` in page coordinates. The engine draws no menu.
 - `<slider values={[lo, hi]} onChange thumbLabels={['From','To']} aria-label>` has two thumbs that cannot cross (no `bind`); `onChangeEnd` runs when a change is finished (the press lifts, or a key step), on a one-value slider too.
-- A `<checkbox>`, `<switch>`, `<slider>` or `<select>` with no `value`/`bind` keeps its own state across re-renders and still calls `onChange(next)`; an unbound slider starts at `min`, a select at its placeholder; `checked:` styles follow only `value`/`bind`.
+- A `<checkbox>`, `<switch>`, `<slider>` or `<select>` with no `value`/`bind` keeps its own state across re-renders and still calls `onChange(next)`; an unbound slider starts at `min`, a select at its placeholder, unless `defaultChecked`/`defaultValue` seeds it once; `checked:` and `has-checked:` follow the state either way.
 - `<checkbox indeterminate>` is partly checked: a dash, announced as mixed, `indeterminate:` variant; a press calls `onChange(true)`. Automation reads `checked: "mixed"`.
 - A press that misses every box goes to the nearest small control within the platform touch target (44 pt, 48 dp on Android); `locator.touchTarget()` reads that box.
 - `enterKeyHint="next"|"previous"` moves focus to the adjacent enabled editor in reading order

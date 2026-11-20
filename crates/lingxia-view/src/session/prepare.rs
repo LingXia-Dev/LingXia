@@ -643,6 +643,7 @@ impl ViewSession {
                     inputs.focused(),
                     &mut uncontrolled,
                 );
+                crate::interaction::input_state::apply_checked_styles(&mut render_records)?;
                 inputs.apply_styles(&mut render_records)?;
                 self.apply_pointer_styles(&mut render_records)?;
                 self.renderer.pressed.clone_from(&self.pressed);
