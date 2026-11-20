@@ -2751,8 +2751,7 @@ fn an_unbound_date_field_shows_the_users_date_not_an_empty_display() {
     let after = page.layout(300, 300, 1.0).unwrap();
     let input = after.nodes[1].input.as_ref().unwrap();
     assert_eq!(input.value, "2026-11-19");
-    assert_eq!(input.display, None);
-    assert_eq!(after.nodes[1].text, "2026-11-19");
+    assert_eq!(input.display.as_deref(), Some("Nov 19, 2026"));
 }
 
 /// A button with no `active:` style: an opaque fill pressed deepens (an accent solid to its
