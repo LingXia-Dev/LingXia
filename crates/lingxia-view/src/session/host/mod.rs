@@ -414,6 +414,9 @@ struct Main<F> {
     #[cfg(test)]
     ahead_refusals: u32,
     next_flight: u64,
+    /// The last flight started when the shown failure was recorded: a frame from it or
+    /// earlier (a press's own) can present after the failure and is not recovery.
+    failure_flight: u64,
     /// The flight of the last presented frame, and of the last whose animation state the
     /// session acknowledged.
     presented_flight: u64,
@@ -672,6 +675,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     #[cfg(test)]
                     ahead_refusals: 0,
                     next_flight: 0,
+                    failure_flight: 0,
                     presented_flight: 0,
                     acked_flight: 0,
                     inputs_in_flight: 0,
@@ -2478,6 +2482,7 @@ impl<A: PlatformAdapter> Inner<A> {
             };
             let failure = Failure::new(error, recovery, main.snapshot.is_some());
             main.failure = Some(failure.clone());
+            main.failure_flight = main.next_flight;
             (failure, effects, main.failure_repeats, repeated)
         };
         if failure.recovery.kind == FailureKind::Session {
@@ -2495,6 +2500,7 @@ impl<A: PlatformAdapter> Inner<A> {
         }
         // A repeat is already shown and logged; the stall is said once.
         if !shown {
+            log::info!(target: "lingxia_view", "recovery shown after flight {}: {}", self.main().failure_flight, failure.error);
             self.adapter.recovery(Some(&failure));
         }
         if repeats == STALL_AFTER {

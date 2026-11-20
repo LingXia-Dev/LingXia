@@ -1105,10 +1105,22 @@ impl<A: PlatformAdapter> Inner<A> {
             main.snapshot = Some(snapshot.clone());
             main.presented_flight = flight;
             main.declined_retries = 0;
-            // Repainting an old frame (caret, scroll) is not recovery.
-            let recovered = rebuild && main.failure.take().is_some();
+            // Repainting an old frame (caret, scroll) is not recovery, nor is a frame started
+            // before the failure.
+            let failed = main.failure.is_some();
+            let recovered =
+                rebuild && flight > main.failure_flight && main.failure.take().is_some();
             if recovered {
                 main.failure_repeats = 0;
+            }
+            if failed {
+                log::info!(
+                    target: "lingxia_view",
+                    "recovery {}: a frame presented (rebuild {rebuild}, flight {flight}, data revision {}, failure after flight {})",
+                    if recovered { "cleared" } else { "kept" },
+                    snapshot.data_revision,
+                    main.failure_flight
+                );
             }
             main.panics = 0;
             let presented =
@@ -1125,7 +1137,6 @@ impl<A: PlatformAdapter> Inner<A> {
         };
         self.deliver(revealed);
         if recovered {
-            log::info!(target: "lingxia_view", "recovery cleared: a rebuilt frame presented");
             self.adapter.recovery(None);
         }
         self.acknowledge_animation(surface, snapshot.generation, flight);
