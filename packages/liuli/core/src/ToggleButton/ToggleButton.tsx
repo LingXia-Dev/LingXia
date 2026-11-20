@@ -1,4 +1,5 @@
-import { cx } from '@lingxia/view';
+import { cx, useContext } from '@lingxia/view';
+import { LayerContext } from '../internal/layer';
 import { toggleButtonRecipe as r } from './ToggleButton.recipe';
 import { registerPressable, useTrigger } from '../internal/trigger';
 
@@ -22,6 +23,7 @@ export interface ToggleButtonProps {
 /** A button that turns one option on or off and shows which: a filter, a view option. */
 export function ToggleButton({ label, value: isPressed, onChange: onPressedChange, size = 'md', isDisabled = false, className, 'data-testid': testId }: ToggleButtonProps) {
   const trigger = useTrigger();
+  const layer = useContext(LayerContext);
   return (
     <button
       aria-label={label}
@@ -33,7 +35,7 @@ export function ToggleButton({ label, value: isPressed, onChange: onPressedChang
       disabled={isDisabled}
       data-testid={testId}
       onClick={() => onPressedChange(!isPressed)}
-      className={cx(r.root.base, isPressed ? r.root.on : r.root.off, r.root.size[size], className)}
+      className={cx(r.root.base, isPressed ? r.root.on : cx(r.root.off, layer === 'overlay' && r.root.overlay), r.root.size[size], className)}
     >
       <text className={cx(r.label.base, r.label.size[size])}>{label}</text>
     </button>

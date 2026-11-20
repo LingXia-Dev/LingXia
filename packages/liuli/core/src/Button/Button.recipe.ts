@@ -18,6 +18,8 @@ export const buttonRecipe = {
       link: 'bg-transparent text-accent border border-transparent hover:bg-accent/6 active:bg-accent/10',
       destructive: 'bg-danger-solid text-on-danger-solid border border-transparent shadow-control-solid hover:bg-danger-solid-hover active:bg-danger-solid-pressed',
     } satisfies Record<ButtonVariant, string>,
+    /** Secondary inside a dialog, sheet or popover takes the overlay's surface: on the page's it reads as a hole. */
+    overlay: 'bg-surface-overlay',
     /**
      * Disabled drops the variant's colour for a faint ink fill and muted text, which stays above
      * 4.5:1 in both themes; fading the variant would leave its label below 3:1.

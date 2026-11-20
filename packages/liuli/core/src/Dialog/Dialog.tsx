@@ -104,7 +104,7 @@ export function Dialog({
       )}
       {description !== undefined && <text id={descriptionId} className={r.description.base}>{description}</text>}
       {children !== undefined && <LayerContext.Provider value="overlay"><scroll className={cx(r.body.base, size === 'full' && r.body.full)}>{children}</scroll></LayerContext.Provider>}
-      {actions !== undefined && <view className={r.footer.base}>{actions}</view>}
+      {actions !== undefined && <LayerContext.Provider value="overlay"><view className={r.footer.base}>{actions}</view></LayerContext.Provider>}
     </dialog>
   );
 }

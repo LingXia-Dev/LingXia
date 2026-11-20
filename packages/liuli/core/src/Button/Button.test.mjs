@@ -140,3 +140,16 @@ test('edge: a ghost button at the end of a row hangs its padding past the edge, 
   assert.deepEqual(margins('plain'), [undefined, undefined]);
   assert.deepEqual(margins('square'), [undefined, -11.33], 'a square hangs its inset around the glyph, plus the drawing\'s');
 });
+
+test('secondary: the page\'s surface on a page, the overlay\'s in a dialog\'s footer, where the page\'s would read as a hole', async () => {
+  const screen = await renderPage(`
+    import { Button } from '@liulidesign/core/Button';
+    import { Dialog } from '@liulidesign/core/Dialog';
+    export function render() { return <page>
+      <Button label="Share" data-testid="page" />
+      <Dialog isOpen onOpenChange={() => {}} label="Share" actions={<><Button label="Cancel" data-testid="footer" /><Button label="Send" variant="primary" data-testid="primary" /></>} />
+    </page>; }`);
+  assert.equal(screen.getByTestId('page').props.background, 'surface');
+  assert.equal(screen.getByTestId('footer').props.background, 'surface-overlay');
+  assert.equal(screen.getByTestId('primary').props.background, 'accent-solid', 'a solid keeps its own fill');
+});

@@ -1911,6 +1911,7 @@
           "on-accent-solid",
           "on-danger-solid",
           "surface",
+          "surface-overlay",
           "text",
           "text-muted"
         ]
@@ -18651,6 +18652,7 @@
           "accent-soft",
           "focus",
           "surface",
+          "surface-overlay",
           "text",
           "text-faint",
           "text-muted"

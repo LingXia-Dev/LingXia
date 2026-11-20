@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
 
 test('Filters: each toggle is a named button reporting pressed; a press flips it and the list', async () => {
   const screen = await renderExample('ToggleButton/ToggleButton', 'Filters');
@@ -31,4 +31,17 @@ test('StateDisabledOn: disabled keeps the pressed state but takes no press', asy
 test('Sizes: heights come from the control tokens', async () => {
   const screen = await renderExample('ToggleButton/ToggleButton', 'Sizes');
   assert.deepEqual(screen.queryAll(node => node.tag === 'button').map(node => node.props.minHeight), [32, 40, 48]);
+});
+
+test('off: the page\'s surface on a page, the overlay\'s in a sheet\'s footer; on keeps its fill', async () => {
+  const screen = await renderPage(`
+    import { ToggleButton } from '@liulidesign/core/ToggleButton';
+    import { BottomSheet } from '@liulidesign/core/BottomSheet';
+    export function render() { return <page>
+      <ToggleButton label="Bold" value={false} onChange={() => {}} data-testid="page" />
+      <BottomSheet isOpen onOpenChange={() => {}} label="Format" actions={<><ToggleButton label="Italic" value={false} onChange={() => {}} data-testid="off" /><ToggleButton label="Mono" value onChange={() => {}} data-testid="on" /></>} />
+    </page>; }`);
+  assert.equal(screen.getByTestId('page').props.background, 'surface');
+  assert.equal(screen.getByTestId('off').props.background, 'surface-overlay');
+  assert.notEqual(screen.getByTestId('on').props.background, 'surface-overlay');
 });

@@ -72,7 +72,7 @@ export function Drawer({
       </view>
       {description !== undefined && <text id={descriptionId} className={r.description.base}>{description}</text>}
       <LayerContext.Provider value="overlay"><scroll className={r.body.base}>{children}</scroll></LayerContext.Provider>
-      {actions !== undefined && <view className={r.footer.base}>{actions}</view>}
+      {actions !== undefined && <LayerContext.Provider value="overlay"><view className={r.footer.base}>{actions}</view></LayerContext.Provider>}
     </dialog>
   );
 }
