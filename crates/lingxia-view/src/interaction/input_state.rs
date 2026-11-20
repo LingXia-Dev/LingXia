@@ -211,7 +211,9 @@ impl Inputs {
                 } else {
                     record.fields.push((field::INPUT_VALUE, value));
                     // A shown form made from no value would cover the user's own text.
-                    record.fields.retain(|(field, _)| *field != field::DISPLAY_VALUE);
+                    record
+                        .fields
+                        .retain(|(field, _)| *field != field::DISPLAY_VALUE);
                 }
             }
         }
@@ -326,7 +328,11 @@ impl Inputs {
     /// A field out of view takes focus too: a keyboard that rose before the focus can cover
     /// the tapped field, and the focus reveals it.
     pub fn focus(&mut self, id: &str, renderer: &mut Renderer) -> Result<bool, String> {
-        if !self.entries.get(id).is_some_and(|e| e.enabled && (e.visible || e.sized)) {
+        if !self
+            .entries
+            .get(id)
+            .is_some_and(|e| e.enabled && (e.visible || e.sized))
+        {
             return Ok(false);
         }
         if self.focused.as_deref() == Some(id) {
