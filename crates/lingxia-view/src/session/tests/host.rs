@@ -1466,6 +1466,50 @@ fn a_click_whose_update_fails_settles() {
     assert!(answer.is_some(), "the click settles once its update failed");
 }
 
+/// A combobox's option: its click keeps the field editing, so no blur closes the list first.
+#[test]
+fn clicking_an_option_of_a_focused_combobox_keeps_the_field_editing() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const v=useLocal('v','');const last=useLocal('last','none');return h('page',null,h('input',{'data-testid':'f',bind:v,role:'combobox','aria-label':'Fruit','aria-controls':'list',onBlur:()=>last.set('blur'),style:{height:48}}),h('view',{id:'list',role:'listbox','aria-label':'Fruits'},h('button',{'data-testid':'cherry',role:'option',onClick:()=>{v.set('Cherry');last.set('picked')}},'Cherry')),h('text',{'data-testid':'last'},last.value))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let current: serde_json::Value = serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+    let identity = current["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["test_id"] == "f")
+        .unwrap()["identity"]
+        .clone();
+    host.input(
+        serde_json::json!({"op": "focus", "identity": identity, "generation": current["generation"]})
+            .to_string(),
+        |_| {},
+    );
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 2);
+    host.automation_request(&serde_json::json!({"op": "act", "css": "[data-testid=\"cherry\"]", "action": {"kind": "click"}}))
+        .unwrap();
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 2);
+    assert_eq!(
+        host.adapter().log.lock().unwrap().ended_input,
+        0,
+        "the field keeps editing"
+    );
+    let last = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"last\"]"}))
+        .unwrap();
+    assert_eq!(last["text"], "picked", "{last}");
+}
+
 #[test]
 fn hiding_a_page_drops_its_text_selection_from_the_kept_frame() {
     let worker = ViewWorker::shared("test:hide-selection").unwrap();

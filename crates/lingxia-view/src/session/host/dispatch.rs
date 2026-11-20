@@ -271,16 +271,26 @@ impl<A: PlatformAdapter> Inner<A> {
                     }
                 }
                 Dispatch::Click { commit, handle } => {
-                    self.adapter.activation();
-                    let identity = snapshot
-                        .as_ref()
-                        .and_then(|snapshot| {
-                            snapshot
-                                .frame
-                                .nodes
-                                .iter()
-                                .find(|node| node.on_click == Some(handle))
-                        })
+                    let clicked = snapshot.as_ref().and_then(|snapshot| {
+                        snapshot
+                            .frame
+                            .nodes
+                            .iter()
+                            .find(|node| node.on_click == Some(handle))
+                    });
+                    // An option in the list the focused field controls (a combobox's) keeps
+                    // the field editing: no blur closes the list before the option's click.
+                    let in_controlled_list =
+                        snapshot
+                            .as_ref()
+                            .zip(clicked)
+                            .is_some_and(|(snapshot, clicked)| {
+                                controlled_by_focused_editor(&snapshot.frame.nodes, clicked)
+                            });
+                    if !in_controlled_list {
+                        self.adapter.activation();
+                    }
+                    let identity = clicked
                         .map(|node| node.identity.clone())
                         .unwrap_or_default();
                     self.activate_reporting(
@@ -941,4 +951,24 @@ impl<A: PlatformAdapter> Inner<A> {
             },
         );
     }
+}
+
+/// `clicked` sits inside an element the focused editor names in `aria-controls`.
+fn controlled_by_focused_editor(
+    nodes: &[crate::scene::node::NodeSnapshot],
+    clicked: &crate::scene::node::NodeSnapshot,
+) -> bool {
+    let Some(editor) = nodes.iter().find(|node| {
+        node.input
+            .as_ref()
+            .is_some_and(|input| input.edit_token.is_some())
+    }) else {
+        return false;
+    };
+    nodes.iter().any(|list| {
+        list.element_id
+            .as_ref()
+            .is_some_and(|id| editor.controls.contains(id))
+            && (std::ptr::eq(list, clicked) || crate::interaction::frame::descends(clicked, list))
+    })
 }
