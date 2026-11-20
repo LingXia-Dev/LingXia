@@ -60,7 +60,11 @@ test('accept both device orientations and reject an unknown one', {
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'DEVICE-ORIENTATION-001');
-  const supported = ORIENTATION_SUPPORT[platform ?? ''] ?? true;
+  // The Runner reports its own target, not the OS it runs on; ask the host.
+  const os = platform === 'runner'
+    ? (await app.logic.eval(({ lx }) => lx.host.info.os)).toLowerCase()
+    : platform ?? '';
+  const supported = ORIENTATION_SUPPORT[os] ?? true;
   defer(async () => {
     await app.logic.eval(({ lx }) => { lx.device.orientation.set('portrait'); return true; }).catch(() => undefined);
   });
