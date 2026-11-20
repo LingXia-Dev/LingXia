@@ -501,7 +501,7 @@ test("a locked screen stops the run once, before the next spec, instead of faili
   assert.deepEqual(ran, ["first"]);
   const locks = events.filter((event) => event.type === "diagnostic" && event.phase === "screen_locked");
   assert.equal(locks.length, 1);
-  assert.match(locks[0].message, /^The screen is locked; unlock it — animations and sheets are paused\. Stopped after 1\/3 tests/);
+  assert.match(locks[0].message, /^The screen is locked; unlock it — animations, sheets and the clipboard stop while it is\. Stopped after 1\/3 tests/);
   assert.equal(report.partial, true);
   const saved = JSON.parse(decodeAttachment(attachments, "report.json"));
   assert.deepEqual(saved.cases.map((item) => item.status), ["passed", "skipped", "skipped"]);

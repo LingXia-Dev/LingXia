@@ -392,7 +392,11 @@ fn screen_locked() -> Option<bool> {
     {
         lingxia_webview::platform::apple::screen_locked()
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        lingxia_platform::windows::screen_locked()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         None
     }

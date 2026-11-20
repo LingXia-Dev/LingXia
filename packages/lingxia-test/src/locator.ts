@@ -902,7 +902,7 @@ export const HIDDEN_PAGE_NOTE = "page looked hidden or paused";
 const HIDDEN_PAGE_CAUSE = "a covered window or a sleeping display pauses a page's animations";
 
 /** Why every page is hidden when the host can tell the screen is locked. */
-export const SCREEN_LOCKED_NOTE = "the screen is locked; unlock it — animations and sheets are paused";
+export const SCREEN_LOCKED_NOTE = "the screen is locked; unlock it — animations, sheets and the clipboard stop while it is";
 
 /** A hidden-page note, naming the lock when that is the cause. */
 export function hiddenCause(note: string | undefined): string | undefined {

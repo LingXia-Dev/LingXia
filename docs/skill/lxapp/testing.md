@@ -583,7 +583,7 @@ lxdev test args --preset ci                 # show the effective arguments
   complete and count in `t.app.metrics`, finite animations finish, looping ones park. With a
   WebView lxapp open, a run orders a minimized or fully covered window in front at its start,
   without taking focus, and logs why; keep it uncovered after that (`lxdev host focus`).
-- **A locked screen stops the run** on macOS: pages are hidden, so the rest
+- **A locked screen stops the run** on macOS and Windows (where the clipboard is refused): pages are hidden, so the rest
   are reported as not run. Unlock it and run again.
 - **`fill` updates framework state**; assert the state, not only the DOM.
 - **`fill` sets text without focusing**: no keyboard rises, so no keyboard avoidance runs. To exercise the keyboard, `click()` the field, then `type()`.
