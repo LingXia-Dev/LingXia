@@ -11,6 +11,8 @@ export enum PermissionFeature {
   LOCATION = 'LOCATION',
   WIFI = 'WIFI',
   NOTIFICATION = 'NOTIFICATION',
+  /** A web page's microphone-only capture; one with a camera is CAMERA. */
+  MICROPHONE = 'MICROPHONE',
 }
 
 export enum PermissionOutcome {

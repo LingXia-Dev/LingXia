@@ -38,6 +38,7 @@ import { setEmbedController, teardownEmbedManager } from './NativeComponents/Nat
 import { Lingxia } from '../app/Lingxia';
 import { LxLog } from '../app/LxLog';
 import { PermissionManager } from '../app/PermissionManager';
+import { PermissionFeature } from '../app/PermissionGate';
 import {
   checkWebPermissionPolicy,
   notifyWebViewState,
@@ -465,7 +466,7 @@ export struct LingXiaWebView {
           return;
         }
         const checkPromise = needCamera
-          ? PermissionManager.ensureCameraAccess(needMic)
+          ? PermissionManager.ensureCameraAccess(PermissionFeature.CAMERA, needMic)
           : PermissionManager.ensureMicrophoneAccess();
         checkPromise
           .then((granted: boolean) => {
