@@ -191,13 +191,17 @@ let package = Package(
             cmd.args(["-c", "release"]);
         }
 
+        let plan_dir = scratch_path.join("arm64-apple-ios").join(build_config);
+        let listing = drop_stale_build_plan(&scratch_path, &plan_dir, package_dir)?;
+
         let status = cmd.status().context("Failed to execute swift build")?;
 
         if !status.success() {
             return Err(anyhow!("Swift build failed"));
         }
 
-        Ok(scratch_path.join("arm64-apple-ios").join(build_config))
+        fs::write(plan_dir.join(SOURCE_LISTING_STAMP), listing)?;
+        Ok(plan_dir)
     }
 
     /// Create the .app bundle structure under `output_dir`
@@ -505,9 +509,78 @@ fn is_static_archive(path: &Path) -> Result<bool> {
     Ok(false)
 }
 
+/// The source listing the build plan in this directory was made from.
+const SOURCE_LISTING_STAMP: &str = "lingxia-source-listing";
+
+/// SwiftPM keeps its build plan when a local package gains or loses a source file, so
+/// the build then fails on a symbol from a file it does not know. Drop the plan when the
+/// listing changed since the last successful build; returns the listing to stamp.
+fn drop_stale_build_plan(
+    scratch_path: &Path,
+    plan_dir: &Path,
+    root_package: &Path,
+) -> Result<String> {
+    let mut packages = vec![root_package.to_path_buf()];
+    packages.extend(local_package_dirs(scratch_path));
+    let listing = source_listing(&packages);
+    let plan = plan_dir.join("description.json");
+    let stamp = fs::read_to_string(plan_dir.join(SOURCE_LISTING_STAMP)).ok();
+    if plan.exists() && stamp.as_deref() != Some(listing.as_str()) {
+        fs::remove_file(&plan)
+            .with_context(|| format!("Failed to remove stale build plan {}", plan.display()))?;
+    }
+    Ok(listing)
+}
+
+/// Local (`path:`) packages SwiftPM resolved for this scratch directory.
+fn local_package_dirs(scratch_path: &Path) -> Vec<PathBuf> {
+    let Ok(text) = fs::read_to_string(scratch_path.join("workspace-state.json")) else {
+        return Vec::new();
+    };
+    let Ok(state) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    let mut dirs: Vec<PathBuf> = state["object"]["dependencies"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|dep| dep["packageRef"]["kind"] == "fileSystem")
+        .filter_map(|dep| dep["packageRef"]["location"].as_str())
+        .map(PathBuf::from)
+        .collect();
+    dirs.sort();
+    dirs
+}
+
+/// Every file under each package's `Sources/`, one absolute path per line, sorted.
+fn source_listing(packages: &[PathBuf]) -> String {
+    fn walk(dir: &Path, out: &mut Vec<String>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if entry.file_name().to_string_lossy().starts_with('.') {
+                continue;
+            }
+            if path.is_dir() {
+                walk(&path, out);
+            } else {
+                out.push(path.display().to_string());
+            }
+        }
+    }
+    let mut files = Vec::new();
+    for package in packages {
+        walk(&package.join("Sources"), &mut files);
+    }
+    files.sort();
+    files.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{AppBundleConfig, AppBundler};
+    use super::{AppBundleConfig, AppBundler, SOURCE_LISTING_STAMP, drop_stale_build_plan};
     use plist::{Dictionary, Value};
     use std::fs;
 
@@ -640,5 +713,54 @@ mod tests {
             generated.get("CFBundleVersion").and_then(Value::as_string),
             Some("1002003")
         );
+    }
+
+    #[test]
+    fn build_plan_is_dropped_when_a_local_package_gains_a_source_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("host");
+        let sdk = temp.path().join("sdk");
+        let scratch = temp.path().join("swift-build");
+        let plan_dir = scratch.join("arm64-apple-ios/debug");
+        fs::create_dir_all(root.join("Sources/Host")).unwrap();
+        fs::create_dir_all(sdk.join("Sources/Platform/iOS")).unwrap();
+        fs::create_dir_all(&plan_dir).unwrap();
+        fs::write(root.join("Sources/Host/App.swift"), "").unwrap();
+        fs::write(sdk.join("Sources/Platform/iOS/Bar.swift"), "").unwrap();
+        fs::write(
+            scratch.join("workspace-state.json"),
+            serde_json::json!({"object": {"dependencies": [
+                {"packageRef": {"kind": "fileSystem", "location": sdk}},
+                {"packageRef": {"kind": "remoteSourceControl", "location": "https://example.com/x"}}
+            ]}})
+            .to_string(),
+        )
+        .unwrap();
+        let plan = plan_dir.join("description.json");
+        let build =
+            |listing: String| fs::write(plan_dir.join(SOURCE_LISTING_STAMP), listing).unwrap();
+
+        // A plan without a stamp predates the check: re-plan once.
+        fs::write(&plan, "{}").unwrap();
+        build(drop_stale_build_plan(&scratch, &plan_dir, &root).unwrap());
+        assert!(!plan.exists());
+
+        fs::write(&plan, "{}").unwrap();
+        build(drop_stale_build_plan(&scratch, &plan_dir, &root).unwrap());
+        assert!(plan.exists(), "an unchanged listing keeps the plan");
+
+        // An edit to an existing file is SwiftPM's own business.
+        fs::write(sdk.join("Sources/Platform/iOS/Bar.swift"), "let x = 1").unwrap();
+        build(drop_stale_build_plan(&scratch, &plan_dir, &root).unwrap());
+        assert!(plan.exists());
+
+        fs::write(sdk.join("Sources/Platform/iOS/HostChrome.swift"), "").unwrap();
+        build(drop_stale_build_plan(&scratch, &plan_dir, &root).unwrap());
+        assert!(!plan.exists(), "a new SDK source file drops the plan");
+
+        fs::write(&plan, "{}").unwrap();
+        fs::remove_file(root.join("Sources/Host/App.swift")).unwrap();
+        drop_stale_build_plan(&scratch, &plan_dir, &root).unwrap();
+        assert!(!plan.exists(), "a removed root source file drops the plan");
     }
 }
