@@ -93,7 +93,7 @@ extension GpuPageView: GpuImeHost, UITextInput {
     @discardableResult
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()
-        if resigned, ime.isActive { ime.clear(blur: true) }
+        if resigned, ime.isActive { ime.clear(blur: true, reason: "the text input resigned first responder") }
         return resigned
     }
 

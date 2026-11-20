@@ -977,7 +977,7 @@ public enum GpuPages {
 
     static func imeActivation(token: Int64) {
         MainActor.assumeIsolated {
-            if let ime = views[token]?.ime, ime.isActive { ime.clear(blur: true) }
+            if let ime = views[token]?.ime, ime.isActive { ime.clear(blur: true, reason: "a non-editor activation") }
         }
     }
     static func textMenu(token: Int64, menu: RustStr) {

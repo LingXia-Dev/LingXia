@@ -379,16 +379,31 @@ final class GpuIme {
 
     /// A press in an editor at a logical point: focus it with the caret (or word) there.
     func touch(_ node: GpuFrameNode, generation: UInt64, x: Float, y: Float, word: Bool) {
-        guard caretActive, Self.editable(node), !pendingFocus, x.isFinite, y.isFinite else { return }
-        if let editor, !editor.settled { return }
+        guard caretActive, Self.editable(node), !pendingFocus, x.isFinite, y.isFinite else {
+            _ = LXLog.info("editor touch \(node.identity) ignored: caret \(caretActive), editable \(Self.editable(node)), focus pending \(pendingFocus)", category: "GpuEditor")
+            return
+        }
+        if let editor, !editor.settled {
+            _ = LXLog.info("editor touch \(node.identity) ignored: \(editor.identity) has unacknowledged edits", category: "GpuEditor")
+            return
+        }
         let ticket = capture()
         touchSerial += 1
         let serial = touchSerial
         host?.imeRequest(.hitTest(identity: node.identity, generation: generation, point: [x, y], word: word)) { [weak self] reply in
-            guard let self, serial == self.touchSerial, ticket.epoch == self.epoch, ticket.editor === self.editor
-            else { return }
-            if let editor = self.editor, ticket.revision != editor.revision || !editor.settled { return }
-            guard let selection = reply?.selection, selection.count == 2 else { return }
+            guard let self else { return }
+            guard serial == self.touchSerial, ticket.epoch == self.epoch, ticket.editor === self.editor else {
+                _ = LXLog.info("editor touch \(node.identity): superseded before the hit test answered", category: "GpuEditor")
+                return
+            }
+            if let editor = self.editor, ticket.revision != editor.revision || !editor.settled {
+                _ = LXLog.info("editor touch \(node.identity): \(editor.identity) changed before the hit test answered", category: "GpuEditor")
+                return
+            }
+            guard let selection = reply?.selection, selection.count == 2 else {
+                _ = LXLog.info("editor touch \(node.identity): hit test refused", category: "GpuEditor")
+                return
+            }
             self.focus(node, generation: generation, selection: (Int(selection[0]), Int(selection[1])), then: nil)
         }
     }
@@ -441,6 +456,7 @@ final class GpuIme {
             if requested != self.epoch {
                 // Superseded: give back the focus the core granted meanwhile.
                 if !self.pendingFocus, self.editor == nil, let token = reply?.token {
+                    _ = LXLog.info("editor \(identity): focus superseded before its reply; blurring it", category: "GpuEditor")
                     self.blurred = token
                     self.host?.imeRequest(.blur(identity: identity, token: token)) { [weak self] _ in
                         self?.host?.imeRender(rebuild: false)
@@ -463,7 +479,10 @@ final class GpuIme {
     func presented(_ node: GpuFrameNode?, ticket: Ticket) {
         guard ticket.epoch == epoch, !pendingFocus else { return }
         guard let node, Self.editable(node), let input = node.input, let token = input.editToken, token > 0 else {
-            if editor != nil { drop(hide: true) }
+            if let editor {
+                _ = LXLog.info("editor \(editor.identity) dropped: the presented frame has no focused editor", category: "GpuEditor")
+                drop(hide: true)
+            }
             return
         }
         if let editor, editor.token == token, editor.identity == node.identity {
@@ -544,9 +563,12 @@ final class GpuIme {
         if editing { host?.imeDisconnected(hide: hide) }
     }
 
-    /// End editing, telling the core when `blur`.
-    func clear(blur: Bool) {
+    /// End editing, telling the core when `blur`; `reason` is logged.
+    func clear(blur: Bool, reason: String = "") {
         let previous = editor
+        if let previous, !reason.isEmpty {
+            _ = LXLog.info("editor \(previous.identity) cleared (blur \(blur)): \(reason)", category: "GpuEditor")
+        }
         drop(hide: true)
         if blur, let previous {
             blurred = previous.token
