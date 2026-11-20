@@ -1580,6 +1580,47 @@ fn slider_events_are_numeric_generation_bound_and_commit_transactionally() {
 }
 
 #[test]
+fn an_unbound_slider_keeps_its_dragged_value_and_reports_each_change_once() {
+    let module = source(
+        "function render(){const seen=useLocal('seen','');return h('view',{},h('slider',{'aria-label':'Volume',min:0,max:10,step:3,onChange:v=>seen.set(seen.value+v+',')}),h('slider',{'aria-label':'Free',min:0,max:10}),h('text',{},seen.value))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let range = |frame: &crate::scene::display::DisplayList, index: usize| {
+        frame.nodes[index].range.clone().unwrap()
+    };
+    let frame = page.layout(200, 200, 1.0).unwrap();
+    assert_eq!(range(&frame, 1).value, 0.0);
+    assert!(
+        page.number_event(page.generation(), range(&frame, 1).on_change.unwrap(), 9.6)
+            .unwrap()
+    );
+    let frame = page.layout(200, 200, 1.0).unwrap();
+    assert_eq!(range(&frame, 1).value, 10.0);
+    assert_eq!(frame.nodes[3].text, "10,");
+    // Snapping to the value it holds is no change: no callback.
+    assert!(
+        !page
+            .number_event(page.generation(), range(&frame, 1).on_change.unwrap(), 9.9)
+            .unwrap()
+    );
+    assert!(
+        page.number_event(page.generation(), range(&frame, 1).on_change.unwrap(), 4.0)
+            .unwrap()
+    );
+    let frame = page.layout(200, 200, 1.0).unwrap();
+    assert_eq!(range(&frame, 1).value, 3.0);
+    assert_eq!(frame.nodes[3].text, "10,3,");
+    // No binding and no callback: still operable.
+    assert!(
+        page.number_event(page.generation(), range(&frame, 2).on_change.unwrap(), 7.0)
+            .unwrap()
+    );
+    let frame = page.layout(200, 200, 1.0).unwrap();
+    assert_eq!(range(&frame, 2).value, 7.0);
+    assert_eq!(range(&frame, 1).value, 3.0);
+}
+
+#[test]
 fn text_events_are_typed_generation_bound_and_safely_encoded() {
     let module = source(
         "function render(){const draft=useLocal('draft','');return h('view',{},h('input',{bind:draft}),h('text',{},draft.value))}",
@@ -1693,16 +1734,28 @@ fn an_unbound_checkbox_owns_its_state_and_reports_each_change_once() {
     assert_eq!(frame.nodes[1].checked, Some(true));
     assert_eq!(frame.nodes[4].text, "1|0");
     // The re-render the callback caused kept the value; the next press clears it.
-    assert!(session.click(session.generation(), frame.nodes[1].on_click.unwrap()).unwrap());
+    assert!(
+        session
+            .click(session.generation(), frame.nodes[1].on_click.unwrap())
+            .unwrap()
+    );
     let frame = session.layout(240, 300, 1.0).unwrap();
     assert_eq!(frame.nodes[1].checked, Some(false));
     assert_eq!(frame.nodes[4].text, "10|0");
     // No binding and no onChange: still operable, and repaints without a re-render.
-    assert!(session.click(session.generation(), frame.nodes[2].on_click.unwrap()).unwrap());
+    assert!(
+        session
+            .click(session.generation(), frame.nodes[2].on_click.unwrap())
+            .unwrap()
+    );
     let frame = session.layout(240, 300, 1.0).unwrap();
     assert_eq!(frame.nodes[2].checked, Some(true));
     // A controlled box stays as the page says.
-    assert!(session.click(session.generation(), frame.nodes[3].on_click.unwrap()).unwrap());
+    assert!(
+        session
+            .click(session.generation(), frame.nodes[3].on_click.unwrap())
+            .unwrap()
+    );
     let frame = session.layout(240, 300, 1.0).unwrap();
     assert_eq!(frame.nodes[3].checked, Some(false));
     assert_eq!(frame.nodes[4].text, "10|1");
