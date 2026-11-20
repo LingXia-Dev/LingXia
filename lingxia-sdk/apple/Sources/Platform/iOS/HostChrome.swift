@@ -90,8 +90,9 @@ final class HostChrome: NSObject {
                     continue
                 }
                 let handler = objc_getAssociatedObject(action, &handlerKey) as? Handler
-                alert.dismiss(animated: true)
-                handler?.run()
+                // As a tap: the handler runs once the alert is gone, so a dialog it shows next
+                // is not presented over one still leaving.
+                alert.dismiss(animated: true) { handler?.run() }
                 return true
             }
         }
