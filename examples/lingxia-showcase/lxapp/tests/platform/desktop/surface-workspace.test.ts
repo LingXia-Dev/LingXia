@@ -55,7 +55,7 @@ interface DynamicHandleGlobals {
 }
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
-const targetPlatform = testArgs.platform?.toLocaleLowerCase();
+const targetPlatform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase();
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
 const desktopCapableSkip = targetPlatform && !['macos', 'windows'].includes(targetPlatform)
   ? 'macOS and Windows only'

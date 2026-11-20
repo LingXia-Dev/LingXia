@@ -7,7 +7,7 @@ import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import type { ProbeElement, ProbeWindow } from '@lingxia/test/showcase/helpers/view.js';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
-const targetPlatform = testArgs.platform?.toLocaleLowerCase();
+const targetPlatform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase();
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
 
 const FULL_DRAG_STRIP_HEIGHT = 28;

@@ -9,7 +9,7 @@ import type { ProbeDocument, ProbeElement } from '@lingxia/test/showcase/helpers
 
 const SETTINGS_APP_ID = 'app.lingxia.terminal-settings';
 
-const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLocaleLowerCase();
+const targetPlatform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase();
 test.configure({
   skip: !targetPlatform || targetPlatform === 'macos' || targetPlatform === 'windows'
     ? undefined

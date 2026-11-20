@@ -76,7 +76,7 @@ async function allowLocation(
   console.info('The macOS location permission dialog closed after the pointer click');
 }
 
-const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLocaleLowerCase();
+const targetPlatform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase();
 test.configure({ skip: targetPlatform && targetPlatform !== 'macos' ? 'macOS only' : undefined });
 const promptAppearanceGraceMs = 5_000;
 

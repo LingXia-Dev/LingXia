@@ -5,10 +5,8 @@ import { waitForElementEnabled } from '../helpers/page.js';
 import { GPU_MIRROR, SHOWCASE_APP_ID } from '../helpers/app.js';
 import type { ProbeElement } from '../helpers/view.js';
 
-const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
-  ?? {} as Record<string, string>;
 const bannerPageSkip = new Set(['macos', 'windows']).has(
-  testArgs.platform?.toLocaleLowerCase() ?? '',
+  globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase() ?? '',
 )
   ? undefined
   : 'host banners are macOS and Windows only';

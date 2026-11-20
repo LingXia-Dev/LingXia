@@ -3,7 +3,7 @@ import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { waitForCurrentPage, waitForElementAttribute } from '@lingxia/test/showcase/helpers/page.js';
 import { bindFixture, expectReject } from '@lingxia/test/showcase/helpers/poll.js';
 
-const platform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLowerCase();
+const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLowerCase();
 
 test('route a warm AppLink onto the query page once', {
   id: 'APPLINK-001',

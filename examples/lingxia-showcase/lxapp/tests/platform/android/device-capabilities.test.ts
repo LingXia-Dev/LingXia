@@ -5,7 +5,7 @@ import { bindFixture, type Caught } from '@lingxia/test/showcase/helpers/poll.js
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const httpBase = testArgs.httpBase;
-const platform = testArgs.platform?.toLowerCase();
+const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLowerCase();
 const androidSkip = platform === 'android' ? undefined : 'Android only';
 const androidMediaSkip = platform === 'android' && httpBase ? undefined : 'Android only, with --arg httpBase';
 

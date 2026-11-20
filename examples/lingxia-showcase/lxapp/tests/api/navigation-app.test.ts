@@ -20,7 +20,7 @@ const isOpen = (list: LxAppRuntimeInfo[], appid: string): boolean => (
  * is proven where it holds and the desktop gap is tracked as
  * PEND-NAVAPP-DESKTOP-001.
  */
-const platform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLowerCase();
+const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLowerCase();
 test.configure({ skip: platform === 'android' ? undefined : 'Android only' });
 
 test('hop to the bundled chat lxapp and back', {

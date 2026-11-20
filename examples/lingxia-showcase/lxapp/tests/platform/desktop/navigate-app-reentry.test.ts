@@ -6,7 +6,7 @@ import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js'
 
 const CHAT_APP_ID = 'lingxia-chat';
 
-const platform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLowerCase();
+const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLowerCase();
 test.configure({ skip: platform === 'windows' || platform === 'macos' ? undefined : 'macOS and Windows only' });
 
 const isOpen = (list: LxAppRuntimeInfo[], appid: string): boolean => (

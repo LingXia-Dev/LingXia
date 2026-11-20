@@ -3,16 +3,14 @@ import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { bindFixture, expectReject, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
 
 
-const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
-  ?? {} as Record<string, string>;
-// The published API intentionally omits autostart on mobile hosts. Keep the
+// Autostart refuses on mobile hosts. Keep the
 // behavioral case for desktop hosts, where the login-item contract exists.
 const MOBILE_HOSTS = new Set(['android', 'ios']);
-const autostartSkip = MOBILE_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '')
+const autostartSkip = MOBILE_HOSTS.has(globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase() ?? '')
   ? 'autostart is desktop only'
   : undefined;
 const DESKTOP_HOSTS = new Set(['macos', 'windows']);
-const bannerSkip = DESKTOP_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '')
+const bannerSkip = DESKTOP_HOSTS.has(globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase() ?? '')
   ? undefined
   : 'host banners are desktop only';
 

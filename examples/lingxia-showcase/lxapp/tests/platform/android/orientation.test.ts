@@ -2,7 +2,7 @@ import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
 
-const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.args?.platform?.toLowerCase();
+const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLowerCase();
 test.configure({ skip: platform === 'android' ? undefined : 'Android only' });
 
 type Orientation = 'portrait' | 'landscape';

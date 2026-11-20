@@ -8,7 +8,7 @@ import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
  * is a stable synchronous E_NOT_SUPPORTED — that rejection is the behaviour
  * this suite proves. On a phone they are real and belong to the device lab.
  */
-const platform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLowerCase();
+const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLowerCase();
 const DESKTOP = ['macos', 'windows'];
 const desktopSkip = platform && DESKTOP.includes(platform) ? undefined : 'desktop hosts only';
 
