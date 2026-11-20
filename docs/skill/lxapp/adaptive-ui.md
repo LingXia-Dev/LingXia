@@ -20,7 +20,9 @@ type SurfaceContext = {
 | `regular` | 600 and above |
 
 - The size class is the lxapp's own presentation, not the window: an lxapp in
-  a narrow region of a wide desktop is `compact`. It is one value per lxapp.
+  a narrow region of a wide desktop is `compact`. It is one value per lxapp:
+  a page in its own window (`as: 'window'`) reads its lxapp's value, so size
+  that page from its own viewport.
 - `canDock` is whether the window has a dock region right now, so
   `as: 'aside'` opens beside the main instead of as an overlay. It is not
   where this lxapp is shown: nothing reports that; lay out by size. Read it,
