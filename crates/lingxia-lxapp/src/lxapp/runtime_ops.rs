@@ -159,6 +159,12 @@ pub fn refresh_auto_appearances() {
 pub fn close_lxapp(appid: &str) -> Result<(), LxAppError> {
     let app = super::runtime_registry::try_get(appid)
         .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+    // Every host keeps its home lxapp: closing it would leave an empty host behind.
+    if app.is_home_lxapp {
+        return Err(LxAppError::UnsupportedOperation(
+            "the stable root main surface cannot be closed".to_string(),
+        ));
+    }
     let session_id = app.session_id();
     if !app.begin_programmatic_close(session_id) {
         return Ok(());
