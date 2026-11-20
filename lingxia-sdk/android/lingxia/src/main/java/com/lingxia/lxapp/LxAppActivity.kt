@@ -364,7 +364,12 @@ class LxAppActivity : AppCompatActivity() {
             barSnapshots.clear()
             // The page comes over the bars once a frame draws them under its dialog, so no frame
             // shows neither; a page that never does is raised anyway.
-            if (captureGpuBars()) scheduleGpuRaise() else raiseGpuPage(true)
+            if (gpuBarsLaidOut()) {
+                if (captureGpuBars()) scheduleGpuRaise() else raiseGpuPage(true)
+            } else {
+                scheduleGpuRaise()
+                recaptureGpuBars()
+            }
         } else {
             if (barSnapshots.isNotEmpty()) (currentWebView as? GpuPage)?.declineChromeSnapshot()
             barSnapshots.clear()
@@ -418,13 +423,29 @@ class LxAppActivity : AppCompatActivity() {
 
     /** A bar under the dialog changed: hand the page a fresh copy once the change has drawn. */
     private fun recaptureGpuBars() {
-        if (!topLayerOpen || !::webViewContainer.isInitialized) return
-        webViewContainer.post {
-            if (topLayerOpen && captureGpuBars() && webViewContainer.translationZ == 0f && gpuRaise == null) {
-                scheduleGpuRaise()
+        if (!topLayerOpen || !::webViewContainer.isInitialized || recaptureQueued) return
+        recaptureQueued = true
+        // Before the next draw, after layout: a bar drawn before its layout shows a new title
+        // broken to the old title's width.
+        val observer = webViewContainer.viewTreeObserver
+        observer.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (webViewContainer.viewTreeObserver.isAlive) {
+                    webViewContainer.viewTreeObserver.removeOnPreDrawListener(this)
+                }
+                recaptureQueued = false
+                if (topLayerOpen && captureGpuBars() && webViewContainer.translationZ == 0f && gpuRaise == null) {
+                    scheduleGpuRaise()
+                }
+                return true
             }
-        }
+        })
+        webViewContainer.invalidate()
     }
+    private var recaptureQueued = false
+
+    private fun gpuBarsLaidOut(): Boolean =
+        listOfNotNull<View>(navigationBar, tabBar).none { it.isLayoutRequested }
 
     /** Copies each bar on an edge of the page into it, to draw under its top layer. */
     private fun captureGpuBars(): Boolean {
@@ -482,6 +503,8 @@ class LxAppActivity : AppCompatActivity() {
     private var gpuTransitionVersion = 0L
     /** The show a running push slide delivers at its end; null when none is running. */
     private var slideShow: Runnable? = null
+    /** Ends the running slide at once; null when none runs. */
+    private var slideFinish: Runnable? = null
     /** The back navigation whose new gestures are held until the page it returns to shows; 0: none. */
     private var backHold = 0L
     private val heldTouches = ArrayList<android.view.MotionEvent>()
@@ -1777,14 +1800,25 @@ class LxAppActivity : AppCompatActivity() {
      * the page being left.
      */
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
-        if (!replayingTouches && backHold != 0L &&
-            (holdingGesture || event.actionMasked == android.view.MotionEvent.ACTION_DOWN)) {
-            if (!holdingGesture) LxLog.d(NAV_TAG, "touch held until the page a back returns to shows")
+        val down = event.actionMasked == android.view.MotionEvent.ACTION_DOWN
+        if (!replayingTouches && backHold != 0L && (holdingGesture || down)) {
+            if (!holdingGesture) LxLog.i(NAV_TAG, "touch held at ${event.x.toInt()},${event.y.toInt()} until the page a back returns to shows")
             holdingGesture = true
             if (heldTouches.size < 512) heldTouches.add(android.view.MotionEvent.obtain(event))
             return true
         }
-        return super.dispatchTouchEvent(event)
+        // A finger during a slide is for the page sliding in, which is not where it will be:
+        // the slide ends first so the touch lands on the page as it is shown.
+        if (down) slideFinish?.let { finish ->
+            LxLog.i(NAV_TAG, "touch at ${event.x.toInt()},${event.y.toInt()} during a slide; ending it first")
+            finish.run()
+        }
+        val taken = super.dispatchTouchEvent(event)
+        if (down && !taken) {
+            LxLog.i(NAV_TAG, "touch at ${event.x.toInt()},${event.y.toInt()} taken by no view" +
+                if (replayingTouches) " (replayed)" else "")
+        }
+        return taken
     }
 
     /** Ends the hold of back navigation [version] (any, when null) and replays what it held. */
@@ -1795,7 +1829,7 @@ class LxAppActivity : AppCompatActivity() {
         if (heldTouches.isEmpty()) return
         val held = ArrayList(heldTouches)
         heldTouches.clear()
-        LxLog.d(NAV_TAG, "replaying ${held.size} held touch events")
+        LxLog.i(NAV_TAG, "replaying ${held.size} held touch events")
         // Posted: the page shown in this turn takes the gesture after it is laid out.
         window.decorView.post {
             replayingTouches = true
@@ -2055,6 +2089,7 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun clearGpuTransitionCover() {
+        slideFinish = null
         // Cancelling the slide skips its end action; the show it carried is still owed.
         slideShow?.let { show ->
             slideShow = null
@@ -2092,9 +2127,11 @@ class LxAppActivity : AppCompatActivity() {
         val gpu = page as? GpuPage
         gpu?.transition(if (backwards) com.lingxia.view.GpuView.TRANSITION_POP else com.lingxia.view.GpuView.TRANSITION_PUSH, 0f)
         var finished = false
-        val finish = Runnable {
+        lateinit var finish: Runnable
+        finish = Runnable {
             if (finished) return@Runnable
             finished = true
+            if (slideFinish === finish) slideFinish = null
             incoming.setOnTouchListener(null)
             // The view's animator keeps listeners for its next animation.
             incoming.animate().setUpdateListener(null)
@@ -2116,6 +2153,7 @@ class LxAppActivity : AppCompatActivity() {
             }
             false
         }
+        slideFinish = finish
         incoming.animate().translationX(0f).setDuration(300L).setInterpolator(interpolator)
             .setUpdateListener { gpu?.transition(com.lingxia.view.GpuView.TRANSITION_FRAME, incoming.translationX) }
             .withEndAction(finish).start()
@@ -2152,7 +2190,7 @@ class LxAppActivity : AppCompatActivity() {
             isClickable = true
             setOnTouchListener { view, event ->
                 if (view.isClickable && event.actionMasked == android.view.MotionEvent.ACTION_DOWN)
-                    LxLog.d(NAV_TAG, "touch held by the cover: the incoming page is not shown yet")
+                    LxLog.i(NAV_TAG, "touch at ${event.x.toInt()},${event.y.toInt()} held by the cover: the incoming page is not shown yet")
                 false
             }
             rootContainer.addView(this)
@@ -2897,6 +2935,8 @@ class LxAppActivity : AppCompatActivity() {
                 setPadding(paddingLeft, statusBarHeight, paddingRight, paddingBottom)  // Add status bar padding
                 setOnBackButtonClickListener { handleBackButtonClick() }
                 setOnHomeButtonClickListener { handleHomeButtonClick() }
+                // A page drawing this bar under its dialog needs the new title, not the old one.
+                onTitleChanged = Runnable { if (topLayerOpen) recaptureGpuBars() }
                 visibility = View.GONE
             }
 

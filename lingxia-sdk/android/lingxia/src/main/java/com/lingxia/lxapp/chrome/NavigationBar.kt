@@ -258,8 +258,14 @@ internal class NavigationBar @JvmOverloads constructor(
      * @param title The text to display.
      */
     fun setTitle(title: String?) {
-        titleTextView.text = title ?: ""
+        val text = title ?: ""
+        if (titleTextView.text.toString() == text) return
+        titleTextView.text = text
+        onTitleChanged?.run()
     }
+
+    /** Runs after the title text changes, before the bar has laid it out. */
+    var onTitleChanged: Runnable? = null
 
     /**
      * Sets the background color and front color (for title and loading indicator) of the navigation bar.

@@ -286,6 +286,21 @@ impl Lifecycle {
         self.with(|state| state.loaded && !state.disposed && !state.session_failed)
     }
 
+    /// Why [`Self::accepts_input`] is false, for the log of a dropped touch.
+    pub fn input_refusal(&self) -> &'static str {
+        self.with(|state| {
+            if state.disposed {
+                "disposed"
+            } else if state.session_failed {
+                "session failed"
+            } else if !state.loaded {
+                "not loaded"
+            } else {
+                "accepted"
+            }
+        })
+    }
+
     /// Classify a failure, end the session when needed, and decide the offered retry.
     pub fn fail(&self, error: &str) -> Recovery {
         let kind = FailureKind::classify(error);

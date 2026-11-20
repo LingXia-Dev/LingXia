@@ -1163,6 +1163,15 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// Returns whether the gesture was consumed.
     pub fn pointer(&self, event: Pointer) -> bool {
         if !self.inner.lifecycle.accepts_input() {
+            if event.phase == crate::interaction::view::PointerPhase::Down {
+                log::info!(
+                    target: "lingxia_view",
+                    "UI_INPUT: touch at {:.0},{:.0} refused: the page is {}",
+                    event.x,
+                    event.y,
+                    self.inner.lifecycle.input_refusal()
+                );
+            }
             return false;
         }
         if event.phase == crate::interaction::view::PointerPhase::Down {

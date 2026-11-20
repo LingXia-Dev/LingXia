@@ -1245,16 +1245,22 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             boolean handled = nativePointer(host, phase, event.getX(), event.getY(), slop, vx, vy,
                 configuration.getScaledMinimumFlingVelocity());
             if (phase >= 2 && velocity != null) { velocity.recycle(); velocity = null; }
-            if (phase == 0 && !handled) return pullToRefresh != null;
+            if (phase == 0 && !handled) {
+                Log.i("LingXia.UI", "UI_INPUT: touch at " + Math.round(event.getX()) + "," + Math.round(event.getY())
+                    + " hit nothing that takes it worker=" + worker);
+                return pullToRefresh != null;
+            }
             return true;
         }
         /** Pointers dropped before the core would otherwise vanish without a trace. */
         private void inputRefused(String reason, MotionEvent event) {
             long now = android.os.SystemClock.uptimeMillis();
-            if (now - refusedInputLoggedAt < 1000) return;
+            // Every refused touch start shows; the moves of one only once a second.
+            if (event.getActionMasked() != MotionEvent.ACTION_DOWN && now - refusedInputLoggedAt < 1000) return;
             refusedInputLoggedAt = now;
             Log.w("LingXia.UI", "UI_INPUT: pointer refused before core worker=" + worker + " reason=" + reason
-                + " action=" + MotionEvent.actionToString(event.getActionMasked()));
+                + " action=" + MotionEvent.actionToString(event.getActionMasked())
+                + " at " + Math.round(event.getX()) + "," + Math.round(event.getY()));
         }
         @Override public boolean performClick() { super.performClick(); return true; }
         @Override public boolean onCheckIsTextEditor() { return ime != null && ime.hasFocus(); }
