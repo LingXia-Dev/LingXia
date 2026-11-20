@@ -202,6 +202,7 @@ export class GpuPages {
     switch (kind) {
       case 'dispose':
         GpuPages.pages.delete(token);
+        GpuPages.dropRecovery(page);
         GpuPages.disposed.forEach((listener: GpuPageListener) => listener(page));
         return true;
       case 'loaded':
@@ -248,6 +249,9 @@ export class GpuPages {
             && shown.action === recovery.action && shown.back === recovery.back) {
             break;
           }
+          // A panel replaced or cleared before it laid out never drops itself; readers must not
+          // wait for it.
+          GpuPages.dropRecovery(page);
           recovery.serial = ++recoverySerial;
           page.recovery = recovery;
           const parts: string[] = ['message'];
@@ -260,6 +264,7 @@ export class GpuPages {
           // Readers wait for these until the panel has laid them out.
           HostOverlays.expect(`gpu-recovery-${page.token}-${recovery.serial}`, parts);
         } else {
+          GpuPages.dropRecovery(page);
           page.recovery = null;
         }
         break;
@@ -293,6 +298,12 @@ export class GpuPages {
     }
     GpuPages.changed.forEach((listener: GpuPageListener) => listener(page));
     return true;
+  }
+
+  private static dropRecovery(page: GpuPageModel): void {
+    if (page.recovery !== null) {
+      HostOverlays.drop(`gpu-recovery-${page.token}-${page.recovery.serial}`);
+    }
   }
 
   private static captureScreenshot(token: number, requestId: string): void {
