@@ -220,6 +220,7 @@ async fn reconcile_one(
 
     let id_load = web_id.clone();
     let doc_load = doc_id.clone();
+    let id_title = web_id.clone();
     let id_msg = web_id.clone();
     let id_blk = web_id.clone();
     let id_err = web_id.clone();
@@ -247,6 +248,9 @@ async fn reconcile_one(
             if !mounts.is_empty() {
                 ui_sync(token, &mounts);
             }
+        })),
+        on_title: Some(Arc::new(move |title| {
+            deliver(token, id_title.clone(), WebViewInbound::Title(title));
         })),
         on_message: Some(Arc::new(move |msg| {
             deliver(

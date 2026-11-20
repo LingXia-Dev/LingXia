@@ -18,6 +18,8 @@ pub enum WebViewInbound {
         url: String,
         title: String,
     },
+    /// The loaded document's title changed.
+    Title(String),
     Message {
         json: String,
         origin: String,

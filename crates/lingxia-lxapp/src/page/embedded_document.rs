@@ -130,6 +130,8 @@ pub type DocumentLoadHandler = Arc<dyn Fn(String, String) + Send + Sync>;
 pub type DocumentMessageHandler = Arc<dyn Fn(EmbedDocumentMessage) + Send + Sync>;
 pub type DocumentErrorHandler = Arc<dyn Fn(EmbeddedErrorCode, String) + Send + Sync>;
 pub type DocumentFullscreenHandler = Arc<dyn Fn(bool) + Send + Sync>;
+/// The loaded document's title changed; not a load.
+pub type DocumentTitleHandler = Arc<dyn Fn(String) + Send + Sync>;
 
 #[derive(Default)]
 pub struct EmbeddedDocumentOptions {
@@ -138,6 +140,7 @@ pub struct EmbeddedDocumentOptions {
     pub hosts: Option<Vec<String>>,
     pub on_blocked: Option<BlockedLoadHandler>,
     pub on_load: Option<DocumentLoadHandler>,
+    pub on_title: Option<DocumentTitleHandler>,
     pub on_message: Option<DocumentMessageHandler>,
     pub on_error: Option<DocumentErrorHandler>,
     pub on_fullscreen: Option<DocumentFullscreenHandler>,
@@ -614,6 +617,7 @@ fn permission_origin_allowed(
 struct EmbeddedWebViewDelegate {
     state: Arc<Mutex<DocumentState>>,
     on_load: Option<DocumentLoadHandler>,
+    on_title: Option<DocumentTitleHandler>,
     on_error: Option<DocumentErrorHandler>,
 }
 
@@ -685,6 +689,8 @@ impl WebViewDelegate for EmbeddedWebViewDelegate {
     }
 
     fn on_webview_state_change(&self, change: WebViewStateChange) {
+        // WebKit reports a page's title after it finished loading: a title is not a second load.
+        let mut retitled = None;
         let in_page_load = {
             let mut guard = self
                 .state
@@ -700,13 +706,10 @@ impl WebViewDelegate for EmbeddedWebViewDelegate {
                             && !guard.crashed
                             && !guard.current_url.is_empty()
                         {
-                            Some((guard.current_url.clone(), guard.current_title.clone()))
-                        } else {
-                            None
+                            retitled = Some(guard.current_title.clone());
                         }
-                    } else {
-                        None
                     }
+                    None
                 }
                 WebViewStateChange::Location { url } => {
                     if url.is_empty() || url.eq_ignore_ascii_case("about:blank") {
@@ -730,6 +733,9 @@ impl WebViewDelegate for EmbeddedWebViewDelegate {
         };
         if let (Some((url, title)), Some(on_load)) = (in_page_load, &self.on_load) {
             on_load(url, title);
+        }
+        if let (Some(title), Some(on_title)) = (retitled, &self.on_title) {
+            on_title(title);
         }
     }
 
@@ -889,6 +895,7 @@ impl PageInstance {
         let delegate = Arc::new(EmbeddedWebViewDelegate {
             state: Arc::clone(&state),
             on_load: options.on_load,
+            on_title: options.on_title,
             on_error: options.on_error,
         });
 

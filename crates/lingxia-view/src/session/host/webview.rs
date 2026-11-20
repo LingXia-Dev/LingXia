@@ -353,6 +353,15 @@ impl<A: PlatformAdapter> Inner<A> {
                         }));
                     flush_now = true;
                 }
+                WebViewInbound::Title(title) => {
+                    main.webviews
+                        .mailboxes
+                        .entry(web_id)
+                        .or_default()
+                        .lifecycle
+                        .push(serde_json::json!({"type": "title", "title": title}));
+                    flush_now = true;
+                }
                 WebViewInbound::Blocked { url } => {
                     main.webviews
                         .mailboxes
