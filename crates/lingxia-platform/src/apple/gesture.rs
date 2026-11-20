@@ -1556,7 +1556,9 @@ mod ios {
             }
             unsafe fn visit(&mut self, view: *mut AnyObject, area: &str) {
                 unsafe {
-                    if !visible(view) {
+                    // A modal hides what it covers from VoiceOver; a finger cannot reach it either.
+                    let silenced: bool = msg_send![view, accessibilityElementsHidden];
+                    if !visible(view) || silenced {
                         return;
                     }
                     let name = class_name(view);
