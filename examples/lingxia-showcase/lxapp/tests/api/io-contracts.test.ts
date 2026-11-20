@@ -30,7 +30,7 @@ test("reject storage and file operations on invalid inputs", { id: "LOGIC-005", 
   expect(result.oversizedValue).toBeTruthy();
 });
 
-test("read image info from managed storage and reject a missing image", { id: "MEDIA-INFO-001", covers: ['lx.getImageInfo'], app: SHOWCASE_APP_ID }, async (t) => {
+test("read image info from managed storage and reject a missing image", { id: "MEDIA-INFO-001", covers: ['lx.media.imageInfo'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "MEDIA-INFO-001");
 
   const result = await app.logic.eval(async ({ lx }, namespace) => {
@@ -50,8 +50,8 @@ test("read image info from managed storage and reject a missing image", { id: "M
     await files.mkdir(root, { recursive: true });
     try {
       await files.write(fixture, base64, { encoding: 'base64' });
-      const info = await lx.getImageInfo({ path: fixture });
-      const missingRejected = await rejects(() => lx.getImageInfo({ path: root + '/missing.png' }));
+      const info = await lx.media.imageInfo({ path: fixture });
+      const missingRejected = await rejects(() => lx.media.imageInfo({ path: root + '/missing.png' }));
       return { width: info.width, height: info.height, type: String(info.type), missingRejected };
     } finally {
       await files.remove(root, { recursive: true });

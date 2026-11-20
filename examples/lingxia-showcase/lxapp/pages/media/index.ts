@@ -5,7 +5,7 @@ import type {
   CompressVideoTask,
   CompressImageOptions,
   CompressVideoOptions,
-  ExtractVideoThumbnailOptions,
+  VideoThumbnailOptions,
   ImageInfo,
   PreviewMediaOptions,
   PreviewMediaResult,
@@ -176,7 +176,7 @@ const MODE_SETTINGS = {
 function getModeCopy(mediaType: string) {
   if (mediaType === "video") {
     return {
-      headerSubtitle: "lx.pick.media / lx.previewMedia",
+      headerSubtitle: "lx.pick.media / lx.media.preview",
       emptyHint: "Tap + to pick videos.",
       previewHint: "Tap Preview to open the full selection.",
       galleryHint: "Tap Preview to open the full selection.",
@@ -185,7 +185,7 @@ function getModeCopy(mediaType: string) {
   }
   if (mediaType === "imageInfo") {
     return {
-      headerSubtitle: "lx.getImageInfo / lx.compressImage",
+      headerSubtitle: "lx.media.imageInfo / lx.media.compressImage",
       emptyHint: "Get image info and create compressed copy.",
       previewHint: "",
       galleryHint: "",
@@ -194,7 +194,7 @@ function getModeCopy(mediaType: string) {
   }
   if (mediaType === "videoTools") {
     return {
-      headerSubtitle: "lx.getVideoInfo / lx.extractVideoThumbnail / lx.compressVideo",
+      headerSubtitle: "lx.media.videoInfo / lx.media.videoThumbnail / lx.media.compressVideo",
       emptyHint: "Pick one video, inspect upload metadata, generate a thumbnail, and compress.",
       previewHint: "",
       galleryHint: "",
@@ -203,7 +203,7 @@ function getModeCopy(mediaType: string) {
   }
   if (mediaType === "saveToAlbum") {
     return {
-      headerSubtitle: "lx.saveImageToPhotosAlbum / lx.saveVideoToPhotosAlbum",
+      headerSubtitle: "lx.media.saveToLibrary",
       emptyHint: "Capture or select media to save to album.",
       previewHint: "",
       galleryHint: "",
@@ -220,7 +220,7 @@ function getModeCopy(mediaType: string) {
     };
   }
   return {
-    headerSubtitle: "lx.pick.media / lx.previewMedia",
+    headerSubtitle: "lx.pick.media / lx.media.preview",
     emptyHint: "Tap + to pick photos.",
     previewHint: "Tap Preview to open the full selection.",
     galleryHint: "Tap Preview to open the full selection.",
@@ -306,7 +306,7 @@ async function enrichVideoItemsWithMetadata(items: ChosenMedia[]): Promise<Chose
   return Promise.all(
     items.map(async (item) => {
       if (item.type !== "video") return item;
-      const info = await lx.getVideoInfo({ path: item.path });
+      const info = await lx.media.videoInfo({ path: item.path });
       const display = resolveVideoDisplaySize(info);
       return display ? { ...item, ...display } : item;
     }),
@@ -467,7 +467,7 @@ export default definePage({
         });
 
         try {
-          const handle = lx.previewMedia(request);
+          const handle = lx.media.preview(request);
           // Telemetry: log first-paint latency. The showcase doesn't have an
           // underlying overlay to hide, so we just observe and log.
           const startedAt = Date.now();
@@ -497,7 +497,7 @@ export default definePage({
             d.previewSessionError = isAbort ? "" : (errorMessage(error, "Preview failed"));
           });
           if (!isAbort) {
-            console.error("[media-demo] previewMedia failed:", error);
+            console.error("[media-demo] media.preview failed:", error);
             lx.ui.toast({ title: errorMessage(error, "Preview failed"), icon: "none" });
           }
           return null;
@@ -802,14 +802,14 @@ export default definePage({
           d.imageInfoResult = null;
         });
         try {
-          const info = await lx.getImageInfo({ path: picked });
+          const info = await lx.media.imageInfo({ path: picked });
           const size = await helpers.getFileSize(picked);
           page.update(d => {
             d.imageInfoResult = { ...info, size };
             d.imageInfoBusy = false;
           });
         } catch (error) {
-          const message = errorMessage(error, "getImageInfo failed");
+          const message = errorMessage(error, "media.imageInfo failed");
           page.update(d => {
             d.imageInfoError = message;
             d.imageInfoResult = null;
@@ -841,14 +841,14 @@ export default definePage({
           d.videoInfoResult = null;
         });
         try {
-          const info = await lx.getVideoInfo({ path: picked });
+          const info = await lx.media.videoInfo({ path: picked });
           page.update(d => {
             d.videoInfoResult = info;
             d.videoInfoBusy = false;
             d.thumbnailSourceInfo = info;
           });
         } catch (error) {
-          const message = errorMessage(error, "getVideoInfo failed");
+          const message = errorMessage(error, "media.videoInfo failed");
           page.update(d => {
             d.videoInfoBusy = false;
             d.videoInfoError = message;
@@ -893,7 +893,7 @@ export default definePage({
         const maxHeight = parsePositiveInt(page.data.thumbnailMaxHeight);
         const timeMs = parseNonNegativeInt(page.data.thumbnailTimeMs);
 
-        const payload: ExtractVideoThumbnailOptions = {
+        const payload: VideoThumbnailOptions = {
           path: sourcePath,
           quality,
         };
@@ -913,13 +913,13 @@ export default definePage({
           d.thumbnailResult = null;
         });
         try {
-          const thumbnail = await lx.extractVideoThumbnail(payload);
+          const thumbnail = await lx.media.videoThumbnail(payload);
           page.update(d => {
             d.thumbnailResult = thumbnail;
             d.thumbnailBusy = false;
           });
         } catch (error) {
-          const message = errorMessage(error, "extractVideoThumbnail failed");
+          const message = errorMessage(error, "media.videoThumbnail failed");
           page.update(d => {
             d.thumbnailError = message;
             d.thumbnailResult = null;
@@ -993,7 +993,7 @@ export default definePage({
           d.videoCompressProgress = 0;
         });
 
-        const task = lx.compressVideo(payload);
+        const task = lx.media.compressVideo(payload);
         compressVideoTask = task;
         try {
           for await (const { progress } of task.progress) {
@@ -1090,9 +1090,9 @@ export default definePage({
         });
 
         try {
-          const result = await lx.compressImage(payload);
+          const result = await lx.media.compressImage(payload);
           const resultPath = result.uri;
-          const info = await lx.getImageInfo({ path: resultPath });
+          const info = await lx.media.imageInfo({ path: resultPath });
           const size = await helpers.getFileSize(resultPath);
           page.update(d => {
             d.compressResult = { path: resultPath, width: info.width, height: info.height, type: info.type, size };
@@ -1135,7 +1135,7 @@ export default definePage({
             count: 1, mediaType: ["image"], sourceType: ["camera"], camera: "back",
           });
           if (result.status === 'canceled') return;
-          await lx.saveImageToPhotosAlbum({ filePath: result.files[0].path });
+          await lx.media.saveToLibrary(result.files[0].path);
           lx.ui.toast({ title: "Image saved to album", icon: "success" });
         } catch (error) {
           lx.ui.toast({ title: errorMessage(error, "Failed to save image"), icon: "none" });
@@ -1151,7 +1151,7 @@ export default definePage({
             count: 1, mediaType: ["video"], sourceType: ["camera"], camera: "back", maxDurationSeconds: 60,
           });
           if (result.status === 'canceled') return;
-          await lx.saveVideoToPhotosAlbum({ filePath: result.files[0].path });
+          await lx.media.saveToLibrary(result.files[0].path);
           lx.ui.toast({ title: "Video saved to album", icon: "success" });
         } catch (error) {
           lx.ui.toast({ title: errorMessage(error, "Failed to save video"), icon: "none" });

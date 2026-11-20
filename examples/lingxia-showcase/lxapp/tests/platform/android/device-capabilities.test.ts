@@ -91,7 +91,7 @@ test('scan, read, and observe Wi-Fi on a real radio', {
 test('save an image and a video into the photo library', {
   skip: androidMediaSkip,
   id: 'ANDROID-PHOTOS-001',
-  covers: ['lx.saveImageToPhotosAlbum', 'lx.saveVideoToPhotosAlbum', 'lx.downloadFile'],
+  covers: ['lx.media.saveToLibrary', 'lx.media.saveToLibrary', 'lx.downloadFile'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
   reason: 'needs the HTTP fixture reachable from the device (adb reverse) and an Android host',
@@ -104,8 +104,8 @@ test('save an image and a video into the photo library', {
   const saved = await app.logic.eval({ timeout: 40_000 }, async ({ lx }, base) => {
     const png = await lx.downloadFile({ url: base + '/media/sample.png' }).result;
     const mp4 = await lx.downloadFile({ url: base + '/media/sample.mp4' }).result;
-    await lx.saveImageToPhotosAlbum({ filePath: png.uri });
-    await lx.saveVideoToPhotosAlbum({ filePath: mp4.uri });
+    await lx.media.saveToLibrary(png.uri);
+    await lx.media.saveToLibrary(mp4.uri);
     return { image: png.sizeBytes, video: mp4.sizeBytes };
   }, httpBase ?? '');
   expect(saved.image).toBeGreaterThan(0);
@@ -114,7 +114,7 @@ test('save an image and a video into the photo library', {
   await t.step('a missing source rejects instead of reporting a save', async () => {
     const rejected: Caught = await app.logic.eval(async ({ lx }) => {
       try {
-        await lx.saveImageToPhotosAlbum({ filePath: 'lx://temp/does-not-exist.png' });
+        await lx.media.saveToLibrary('lx://temp/does-not-exist.png');
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };

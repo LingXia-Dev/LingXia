@@ -82,9 +82,7 @@ const GROUPS = [
     title: 'Media',
     summary: 'Preview, transcode, and save images and video.',
     members: [
-      'previewMedia', 'getImageInfo', 'compressImage',
-      'saveImageToPhotosAlbum', 'saveVideoToPhotosAlbum',
-      'createVideoContext', 'getVideoInfo', 'extractVideoThumbnail', 'compressVideo',
+      'media', 'createVideoContext',
     ],
   },
   {

@@ -167,14 +167,14 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn getVideoInfo(
-            ts_params = "options: GetVideoInfoOptions",
+        namespace MediaApi = crate::media::media_namespace(ctx)?;
+        fn videoInfo(
+            ts_params = "options: VideoInfoOptions",
             ts_return = "Promise<VideoInfo>"
         ) = get_video_info_api;
-        fn extractVideoThumbnail(
-            ts_params = "options: ExtractVideoThumbnailOptions",
-            ts_return = "Promise<ExtractVideoThumbnailResult>"
+        fn videoThumbnail(
+            ts_params = "options: VideoThumbnailOptions",
+            ts_return = "Promise<VideoThumbnailResult>"
         ) = extract_video_thumbnail_api;
         fn compressVideo(
             ts_params = "options: CompressVideoOptions",
@@ -203,16 +203,17 @@ async fn get_video_info_api(
         .map_err(|err| js_error_from_lxapp_error(&err))?;
     let normalized_path = resolved.to_string_lossy().into_owned();
 
-    let response_path = if trimmed_path.starts_with("lx://")
-        || is_bundle_relative_path(trimmed_path)
-    {
-        trimmed_path.to_string()
-    } else {
-        lxapp
-            .to_uri(&resolved)
-            .ok_or_else(|| js_internal_error("getVideoInfo failed to convert path to lx:// uri"))?
-            .into_string()
-    };
+    let response_path =
+        if trimmed_path.starts_with("lx://") || is_bundle_relative_path(trimmed_path) {
+            trimmed_path.to_string()
+        } else {
+            lxapp
+                .to_uri(&resolved)
+                .ok_or_else(|| {
+                    js_internal_error("media.videoInfo failed to convert path to lx:// uri")
+                })?
+                .into_string()
+        };
 
     runtime
         .get_video_info(&normalized_path)
@@ -235,7 +236,7 @@ async fn extract_video_thumbnail_api(
 
     let explicit_output_uri = explicit_lx_output_uri(options.output_path.as_deref());
     let output_path = resolve_thumbnail_output_path(&lxapp, options.output_path.as_deref())?;
-    ensure_distinct_video_paths(&resolved_source, &output_path, "extractVideoThumbnail")?;
+    ensure_distinct_video_paths(&resolved_source, &output_path, "media.videoThumbnail")?;
     let request = ExtractVideoThumbnailRequest {
         source_uri,
         output_path: output_path.clone(),
@@ -255,9 +256,7 @@ async fn extract_video_thumbnail_api(
         None => lxapp
             .to_uri(&thumbnail.path)
             .ok_or_else(|| {
-                js_internal_error(
-                    "extractVideoThumbnail failed to convert output path to lx:// uri",
-                )
+                js_internal_error("media.videoThumbnail failed to convert output path to lx:// uri")
             })?
             .into_string(),
     };
@@ -289,7 +288,7 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
 
     let explicit_output_uri = explicit_lx_output_uri(options.output_path.as_deref());
     let output_path = resolve_compress_video_output_path(&lxapp, options.output_path.as_deref())?;
-    ensure_distinct_video_paths(&resolved_source, &output_path, "compressVideo")?;
+    ensure_distinct_video_paths(&resolved_source, &output_path, "media.compressVideo")?;
     reject_mixed_compress_settings(
         options.quality.as_deref(),
         options.bitrate,
@@ -518,7 +517,7 @@ fn resolve_thumbnail_output_path(
     lxapp: &LxApp,
     raw_output_path: Option<&str>,
 ) -> JSResult<PathBuf> {
-    resolve_output_path(lxapp, raw_output_path, "extractVideoThumbnail", || {
+    resolve_output_path(lxapp, raw_output_path, "media.videoThumbnail", || {
         generate_thumbnail_output_path(&lxapp.temp_dir)
     })
 }
@@ -527,7 +526,7 @@ fn resolve_compress_video_output_path(
     lxapp: &LxApp,
     raw_output_path: Option<&str>,
 ) -> JSResult<PathBuf> {
-    resolve_output_path(lxapp, raw_output_path, "compressVideo", || {
+    resolve_output_path(lxapp, raw_output_path, "media.compressVideo", || {
         generate_compress_video_output_path(&lxapp.temp_dir)
     })
 }
@@ -932,8 +931,8 @@ mod tests {
         let other = base.path().join("thumbnail.jpg");
         fs::write(&source, b"video").unwrap();
 
-        assert!(ensure_distinct_video_paths(&source, &source, "extractVideoThumbnail").is_err());
-        assert!(ensure_distinct_video_paths(&source, &other, "extractVideoThumbnail").is_ok());
+        assert!(ensure_distinct_video_paths(&source, &source, "media.videoThumbnail").is_err());
+        assert!(ensure_distinct_video_paths(&source, &other, "media.videoThumbnail").is_ok());
     }
 
     #[test]

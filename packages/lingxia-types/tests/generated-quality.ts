@@ -70,7 +70,7 @@ lx.nav.go({ page: "detail", query: {} });
 lx.nav.go(-1);
 const appDownloadResult: DownloadTask<AppDownloadResult> = lx.downloadFile(appDownload);
 const downloadsResult: DownloadTask<DownloadsDownloadResult> = lx.downloadFile(downloadsDownload);
-const previewResult: PreviewMediaHandle = lx.previewMedia(previewOptions);
+const previewResult: PreviewMediaHandle = lx.media.preview(previewOptions);
 const managedFile: LxFile = files.file("lx://userdata/notes.txt");
 const textResult: Promise<string> = managedFile.text();
 const bytesResult: Promise<Uint8Array> = managedFile.bytes();

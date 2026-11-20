@@ -46,13 +46,13 @@ export default [
     title: "pick.media and pick.code pick a real file through the OS panel",
     mode: "external-ui",
     covers: ["lx.pick.media", "lx.pick.code"],
-    reason: "the desktop file panel starves the in-process driver and hides its file rows from AX; previewMedia is DESKTOP-PREVIEW-MEDIA-001",
+    reason: "the desktop file panel starves the in-process driver and hides its file rows from AX; media.preview is DESKTOP-PREVIEW-MEDIA-001",
   },
   {
     id: "PEND-PHOTOS-001",
     title: "save into the photos album on iOS, where the permission sheet gates it",
     mode: "external-ui",
-    covers: ["lx.saveImageToPhotosAlbum", "lx.saveVideoToPhotosAlbum"],
+    covers: ["lx.media.saveToLibrary", "lx.media.saveToLibrary"],
     reason: "Android is proven by ANDROID-PHOTOS-001 (MediaStore needs no prompt); iOS still shows the photos permission sheet",
   },
   {

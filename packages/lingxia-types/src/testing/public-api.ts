@@ -51,6 +51,7 @@ import type {
   UiApi,
   NavApi,
   PickApi,
+  MediaApi,
   NotificationApi,
   PageHandle,
   PreviewMediaHandle,
@@ -75,25 +76,20 @@ export const LX_API_NAMES = [
   'host',
   'automation',
   'clipboard',
-  'compressImage',
-  'compressVideo',
   'connectWifi',
   'createVideoContext',
   'downloadFile',
   'env',
-  'extractVideoThumbnail',
   'fs',
   'getAppInfo',
   'getConnectedWifi',
   'getDeviceInfo',
-  'getImageInfo',
   'getLocation',
   'getNetworkInfo',
   'getScreenInfo',
   'getStorage',
   'getSystemSetting',
   'getUpdateManager',
-  'getVideoInfo',
   'getWifiList',
   'makePhoneCall',
   'nav',
@@ -104,11 +100,9 @@ export const LX_API_NAMES = [
   'onNetworkChange',
   'onWifiConnected',
   'openExternal',
+  'media',
   'openFile',
   'pick',
-  'previewMedia',
-  'saveImageToPhotosAlbum',
-  'saveVideoToPhotosAlbum',
   'setDeviceOrientation',
   'setMoreActions',
   'share',
@@ -183,6 +177,7 @@ const NAVIGATION_BAR_API = ['update'] as const;
 const TAB_BAR_API = ['update'] as const;
 const UI_API = ['actionSheet', 'alert', 'confirm', 'toast'] as const;
 const PICK_API = ['code', 'directory', 'file', 'files', 'media'] as const;
+const MEDIA_API = ['compressImage', 'compressVideo', 'imageInfo', 'preview', 'saveToLibrary', 'videoInfo', 'videoThumbnail'] as const;
 const NAV_API = ['back', 'go', 'leaveApp', 'reset'] as const;
 const TERMINAL_API = ['colorSchemes', 'fonts', 'settings', 'windows'] as const;
 const TERMINAL_SETTINGS_API = ['get', 'onChange', 'reset', 'update'] as const;
@@ -405,6 +400,7 @@ export const LX_RUNTIME_SURFACES = [
       'env',
       'fs',
       'host',
+      'media',
       'nav',
       'navigationBar',
       'pick',
@@ -508,6 +504,12 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.pick',
     members: PICK_API,
+  },
+  {
+    name: 'lx.media',
+    layer: 'logic',
+    expression: 'lx.media',
+    members: MEDIA_API,
   },
   {
     name: 'lx.nav',
@@ -769,7 +771,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: ['result', 'progress'],
     optionalProperties: [],
     fixture: 'external-media',
-    factory: 'lx.compressVideo',
+    factory: 'lx.media.compressVideo',
   },
   {
     name: 'HostAppUpdateInfo',
@@ -793,7 +795,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: ['completed', 'current', 'presented'],
     optionalProperties: [],
     fixture: 'external-ui',
-    factory: 'lx.previewMedia',
+    factory: 'lx.media.preview',
   },
   {
     name: 'PageSurface',
@@ -876,6 +878,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,
   AssertTrue<Exact<UiApi, typeof UI_API>>,
   AssertTrue<Exact<PickApi, typeof PICK_API>>,
+  AssertTrue<Exact<MediaApi, typeof MEDIA_API>>,
   AssertTrue<Exact<NavApi, typeof NAV_API>>,
   AssertTrue<Exact<TerminalApi, typeof TERMINAL_API>>,
   AssertTrue<Exact<TerminalSettingsApi, typeof TERMINAL_SETTINGS_API>>,

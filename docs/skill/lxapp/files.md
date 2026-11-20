@@ -167,7 +167,7 @@ rejects with `E_NOT_SUPPORTED`, so catch it and fall back to `pick.files`.
 
 ## Media outputs
 
-`lx.pick.media`, `compressImage`, `compressVideo`, and video thumbnails return
+`lx.pick.media` on mobile, `lx.media.compressImage`, `compressVideo` and `videoThumbnail` return
 temp files. `lx.fs.copy` keeps a copy; `lx.fs.rename` moves it into userdata or
 usercache.
 

@@ -867,7 +867,7 @@ rong::js_api! {
     type: string;
 }"###;
 
-        /// Handle returned by `lx.compressVideo`.
+        /// Handle returned by `lx.media.compressVideo`.
         ///
         /// Awaiting `task.result` resolves with the final {@link CompressVideoResult}.
         /// Iterating `task.progress` with `for await` yields {@link CompressVideoProgressEvent}s
@@ -929,7 +929,7 @@ rong::js_api! {
     sizeBytes: number;
 }"###;
 
-        type ExtractVideoThumbnailOptions = r###"{
+        type VideoThumbnailOptions = r###"{
     /**
      * Source video path or `lx://` URI.
      */
@@ -959,7 +959,7 @@ rong::js_api! {
     quality?: number;
 }"###;
 
-        type ExtractVideoThumbnailResult = r###"{
+        type VideoThumbnailResult = r###"{
     /**
      * Generated thumbnail file path.
      */
@@ -987,7 +987,7 @@ rong::js_api! {
 
         /// Media picker, preview, scan, and file processing APIs.
         ///
-        type GetImageInfoOptions = r###"{
+        type ImageInfoOptions = r###"{
     path: string;
 }"###;
 
@@ -1000,7 +1000,7 @@ rong::js_api! {
     timeoutMs?: number;
 }"###;
 
-        type GetVideoInfoOptions = r###"{
+        type VideoInfoOptions = r###"{
     /**
      * Video file path or `lx://` URI.
      */
@@ -1387,9 +1387,6 @@ rong::js_api! {
     overwrite?: boolean;
 }"###;
 
-        type SaveMediaOptions = r###"{
-    filePath: string;
-}"###;
 
         type PickCodeOptions = r###"{
     /** Default true. False also lets the user pick a picture to read the code from. */
@@ -2289,6 +2286,7 @@ true
         type HostAppApi = "globalThis.HostAppApi";
         type LxEnv = "globalThis.LxEnv";
         type NavApi = "globalThis.NavApi";
+        type MediaApi = "globalThis.MediaApi";
         type PickApi = "globalThis.PickApi";
         type NavigationBarApi = "globalThis.NavigationBarApi";
         type TabBarApi = "globalThis.TabBarApi";

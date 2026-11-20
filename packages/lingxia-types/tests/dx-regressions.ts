@@ -53,7 +53,7 @@ async function taskBoundary() {
   task.next();
   const result = await task.result;
   result.uri.toUpperCase();
-  const preview = lx.previewMedia(result.uri);
+  const preview = lx.media.preview(result.uri);
   const presented = await preview.presented;
   if (presented.status === 'notPresented') presented.reason;
 }

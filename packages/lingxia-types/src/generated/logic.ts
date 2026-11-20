@@ -901,7 +901,7 @@ export type CompressVideoResult = {
 };
 
 /**
- * Handle returned by `lx.compressVideo`.
+ * Handle returned by `lx.media.compressVideo`.
  * Awaiting `task.result` resolves with the final {@link CompressVideoResult}.
  * Iterating `task.progress` with `for await` yields {@link CompressVideoProgressEvent}s
  * while the transcode runs.
@@ -1069,55 +1069,6 @@ export type DownloadsDownloadResult = {
  */
 export type ExternalPageName = string;
 
-export type ExtractVideoThumbnailOptions = {
-    /**
-     * Source video path or `lx://` URI.
-     */
-    path: string;
-    /**
-     * Optional output image path. If omitted, runtime chooses a temporary path.
-     */
-    outputPath?: string;
-    /**
-     * Max output width in pixels.
-     * Optional; when set with/without `maxHeight`, output keeps aspect ratio (no cropping).
-     */
-    maxWidth?: number;
-    /**
-     * Max output height in pixels.
-     * Optional; when set with/without `maxWidth`, output keeps aspect ratio (no cropping).
-     */
-    maxHeight?: number;
-    /**
-     * Target frame time in milliseconds from video start.
-     * `0` means first frame.
-     */
-    timeMs?: number;
-    /**
-     * JPEG quality in range `0-100`.
-     */
-    quality?: number;
-};
-
-export type ExtractVideoThumbnailResult = {
-    /**
-     * Generated thumbnail file path.
-     */
-    uri: string;
-    /**
-     * Output image width in pixels.
-     */
-    width: number;
-    /**
-     * Output image height in pixels.
-     */
-    height: number;
-    /**
-     * Output MIME type, usually `image/jpeg`.
-     */
-    type: string;
-};
-
 export type FileDialogFilter = {
     /** Optional label shown in the native dialog. */
     name?: string;
@@ -1155,24 +1106,12 @@ export type FsWriteOptions = {
     overwrite?: boolean;
 };
 
-/** Media picker, preview, scan, and file processing APIs. */
-export type GetImageInfoOptions = {
-    path: string;
-};
-
 /** Location APIs. */
 export type GetLocationOptions = {
     coordinateSystem?: 'wgs84' | 'gcj02';
     altitude?: boolean;
     isHighAccuracy?: boolean;
     timeoutMs?: number;
-};
-
-export type GetVideoInfoOptions = {
-    /**
-     * Video file path or `lx://` URI.
-     */
-    path: string;
 };
 
 export type HostAppApi = globalThis.HostAppApi;
@@ -1256,6 +1195,11 @@ export type HostAppUpdateTask = Task<HostAppUpdateResult, HostAppUpdateEvent>;
  */
 export type HostOs = 'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown';
 
+/** Media picker, preview, scan, and file processing APIs. */
+export type ImageInfoOptions = {
+    path: string;
+};
+
 export type InstalledTerminalFont = {
     family: string;
     monospace: boolean;
@@ -1316,6 +1260,8 @@ export type LxEnv = globalThis.LxEnv;
 export type MakePhoneCallOptions = {
     phoneNumber: string;
 };
+
+export type MediaApi = globalThis.MediaApi;
 
 export type MediaObjectFit = 'cover' | 'contain' | 'fill' | 'fit';
 
@@ -1814,10 +1760,6 @@ export type PreviewMediaSource = {
 };
 
 export type ResolvedAppearance = 'light' | 'dark';
-
-export type SaveMediaOptions = {
-    filePath: string;
-};
 
 /**
  * Where `lx.host.setBadge` paints.
@@ -2834,6 +2776,62 @@ export type VideoInfo = {
     path: string;
 };
 
+export type VideoInfoOptions = {
+    /**
+     * Video file path or `lx://` URI.
+     */
+    path: string;
+};
+
+export type VideoThumbnailOptions = {
+    /**
+     * Source video path or `lx://` URI.
+     */
+    path: string;
+    /**
+     * Optional output image path. If omitted, runtime chooses a temporary path.
+     */
+    outputPath?: string;
+    /**
+     * Max output width in pixels.
+     * Optional; when set with/without `maxHeight`, output keeps aspect ratio (no cropping).
+     */
+    maxWidth?: number;
+    /**
+     * Max output height in pixels.
+     * Optional; when set with/without `maxWidth`, output keeps aspect ratio (no cropping).
+     */
+    maxHeight?: number;
+    /**
+     * Target frame time in milliseconds from video start.
+     * `0` means first frame.
+     */
+    timeMs?: number;
+    /**
+     * JPEG quality in range `0-100`.
+     */
+    quality?: number;
+};
+
+export type VideoThumbnailResult = {
+    /**
+     * Generated thumbnail file path.
+     */
+    uri: string;
+    /**
+     * Output image width in pixels.
+     */
+    width: number;
+    /**
+     * Output image height in pixels.
+     */
+    height: number;
+    /**
+     * Output MIME type, usually `image/jpeg`.
+     */
+    type: string;
+};
+
 export type VisibilityPreference = 'auto' | 'hidden';
 
 export type WifiConnectedCallback = (info: WifiConnectedInfo) => void;
@@ -3242,51 +3240,12 @@ declare global {
     getLocation(options?: GetLocationOptions): Promise<LocationInfo>;
     /** Identify the running lxapp: its id, display name, version, and channel. */
     getLxAppInfo(): LxAppInfo;
-    /** Read an image's dimensions, type, and orientation without decoding it into a view. */
-    getImageInfo(options: GetImageInfoOptions): Promise<ImageInfo>;
-    /** Re-encode an image at a lower quality or size, writing a new managed file. */
-    compressImage(options: CompressImageOptions): Promise<CompressImageResult>;
-    /**
-     * Synchronously returns a JS handle so listeners can be attached before the
-     * first event fires:
-     * - `presented`: resolves `{ status: 'presented' }` only after the first
-     * frame; otherwise `{ status: 'notPresented', reason }`. Never rejects.
-     * - `current`: `{ index, source }` snapshot of the item on screen, updated
-     * live as the user swipes / the session auto-advances.
-     * - `onChange(listener)`: fires `{ index, source }` for every item change
-     * (the initial item is seeded into `current`, and re-fired by native so
-     * late platforms still converge); returns an unsubscribe function.
-     * - `completed`: Promise resolving `{ reason, index, source }` when the
-     * session ends, or rejecting on abort / error. `source` is the item that
-     * was on screen when the preview closed — handed back verbatim so the
-     * caller never re-indexes their own array.
-     */
-    previewMedia(options: PreviewMediaOptions): PreviewMediaHandle;
-    /** Save an image into the system photo library. */
-    saveImageToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
-    /** Save a video into the system photo library. */
-    saveVideoToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
     /**
      * A control handle for the `<lx-video>` with this id, or on a GPU page for the player of this
      * `useVideo` name or `<video id>`.
      */
     createVideoContext(name: string): VideoContext;
-    /**
-     * Reads local video metadata for upload preflight and presentation.
-     * Size, dimensions, duration, and path form the portable core. Container type,
-     * rotation, and track-level codec/audio fields are best-effort and may be
-     * omitted when the platform cannot determine them. The receiving service must
-     * still validate the uploaded bytes.
-     */
-    getVideoInfo(options: GetVideoInfoOptions): Promise<VideoInfo>;
-    /** Write one frame of a video out as an image file. */
-    extractVideoThumbnail(options: ExtractVideoThumbnailOptions): Promise<ExtractVideoThumbnailResult>;
-    /**
-     * Transcode a video to a smaller file.
-     * Returns a task handle synchronously, so progress and cancellation can be
-     * wired up before transcoding starts.
-     */
-    compressVideo(options: CompressVideoOptions): CompressVideoTask;
+    readonly media: MediaApi;
     readonly pick: PickApi;
     /**
      * Hand content to the system share sheet.
@@ -3344,6 +3303,53 @@ declare global {
   interface LxEnv {
     readonly USER_DATA_PATH: 'lx://userdata';
     readonly USER_CACHE_PATH: 'lx://usercache';
+  }
+}
+
+declare global {
+  interface MediaApi {
+    /** Read an image's dimensions, type, and orientation without decoding it into a view. */
+    imageInfo(options: ImageInfoOptions): Promise<ImageInfo>;
+    /** Re-encode an image at a lower quality or size, writing a new managed file. */
+    compressImage(options: CompressImageOptions): Promise<CompressImageResult>;
+    /**
+     * Synchronously returns a JS handle so listeners can be attached before the
+     * first event fires:
+     * - `presented`: resolves `{ status: 'presented' }` only after the first
+     * frame; otherwise `{ status: 'notPresented', reason }`. Never rejects.
+     * - `current`: `{ index, source }` snapshot of the item on screen, updated
+     * live as the user swipes / the session auto-advances.
+     * - `onChange(listener)`: fires `{ index, source }` for every item change
+     * (the initial item is seeded into `current`, and re-fired by native so
+     * late platforms still converge); returns an unsubscribe function.
+     * - `completed`: Promise resolving `{ reason, index, source }` when the
+     * session ends, or rejecting on abort / error. `source` is the item that
+     * was on screen when the preview closed — handed back verbatim so the
+     * caller never re-indexes their own array.
+     */
+    preview(options: PreviewMediaOptions): PreviewMediaHandle;
+    /**
+     * Saves a picture or a video into the system photo library. Which one it is
+     * comes from the file's type (its extension, else its leading bytes); any
+     * other file rejects `E_INVALID_ARG`.
+     */
+    saveToLibrary(path: string): Promise<void>;
+    /**
+     * Reads local video metadata for upload preflight and presentation.
+     * Size, dimensions, duration, and path form the portable core. Container type,
+     * rotation, and track-level codec/audio fields are best-effort and may be
+     * omitted when the platform cannot determine them. The receiving service must
+     * still validate the uploaded bytes.
+     */
+    videoInfo(options: VideoInfoOptions): Promise<VideoInfo>;
+    /** Write one frame of a video out as an image file. */
+    videoThumbnail(options: VideoThumbnailOptions): Promise<VideoThumbnailResult>;
+    /**
+     * Transcode a video to a smaller file.
+     * Returns a task handle synchronously, so progress and cancellation can be
+     * wired up before transcoding starts.
+     */
+    compressVideo(options: CompressVideoOptions): CompressVideoTask;
   }
 }
 

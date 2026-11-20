@@ -151,7 +151,21 @@ fn extension(name: &str) -> Option<&str> {
     (!stem.is_empty() && !ext.is_empty()).then_some(ext)
 }
 
-/// The one extension → MIME table for picked files.
+/// A local file's type: from its extension, else from its leading bytes.
+pub(crate) fn mime_for_path(path: &Path) -> &'static str {
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    match extension(&name) {
+        Some(_) => mime_for_name(&name),
+        None => sniff_extension(path).map_or("application/octet-stream", |ext| {
+            mime_for_name(&format!("f.{ext}"))
+        }),
+    }
+}
+
+/// The one extension → MIME table: every file type LingXia reports.
 pub(crate) fn mime_for_name(name: &str) -> &'static str {
     let Some(ext) = extension(name) else {
         return "application/octet-stream";

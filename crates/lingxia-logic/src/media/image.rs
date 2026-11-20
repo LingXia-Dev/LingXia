@@ -49,9 +49,9 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn getImageInfo(
-            ts_params = "options: GetImageInfoOptions",
+        namespace MediaApi = crate::media::media_namespace(ctx)?;
+        fn imageInfo(
+            ts_params = "options: ImageInfoOptions",
             ts_return = "Promise<ImageInfo>"
         ) = get_image_info_api;
         fn compressImage(
@@ -73,17 +73,18 @@ async fn get_image_info_api(ctx: JSContext, options: JSGetImageInfoOptions) -> J
         .map_err(|err| js_error_from_lxapp_error(&err))?;
     let normalized_path = resolved.to_string_lossy().into_owned();
 
-    let response_path = if trimmed_path.starts_with("lx://")
-        || is_bundle_relative_path(trimmed_path)
-    {
-        // Keep relative bundle paths unchanged (e.g. `images/1.png`) so WebView-relative usage works.
-        trimmed_path.to_string()
-    } else {
-        lxapp
-            .to_uri(&resolved)
-            .ok_or_else(|| js_internal_error("getImageInfo failed to convert path to lx:// uri"))?
-            .into_string()
-    };
+    let response_path =
+        if trimmed_path.starts_with("lx://") || is_bundle_relative_path(trimmed_path) {
+            // Keep relative bundle paths unchanged (e.g. `images/1.png`) so WebView-relative usage works.
+            trimmed_path.to_string()
+        } else {
+            lxapp
+                .to_uri(&resolved)
+                .ok_or_else(|| {
+                    js_internal_error("media.imageInfo failed to convert path to lx:// uri")
+                })?
+                .into_string()
+        };
 
     runtime
         .get_image_info(&normalized_path)

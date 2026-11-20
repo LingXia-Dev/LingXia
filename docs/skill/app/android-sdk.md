@@ -4,7 +4,7 @@ Android host hooks beyond `Lingxia.quickStart(activity)`.
 
 ## URL player engine
 
-Replace the default ExoPlayer URL backend of `lx.previewMedia` and media
+Replace the default ExoPlayer URL backend of `lx.media.preview` and media
 swiper video with an engine the host APK ships, such as libmpv. Register on the
 main thread before `quickStart`; load native `.so` files earlier, in
 `Application.onCreate`.

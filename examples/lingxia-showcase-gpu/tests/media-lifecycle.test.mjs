@@ -10,7 +10,7 @@ function task() {
 function fixture() {
  let page, disposed = false, late = 0;
  const tasks = [], toasts = [], image = deferred();
- const lx = { navigationBar: {update: async () => {}}, compressVideo() {const t=task();tasks.push(t);return t;}, compressImage: () => image.promise, ui: { toast: value => toasts.push(value) } };
+ const lx = { navigationBar: {update: async () => {}}, media: { compressVideo() {const t=task();tasks.push(t);return t;}, compressImage: () => image.promise }, ui: { toast: value => toasts.push(value) } };
  page = mountPage(source, { lx, console }, { onWrite() { if (disposed) late++; } });
  page.data.thumbnailVideoPath='lx://temp/video';
  return {page,tasks,lx,image,toasts,late:()=>late,unload(){disposed=true;page.onUnload();}};
@@ -30,7 +30,7 @@ test('cancel then restart retains the new task when the old result settles', asy
  assert.equal(f.page.data.videoCompressResult.uri,'new');assert.equal(f.page.data.videoCompressBusy,false);
 });
 test('synchronous task creation failure restores controls and surfaces the error', async () => {
- const f=fixture();f.lx.compressVideo=()=>{throw Error('unsupported codec');};await f.page.compressSelectedVideo();
+ const f=fixture();f.lx.media.compressVideo=()=>{throw Error('unsupported codec');};await f.page.compressSelectedVideo();
  assert.equal(f.page.data.videoCompressBusy,false);assert.match(f.page.data.videoCompressError,/unsupported codec/);
 });
 test('hidden image compression cannot publish late output', async () => {
@@ -40,7 +40,7 @@ test('hidden image compression cannot publish late output', async () => {
 });
 test('preview unload aborts its handle and releases the change listener on rejection', async () => {
  const f=fixture(), completed=deferred();let signal, removed=0;
- f.lx.previewMedia=request=>{signal=request.signal;return {presented:Promise.resolve({status:'presented'}),completed:completed.promise,onChange(){return ()=>removed++;}};};
+ f.lx.media.preview=request=>{signal=request.signal;return {presented:Promise.resolve({status:'presented'}),completed:completed.promise,onChange(){return ()=>removed++;}};};
  f.page.data.thumbnailResult={uri:'lx://temp/image'};const run=f.page.previewVideoThumbnail();f.unload();
  assert.equal(signal.aborted,true);completed.reject(Error('aborted'));await run;
  assert.equal(removed,1);assert.equal(f.late(),0);assert.equal(f.toasts.length,0);

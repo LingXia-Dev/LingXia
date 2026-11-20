@@ -209,7 +209,7 @@ localized message:
 import { parseLxApiError, formatLxApiError } from '@lingxia/types/error'
 
 try {
-  await lx.saveImageToPhotosAlbum({ filePath })
+  await lx.media.saveToLibrary({ filePath })
 } catch (error) {
   const failure = parseLxApiError(error)
   if (!failure) throw error                 // not a runtime error; let it surface
