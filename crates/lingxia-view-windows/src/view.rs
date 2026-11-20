@@ -399,12 +399,12 @@ fn handle(
             };
             // SAFETY: an in-out point for a window of this thread.
             let _ = unsafe { ScreenToClient(hwnd, &mut at) };
-            // Windows counts a vertical notch away from the user as positive; the core counts
-            // toward the end of the axis. A horizontal notch to the right is already that.
+            // The core takes AppKit's sign: positive moves toward the start of the axis, as a
+            // vertical notch away from the user does; a horizontal notch right is the opposite.
             let (dx, dy) = if msg == WM_MOUSEWHEEL {
-                (0.0, -notches)
+                (0.0, notches)
             } else {
-                (notches, 0.0)
+                (-notches, 0.0)
             };
             host.input_age(input_age());
             let (x, y) = page.page_pixels((at.x as f32, at.y as f32));
