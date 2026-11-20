@@ -61,6 +61,54 @@ internal object PermissionManager {
         }
     }
 
+    /**
+     * A web page's request ([permissions] from its geolocation or capture prompt), gated as the
+     * lx feature it amounts to: a capture with a camera is [PermissionFeature.CAMERA] with its
+     * microphone in the same prompt, as lx video capture asks; microphone alone is
+     * [PermissionFeature.MICROPHONE]; location is [PermissionFeature.LOCATION]. A permission
+     * the host app does not declare is denied without a prompt, which the system would refuse.
+     */
+    fun ensureWebPermissions(
+        activity: Activity,
+        permissions: Array<String>,
+        onResult: (Boolean) -> Unit
+    ) {
+        val location = setOf(
+            android.Manifest.permission.ACCESS_FINE_LOCATION,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+        val declared = declaredPermissions(activity)
+        val feature = when {
+            android.Manifest.permission.CAMERA in permissions -> PermissionFeature.CAMERA
+            android.Manifest.permission.RECORD_AUDIO in permissions -> PermissionFeature.MICROPHONE
+            permissions.isNotEmpty() && permissions.all { it in location } -> PermissionFeature.LOCATION
+            else -> null
+        }
+        // Coarse location alone is enough for a page; any other permission must be declared.
+        val requested = if (feature == PermissionFeature.LOCATION) {
+            permissions.filter { it in declared }
+        } else {
+            permissions.toList().takeIf { list -> list.all { it in declared } }.orEmpty()
+        }
+        if (feature == null || requested.isEmpty()) {
+            android.util.Log.i(
+                "LingXia.Permission",
+                "web permission request ${permissions.joinToString()} denied: " +
+                    if (feature == null) "no lx feature covers it" else "the app does not declare it"
+            )
+            onResult(false)
+            return
+        }
+        ensurePermissions(activity, feature, requested.toTypedArray(), onResult)
+    }
+
+    private fun declaredPermissions(activity: Activity): Set<String> = try {
+        val info = activity.packageManager.getPackageInfo(activity.packageName, PackageManager.GET_PERMISSIONS)
+        info.requestedPermissions?.toSet().orEmpty()
+    } catch (_: PackageManager.NameNotFoundException) {
+        emptySet()
+    }
+
     fun handleRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,

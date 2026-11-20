@@ -50,6 +50,7 @@ Lingxia.setPermissionGate(object : PermissionGate {
 - `deny()` fails the lx API as permission denied without a system prompt and
   skips `afterPrompt`. An undecided prompt is denied when its activity is
   destroyed; prompts are gated one at a time.
+- A `<webview>` page's camera, microphone or location request passes the gate too, as `CAMERA` (with its microphone), `MICROPHONE` or `LOCATION`; a permission the app's manifest does not declare is denied without a prompt.
 - `prompt.blocked` (before) and `DENIED_PERMANENTLY` (after) mean the system
   will not prompt again: guide the user to Settings instead of explaining.
 - Harmony has the same API (`import { Lingxia, PermissionGate, … } from 'lingxia'`),

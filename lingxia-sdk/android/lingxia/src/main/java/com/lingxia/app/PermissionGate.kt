@@ -12,7 +12,11 @@ import androidx.core.content.ContextCompat
 import java.util.ArrayDeque
 
 /** The lx feature that needs a runtime permission. */
-enum class PermissionFeature { CAMERA, SCAN_CODE, MEDIA_LIBRARY, LOCATION, WIFI, NOTIFICATION }
+enum class PermissionFeature {
+    CAMERA, SCAN_CODE, MEDIA_LIBRARY, LOCATION, WIFI, NOTIFICATION,
+    /** A web page's microphone-only capture; one with a camera is [CAMERA]. */
+    MICROPHONE,
+}
 
 enum class PermissionOutcome {
     GRANTED,

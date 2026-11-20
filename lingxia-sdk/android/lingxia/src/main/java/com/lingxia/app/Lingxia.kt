@@ -243,7 +243,7 @@ object Lingxia {
                 if (hostActivity == null) {
                     callback.onReceiveValue(false)
                 } else {
-                    PermissionManager.ensurePermissions(hostActivity, perms) { granted ->
+                    PermissionManager.ensureWebPermissions(hostActivity, perms) { granted ->
                         callback.onReceiveValue(granted)
                     }
                 }
