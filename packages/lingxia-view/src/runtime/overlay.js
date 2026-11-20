@@ -84,6 +84,13 @@ function settleSheet(tapIndex) {
   if (sheet) outbound.push(reply(sheet.id, true, { tapIndex }));
 }
 
+/** The page was covered or left: its action sheets cancel, as a tap outside does. */
+export function cancelSheets() {
+  const had = sheets.length > 0;
+  while (sheets.length) settleSheet(-1);
+  return had;
+}
+
 /** The page went away; its connection, and Logic's calls waiting on it, went with it. */
 export function resetOverlays() {
   toast = null; modals = []; sheets = []; timers = []; outbound = [];

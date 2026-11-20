@@ -3,14 +3,14 @@ import { render as rendering, page } from './runtime/state.js';
 import { describe, prepare, prepareWindows, takeMovedAnchors, takeThrown, commit, discard, reset, dispatch, probeListRow } from './runtime/tree.js';
 import { createView, syncData, hasLocalUpdates, readsHostContext, envReads, envOf } from './runtime/hooks.js';
 import { configureActions, takeViewEvents, receiveActionResponse, takeActionErrors, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
-import { viewCall, overlayTimer, takeOverlayTimers, escapeOverlay } from './runtime/overlay.js';
-import { openPicker, pickerKey, closePicker, takePickerResults, pickerIdentity } from './runtime/picker.js';
+import { viewCall, overlayTimer, takeOverlayTimers, escapeOverlay, cancelSheets } from './runtime/overlay.js';
+import { openPicker, pickerKey, closePicker, takePickerResults, pickerIdentity, hasPicker } from './runtime/picker.js';
 import { takeFonts } from './runtime/fonts.js';
 import { takeReveals } from './runtime/reveal.js';
 import { takeFrameMeasures, frameMeasured } from './runtime/frames.js';
 import { wireAck } from './runtime/encode.js';
 import { takeLowered, seedLowered } from './runtime/elements.js';
-import { closeAfterExpired, closeOrphans, dismissHints, interest, ownedPopovers } from './runtime/toplayer.js';
+import { closeAfterExpired, closeOrphans, closePassing, dismissHints, interest, ownedPopovers } from './runtime/toplayer.js';
 import { takeSpans } from './runtime/profile.js';
 import { fieldText } from './runtime/calendar.js';
 
@@ -27,6 +27,16 @@ function unboundFieldText(kind, iso, opts) {
   } catch { return iso; }
 }
 
+// Pushed over, switched away from or closed inside the app: the passing layers close as a tap
+// outside would. Dialogs, manual popovers and toasts stay. True when anything closed.
+function pageLeft() {
+  const picker = hasPicker();
+  if (picker) closePicker();
+  const popovers = closePassing();
+  const sheets = cancelSheets();
+  return picker || popovers || sheets;
+}
+
 // The native session calls only these globals; module code stays unreachable from the host.
 export function publishHost(render, catalog) {
   Object.assign(globalThis, {
@@ -39,7 +49,7 @@ export function publishHost(render, catalog) {
     __lingxiaReadsHostContext: readsHostContext, __lingxiaEnvReads: envReads,
     __lingxiaAutomationAction: automationAction, __lingxiaTakeAutomationResults: takeAutomationResults,
     __lingxiaViewCall: viewCall, __lingxiaOverlayTimer: overlayTimer, __lingxiaTakeOverlayTimers: takeOverlayTimers,
-    __lingxiaEscape: escapeOverlay, __lingxiaInterest: interest, __lingxiaDismissHints: dismissHints, __lingxiaCloseAfter: closeAfterExpired, __lingxiaFonts: takeFonts, __lingxiaProbeListRow: probeListRow,
+    __lingxiaEscape: escapeOverlay, __lingxiaPageLeft: pageLeft, __lingxiaInterest: interest, __lingxiaDismissHints: dismissHints, __lingxiaCloseAfter: closeAfterExpired, __lingxiaFonts: takeFonts, __lingxiaProbeListRow: probeListRow,
     __lingxiaOpenPicker: openPicker, __lingxiaPickerKey: pickerKey, __lingxiaClosePicker: closePicker,
     __lingxiaTakePickerResults: takePickerResults, __lingxiaPickerIdentity: pickerIdentity,
     __lingxiaOwnedOverlays: () => JSON.stringify({ picker: pickerIdentity(), popovers: ownedPopovers() }),

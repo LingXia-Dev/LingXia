@@ -280,6 +280,17 @@ export function closeAfterExpired(id) {
   return entry?.kind === 'manual' && entry.open ? toggle(id, false) : false;
 }
 
+/** The page was covered or left inside the app: its open auto popovers and hints close as a tap
+ *  outside would. True when one did. */
+export function closePassing() {
+  const top = page.committed?.topLayer;
+  let changed = false;
+  // Innermost first, so a nested popover's onToggle runs before its parent's.
+  for (const [id, state] of [...(top?.popovers ?? [])].reverse())
+    if (state.open && state.kind !== 'manual') changed = toggle(id, false) || changed;
+  return changed;
+}
+
 /** The open popovers an invoker or interest trigger opened; one opened from code has no owner. */
 export function ownedPopovers() {
   const top = render.candidate?.topLayer ?? page.committed?.topLayer;

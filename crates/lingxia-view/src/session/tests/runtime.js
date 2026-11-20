@@ -1489,6 +1489,13 @@
     const entry = page.committed?.topLayer?.popovers.get(id);
     return entry?.kind === "manual" && entry.open ? toggle(id, false) : false;
   }
+  function closePassing() {
+    const top = page.committed?.topLayer;
+    let changed2 = false;
+    for (const [id, state] of [...top?.popovers ?? []].reverse())
+      if (state.open && state.kind !== "manual") changed2 = toggle(id, false) || changed2;
+    return changed2;
+  }
   function ownedPopovers() {
     const top = render.candidate?.topLayer ?? page.committed?.topLayer;
     return top ? [...top.popovers].filter(([id, entry]) => entry.open && (entry.anchorId || anchors.get(id))).map(([id]) => id) : [];
@@ -1676,6 +1683,11 @@
   function settleSheet(tapIndex) {
     const sheet = sheets.shift();
     if (sheet) outbound.push(reply(sheet.id, true, { tapIndex }));
+  }
+  function cancelSheets() {
+    const had = sheets.length > 0;
+    while (sheets.length) settleSheet(-1);
+    return had;
   }
   function resetOverlays() {
     toast = null;
@@ -5686,6 +5698,7 @@
     }
     return true;
   }
+  var hasPicker = () => picker !== null;
   var pickerIdentity = () => picker?.identity ?? null;
   function settle(value) {
     if (!picker) return;
@@ -6368,6 +6381,13 @@
       return iso3;
     }
   }
+  function pageLeft() {
+    const picker2 = hasPicker();
+    if (picker2) closePicker();
+    const popovers = closePassing();
+    const sheets2 = cancelSheets();
+    return picker2 || popovers || sheets2;
+  }
   function publishHost(render2, catalog) {
     Object.assign(globalThis, {
       __lingxiaRender: render2,
@@ -6396,6 +6416,7 @@
       __lingxiaOverlayTimer: overlayTimer,
       __lingxiaTakeOverlayTimers: takeOverlayTimers,
       __lingxiaEscape: escapeOverlay,
+      __lingxiaPageLeft: pageLeft,
       __lingxiaInterest: interest,
       __lingxiaDismissHints: dismissHints,
       __lingxiaCloseAfter: closeAfterExpired,
