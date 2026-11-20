@@ -65,7 +65,8 @@
           window.lingxia.postMessage({ kind: 'pin', x: Math.round(lastX), y: Math.round(lastY), moves: moves, end: end }, end ? { queue: true } : undefined);
       }
       var down = false;
-      document.body.addEventListener('pointerdown', function (ev) { down = true; place(ev.clientX, ev.clientY); send(); });
+      // `moves` counts the current drag only.
+      document.body.addEventListener('pointerdown', function (ev) { down = true; moves = 0; place(ev.clientX, ev.clientY); send(); });
       document.body.addEventListener('pointermove', function (ev) {
         if (!down) return;
         moves += 1;

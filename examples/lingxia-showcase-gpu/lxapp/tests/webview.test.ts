@@ -216,6 +216,15 @@ spec('a web page with handlesDrags keeps a drag that starts on it: its pin follo
   expect(Math.abs(Number(y) - 20)).toBeLessThan(16);
   const after = await frame.boundingBox();
   expect(Math.abs(after.y - before.y)).toBeLessThan(2);
+
+  // A second, equal drag counts its own moves, not the first one's as well.
+  const moves = async () => Number(/own=\d+,\d+ moves=(\d+)/.exec((await state.getAttribute('data-state')) ?? '')?.[1]);
+  const first = await moves();
+  await view.testId('lab-web-drags-reset').click();
+  await expect(state).toHaveAttribute('data-state', / own=none$/, { timeout: 3_000 });
+  await view.swipe({ from, to, durationMs: 500 });
+  await expect(state).toHaveAttribute('data-state', /own=\d+,\d+ moves=[1-9]\d* done/, { timeout: 5_000 });
+  expect(await moves(), `the second drag restarts the count (the first had ${first})`).toBeLessThan(first * 1.5);
 });
 
 // The page reads only `prefers-color-scheme`: no hash, no message from the View page.
