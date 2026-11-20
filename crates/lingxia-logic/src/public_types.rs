@@ -1880,9 +1880,10 @@ true
      */
     getByKey(key: string): PageSurface | TabSurface | undefined;
     /**
-     * Observe this presentation's viewport. Invoked immediately with the
-     * current context, then again whenever it changes. Returns an unsubscribe
-     * function.
+     * Observe this presentation's adaptive context. Invoked immediately with
+     * the current context, then again only when `sizeClass` or `canDock`
+     * changes; a resize within the class does not call it. Returns an
+     * unsubscribe function.
      */
     watchContext(handler: (context: SurfaceContext) => void): () => void;
     /**
@@ -1930,9 +1931,9 @@ true
     canDock: boolean;
     /** compact (<600) / regular (≥600). Shell medium/expanded are not distinct here. */
     sizeClass: 'compact' | 'regular';
-    /** Actual surface viewport width in logical pixels. */
+    /** Surface viewport width in logical pixels when this context was delivered. */
     width: number;
-    /** Actual surface viewport height in logical pixels. */
+    /** Surface viewport height in logical pixels when this context was delivered. */
     height: number;
 }"###;
 

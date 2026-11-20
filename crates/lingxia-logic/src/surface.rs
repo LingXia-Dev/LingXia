@@ -393,12 +393,29 @@ fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
 /// Event name on the per-app bus carrying `{ sizeClass, width, height, canDock }`.
 const SURFACE_CONTEXT_EVENT: &str = "SurfaceContextChange";
 
+/// Per lxapp, the `(sizeClass, canDock)` Logic last saw. Pixels stay with the
+/// View, so a resize that keeps both does not wake Logic.
+static SURFACE_CONTEXT_SEEN: OnceLock<Mutex<HashMap<String, (String, bool)>>> = OnceLock::new();
+
+/// Record `context` as seen by Logic; true if it differs from the last one.
+fn surface_context_flipped(appid: &str, context: &JSSurfaceContext) -> bool {
+    let key = (context.size_class.clone(), context.can_dock);
+    let Ok(mut seen) = SURFACE_CONTEXT_SEEN
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    else {
+        return true;
+    };
+    seen.insert(appid.to_string(), key.clone()).as_ref() != Some(&key)
+}
+
 /// `lx.surface.watchContext(handler)` — register a JS callback (scoped to this
 /// lxapp's JS context), invoke it immediately, then again whenever that
-/// presentation's viewport or host docking availability changes. Returns an unsubscribe fn.
+/// presentation's `sizeClass` or host docking availability changes. Returns an unsubscribe fn.
 fn surface_on_change(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let initial = surface_context_for(&lxapp);
+    surface_context_flipped(&lxapp.appid, &initial);
     let token = register_app_handler(&ctx, SURFACE_CONTEXT_EVENT, handler.clone())?;
     let payload = JSValue::from_rust(&ctx, initial);
     if let Err(err) = handler.call::<_, ()>(None, (payload,)) {
@@ -426,10 +443,14 @@ pub(crate) fn notify_surface_context_changed(appid: &str) {
     };
     // The revision first, then the value it carries: see the revision's doc.
     let revision = ::lxapp::next_surface_context_revision();
-    let context = context_json(&lxapp);
+    let context = surface_context_for(&lxapp);
+    let flipped = surface_context_flipped(appid, &context);
+    let context = context_value_json(&context);
     // Views read the very same JSON through `useLxHost()`.
     lxapp.push_surface_context_to_views(&context, revision);
-    publish_app_event(appid, SURFACE_CONTEXT_EVENT, Some(context));
+    if flipped {
+        publish_app_event(appid, SURFACE_CONTEXT_EVENT, Some(context));
+    }
 }
 
 /// This lxapp's adaptive context as the JSON both Logic and Views receive.
@@ -438,7 +459,10 @@ pub(crate) fn surface_context_json(appid: &str) -> Option<String> {
 }
 
 fn context_json(lxapp: &LxApp) -> String {
-    let context = surface_context_for(lxapp);
+    context_value_json(&surface_context_for(lxapp))
+}
+
+fn context_value_json(context: &JSSurfaceContext) -> String {
     serde_json::json!({
         "sizeClass": context.size_class,
         "width": context.width,

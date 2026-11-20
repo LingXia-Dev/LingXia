@@ -46,8 +46,8 @@ with CSS and container queries. Older hosts report `compact`, so keep
 `minRuntime` current.
 
 Logic subscribes with `lx.surface.watchContext(cb)` only when Logic itself acts
-on the context; it is called immediately, then on every viewport change, and
-returns an unsubscribe (tear it down as in
+on the context; it is called immediately, then only when `sizeClass` or
+`canDock` changes (not on every resize), and returns an unsubscribe (tear it down as in
 [`lx.on*` subscriptions](./guide.md#lxon-subscriptions)).
 
 ## CSS or separate Views
