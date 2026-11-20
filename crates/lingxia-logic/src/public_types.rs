@@ -662,31 +662,39 @@ rong::js_api! {
     defaultPath?: string;
 }"###;
 
-        /// One picked file or directory. `uri` is opaque: never parse it, and pass
-        /// it only to APIs that take a picked file such as `lx.share`. `name` is the
-        /// display name the picker reported, reduced to one path component:
-        /// display-only, not unique, and it may lack an extension or disagree
-        /// with the content type.
+        /// One file the user picked. `path` is opaque: never parse it; pass it
+        /// to LingXia APIs (`lx.fs`, `lx.openFile`, `lx.share`, uploads). It is
+        /// read-only and valid for this session only; `lx.fs.copy` it to keep
+        /// the file. Whether the host copied the file is host-specific: desktop
+        /// grants the live original, iOS hands over a copy, Android and
+        /// HarmonyOS a reference to the original.
         ///
-        /// A picked `uri` is read-only and valid for the current session only;
-        /// `lx.fs.copy` it to keep the file. Whether the file was copied is
-        /// host-specific: desktop grants the live original, mobile may hand
-        /// over a copy (iOS) or a reference to the original (Android, Harmony).
-        ///
-        /// A `pickDirectory` `uri` is a read-only root: `lx.fs.exists`, `stat`,
-        /// `readDir` and `file()` reads, and `lx.fs.copy` as a source, also take
-        /// `<uri>/<relative>` with each segment percent-encoded. Empty, `.` or
-        /// `..` segments, `:`, `\`, and any path that leaves the directory
-        /// through a symlink do not resolve; writes through the grant are
-        /// rejected.
-        type PickedItem = r###"{
-    uri: string;
+        /// `name` is one path component and always has an extension; `type` is
+        /// derived from that extension, so both are the same on every platform
+        /// (`application/octet-stream` when unknown). A capture with no name of
+        /// its own is named `IMG_YYYYMMDD_HHMMSS.jpg` / `VID_…` (UTC). `name` is
+        /// display-only and not unique.
+        type PickedFile = r###"{
+    path: string;
+    name: string;
+    /** Bytes. */
+    size: number;
+    /** MIME type, e.g. `application/pdf`, `image/jpeg`. */
+    type: string;
+}"###;
+
+        /// A picked directory. `path` is a read-only root: `lx.fs.exists`,
+        /// `stat`, `readDir` and `file()` reads, and `lx.fs.copy` as a source,
+        /// also take `<path>/<relative>` with each segment percent-encoded.
+        /// Empty, `.` or `..` segments, `:`, `\`, and any path that leaves the
+        /// directory through a symlink do not resolve; writes are rejected.
+        type PickedDirectory = r###"{
+    path: string;
     name: string;
 }"###;
 
-        /// Result of `lx.pickDirectory`. Branch on `status` before reading
-        /// the selected directory.
-        type PickDirectoryResult = r###"({ status: 'ok' } & PickedItem) | CanceledResult"###;
+        /// Result of `lx.pick.directory`.
+        type PickDirectoryResult = r###"{ status: 'ok'; directory: PickedDirectory } | CanceledResult"###;
 
         type PickFileOptions = r###"{
     /** Optional file filters. Empty or omitted means all file types. */
@@ -700,45 +708,24 @@ rong::js_api! {
     defaultPath?: string;
 }"###;
 
-        /// Result of `lx.pickFile`. Branch on `status` before reading the file.
-        type PickFileResult = r###"({ status: 'ok' } & PickedItem) | CanceledResult"###;
+        /// Result of `lx.pick.file`: exactly one file.
+        type PickFileResult = r###"{ status: 'ok'; files: [PickedFile] } | CanceledResult"###;
 
-        /// Result of `lx.pickFiles`. Branch on `status` before reading the
-        /// selected files.
-        type PickFilesResult = r###"{
-    status: 'ok';
-    /** Always at least one file. */
-    files: [PickedItem, ...PickedItem[]];
-} | CanceledResult"###;
+        /// Result of `lx.pick.files` and `lx.pick.media`: at least one file.
+        /// From `lx.pick.media` on mobile, each file is a copy in the lxapp
+        /// temp directory, counted against its quota.
+        type PickFilesResult = r###"{ status: 'ok'; files: [PickedFile, ...PickedFile[]] } | CanceledResult"###;
 
         type PickMediaOptions = r###"{
     /**
-     * Maximum entries to return (default 9). Where the system picker cannot
-     * enforce it (desktop), entries beyond it are dropped from the result.
+     * Maximum files to return (default 9). Where the system picker cannot
+     * enforce it (desktop), files beyond it are dropped from the result.
      */
     count?: number;
     mediaType?: ('image' | 'video')[];
     sourceType?: ('album' | 'camera')[];
     camera?: 'back' | 'front';
     maxDurationSeconds?: number;
-}"###;
-
-        /// Result of `lx.pickMedia`. Branch on `status` before reading the
-        /// selected entries.
-        ///
-        /// On mobile each entry is a copy in the lxapp temp directory (counted
-        /// against its quota); on desktop it is a read-only grant on the
-        /// original file.
-        type PickMediaResult = r###"{
-    status: 'ok';
-    /** Picked media; always at least one entry. */
-    entries: [PickedMediaEntry, ...PickedMediaEntry[]];
-} | CanceledResult"###;
-
-        type PickedMediaEntry = r###"{
-    uri: string;
-    fileType: 'image' | 'video';
-    isOriginal: boolean;
 }"###;
 
         /// Representations the runtime can round-trip. Closed union.
@@ -753,8 +740,8 @@ rong::js_api! {
 } | {
     type: 'image';
     /**
-     * Managed `lx://` path, or a picker result from `lx.pickFile` /
-     * `lx.pickMedia` — the same file rules as `lx.share`. Rejects
+     * Managed `lx://` path, or a path `lx.pick` returned — the same file
+     * rules as `lx.share`. Rejects
      * `E_INVALID_ARG` when the file is not a decodable image.
      */
     filePath: string;
@@ -1387,17 +1374,16 @@ rong::js_api! {
     filePath: string;
 }"###;
 
-        type ScanCodeOptions = r###"{
+        type PickCodeOptions = r###"{
     onlyFromCamera?: boolean;
-    scanType?: ('barCode' | 'qrCode' | 'datamatrix' | 'pdf417')[];
+    formats?: ('barCode' | 'qrCode' | 'datamatrix' | 'pdf417')[];
 }"###;
 
-        /// Result of `lx.scanCode`. Branch on `status` before reading the scan
-        /// payload.
-        type ScanCodeResult = r###"{
+        /// Result of `lx.pick.code`. `format` is the symbology that was read.
+        type PickCodeResult = r###"{
     status: 'ok';
-    scanResult: string;
-    scanType: string;
+    value: string;
+    format: string;
 } | CanceledResult"###;
 
         /// Share images, PDFs, or other files.
@@ -1407,7 +1393,7 @@ rong::js_api! {
      * File paths returned by LingXia APIs to share. Images, PDFs, and other
      * documents are all represented as file paths.
      *
-     * Use `lx.pickFiles` for system files and `lx.pickMedia` for picked media;
+     * Use `lx.pick.files` for system files and `lx.pick.media` for picked media;
      * pass the returned path here without parsing it.
      * Some platforms or receivers may limit multi-file shares. Share files one
      * at a time when targeting those receivers.
@@ -2280,6 +2266,7 @@ true
         type HostAppApi = "globalThis.HostAppApi";
         type LxEnv = "globalThis.LxEnv";
         type NavApi = "globalThis.NavApi";
+        type PickApi = "globalThis.PickApi";
         type NavigationBarApi = "globalThis.NavigationBarApi";
         type TabBarApi = "globalThis.TabBarApi";
         type TrayApi = "globalThis.TrayApi";

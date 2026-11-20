@@ -5,6 +5,7 @@ import type {
   CompressVideoOptions,
   DownloadProgressEvent,
   Lx,
+  PickedFile,
   UploadOptions,
   UploadProgressEvent,
 } from "../src/index.js";
@@ -96,23 +97,25 @@ async function downloadCorrelation(): Promise<void> {
   type TemporaryIsEphemeral = Assert<typeof temporary extends { storage: 'temp' } ? true : false>;
 }
 
-async function pickFileResults(): Promise<void> {
-  const single = await lx.pickFile();
+async function pickFileShapes(): Promise<void> {
+  const single = await lx.pick.file();
   if (single.status !== 'canceled') {
-    const only: string = single.uri;
-    const name: string = single.name;
-    void name;
+    const only: [PickedFile] = single.files;
+    // @ts-expect-error pick.file returns exactly one file
+    single.files[1].path;
     void only;
   }
 
-  const many = await lx.pickFiles();
+  const many = await lx.pick.files();
   if (many.status !== 'canceled') {
-    const first: string = many.files[0].uri;
-    const names: string[] = many.files.map((file) => file.name);
-    const rest: string[] = names.slice(1);
+    const first: PickedFile = many.files[0];
+    const rest: PickedFile[] = many.files.slice(1);
     void first;
     void rest;
   }
+
+  // @ts-expect-error `multiple` is gone: pick.file is one, pick.files is many
+  await lx.pick.file({ multiple: true });
 }
 
 function progressEvents(
@@ -144,7 +147,7 @@ type CompletedHasResult = Assert<
 
 export type ExclusiveOptionsGate = [
   typeof downloadCorrelation,
-  typeof pickFileResults,
+  typeof pickFileShapes,
   typeof progressEvents,
   CompletedHasResult,
 ];

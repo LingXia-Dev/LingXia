@@ -50,6 +50,7 @@ import type {
   NavigationBarApi,
   UiApi,
   NavApi,
+  PickApi,
   NotificationApi,
   PageHandle,
   PreviewMediaHandle,
@@ -73,10 +74,6 @@ import type {
 export const LX_API_NAMES = [
   'host',
   'automation',
-  'pickFile',
-  'pickFiles',
-  'pickDirectory',
-  'pickMedia',
   'clipboard',
   'compressImage',
   'compressVideo',
@@ -108,10 +105,10 @@ export const LX_API_NAMES = [
   'onWifiConnected',
   'openExternal',
   'openFile',
+  'pick',
   'previewMedia',
   'saveImageToPhotosAlbum',
   'saveVideoToPhotosAlbum',
-  'scanCode',
   'setDeviceOrientation',
   'setMoreActions',
   'share',
@@ -185,6 +182,7 @@ const CONTROL_APPEARANCE_API = [
 const NAVIGATION_BAR_API = ['update'] as const;
 const TAB_BAR_API = ['update'] as const;
 const UI_API = ['actionSheet', 'alert', 'confirm', 'toast'] as const;
+const PICK_API = ['code', 'directory', 'file', 'files', 'media'] as const;
 const NAV_API = ['back', 'go', 'leaveApp', 'reset'] as const;
 const TERMINAL_API = ['colorSchemes', 'fonts', 'settings', 'windows'] as const;
 const TERMINAL_SETTINGS_API = ['get', 'onChange', 'reset', 'update'] as const;
@@ -303,10 +301,10 @@ const PAGE_DRIVER_API = [
 const PAGE_POINTER_API = ['click', 'down', 'drag', 'move', 'scroll', 'up'] as const;
 const PAGE_KEY_API = ['press', 'type'] as const;
 const PAGE_GESTURE_API = ['capabilities', 'chrome', 'edgeBack', 'inputs', 'orientWindow', 'perform', 'refreshIndicator', 'viewport'] as const;
-  'go',
 const NAV_DRIVER_API = [
   'back',
   'current',
+  'go',
   'info',
   'press',
   'reset',
@@ -409,6 +407,7 @@ export const LX_RUNTIME_SURFACES = [
       'host',
       'nav',
       'navigationBar',
+      'pick',
       'shell',
       'surface',
       'tabBar',
@@ -503,6 +502,12 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.ui',
     members: UI_API,
+  },
+  {
+    name: 'lx.pick',
+    layer: 'logic',
+    expression: 'lx.pick',
+    members: PICK_API,
   },
   {
     name: 'lx.nav',
@@ -708,9 +713,9 @@ const PAGE_SURFACE_API = [
   'onShow',
   'realized',
   'result',
+  'send',
   'show',
   'visible',
-  'send',
 ] as const;
 const TAB_SURFACE_API = [
   'activate',
@@ -870,6 +875,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<NavigationBarApi, typeof NAVIGATION_BAR_API>>,
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,
   AssertTrue<Exact<UiApi, typeof UI_API>>,
+  AssertTrue<Exact<PickApi, typeof PICK_API>>,
   AssertTrue<Exact<NavApi, typeof NAV_API>>,
   AssertTrue<Exact<TerminalApi, typeof TERMINAL_API>>,
   AssertTrue<Exact<TerminalSettingsApi, typeof TERMINAL_SETTINGS_API>>,

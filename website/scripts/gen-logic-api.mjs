@@ -72,21 +72,19 @@ const GROUPS = [
   {
     slug: 'files',
     title: 'Files and storage',
-    summary: 'Managed files, the system picker, transfers, and key-value storage.',
+    summary: 'Managed files, the system pickers (files, media, codes), transfers, and key-value storage.',
     members: [
-      'fs', 'openFile', 'pickFile', 'pickFiles', 'pickDirectory',
-      'uploadFile', 'downloadFile', 'getStorage',
+      'fs', 'openFile', 'pick', 'uploadFile', 'downloadFile', 'getStorage',
     ],
   },
   {
     slug: 'media',
     title: 'Media',
-    summary: 'Pick, preview, transcode, and save images and video; read a code.',
+    summary: 'Preview, transcode, and save images and video.',
     members: [
-      'pickMedia', 'previewMedia', 'getImageInfo', 'compressImage',
+      'previewMedia', 'getImageInfo', 'compressImage',
       'saveImageToPhotosAlbum', 'saveVideoToPhotosAlbum',
       'createVideoContext', 'getVideoInfo', 'extractVideoThumbnail', 'compressVideo',
-      'scanCode',
     ],
   },
   {

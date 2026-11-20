@@ -39,7 +39,7 @@ export default definePage({
         if (page.data.busy) return;
         page.update(d => { d.busy = true; });
         try {
-          const result = await lx.chooseMedia({
+          const result = await lx.pick.media({
             mediaType,
             sourceType: ["album", "camera"],
             count,
@@ -50,10 +50,10 @@ export default definePage({
             page.update(d => { d.busy = false; });
             return;
           }
-          const picked = result.entries.map((entry) => ({
+          const picked = result.files.map((file) => ({
             id: makeId(),
-            type: entry.fileType,
-            src: entry.uri,
+            type: file.type.startsWith("video/") ? "video" : "image",
+            src: file.path,
           }));
           const merged = [...(page.data.items || []), ...picked];
           page.update(d => {

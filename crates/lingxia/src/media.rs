@@ -58,7 +58,7 @@ pub enum MediaSelection {
 /// The business code every platform picker reports for a user dismissal.
 const USER_DISMISSED: u32 = 2000;
 
-/// Presents pickMedia and distinguishes user cancellation from a failure.
+/// Presents the media picker and distinguishes user cancellation from a failure.
 pub async fn pick_with_status(request: PickMediaRequest) -> crate::Result<MediaSelection> {
     let runtime = crate::runtime::platform()?;
     decode_media_selection(lingxia_service::media::pick_media(&*runtime, request).await)
@@ -89,7 +89,7 @@ fn decode_media_selection(
 }
 
 /// Copies an opaque system-picker reference into a host-owned local file.
-/// This accepts the URI returned by pickMedia; callers do not decode it.
+/// This accepts the path returned by the media picker; callers do not decode it.
 pub fn copy_picked_media_to_file(media: &PickedMedia, destination: &Path) -> crate::Result<()> {
     let kind = match media.file_type.as_str() {
         "image" => MediaKind::Image,

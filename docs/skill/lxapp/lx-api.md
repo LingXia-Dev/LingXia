@@ -191,15 +191,15 @@ if (r.status === 'ok') await lx.surface.bringToFront({ query: { run: runId } })
 ## Errors
 
 A rejection means the operation failed, never that the user said no.
-Dismissable APIs (`lx.ui.actionSheet`, `pickFile`, `pickFiles`,
-`pickDirectory`, `pickMedia`, `scanCode`, `lx.clipboard` reads) resolve a
-result discriminated on `status`; `lx.ui.confirm` resolves `false`. `lx.share` reports
+Dismissable APIs (`lx.ui.actionSheet`, every `lx.pick.*`, `lx.clipboard`
+reads) resolve a result discriminated on `status`; `lx.ui.confirm` resolves
+`false`. `lx.share` reports
 `outcome: 'completed' | 'dismissed' | 'unknown'`.
 
 ```ts
-const scan = await lx.scanCode()
+const scan = await lx.pick.code()
 if (scan.status === 'canceled') return                   // the user backed out
-lx.ui.toast(scan.scanResult)               // narrowed: the payload is present
+lx.ui.toast(scan.value)                    // narrowed: the payload is present
 ```
 
 Branch on the numeric code through `@lingxia/types/error`, never on the

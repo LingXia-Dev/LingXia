@@ -106,7 +106,7 @@ export default definePage({
       },
       async chooseAndWriteImage() {
         try {
-          const picked = await lx.chooseMedia({
+          const picked = await lx.pick.media({
             count: 1,
             mediaType: ["image"],
             sourceType: ["album", "camera"],
@@ -115,7 +115,7 @@ export default definePage({
             page.update(d => { d.statusText = "Image picker canceled"; });
             return;
           }
-          const filePath = mediaPath(picked.entries[0]);
+          const filePath = mediaPath(picked.files[0]);
           await lx.clipboard.write({ type: "image", filePath });
           await helpers.peekTypes();
           page.update(d => { d.statusText = "Wrote chosen image"; });

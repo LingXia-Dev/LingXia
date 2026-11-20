@@ -372,7 +372,7 @@ export default definePage({
       },
       async chooseFileFromUserCache() {
         try {
-          const result = await lx.chooseFile({
+          const result = await lx.pick.file({
             defaultPath: page.data.chooseFileDefaultPath,
           });
           if (result.status === 'canceled') {
@@ -384,16 +384,16 @@ export default definePage({
             return;
           }
 
-          const selectedPath = result.paths[0];
-          const fileType = detectFileTypeFromPath(selectedPath);
+          const selectedPath = result.files[0].path;
+          const fileType = detectFileTypeFromPath(result.files[0].name);
           page.update(d => {
             d.chooseFileStatusText = "File selected";
             d.chooseFileSelectedPath = selectedPath;
             d.chooseFileSelectedType = fileType || "unknown";
           });
         } catch (error) {
-          lx.ui.toast({ title: errorMessage(error, "chooseFile failed"), icon: "none" });
-          page.update(d => { d.chooseFileStatusText = errorMessage(error, "chooseFile failed"); });
+          lx.ui.toast({ title: errorMessage(error, "pick.file failed"), icon: "none" });
+          page.update(d => { d.chooseFileStatusText = errorMessage(error, "pick.file failed"); });
         }
       },
       async openChosenFile() {

@@ -57,7 +57,7 @@ export function render({ data, actions }: View) {
           </text>
         )}
       </Section>
-      <Section title="Image" description="Write a 1×1 sample PNG, or pick one with lx.pickMedia.">
+      <Section title="Image" description="Write a 1×1 sample PNG, or pick one with lx.pick.media.">
         <view className="grid gap-3 grid-cols-2">
           <Button testId="clipboard-write-sample-image" disabled={busy.value} onClick={() => run(() => actions.writeSampleImage())}>
             Write sample PNG

@@ -49,6 +49,8 @@ struct AndroidFileDialogResult {
     paths: Vec<String>,
     #[serde(default)]
     names: Option<Vec<Option<String>>>,
+    #[serde(default)]
+    sizes: Option<Vec<Option<u64>>>,
 }
 
 fn review_file_sync(request: OpenFileRequest) -> Result<(), PlatformError> {
@@ -230,5 +232,6 @@ fn pick_directory_impl(
 fn parse_file_dialog_result(payload: &str) -> Result<FileDialogResult, PlatformError> {
     let parsed: AndroidFileDialogResult = serde_json::from_str(payload)
         .map_err(|e| PlatformError::Platform(format!("parse file dialog result failed: {e}")))?;
-    FileDialogResult::from_wire(parsed.canceled, parsed.paths, parsed.names)
+    FileDialogResult::from_wire(parsed.canceled, parsed.paths, parsed.names)?
+        .with_sizes(parsed.sizes)
 }

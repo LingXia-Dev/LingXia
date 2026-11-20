@@ -57,6 +57,7 @@ fn completed(handles: impl IntoIterator<Item = rfd::FileHandle>) -> FileDialogRe
             .map(|handle| PickedPath {
                 path: handle.path().to_string_lossy().into_owned(),
                 name: Some(handle.file_name()),
+                size: None,
             })
             .collect(),
     }

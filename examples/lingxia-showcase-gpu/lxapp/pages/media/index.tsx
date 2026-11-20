@@ -389,7 +389,7 @@ function Gallery({ data, actions }: Pane) {
     </button>
   );
   return (
-    <Page intro={String(data.headerSubtitle || 'lx.pickMedia / lx.previewMedia')}>
+    <Page intro={String(data.headerSubtitle || 'lx.pick.media / lx.previewMedia')}>
       <Card className="divide-y divide-line">
         <Setting
           label={video ? 'Video Source' : 'Photo Source'}

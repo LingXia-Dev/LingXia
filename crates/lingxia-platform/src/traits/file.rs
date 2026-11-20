@@ -55,10 +55,12 @@ pub struct PickDirectoryRequest {
 
 /// One picked item. `name` is the platform display name when the picker
 /// reports one; `path` may be an opaque reference whose tail is not a name.
+/// `size` is reported only for a reference the core cannot stat.
 #[derive(Debug, Clone)]
 pub struct PickedPath {
     pub path: String,
     pub name: Option<String>,
+    pub size: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -99,9 +101,31 @@ impl FileDialogResult {
             entries: paths
                 .into_iter()
                 .zip(names)
-                .map(|(path, name)| PickedPath { path, name })
+                .map(|(path, name)| PickedPath {
+                    path,
+                    name,
+                    size: None,
+                })
                 .collect(),
         })
+    }
+
+    /// Attaches the sizes a native payload reported, parallel to the paths.
+    pub fn with_sizes(mut self, sizes: Option<Vec<Option<u64>>>) -> Result<Self, PlatformError> {
+        let Some(sizes) = sizes else {
+            return Ok(self);
+        };
+        if sizes.len() != self.entries.len() {
+            return Err(PlatformError::Platform(format!(
+                "file dialog returned {} paths but {} sizes",
+                self.entries.len(),
+                sizes.len()
+            )));
+        }
+        for (entry, size) in self.entries.iter_mut().zip(sizes) {
+            entry.size = size;
+        }
+        Ok(self)
     }
 
     pub fn paths(&self) -> impl Iterator<Item = &str> {

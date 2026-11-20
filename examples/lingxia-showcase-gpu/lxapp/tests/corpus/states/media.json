@@ -14,7 +14,7 @@
   "emptyHint": "Tap + to pick photos.",
   "previewHint": "Tap Preview to open the full selection.",
   "galleryHint": "Tap Preview to open the full selection.",
-  "headerSubtitle": "lx.pickMedia / lx.previewMedia",
+  "headerSubtitle": "lx.pick.media / lx.previewMedia",
   "addLabel": "Add Photo",
   "scanResult": "",
   "scanType": "",

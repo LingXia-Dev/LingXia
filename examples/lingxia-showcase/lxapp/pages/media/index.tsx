@@ -1150,7 +1150,7 @@ export default function MediaPage() {
   const getPageInfo = () => {
     if (isScanMode) {
       return {
-        title: 'lx.scanCode',
+        title: 'lx.pick.code',
         subtitle: 'QR & Barcode Scanner',
         description: 'Scan QR codes and barcodes using camera or album',
       };

@@ -256,11 +256,6 @@ export type DownloadIteratorResult<TResult extends DownloadResult = DownloadResu
 export type AppTempDownloadResult = Extract<AppDownloadResult, { storage: 'temp' }>;
 export type AppPersistedDownloadResult = Extract<AppDownloadResult, { storage: 'userdata' }>;
 
-export type ChooseFileSingleResult = {
-  status: 'ok';
-  paths: [string];
-} | CanceledResult;
-
 /** A running operation. Progress has one consumer; stopping observation does not cancel it. */
 export interface Task<TResult, TProgress> {
   readonly result: Promise<TResult>;
@@ -427,16 +422,6 @@ declare global {
     downloadFile<TDestination extends DownloadDestination = "app">(
       options: DownloadOptions<TDestination>,
     ): DownloadTask<DownloadResultForDestination<TDestination>>;
-    /** Single-file picker: a completed selection is exactly one path. */
-    chooseFile(options: ChooseFileOptions & { multiple: false }): Promise<ChooseFileSingleResult>;
-    chooseFile(options: ChooseFileOptions & { multiple: true }): Promise<ChooseFileResult>;
-    /**
-     * Opens a file picker.
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', paths }` with at least one
-     * path. Rejects when the picker fails or returns an invalid payload.
-     */
-    chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
 
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.
@@ -765,74 +750,6 @@ export type CanceledResult = {
     status: 'canceled';
 };
 
-export type ChooseDirectoryOptions = {
-    /** Initial directory the dialog opens in. Platform default if omitted. */
-    defaultPath?: string;
-};
-
-/**
- * Result of `lx.chooseDirectory`. Branch on `status` before reading
- * the selected directory.
- */
-export type ChooseDirectoryResult = {
-    status: 'ok';
-    /** Native-consumable directory reference (path or URI). */
-    path: string;
-} | CanceledResult;
-
-export type ChooseFileOptions = {
-    /** Allow selecting multiple files. Default: false */
-    multiple?: boolean;
-    /** Optional file filters. Empty or omitted means all file types. */
-    filters?: FileDialogFilter[];
-    /**
-     * Initial directory the dialog opens in.
-     *
-     * When this resolves to an app-local directory, LingXia may use its internal
-     * file picker. When omitted, the platform system file picker is used.
-     */
-    defaultPath?: string;
-};
-
-/**
- * Result of `lx.chooseFile`. Branch on `status` before reading the
- * selected paths.
- */
-export type ChooseFileResult = {
-    status: 'ok';
-    /**
-     * File paths returned by LingXia; always at least one. Values may be
-     * app-local paths, `lx://...` paths, or platform system-picker references.
-     * Treat them as opaque strings and pass them back to LingXia APIs such as
-     * `lx.share`.
-     */
-    paths: [string, ...string[]];
-} | CanceledResult;
-
-export type ChooseMediaOptions = {
-    count?: number;
-    mediaType?: ('image' | 'video')[];
-    sourceType?: ('album' | 'camera')[];
-    camera?: 'back' | 'front';
-    maxDurationSeconds?: number;
-};
-
-/**
- * Result of `lx.chooseMedia`. Branch on `status` before reading the
- * selected entries.
- */
-export type ChooseMediaResult = {
-    status: 'ok';
-    /** Picked media; always at least one entry. */
-    entries: [ChosenMediaEntry, ...ChosenMediaEntry[]];
-} | CanceledResult;
-
-export type ChosenMediaEntry = {
-    uri: string;
-    fileType: 'image' | 'video';
-    isOriginal: boolean;
-};
-
 export type ClipboardApi = globalThis.ClipboardApi;
 
 export type ClipboardItem = {
@@ -890,8 +807,7 @@ export type ClipboardWriteItem = {
 } | {
     type: 'image';
     /**
-     * Managed `lx://` path, or a picker result from `lx.chooseFile` /
-     * `lx.chooseMedia` — the same file rules as `lx.share`. Rejects
+     * Managed `lx://` path, or a path `lx.pick` returned — the same file rules as `lx.share`. Rejects
      * `E_INVALID_ARG` when the file is not a decodable image.
      */
     filePath: string;
@@ -1648,9 +1564,75 @@ export type PageSurface = SurfaceBase & SurfaceShowable & SurfaceMessaging & {
     readonly result?: Promise<PageResult>;
 };
 
-export type PickFileOptions = Omit<ChooseFileOptions, 'multiple'>;
+export type PickApi = globalThis.PickApi;
 
-export type PickFileResult = { status: 'ok'; uri: string } | CanceledResult;
+export type PickCodeOptions = {
+    onlyFromCamera?: boolean;
+    formats?: ('barCode' | 'qrCode' | 'datamatrix' | 'pdf417')[];
+};
+
+/** Result of `lx.pick.code`. `format` is the symbology that was read. */
+export type PickCodeResult = {
+    status: 'ok';
+    value: string;
+    format: string;
+} | CanceledResult;
+
+export type PickDirectoryOptions = {
+    /** Initial directory the dialog opens in. Platform default if omitted. */
+    defaultPath?: string;
+};
+
+/**
+ * Result of `lx.pick.directory`. The path is a native directory
+ * reference: pass it back to LingXia APIs; `lx.fs` does not read it.
+ */
+export type PickDirectoryResult = {
+    status: 'ok';
+    directory: { path: string; name: string };
+} | CanceledResult;
+
+export type PickFileOptions = {
+    /** Optional file filters. Empty or omitted means all file types. */
+    filters?: FileDialogFilter[];
+    /**
+     * Initial directory the dialog opens in.
+     *
+     * When this resolves to an app-local directory, LingXia may use its internal
+     * file picker. When omitted, the platform system file picker is used.
+     */
+    defaultPath?: string;
+};
+
+/** Result of `lx.pick.file`: exactly one file. */
+export type PickFileResult = { status: 'ok'; files: [PickedFile] } | CanceledResult;
+
+/** Result of `lx.pick.files` and `lx.pick.media`: at least one file. */
+export type PickFilesResult = { status: 'ok'; files: [PickedFile, ...PickedFile[]] } | CanceledResult;
+
+export type PickMediaOptions = {
+    count?: number;
+    mediaType?: ('image' | 'video')[];
+    sourceType?: ('album' | 'camera')[];
+    camera?: 'back' | 'front';
+    maxDurationSeconds?: number;
+};
+
+/**
+ * One file the user picked. `name` always has an extension and `type`
+ * is derived from it, so both are the same on every platform; an
+ * unknown extension is `application/octet-stream`. A capture with no
+ * name of its own is named `IMG_YYYYMMDD_HHMMSS.jpg` / `VID_…` (UTC).
+ */
+export type PickedFile = {
+    /** Pass back to LingXia APIs (`lx.fs.copy`, `lx.openFile`, `lx.share`, uploads). */
+    path: string;
+    name: string;
+    /** Bytes. */
+    size: number;
+    /** MIME type, e.g. `application/pdf`, `image/jpeg`. */
+    type: string;
+};
 
 export type PreviewMediaAdvance = 'manual' | 'next' | 'loop';
 
@@ -1802,21 +1784,6 @@ export type SaveMediaOptions = {
     filePath: string;
 };
 
-export type ScanCodeOptions = {
-    onlyFromCamera?: boolean;
-    scanType?: ('barCode' | 'qrCode' | 'datamatrix' | 'pdf417')[];
-};
-
-/**
- * Result of `lx.scanCode`. Branch on `status` before reading the scan
- * payload.
- */
-export type ScanCodeResult = {
-    status: 'ok';
-    scanResult: string;
-    scanType: string;
-} | CanceledResult;
-
 /**
  * Where `lx.host.setBadge` paints.
  * `auto` (the default) marks every product-owned surface this platform
@@ -1850,7 +1817,7 @@ export type ShareFilesOptions = ShareTitleOptions & {
      * File paths returned by LingXia APIs to share. Images, PDFs, and other
      * documents are all represented as file paths.
      *
-     * Use `lx.chooseFile` for system files and `lx.chooseMedia` for picked media;
+     * Use `lx.pick.file` for system files and `lx.pick.media` for picked media;
      * pass the returned path here without parsing it.
      * Some platforms or receivers may limit multi-file shares. Share files one
      * at a time when targeting those receivers.
@@ -3227,23 +3194,6 @@ declare global {
      * `mode: "auto"`.
      */
     openFile(options: OpenFileOptions): Promise<void>;
-    /** Pick one file. A successful selection returns one opaque URI. */
-    pickFile(options?: PickFileOptions): Promise<PickFileResult>;
-    /** Pick one or more files. Dismissal is a normal outcome. */
-    pickFiles(options?: PickFileOptions): Promise<ChooseFileResult>;
-    /**
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', paths }` with at least one
-     * path. Rejects when the picker fails or returns an invalid payload.
-     */
-    chooseFile(options: never): Promise<never>;
-    /**
-     * Opens a directory picker.
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', path }`. Rejects when the
-     * picker fails or returns an invalid payload.
-     */
-    chooseDirectory(options?: ChooseDirectoryOptions): Promise<ChooseDirectoryResult>;
     readonly fs: FileSystemApi;
     /** Subscribes to key-down events and returns the unsubscribe fn. */
     onKeyDown(callback: KeyEventCallback): () => void;
@@ -3257,14 +3207,6 @@ declare global {
     getImageInfo(options: GetImageInfoOptions): Promise<ImageInfo>;
     /** Re-encode an image at a lower quality or size, writing a new managed file. */
     compressImage(options: CompressImageOptions): Promise<CompressImageResult>;
-    /**
-     * Opens the media picker or camera.
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', entries }` with at least one
-     * entry. Rejects when capture or selection fails, or the host returns an invalid
-     * payload.
-     */
-    chooseMedia(options?: ChooseMediaOptions): Promise<ChooseMediaResult>;
     /**
      * Synchronously returns a JS handle so listeners can be attached before the
      * first event fires:
@@ -3286,13 +3228,6 @@ declare global {
     /** Save a video into the system photo library. */
     saveVideoToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
     /**
-     * Opens the scanner.
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the scanner. A
-     * completed scan resolves `{ status: 'ok', scanResult, scanType }`. Rejects
-     * when scanning fails or the host returns an invalid payload.
-     */
-    scanCode(options?: ScanCodeOptions): Promise<ScanCodeResult>;
-    /**
      * A control handle for the `<lx-video>` with this id, or on a GPU page for the player of this
      * `useVideo` name or `<video id>`.
      */
@@ -3313,6 +3248,7 @@ declare global {
      * wired up before transcoding starts.
      */
     compressVideo(options: CompressVideoOptions): CompressVideoTask;
+    readonly pick: PickApi;
     /**
      * Hand content to the system share sheet.
      * Share text, files, or a page link — files cannot be combined with a page
@@ -3376,6 +3312,40 @@ declare global {
   interface NavigationBarApi {
     /** Patch the navigation bar of the active page; unset fields stay as they are. */
     update(patch: NavigationBarPatch): Promise<void>;
+  }
+}
+
+declare global {
+  interface PickApi {
+    /**
+     * Opens the system file picker for one file. Resolves `{ status: 'canceled' }`
+     * only when the user dismisses it.
+     */
+    file(options?: PickFileOptions): Promise<PickFileResult>;
+    /** Opens the system file picker for one or more files. */
+    files(options?: PickFileOptions): Promise<PickFilesResult>;
+    /**
+     * Opens a directory picker.
+     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
+     * completed selection resolves `{ status: 'ok', path }`. Rejects when the
+     * picker fails or returns an invalid payload.
+     */
+    directory(options?: PickDirectoryOptions): Promise<PickDirectoryResult>;
+    /**
+     * `lx.pick.media`: the media picker or camera.
+     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
+     * completed selection resolves `{ status: 'ok', files }` with at least one
+     * file. Rejects when capture or selection fails, or the host returns an invalid
+     * payload.
+     */
+    media(options?: PickMediaOptions): Promise<PickFilesResult>;
+    /**
+     * `lx.pick.code`: the code scanner.
+     * Resolves `{ status: 'canceled' }` only when the user dismisses the scanner. A
+     * completed scan resolves `{ status: 'ok', value, format }`. Rejects
+     * when scanning fails or the host returns an invalid payload.
+     */
+    code(options?: PickCodeOptions): Promise<PickCodeResult>;
   }
 }
 

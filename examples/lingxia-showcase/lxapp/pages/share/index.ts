@@ -53,7 +53,7 @@ export default definePage({
       },
       async chooseImage() {
         try {
-          const result = await lx.chooseMedia({
+          const result = await lx.pick.media({
             count: 1,
             mediaType: ["image"],
             sourceType: ["album", "camera"],
@@ -63,11 +63,11 @@ export default definePage({
             return;
           }
           page.update(d => {
-            d.selectedImagePath = mediaPath(result.entries[0]);
+            d.selectedImagePath = mediaPath(result.files[0]);
             d.statusText = "Image selected";
           });
         } catch (error) {
-          const message = errorMessage(error, "chooseMedia failed");
+          const message = errorMessage(error, "pick.media failed");
           page.update(d => { d.statusText = message; });
           lx.ui.toast({ title: message, icon: "none" });
         }
@@ -85,9 +85,9 @@ export default definePage({
       },
       async chooseFile() {
         try {
-          const result = await lx.chooseFile({ multiple: false });
+          const result = await lx.pick.file();
           page.update(d => {
-            d.selectedFilePath = (result.status === 'canceled') ? "" : result.paths[0];
+            d.selectedFilePath = (result.status === 'canceled') ? "" : result.files[0].path;
             d.statusText = (result.status === 'canceled') ? "File selection canceled" : "File selected";
           });
         } catch (error) {

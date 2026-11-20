@@ -1,6 +1,7 @@
 import { errorMessage } from "../../shared/lib/errors";
 import type {
-  ChooseMediaOptions,
+  PickMediaOptions,
+  PickedFile,
   CompressVideoTask,
   CompressImageOptions,
   CompressVideoOptions,
@@ -8,7 +9,7 @@ import type {
   ImageInfo,
   PreviewMediaOptions,
   PreviewMediaResult,
-  ScanCodeOptions,
+  PickCodeOptions,
   VideoCompressQuality,
   VideoInfo,
 } from "@lingxia/types";
@@ -175,7 +176,7 @@ const MODE_SETTINGS = {
 function getModeCopy(mediaType: string) {
   if (mediaType === "video") {
     return {
-      headerSubtitle: "lx.chooseMedia / lx.previewMedia",
+      headerSubtitle: "lx.pick.media / lx.previewMedia",
       emptyHint: "Tap + to pick videos.",
       previewHint: "Tap Preview to open the full selection.",
       galleryHint: "Tap Preview to open the full selection.",
@@ -211,7 +212,7 @@ function getModeCopy(mediaType: string) {
   }
   if (mediaType === "scanCode") {
     return {
-      headerSubtitle: "lx.scanCode",
+      headerSubtitle: "lx.pick.code",
       emptyHint: "",
       previewHint: "",
       galleryHint: "",
@@ -219,7 +220,7 @@ function getModeCopy(mediaType: string) {
     };
   }
   return {
-    headerSubtitle: "lx.chooseMedia / lx.previewMedia",
+    headerSubtitle: "lx.pick.media / lx.previewMedia",
     emptyHint: "Tap + to pick photos.",
     previewHint: "Tap Preview to open the full selection.",
     galleryHint: "Tap Preview to open the full selection.",
@@ -285,10 +286,10 @@ function isCameraOnlySource(sourceOption: MediaOption | undefined) {
   return sources.includes("camera") && !sources.includes("album");
 }
 
-function mapChosenMedia(results: { uri: string; fileType: string }[]): ChosenMedia[] {
+function mapChosenMedia(results: PickedFile[]): ChosenMedia[] {
   return results.map((item) => ({
-    path: item.uri,
-    type: item.fileType,
+    path: item.path,
+    type: item.type.startsWith("video/") ? "video" : "image",
   }));
 }
 
@@ -517,16 +518,16 @@ export default definePage({
       },
       async pickSingleMedia(type: string) {
         try {
-          const result = await lx.chooseMedia({
+          const result = await lx.pick.media({
             count: 1,
             mediaType: [type === "video" ? "video" : "image"],
             sourceType: ["album", "camera"],
             camera: "back",
           });
-          return (result.status === 'canceled') ? null : result.entries[0].uri;
+          return (result.status === 'canceled') ? null : result.files[0].path;
         } catch (error) {
           console.error("[media-demo] pickSingleMedia failed:", error);
-          lx.ui.toast({ title: errorMessage(error, "chooseMedia failed"), icon: "none" });
+          lx.ui.toast({ title: errorMessage(error, "pick.media failed"), icon: "none" });
           return null;
         }
       },
@@ -656,9 +657,9 @@ export default definePage({
         const cameraOnly = isCameraOnlySource(sourceOption);
         const countLimit = parsePositiveInt(page.data.countLimit || page.data.countKey);
 
-        const request: ChooseMediaOptions = {
+        const request: PickMediaOptions = {
           mediaType: resolveMediaTypeTokens(page.data.mediaType),
-          sourceType: (sourceOption?.request as ChooseMediaOptions["sourceType"]) || ["album"],
+          sourceType: (sourceOption?.request as PickMediaOptions["sourceType"]) || ["album"],
         };
         if (cameraOnly) {
           request.count = 1;
@@ -668,7 +669,7 @@ export default definePage({
         if (page.data.mediaType === "video") {
           const maxDurationSeconds = parsePositiveInt(page.data.durationValue);
           if (maxDurationSeconds) request.maxDurationSeconds = maxDurationSeconds;
-          if (page.data.cameraKey) request.camera = page.data.cameraKey as ChooseMediaOptions["camera"];
+          if (page.data.cameraKey) request.camera = page.data.cameraKey as PickMediaOptions["camera"];
         }
 
         page.update(d => {
@@ -677,18 +678,18 @@ export default definePage({
         });
 
         try {
-          const picked = await lx.chooseMedia(request);
+          const picked = await lx.pick.media(request);
           if (picked.status === 'canceled') {
             return;
           }
-          const mapped = mapChosenMedia(picked.entries);
+          const mapped = mapChosenMedia(picked.files);
           const enrichedList =
             page.data.mediaType === "video"
               ? await enrichVideoItemsWithMetadata(mapped)
               : mapped;
           page.update(d => { d.selectedMedia = enrichedList; });
         } catch (error) {
-          console.error("[media-demo] chooseMedia failed:", error);
+          console.error("[media-demo] pick.media failed:", error);
           lx.ui.toast({
             title: errorMessage(error, "Operation failed"),
             icon: "none",
@@ -709,25 +710,25 @@ export default definePage({
         try {
           const onlyFromCamera = !!page.data.scanOnlyCamera;
           const scanTypeKey = page.data.scanTypeKey || "all";
-          const payload: ScanCodeOptions = { onlyFromCamera };
+          const payload: PickCodeOptions = { onlyFromCamera };
           if (scanTypeKey && scanTypeKey !== "all") {
-            payload.scanType = [scanTypeKey as NonNullable<ScanCodeOptions["scanType"]>[number]];
+            payload.formats = [scanTypeKey as NonNullable<PickCodeOptions["formats"]>[number]];
           }
-          const result = await lx.scanCode(payload);
+          const result = await lx.pick.code(payload);
           if (result.status === 'canceled') {
             page.update(d => { d.scanBusy = false; });
             return;
           }
           page.update(d => {
             d.scanBusy = false;
-            d.scanResult = result.scanResult;
-            d.scanType = result.scanType;
+            d.scanResult = result.value;
+            d.scanType = result.format;
           });
         } catch (error) {
-          console.error("scanCode failed:", error);
+          console.error("pick.code failed:", error);
           page.update(d => { d.scanBusy = false; });
           lx.ui.toast({
-            title: errorMessage(error, "scanCode failed"),
+            title: errorMessage(error, "pick.code failed"),
             icon: "none",
           });
         }
@@ -1130,11 +1131,11 @@ export default definePage({
         if (page.data.saveToAlbumBusy) return;
         page.update(d => { d.saveToAlbumBusy = true; });
         try {
-          const result = await lx.chooseMedia({
+          const result = await lx.pick.media({
             count: 1, mediaType: ["image"], sourceType: ["camera"], camera: "back",
           });
           if (result.status === 'canceled') return;
-          await lx.saveImageToPhotosAlbum({ filePath: result.entries[0].uri });
+          await lx.saveImageToPhotosAlbum({ filePath: result.files[0].path });
           lx.ui.toast({ title: "Image saved to album", icon: "success" });
         } catch (error) {
           lx.ui.toast({ title: errorMessage(error, "Failed to save image"), icon: "none" });
@@ -1146,11 +1147,11 @@ export default definePage({
         if (page.data.saveToAlbumBusy) return;
         page.update(d => { d.saveToAlbumBusy = true; });
         try {
-          const result = await lx.chooseMedia({
+          const result = await lx.pick.media({
             count: 1, mediaType: ["video"], sourceType: ["camera"], camera: "back", maxDurationSeconds: 60,
           });
           if (result.status === 'canceled') return;
-          await lx.saveVideoToPhotosAlbum({ filePath: result.entries[0].uri });
+          await lx.saveVideoToPhotosAlbum({ filePath: result.files[0].path });
           lx.ui.toast({ title: "Video saved to album", icon: "success" });
         } catch (error) {
           lx.ui.toast({ title: errorMessage(error, "Failed to save video"), icon: "none" });
