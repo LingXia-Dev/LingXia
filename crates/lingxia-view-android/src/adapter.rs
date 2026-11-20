@@ -683,6 +683,7 @@ impl InputMethod for AndroidAdapter {
             commit,
             point,
             word,
+            ..
         } = editor
         else {
             return;

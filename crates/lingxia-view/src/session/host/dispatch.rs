@@ -240,8 +240,29 @@ impl<A: PlatformAdapter> Inner<A> {
                         Box::new(move |session| session.open_picker(commit, &identity)),
                     );
                 }
-                Dispatch::Editor { node, word, .. } => {
+                Dispatch::Editor {
+                    node,
+                    word,
+                    keyboard,
+                    ..
+                } => {
                     if let Some(snapshot) = &snapshot {
+                        // Queued ahead of the focus request the adapter is about to send.
+                        if keyboard && let Some(editor) = snapshot.frame.nodes.get(node) {
+                            let identity = editor.identity.to_string();
+                            let select_all = editor
+                                .input
+                                .as_ref()
+                                .is_some_and(|input| !input.ime.multiline);
+                            self.work(
+                                Guard::Page(page),
+                                move |_, session| {
+                                    session.enter_editor_by_keyboard(identity, select_all);
+                                    Ok(())
+                                },
+                                |_, _| {},
+                            );
+                        }
                         self.adapter.focus(&dispatch, snapshot);
                         // A long-press word selection offers the editor's menu.
                         if word && let Some(node) = snapshot.frame.nodes.get(node) {

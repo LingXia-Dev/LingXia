@@ -60,6 +60,7 @@ struct Activation {
     point: Option<[f32; 2]>,
     word: bool,
     selection: Option<i64>,
+    keyboard: bool,
 }
 
 #[derive(Default)]
@@ -97,6 +98,8 @@ struct PendingFocus {
     activate: bool,
     page: PageTicket,
     visible: bool,
+    /// Arrived by Tab: a text editor starts editing, as a click does.
+    edit: bool,
 }
 
 #[derive(Default)]
@@ -775,6 +778,7 @@ impl ViewInteraction {
             point,
             word,
             selection,
+            keyboard: false,
         });
         effects.push(Effect::Dispatch);
         effects
@@ -839,6 +843,7 @@ impl ViewInteraction {
                         commit: frame.commit,
                         point: activation.point,
                         word: activation.word,
+                        keyboard: activation.keyboard,
                     });
                 } else if frame::plot_enabled(node) {
                     let (mode, index) = match (activation.selection, activation.point) {

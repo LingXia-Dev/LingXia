@@ -116,6 +116,8 @@ pub struct ViewSession {
     reads_appearance: bool,
     input_rebuild: bool,
     reveal_input: bool,
+    /// The editor keyboard focus is starting, and whether it selects all its text on arrival.
+    keyboard_entry: Option<(String, bool)>,
     pending_inputs: Option<crate::interaction::input_state::Inputs>,
     input_serial: u64,
     metrics: crate::FrameMetrics,
@@ -371,6 +373,7 @@ impl ViewSession {
             reads_appearance: true,
             input_rebuild: false,
             reveal_input: false,
+            keyboard_entry: None,
             pending_inputs: None,
             input_serial: 0,
             metrics: Default::default(),

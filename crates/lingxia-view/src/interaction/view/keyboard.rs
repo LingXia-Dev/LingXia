@@ -111,6 +111,17 @@ impl ViewInteraction {
         activate: bool,
         page: PageTicket,
     ) -> Vec<Effect> {
+        self.navigate_to(index, activate, false, page)
+    }
+
+    /// Like `navigate`; `edit` starts editing a text editor it lands on (Tab, not arrows).
+    fn navigate_to(
+        &mut self,
+        index: usize,
+        activate: bool,
+        edit: bool,
+        page: PageTicket,
+    ) -> Vec<Effect> {
         let Some(frame) = self.frame.clone() else {
             return Vec::new();
         };
@@ -122,6 +133,7 @@ impl ViewInteraction {
             activate,
             page,
             visible: self.origin != super::FocusOrigin::Pointer,
+            edit,
         });
         let mut effects = vec![Effect::StopFling];
         if self.scroll.reveal(&frame, &frame.nodes[index]) {
@@ -279,6 +291,13 @@ impl ViewInteraction {
         }
         if pending.activate {
             effects.extend(self.activate(index, None, false, None));
+        } else if pending.edit && text_editor(&frame.nodes[index]) {
+            // Tab onto a text editor starts editing, as a click does: caret, IME and
+            // the focused styles. A date or time editor keeps its picker for a deliberate press.
+            effects.extend(self.activate(index, None, false, None));
+            if let Some(activation) = &mut self.activation {
+                activation.keyboard = true;
+            }
         }
         effects
     }
@@ -559,7 +578,7 @@ impl ViewInteraction {
                 self.revealable(&frame),
                 self.remembered(&frame),
             ) {
-                return (true, self.navigate(next, false, page));
+                return (true, self.navigate_to(next, false, key == Key::Tab, page));
             }
         }
         if key == Key::Activate {
@@ -645,7 +664,7 @@ impl ViewInteraction {
             self.revealable(&frame),
             self.remembered(&frame),
         ) {
-            Some(next) => self.navigate(next, false, page),
+            Some(next) => self.navigate_to(next, false, true, page),
             None => Vec::new(),
         }
     }
@@ -660,4 +679,12 @@ impl ViewInteraction {
     }
 
     // ---- accessibility -------------------------------------------------
+}
+
+fn text_editor(node: &NodeSnapshot) -> bool {
+    frame::editable(node)
+        && node
+            .input
+            .as_ref()
+            .is_some_and(|input| input.attributes.picker.is_none())
 }

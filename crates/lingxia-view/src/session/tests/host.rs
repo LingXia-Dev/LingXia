@@ -7043,3 +7043,110 @@ fn a_showcase_field_clears_a_keyboard_that_rises_after_the_focus() {
         "the field clears the keyboard: {before:?} -> bottom {bottom}"
     );
 }
+
+/// Desktop Tab onto a field starts editing it as a click does: the input method focuses it, a
+/// single-line field selects its text and a multiline one puts the caret at the end, and typed
+/// text arrives. Shift+Tab goes back the same way. (`focusWithin` follows the core's editor
+/// focus: `editor_focus.rs`.)
+#[test]
+fn tab_onto_a_field_starts_editing_it_as_a_click_does() {
+    use crate::interaction::view::Key;
+    let worker = ViewWorker::spawn("test-tab-editor").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let module = source(
+        "function render(){const a=useLocal('a','first'),b=useLocal('b','Ada'),c=useLocal('c','one\\ntwo');return h('view',{style:{gap:8}},h('input',{'data-testid':'a',bind:a}),h('input',{'data-testid':'b',bind:b}),h('textarea',{'data-testid':'c',bind:c,style:{height:80}}))}",
+    );
+    let host = platform.host(&worker, &module, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 2);
+    let query = |id: &str| {
+        host.automation_request(
+            &serde_json::json!({"op": "query", "css": format!("[data-testid=\"{id}\"]")}),
+        )
+        .unwrap()
+    };
+    let request = |body: serde_json::Value| {
+        let (tx, rx) = channel();
+        host.input(body.to_string(), move |reply| {
+            let _ = tx.send(reply);
+        });
+        platform.settle(&[&host]);
+        let reply = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        host.request_frame();
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 4);
+        reply
+    };
+    // The platform answers the editor dispatch by focusing it, as an input method does.
+    let focus_dispatched = |id: &str| -> (String, u64) {
+        let editor = host.adapter().log.lock().unwrap().editors.pop();
+        let Some(Dispatch::Editor {
+            node,
+            point: None,
+            keyboard: true,
+            ..
+        }) = editor
+        else {
+            panic!("Tab onto {id} asks the input method to focus it, without a point: {editor:?}");
+        };
+        let snapshot = host.snapshot().unwrap();
+        let identity = snapshot.frame.nodes[node].identity.to_string();
+        assert_eq!(snapshot.frame.nodes[node].test_id, id);
+        let reply = request(serde_json::json!({
+            "op": "focus", "identity": identity, "generation": snapshot.generation.get(),
+        }))
+        .expect("the focus is granted");
+        let reply: serde_json::Value = serde_json::from_str(&reply).unwrap();
+        (identity, reply["token"].as_u64().unwrap())
+    };
+    let leave = |identity: &str, token: u64| {
+        request(serde_json::json!({"op": "blur", "identity": identity, "token": token}));
+    };
+
+    assert!(host.key(Key::Tab, false, false));
+    platform.settle(&[&host]);
+    let (a, token) = focus_dispatched("a");
+    let field = query("a");
+    assert_eq!(field["focused"], true);
+    assert_eq!(
+        field["selection"],
+        serde_json::json!([0, 5]),
+        "Tab selects a field's text"
+    );
+
+    leave(&a, token);
+    assert!(host.key(Key::Tab, false, false));
+    platform.settle(&[&host]);
+    let (b, token) = focus_dispatched("b");
+    assert_eq!(query("b")["selection"], serde_json::json!([0, 3]));
+    request(serde_json::json!({
+        "op": "edit", "identity": b, "token": token, "submit": false,
+        "edits": [{"op": "replace", "text": "Grace", "cursor": 1, "composing": false}],
+    }));
+    assert_eq!(
+        query("b")["value"],
+        "Grace",
+        "typing replaces the selected text"
+    );
+
+    leave(&b, token);
+    assert!(host.key(Key::Tab, false, false));
+    platform.settle(&[&host]);
+    let (c, token) = focus_dispatched("c");
+    assert_eq!(
+        query("c")["selection"],
+        serde_json::json!([7, 7]),
+        "a multiline field takes the caret at its end"
+    );
+
+    leave(&c, token);
+    assert!(host.key(Key::Tab, true, false));
+    platform.settle(&[&host]);
+    focus_dispatched("b");
+    assert_eq!(
+        query("b")["selection"],
+        serde_json::json!([0, 5]),
+        "Shift+Tab returns to the field and selects it"
+    );
+}

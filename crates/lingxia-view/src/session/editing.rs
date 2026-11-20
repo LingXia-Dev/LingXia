@@ -65,11 +65,26 @@ impl ViewSession {
         self.focus_now(identity)
     }
 
+    /// The next focus of `identity` arrives by keyboard: a single-line editor then selects its
+    /// text, a multiline one puts the caret at the end.
+    pub(crate) fn enter_editor_by_keyboard(&mut self, identity: String, select_all: bool) {
+        self.keyboard_entry = Some((identity, select_all));
+    }
+
     fn focus_now(&mut self, identity: &str) -> Result<Option<crate::InputReply>, String> {
+        let entry = self
+            .keyboard_entry
+            .take()
+            .filter(|(entry, _)| entry == identity);
         let mut inputs = self.inputs.clone();
         let left = inputs.focused().map(str::to_owned);
         if !inputs.focus(identity, &mut self.renderer)? {
             return Ok(None);
+        }
+        if let Some((_, select_all)) = entry
+            && left.as_deref() != Some(identity)
+        {
+            inputs.place_entry_selection(identity, select_all, &mut self.renderer)?;
         }
         inputs.hold_keyboard(false);
         // The editor focus moved from hears `onBlur` before this one hears `onFocus`.

@@ -426,6 +426,7 @@ impl InputMethod for AppleAdapter {
             commit,
             point,
             word,
+            ..
         } = editor
         else {
             return;

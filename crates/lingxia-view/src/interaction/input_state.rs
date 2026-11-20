@@ -343,6 +343,22 @@ impl Inputs {
         Ok(true)
     }
 
+    /// Where keyboard focus arriving in editor `id` leaves the selection: all of it, or the end.
+    pub fn place_entry_selection(
+        &mut self,
+        id: &str,
+        select_all: bool,
+        renderer: &mut Renderer,
+    ) -> Result<(), String> {
+        let Some(entry) = self.entries.get_mut(id) else {
+            return Ok(());
+        };
+        let end = entry.editor.snapshot().text.encode_utf16().count() as u32;
+        let anchor = if select_all { 0 } else { end };
+        renderer.edit_text(&mut entry.editor, &[Edit::Selection { anchor, focus: end }])?;
+        Ok(())
+    }
+
     /// Apply bounds and step to the editor's value, queueing the change as input.
     pub fn commit(&mut self, id: &str, renderer: &mut Renderer) -> Result<(), String> {
         let Some(entry) = self.entries.get_mut(id) else {

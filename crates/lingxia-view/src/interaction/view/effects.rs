@@ -80,6 +80,9 @@ pub enum Dispatch {
         commit: CommitTicket,
         point: Option<[f32; 2]>,
         word: bool,
+        /// Reached by keyboard focus: the session selects a single-line editor's text, or puts
+        /// a multiline one's caret at the end, as a browser does on Tab.
+        keyboard: bool,
     },
     Click {
         commit: CommitTicket,

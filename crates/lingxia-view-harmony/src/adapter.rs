@@ -702,6 +702,7 @@ impl InputMethod for HarmonyAdapter {
             commit,
             point,
             word,
+            ..
         } = editor
         else {
             return;
