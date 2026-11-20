@@ -281,7 +281,7 @@ export type PageHandle<R = JsonValue> = {
     readonly result: Promise<{ status: 'ok'; value: R } | Extract<PageResult, { status: 'canceled' }>>;
     /**
      * Delivers \`message\` to the page's \`page.opener.onMessage\` handlers, at
-     * once and uncopied. Dropped while the page has none: send after \`opened\`.
+     * once and uncopied. Until the page first subscribes, messages wait for it.
      */
     send(message: unknown): void;
     /** Receives what the page sends with \`page.opener.send\`. Returns a function that removes the handler. */

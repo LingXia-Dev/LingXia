@@ -284,7 +284,7 @@ export type PageHandle<R = JsonValue> = {
     readonly result: Promise<{ status: 'ok'; value: R } | Extract<PageResult, { status: 'canceled' }>>;
     /**
      * Delivers \`message\` to the page's \`page.opener.onMessage\` handlers, at
-     * once and uncopied. Dropped while the page has none: send after \`opened\`.
+     * once and uncopied. Until the page first subscribes, messages wait for it.
      */
     send(message: unknown): void;
     /** Receives what the page sends with \`page.opener.send\`. Returns a function that removes the handler. */
@@ -1552,7 +1552,7 @@ export type PageMessagePort = {
     /**
      * Delivers \`message\` to the other side's \`onMessage\` handlers, at once and
      * as the same value (both sides share this Logic context; nothing is
-     * copied). A message sent while the other side has no handler is dropped.
+     * copied). Until the other side first subscribes, messages wait for it.
      */
     send(message: unknown): void;
     /** Receives what the other side sends. Returns a function that removes the handler. */
@@ -2283,7 +2283,8 @@ export type SurfaceMessaging = {
     /**
      * Sends to the other side: from the opener to the opened page, from the
      * page (\`page.surface\`) to its opener. Delivered at once and uncopied to
-     * the other side's \`onMessage\` handlers; dropped when it has none.
+     * the other side's \`onMessage\` handlers; until it first subscribes,
+     * messages wait for it.
      */
     send(message: unknown): void;
     /** Receives what the other side sends. Returns a function that removes the handler. */

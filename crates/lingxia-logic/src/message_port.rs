@@ -1,7 +1,7 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 use rong::{
-    Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue,
+    Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
     function::{Rest, This},
     js_class, js_method,
 };
@@ -11,6 +11,9 @@ use rong_event::{Emitter, EmitterExt, EventEmitter, EventKey};
 pub(crate) struct JSMessagePort {
     event_emitter: EventEmitter,
     peer: RefCell<Option<JSObject>>,
+    /// Messages sent before this side first subscribed, in order.
+    pending: RefCell<Vec<JSValue>>,
+    subscribed: Cell<bool>,
 }
 
 #[js_class]
@@ -42,6 +45,9 @@ impl JSMessagePort {
         if let Some(peer) = self.peer.borrow().as_ref() {
             mark_fn(peer.as_js_value());
         }
+        for payload in self.pending.borrow().iter() {
+            mark_fn(payload);
+        }
         self.event_emitter.gc_mark_with(mark_fn);
     }
 }
@@ -56,15 +62,18 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<JSMessagePort>()
 }
 
+fn port() -> JSMessagePort {
+    JSMessagePort {
+        event_emitter: EventEmitter::default(),
+        peer: RefCell::new(None),
+        pending: RefCell::new(Vec::new()),
+        subscribed: Cell::new(false),
+    }
+}
+
 pub(crate) fn pair(ctx: &JSContext) -> JSResult<(JSObject, JSObject)> {
-    let first = Class::lookup::<JSMessagePort>(ctx)?.instance(JSMessagePort {
-        event_emitter: EventEmitter::default(),
-        peer: RefCell::new(None),
-    });
-    let second = Class::lookup::<JSMessagePort>(ctx)?.instance(JSMessagePort {
-        event_emitter: EventEmitter::default(),
-        peer: RefCell::new(None),
-    });
+    let first = Class::lookup::<JSMessagePort>(ctx)?.instance(port());
+    let second = Class::lookup::<JSMessagePort>(ctx)?.instance(port());
 
     first
         .borrow::<JSMessagePort>()?
@@ -89,6 +98,13 @@ pub(crate) fn emit_message(port: &JSObject, payload: JSValue) -> JSResult<()> {
     let Some(peer) = peer else {
         return Ok(());
     };
+    {
+        let receiver = peer.borrow::<JSMessagePort>()?;
+        if !receiver.subscribed.get() {
+            receiver.pending.borrow_mut().push(payload);
+            return Ok(());
+        }
+    }
 
     <JSMessagePort as EmitterExt>::do_emit(
         This(peer),
@@ -109,6 +125,28 @@ pub(crate) fn add_message_listener(port: &JSObject, handler: JSFunc) -> JSResult
         false,
         false,
     )?;
+    let queued = {
+        let port = target.borrow::<JSMessagePort>()?;
+        if port.subscribed.replace(true) {
+            Vec::new()
+        } else {
+            port.pending.take()
+        }
+    };
+    if !queued.is_empty() {
+        // After onMessage returns, so the handler can already hold its unsubscribe.
+        let receiver = target.clone();
+        Promise::from_future(&ctx, None, async move {
+            for payload in queued {
+                <JSMessagePort as EmitterExt>::do_emit(
+                    This(receiver.clone()),
+                    EventKey::String("message".to_string()),
+                    Rest(vec![payload]),
+                )?;
+            }
+            Ok::<(), rong::RongJSError>(())
+        })?;
+    }
     JSFunc::new(&ctx, move || {
         <JSMessagePort as EmitterExt>::remove_event_listener(
             This(target.clone()),
@@ -136,4 +174,41 @@ fn attach_methods(ctx: &JSContext, port: &JSObject) -> JSResult<()> {
     )?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rong::{JSEngine, RongJS};
+
+    /// A message sent before the other side subscribes waits for it, arrives
+    /// after onMessage returns, and keeps its order ahead of later sends.
+    #[tokio::test(flavor = "current_thread")]
+    async fn messages_wait_for_the_first_subscriber() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let runtime = RongJS::runtime();
+                let ctx = runtime.context();
+                init(&ctx).unwrap();
+                let (opener, page) = pair(&ctx).unwrap();
+                let seen = std::rc::Rc::new(RefCell::new(Vec::<i32>::new()));
+
+                emit_message(&opener, JSValue::from_rust(&ctx, 1)).unwrap();
+                emit_message(&opener, JSValue::from_rust(&ctx, 2)).unwrap();
+                let sink = seen.clone();
+                let handler =
+                    JSFunc::new(&ctx, move |value: i32| sink.borrow_mut().push(value)).unwrap();
+                add_message_listener(&page, handler).unwrap();
+                assert!(
+                    seen.borrow().is_empty(),
+                    "queued messages arrive after onMessage returns"
+                );
+
+                tokio::task::yield_now().await;
+                assert_eq!(*seen.borrow(), vec![1, 2]);
+                emit_message(&opener, JSValue::from_rust(&ctx, 3)).unwrap();
+                assert_eq!(*seen.borrow(), vec![1, 2, 3]);
+            })
+            .await;
+    }
 }
