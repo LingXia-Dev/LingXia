@@ -538,7 +538,18 @@ impl ViewSession {
         if !value.is_finite() || value.abs() > 1e9 {
             return Err("UI_SLIDER: invalid proposed value".into());
         }
-        let encoded = serde_json::to_string(&value).map_err(|e| e.to_string())?;
+        // An unbound slider takes the value itself; its callback hears only a change.
+        let (encoded, took) = match self.uncontrolled.propose(handle, value) {
+            uncontrolled::Proposal::Unchanged => return Ok(false),
+            uncontrolled::Proposal::Changed(encoded) => {
+                self.input_dirty = true;
+                (encoded, true)
+            }
+            uncontrolled::Proposal::Bound => (
+                serde_json::to_string(&value).map_err(|e| e.to_string())?,
+                false,
+            ),
+        };
         self.execute(|| {
             self.context
                 .eval(Source::from_bytes(
@@ -546,6 +557,7 @@ impl ViewSession {
                 ))
                 .map_err(|e| crate::engine::js_error(&self.context, e))
         })
+        .map(|ran: bool| ran || took)
     }
 }
 

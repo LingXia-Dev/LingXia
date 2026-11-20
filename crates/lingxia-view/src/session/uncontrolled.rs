@@ -3,12 +3,14 @@
 //! it, and the control's change callback still hears each new value. A control the page binds
 //! is controlled exactly as before and keeps nothing here.
 use crate::protocol::{Record, field, identities, tag};
+use crate::scene::slider::SliderSnapshot;
 use std::collections::HashMap;
 
 /// A control's own value.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum ControlValue {
     Checked(bool),
+    Number(f64),
 }
 
 impl ControlValue {
@@ -16,6 +18,14 @@ impl ControlValue {
     fn json(&self) -> String {
         match self {
             Self::Checked(on) => on.to_string(),
+            Self::Number(value) => serde_json::Value::from(*value).to_string(),
+        }
+    }
+
+    fn field(&self) -> serde_json::Value {
+        match self {
+            Self::Checked(on) => serde_json::Value::from(u8::from(*on)),
+            Self::Number(value) => serde_json::Value::from(*value),
         }
     }
 }
@@ -23,8 +33,20 @@ impl ControlValue {
 /// One unbound control in the current records.
 #[derive(Clone, Debug)]
 struct Unbound {
-    /// Its change callback in these records; a press dispatches it with the new value.
+    /// Its change callback in these records; a change dispatches it with the new value.
     handle: Option<u64>,
+    /// A slider's range, which snaps a proposed value as the slider draws it.
+    range: Option<SliderSnapshot>,
+}
+
+/// What a proposed value did to an unbound control.
+pub(crate) enum Proposal {
+    /// Not an unbound control's handle: the page decides, as for any bound control.
+    Bound,
+    /// The control already holds that value; its callback does not run.
+    Unchanged,
+    /// The control took the value; its callback receives this encoding of it.
+    Changed(String),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -33,10 +55,12 @@ pub(crate) struct Uncontrolled {
     unbound: HashMap<String, Unbound>,
 }
 
-/// The field holding a control's value, when the tag is one with its own state.
-fn value_field(tag: usize) -> Option<usize> {
+/// The field holding a control's value and the one naming its change callback, when the tag is
+/// one with its own state.
+fn fields(tag: usize) -> Option<(usize, usize)> {
     match tag {
-        tag::CHECKBOX | tag::SWITCH => Some(field::CHECKED),
+        tag::CHECKBOX | tag::SWITCH => Some((field::CHECKED, field::ON_CHECKED_CHANGE)),
+        tag::SLIDER => Some((field::SLIDER_VALUE, field::ON_SLIDER_CHANGE)),
         _ => None,
     }
 }
@@ -48,7 +72,7 @@ impl Uncontrolled {
         self.unbound.clear();
         let ids = identities(records);
         for (record, id) in records.iter().zip(ids) {
-            let Some(value) = value_field(record.tag) else {
+            let Some((value, callback)) = fields(record.tag) else {
                 continue;
             };
             if record.fields.iter().any(|(field, _)| *field == value) {
@@ -57,10 +81,13 @@ impl Uncontrolled {
             let handle = record
                 .fields
                 .iter()
-                .find(|(field, _)| *field == field::ON_CHECKED_CHANGE)
+                .find(|(field, _)| *field == callback)
                 .and_then(|(_, handle)| handle.as_u64())
                 .filter(|handle| *handle != 0);
-            self.unbound.insert(id, Unbound { handle });
+            let range = (record.tag == tag::SLIDER)
+                .then(|| SliderSnapshot::from_record(record).ok())
+                .flatten();
+            self.unbound.insert(id, Unbound { handle, range });
         }
         self.values.retain(|id, _| self.unbound.contains_key(id));
     }
@@ -72,34 +99,55 @@ impl Uncontrolled {
         }
         let ids = identities(records);
         for (record, id) in records.iter_mut().zip(ids) {
-            let (Some(value), Some(field)) = (self.values.get(&id), value_field(record.tag)) else {
+            let (Some(value), Some((field, _))) = (self.values.get(&id), fields(record.tag)) else {
                 continue;
             };
-            if !self.unbound.contains_key(&id) {
-                continue;
+            if self.unbound.contains_key(&id) {
+                record.fields.push((field, value.field()));
             }
-            let ControlValue::Checked(on) = value;
-            record
-                .fields
-                .push((field, serde_json::Value::from(u8::from(*on))));
         }
     }
 
-    /// A press ran `handle`: when it is an unbound control's, that control takes its next value
-    /// and the encoded value its callback receives is returned.
+    /// A press ran `handle`: when it is an unbound checkbox's or switch's, that control takes
+    /// its next value and the encoded value its callback receives is returned.
     pub(crate) fn press(&mut self, handle: u64) -> Option<String> {
         let (id, _) = self
             .unbound
             .iter()
-            .find(|(_, unbound)| unbound.handle == Some(handle))?;
+            .find(|(_, unbound)| unbound.handle == Some(handle) && unbound.range.is_none())?;
         // Unchecked until pressed; a mixed box checks on its first press, as in the DOM.
         let next = match self.values.get(id) {
             Some(ControlValue::Checked(on)) => ControlValue::Checked(!on),
-            None => ControlValue::Checked(true),
+            _ => ControlValue::Checked(true),
         };
         let json = next.json();
         self.values.insert(id.clone(), next);
         Some(json)
+    }
+
+    /// A drag proposed `value` through `handle`: an unbound slider snaps it to its range and
+    /// takes it.
+    pub(crate) fn propose(&mut self, handle: u64, value: f64) -> Proposal {
+        let Some((id, range)) = self.unbound.iter().find_map(|(id, unbound)| {
+            (unbound.handle == Some(handle))
+                .then_some(unbound.range.as_ref())
+                .flatten()
+                .map(|range| (id, range))
+        }) else {
+            return Proposal::Bound;
+        };
+        let next = range.normalize(value);
+        let current = match self.values.get(id) {
+            Some(ControlValue::Number(current)) => *current,
+            _ => range.value,
+        };
+        if next == current {
+            return Proposal::Unchanged;
+        }
+        let next = ControlValue::Number(next);
+        let json = next.json();
+        self.values.insert(id.clone(), next);
+        Proposal::Changed(json)
     }
 }
 
@@ -200,5 +248,63 @@ mod tests {
         state.reconcile(&records);
         assert_eq!(state.press(5).as_deref(), Some("true"));
         assert_eq!(state.press(5).as_deref(), Some("false"));
+    }
+
+    fn slider(handle: u64, step: f64) -> Record {
+        record(
+            tag::SLIDER,
+            Some(0),
+            vec![
+                (field::ACCESSIBILITY_LABEL, json!("Volume")),
+                (field::SLIDER_MIN, json!(0)),
+                (field::SLIDER_MAX, json!(10)),
+                (field::SLIDER_STEP, json!(step)),
+                (field::ON_SLIDER_CHANGE, json!(handle)),
+            ],
+        )
+    }
+
+    fn proposed(state: &mut Uncontrolled, handle: u64, value: f64) -> Option<String> {
+        match state.propose(handle, value) {
+            Proposal::Changed(json) => Some(json),
+            Proposal::Unchanged => None,
+            Proposal::Bound => Some("bound".into()),
+        }
+    }
+
+    fn slider_value(records: &[Record], state: &Uncontrolled) -> Option<f32> {
+        let mut painted = records.to_vec();
+        state.apply(&mut painted);
+        painted[1].number(field::SLIDER_VALUE)
+    }
+
+    #[test]
+    fn an_unbound_slider_snaps_takes_and_keeps_a_dragged_value() {
+        let records = page(vec![slider(7, 3.0)]);
+        let mut state = Uncontrolled::default();
+        state.reconcile(&records);
+        assert_eq!(slider_value(&records, &state), None);
+        // Snapped as drawn; the minimum it starts at is no change.
+        assert_eq!(proposed(&mut state, 7, 0.4), None);
+        assert_eq!(proposed(&mut state, 7, 9.6).as_deref(), Some("10.0"));
+        assert_eq!(proposed(&mut state, 7, 9.9), None);
+        assert_eq!(slider_value(&records, &state), Some(10.0));
+        let rerender = page(vec![slider(9, 3.0)]);
+        state.reconcile(&rerender);
+        assert_eq!(slider_value(&rerender, &state), Some(10.0));
+        assert_eq!(proposed(&mut state, 9, 4.0).as_deref(), Some("3.0"));
+        // A click on a slider's handle is not a checkbox press.
+        assert_eq!(state.press(9), None);
+    }
+
+    #[test]
+    fn a_bound_slider_is_left_to_the_page() {
+        let mut bound = slider(7, 1.0);
+        bound.fields.push((field::SLIDER_VALUE, json!(4)));
+        let records = page(vec![bound]);
+        let mut state = Uncontrolled::default();
+        state.reconcile(&records);
+        assert_eq!(proposed(&mut state, 7, 6.0).as_deref(), Some("bound"));
+        assert_eq!(slider_value(&records, &state), Some(4.0));
     }
 }
