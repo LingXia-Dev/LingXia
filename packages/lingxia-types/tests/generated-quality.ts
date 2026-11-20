@@ -38,9 +38,9 @@ declare const videoInfo: VideoInfo;
 const resolvedAppearance: ResolvedAppearance = lx.host.appearance.get();
 const appearanceUnwatch: () => void = lx.host.appearance.watch(() => {});
 const appearanceSetResult: Promise<void> | undefined =
-  lx.host.control?.appearance.setPreference("dark");
+  lx.host.appearance.setPreference("dark");
 const appearancePreference: AppearancePreference | undefined =
-  lx.host.control?.appearance.getPreference();
+  lx.host.appearance.getPreference();
 const navigationUpdateResult: Promise<void> = lx.navigationBar.update({ title: null });
 const tabBarUpdateResult: Promise<void> = lx.app.tabBar.update({ visibility: "auto" });
 const forcedTabBarUpdateResult: Promise<void> = lx.app.tabBar.update({ visibility: "visible" });
@@ -83,7 +83,7 @@ const clipboardTypes: Promise<ClipboardType[]> = lx.clipboard.types();
 const cacheSize: Promise<number> | undefined = lx.host.cache?.size();
 // @ts-expect-error cache is Control-only; guests do not have the member
 lx.host.cache.size();
-const hostOs: HostOs = lx.host.getBaseInfo().os;
+const hostOs: HostOs = lx.host.info.os;
 const deviceOs: HostOs = lx.device.info.osName;
 const applinkScene: AppLaunchScene = 8003;
 const launchOptions: AppLaunchOptions = { scene: applinkScene };

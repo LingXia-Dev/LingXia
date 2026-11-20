@@ -2,9 +2,8 @@
   "types": [
     "ActionSheetOptions",
     "ActionSheetResult",
-    "AppBaseInfo",
-    "AppInfo",
     "AppDisplayPatch",
+    "AppInfo",
     "AppConfig",
     "AppDownloadFilePath",
     "AppDownloadOptions",
@@ -41,9 +40,6 @@
     "CompressVideoTask",
     "ConfiguredPageName",
     "ConnectWifiOptions",
-    "ControlApi",
-    "ControlAppearanceApi",
-    "ControlDisplayLanguageApi",
     "DataPath",
     "DataPathValue",
     "DeepReadonly",
@@ -201,6 +197,7 @@
   ],
   "documented": [
     "HostAppApi",
+    "HostInfo",
     "LxEnv",
     "TrayApi",
     "NavApi",

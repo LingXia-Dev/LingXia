@@ -5,7 +5,7 @@ import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 
 const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 
-test("match the aggregate entry to the running platform", { id: "TARGET-001", covers: ['lx.host.getBaseInfo', 'LxAppDriver.pages'], app: SHOWCASE_APP_ID }, async (t) => {
+test("match the aggregate entry to the running platform", { id: "TARGET-001", covers: ['lx.host.info', 'LxAppDriver.pages'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "TARGET-001");
 
   const expectedPlatform = args.platform?.toLocaleLowerCase();

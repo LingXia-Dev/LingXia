@@ -9,7 +9,7 @@ import { decodePng } from './png.js';
 async function dimsTheBar(t: Fixture) {
   const app = t.app;
   const view = app.view;
-  const os = await app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
+  const os = await app.logic.eval(({ lx }) => String(lx.host.info.os || '').toLowerCase());
   if (os !== 'ios') t.skip('reads the UIKit tab bar from the iOS window capture');
   // iOS does not expose its chrome to automation: the bar is where the page's own insets put it.
   const lab = view.testId(rootOf('dialog'));
@@ -76,7 +76,7 @@ test('after a page is unloaded with its dialog open, the next page dialog still 
   id: 'TOP-LAYER-BARS-IOS-002', covers: ['view:dialog'],
   start: openUnderTabs('dialog'),
 }, async (t) => {
-  const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
+  const os = await t.app.logic.eval(({ lx }) => String(lx.host.info.os || '').toLowerCase());
   if (os !== 'ios') t.skip('reads the UIKit tab bar from the iOS window capture');
   const view = t.app.view;
   await view.testId('lab-overlay-confirm').click();

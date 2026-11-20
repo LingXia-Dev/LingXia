@@ -517,7 +517,7 @@ through those calls. The map form needs a runtime that has it: raise
 The language is the host's display language. A host app that keeps its own
 language setting must forward it with
 `lingxia::app::set_display_language_preference` (or
-`lx.host.control.displayLanguage.setPreference` from Logic); otherwise the
+`lx.host.displayLanguage.setPreference` from Logic); otherwise the
 page content follows the app's setting and the declared chrome text does not.
 
 ### Leaving a page with unsaved changes

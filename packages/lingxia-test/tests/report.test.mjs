@@ -694,7 +694,7 @@ test("a passing spec that never reaches its tag is not credited with it", async 
   // Declares two capabilities and only ever touches one of them.
   lxTest("claims more than it does", {
     id: "COV-CLAIM",
-    covers: ["lx.getStorage", "lx.tray"],
+    covers: ["lx.getStorage", "lx.host.tray"],
   }, async (t) => {
     await t.app.logic.eval(() => "probe");
     expect(1).toBe(1);
@@ -707,7 +707,7 @@ test("a passing spec that never reaches its tag is not credited with it", async 
   assert.match(html, /class="cover cover-ok"[^>]*>lx\.getStorage</);
   // Declared by a passing spec, never called: the whole point is that this
   // does not read the same as the one above.
-  assert.match(html, /class="cover cover-claimed"[^>]*>lx\.tray</);
+  assert.match(html, /class="cover cover-claimed"[^>]*>lx\.host\.tray</);
   assert.match(html, /but no eval in those tests reached it/);
 });
 

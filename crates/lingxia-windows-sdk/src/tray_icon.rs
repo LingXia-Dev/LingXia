@@ -32,7 +32,7 @@ const TRAY_ICON_ID: u32 = 1;
 const NIN_KEYSELECT: u32 = NIN_SELECT | NINF_KEY;
 const UPDATE_READY_COMMAND: usize = 0x7002;
 
-/// One entry in the JS-registered tray dropdown (`lx.tray.setMenu`). The native
+/// One entry in the JS-registered tray dropdown (`lx.host.tray.setMenu`). The native
 /// menu carries no default items; the developer supplies them (and their
 /// click handlers) — mirroring the macOS tray contract.
 #[derive(Debug, Clone, Default)]
@@ -46,7 +46,7 @@ struct TrayMenuItem {
 /// Empty menus get a fallback Quit only for exclusive tray hosts.
 static TRAY_MENU: Mutex<Vec<TrayMenuItem>> = Mutex::new(Vec::new());
 
-/// While set, a tray left-click is delivered to JS (`lx.tray.onClick`) instead
+/// While set, a tray left-click is delivered to JS (`lx.host.tray.onClick`) instead
 /// of running the tray's configured surface action.
 static TRAY_CLICK_INTERCEPT: AtomicBool = AtomicBool::new(false);
 
@@ -151,7 +151,7 @@ pub(crate) fn is_installed() -> bool {
 }
 
 /// Replace the JS-registered tray dropdown. `items_json` is the array
-/// `lx.tray.setMenu` produced: each entry is `{ "separator": true }` or
+/// `lx.host.tray.setMenu` produced: each entry is `{ "separator": true }` or
 /// `{ "label", "enabled", "checked" }`. Invoked via the platform tray-menu
 /// handler; the menu is rebuilt on demand when the icon is right-clicked.
 pub(crate) fn set_menu(items_json: &str) {
@@ -192,7 +192,7 @@ pub(crate) fn set_menu(items_json: &str) {
     }
 }
 
-/// Toggle whether a tray left-click is delivered to JS (`lx.tray.onClick`)
+/// Toggle whether a tray left-click is delivered to JS (`lx.host.tray.onClick`)
 /// instead of running the tray's configured surface action.
 pub(crate) fn set_click_intercept(intercept: bool) {
     TRAY_CLICK_INTERCEPT.store(intercept, Ordering::Relaxed);
@@ -544,10 +544,10 @@ fn activate_tray_item() {
     let Some(item) = current_item() else {
         return;
     };
-    // While a JS `lx.tray.onClick` handler is registered, the left-click is the
+    // While a JS `lx.host.tray.onClick` handler is registered, the left-click is the
     // app's to handle: deliver it to that app and suppress the surface action.
     if TRAY_CLICK_INTERCEPT.load(Ordering::Relaxed) {
-        lxapp::publish_app_event(&item.app_id, "lx.tray.click", None);
+        lxapp::publish_app_event(&item.app_id, "lx.host.tray.click", None);
         return;
     }
     if !activate_tray_surface(&item) {
@@ -652,7 +652,7 @@ fn open_pending_update_card() {
 fn show_tray_menu(hwnd: HWND) {
     // A context menu replaces the flyout; leave only one surface up.
     crate::window_host::hide_exclusive_tray_popover();
-    // JS `lx.tray.setMenu` owns the dropdown when the app registered one.
+    // JS `lx.host.tray.setMenu` owns the dropdown when the app registered one.
     // Exclusive tray hosts still need a way out: an empty menu gets Quit.
     let items = TRAY_MENU
         .lock()
@@ -688,7 +688,7 @@ fn show_tray_menu(hwnd: HWND) {
                 continue;
             }
             // Command id is the 1-based JS array index so the selection maps
-            // back to the handler registered at `lx.tray.menu:{index}`.
+            // back to the handler registered at `lx.host.tray.menu:{index}`.
             // AppendMenuW copies the label, so a local buffer is fine.
             let mut flags = MF_STRING;
             if entry.checked {
@@ -742,7 +742,7 @@ fn show_tray_menu(hwnd: HWND) {
         }
         if command >= 1 && command != DEFAULT_QUIT_COMMAND {
             // Deliver to the owning app's handler for that menu index.
-            let event = format!("lx.tray.menu:{}", command - 1);
+            let event = format!("lx.host.tray.menu:{}", command - 1);
             lxapp::publish_app_event(&item.app_id, &event, None);
         }
     }

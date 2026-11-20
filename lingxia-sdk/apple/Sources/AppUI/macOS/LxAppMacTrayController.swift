@@ -81,11 +81,11 @@ final class LxAppMacTrayController: NSObject {
         statusItems[activatorID]?.button
     }
 
-    // Runtime updates (lx.tray.*). They target the single tray's status item.
+    // Runtime updates (lx.host.tray.*). They target the single tray's status item.
     private var trayTitle: String?
     private var trayBadge: String?
     private var jsMenu: NSMenu?
-    /// When true (a JS `lx.tray.onClick` handler is registered), a left-click is
+    /// When true (a JS `lx.host.tray.onClick` handler is registered), a left-click is
     /// delivered to JS instead of running the tray's configured surface action.
     var clickIntercepted = false
     /// Exclusive menu-bar agents get Quit when JS did not register a menu.
@@ -106,7 +106,7 @@ final class LxAppMacTrayController: NSObject {
         refreshTrayText()
     }
 
-    /// lx.tray.show()/hide() — toggle the status item's visibility.
+    /// lx.host.tray.show()/hide() — toggle the status item's visibility.
     func setVisible(_ visible: Bool) {
         for item in statusItems.values {
             item.isVisible = visible
@@ -120,7 +120,7 @@ final class LxAppMacTrayController: NSObject {
         let checked: Bool?
     }
 
-    /// lx.tray.setMenu — rebuild the right-click dropdown from a JSON spec. Item
+    /// lx.host.tray.setMenu — rebuild the right-click dropdown from a JSON spec. Item
     /// clicks are reported back to JS by index via the app event bus.
     func setMenu(_ json: String) {
         guard let data = json.data(using: .utf8),
@@ -227,7 +227,7 @@ final class LxAppMacTrayController: NSObject {
     /// composited as text beside the icon (idiomatic, like the menu-bar clock).
     /// Reports whether the text is actually on screen. A status item exists
     /// from the moment the tray is declared but stays hidden until
-    /// `lx.tray.show()`, so "the item took the value" and "the user can see
+    /// `lx.host.tray.show()`, so "the item took the value" and "the user can see
     /// it" are different answers and only the second one is worth returning.
     @discardableResult
     private func refreshTrayText() -> Bool {
@@ -286,7 +286,7 @@ final class LxAppMacTrayController: NSObject {
             statusItem.menu = nil
             return
         }
-        // Left-click: when JS intercepts (lx.tray.onClick registered) deliver only
+        // Left-click: when JS intercepts (lx.host.tray.onClick registered) deliver only
         // to JS; otherwise run the configured surface action.
         if clickIntercepted {
             _ = onAppEvent(AppEvent.trayClick, activatorSurface[actionID] ?? "")

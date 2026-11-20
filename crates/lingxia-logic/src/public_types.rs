@@ -70,7 +70,7 @@ rong::js_api! {
     globalData: Record<string, unknown>;
 }"###;
 
-        /// Canonical platform-family label shared by `lx.host.getBaseInfo().os`
+        /// Canonical platform-family label shared by `lx.host.info.os`
         /// and `lx.device.info.osName`. `"unknown"` is a non-product build.
         type HostOs = r###"'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown'"###;
 
@@ -322,8 +322,8 @@ rong::js_api! {
         /// The product-wide cache a settings screen reports and clears.
         ///
         /// App-scoped, not lxapp-scoped: the figure covers every lxapp the host
-        /// has run. Injected only into the Control app, same gate as
-        /// `lx.host.control` — guests do not have the member.
+        /// has run. Injected only into the Control app — guests do not have
+        /// the member.
         ///
         type AppCacheApi = r###"{
     /** Estimated reclaimable managed bytes; excludes live session storage and WebView cache. */
@@ -521,22 +521,19 @@ rong::js_api! {
      * unsubscribe is not yet bound inside it.
      */
     watch(callback: (resolved: ResolvedAppearance) => void): () => void;
-}"###;
-
-        /// `lx.host.control.appearance` — the product's own light/dark setting.
-        type ControlAppearanceApi = r###"{
-    /** What the user chose for the whole product. */
+    /** What the user chose for the whole product. Control app only. */
     getPreference(): AppearancePreference;
     /**
      * Pin the product to `'light'` or `'dark'`, or follow the system with
      * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
+     * Control app only.
      */
     setPreference(preference: AppearancePreference): Promise<void>;
     /**
      * Follow the choice, not what it resolves to: a system flip under `'auto'`
      * moves `lx.host.appearance.watch` and leaves this quiet. Starts with the
      * current value; that first callback runs synchronously, before
-     * `watchPreference` returns.
+     * `watchPreference` returns. Control app only.
      */
     watchPreference(callback: (preference: AppearancePreference) => void): () => void;
 }"###;
@@ -565,38 +562,22 @@ rong::js_api! {
      * unsubscribe is not yet bound inside it.
      */
     watch(callback: (language: string) => void): () => void;
-}"###;
-
-        /// `lx.host.control.displayLanguage` — the preference behind that
-        /// language, for the one surface that edits it.
-        type ControlDisplayLanguageApi = r###"{
-    /** What the user chose: `'auto'`, or a canonical BCP-47 tag. */
+    /** What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app only. */
     getPreference(): DisplayLanguagePreference;
-    /** Persist the product's language. Rejects a tag that is not valid BCP-47. */
+    /**
+     * Persist the product's language. Rejects a tag that is not valid BCP-47.
+     * Control app only.
+     */
     setPreference(preference: DisplayLanguagePreference): Promise<void>;
     /**
      * Follow the choice, not what it resolves to: a system locale change under
      * `'auto'` moves the language without moving the preference. Starts with
      * the current value and returns an unsubscribe; that first callback runs
-     * synchronously, before `watchPreference` returns.
+     * synchronously, before `watchPreference` returns. Control app only.
      */
     watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
 }"###;
 
-        /// `lx.host.control` — product-wide settings, and their single writer.
-        ///
-        /// Present only in the Control app. Bind it once rather than repeating
-        /// `lx.host.control!`:
-        ///
-        /// ```js
-        /// const control = lx.host.control;
-        /// if (!control) return; // not the Control app
-        /// await control.appearance.setPreference('dark');
-        /// ```
-        type ControlApi = r###"{
-    readonly displayLanguage: ControlDisplayLanguageApi;
-    readonly appearance: ControlAppearanceApi;
-}"###;
         type ResolvedAppearance = r###"'light' | 'dark'"###;
         type VisibilityPreference = r###"'auto' | 'hidden'"###;
         type TabBarVisibilityPreference = r###"'auto' | 'visible' | 'hidden'"###;
@@ -1919,7 +1900,7 @@ true
 
         /// Surfaces (docked asides, floats, windows, browser tabs, declared surfaces)
         /// and the desktop tray — the types behind `lx.surface`, `lx.shell`,
-        /// and `lx.tray`.
+        /// and `lx.host.tray`.
         ///
         type SurfaceCloseReason = r###"'user' | 'programmatic' | 'owner_closed' | 'app_closed' | 'failed'
 /**
@@ -1988,7 +1969,7 @@ true
         ///
         /// A surface with nothing to paint on is reported, not raised: a macOS
         /// status item exists from the moment a tray is declared but stays hidden
-        /// until `lx.tray.show()`, and a badge on a hidden item is not a badge
+        /// until `lx.host.tray.show()`, and a badge on a hidden item is not a badge
         /// anyone can see. That resolves `false` whether you named the surface or
         /// took `auto`; only a malfunction rejects.
         ///

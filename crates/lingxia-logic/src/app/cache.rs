@@ -6,9 +6,9 @@ use crate::i18n::js_error_from_lxapp_error;
 /// `lx.host.cache` — the product-wide cache a settings screen reports and
 /// clears.
 ///
-/// Injected only into the Control app, same gate as `lx.host.control`: the
-/// figure a user is shown covers the whole product, so it spans every lxapp the
-/// host has run, not just the one asking. Guests do not get the member — an
+/// Injected only into the Control app: the figure a user is shown covers the
+/// whole product, so it spans every lxapp the host has run, not just the one
+/// asking. Guests do not get the member — an
 /// ordinary lxapp clearing every other lxapp's cache is not a capability it
 /// should have.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {

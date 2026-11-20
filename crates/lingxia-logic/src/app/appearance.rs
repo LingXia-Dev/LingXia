@@ -29,13 +29,6 @@ pub(super) fn init_follower(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     let namespace = JSObject::new(ctx);
     namespace.set("get", JSFunc::new(ctx, get)?.name("get")?)?;
     namespace.set("watch", JSFunc::new(ctx, watch)?.name("watch")?)?;
-    app.set("appearance", namespace)?;
-    Ok(())
-}
-
-/// `lx.host.control.appearance` — the product's own light/dark preference.
-pub(super) fn init_control(ctx: &JSContext, control: &JSObject) -> JSResult<()> {
-    let namespace = JSObject::new(ctx);
     namespace.set(
         "getPreference",
         JSFunc::new(ctx, get_preference)?.name("getPreference")?,
@@ -48,7 +41,7 @@ pub(super) fn init_control(ctx: &JSContext, control: &JSObject) -> JSResult<()> 
         "watchPreference",
         JSFunc::new(ctx, watch_preference)?.name("watchPreference")?,
     )?;
-    control.set("appearance", namespace)?;
+    app.set("appearance", namespace)?;
     Ok(())
 }
 

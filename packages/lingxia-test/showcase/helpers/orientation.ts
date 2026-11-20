@@ -16,7 +16,7 @@ const NO_FIXTURE = 'no device fixture turns this phone';
 const DESKTOPS = ['macos', 'windows'];
 
 async function hostOs(t: Fixture): Promise<string> {
-  return t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
+  return t.app.logic.eval(({ lx }) => String(lx.host.info.os || '').toLowerCase());
 }
 
 async function android(t: Fixture): Promise<boolean> {

@@ -1,5 +1,5 @@
 import { definePage } from '@lingxia/types/page';
-type TerminalApi = NonNullable<typeof lx.terminal>;
+type TerminalApi = NonNullable<typeof lx.host.terminal>;
 type TerminalSnapshot = Awaited<ReturnType<TerminalApi['settings']['get']>>;
 type WindowsTerminalApi = NonNullable<TerminalApi['windows']>;
 type WindowsInlineImageStatus = Awaited<ReturnType<WindowsTerminalApi['status']>>;
@@ -52,10 +52,10 @@ async function action<T>(operation: () => Promise<T>): Promise<ActionResult<T>> 
 }
 
 function terminal() {
-  if (!lx.terminal) {
+  if (!lx.host.terminal) {
     throw new Error('Terminal settings are unavailable in this host');
   }
-  return lx.terminal;
+  return lx.host.terminal;
 }
 
 function windowsTerminal(): WindowsTerminalApi {
@@ -87,7 +87,7 @@ export default definePage({
       loadTerminalSettings() {
         return action(async () => {
           const api = terminal();
-          const isWindows = lx.host.getBaseInfo().os === 'Windows';
+          const isWindows = lx.host.info.os === 'Windows';
           const [snapshot, themes, fonts, windowsInlineImages] = await Promise.all([
             api.settings.get(),
             api.colorSchemes.list(),

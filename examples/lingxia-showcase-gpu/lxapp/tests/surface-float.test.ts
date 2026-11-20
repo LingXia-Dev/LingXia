@@ -113,7 +113,7 @@ test('a host screenshot shows the page dimmed around a modal float card', {
   start: { page: 'view' },
 }, async (t) => {
   const app = t.app;
-  const os = await app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
+  const os = await app.logic.eval(({ lx }) => String(lx.host.info.os || '').toLowerCase());
   if (os !== 'ios') t.skip('the iOS capture composites windows itself');
   const shot = async () => decodePng((await rawAutomation().lxapps.screenshot()).base64);
   const key = `surface-float-shot-${Date.now()}`;

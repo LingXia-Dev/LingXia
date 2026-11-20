@@ -42,7 +42,7 @@ App({
     lx.host.displayLanguage.watch((tag) => {
       applyMoreActions(tag);
     });
-    lx.host.control?.displayLanguage.watchPreference(() => {
+    lx.host.displayLanguage.watchPreference(() => {
       applyMoreActions();
     });
 

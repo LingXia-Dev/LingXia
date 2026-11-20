@@ -41,7 +41,7 @@ library, and the root `tsconfig.json` references both.
   at runtime needs `page as ConfiguredPageName`; another lxapp's page
   (`lx.nav.go({ app })`, `lx.shell.openApp`) is a plain string.
 - Most methods are flat on `lx`; namespaces include `lx.env`, `lx.host`,
-  `lx.clipboard`, `lx.navigationBar`, `lx.app.tabBar`, `lx.tray`, `lx.shell`.
+  `lx.clipboard`, `lx.navigationBar`, `lx.app.tabBar`, `lx.host.tray`, `lx.shell`.
 
 ## Web globals
 
@@ -72,8 +72,8 @@ No lxapp keeps its own copy or offers its own picker.
 lx.host.displayLanguage.get();        lx.host.displayLanguage.watch(cb);
 lx.host.appearance.get();             lx.host.appearance.watch(cb);
 
-lx.host.control?.displayLanguage.setPreference('zh-CN');
-lx.host.control?.appearance.setPreference('dark');
+lx.host.displayLanguage.setPreference('zh-CN');
+lx.host.appearance.setPreference('dark');
 ```
 
 - `get`/`watch` report what is in effect; `getPreference` / `setPreference` /
@@ -110,7 +110,7 @@ if (lx.supports('surface.window.fullChrome')) {
   `app.notification`, `app.banner`.
 - Required features need a matching `minRuntime`; optional ones need a
   fallback.
-- Use `lx.host.control?.…` for Control-app members, not a feature key
+- Ask `lx.app.info.role === 'control'` for Control-app members, not a feature key
   ([Control app](../app/control-app.md)).
 - Unsupported cosmetic calls (tray on mobile) are silent no-ops; calls with a
   result reject.
@@ -130,7 +130,7 @@ painted:
 - A badge never prompts, and a notification never sets one. Pass `null` to
   clear.
 
-`lx.tray.setIcon` / `setTitle` / `setMenu` / `onClick` / `show` / `hide` change
+`lx.host.tray.setIcon` / `setTitle` / `setMenu` / `onClick` / `show` / `hide` change
 the tray item declared in [`lingxia.yaml`](../app/project.md#tray-apps).
 
 ## Desktop banner

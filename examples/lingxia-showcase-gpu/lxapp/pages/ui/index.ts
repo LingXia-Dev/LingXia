@@ -146,7 +146,7 @@ export default definePage({
         try {
           thisPage.update(d => {
             d.appearance = {
-              preference: lx.host.control?.appearance.getPreference() ?? "auto",
+              preference: lx.host.appearance.getPreference() ?? "auto",
               resolved: lx.host.appearance.get(),
             };
           });
@@ -306,7 +306,7 @@ export default definePage({
       async setAppearance(options: { preference?: "auto" | "light" | "dark" } = {}) {
         const preference = options.preference || "auto";
         const applied = await helpers.runChromeUpdate("Appearance update", () =>
-          lx.host.control!.appearance.setPreference(preference),
+          lx.host.appearance.setPreference(preference),
         );
         helpers.syncAppearance();
         return applied;

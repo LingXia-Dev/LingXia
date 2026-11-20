@@ -381,25 +381,30 @@ declare global {
      */
     banner?: BannerApi;
 
-    /** The language this lxapp renders in. Every lxapp follows it. */
+    /**
+     * The language this lxapp renders in. Every lxapp follows it; only the
+     * Control app changes it.
+     */
     readonly displayLanguage: DisplayLanguageApi;
 
-    /** The light/dark scheme this lxapp renders in. */
+    /**
+     * The light/dark scheme this lxapp renders in. Every lxapp follows it;
+     * only the Control app changes it.
+     */
     readonly appearance: AppearanceApi;
 
     /**
-     * Product-wide settings, and their single writer. Present only in the
-     * Control app the host sealed at build time. Use
-     * `lx.host.control !== undefined` to inspect that identity.
-     */
-    readonly control?: ControlApi;
-
-    /**
      * Product-wide cache reporting and clearing for a settings screen.
-     * Present only in the Control app; presence agrees with
-     * `lx.host.control !== undefined`.
+     * Present only in the Control app (`lx.app.info.role === 'control'`).
      */
     cache?: AppCacheApi;
+
+    /**
+     * Terminal product settings. Present only in the host-bundled Terminal
+     * Settings lxapp when the host declares `capabilities.terminal`; its
+     * presence and `lx.supports('terminal')` always agree.
+     */
+    readonly terminal?: TerminalApi;
 
     /**
      * Take over host updates for the rest of this process. Irreversible: the
@@ -433,13 +438,6 @@ declare global {
   }
 
   interface Lx {
-    /**
-     * Terminal product settings. Present only in the host-bundled Terminal
-     * Settings lxapp when the host declares `capabilities.terminal`; its
-     * presence and `lx.supports('terminal')` always agree.
-     */
-    readonly terminal?: TerminalApi;
-
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.
      * `get` / `set` / `delete` then share that schema instead of
@@ -511,8 +509,8 @@ export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface
 /**
  * The product-wide cache a settings screen reports and clears.
  * App-scoped, not lxapp-scoped: the figure covers every lxapp the host
- * has run. Injected only into the Control app, same gate as
- * `lx.host.control` — guests do not have the member.
+ * has run. Injected only into the Control app — guests do not have
+ * the member.
  */
 export type AppCacheApi = {
     /** Estimated reclaimable managed bytes; excludes live session storage and WebView cache. */
@@ -660,6 +658,21 @@ export type AppearanceApi = {
      * unsubscribe is not yet bound inside it.
      */
     watch(callback: (resolved: ResolvedAppearance) => void): () => void;
+    /** What the user chose for the whole product. Control app only. */
+    getPreference(): AppearancePreference;
+    /**
+     * Pin the product to `'light'` or `'dark'`, or follow the system with
+     * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
+     * Control app only.
+     */
+    setPreference(preference: AppearancePreference): Promise<void>;
+    /**
+     * Follow the choice, not what it resolves to: a system flip under `'auto'`
+     * moves `lx.host.appearance.watch` and leaves this quiet. Starts with the
+     * current value; that first callback runs synchronously, before
+     * `watchPreference` returns. Control app only.
+     */
+    watchPreference(callback: (preference: AppearancePreference) => void): () => void;
 };
 
 /**
@@ -936,57 +949,6 @@ export type ConnectWifiOptions = {
     password?: string;
 };
 
-/**
- * `lx.host.control` — product-wide settings, and their single writer.
- * Present only in the Control app. Bind it once rather than repeating
- * `lx.host.control!`:
- * ```js
- * const control = lx.host.control;
- * if (!control) return; // not the Control app
- * await control.appearance.setPreference('dark');
- * ```
- */
-export type ControlApi = {
-    readonly displayLanguage: ControlDisplayLanguageApi;
-    readonly appearance: ControlAppearanceApi;
-};
-
-/** `lx.host.control.appearance` — the product's own light/dark setting. */
-export type ControlAppearanceApi = {
-    /** What the user chose for the whole product. */
-    getPreference(): AppearancePreference;
-    /**
-     * Pin the product to `'light'` or `'dark'`, or follow the system with
-     * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
-     */
-    setPreference(preference: AppearancePreference): Promise<void>;
-    /**
-     * Follow the choice, not what it resolves to: a system flip under `'auto'`
-     * moves `lx.host.appearance.watch` and leaves this quiet. Starts with the
-     * current value; that first callback runs synchronously, before
-     * `watchPreference` returns.
-     */
-    watchPreference(callback: (preference: AppearancePreference) => void): () => void;
-};
-
-/**
- * `lx.host.control.displayLanguage` — the preference behind that
- * language, for the one surface that edits it.
- */
-export type ControlDisplayLanguageApi = {
-    /** What the user chose: `'auto'`, or a canonical BCP-47 tag. */
-    getPreference(): DisplayLanguagePreference;
-    /** Persist the product's language. Rejects a tag that is not valid BCP-47. */
-    setPreference(preference: DisplayLanguagePreference): Promise<void>;
-    /**
-     * Follow the choice, not what it resolves to: a system locale change under
-     * `'auto'` moves the language without moving the preference. Starts with
-     * the current value and returns an unsubscribe; that first callback runs
-     * synchronously, before `watchPreference` returns.
-     */
-    watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
-};
-
 /** A surface declared by the host in `lingxia.yaml`. */
 export type DeclaredSurface = SurfaceBase & SurfaceShowable & {
     readonly kind: 'declared';
@@ -1021,6 +983,20 @@ export type DisplayLanguageApi = {
      * unsubscribe is not yet bound inside it.
      */
     watch(callback: (language: string) => void): () => void;
+    /** What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app only. */
+    getPreference(): DisplayLanguagePreference;
+    /**
+     * Persist the product's language. Rejects a tag that is not valid BCP-47.
+     * Control app only.
+     */
+    setPreference(preference: DisplayLanguagePreference): Promise<void>;
+    /**
+     * Follow the choice, not what it resolves to: a system locale change under
+     * `'auto'` moves the language without moving the preference. Starts with
+     * the current value and returns an unsubscribe; that first callback runs
+     * synchronously, before `watchPreference` returns. Control app only.
+     */
+    watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
 };
 
 /**
@@ -1194,7 +1170,7 @@ export type HostAppUpdateResult = {
 export type HostAppUpdateTask = Task<HostAppUpdateResult, HostAppUpdateEvent>;
 
 /**
- * Canonical platform-family label shared by `lx.host.getBaseInfo().os`
+ * Canonical platform-family label shared by `lx.host.info.os`
  * and `lx.device.info.osName`. `"unknown"` is a non-product build.
  */
 export type HostOs = 'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown';
@@ -1776,7 +1752,7 @@ export type ResolvedAppearance = 'light' | 'dark';
  * answers through its own callback has to be waited for to be believed.
  * A surface with nothing to paint on is reported, not raised: a macOS
  * status item exists from the moment a tray is declared but stays hidden
- * until `lx.tray.show()`, and a badge on a hidden item is not a badge
+ * until `lx.host.tray.show()`, and a badge on a hidden item is not a badge
  * anyone can see. That resolves `false` whether you named the surface or
  * took `auto`; only a malfunction rejects.
  * Apple ties the badge to notification permission. On macOS the label
@@ -2178,7 +2154,7 @@ export type SurfaceBase = {
 /**
  * Surfaces (docked asides, floats, windows, browser tabs, declared surfaces)
  * and the desktop tray — the types behind `lx.surface`, `lx.shell`,
- * and `lx.tray`.
+ * and `lx.host.tray`.
  */
 export type SurfaceCloseReason = 'user' | 'programmatic' | 'owner_closed' | 'app_closed' | 'failed'
 /**
@@ -2868,22 +2844,6 @@ export type WindowsTerminalInlineImageStatus = {
     };
 };
 
-/**
- * Host app identity. Everything here is fixed for the life of the process;
- * the language the app renders in is not, and lives on
- * `lx.host.displayLanguage`.
- */
-export interface AppBaseInfo {
-  /**
-   * Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
-   * `"Harmony"`. Matches the View-side `useLxHost().os` value.
-   */
-  os: HostOs;
-  productName: string;
-  version: string;
-  sdkVersion: string;
-}
-
 /** Device info APIs. */
 export interface DeviceInfo {
   brand: string;
@@ -2901,6 +2861,22 @@ export interface FileStats {
   lastModifiedTime?: number;
   lastAccessedTime?: number;
   createTime?: number;
+}
+
+/**
+ * Host app identity. Everything here is fixed for the life of the process;
+ * the language the app renders in is not, and lives on
+ * `lx.host.displayLanguage`.
+ */
+export interface HostInfo {
+  /**
+   * Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
+   * `"Harmony"`. Matches the View-side `useLxHost().os` value.
+   */
+  os: HostOs;
+  productName: string;
+  version: string;
+  sdkVersion: string;
 }
 
 export interface HostServiceEnvState {
@@ -2950,6 +2926,12 @@ export interface LxAppInfo {
   appName: string;
   version: string;
   channel: LxAppReleaseType;
+  /**
+   * `'control'` is the product's Control app, the only lxapp Control-only
+   * members admit. `'control-surface'` is a host-bundled settings UI the
+   * Control app opens (Terminal Settings), admitted only to its own members.
+   */
+  role: 'control' | 'control-surface' | 'guest';
 }
 
 export interface ScreenInfo {
@@ -3148,11 +3130,7 @@ declare global {
      */
     claimCustomUpdate(): void;
     readonly env: HostAppEnv;
-    /**
-     * Read the host app's identity: OS, product name, product version, and SDK
-     * runtime version.
-     */
-    getBaseInfo(): AppBaseInfo;
+    readonly info: Readonly<HostInfo>;
     /**
      * Exit the host app immediately without a confirmation dialog.
      * Control app only: quitting the product is not an lxapp's decision. Other
@@ -3175,6 +3153,7 @@ declare global {
      * can call this unconditionally.
      */
     setBadge(value: string | number | null, options?: SetBadgeOptions): Promise<boolean>;
+    readonly tray: TrayApi;
   }
 }
 
@@ -3238,7 +3217,6 @@ declare global {
     stopPullDownRefresh(): void;
     readonly nav: NavApi;
     readonly shell: ShellApi;
-    readonly tray: TrayApi;
     readonly ui: UiApi;
   }
 }
@@ -3516,26 +3494,26 @@ declare global {
 
 declare global {
   interface TrayApi {
-    /** lx.tray.setIcon(icon) — replace the tray icon (a resource path). */
+    /** lx.host.tray.setIcon(icon) — replace the tray icon (a resource path). */
     setIcon(icon: string): void;
-    /** lx.tray.setTitle(text) — text shown beside the icon (macOS). Empty clears it. */
+    /** lx.host.tray.setTitle(text) — text shown beside the icon (macOS). Empty clears it. */
     setTitle(text: string | null): void;
     /**
-     * lx.tray.setMenu(items) — replace the tray dropdown menu. Each item is
+     * lx.host.tray.setMenu(items) — replace the tray dropdown menu. Each item is
      * `{ label, onClick?, enabled?, checked? }` or `{ separator: true }`. The native
      * menu is built from labels; clicks are routed back to each item's `onClick` by
      * index over the app event bus.
      */
     setMenu(items: Array<TrayMenuItem | TrayMenuSeparator>): void;
     /**
-     * lx.tray.onClick(handler) — left-click on the tray icon. While at least one
+     * lx.host.tray.onClick(handler) — left-click on the tray icon. While at least one
      * handler is registered, the left-click runs only the handler(s); the tray's
      * configured surface action is suppressed. Returns an unsubscribe function.
      */
     onClick(handler: () => void): () => void;
-    /** lx.tray.show() — show the tray status item. */
+    /** lx.host.tray.show() — show the tray status item. */
     show(): void;
-    /** lx.tray.hide() — hide the tray status item. */
+    /** lx.host.tray.hide() — hide the tray status item. */
     hide(): void;
   }
 }

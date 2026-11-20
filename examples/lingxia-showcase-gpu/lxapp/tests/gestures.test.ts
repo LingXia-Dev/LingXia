@@ -142,7 +142,7 @@ test('a tap on a nested switch, a row button and a rich-text link reaches only t
 });
 
 test('a mouse crossing nested boxes calls enter outermost first and leave innermost first', { start: openDemo('hover') }, async (t) => {
-  const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
+  const os = await t.app.logic.eval(({ lx }) => String(lx.host.info.os || '').toLowerCase());
   if (os !== 'macos' && os !== 'windows') t.skip('needs a mouse: desktop pointer input');
   const view = t.app.view;
   const log = view.testId('lab-crossing-log');

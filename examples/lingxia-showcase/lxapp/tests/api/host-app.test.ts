@@ -100,23 +100,23 @@ test('set and clear the host app badge without leaving one behind', {
 
 test('tell a hidden tray from a shown one in what setBadge reports', {
   id: 'HOSTAPP-BADGE-004',
-  covers: ['lx.host.setBadge', 'lx.tray.show', 'lx.tray.hide'],
+  covers: ['lx.host.setBadge', 'lx.host.tray.show', 'lx.host.tray.hide'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-004');
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { await lx.host.setBadge(null); lx.tray.hide(); } catch {} return true;
+      try { await lx.host.setBadge(null); lx.host.tray.hide(); } catch {} return true;
     });
   });
 
   // A declared tray has a status item from the start but stays hidden until
   // `show()`, so "the item took the value" is not "the user can see it".
   const hidden = await app.logic.eval(async ({ lx }) => {
-    try { lx.tray.hide(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });
+    try { lx.host.tray.hide(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });
   });
   const shown = await app.logic.eval(async ({ lx }) => {
-    try { lx.tray.show(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });
+    try { lx.host.tray.show(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });
   });
 
   // A hidden item is never a painted badge, whatever the platform. `shown` is
@@ -234,18 +234,18 @@ test('answer checkUpdate with a decision instead of throwing', {
 
 test('reject an invalid host display language', {
   id: 'HOSTAPP-LANG-002',
-  covers: ['lx.host.control.displayLanguage.setPreference'],
+  covers: ['lx.host.displayLanguage.setPreference'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-002');
 
-  const offered = await app.logic.eval(({ lx }) => typeof lx.host.control?.displayLanguage?.setPreference);
+  const offered = await app.logic.eval(({ lx }) => typeof lx.host.displayLanguage?.setPreference);
   expect(offered).toBe('function');
 
   for (const language of ['', 'en--US']) {
     const rejected = await app.logic.eval(async ({ lx }, language): Promise<Caught> => {
       try {
-        await lx.host.control!.displayLanguage.setPreference(language);
+        await lx.host.displayLanguage.setPreference(language);
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -548,38 +548,38 @@ test('clear product caches while preserving live app storage', {
 test('show, label, and retract the host tray item', {
   id: 'HOSTAPP-TRAY-001',
   covers: [
-    'lx.tray',
-    'lx.tray.show',
-    'lx.tray.hide',
-    'lx.tray.setTitle',
-    'lx.tray.setMenu',
-    'lx.tray.setIcon',
-    'lx.tray.onClick',
+    'lx.host.tray',
+    'lx.host.tray.show',
+    'lx.host.tray.hide',
+    'lx.host.tray.setTitle',
+    'lx.host.tray.setMenu',
+    'lx.host.tray.setIcon',
+    'lx.host.tray.onClick',
   ],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-TRAY-001');
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { lx.tray.hide(); } catch {} return true;
+      try { lx.host.tray.hide(); } catch {} return true;
     });
   });
 
   const result = await app.logic.eval(async ({ lx }) => {
-    lx.tray.show();
-    lx.tray.setTitle('LX');
-    lx.tray.setIcon('public/showcase-icon.svg');
-    lx.tray.setMenu([
+    lx.host.tray.show();
+    lx.host.tray.setTitle('LX');
+    lx.host.tray.setIcon('public/showcase-icon.svg');
+    lx.host.tray.setMenu([
       { label: 'Open Showcase', onClick: () => {} },
       { separator: true },
       { label: 'Disabled', enabled: false },
     ]);
-    const off = lx.tray.onClick(() => {});
+    const off = lx.host.tray.onClick(() => {});
     off();
-    lx.tray.setTitle(null);
-    lx.tray.hide();
+    lx.host.tray.setTitle(null);
+    lx.host.tray.hide();
     // Hiding a hidden tray stays a no-op.
-    lx.tray.hide();
+    lx.host.tray.hide();
     return { unsubscribe: typeof off };
   });
 

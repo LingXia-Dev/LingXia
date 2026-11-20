@@ -10,13 +10,13 @@ import { eventually } from './poll.js';
 export async function pinEnglish(t: Fixture): Promise<void> {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const preference = () =>
-    app.logic.eval(({ lx }) => lx.host.control?.displayLanguage?.getPreference?.() ?? null);
+    app.logic.eval(({ lx }) => lx.host.displayLanguage?.getPreference?.() ?? null);
   const previous = await preference();
   if (previous === null || previous === 'en-US') return;
   t.defer(async () => {
-    await app.logic.eval(({ lx }, language) => lx.host.control?.displayLanguage?.setPreference(language), previous);
+    await app.logic.eval(({ lx }, language) => lx.host.displayLanguage?.setPreference(language), previous);
   });
-  await app.logic.eval(({ lx }) => lx.host.control?.displayLanguage?.setPreference('en-US'));
+  await app.logic.eval(({ lx }) => lx.host.displayLanguage?.setPreference('en-US'));
   await eventually(preference, (value) => value === 'en-US', {
     describe: 'display language pinned to en-US',
     timeoutMs: 15_000,

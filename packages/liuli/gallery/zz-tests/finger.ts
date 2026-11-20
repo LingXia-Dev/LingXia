@@ -31,7 +31,7 @@ export async function reveal(view: TestView, target: Locator): Promise<Box> {
 
 /** The platform's minimum touch target in pt/dp; a desktop has none, so its specs skip. */
 export async function touchMinimum(t: { app: TestApp; skip(reason: string): never }): Promise<number> {
-  const os: string = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
+  const os: string = await t.app.logic.eval(({ lx }) => String(lx.host.info.os || '').toLowerCase());
   if (os === 'android') return 48;
   if (os === 'ios' || os === 'harmony' || os === 'harmonyos' || os === 'ohos') return 44;
   return t.skip(`no touch target on ${os}`);

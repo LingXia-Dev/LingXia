@@ -95,7 +95,7 @@ surfaces:
   `productNames`.
 - `productNames` — optional locale → name map (`zh-CN: 我的应用`). The launcher
   follows the system language; window title, tray, and
-  `lx.getAppBaseInfo().productName` follow `lx.host.displayLanguage`.
+  `lx.host.info.productName` follow `lx.host.displayLanguage`.
 - `productVersion` — semver, stamped into every OS package. Do not edit
   version fields in platform projects.
 - `platforms` — `macos`, `windows`, `ios`, `android`, `harmony`.
@@ -484,7 +484,7 @@ surfaces:
       size: { width: 320, height: 480 }
 ```
 
-The runtime tray content (`lx.tray.*`) and badge (`lx.host.setBadge`) are
+The runtime tray content (`lx.host.tray.*`) and badge (`lx.host.setBadge`) are
 Control-app APIs: [Badges](../lxapp/lx-api.md#badges).
 
 ### Terminal and browser mains

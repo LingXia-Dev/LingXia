@@ -60,7 +60,7 @@ const GROUPS = [
     members: [
       'surface', 'navigationBar',
       'startPullDownRefresh', 'stopPullDownRefresh',
-      'tray', 'shell',
+      'shell',
     ],
   },
   {
@@ -105,7 +105,7 @@ const GROUPS = [
     summary: 'The host app around this lxapp, its environment, updates, and automation.',
     members: [
       'host', 'app', 'env', 'openExternal',
-      'supports', 'terminal',
+      'supports',
     ],
   },
 ];

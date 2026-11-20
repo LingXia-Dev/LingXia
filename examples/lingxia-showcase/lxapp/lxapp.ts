@@ -110,7 +110,7 @@ async function applyHostChrome(os: string, tag: string) {
     value: t("languageName"),
     onActivate: () => {
       const next = language === "zh-CN" ? "en-US" : "zh-CN";
-      void lx.host.control?.displayLanguage
+      void lx.host.displayLanguage
         .setPreference(next)
         .catch((error) => console.warn("language action failed", error));
     },
@@ -145,7 +145,7 @@ App({
     this.globalData.lifecycle.launches++;
     this.globalData.lifecycle.last = "launch";
     routeFromAppLink(options);
-    const { os } = lx.host.getBaseInfo();
+    const { os } = lx.host.info;
     const applyChrome = (tag = lx.host.displayLanguage.get()) => {
       void applyHostChrome(os, tag).catch((error) =>
         console.warn("host chrome language update failed", error),
@@ -157,7 +157,7 @@ App({
     lx.host.displayLanguage.watch((tag) => {
       applyChrome(tag);
     });
-    lx.host.control?.displayLanguage.watchPreference(() => {
+    lx.host.displayLanguage.watchPreference(() => {
       applyChrome();
     });
 

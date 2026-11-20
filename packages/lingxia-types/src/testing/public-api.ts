@@ -36,9 +36,6 @@ import type {
   AutostartApi,
   BannerApi,
   CompressVideoTask,
-  ControlApi,
-  ControlAppearanceApi,
-  ControlDisplayLanguageApi,
   DisplayLanguageApi,
   DownloadTask,
   ClipboardApi,
@@ -99,8 +96,6 @@ export const LX_API_NAMES = [
   'stopPullDownRefresh',
   'supports',
   'surface',
-  'terminal',
-  'tray',
   'ui',
 ] as const;
 
@@ -111,26 +106,27 @@ const HOST_APP_API = [
   'cache',
   'checkUpdate',
   'claimCustomUpdate',
-  'control',
   'displayLanguage',
   'env',
   'exit',
-  'getBaseInfo',
   'getServiceEnv',
+  'info',
   'notification',
   'screenshot',
   'setBadge',
+  'terminal',
   'toggleServiceEnv',
+  'tray',
 ] as const;
-// `autostart`, `banner`, `control`, `cache`, and `notification` are injected
+// `autostart`, `banner`, `cache`, `notification`, and `terminal` are injected
 // only where they apply, so a runtime walk of `lx.host` must not require them.
 const HOST_APP_RUNTIME_API = HOST_APP_API.filter(
   (name) =>
     name !== 'autostart' &&
     name !== 'banner' &&
-    name !== 'control' &&
     name !== 'cache' &&
-    name !== 'notification',
+    name !== 'notification' &&
+    name !== 'terminal',
 );
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
 const BANNER_API = ['dismiss', 'show'] as const;
@@ -142,19 +138,14 @@ const NOTIFICATION_API = [
   'show',
 ] as const;
 const APP_CACHE_API = ['clear', 'size'] as const;
-const DISPLAY_LANGUAGE_API = ['get', 'watch'] as const;
-const CONTROL_API = ['appearance', 'displayLanguage'] as const;
-const CONTROL_DISPLAY_LANGUAGE_API = [
+const DISPLAY_LANGUAGE_API = [
+  'get',
   'getPreference',
   'setPreference',
+  'watch',
   'watchPreference',
 ] as const;
-const APPEARANCE_API = ['get', 'watch'] as const;
-const CONTROL_APPEARANCE_API = [
-  'getPreference',
-  'setPreference',
-  'watchPreference',
-] as const;
+const APPEARANCE_API = DISPLAY_LANGUAGE_API;
 const NAVIGATION_BAR_API = ['update'] as const;
 const TAB_BAR_API = ['update'] as const;
 const UI_API = ['actionSheet', 'alert', 'confirm', 'toast'] as const;
@@ -380,7 +371,6 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx',
     members: LX_API_NAMES,
-    optionalMembers: ['terminal'],
     properties: [
       'app',
       'clipboard',
@@ -395,8 +385,6 @@ export const LX_RUNTIME_SURFACES = [
       'pick',
       'shell',
       'surface',
-      'terminal',
-      'tray',
       'ui',
     ],
   },
@@ -405,7 +393,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.host',
     members: HOST_APP_RUNTIME_API,
-    properties: ['appearance', 'displayLanguage', 'env'],
+    properties: ['appearance', 'displayLanguage', 'env', 'info', 'tray'],
   },
   {
     name: 'lx.host.autostart',
@@ -441,34 +429,14 @@ export const LX_RUNTIME_SURFACES = [
     expression: 'lx.host.displayLanguage',
     members: DISPLAY_LANGUAGE_API,
   },
-  {
-    name: 'lx.host.control',
-    layer: 'logic',
-    expression: 'lx.host.control',
-    members: CONTROL_API,
-    properties: CONTROL_API,
-    optional: true,
-  },
-  {
-    name: 'lx.host.control.displayLanguage',
-    layer: 'logic',
-    expression: 'lx.host.control?.displayLanguage',
-    members: CONTROL_DISPLAY_LANGUAGE_API,
-    optional: true,
-  },
+
   {
     name: 'lx.host.appearance',
     layer: 'logic',
     expression: 'lx.host.appearance',
     members: APPEARANCE_API,
   },
-  {
-    name: 'lx.host.control.appearance',
-    layer: 'logic',
-    expression: 'lx.host.control?.appearance',
-    members: CONTROL_APPEARANCE_API,
-    optional: true,
-  },
+
   {
     name: 'lx.navigationBar',
     layer: 'logic',
@@ -530,39 +498,39 @@ export const LX_RUNTIME_SURFACES = [
     members: NAV_API,
   },
   {
-    name: 'lx.terminal',
+    name: 'lx.host.terminal',
     layer: 'logic',
-    expression: 'lx.terminal',
+    expression: 'lx.host.terminal',
     members: TERMINAL_API,
     properties: TERMINAL_API,
     optionalMembers: ['windows'],
     optional: true,
   },
   {
-    name: 'lx.terminal.settings',
+    name: 'lx.host.terminal.settings',
     layer: 'logic',
-    expression: 'lx.terminal?.settings',
+    expression: 'lx.host.terminal?.settings',
     members: TERMINAL_SETTINGS_API,
     optional: true,
   },
   {
-    name: 'lx.terminal.colorSchemes',
+    name: 'lx.host.terminal.colorSchemes',
     layer: 'logic',
-    expression: 'lx.terminal?.colorSchemes',
+    expression: 'lx.host.terminal?.colorSchemes',
     members: TERMINAL_COLOR_SCHEMES_API,
     optional: true,
   },
   {
-    name: 'lx.terminal.fonts',
+    name: 'lx.host.terminal.fonts',
     layer: 'logic',
-    expression: 'lx.terminal?.fonts',
+    expression: 'lx.host.terminal?.fonts',
     members: TERMINAL_FONTS_API,
     optional: true,
   },
   {
-    name: 'lx.terminal.windows',
+    name: 'lx.host.terminal.windows',
     layer: 'logic',
-    expression: 'lx.terminal?.windows',
+    expression: 'lx.host.terminal?.windows',
     members: WINDOWS_TERMINAL_API,
     optional: true,
   },
@@ -592,7 +560,7 @@ export const LX_RUNTIME_SURFACES = [
     expression: 'lx.shell.sidebarActions',
     members: SHELL_SIDEBAR_ACTIONS_API,
   },
-  { name: 'lx.tray', layer: 'logic', expression: 'lx.tray', members: TRAY_API },
+  { name: 'lx.host.tray', layer: 'logic', expression: 'lx.host.tray', members: TRAY_API },
   { name: 'lx.fs', layer: 'logic', expression: 'lx.fs', members: FILE_SYSTEM_API },
   { name: 'lx.clipboard', layer: 'logic', expression: 'lx.clipboard', members: CLIPBOARD_API },
   { name: 'Storage', layer: 'logic', expression: 'lx.getStorage()', members: STORAGE_API },
@@ -844,7 +812,7 @@ export const LX_RETURNED_OBJECT_SHAPE_NAMES = LX_RETURNED_OBJECT_CAPABILITY_NAME
 /**
  * Shape coverage a run on any host must prove. A surface marked `optional`, or
  * a member listed in `optionalMembers`, is absent on hosts that do not build
- * it — `lx.terminal` ships only inside the bundled Terminal Settings lxapp —
+ * it — `lx.host.terminal` ships only inside the bundled Terminal Settings lxapp —
  * so a suite that skips it has not covered it. Requiring it here would let the
  * covers gate report a surface nobody touched as proven.
  */
@@ -882,9 +850,6 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<NotificationApi, typeof NOTIFICATION_API>>,
   AssertTrue<Exact<AppCacheApi, typeof APP_CACHE_API>>,
   AssertTrue<Exact<DisplayLanguageApi, typeof DISPLAY_LANGUAGE_API>>,
-  AssertTrue<Exact<ControlApi, typeof CONTROL_API>>,
-  AssertTrue<Exact<ControlDisplayLanguageApi, typeof CONTROL_DISPLAY_LANGUAGE_API>>,
-  AssertTrue<Exact<ControlAppearanceApi, typeof CONTROL_APPEARANCE_API>>,
   AssertTrue<Exact<AppearanceApi, typeof APPEARANCE_API>>,
   AssertTrue<Exact<NavigationBarApi, typeof NAVIGATION_BAR_API>>,
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,

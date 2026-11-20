@@ -173,7 +173,7 @@ test('view-media webview demo opens a 70% sheet via floating button and exits vi
 // screen; the other keeps every drag that starts on it. On iOS the runner injects its drag into the
 // View page, never into the native web view, so both legs there are checked by hand on a device.
 async function webDrags(t: Fixture) {
-  const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
+  const os = await t.app.logic.eval(({ lx }) => String(lx.host.info.os || '').toLowerCase());
   if (os === 'ios') t.skip('iOS: the runner\'s drag never reaches the native web view; check by hand on a device');
   const view = t.app.view;
   // A press on Reset brings both pages on screen above it.
@@ -244,7 +244,7 @@ test('an embedded web page follows the View page\'s appearance live, without the
 // Scrolling hands off at the edge: drags inside move the web page until its last row, then the
 // next drag scrolls the screen. Only a real touch reaches the native web view.
 test('a drag inside a scrollable web page scrolls it to its edge, then the screen takes the next drag', { covers: ['view:webview', 'view:scroll'], start: openDemo('webScroll'), requires: { input: ['touch'] } }, async (t) => {
-  const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
+  const os = await t.app.logic.eval(({ lx }) => String(lx.host.info.os || '').toLowerCase());
   if (os === 'ios') t.skip('iOS: the runner\'s drag never reaches the native web view; check by hand on a device');
   const view = t.app.view;
   const frame = view.testId('lab-web-scroll-frame');

@@ -7,9 +7,9 @@ export default [
     title: "Windows terminal integration runtime status, install, and setEnabled",
     mode: "external-fixture",
     covers: [
-      "lx.terminal.windows.status",
-      "lx.terminal.windows.install",
-      "lx.terminal.windows.setEnabled",
+      "lx.host.terminal.windows.status",
+      "lx.host.terminal.windows.install",
+      "lx.host.terminal.windows.setEnabled",
     ],
     reason: "TERMINAL-API-001 covers the rest inside the bundled settings lxapp; the Windows-only integration needs a Windows run with an installable runtime",
   },

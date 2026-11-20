@@ -1,11 +1,11 @@
-import type { AppBaseInfo, NavigationTarget, SystemSettingInfo } from "@lingxia/types";
+import type { HostInfo, NavigationTarget, SystemSettingInfo } from "@lingxia/types";
 import type { PageLoadOptions } from '@lingxia/types';
 import { definePage } from '@lingxia/types/page';
 
 export default definePage({
   data: {
     currentType: 'appBaseInfo',
-    appBaseInfo: null as AppBaseInfo | null,
+    appBaseInfo: null as HostInfo | null,
     displayLanguage: '',
     systemSetting: null as SystemSettingInfo | null,
     autostartSupported: false,
@@ -55,7 +55,7 @@ export default definePage({
       async selectSection({ type }: { type: string }) { await load({ type }); },
       async getBaseInfo() {
         try {
-          const info = lx.host.getBaseInfo();
+          const info = lx.host.info;
           console.log('App base info:', info);
           page.update(d => {
             d.appBaseInfo = info;

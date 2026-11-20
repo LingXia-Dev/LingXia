@@ -396,7 +396,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         active?.dismissVisibleIndependentPanels()
     }
 
-    // MARK: - Tray runtime updates (lx.tray.*)
+    // MARK: - Tray runtime updates (lx.host.tray.*)
 
     func setTrayBadge(_ text: String?) -> Bool { trayController.setBadge(text) }
     func setTrayIcon(_ icon: String) { trayController.setIcon(icon) }

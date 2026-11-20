@@ -544,7 +544,7 @@ pub trait AppRuntime:
     }
 
     /// When intercepting, a left-click on the tray is delivered only to JS
-    /// (`lx.tray.onClick`) and does not run the tray's configured surface action.
+    /// (`lx.host.tray.onClick`) and does not run the tray's configured surface action.
     /// Desktop only; no-op elsewhere.
     fn set_tray_click_intercept(&self, _intercept: bool) -> Result<(), PlatformError> {
         Ok(())

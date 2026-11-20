@@ -299,7 +299,7 @@ fn invoke_windows_close_browser_tab_handler(tab_id: &str) -> bool {
 }
 
 /// Process-wide handler that pushes the JS-registered tray menu spec
-/// (`items_json`, the array `lx.tray.setMenu` produced) to the native
+/// (`items_json`, the array `lx.host.tray.setMenu` produced) to the native
 /// system-tray icon. Registered by the Windows host SDK; when absent (headless
 /// / non-shell builds) `set_tray_menu` no-ops, matching the trait contract.
 type WindowsTrayMenuHandler = Arc<dyn Fn(&str) + Send + Sync>;
@@ -322,7 +322,7 @@ fn invoke_windows_tray_menu_handler(items_json: &str) {
 }
 
 /// Process-wide handler toggling whether a tray left-click is delivered to JS
-/// (`lx.tray.onClick`) instead of running the tray's configured surface action.
+/// (`lx.host.tray.onClick`) instead of running the tray's configured surface action.
 type WindowsTrayClickInterceptHandler = Arc<dyn Fn(bool) + Send + Sync>;
 static WINDOWS_TRAY_CLICK_INTERCEPT_HANDLER: Mutex<Option<WindowsTrayClickInterceptHandler>> =
     Mutex::new(None);

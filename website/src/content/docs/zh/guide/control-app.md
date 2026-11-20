@@ -32,7 +32,7 @@ await control.appearance.setPreference('dark')
 这些作用于产品本身，而不是调用方 lxapp：
 
 - `lx.host.exit()`、`lx.host.setBadge()`、`lx.host.cache`、`lx.host.checkUpdate()`、`lx.host.claimCustomUpdate()`、`lx.host.screenshot()`、`lx.host.autostart.*`
-- `lx.host.control.displayLanguage` / `lx.host.control.appearance`（写入）
+- `lx.host.displayLanguage` / `lx.host.appearance`（写入）
 - `lx.shell.*` —— `sidebarActions`、`setAppDisplay`（应用显示的名称和图标）、打开、移动或查找应用与已声明 surface
 
 每个 lxapp 仍可**读取** `lx.host.displayLanguage.get()` 与 `lx.host.appearance.get()`，并应跟随这些值。本 lxapp 自己的包更新走 `lx.app.onUpdateReady` / `applyUpdate`。

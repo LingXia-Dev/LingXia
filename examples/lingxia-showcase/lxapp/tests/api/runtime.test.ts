@@ -4,7 +4,7 @@ import { waitForCurrentPage } from '@lingxia/test/showcase/helpers/page.js';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 
 
-test("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: ['lx.app.info', 'lx.device.info', 'lx.device.screen', 'lx.network.status', 'lx.device.systemSettings', 'lx.host.getBaseInfo', 'lx.host.env'], app: SHOWCASE_APP_ID }, async (t) => {
+test("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: ['lx.app.info', 'lx.device.info', 'lx.device.screen', 'lx.network.status', 'lx.device.systemSettings', 'lx.host.info', 'lx.host.env'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-001");
 
   const result = await app.logic.eval(async ({ lx }) => {
@@ -13,7 +13,7 @@ test("read core app, device, screen, network, and system state", { id: "LOGIC-00
     const screen = lx.device.screen();
     const network = await lx.network.status();
     const system = lx.device.systemSettings();
-    const host = lx.host.getBaseInfo();
+    const host = lx.host.info;
     return {
       appId: app.appId,
       device: !!device.osName,
@@ -79,7 +79,7 @@ test("answer capability questions consistently with the optional members", { id:
         'app.cache', 'surface.main', 'surface.float']
         .every(key => supports(key) === false),
       typeErrors: [{}, null, 42, undefined, { capability: 'terminal' }].every(rejects),
-      cacheIsControl: !!lx.host.cache === (lx.host.control !== undefined),
+      cacheIsControl: !!lx.host.cache === (lx.app.info.role === 'control'),
       surfaceAvailable: typeof lx.surface.openPage === 'function',
       dependency: !lx.supports('surface.window.fullChrome') || lx.supports('surface.window'),
     };

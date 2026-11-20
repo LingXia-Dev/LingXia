@@ -48,7 +48,7 @@ async function waitForSystemState(
   });
 }
 
-test("render host app and system information through page actions", { id: "SYSTEM-001", covers: ['lx.host.getBaseInfo', 'lx.host.displayLanguage.get', 'lx.device.systemSettings'], app: SHOWCASE_APP_ID }, async (t) => {
+test("render host app and system information through page actions", { id: "SYSTEM-001", covers: ['lx.host.info', 'lx.host.displayLanguage.get', 'lx.device.systemSettings'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "SYSTEM-001");
 
   await app.nav.reset({ page: 'system', params: { type: 'appBaseInfo' } });

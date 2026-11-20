@@ -67,7 +67,7 @@ async function closeHandles(app: TestApp, key: string): Promise<void> {
 test('publishes and mutates the native nested pane tree without deferred layout', {
   id: 'DESKTOP-TERMINAL-001',
   timeout: 90_000,
-  covers: ['lx.shell.openDeclared', 'lx.terminal'],
+  covers: ['lx.shell.openDeclared', 'lx.host.terminal'],
 }, async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -181,7 +181,7 @@ test('applies a selected color scheme to native chrome before Apply', {
   const terminal = t.automation.terminal;
   const settingsApp = t.automation.lxapp(SETTINGS_APP_ID);
   let initial: TerminalWorkspaceSnapshot | undefined;
-  const previousAppearance = await app.logic.eval(({ lx }) => lx.host.control?.appearance.getPreference() ?? null);
+  const previousAppearance = await app.logic.eval(({ lx }) => lx.host.appearance.getPreference() ?? null);
 
   try {
     // The action bar is intentionally hidden until the draft becomes dirty;
@@ -191,9 +191,9 @@ test('applies a selected color scheme to native chrome before Apply', {
       .waitFor({ state: 'visible', timeout: 10_000 });
     await waitForSave(settingsApp, false);
     const runtime = await settingsApp.logic.eval(async ({ lx }) => {
-      const settings = await lx.terminal!.settings.get();
+      const settings = await lx.host.terminal!.settings.get();
       return {
-        terminal: typeof lx.terminal?.settings?.get,
+        terminal: typeof lx.host.terminal?.settings?.get,
         fileSystem: typeof lx.fs,
         appearance: settings.effective.appearance,
       };
@@ -213,7 +213,7 @@ test('applies a selected color scheme to native chrome before Apply', {
     let cards = await themeCards();
     if (cards.length < 2) {
       await app.logic.eval(async ({ lx }) => {
-        await lx.host.control!.appearance.setPreference('dark');
+        await lx.host.appearance.setPreference('dark');
         return true;
       });
       cards = await waitFor(async () => {
@@ -238,7 +238,7 @@ test('applies a selected color scheme to native chrome before Apply', {
       } : null;
     }, initial.chrome.surface);
     if (!target) throw new Error('terminal settings did not publish a visually distinct color scheme');
-    const slot = await settingsApp.logic.eval(async ({ lx }) => (await lx.terminal!.settings.get()).effective.appearance);
+    const slot = await settingsApp.logic.eval(async ({ lx }) => (await lx.host.terminal!.settings.get()).effective.appearance);
 
     // Click through the settings document: an OS pointer click can miss the
     // aside WebView even when the card is in the page DOM.
@@ -290,13 +290,13 @@ test('applies a selected color scheme to native chrome before Apply', {
     expect(applied.chrome.cursor).toBe(previewed.chrome.cursor);
   } finally {
     await app.logic.eval(async ({ lx }, previous) => {
-      if (previous !== null) await lx.host.control?.appearance.setPreference(previous);
+      if (previous !== null) await lx.host.appearance.setPreference(previous);
       return true;
     }, previousAppearance).catch(() => undefined);
     if (initial) {
       // Restores the workspace snapshot's config as the settings patch it was.
       await settingsApp.logic.eval({ timeout: 20_000 }, async ({ lx }, config) => {
-        const settings = lx.terminal!.settings;
+        const settings = lx.host.terminal!.settings;
         const current = await settings.get();
         await settings.update(config as Parameters<typeof settings.update>[0], { ifRevision: current.revision });
       }, initial.config as unknown as JsonValue);

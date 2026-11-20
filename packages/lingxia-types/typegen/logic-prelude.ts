@@ -371,25 +371,30 @@ declare global {
      */
     banner?: BannerApi;
 
-    /** The language this lxapp renders in. Every lxapp follows it. */
+    /**
+     * The language this lxapp renders in. Every lxapp follows it; only the
+     * Control app changes it.
+     */
     readonly displayLanguage: DisplayLanguageApi;
 
-    /** The light/dark scheme this lxapp renders in. */
+    /**
+     * The light/dark scheme this lxapp renders in. Every lxapp follows it;
+     * only the Control app changes it.
+     */
     readonly appearance: AppearanceApi;
 
     /**
-     * Product-wide settings, and their single writer. Present only in the
-     * Control app the host sealed at build time. Use
-     * `lx.host.control !== undefined` to inspect that identity.
-     */
-    readonly control?: ControlApi;
-
-    /**
      * Product-wide cache reporting and clearing for a settings screen.
-     * Present only in the Control app; presence agrees with
-     * `lx.host.control !== undefined`.
+     * Present only in the Control app (`lx.app.info.role === 'control'`).
      */
     cache?: AppCacheApi;
+
+    /**
+     * Terminal product settings. Present only in the host-bundled Terminal
+     * Settings lxapp when the host declares `capabilities.terminal`; its
+     * presence and `lx.supports('terminal')` always agree.
+     */
+    readonly terminal?: TerminalApi;
 
     /**
      * Take over host updates for the rest of this process. Irreversible: the
@@ -423,13 +428,6 @@ declare global {
   }
 
   interface Lx {
-    /**
-     * Terminal product settings. Present only in the host-bundled Terminal
-     * Settings lxapp when the host declares `capabilities.terminal`; its
-     * presence and `lx.supports('terminal')` always agree.
-     */
-    readonly terminal?: TerminalApi;
-
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.
      * `get` / `set` / `delete` then share that schema instead of

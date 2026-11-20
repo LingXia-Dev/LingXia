@@ -17,7 +17,7 @@ const selectedGate = testArgs.gate?.toLocaleLowerCase();
 test.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
 
 /**
- * `lx.terminal` exists only inside the host-bundled Terminal Settings lxapp.
+ * `lx.host.terminal` exists only inside the host-bundled Terminal Settings lxapp.
  * The Showcase host bundles it (lingxia.yaml), so the suite opens it and
  * evaluates there — the automation channel is not limited to the Showcase.
  */
@@ -42,19 +42,19 @@ interface SettingsRoundTrip {
 test('read, revise, reset, and preview terminal settings inside the bundled settings lxapp', {
   id: 'TERMINAL-API-001',
   covers: [
-    'lx.terminal',
-    'lx.terminal.settings',
-    'lx.terminal.settings.get',
-    'lx.terminal.settings.update',
-    'lx.terminal.settings.reset',
-    'lx.terminal.settings.onChange',
-    'lx.terminal.fonts',
-    'lx.terminal.fonts.list',
-    'lx.terminal.colorSchemes',
-    'lx.terminal.colorSchemes.list',
-    'lx.terminal.colorSchemes.import',
-    'lx.terminal.colorSchemes.createPreview',
-    'lx.terminal.windows',
+    'lx.host.terminal',
+    'lx.host.terminal.settings',
+    'lx.host.terminal.settings.get',
+    'lx.host.terminal.settings.update',
+    'lx.host.terminal.settings.reset',
+    'lx.host.terminal.settings.onChange',
+    'lx.host.terminal.fonts',
+    'lx.host.terminal.fonts.list',
+    'lx.host.terminal.colorSchemes',
+    'lx.host.terminal.colorSchemes.list',
+    'lx.host.terminal.colorSchemes.import',
+    'lx.host.terminal.colorSchemes.createPreview',
+    'lx.host.terminal.windows',
     'lx.shell.openApp',
     'LxAppManager.close',
   ],
@@ -101,11 +101,11 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
     // blank document a WebView shows before its first navigation commits.
     const settings = await terminal.page({ name: 'settings' }, { timeout: 30_000 });
     await settings.view.css('#type-heading').first().waitFor({ state: 'visible', timeout: 30_000 });
-    const preference = await app.logic.eval(({ lx }) => lx.host.control!.displayLanguage.getPreference());
+    const preference = await app.logic.eval(({ lx }) => lx.host.displayLanguage.getPreference());
     try {
       for (const language of ['zh-CN', 'en-US']) {
         await app.logic.eval(async ({ lx }, language) => {
-          await lx.host.control!.displayLanguage.setPreference(language);
+          await lx.host.displayLanguage.setPreference(language);
         }, language);
         await eventually(
           // The bridge also writes the HTML language tag. Check translated
@@ -120,13 +120,13 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
       }
     } finally {
       await app.logic.eval(async ({ lx }, preference) => {
-        await lx.host.control!.displayLanguage.setPreference(preference);
+        await lx.host.displayLanguage.setPreference(preference);
       }, preference);
     }
   });
 
   const result: SettingsRoundTrip = await terminal.logic.eval({ timeout: 30_000 }, async ({ lx }, key, probeScheme) => {
-    const t = lx.terminal!;
+    const t = lx.host.terminal!;
     const state: TerminalProbeState = { overrides: null, off: null, events: [] };
     (globalThis as unknown as TerminalProbeStates)[key] = state;
 
@@ -217,8 +217,8 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
       const state = states[key];
       state?.off?.();
       if (state?.overrides) {
-        const latest = await lx.terminal!.settings.get();
-        await lx.terminal!.settings.update(state.overrides, { ifRevision: latest.revision });
+        const latest = await lx.host.terminal!.settings.get();
+        await lx.host.terminal!.settings.update(state.overrides, { ifRevision: latest.revision });
       }
       delete states[key];
     }, stateKey);
