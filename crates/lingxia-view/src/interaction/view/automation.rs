@@ -233,13 +233,17 @@ impl ViewInteraction {
         if !force && !visible {
             return Err(format!("Element not interactable: {selector} is hidden"));
         }
-        // `fill` sets text without the pointer: it brings an off-screen field into view itself.
+        // `fill` sets text without the pointer: it brings the field fully into view itself, with
+        // room around it, also when only an edge is cut off.
         let mut revealed = Vec::new();
-        if !in_viewport
-            && matches!(act, AutomationAct::Fill(_))
+        if matches!(act, AutomationAct::Fill(_))
             && let Some(frame) = self.frame.clone()
             && let Some(node) = self.ids.index(id).map(|index| &frame.nodes[index])
-            && self.scroll.reveal(&frame, node)
+            && self.scroll.reveal_with(
+                &frame,
+                node,
+                crate::interaction::scroll::FIELD_REVEAL_MARGIN,
+            )
         {
             revealed = vec![Effect::StopFling, Effect::Redraw];
         }
@@ -288,7 +292,13 @@ impl ViewInteraction {
                 .clone()
                 .ok_or("E_PAGE_NOT_READY: no presented frame")?;
             let node = self.ids.index(id).map(|index| &frame.nodes[index]);
-            let moved = node.is_some_and(|node| self.scroll.reveal(&frame, node));
+            let moved = node.is_some_and(|node| {
+                self.scroll.reveal_with(
+                    &frame,
+                    node,
+                    crate::interaction::scroll::FIELD_REVEAL_MARGIN,
+                )
+            });
             if !moved && !in_viewport {
                 return Err(format!(
                     "Element not interactable: no scroll brings {selector} on screen"

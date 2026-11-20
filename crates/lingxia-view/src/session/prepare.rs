@@ -1,11 +1,9 @@
 use super::*;
+use crate::interaction::scroll::FIELD_REVEAL_MARGIN;
 use crate::session::state::PatchOp;
 
 /// Where the whole data tree waits for the frame's `__lingxiaCreateView` to take it.
 const VIEW_DATA: &str = "__lingxiaViewData";
-
-/// Room a focused field keeps from the keyboard and the scroller's edges when revealed.
-const FIELD_REVEAL_MARGIN: f32 = 12.0;
 
 impl ViewSession {
     /// The `data` argument for `__lingxiaCreateView`: `undefined` when the isolate's own copy

@@ -4,6 +4,10 @@ use super::frame::PresentedFrame;
 use crate::scene::node::{NodeSnapshot, ScrollAxis, ScrollSnapshot};
 use std::collections::HashMap;
 
+/// Room a revealed field keeps from the keyboard and the scroll's edges: a focus, `fill` or
+/// `scrollIntoView` never leaves it flush on an edge.
+pub(crate) const FIELD_REVEAL_MARGIN: f32 = 12.0;
+
 // The native schema bounds nesting; this also rejects malformed parent cycles.
 const MAX_DEPTH: usize = 129;
 
@@ -473,14 +477,28 @@ impl ScrollModel {
         frame: &PresentedFrame,
         target: &NodeSnapshot,
     ) -> Option<HashMap<String, f32>> {
+        self.reveal_offsets_with(frame, target, 0.0)
+    }
+
+    /// `margin` is room kept around the target inside each scroll it is revealed through.
+    pub fn reveal_offsets_with(
+        &self,
+        frame: &PresentedFrame,
+        target: &NodeSnapshot,
+        margin: f32,
+    ) -> Option<HashMap<String, f32>> {
         let valid = |[x, y, w, h]: [f32; 4]| {
             [x, y, w, h].iter().all(|v| v.is_finite()) && w > 0.0 && h > 0.0
         };
         if !valid(target.bounds) {
             return None;
         }
-        let mut start = [target.bounds[0], target.bounds[1]];
-        let mut end = [start[0] + target.bounds[2], start[1] + target.bounds[3]];
+        let margin = margin.max(0.0);
+        let mut start = [target.bounds[0] - margin, target.bounds[1] - margin];
+        let mut end = [
+            target.bounds[0] + target.bounds[2] + margin,
+            target.bounds[1] + target.bounds[3] + margin,
+        ];
         let mut changes = HashMap::new();
         let mut id = target.scroll_parent.clone();
         for _ in 0..MAX_DEPTH {
@@ -577,10 +595,21 @@ impl ScrollModel {
 
     /// Apply reveal offsets; returns whether any region moved.
     pub fn reveal(&mut self, frame: &PresentedFrame, target: &NodeSnapshot) -> bool {
+        self.reveal_with(frame, target, 0.0)
+    }
+
+    /// Like `reveal`, keeping `margin` around the target: a field a script brings into view
+    /// does not sit flush on an edge.
+    pub fn reveal_with(
+        &mut self,
+        frame: &PresentedFrame,
+        target: &NodeSnapshot,
+        margin: f32,
+    ) -> bool {
         if target.scroll_parent.is_none() {
             return false;
         }
-        match self.reveal_offsets(frame, target) {
+        match self.reveal_offsets_with(frame, target, margin) {
             Some(changes) if !changes.is_empty() => {
                 self.offsets.extend(changes);
                 self.revision += 1;

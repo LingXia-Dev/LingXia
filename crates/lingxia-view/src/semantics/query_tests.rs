@@ -289,7 +289,7 @@ fn offscreen_matches_are_visible_but_must_be_revealed_before_input() {
 #[test]
 fn fill_brings_an_off_screen_field_into_view_and_sets_its_text() {
     let mut i = interaction(
-        "h('scroll',{style:{height:100}},h('view',{style:{height:400}}),h('input',{'data-testid':'far','aria-label':'Far',onInput(){}}))",
+        "h('scroll',{style:{height:100}},h('view',{style:{height:400}}),h('input',{'data-testid':'far','aria-label':'Far',onInput(){}}),h('view',{style:{height:200}}))",
     );
     let page = PageTicket::new(1);
     let effects = i
@@ -308,6 +308,34 @@ fn fill_brings_an_off_screen_field_into_view_and_sets_its_text() {
             .any(|e| matches!(e, Effect::EditText { text: Some(t), .. } if t == "Bo")),
         "{effects:?}"
     );
+    // Not flush on the edge: 12 of room below it, as a keyboard reveal keeps.
+    let frame = i.frame().unwrap().clone();
+    let far = frame.nodes.iter().find(|n| n.test_id == "far").unwrap();
+    let scroll = far.scroll_parent.clone().unwrap();
+    let end = far.bounds[1] + far.bounds[3];
+    assert_eq!(i.scroll().offset(&scroll), end + 12.0 - 100.0);
+}
+
+#[test]
+fn fill_scrolls_a_field_whose_edge_is_cut_off() {
+    // The field's bottom 2 sit below the scroll: visible, but not clear of the edge.
+    let mut i = interaction(
+        "h('scroll',{style:{height:100}},h('view',{style:{height:60}}),h('input',{'data-testid':'cut','aria-label':'Cut',style:{height:42},onInput(){}}),h('view',{style:{height:200}}))",
+    );
+    let effects = i
+        .automate(
+            "[data-testid=\"cut\"]",
+            None,
+            AutomationAct::Fill("x".into()),
+            false,
+            PageTicket::new(1),
+        )
+        .unwrap();
+    assert!(effects.contains(&Effect::Redraw), "{effects:?}");
+    let frame = i.frame().unwrap().clone();
+    let cut = frame.nodes.iter().find(|n| n.test_id == "cut").unwrap();
+    let scroll = cut.scroll_parent.clone().unwrap();
+    assert_eq!(i.scroll().offset(&scroll), 60.0 + 42.0 + 12.0 - 100.0);
 }
 
 #[test]
