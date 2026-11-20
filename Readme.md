@@ -28,7 +28,7 @@ An lxapp is a page-based mini-app with a strict split between:
 |---|---|---|
 | **View** | WebView | React or HTML rendering |
 | **Logic** | Native JavaScript runtime or Rust host code | state, business logic, platform API calls |
-| **Bridge** | Rust runtime | `setData`, streams, channels, and native calls |
+| **Bridge** | Rust runtime | Page state, streams, channels, and native calls |
 
 This keeps UI rendering separate from business work. View code renders; Logic code owns state and platform APIs; the bridge moves data and events between them.
 
@@ -98,10 +98,10 @@ Browse the source directly at [docs/skill/SKILL.md](docs/skill/SKILL.md) — tha
 |---|---|
 | Install CLI and create the first project | [docs/quick-start.md](docs/quick-start.md) |
 | Agent entrypoint and topic router | [docs/skill/SKILL.md](docs/skill/SKILL.md) |
-| Page authoring, `Page({})`, `useLxPage`, events | [docs/skill/lxapp/guide.md](docs/skill/lxapp/guide.md) |
+| Page authoring, `definePage`, `useLxPage`, events | [docs/skill/lxapp/guide.md](docs/skill/lxapp/guide.md) |
 | Native components such as `LxPicker`, `LxMediaSwiper` | [docs/skill/lxapp/components.md](docs/skill/lxapp/components.md) |
 | Logic-side `lx.*` API surface | [docs/skill/lxapp/lx-api.md](docs/skill/lxapp/lx-api.md) |
-| Bridge mechanics: `setData`, stream, channel | [docs/skill/lxapp/bridge.md](docs/skill/lxapp/bridge.md) |
+| Bridge mechanics: page state, stream, channel | [docs/skill/lxapp/bridge.md](docs/skill/lxapp/bridge.md) |
 | Host project config and `lingxia.yaml` | [docs/skill/app/project.md](docs/skill/app/project.md) |
 | iOS/macOS SDK embedding | [docs/skill/app/apple-sdk.md](docs/skill/app/apple-sdk.md) |
 | Universal links and app links | [docs/skill/app/applinks.md](docs/skill/app/applinks.md) |
@@ -114,7 +114,7 @@ Browse the source directly at [docs/skill/SKILL.md](docs/skill/SKILL.md) — tha
 |---|---|
 | `@lingxia/react` | React bindings and native component wrappers for lxapp Views |
 | `@lingxia/html` | HTML-only View helpers |
-| `@lingxia/types` | TypeScript declarations for Logic-side `Page({})`, `App({})`, and `lx.*` |
+| `@lingxia/types` | TypeScript declarations for Logic-side `definePage`, `App({})`, and `lx.*` |
 | `@lingxia/bridge` | Low-level bridge runtime |
 | `@lingxia/elements` | Custom elements behind the framework wrappers |
 

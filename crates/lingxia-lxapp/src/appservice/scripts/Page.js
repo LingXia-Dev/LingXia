@@ -388,6 +388,7 @@
     return svc;
   }
 
+  // Registers a raw config; runtime tests drive PageSvc through it.
   globalThis.__registerPage = function (
     pagePath,
     pageConfig,
@@ -413,18 +414,18 @@
     pageDefinitions.set(pagePath, { config: definition });
   };
 
-  function pageRegistrationTransformError(symbolName) {
+  function removedPageRegistration(symbolName) {
     throw new Error(
-      `${symbolName}() should be transformed at build time. Rebuild the logic bundle with the LingXia CLI.`,
+      `${symbolName}() was removed: a page's Logic default-exports definePage({ data, setup }) from '@lingxia/types/page'.`,
     );
   }
 
   globalThis.Page = function () {
-    pageRegistrationTransformError("Page");
+    removedPageRegistration("Page");
   };
 
   globalThis.PageInstance = function () {
-    pageRegistrationTransformError("PageInstance");
+    removedPageRegistration("PageInstance");
   };
 
   globalThis.__LX_CREATE_PAGE__ = function (

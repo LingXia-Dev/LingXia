@@ -554,7 +554,7 @@ pub(super) fn ensure_no_direct_lx_usage(
         .join(", ");
 
     bail!(
-        "View {page_path} must not call lx.* directly. Move host calls into Page(...) logic actions. Found: {detail}"
+        "View {page_path} must not call lx.* directly. Move host calls into the page's Logic actions. Found: {detail}"
     );
 }
 
@@ -563,7 +563,7 @@ pub(super) fn ensure_no_direct_lx_usage(
 /// An entry that re-wraps `actions` into its own object literal —
 /// `actions: { save: actions.save, … }` — is writing a whitelist, and a child
 /// calling something the whitelist omits gets `undefined` at runtime. Nothing
-/// else catches it: the action exists on `Page(...)`, the child's call is
+/// else catches it: the action exists on the page, the child's call is
 /// well-typed against the page contract, and the omission is a missing line
 /// rather than a wrong one. The first symptom is a tap that does nothing.
 ///
@@ -589,7 +589,7 @@ pub(super) fn ensure_forwarded_actions_cover_downstream(
     }
 
     bail!(
-        "View {page_path} does not forward Page(...) actions its child views call: {}. \
+        "View {page_path} does not forward page actions its child views call: {}. \
          The entry builds its own actions object, so anything left out of it is \
          undefined at runtime even though the action exists and the call type-checks. \
          Add each one to the object the entry passes down, or pass `actions` through \
@@ -617,7 +617,7 @@ pub(super) fn ensure_used_actions_exist(
     }
 
     bail!(
-        "View {page_path} references missing Page(...) actions: {}",
+        "View {page_path} references missing page actions: {}",
         missing.join(", ")
     );
 }
@@ -687,57 +687,7 @@ pub(crate) fn extract_page_actions(logic_path: Option<&Path>) -> Result<Vec<Page
     }
     let function_bindings = collect_top_level_function_bindings(&parse_result.program);
 
-    if let Some(actions) = define_page_actions(&parse_result.program, &function_bindings) {
-        return Ok(actions);
-    }
-
-    for statement in &parse_result.program.body {
-        let Statement::ExpressionStatement(expression_statement) = statement else {
-            continue;
-        };
-        let Expression::CallExpression(call_expr) =
-            unwrap_expression(&expression_statement.expression)
-        else {
-            continue;
-        };
-        let Expression::Identifier(identifier) = unwrap_expression(&call_expr.callee) else {
-            continue;
-        };
-        if identifier.name.as_str() != "Page" {
-            continue;
-        }
-
-        let Some(first_arg) = call_expr.arguments.first() else {
-            return Ok(Vec::new());
-        };
-        let Expression::ObjectExpression(object) = unwrap_expression(first_arg.to_expression())
-        else {
-            return Ok(Vec::new());
-        };
-
-        let mut actions = Vec::new();
-        for property in &object.properties {
-            let ObjectPropertyKind::ObjectProperty(property) = property else {
-                continue;
-            };
-            let Some(name) = property_name(&property.key) else {
-                continue;
-            };
-            if name == "data" || name.starts_with('_') || super::is_page_lifecycle(&name) {
-                continue;
-            }
-            if !is_function_like_property(property, &function_bindings) {
-                continue;
-            }
-            actions.push(PageAction {
-                name,
-                mode: infer_property_mode(property, &function_bindings),
-            });
-        }
-        return Ok(actions);
-    }
-
-    Ok(Vec::new())
+    Ok(define_page_actions(&parse_result.program, &function_bindings).unwrap_or_default())
 }
 
 /// The actions of `export default definePage({ setup(page) { return { actions } } })`:
@@ -1102,10 +1052,14 @@ mod tests {
     fn async_void_actions_are_awaitable_calls() {
         let actions = extract_action_modes(
             r#"
-            Page({
-              navigateToUIPage: async function (params) {
-                await lx.navigateTo({ page: "ui", query: { type: "toast" } });
-              }
+            export default definePage({
+              setup: () => ({
+                actions: {
+                  navigateToUIPage: async function (params) {
+                    await lx.navigateTo({ page: "ui", query: { type: "toast" } });
+                  },
+                },
+              }),
             });
             "#,
         );
@@ -1120,15 +1074,19 @@ mod tests {
     fn explicit_return_actions_are_call() {
         let actions = extract_action_modes(
             r#"
-            Page({
-              updateNavigationBarTitle: function (options) {
-                return lx.navigationBar.update(options);
-              },
-              chooseToastIcon: async function () {
-                const result = await lx.showActionSheet({ items: [{ id: "a", label: "A" }, { id: "b", label: "B" }] });
-                return result;
-              },
-              directArrow: (payload) => lx.callSomething(payload)
+            export default definePage({
+              setup: () => ({
+                actions: {
+                  updateNavigationBarTitle: function (options) {
+                    return lx.navigationBar.update(options);
+                  },
+                  chooseToastIcon: async function () {
+                    const result = await lx.showActionSheet({ items: [{ id: "a", label: "A" }, { id: "b", label: "B" }] });
+                    return result;
+                  },
+                  directArrow: (payload) => lx.callSomething(payload)
+                },
+              }),
             });
             "#,
         );
@@ -1180,10 +1138,14 @@ mod tests {
     fn generator_actions_are_stream() {
         let actions = extract_action_modes(
             r#"
-            Page({
-              watchMessages: async function* () {
-                yield "hello";
-              }
+            export default definePage({
+              setup: () => ({
+                actions: {
+                  watchMessages: async function* () {
+                    yield "hello";
+                  },
+                },
+              }),
             });
             "#,
         );
@@ -1195,7 +1157,7 @@ mod tests {
     }
 
     #[test]
-    fn named_function_refs_are_extracted_and_lifecycle_private_are_filtered() {
+    fn named_function_refs_are_extracted() {
         let actions = extract_action_modes(
             r#"
             async function navigateToUIPage() {
@@ -1209,13 +1171,11 @@ mod tests {
 
             const aliasedAction = chooseToastIcon;
 
-            Page({
-              data: {},
-              onLoad() {},
-              _privateAction() {},
-              navigateToUIPage,
-              chooseToastIcon,
-              aliasedAction,
+            export default definePage({
+              setup: () => ({
+                onLoad() {},
+                actions: { navigateToUIPage, chooseToastIcon, aliasedAction },
+              }),
             });
             "#,
         );
@@ -1237,11 +1197,8 @@ mod tests {
             const title = "demo";
             const config = { enabled: true };
 
-            Page({
-              title,
-              config,
-              missingRef,
-              doWork() {},
+            export default definePage({
+              setup: () => ({ actions: { title, config, missingRef, doWork() {} } }),
             });
             "#,
         );
@@ -1318,7 +1275,7 @@ mod tests {
             .unwrap_err()
             .to_string();
 
-        assert!(error.contains("references missing Page(...) actions"));
+        assert!(error.contains("references missing page actions"));
         assert!(error.contains("navigateToUIPage"));
     }
 
@@ -1397,7 +1354,7 @@ mod tests {
         .to_string();
 
         assert!(
-            error.contains("does not forward Page(...) actions its child views call: invite"),
+            error.contains("does not forward page actions its child views call: invite"),
             "unexpected error: {error}"
         );
     }

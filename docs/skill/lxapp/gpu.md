@@ -98,7 +98,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   stays across pages (a mini player), and it always sits above the page and its dialogs.
 - There is no WebView inside a GPU page: HTML opens only through `lx.surface.openUrl(url, { as: 'tab' | 'aside' })`.
 - Lay out from the View's `env` (`viewport`, `sizeClass`, `insets`); `lx.surface.watchContext` is for Logic that acts
-  on a size change itself, never to forward it with `setData`.
+  on a size change itself, never to forward it with `page.update`.
 - Sheet detents: `<dialog drag="y" dragSnapPoints={[0, '50%', '100%']} bind={detent}>`; resting wholly off screen calls `onClose`, the scrim fades with it.
 - Keyboard: Tab and arrows follow reading order (no `tabIndex`); an open `<dialog>` keeps focus inside
   and returns it on close; the focus ring shows only after keyboard input. In a menu, arrows wrap,

@@ -876,7 +876,11 @@ mod tests {
             "pages/downloads/download.js",
             "console.log('download helper');",
         );
-        write_file(temp.path(), "pages/downloads/index.ts", "Page({});");
+        write_file(
+            temp.path(),
+            "pages/downloads/index.ts",
+            "export default definePage({});",
+        );
 
         copy_html_page(&project, "pages/downloads/index.html").unwrap();
 

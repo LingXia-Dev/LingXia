@@ -55,51 +55,57 @@ export default {
 
 - `lingxia build` builds into `dist/`; `lingxia build --release --package`
   produces the publish archive.
-- A View reaching for `lx.*`, or calling an action `Page({})` never defined,
+- A View reaching for `lx.*`, or calling an action its page never defined,
   fails the build. Other findings are warnings: the artifact is written, the
   code is still wrong.
 
-## Logic — `Page({})`
+## Logic — `definePage`
 
-`Page` is a runtime global; do not import it.
+A page's Logic file default-exports `definePage(...)` from `@lingxia/types/page`.
 
 ```ts
-// pages/home/index.ts
-Page({
-  data: {
-    count: 0,
-    message: "Hello",
-  },
+// pages/order/index.ts
+import { definePage, type } from '@lingxia/types/page';
 
-  onLoad: function (options) {
-    // Called when page is created. `options` contains URL query params.
-    console.log("query:", options);
-  },
-
-  onShow: function () {
-    // Called every time the page becomes visible.
-  },
-
-  // Action functions — callable from View
-  increment: function () {
-    this.setData({ count: this.data.count + 1 });
-  },
-
-  updateMessage: function (params) {
-    // params is whatever the View passes
-    this.setData({ message: params?.text || "" });
+export default definePage({
+  params: type<{ id: string }>(),                // what onLoad receives
+  result: type<{ status: 'open' | 'done' }>(),   // what close(value) returns to the opener
+  data: { order: null as Order | null, saving: false },
+  setup(page) {
+    let timer: number | undefined;               // private to this instance
+    return {
+      async onLoad({ id }) {
+        const res = await fetch(`/orders/${id}`, { signal: page.signal });
+        const order = (await res.json()) as Order;
+        page.update(d => { d.order = order; });
+      },
+      onUnload() { clearInterval(timer); },
+      actions: {                                 // everything the View may call
+        async markDone() {
+          page.update(d => { d.saving = true; });
+          await fetch(`/orders/${page.params.id}/done`, { method: 'POST', signal: page.signal });
+          await page.close({ status: 'done' });
+        },
+      },
+    };
   },
 });
 ```
 
-| API | Description |
+- `params`, `result`, `data`, `setup` are all optional; `definePage({ data })` is a static page.
+- `setup(page)` runs once per instance, before `onLoad`, and is synchronous. Per-instance state lives in its closure, never in module scope.
+- It returns lifecycle hooks under their names and `actions`, nothing else: a function beside `actions` or a hook a case away (`onUnLoad`) is a type error and throws.
+- Actions take zero or one JSON argument and are Promises to the View. An `async *` action is a stream ([bridge](./bridge.md)).
+
+| `page.` | Description |
 | --- | --- |
-| `this.data` | Current state, read-only. Change it with `setData()` / `setPath()`. |
-| `this.setData(patch)` | Merge top-level keys into `data` and replicate to View. Nested writes: `setPath` (checked), `setDataPath` (unchecked). |
-| `await this.flush()` | Resolves once every `setData` so far reached the View; rejects if the page unloads first or a write was discarded. |
-| `this.signal` | `AbortSignal` aborted as the page unloads, before `onUnload`. Pass it to work the page starts: `fetch(url, { signal: this.signal })`. |
-| `this.setResult(value)` / `this.close(value?)` | Return a JSON result to the page that pushed this one. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface. The opener reads it from `(await lx.navigateTo(...)).result`, or from the handle `lx.surface.openPage` returned: `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. |
-| `this.yourMethod()` | Any other member is a page method. A name differing from a hook only in case (`onload`) is rejected. |
+| `data` | Current state, deep-readonly. |
+| `update(d => { d.count += 1; })` | The one way to change data. `page.data` changes at once; the View gets the changes once per turn. The recipe is synchronous and returns nothing: `await` first, then update. Throws inside another `update`; ignored after unload. |
+| `await flush()` | Resolves once every update so far reached the View; rejects if the page unloads first or a write was discarded. |
+| `params`, `name` | This instance's params, its page name. |
+| `signal` | `AbortSignal` aborted as the page unloads, before `onUnload`. Pass it to work the page starts: `fetch(url, { signal: page.signal })`. |
+| `setResult(value)` / `close(value?)` | Return a JSON result to the opener. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface. The opener reads it from `(await lx.navigateTo(...)).result`, or from the handle `lx.surface.openPage` returned: `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. |
+| `opener`, `surface` | The page that pushed this one, or this page's surface; absent otherwise. |
 
 ### Lifecycle
 
@@ -128,55 +134,42 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 
 ### What resets
 
-Module scope (outside `Page({})`) is evaluated once per app session and is
-shared by every live instance of the route:
+Module scope is evaluated once per app session and is shared by every live
+instance of the page; `setup`'s closure belongs to one instance:
 
 ```ts
-let hits = 0;          // module scope: shared by every instance, never resets
+let hits = 0;               // module scope: every instance, never resets
 
-Page({
-  data: { count: 0 },  // instance scope: fresh on every entry
-  onLoad() {
-    hits += 1;         // counts entries across ALL instances
+export default definePage({
+  data: { count: 0 },       // fresh on every entry
+  setup(page) {
+    let opened = Date.now(); // this instance only
+    return { onLoad() { hits += 1; } };
   },
 });
 ```
 
 | State | Container | Lifetime |
 | --- | --- | --- |
-| One entry (form input, timers, request handles) | `data` / `this.xxx` | The page instance |
-| Every instance of the route (constants, caches) | Module scope | Until the lxapp restarts |
+| One entry (form input, timers, request handles) | `data`, or a `let` in `setup` | The page instance |
+| Every instance of the page (constants, caches) | Module scope | Until the lxapp restarts |
 | Must survive restarts | `lx.getStorage()` | Persistent |
 
 Never keep per-entry state in module scope.
 
-### Private helpers
+### Types for the View
 
-A method starting with `_` stays private; every other method is a public
-action the View can call (`onCheckout` too). Name the `data` shape by
-annotating `data`, not with a type argument on `Page`, so `this` keeps your
-methods:
-
-```ts
-Page({
-  data: { total: 0 } as PageData,
-
-  _calculateTotal(items) {
-    return items.reduce((sum, item) => sum + item.price, 0);
-  },
-
-  checkout(params) {
-    this.setData({ total: this._calculateTotal(params?.items ?? []) });
-  },
-});
-```
+The page's type is its contract: `View<typeof page>`, `useLxPage<typeof page>()`
+and `t.app.page<typeof page>()` read `data` and `actions` from
+`import type page from './index.ts'`. That file must be in the View's
+tsconfig. A shared `PageContract<Data, Actions>` still works.
 
 ## View
 
 A View is a React component or an HTML module entry. It renders `data`
 and calls `actions`; it never mutates `data`.
 
-The page mounts once its first state (the `Page({ data })` defaults) has
+The page mounts once its first state (the `definePage({ data })` defaults) has
 arrived, so `data` is whole from the first render. Type `PageData` and
 `PageActions` fields as **required**; use `?:` only for a field filled later.
 Never write `actions.foo?.()`. If Logic fails to deliver state, the page shows
@@ -184,7 +177,7 @@ a panel naming itself.
 
 | Hook | Returns | Changes |
 |---|---|---|
-| `useLxPage<PageData, PageActions>()` | `{ data, actions }` — this page's Logic state and public methods | on every `setData` |
+| `useLxPage<typeof page>()` | `{ data, actions }` — this page's Logic state and actions | on every update |
 | `useLxHost()` | [host facts](#host-facts) | only when a field changes |
 | `useLxLeaveGuard(dirty, onRequest)` | nothing — [guards leaving](#leaving-a-page-with-unsaved-changes) while `dirty` | — |
 
@@ -193,7 +186,7 @@ Any component may call either. Geometry is CSS, not a hook:
 
 `data` is typed `DeepReadonly<PageData>`. In a dev session a write throws.
 Keep what the user edits as View state and submit it with an action; Logic's
-`setData` brings the result back:
+`page.update` brings the result back:
 
 ```tsx
 const { data, actions } = useLxPage<PageData, PageActions>();
@@ -291,21 +284,21 @@ payload. Native component callbacks and their payload shapes:
 ### `lx.on*` subscriptions
 
 Every `lx.on*` call returns its unsubscribe function, the only way to cancel
-it. Keep it on the page instance (never in `data`) and call it in `onUnload`:
+it. Keep it in `setup`'s closure (never in `data`) and call it in `onUnload`:
 
 ```ts
-Page({
+export default definePage({
   data: { online: true },
-
-  onLoad() {
-    this._offNetwork = lx.onNetworkChange((info) => {
-      this.setData({ online: info.isConnected });
-    });
-  },
-
-  onUnload() {
-    this._offNetwork?.();
-    this._offNetwork = null;
+  setup(page) {
+    let offNetwork: (() => void) | undefined;
+    return {
+      onLoad() {
+        offNetwork = lx.onNetworkChange((info) => {
+          page.update(d => { d.online = info.isConnected; });
+        });
+      },
+      onUnload() { offNetwork?.(); },
+    };
   },
 });
 ```
@@ -314,12 +307,12 @@ The same applies to `onWifiConnected`, `onDeviceOrientationChange`,
 `onKeyDown`, `onKeyUp`, `lx.surface.watchContext`, `onUpdateReady`,
 `onUpdateFailed`, and a surface handle's `onMessage` / `onShow` / `onHide` /
 `onClose`. A route can be open more than once, so a leak multiplies per
-instance. Work started with `this.signal` needs no teardown; ignore its
+instance. Work started with `page.signal` needs no teardown; ignore its
 `AbortError`.
 
 ## Action shapes
 
-| Logic method shape | Use from View | Typical use |
+| Action shape | Use from View | Typical use |
 | --- | --- | --- |
 | function / async function | `actions.foo(...)` | buttons, navigation, one-shot work |
 | async generator | `useLxStream(actions.foo, ...)` | progress, streaming output |
@@ -370,16 +363,18 @@ App({
 
 ```ts
 // pages/profile/index.ts
-Page({
+export default definePage({
   data: { userId: '' },
-  onLoad() {
-    const app = getApp<AppInstance & { globalData: AppGlobals }>();
-    if (app) this.setData({ userId: app.globalData.userId });
-  },
+  setup: page => ({
+    onLoad() {
+      const app = getApp<AppInstance & { globalData: AppGlobals }>();
+      if (app) page.update(d => { d.userId = app.globalData.userId; });
+    },
+  }),
 });
 ```
 
-- `globalData` is not reactive; push changes to a page with `setData`.
+- `globalData` is not reactive; push changes to a page with `page.update`.
 - Cold start: `App.onLaunch` → `App.onShow` → `Page.onLoad` → `Page.onShow`;
   `Page.onLoad` waits for an `async onLaunch` to settle.
   Foregrounding: `App.onShow` → top page's `onShow`.

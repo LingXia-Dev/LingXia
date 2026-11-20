@@ -201,30 +201,22 @@ names, waiting up to `{ timeout }` (5 s) for it to open — and never follows
 navigation: once that instance is replaced or closed, every call on the handle
 rejects. Bind again after navigating.
 
-Keep a type-only `contract.ts` beside each page and type all three sides with
-it: Logic `Page<C['data'], C['actions']>`, View `useLxPage<C['data'], C['actions']>()`,
-tests `t.app.page<C>()`.
+Type the handle with the page itself: `t.app.page<typeof page>()` takes `data`
+and `actions` from `import type page from '../../pages/devices/index'`, the same
+type the View uses. A `PageContract<Data, Actions>` from `@lingxia/types/page`
+also works where the test cannot see the Logic file.
 
 ```ts
-// pages/devices/contract.ts
-import type { PageContract } from '@lingxia/types/page';
-export type DevicesPage = PageContract<
-  { devices: { id: string; name: string }[] },
-  { rename(payload: { id: string; name: string }): Promise<boolean> }
->;
-```
+import type devicesPage from '../../pages/devices/index';
 
-```ts
-import type { DevicesPage } from '../../pages/devices/contract';
-
-const devices = await t.app.page<DevicesPage>({ name: 'devices' });
+const devices = await t.app.page<typeof devicesPage>({ name: 'devices' });
 const { devices: list } = await t.waitFor(() => devices.data(), { until: (d) => d.devices.length > 0 });
 expect(await devices.actions.rename({ id: list[0].id, name: 'Office' })).toBe(true);
 await expect(devices.view.testId('device-name').first()).toHaveText('Office');
 ```
 
-- `data()` is the instance's Logic `data` as `setData` delivers it to the View
-  (undefined members omitted). Contract data must be JSON; a Date, Map or
+- `data()` is the instance's Logic `data` as `page.update` delivers it to the View
+  (undefined members omitted). Page data must be JSON; a Date, Map or
   function in it does not compile.
 - `actions.x(payload?)` calls a public page action through the page's own
   bridge, as the View does, and resolves when Logic settles it. Actions take at
@@ -456,7 +448,7 @@ test('status refreshes every 3 s', async (t) => {
   it. Timers fire only from `tick(ms)` or `runAll()`; `setSystemTime(t)` moves
   `Date` alone.
 - Install before opening the page: timers started earlier stay real. The
-  WebView, native work, real requests, route delays, and `setData` delivery
+  WebView, native work, real requests, route delays, and state delivery
   keep real time. Wait for real I/O with `expect.poll`, then tick again.
 - A test's clock is removed when it ends. `install` twice rejects with
   `E_CLOCK_INSTALLED`; `tick` without one with `E_CLOCK_NOT_INSTALLED`.

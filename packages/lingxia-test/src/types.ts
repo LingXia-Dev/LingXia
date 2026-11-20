@@ -371,7 +371,7 @@ export interface LogicPage<TData = Record<string, unknown>> {
 
 /** A page whose declared methods are not typed: any member may be read. */
 export type AnyLogicPage<TData = Record<string, unknown>> = LogicPage<TData> & {
-  /** Page methods declared in `Page({...})`. */
+  /** Actions the page's `setup` returns. */
   readonly [member: string]: unknown;
 };
 
@@ -777,7 +777,7 @@ export type PageInvokeCalls<A> = {
 /**
  * One live page instance, fixed when `t.app.page()` resolved: it never
  * follows navigation or a replacement, and every call on it rejects once
- * the instance is gone. Type it with the page's `PageContract`.
+ * the instance is gone. Type it with `typeof page` or a `PageContract`.
  */
 export interface TestPage<C extends PageContract> {
   readonly instanceId: string;
@@ -785,7 +785,7 @@ export interface TestPage<C extends PageContract> {
   readonly name: string;
   /** This instance's View. */
   readonly view: TestView;
-  /** This instance's Logic `data`, as `setData` delivers it to the View. */
+  /** This instance's Logic `data`, as `page.update` delivers it to the View. */
   data(): Promise<C["data"]>;
   /** The contract's public actions, invoked through the page's own bridge. */
   readonly actions: PageActionCalls<C["actions"]>;

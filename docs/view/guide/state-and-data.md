@@ -38,28 +38,33 @@ The View holds no data of its own beyond `useLocal` cells. Everything else comes
 
 ## `view.data`
 
-`view.data` is the Logic page's data (`Page({ data })`, updated with `this.setData`). It is deeply
-read-only, and every update re-renders the page. Type it with the second parameter of `View`.
+`view.data` is the Logic page's data (`definePage({ data })`, changed with `page.update`). It is deeply
+read-only, and every update re-renders the page. Type it with `View<typeof page>`, or the second
+parameter of `View`.
 
 ## Actions
 
-`view.actions` holds the Logic page's methods. Call one from an event handler (calling during render is refused with `UI_RENDER`) with at most one
-JSON payload; it returns a `Promise` of the method's JSON result. An `async *method()` generator is a streaming action and returns a
+`view.actions` holds the Logic page's `actions`. Call one from an event handler (calling during render is refused with `UI_RENDER`) with at most one
+JSON payload; it returns a `Promise` of the action's JSON result. An `async *action()` generator is a streaming action and returns a
 `Stream`. A failed action rejects with an error carrying `code` and `message`. An action promise that
 rejects inside an event handler without a `catch` is reported in the page log.
 
-Logic methods for the first example:
+Logic for the first example:
 
 ```ts
-Page({
+export default definePage({
   data: { userId: 'u1' },
-  async profile({ id }: { id: string }) { return loadProfile(id); },
-  async rename({ id, name }: { id: string; name: string }) { await saveName(id, name); },
-  async *summarize({ id }: { id: string }) {
-    let tokens = 0;
-    for await (const token of summarizeProfile(id)) { tokens++; yield { token }; }
-    return { tokens };
-  },
+  setup: () => ({
+    actions: {
+      async profile({ id }: { id: string }) { return loadProfile(id); },
+      async rename({ id, name }: { id: string; name: string }) { await saveName(id, name); },
+      async *summarize({ id }: { id: string }) {
+        let tokens = 0;
+        for await (const token of summarizeProfile(id)) { tokens++; yield { token }; }
+        return { tokens };
+      },
+    },
+  }),
 });
 ```
 

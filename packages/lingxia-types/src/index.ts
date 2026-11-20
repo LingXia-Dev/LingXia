@@ -21,10 +21,7 @@ import type {
   FsWriteOptions,
   ManagedPath,
   NoLifecycleTypos,
-  NoReservedPageMembers,
-  PageConfig,
   PageInstance,
-  PageLifecycleName,
 } from './generated/logic.js';
 import type { Automation } from './automation/index.js';
 
@@ -75,18 +72,6 @@ declare global {
       ThisType<AppInstance & TCustom>
   ): AppInstance & TCustom;
   function getApp<T extends AppInstance = AppInstance>(): T | null;
-  /**
-   * `TData` comes from `data`, `TCustom` from everything else you declare, so
-   * `this.data` is a readonly view of that type, `this.myMethod()` resolves,
-   * and `setData` checks top-level keys against `data`.
-   */
-  function Page<TData extends object, TCustom>(
-    config: PageConfig<TData> &
-      TCustom &
-      NoLifecycleTypos<TCustom, PageLifecycleName> &
-      NoReservedPageMembers<TCustom> &
-      ThisType<PageInstance<TData> & Omit<TCustom, keyof PageInstance>>
-  ): void;
   function getCurrentPages<T extends PageInstance = PageInstance>(): T[];
 }
 

@@ -22,21 +22,6 @@ pub(crate) use view::native_client_output_path;
 pub(crate) use view::stamp_output_html;
 pub(crate) use view::{read_view_build_config, view_target_from_dir};
 
-/// Page lifecycle method names that are NOT user-defined action handlers.
-/// Shared between logic (binding meta extraction) and view (action mode inference).
-pub(crate) const PAGE_LIFECYCLE_NAMES: &[&str] = &[
-    "onLoad",
-    "onShow",
-    "onReady",
-    "onHide",
-    "onUnload",
-    "onPullDownRefresh",
-];
-
-pub(crate) fn is_page_lifecycle(name: &str) -> bool {
-    PAGE_LIFECYCLE_NAMES.contains(&name)
-}
-
 pub fn run(args: &[String]) -> Result<()> {
     let cwd = env::current_dir()?;
     run_in_dir(args, &cwd)

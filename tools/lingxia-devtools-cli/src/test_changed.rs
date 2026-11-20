@@ -978,14 +978,18 @@ mod tests {
         write(
             root,
             "pages/home/index.ts",
-            "import { fmt } from '../../shared/fmt';\nPage({ data: { label: fmt(1) } });\n",
+            "import { fmt } from '../../shared/fmt';\nexport default definePage({ data: { label: fmt(1) } });\n",
         );
         write(
             root,
             "pages/ask/index.tsx",
             "export default function Ask() { return null; }\n",
         );
-        write(root, "pages/ask/index.ts", "Page({});\n");
+        write(
+            root,
+            "pages/ask/index.ts",
+            "export default definePage({});\n",
+        );
         write(
             root,
             "shared/fmt.ts",
@@ -1182,7 +1186,11 @@ mod tests {
             "export const fmt = (n: number) => `#${n}`;\n",
         );
         run(&["commit", "-qam", "topic"]);
-        write(&root, "pages/ask/index.ts", "Page({ data: {} });\n");
+        write(
+            &root,
+            "pages/ask/index.ts",
+            "export default definePage({ data: {} });\n",
+        );
         write(&root, "pages/ask/new.ts", "export {};\n");
         write(repo, "native/src/lib.rs", "\n");
         let names = |base: Option<&str>| -> (Vec<String>, usize) {

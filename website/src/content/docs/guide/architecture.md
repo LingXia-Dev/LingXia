@@ -15,14 +15,14 @@ React or plain HTML. It renders replicated data, owns transient interaction stat
 
 ### Bridge — Rust runtime, moves data & events
 
-`setData`, streams, channels, and native calls. The typed seam between the two worlds. The bridge is the only path data takes from Logic to View and events take from View to Logic.
+Page state, streams, channels, and native calls. The typed seam between the two worlds. The bridge is the only path data takes from Logic to View and events take from View to Logic.
 
 ### Logic — JS runtime or Rust, owns state & APIs
 
 Durable business state and portable `lx.*` platform calls live in JavaScript Logic. Native-only hosts and host extensions use **Rust** for native power. The View may keep transient UI state, but state that must survive remounts belongs in Logic.
 
 ```
-┌─────────────┐     setData / events      ┌─────────────┐
+┌─────────────┐     state / events        ┌─────────────┐
 │    View     │  ◄──────────────────────► │    Logic    │
 │  (WebView)  │      via Rust bridge       │  (JS/Rust)  │
 │  renders    │                            │ owns state  │
@@ -35,7 +35,7 @@ Durable business state and portable `lx.*` platform calls live in JavaScript Log
 
 - **Rendering stays simple.** The View is a pure function of data — easy to reason about and easy to swap frameworks.
 - **Logic stays portable.** Business code and platform APIs live in one place, reused across every target.
-- **The boundary is typed.** `@lingxia/types` describes `Page({})`, `App({})`, and `lx.*`; the CLI generates `@lingxia/native` for host Rust routes.
+- **The boundary is typed.** `@lingxia/types` describes `definePage`, `App({})`, and `lx.*`; the CLI generates `@lingxia/native` for host Rust routes.
 
 ## Next
 

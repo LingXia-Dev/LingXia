@@ -58,12 +58,12 @@ A page is a directory under `pages/`. Its optional `index.json` sets its chrome:
 { "navigationBar": { "title": { "default": "Groceries" } } }
 ```
 
-`index.tsx` is the View and exports `render`. `index.ts` is the page's Logic (`Page({ data, …methods })`)
+`index.tsx` is the View and exports `render`. `index.ts` is the page's Logic (`export default definePage({ data, setup })`)
 and is optional. Add `@lingxia/view` to the lxapp's dependencies; `lingxia build` compiles every page.
 
 `render(view)` runs whenever `view.data`, `view.env` or local state changes. `view.data` is the Logic
-page's data, deeply read-only. `view.actions` holds Logic's methods: each returns a `Promise`, and an
-`async *method()` generator becomes a streaming action (see [State and data](state-and-data.md)).
+page's data, deeply read-only. `view.actions` holds Logic's `actions`: each returns a `Promise`, and an
+`async *action()` generator becomes a streaming action (see [State and data](state-and-data.md)).
 
 ## The root
 

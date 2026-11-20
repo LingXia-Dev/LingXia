@@ -642,7 +642,6 @@ fn rewrite_module_source(
     let mut cursor = 0usize;
     let mut exports = Vec::<(String, String)>::new();
     let mut star_exports = Vec::<String>::new();
-    let mut registered_by_call = false;
 
     for statement in &program.body {
         let span = statement.span();
@@ -755,9 +754,8 @@ fn rewrite_module_source(
             }
             Statement::ExpressionStatement(expr_stmt) => {
                 if let Some(rewritten) =
-                    rewrite_registration_call(project, source, &expr_stmt.expression, role)?
+                    rewrite_registration_call(source, &expr_stmt.expression, role)?
                 {
-                    registered_by_call = true;
                     output.push_str(&rewritten);
                 } else {
                     output.push_str(slice(source, span)?);
@@ -785,7 +783,6 @@ fn rewrite_module_source(
     }
     // `export default definePage({ ... })` is the page.
     if let ModuleRole::Page { page_path } = role
-        && !registered_by_call
         && exports.iter().any(|(exported, _)| exported == "default")
     {
         output.push_str(&format!(
@@ -966,7 +963,6 @@ fn collect_binding_names(pattern: &oxc_ast::ast::BindingPattern<'_>, output: &mu
 }
 
 fn rewrite_registration_call(
-    project: &Project,
     source: &str,
     expression: &Expression<'_>,
     role: &ModuleRole,
@@ -999,33 +995,10 @@ fn rewrite_registration_call(
                 json_string_literal(&handler_json)
             )))
         }
-        "Page" | "PageInstance" => {
-            let ModuleRole::Page { page_path } = role else {
-                return Ok(None);
-            };
-            let first_arg = call_expr.arguments.first().ok_or_else(|| {
-                anyhow!(
-                    "{}() must be called with a configuration expression",
-                    identifier.name.as_str()
-                )
-            })?;
-            let config_expr = slice(source, first_arg.span())?;
-            let binding_meta_json = match unwrap_expression(first_arg.to_expression()) {
-                Expression::ObjectExpression(object) => serde_json::to_string(&BindingMeta {
-                    handlers: collect_page_handler_names(object),
-                })?,
-                _ => serde_json::to_string(&BindingMeta {
-                    handlers: Vec::new(),
-                })?,
-            };
-            let final_path = page_registration_path(project, page_path)?;
-            Ok(Some(format!(
-                "globalThis.__registerPage({}, {}, {});",
-                json_string_literal(&final_path),
-                config_expr,
-                json_string_literal(&binding_meta_json)
-            )))
-        }
+        "Page" | "PageInstance" if matches!(role, ModuleRole::Page { .. }) => bail!(
+            "{}() was removed: a page's Logic default-exports definePage({{ data, setup }}) from '@lingxia/types/page'",
+            identifier.name.as_str()
+        ),
         _ => Ok(None),
     }
 }
@@ -1042,17 +1015,6 @@ fn page_registration_path(project: &Project, page_path: &str) -> Result<String> 
                 .ok_or_else(|| anyhow!("Missing plugin id"))?,
             page_path
         ),
-    })
-}
-
-#[derive(serde::Serialize)]
-struct BindingMeta {
-    handlers: Vec<String>,
-}
-
-fn collect_page_handler_names(object: &oxc_ast::ast::ObjectExpression<'_>) -> Vec<String> {
-    collect_object_handler_names(object, |name| {
-        name != "data" && !name.starts_with('_') && !super::is_page_lifecycle(name)
     })
 }
 
@@ -1492,6 +1454,30 @@ mod tests {
             ),
             "{bundle}"
         );
+    }
+
+    #[test]
+    fn a_page_calling_page_fails_with_the_replacement() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        write(
+            root,
+            "pages/home/index.ts",
+            "Page({ data: {} });
+",
+        );
+        let project = test_project(root);
+        let mut bundler = LogicBundler::new(&project);
+        let error = bundler
+            .add_entry(
+                root.join("pages/home/index.ts"),
+                ModuleRole::Page {
+                    page_path: "pages/home/index".to_string(),
+                },
+            )
+            .and_then(|_| bundler.render_bundle(false))
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("definePage"), "{error:#}");
     }
 
     #[test]

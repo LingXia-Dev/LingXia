@@ -473,7 +473,11 @@ mod tests {
             r#"{"navigationStyle":"custom"}"#,
         )
         .unwrap();
-        fs::write(pages_home.join("index.ts"), "Page({});").unwrap();
+        fs::write(
+            pages_home.join("index.ts"),
+            "export default definePage({});",
+        )
+        .unwrap();
         fs::write(
             pages_home.join("index.tsx"),
             "export default function Page() {}",

@@ -5,29 +5,6 @@ declare const systemDownloadsPathBrand: unique symbol;
 /** Managed paths and relative userdata paths; system Downloads references are excluded. */
 export type ManagedPath = string & { readonly [systemDownloadsPathBrand]?: never };
 
-/** JSON-shaped state; undefined removes a property in setData. */
-export type PageDataValue<T> = unknown extends T ? T : T extends string | number | boolean | null | undefined ? T
-  : T extends (...args: never[]) => unknown ? never
-  : T extends object ? { [K in keyof T]: PageDataValue<T[K]> } : never;
-
-export type NoReservedPageMembers<T> = {
-  [K in keyof T]: K extends 'data' ? T[K]
-    : K extends keyof PageInstance | '_setData' | '_cancelPendingSetData' ? never : T[K];
-};
-
-export interface PageConfig<TData extends object = Record<string, unknown>> {
-  data?: TData & PageDataValue<TData>;
-  onLoad?: (options?: PageLoadOptions) => void | Promise<void>;
-  onShow?: () => void | Promise<void>;
-  onReady?: () => void | Promise<void>;
-  onHide?: () => void | Promise<void>;
-  onUnload?: () => void | Promise<void>;
-  onPullDownRefresh?: () => void | Promise<void>;
-}
-
-/** Lifecycle hook names a `Page({...})` config may declare. */
-export type PageLifecycleName = Exclude<keyof PageConfig, 'data'>;
-
 /** Lifecycle hook names an `App({...})` config may declare. */
 export type AppLifecycleName = Exclude<keyof AppConfig, 'globalData'>;
 
@@ -40,7 +17,7 @@ export type MisspelledLifecycle<K extends string> = {
 };
 
 /**
- * Applied to the custom half of a `Page`/`App` config. `onload` and `onShow`
+ * Applied to the custom half of an `App` config. `onload` and `onShow`
  * are one keystroke apart from real hooks and the runtime would simply never
  * call the misspelling, so the closest case-insensitive match is rejected.
  * Genuinely different names stay ordinary methods.

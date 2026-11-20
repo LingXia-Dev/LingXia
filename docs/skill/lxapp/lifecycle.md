@@ -1,12 +1,12 @@
 # Lifecycle
 
-When `App({})` and `Page({})` hooks fire, in what order, and what each
+When `App({})` and page hooks fire, in what order, and what each
 navigation does to the pages it enters and leaves. Hook signatures are in
 [Pages → Lifecycle](./guide.md#lifecycle) and [`App({})`](./guide.md#app).
 
 ## Two layers
 
-`App({})` hooks belong to the lxapp session. `Page({})` hooks belong to one
+`App({})` hooks belong to the lxapp session. Page hooks belong to one
 page instance. They advance independently.
 
 - **Every page `onLoad` waits for `App.onLaunch` to settle**, so a page can
@@ -22,11 +22,14 @@ page instance. They advance independently.
   });
 
   // pages/home/index.ts
-  Page({
-    onLoad() {
-      const app = getApp<AppInstance & { globalData: { userId: string } }>();
-      this.setData({ userId: app?.globalData.userId ?? '' });
-    },
+  export default definePage({
+    data: { userId: '' },
+    setup: page => ({
+      onLoad() {
+        const app = getApp<AppInstance & { globalData: { userId: string } }>();
+        page.update(d => { d.userId = app?.globalData.userId ?? ''; });
+      },
+    }),
   });
   ```
 
@@ -36,7 +39,7 @@ page instance. They advance independently.
 - **Page hooks of one page run in order, each awaited.** An `async onLoad`
   settles before that page's `onShow` starts. Different pages do not wait on
   each other.
-- **`this.signal` aborts before `onUnload`.**
+- **`page.signal` aborts before `onUnload`.**
 
 ## App hooks
 

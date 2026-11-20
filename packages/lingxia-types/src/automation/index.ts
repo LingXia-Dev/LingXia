@@ -313,7 +313,7 @@ export interface PageEvalOptions extends PageTarget {
 }
 
 export interface PageActionOptions extends PageTarget {
-  /** Name of a unary action of the page's `Page({...})`; stream (generator) actions are refused. */
+  /** Name of a unary action of the page; stream (generator) actions are refused. */
   name: string;
   /** The action's one JSON argument, passed as is; omit for none. */
   payload?: unknown;

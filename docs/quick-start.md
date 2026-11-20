@@ -139,10 +139,10 @@ You can browse the same content in this repo at [`docs/skill/SKILL.md`](./skill/
 
 ### Topic shortcuts
 
-- Page authoring (`Page({})`, `useLxPage`, events): [`docs/skill/lxapp/guide.md`](./skill/lxapp/guide.md)
+- Page authoring (`definePage`, `useLxPage`, events): [`docs/skill/lxapp/guide.md`](./skill/lxapp/guide.md)
 - Native components (`LxPicker`, `LxMediaSwiper`, …): [`docs/skill/lxapp/components.md`](./skill/lxapp/components.md)
 - Logic runtime and typings: [`docs/skill/lxapp/lx-api.md`](./skill/lxapp/lx-api.md)
-- Bridge mechanics (`setData`, stream, channel): [`docs/skill/lxapp/bridge.md`](./skill/lxapp/bridge.md)
+- Bridge mechanics (page state, stream, channel): [`docs/skill/lxapp/bridge.md`](./skill/lxapp/bridge.md)
 - Host project (`lingxia.yaml`, macOS App UI): [`docs/skill/app/project.md`](./skill/app/project.md)
 - Native Rust (`#[lingxia::native]`, `HostAddon`): [`docs/skill/native/development.md`](./skill/native/development.md)
 - Every CLI command: [`docs/skill/cli/lingxia.md`](./skill/cli/lingxia.md)

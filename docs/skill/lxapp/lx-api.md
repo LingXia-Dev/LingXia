@@ -1,7 +1,7 @@
 # Logic runtime
 
-The globals every Logic file (`pages/*/index.ts`) runs against: `lx`, `Page`,
-`App`, and the Web profile.
+The globals every Logic file (`pages/*/index.ts`) runs against: `lx`, `App`,
+and the Web profile; `definePage` is imported from `@lingxia/types/page`.
 
 **`@lingxia/types` is the API reference.** Its declarations and JSDoc are
 generated from the runtime and are authoritative for signatures, options,

@@ -165,7 +165,7 @@ export function isPageReady(): boolean {
 
 /**
  * Resolves once the page's first state has arrived — the host pushes it at
- * bridge-ready, before `onLoad`, carrying `Page({ data })`'s defaults — so a
+ * bridge-ready, before `onLoad`, carrying the page's `data` defaults — so a
  * page can mount with its data whole. With `timeoutMs`, rejects if Logic has
  * not delivered it by then (it failed to load, or threw first); `null` waits
  * without limit.
