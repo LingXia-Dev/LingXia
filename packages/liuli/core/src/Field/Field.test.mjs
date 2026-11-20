@@ -39,6 +39,8 @@ test('the status region stays mounted and empties when the status goes', async (
   assert.deepEqual(described(screen, screen.getByTestId('period')), ['Choose a period.']);
   assert.equal(screen.getByTestId('period').props.stateInvalid, 1);
   assert.ok(region()[0].children.some(node => node.props.accessibilityHidden === 1 && node.children.some(child => child.tag === 'vector')), 'icon, hidden');
+  const message = region()[0].children.find(node => node.tag === 'text');
+  assert.deepEqual([message.props.minWidth, message.props.overflowWrap], [0, 'break-word'], 'a long word breaks inside a narrow column');
   screen.select(screen.getByTestId('period'), 'yearly');
   assert.equal(region().length, 1, 'still mounted');
   assert.equal(announced(region()[0]), '');

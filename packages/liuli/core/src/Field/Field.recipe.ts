@@ -64,7 +64,8 @@ export const fieldRecipe = {
     base: 'size-[1.23em] shrink-0',
     type: { error: 'text-danger', warning: 'text-warning', success: 'text-success' } satisfies Record<FieldStatusType, string>,
   },
+  /** A word too long for a narrow column breaks inside, so the message never leaves its card. */
   statusText: {
-    base: 'grow basis-0 text-footnote text-text',
+    base: 'grow basis-0 min-w-0 break-words text-footnote text-text',
   },
 } as const;
