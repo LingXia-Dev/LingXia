@@ -1280,6 +1280,15 @@ mod ios {
                         Err(format!("no alert action {title} on screen"))
                     };
                 }
+                Some(Pressable::Control(control)) => {
+                    let enabled: bool = msg_send![control, isEnabled];
+                    if !enabled {
+                        return Err("the control under the tap is disabled".to_string());
+                    }
+                    // UIControlEventTouchUpInside
+                    let _: () = msg_send![control, sendActionsForControlEvents: 1usize << 6];
+                    return Ok(());
+                }
                 None => {}
             }
             let mut view: *mut AnyObject =
@@ -1316,6 +1325,7 @@ mod ios {
     enum Pressable {
         Probe(*mut AnyObject),
         AlertAction(String),
+        Control(*mut AnyObject),
     }
 
     /// The front-most SwiftUI chrome probe with a press, or system alert action, under window
@@ -1330,22 +1340,47 @@ mod ios {
             unsafe {
                 let hidden: bool = msg_send![view, isHidden];
                 let alpha: f64 = msg_send![view, alpha];
-                if hidden || alpha <= 0.01 || is_gpu_page(view) {
+                if hidden || alpha <= 0.01 {
+                    return;
+                }
+                let bounds: CGRect = msg_send![view, bounds];
+                let r: CGRect = msg_send![view, convertRect: bounds, toCoordinateSpace: space];
+                let inside = at.x >= r.origin.x
+                    && at.y >= r.origin.y
+                    && at.x < r.origin.x + r.size.width
+                    && at.y < r.origin.y + r.size.height;
+                // A GPU page covers what is behind it; of its own views only the host's
+                // recovery panel takes a press.
+                if is_gpu_page(view) {
+                    if inside {
+                        *found = None;
+                    }
+                    let subviews: *mut AnyObject = msg_send![view, subviews];
+                    let count: usize = msg_send![subviews, count];
+                    for index in 0..count {
+                        let child: *mut AnyObject = msg_send![subviews, objectAtIndex: index];
+                        if text(msg_send![child, accessibilityIdentifier]) == "lx-recovery" {
+                            walk(child, at, space, found);
+                        }
+                    }
                     return;
                 }
                 let name = class_name(view);
                 if name.contains("WKWebView") {
                     return;
                 }
+                // UIKit's hit test passes over a control that is still animating in (a sheet
+                // sliding up); a listed control is pressed where it is laid out.
+                let control: bool = msg_send![view, isKindOfClass: objc2::class!(UIControl)];
+                if control {
+                    if inside {
+                        *found = Some(Pressable::Control(view));
+                    }
+                    return;
+                }
                 let probe = name == "LxChromeProbe";
                 let action = name.contains("AlertControllerActionView");
                 if probe || action {
-                    let bounds: CGRect = msg_send![view, bounds];
-                    let r: CGRect = msg_send![view, convertRect: bounds, toCoordinateSpace: space];
-                    let inside = at.x >= r.origin.x
-                        && at.y >= r.origin.y
-                        && at.x < r.origin.x + r.size.width
-                        && at.y < r.origin.y + r.size.height;
                     if inside && probe && text(msg_send![view, chromeRole]) != "text" {
                         *found = Some(Pressable::Probe(view));
                     }
