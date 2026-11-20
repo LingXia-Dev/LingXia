@@ -47,9 +47,9 @@ function argsLiteral(args: readonly unknown[], api: string): string {
 
 /**
  * Logic: a direct `eval` in the runtime, so `lx` here is the runtime's
- * recording binding and `lx.*` coverage keeps working. `getApp` and
- * `getCurrentPages` are read defensively: a missing one must surface as
- * `undefined` in the scope, not as a ReferenceError blamed on the spec.
+ * recording binding and `lx.*` coverage keeps working. The runtime's test
+ * hooks are read defensively: a missing one must surface as `undefined` in
+ * the scope, not as a ReferenceError blamed on the spec.
  */
 export function logicScript(fn: unknown, args: readonly unknown[], api = "t.app.logic.eval", result: "strict" | "snapshot" = "strict"): string {
   const source = functionSource(fn, api);
@@ -57,9 +57,9 @@ export function logicScript(fn: unknown, args: readonly unknown[], api = "t.app.
     "((__lxFn, __lxArgs, __lxResult) => Promise.resolve(__lxFn({",
     "  lx,",
     '  getPage: typeof __lxGetPage === "function" ? __lxGetPage : undefined,',
-    '  getApp: typeof getApp === "function" ? getApp : undefined,',
-    '  getCurrentPages: typeof getCurrentPages === "function" ? getCurrentPages : undefined,',
-    '  currentPage: () => { const pages = typeof getCurrentPages === "function" ? getCurrentPages() : []; return pages.length ? pages[pages.length - 1].page : undefined; },',
+    '  appInstance: typeof __lxAppInstance === "function" ? __lxAppInstance : undefined,',
+    '  pageStack: typeof __lxPageStack === "function" ? __lxPageStack : undefined,',
+    '  currentPage: () => { const pages = typeof __lxPageStack === "function" ? __lxPageStack() : []; return pages.length ? pages[pages.length - 1].page : undefined; },',
     `}, ...__lxArgs)).then(value => __lxResult(value, ${JSON.stringify(api)})))(`,
     source,
     `, ${argsLiteral(args, api)}, ${(result === "snapshot" ? jsonSnapshot : jsonResult).toString()})`,

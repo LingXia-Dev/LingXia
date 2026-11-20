@@ -71,10 +71,10 @@ test('lx.nav.go({ app }) presents an open lxapp again after the caller came back
   // Home's App onShow/onHide counts: each hop must reach the app it leaves
   // or enters, not only change what is on screen.
   const homeLifecycle = (): Promise<{ shows: number; hides: number }> => (
-    app.logic.eval(({ getApp }) => {
-      const lifecycle = (getApp() as unknown as {
-        globalData?: { lifecycle?: { shows?: number; hides?: number } };
-      } | null)?.globalData?.lifecycle;
+    app.logic.eval(({ appInstance }) => {
+      const lifecycle = (appInstance() as unknown as {
+        state?: { lifecycle?: { shows?: number; hides?: number } };
+      } | null)?.state?.lifecycle;
       return { shows: lifecycle?.shows ?? 0, hides: lifecycle?.hides ?? 0 };
     })
   );

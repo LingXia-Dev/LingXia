@@ -543,7 +543,7 @@ mod tests {
     #[test]
     fn arguments_locals_globals_and_types_pass() {
         check(
-            "type Todo = { id: string };\nconst id = 'x';\ntest('x', async (t) => {\n  await t.app.logic.eval(({ getCurrentPages }, wanted: string) => {\n    const pages = getCurrentPages() as unknown as Todo[];\n    const found = pages.filter((page) => page.id === wanted);\n    return JSON.stringify(found) + Math.max(1, 2) + String(setTimeout);\n  }, id);\n  await t.app.view.eval({ timeout: 10 }, ({ document }) => document.title);\n});\n",
+            "type Todo = { id: string };\nconst id = 'x';\ntest('x', async (t) => {\n  await t.app.logic.eval(({ pageStack }, wanted: string) => {\n    const pages = pageStack() as unknown as Todo[];\n    const found = pages.filter((page) => page.id === wanted);\n    return JSON.stringify(found) + Math.max(1, 2) + String(setTimeout);\n  }, id);\n  await t.app.view.eval({ timeout: 10 }, ({ document }) => document.title);\n});\n",
         )
         .unwrap();
     }

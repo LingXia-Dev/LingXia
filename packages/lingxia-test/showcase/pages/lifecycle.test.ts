@@ -26,8 +26,8 @@ test('preserve hyphenated routes through show and ready', { id: 'PAGE-LIFECYCLE-
 });
 
 async function surfaceLifecycleState(app: TestApp): Promise<SurfaceLifecycleState | null> {
-  return app.logic.eval(({ getCurrentPages }) => {
-    const page = getCurrentPages<LogicPage<Partial<SurfaceLifecycleState>>>()
+  return app.logic.eval(({ pageStack }) => {
+    const page = pageStack<LogicPage<Partial<SurfaceLifecycleState>>>()
       .find((candidate) => candidate.route.includes('/surface/'));
     return page
       ? {
@@ -127,8 +127,8 @@ interface ResetDemoState {
 }
 
 async function resetDemoState(app: TestApp): Promise<ResetDemoState | null> {
-  return app.logic.eval(({ getCurrentPages }) => {
-    const page = getCurrentPages<LogicPage<Partial<ResetDemoState>>>()
+  return app.logic.eval(({ pageStack }) => {
+    const page = pageStack<LogicPage<Partial<ResetDemoState>>>()
       .find((candidate) => candidate.route.includes('/ui/'));
     return page
       ? {
@@ -219,8 +219,8 @@ test("stack two live instances of one route and unwind them independently", { id
     await app.nav.reset({ page: 'home' });
   });
 
-  const topDemoState = async (): Promise<ResetDemoState | null> => app.logic.eval(({ getCurrentPages }) => {
-    const pages = getCurrentPages<LogicPage<Partial<ResetDemoState>>>();
+  const topDemoState = async (): Promise<ResetDemoState | null> => app.logic.eval(({ pageStack }) => {
+    const pages = pageStack<LogicPage<Partial<ResetDemoState>>>();
     const page = pages[pages.length - 1];
     return page && page.route.includes('/ui/')
       ? {
@@ -262,7 +262,7 @@ test("stack two live instances of one route and unwind them independently", { id
   if (second === null) throw new Error('second drill-down entry left the stack');
   expect(second.logicCounter).toBe(0);
 
-  const stack = await app.logic.eval(({ getCurrentPages }) => getCurrentPages().map((page) => page.route));
+  const stack = await app.logic.eval(({ pageStack }) => pageStack().map((page) => page.route));
   expect(stack.filter((route) => route.includes('/ui/')).length).toBe(2);
 
   // Unwinding lands on the first instance with its own state intact.
@@ -307,8 +307,8 @@ test('deliver exactly one onLoad and one onReady to a re-entered page', {
   // misread a late event as a missing one.
   const events = await eventually(
     async () => {
-      const state = await app.logic.eval(({ getCurrentPages }) => {
-        const page = getCurrentPages<LogicPage<{ events?: string[] }>>()
+      const state = await app.logic.eval(({ pageStack }) => {
+        const page = pageStack<LogicPage<{ events?: string[] }>>()
           .find((candidate) => candidate.route.includes('/ui/'));
         return page ? page.data.events ?? [] : null;
       });
@@ -367,8 +367,8 @@ test("fire onLoad once per tab instance, not on preload or later switchTab", {
   // handshake, so switching too early would miss it.
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 2_000));
 
-  const apiLoadCount = async (): Promise<number | null> => app.logic.eval(({ getCurrentPages }) => {
-    const page = getCurrentPages<LogicPage<{ loadCount?: number }>>()
+  const apiLoadCount = async (): Promise<number | null> => app.logic.eval(({ pageStack }) => {
+    const page = pageStack<LogicPage<{ loadCount?: number }>>()
       .find((candidate) => /\/api\//i.test(candidate.route));
     return page ? page.data.loadCount ?? -1 : null;
   });
@@ -410,7 +410,7 @@ test("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", co
   // the stack for good — that is a departure, and departures end instances.
   await app.nav.go({ tab: 'api' });
   await waitForCurrentPage(app, 'api');
-  const stack = await app.logic.eval(({ getCurrentPages }) => getCurrentPages().map((page) => page.route));
+  const stack = await app.logic.eval(({ pageStack }) => pageStack().map((page) => page.route));
   expect(stack.some((route) => route.includes('/ui/'))).toBe(false);
 
   const second = await enterResetDemo(app);

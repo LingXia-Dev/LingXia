@@ -5,24 +5,19 @@ function registerApp(appConfig, handlerNamesJson) {
     throw new Error("App registration requires a configuration object");
   }
 
+  if ("globalData" in appConfig) {
+    throw new TypeError("App: globalData is gone; keep app state in a module the pages import");
+  }
   const appInstance = {};
   for (const [key, value] of Object.entries(appConfig)) {
     appInstance[key] = value;
   }
-  appInstance.globalData = appConfig.globalData || {};
 
   new LxAppSvc(appInstance, handlerNamesJson || "[]");
   __APP_INSTANCE__ = appInstance;
   return appInstance;
 }
 
-function getApp() {
-  if (!__APP_INSTANCE__) {
-    console.warn("getApp() called before App() - no app instance available");
-    return null;
-  }
-  return __APP_INSTANCE__;
-}
 
 globalThis.__registerApp = registerApp;
 globalThis.App = function () {
@@ -30,4 +25,8 @@ globalThis.App = function () {
     "App() should be transformed at build time. Rebuild the logic bundle with the LingXia CLI.",
   );
 };
-globalThis.getApp = getApp;
+// For `lxdev test` only; app code shares state through modules.
+Object.defineProperty(globalThis, "__lxAppInstance", {
+  value: () => __APP_INSTANCE__,
+  configurable: true,
+});

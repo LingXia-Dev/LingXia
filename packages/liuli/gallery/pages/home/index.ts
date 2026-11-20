@@ -5,6 +5,7 @@ export default definePage({
   data: { page: '' },
   setup(thisPage) {
     let unwatch = undefined as (() => void) | undefined;
+    let covered = false;
     const actions = {
       async open({ page }: { page: string }) {
         await lx.nav.go({ page }).opened;
@@ -26,11 +27,15 @@ export default definePage({
       async onLoad(query?: { page?: string }) {
         const page = query?.page || (await rememberedEntry());
         if (page) thisPage.update(d => { d.page = page; });
-        unwatch = pushEntryWhenNarrow(() => thisPage.data.page, thisPage.env);
+        unwatch = pushEntryWhenNarrow(() => thisPage.data.page, thisPage.env, () => covered);
       },
       onShow() {
+        covered = false;
         const page = takeHandedOff();
         if (page) thisPage.update(d => { d.page = page; });
+      },
+      onHide() {
+        covered = true;
       },
       onUnload() {
         unwatch?.();

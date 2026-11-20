@@ -102,7 +102,7 @@ impl LxAppSvc {
     }
 }
 
-// Register the global App & getApp function
+// Register the global App function
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_class::<LxAppSvc>()?;
 

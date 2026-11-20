@@ -10,8 +10,8 @@ interface RefreshState {
 }
 
 async function refreshState(app: TestApp): Promise<RefreshState> {
-  return app.logic.eval(({ getCurrentPages }): RefreshState => {
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/pulltorefresh/'));
+  return app.logic.eval(({ pageStack }): RefreshState => {
+    const page = pageStack().find((candidate) => candidate.route.includes('/pulltorefresh/'));
     const data = (page?.data ?? {}) as { refreshCount?: number; isRefreshing?: boolean };
     return { count: data.refreshCount ?? -1, refreshing: !!data.isRefreshing };
   });
@@ -64,8 +64,8 @@ test("page.refresh runs onPullDownRefresh, and the indicator stays until it sett
     // Finish and start again in one Logic turn: the native indicator stays up
     // for a minimum time after a stop, and a start that lands in that window
     // must still reach onPullDownRefresh.
-    await app.logic.eval(async ({ getCurrentPages, currentPage }) => {
-      const pages = getCurrentPages();
+    await app.logic.eval(async ({ pageStack, currentPage }) => {
+      const pages = pageStack();
       const top = pages[pages.length - 1];
       (top.stopRefresh as () => void)();
       await Promise.resolve();

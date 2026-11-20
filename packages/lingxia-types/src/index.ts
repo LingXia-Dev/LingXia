@@ -21,7 +21,6 @@ import type {
   FsWriteOptions,
   ManagedPath,
   NoLifecycleTypos,
-  PageInstance,
 } from './generated/logic.js';
 import type { Automation } from './automation/index.js';
 
@@ -71,8 +70,6 @@ declare global {
       NoLifecycleTypos<TCustom, AppLifecycleName> &
       ThisType<AppInstance & TCustom>
   ): AppInstance & TCustom;
-  function getApp<T extends AppInstance = AppInstance>(): T | null;
-  function getCurrentPages<T extends PageInstance = PageInstance>(): T[];
 }
 
 export {};

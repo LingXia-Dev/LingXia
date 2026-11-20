@@ -1,5 +1,5 @@
 import type { AppLaunchOptions, ConfiguredPageName } from "@lingxia/types";
-import type { ShowcaseAppInstance } from "./shared/lib/app";
+import { appState, setIpAddr } from "./shared/lib/app";
 import { getAppMessages } from "./logic/app-messages";
 import { resolveDisplayLanguage } from "./shared/display-language";
 
@@ -141,9 +141,9 @@ async function applyHostChrome(os: string, tag: string) {
 }
 
 App({
-  onLaunch: async function (this: ShowcaseAppInstance, options?: AppLaunchOptions) {
-    this.globalData.lifecycle.launches++;
-    this.globalData.lifecycle.last = "launch";
+  onLaunch(options?: AppLaunchOptions) {
+    appState.lifecycle.launches++;
+    appState.lifecycle.last = "launch";
     routeFromAppLink(options);
     const { os } = lx.host.info;
     const applyChrome = (tag = lx.host.displayLanguage.get()) => {
@@ -180,32 +180,25 @@ App({
 
     testManagedFileAccess();
 
-    try {
-      const response = await fetch("https://api64.ipify.org?format=json");
-      const data = (await response.json()) as { ip: string };
-      this.globalData.ipAddr = data.ip;
-      console.log("Got public address:", data.ip);
-    } catch (error) {
-      this.globalData.ipAddr = (error as Error).message;
-    }
-
-    // Call the registered callback function if available
-    if (this.ipReadyCallback) {
-      console.log("Calling IP ready callback");
-      this.ipReadyCallback(this.globalData.ipAddr);
-    }
+    // Not awaited: the first page's onLoad waits for onLaunch.
+    void fetch("https://api64.ipify.org?format=json")
+      .then((response) => response.json() as Promise<{ ip: string }>)
+      .then(
+        (data) => setIpAddr(data.ip),
+        (error: Error) => setIpAddr(error.message),
+      );
   },
 
-  onHide(this: ShowcaseAppInstance) {
-    this.globalData.lifecycle.hides++;
-    this.globalData.lifecycle.last = "hide";
+  onHide() {
+    appState.lifecycle.hides++;
+    appState.lifecycle.last = "hide";
     console.log("App.onHide");
   },
 
-  onShow(this: ShowcaseAppInstance, options?: AppLaunchOptions) {
-    this.globalData.lifecycle.shows++;
-    this.globalData.lifecycle.last = "show";
-    this.globalData.lifecycle.lastShow = options;
+  onShow(options?: AppLaunchOptions) {
+    appState.lifecycle.shows++;
+    appState.lifecycle.last = "show";
+    appState.lifecycle.lastShow = options;
     routeFromAppLink(options);
     console.log("App.onShow");
   },
@@ -214,9 +207,6 @@ App({
     console.log("App.onUserCaptureScreen");
   },
 
-  globalData: {
-    lifecycle: { launches: 0, shows: 0, hides: 0, last: "", pageHides: 0, pageShows: 0 },
-    greeting: "This is from App's globalData.data",
-    ipAddr: "loading",
-  },
+  // For `lxdev test`, which reads it through `appInstance().state`.
+  state: appState,
 });

@@ -1,5 +1,5 @@
 import { expect, test } from '@lingxia/test';
-import type { ShowcaseAppInstance } from '../../shared/lib/app.js';
+import type { appState } from '../../shared/lib/app.js';
 import type { LxAppRuntimeInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { waitForCurrentPageVisible } from '@lingxia/test/showcase/helpers/page.js';
@@ -33,10 +33,10 @@ test('hop to the bundled chat lxapp and back', {
   const { app, namespace, defer } = bindFixture(t, 'NAV-APP-001');
   const manager = t.automation.lxapps;
   const rows = (): Promise<LxAppRuntimeInfo[]> => manager.list();
-  const lifecycle = () => app.logic.eval(({ getApp }) => {
-    const instance = getApp() as unknown as ShowcaseAppInstance | null;
+  const lifecycle = () => app.logic.eval(({ appInstance }) => {
+    const instance = appInstance() as unknown as { state: typeof appState } | null;
     if (!instance) throw new Error('App instance missing');
-    return instance.globalData.lifecycle;
+    return instance.state.lifecycle;
   });
 
   const currentApp = async (): Promise<string> => (await manager.current()).appId;

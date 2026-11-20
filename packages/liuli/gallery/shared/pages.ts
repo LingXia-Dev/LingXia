@@ -58,22 +58,23 @@ function watchClass(env: PageEnv, onClass: (sizeClass: SizeClass, crossed: boole
  */
 export function returnToWorkspaceWhenWide(page: string, env: PageEnv): () => void {
   return watchClass(env, sizeClass => {
-    const depth = getCurrentPages().length;
-    if (sizeClass !== 'regular' || depth < 2) return;
+    if (sizeClass !== 'regular') return;
     handedOff = page;
     rememberEntry(page);
-    void lx.nav.back(depth - 1);
+    // Back to home: `back` stops at the root, and the stack holds ten pages at most.
+    void lx.nav.back(10);
   });
 }
 
 /**
  * Home: in a narrow window with an entry open, push that entry's page, whether the window narrowed or
- * home came back narrow with a remembered entry. Returns the unsubscribe.
+ * home came back narrow with a remembered entry; not while another page covers home. Returns the
+ * unsubscribe.
  */
-export function pushEntryWhenNarrow(entry: () => string, env: PageEnv): () => void {
+export function pushEntryWhenNarrow(entry: () => string, env: PageEnv, covered: () => boolean): () => void {
   return watchClass(env, sizeClass => {
     const page = entry();
-    if (sizeClass !== 'compact' || !page || page === 'home' || getCurrentPages().length > 1) return;
+    if (sizeClass !== 'compact' || !page || page === 'home' || covered()) return;
     rememberEntry('');
     void lx.nav.go({ page });
   });

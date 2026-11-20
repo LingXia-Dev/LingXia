@@ -1,4 +1,3 @@
-import { showcaseApp } from "../../shared/lib/app";
 import { errorMessage } from "../../shared/lib/errors";
 import type {
   ActionSheetResult,
@@ -32,7 +31,6 @@ interface DemoSurfaceConfig {
   chrome?: "system" | "full";
 }
 
-const app = showcaseApp();
 
 // The type is erased at compile time. `SURFACE_ERROR_CODES` is a runtime export
 // of the same package, and importing that would leave an external module in the
@@ -99,7 +97,6 @@ function newInstanceTag() {
 export default definePage({
   data: {
     currentType: "navigation",
-    pageStack: [] as { index: number; name: string; current: boolean }[],
     instanceTag: "",
     previousInstanceTag: "",
     logicCounter: 0,
@@ -158,23 +155,6 @@ export default definePage({
           });
         } catch (error) {
           thisPage.update(d => { d.chromeError = `Appearance unavailable: ${surfaceErrorMessage(error)}`; });
-        }
-      },
-      // Update current page stack
-      updatePageStack() {
-        try {
-          const pages = getCurrentPages();
-          const top = pages.length - 1;
-          const pageStack = pages.map((page, index) => ({
-            index,
-            name: ((page.route || "unknown").split("pages/")[1] || page.route || "unknown")
-              .replace(/\/index\.\w+$/, ""),
-            current: index === top,
-          }));
-
-          thisPage.update(d => { d.pageStack = pageStack; });
-        } catch (error) {
-          console.error("Failed to get current pages:", error);
         }
       },
       // A key is an identity, not a slot: every open mints a fresh surface, so
@@ -610,8 +590,6 @@ export default definePage({
         const title = NAV_TITLE_MAP[type] || "User Interface";
         actions.updateNavigationBarTitle({ title });
 
-        // Update page stack immediately
-        helpers.updatePageStack();
         helpers.syncAppearance();
 
         // Instance identity: a fresh tag per entry proves that leaving ends the
@@ -637,8 +615,6 @@ export default definePage({
       },
       onShow() {
         console.log("UI page onShow");
-        // Update page stack every time page shows
-        helpers.updatePageStack();
         helpers.syncAppearance();
         helpers.record("onShow");
       },

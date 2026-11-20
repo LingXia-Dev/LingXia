@@ -9,7 +9,7 @@ interface UiPage extends LogicPage<{ logicCounter: number; instanceTag: string; 
 
 test('keep App identity across pages and merge setData into the correct View', {
   id: 'PAGE-GLOBALS-001', app: SHOWCASE_APP_ID,
-  covers: ['getApp', 'getCurrentPages', 'Page.route', 'Page.setData', 'Page.flush', 'lx.nav.go'],
+  covers: ['appInstance', 'pageStack', 'Page.route', 'Page.setData', 'Page.flush', 'lx.nav.go'],
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'PAGE-GLOBALS-001');
   defer(async () => {
@@ -18,11 +18,11 @@ test('keep App identity across pages and merge setData into the correct View', {
   });
   await app.nav.reset({ page: 'ui', params: { type: 'navigation' } });
   const page = await app.page({ name: 'ui' });
-  const first = await app.logic.eval(({ getApp, getCurrentPages }, key) => {
-    const instance = getApp();
+  const first = await app.logic.eval(({ appInstance, pageStack }, key) => {
+    const instance = appInstance();
     if (!instance) throw new Error('App instance missing');
     (globalThis as Record<string, unknown>)[key] = instance;
-    const pages = getCurrentPages<UiPage>();
+    const pages = pageStack<UiPage>();
     const current = pages[pages.length - 1];
     return { route: current.route, surfaceAbsent: current.surface === undefined, tag: current.data.instanceTag };
   }, namespace);
@@ -43,10 +43,10 @@ test('keep App identity across pages and merge setData into the correct View', {
   expect(merged).toEqual({ counter: 8, tag: first.tag, type: 'navigation' });
   await expect(page.view.testId('lifecycle-logic-counter')).toHaveText('8');
   await app.nav.go({ page: 'feedback' });
-  const next = await app.logic.eval(({ getApp, getCurrentPages }, key) => {
-    const pages = getCurrentPages();
+  const next = await app.logic.eval(({ appInstance, pageStack }, key) => {
+    const pages = pageStack();
     return {
-      sameApp: getApp<LogicApp>() === (globalThis as Record<string, unknown>)[key],
+      sameApp: appInstance<LogicApp>() === (globalThis as Record<string, unknown>)[key],
       routes: pages.map(page => page.route),
     };
   }, namespace);

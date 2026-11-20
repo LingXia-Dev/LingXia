@@ -120,8 +120,8 @@ test('handles the macOS location permission sheet when it appears', {
       promptHandled = true;
     }
 
-    const state = await app.logic.eval(({ getCurrentPages }) => {
-      const page = getCurrentPages().find((candidate) => candidate.route.includes('/location/'));
+    const state = await app.logic.eval(({ pageStack }) => {
+      const page = pageStack().find((candidate) => candidate.route.includes('/location/'));
       const data = (page?.data ?? {}) as { isLoading?: boolean; location?: unknown; locationError?: unknown };
       return {
         loading: !!data.isLoading,

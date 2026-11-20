@@ -154,8 +154,8 @@ test("reset from Logic and reject invalid navigation", {
     // the scheduled redirect lands and leave it in flight for the next case.
     // The page's own query is what proves it arrived.
     await eventually(
-      () => app.logic.eval(({ getCurrentPages }) => {
-        const page = getCurrentPages().find((candidate) => candidate.route.includes('/ui/'));
+      () => app.logic.eval(({ pageStack }) => {
+        const page = pageStack().find((candidate) => candidate.route.includes('/ui/'));
         return String(page?.data?.currentType ?? '');
       }),
       (currentType) => currentType === 'navbar',
@@ -174,8 +174,8 @@ interface ApiPageProbe {
 }
 
 async function apiPageProbe(app: TestApp): Promise<ApiPageProbe | null> {
-  return app.logic.eval(({ getCurrentPages }) => {
-    const page = getCurrentPages<AnyLogicPage<{ loadCount?: number }>>()
+  return app.logic.eval(({ pageStack }) => {
+    const page = pageStack<AnyLogicPage<{ loadCount?: number }>>()
       .find((candidate) => candidate.route.includes('/API/'));
     return page
       ? { loadCount: page.data.loadCount ?? -1, logicMarker: (page.__relaunchMarker as string | undefined) ?? null }
@@ -192,8 +192,8 @@ async function markWarmApiTab(app: TestApp, marker: string): Promise<PageInfo> {
   await eventually(() => apiPageProbe(app), (probe) => probe?.loadCount === 1, {
     describe: 'the api tab to run onLoad once',
   });
-  await app.logic.eval(({ getCurrentPages }, marker) => {
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/API/'));
+  await app.logic.eval(({ pageStack }, marker) => {
+    const page = pageStack().find((candidate) => candidate.route.includes('/API/'));
     // A marker on the page object itself: a fresh instance will not carry it.
     (page as unknown as { __relaunchMarker?: string }).__relaunchMarker = marker;
     return true;

@@ -97,7 +97,6 @@ function newInstanceTag() {
 export default definePage({
   data: {
     currentType: "navigation",
-    pageStack: [] as { index: number; name: string; current: boolean }[],
     instanceTag: "",
     previousInstanceTag: "",
     logicCounter: 0,
@@ -152,23 +151,6 @@ export default definePage({
           });
         } catch (error) {
           thisPage.update(d => { d.chromeError = `Appearance unavailable: ${surfaceErrorMessage(error)}`; });
-        }
-      },
-      // Update current page stack
-      updatePageStack() {
-        try {
-          const pages = getCurrentPages();
-          const top = pages.length - 1;
-          const pageStack = pages.map((page, index) => ({
-            index,
-            name: ((page.route || "unknown").split("pages/")[1] || page.route || "unknown")
-              .replace(/\/index\.\w+$/, ""),
-            current: index === top,
-          }));
-
-          thisPage.update(d => { d.pageStack = pageStack; });
-        } catch (error) {
-          console.error("Failed to get current pages:", error);
         }
       },
       // A key is an identity, not a slot: every open mints a fresh surface, so
@@ -613,8 +595,6 @@ export default definePage({
         const title = NAV_TITLE_MAP[type] || "User Interface";
         actions.updateNavigationBarTitle({ title });
 
-        // Update page stack immediately
-        helpers.updatePageStack();
         stopWatchingAppearance?.();
         stopWatchingAppearance = lx.host.appearance.watch(() => helpers.syncAppearance());
         helpers.syncAppearance();
@@ -642,8 +622,6 @@ export default definePage({
       },
       onShow() {
         console.log("UI page onShow");
-        // Update page stack every time page shows
-        helpers.updatePageStack();
         helpers.syncAppearance();
         helpers.record("onShow");
       },

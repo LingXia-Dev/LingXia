@@ -766,7 +766,7 @@ async fn handle_service_message(
             // Register LxApp runtime context and bind identity to JSContext
             register_app_ctx(&ctx, &lxapp);
 
-            // register PageInstance, App and getApp function
+            // register PageInstance and App
             if let Err(e) = app::init(&ctx) {
                 error!(
                     "[Worker {}] Failed to initialize App runtime: {}",
@@ -1998,7 +1998,7 @@ mod worker_assignment_tests {
                         state.pages_by_id.lock().unwrap().insert(id.clone(), page);
                     }
                     let script = format!(
-                        "__registerApp({{ onLaunch() {{}}, globalData: {{ ballast: [] }} }}, '[\"onLaunch\"]'); \
+                        "__registerApp({{ onLaunch() {{}} }}, '[\"onLaunch\"]'); \
                          __registerPage('pages/home/index', {{ data: {{}}, onLoad() {{}} }}); \
                          (() => {{ \
                            const svc = __LX_CREATE_PAGE__('pages/home/index', null, {id:?}); \

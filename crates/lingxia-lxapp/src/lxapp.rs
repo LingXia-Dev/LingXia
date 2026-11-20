@@ -3551,7 +3551,7 @@ impl LxApp {
         }
         self.executor.restart_app_svc(self.clone_arc())?;
         // Enqueued before the page reload, so the reloaded page's first
-        // globalData read observes the fresh state.
+        // read of app state observes the fresh state.
         self.relaunch_logic()
     }
 

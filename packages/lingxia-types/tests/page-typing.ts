@@ -21,8 +21,8 @@ App({
   onlaunch() {},
 });
 
-const pages = getCurrentPages();
-const firstRoute: string | undefined = pages[0]?.route;
-void firstRoute;
-
-export type PageTypingGate = [typeof firstRoute];
+// App state lives in modules; the page stack is reached through `page`.
+// @ts-expect-error getCurrentPages is gone
+getCurrentPages;
+// @ts-expect-error getApp is gone
+getApp;

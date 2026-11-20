@@ -17,8 +17,8 @@ interface DevicePageState {
 }
 
 async function deviceState(app: TestApp): Promise<DevicePageState> {
-  return app.logic.eval(({ getCurrentPages }): DevicePageState => {
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/device/'));
+  return app.logic.eval(({ pageStack }): DevicePageState => {
+    const page = pageStack().find((candidate) => candidate.route.includes('/device/'));
     const data = (page?.data ?? {}) as Partial<DevicePageState>;
     return {
       deviceInfo: data.deviceInfo ?? null,

@@ -1,8 +1,7 @@
 import { cloudProviderAvailable } from "../../shared/lib/provider";
 import { errorMessage } from "../../shared/lib/errors";
-import { showcaseApp } from "../../shared/lib/app";
+import { appState } from "../../shared/lib/app";
 import { definePage } from '@lingxia/types/page';
-const app = showcaseApp();
 
 export default definePage({
   data: {
@@ -161,7 +160,7 @@ export default definePage({
       },
       onShow() {
         console.log("API page onShow");
-        console.log("App data:", app.globalData);
+        console.log("App data:", appState);
       },
       onHide() {
         console.log("API page onHide");

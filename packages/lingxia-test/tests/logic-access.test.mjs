@@ -13,7 +13,7 @@ afterEach(() => {
 function logicWorld(pages = []) {
   const world = createWorld();
   const lx = { fs: { userData: "lx://userdata" } };
-  world.useLogic({ lx, getApp: () => ({ name: "demo" }), getCurrentPages: () => pages });
+  world.useLogic({ lx, __lxAppInstance: () => ({ name: "demo" }), __lxPageStack: () => pages });
   return world;
 }
 
@@ -29,10 +29,10 @@ test("function eval runs in Logic with the scope and JSON args", async () => {
   const seen = [];
 
   const result = await runOne(async (t) => {
-    seen.push(await t.app.logic.eval(({ lx, getApp, getCurrentPages }, extra, label) => ({
+    seen.push(await t.app.logic.eval(({ lx, appInstance, pageStack }, extra, label) => ({
       path: lx.fs.userData,
-      app: getApp().name,
-      count: getCurrentPages()[0].data.count + extra.add,
+      app: appInstance().name,
+      count: pageStack()[0].data.count + extra.add,
       label,
     }), { add: 3 }, "x \"y"));
     // A leading comment, which the string form's statement detection misses.
@@ -50,7 +50,7 @@ test("function eval runs in Logic with the scope and JSON args", async () => {
     undefined,
   ]);
   const action = result.steps.find((step) => step.name === "logic.eval");
-  assert.match(action.detail, /^\(\{ lx, getApp, getCurrentPages \}, extra, label\) =>/);
+  assert.match(action.detail, /^\(\{ lx, appInstance, pageStack \}, extra, label\) =>/);
   // The script sent is one call expression, not a statement body.
   assert.match(world.evaluated[0], /^\(\(__lxFn, __lxArgs, __lxResult\) => Promise\.resolve\(__lxFn\(/);
 });
@@ -667,7 +667,7 @@ test("page data uses View JSON serialization instead of the eval validator", asy
   const page = { route: "pages/home/index", data };
   const world = logicWorld([page]);
   world.app.nav.current = async () => ({ path: page.route, instanceId: "home:1" });
-  world.useLogic({ lx: {}, getCurrentPages: () => [page], __lxGetPage: () => page });
+  world.useLogic({ lx: {}, __lxPageStack: () => [page], __lxGetPage: () => page });
   installFakeHost(world);
   const result = await runOne(async t => {
     const expected = { at: "2026-01-01T00:00:00.000Z", record: { count: 2 }, items: [null, 1] };

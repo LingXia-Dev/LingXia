@@ -141,10 +141,10 @@ test.fail('removed code', { expected: { code: 'E_EVAL_TIMEOUT' } }, async () => 
 
 test('typed Logic access', async t => {
   // Function-form Logic eval: scope is typed, args are JSON, result is inferred.
-  const count: number = await t.app.logic.eval(({ getCurrentPages }) => getCurrentPages().length);
+  const count: number = await t.app.logic.eval(({ pageStack }) => pageStack().length);
   count.toFixed();
-  const route: string = await t.app.logic.eval(async ({ getCurrentPages }, index: number) => {
-    const pages = getCurrentPages();
+  const route: string = await t.app.logic.eval(async ({ pageStack }, index: number) => {
+    const pages = pageStack();
     return pages[pages.length - 1 - index].route;
   }, 0);
   route.toUpperCase();

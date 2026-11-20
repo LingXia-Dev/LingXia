@@ -2391,7 +2391,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.eval::<()>(page_js)?;
 
     let get_current_pages = rong::JSFunc::new(ctx, get_current_pages)?;
-    ctx.global().set("getCurrentPages", get_current_pages)?;
+    // For `lxdev test` only; app code reaches a page through its closure.
+    ctx.global().set("__lxPageStack", get_current_pages)?;
     ctx.global().set(
         "__lxGetPage",
         rong::JSFunc::new(ctx, |ctx: JSContext, id: String| -> JSResult<JSObject> {

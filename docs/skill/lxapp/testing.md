@@ -236,9 +236,10 @@ const label = await t.app.view.eval(({ document }) => document.querySelector('#t
 const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: string) => lx.storage().get(key), 'cache');
 ```
 
-- `logic.eval(fn, ...args)` runs in Logic with `{ lx, getApp,
-  getCurrentPages, getPage }`; `view.eval` runs in the page with `{ document,
-  window }`. Reach for them when the UI cannot show what a test checks.
+- `logic.eval(fn, ...args)` runs in Logic with `{ lx, appInstance, pageStack,
+  getPage, currentPage }` (`appInstance()` is the object `App({...})`
+  registered; neither exists for app code); `view.eval` runs in the page with
+  `{ document, window }`. Reach for them when the UI cannot show what a test checks.
 - `fn` is sent as source: it cannot use test variables, imports, or helpers
   (`lxdev test` refuses one that does). Pass values as extra arguments;
   arguments and results must be JSON (interfaces work without an index signature).

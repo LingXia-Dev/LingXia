@@ -35,6 +35,9 @@ function applyMoreActions(tag = lx.host.displayLanguage.get()) {
   ]);
 }
 
+/** What a reopen delivered, for the showcase desktop specs. */
+const probe = { lastShow: undefined as AppLaunchOptions | undefined };
+
 App({
   onLaunch() {
     console.log('LingXia Chat launched');
@@ -64,11 +67,10 @@ App({
 
   onShow(options?: AppLaunchOptions) {
     // Showcase desktop specs read what a reopen delivered.
-    this.globalData.lastShow = options;
+    probe.lastShow = options;
     applyMoreActions();
   },
 
-  globalData: {
-    lastShow: undefined as AppLaunchOptions | undefined,
-  },
+  // For `lxdev test`, which reads it through `appInstance().state`.
+  state: probe,
 });

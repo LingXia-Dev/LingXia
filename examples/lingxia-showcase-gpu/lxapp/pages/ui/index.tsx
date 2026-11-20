@@ -349,7 +349,6 @@ function Counter({ id, label, value, hint, onClick }: { id: string; label: strin
 function Navigation({ data, actions }: Pane) {
   const count = useLocal('viewCounter', 0);
   const popup = useLocal('popup', false);
-  const pages = (data.pageStack || []) as { index: number; name: string; current: boolean }[];
   const events = (data.events || []) as string[];
   return (
     <page data-testid="ui-page" data-instance-tag={String(data.instanceTag ?? '')} className="bg-canvas text-text">
@@ -367,34 +366,6 @@ function Navigation({ data, actions }: Pane) {
             <NavLink testId="ui-redirect-to" label="Replace this page (redirectTo)" onClick={() => actions.demoRedirectTo()} />
             <NavLink testId="ui-switch-tab" label="Jump to Tab page" onClick={() => actions.demoSwitchTab()} />
           </Card>
-          <Section
-            title="Page stack"
-            description="getCurrentPages(), top is where you are"
-            action={
-              <text
-                data-testid="ui-page-stack-depth"
-                className="px-2.5 py-1 rounded-full bg-accent-soft text-xs font-mono text-accent"
-              >{`${pages.length}/10`}</text>
-            }
-          >
-            <view data-testid="ui-page-stack-list" className="gap-1.5">
-              {[...pages].reverse().map(page => (
-                <view
-                  key={String(page.index)}
-                  className={
-                    page.current
-                      ? 'flex-row items-center gap-3 px-3 py-2 rounded-lg border border-line bg-accent-soft'
-                      : 'flex-row items-center gap-3 px-3 py-2 rounded-lg border border-line bg-surface-sunken'
-                  }
-                >
-                  <text className="w-5 text-right text-xs font-mono text-muted">{String(page.index + 1)}</text>
-                  <text className="grow basis-0 text-xs font-mono">{page.name}</text>
-                  {page.current && <text className="text-[10px] font-medium">you are here</text>}
-                </view>
-              ))}
-              {!pages.length && <text className="py-4 text-xs text-muted text-center">No page stack available</text>}
-            </view>
-          </Section>
           <Section title="Logic instance" description="Push this page again to create a new Page instance with a new tag.">
             <InfoList>
               <InfoRow label="This instance" value={`#${data.instanceTag || '-'}`} testId="lifecycle-instance-tag" />

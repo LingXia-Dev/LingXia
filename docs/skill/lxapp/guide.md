@@ -326,24 +326,21 @@ The optional lxapp-wide singleton, in one root file (conventionally `app.ts`),
 created once at boot and shared by every page:
 
 ```ts
+// shared/session.ts — app state is a module the App and pages import
+export const session = { userId: '', theme: 'light' as 'light' | 'dark' };
+```
+
+```ts
 // app.ts
-interface AppGlobals {
-  userId: string;
-  theme: 'light' | 'dark';
-}
+import { session } from './shared/session';
 
 App({
-  globalData: <AppGlobals>{
-    userId: '',
-    theme: 'light',
-  },
-
   async onLaunch(options) {
     // Once per worker. AppLaunchOptions: path?, query?, scene?, url?, referrerInfo?
     // Cold AppLink: scene 8003 + the original `url` here. referrerInfo when
     // opened by another lxapp.
     const stored = await lx.storage().get<string>('userId');
-    if (stored) this.globalData.userId = stored;
+    if (stored) session.userId = stored;
   },
 
   onShow(args) {
@@ -363,22 +360,25 @@ App({
 
 ```ts
 // pages/profile/index.ts
+import { session } from '../../shared/session';
+
 export default definePage({
   data: { userId: '' },
   setup: page => ({
     onLoad() {
-      const app = getApp<AppInstance & { globalData: AppGlobals }>();
-      if (app) page.update(d => { d.userId = app.globalData.userId; });
+      page.update(d => { d.userId = session.userId; });
     },
   }),
 });
 ```
 
-- `globalData` is not reactive; push changes to a page with `page.update`.
+- There is no `getApp()` or `globalData`; `App({ globalData })` throws. Module
+  state is not reactive; push changes to a page with `page.update`.
 - Cold start: `App.onLaunch` → `App.onShow` → `Page.onLoad` → `Page.onShow`;
   `Page.onLoad` waits for an `async onLaunch` to settle.
   Foregrounding: `App.onShow` → top page's `onShow`.
-- `getCurrentPages()` returns the stack, top last.
+- There is no `getCurrentPages()`; a page reaches itself through `page`, and
+  another page through the handle `lx.nav.go` returned.
 
 ## Tab bar and page chrome
 
@@ -620,7 +620,7 @@ capsule, use the CSS variables; never hard-code platform heights:
 - Mutating `data` in the View, or keeping business state in `useState`/`ref`.
 - Touching the DOM from Logic; Logic has no DOM.
 - Expecting `_`-prefixed helpers or hooks to be actions.
-- Expecting `App({}).globalData` changes to re-render.
+- Expecting changes to shared module state to re-render.
 - Pushing a tab page instead of `lx.nav.go({ tab })`.
 - Dropping the function an `lx.on*` call returns.
 - Missing `@lingxia/types`: see [Install typing](./lx-api.md#install-typing).

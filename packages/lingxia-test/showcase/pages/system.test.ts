@@ -27,8 +27,8 @@ interface BannerPageState {
 }
 
 async function systemState(app: TestApp): Promise<SystemPageState> {
-  return app.logic.eval(({ getCurrentPages }) => {
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
+  return app.logic.eval(({ pageStack }) => {
+    const page = pageStack().find((candidate) => candidate.route.includes('/system/'));
     const data = page?.data as Partial<SystemPageState> | undefined;
     return {
       appBaseInfo: data?.appBaseInfo ?? null,
@@ -98,8 +98,8 @@ test('opens the product cache panel from the rendered API menu', {
 });
 
 async function bannerPageState(app: TestApp): Promise<BannerPageState> {
-  return app.logic.eval(({ getCurrentPages }) => {
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
+  return app.logic.eval(({ pageStack }) => {
+    const page = pageStack().find((candidate) => candidate.route.includes('/system/'));
     const data = page?.data as Partial<BannerPageState> | undefined;
     return {
       bannerLast: data?.bannerLast ?? '',
@@ -134,8 +134,8 @@ test('drive banner re-read, prompt, and dismiss from the system page', {
   await system.testId('system-banner-panel').waitFor({ state: 'visible', timeout: 30_000 });
 
   // Re-read only refreshes support — seed a false so the click is proven.
-  await app.logic.eval(({ getCurrentPages }) => {
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
+  await app.logic.eval(({ pageStack }) => {
+    const page = pageStack().find((candidate) => candidate.route.includes('/system/'));
     if (!page) throw new Error('system page missing');
     page.setData({ bannerLast: 'probe-cleared', bannerSupported: false, bannerBusy: false });
     return page.data.bannerLast;

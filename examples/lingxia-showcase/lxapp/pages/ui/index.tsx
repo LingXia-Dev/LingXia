@@ -1,6 +1,5 @@
 import React from 'react';
 import { useLxPage } from '@lingxia/react';
-import { PageStackCard } from '../../shared/components/page-stack';
 import '../../tailwind.css';
 
 // Parse a surface size input. Blank means "let the Host pick the default size";
@@ -62,7 +61,6 @@ export default function UIPage() {
   } = actions;
   const {
     currentType = 'navigation',
-    pageStack = [],
     instanceTag = '',
     previousInstanceTag = '',
     logicCounter = 0,
@@ -665,15 +663,9 @@ export default function UIPage() {
           </>
         )}
 
-        {/* Page stack + instance lifecycle - Only show for navigation */}
+        {/* Instance lifecycle - Only show for navigation */}
         {currentType === 'navigation' && (
           <div className="mb-5 space-y-4">
-            <PageStackCard
-              stack={pageStack}
-              badge={`${pageStack.length}/10`}
-              testId="ui-page-stack"
-            />
-
             {/* Instance identity */}
             <div className="bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
               <div className="px-4 py-3 border-b border-line-100">

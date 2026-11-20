@@ -581,7 +581,7 @@ export function createWorld(options = {}) {
     block() {
       blocked = true;
     },
-    /** Evaluate Logic scripts against these globals (`lx`, `getCurrentPages`, …). */
+    /** Evaluate Logic scripts against these globals (`lx`, `__lxPageStack`, …). */
     useLogic(globals) {
       logicGlobals = globals;
     },

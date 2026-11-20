@@ -220,7 +220,7 @@ impl LxAppDelegate for LxApp {
             // target, an App Link, a host route. A reopen that names no page
             // never reaches here (it returns through `reenter_from_link`), so
             // the landing page has to join the stack the way a push does.
-            // Without this the page renders while `getCurrentPages()` still
+            // Without this the page renders while the page stack still
             // reports the old top, and back leaves from the wrong entry.
             let page = self.get_or_create_page(&resolved_path);
             // The query rides the startup options for a named page; only a

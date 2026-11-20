@@ -27,7 +27,6 @@ rong::js_api! {
 } | CanceledResult"###;
 
         type AppConfig = r###"{
-    globalData?: Record<string, unknown>;
     onLaunch?: (options?: AppLaunchOptions) => void | Promise<void>;
     onShow?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
     onHide?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
@@ -66,9 +65,7 @@ rong::js_api! {
     sizeBytes: number;
 }"###;
 
-        type AppInstance = r###"AppConfig & {
-    globalData: Record<string, unknown>;
-}"###;
+        type AppInstance = r###"AppConfig"###;
 
         /// Canonical platform-family label shared by `lx.host.info.os`
         /// and `lx.device.info.osName`. `"unknown"` is a non-product build.

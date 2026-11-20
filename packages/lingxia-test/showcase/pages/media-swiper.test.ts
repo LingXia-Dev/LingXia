@@ -27,8 +27,8 @@ function reported(view: TestView): Promise<Reported[]> {
 /** Opens the swiper demo on three image pages and starts recording its events. */
 async function openSwiper(t: Fixture, id: string) {
   const { app, namespace, defer } = bindFixture(t, id);
-  const shownIndex = () => app.logic.eval(({ getCurrentPages }): number => {
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/swiper/'));
+  const shownIndex = () => app.logic.eval(({ pageStack }): number => {
+    const page = pageStack().find((candidate) => candidate.route.includes('/swiper/'));
     return Number((page?.data as { index?: unknown } | undefined)?.index ?? -1);
   });
 
@@ -46,14 +46,14 @@ async function openSwiper(t: Fixture, id: string) {
   const view = (await app.page({ name: 'swiper' }, { timeout: 30_000 })).view;
 
   // The demo fills its swiper from the OS picker; the spec hands it files of its own instead.
-  await app.logic.eval(async ({ lx, getCurrentPages }, folder, pages) => {
+  await app.logic.eval(async ({ lx, pageStack }, folder, pages) => {
     const items = [];
     for (const [name, base64] of pages) {
       const path = `${lx.fs.userData}/${folder}/${name}.png`;
       await lx.fs.write(path, base64, { encoding: 'base64', overwrite: true });
       items.push({ id: name, type: 'image' as const, src: path });
     }
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/swiper/'));
+    const page = pageStack().find((candidate) => candidate.route.includes('/swiper/'));
     page?.setData({ items, index: 0, eventLog: 'seeded' });
     return items.length;
   }, namespace, PAGES.map(([name, base64]) => [name, base64] as [string, string]));
@@ -120,8 +120,8 @@ test('page through a native media swiper by command and by the index the page se
 
   await t.step('the index the page sets brings back the first page', async () => {
     const before = (await reported(view)).length;
-    await app.logic.eval(({ getCurrentPages }) => {
-      getCurrentPages().find((candidate) => candidate.route.includes('/swiper/'))?.setData({ index: 0 });
+    await app.logic.eval(({ pageStack }) => {
+      pageStack().find((candidate) => candidate.route.includes('/swiper/'))?.setData({ index: 0 });
     });
     // The page asked for it, so nothing reports it back; the next command starts from it.
     const moved = await eventually(async () => {

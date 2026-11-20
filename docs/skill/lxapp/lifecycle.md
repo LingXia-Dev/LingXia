@@ -13,11 +13,13 @@ page instance. They advance independently.
   read what an `async onLaunch` set up:
 
   ```ts
+  // shared/session.ts
+  export const session = { userId: '' };
+
   // app.ts
   App({
-    globalData: { userId: '' },
     async onLaunch() {
-      this.globalData.userId = (await lx.storage().get<string>('userId')) ?? '';
+      session.userId = (await lx.storage().get<string>('userId')) ?? '';
     },
   });
 
@@ -26,8 +28,7 @@ page instance. They advance independently.
     data: { userId: '' },
     setup: page => ({
       onLoad() {
-        const app = getApp<AppInstance & { globalData: { userId: string } }>();
-        page.update(d => { d.userId = app?.globalData.userId ?? ''; });
+        page.update(d => { d.userId = session.userId; });
       },
     }),
   });

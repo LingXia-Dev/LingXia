@@ -1,8 +1,7 @@
 import type { ConnectWifiOptions, WifiInfo } from "@lingxia/types";
-import { showcaseApp } from "../../shared/lib/app";
+import { appState } from "../../shared/lib/app";
 import { errorMessage } from "../../shared/lib/errors";
 import { definePage } from '@lingxia/types/page';
-const app = showcaseApp();
 
 export default definePage({
   data: {
@@ -60,10 +59,8 @@ export default definePage({
         try {
           await lx.network.wifi.start();
           console.log("WiFi module started");
-          // Persist state to app globalData
-          if (app.globalData) {
-            app.globalData.wifiModuleEnabled = true;
-          }
+          // Persist state to the shared app state
+          appState.wifiModuleEnabled = true;
           page.update(d => {
             d.wifiModuleEnabled = true;
             d.statusText = "Module started";
@@ -79,10 +76,8 @@ export default definePage({
           await lx.network.wifi.stop();
           console.log("WiFi module stopped");
           stopWifiConnectedListener();
-          // Persist state to app globalData
-          if (app.globalData) {
-            app.globalData.wifiModuleEnabled = false;
-          }
+          // Persist state to the shared app state
+          appState.wifiModuleEnabled = false;
           page.update(d => {
             d.wifiModuleEnabled = false;
             d.wifiList = null;
@@ -151,8 +146,8 @@ export default definePage({
     return {
       async onLoad(options) {
         console.log("WiFi page onLoad options:", options);
-        // Restore WiFi module state from app globalData
-        const wifiModuleEnabled = !!(app.globalData && app.globalData.wifiModuleEnabled);
+        // Restore WiFi module state from the shared app state
+        const wifiModuleEnabled = appState.wifiModuleEnabled;
         if (wifiModuleEnabled) {
           page.update(d => {
             d.wifiModuleEnabled = true;
@@ -162,8 +157,8 @@ export default definePage({
       },
       onShow() {
         console.log("WiFi page onShow");
-        // Sync WiFi module state from app globalData
-        const wifiModuleEnabled = !!(app.globalData && app.globalData.wifiModuleEnabled);
+        // Sync WiFi module state from the shared app state
+        const wifiModuleEnabled = appState.wifiModuleEnabled;
         if (wifiModuleEnabled !== page.data.wifiModuleEnabled) {
           page.update(d => { d.wifiModuleEnabled = wifiModuleEnabled; });
         }

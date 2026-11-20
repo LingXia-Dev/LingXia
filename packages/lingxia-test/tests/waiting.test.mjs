@@ -765,17 +765,17 @@ test("a remote TypeError from Logic fails a retry at once; one from the page ret
   const world = createWorld();
   let pageReads = 0;
   world.usePage({ window: {}, document: { querySelector: () => (++pageReads < 3 ? null : { textContent: "ready" }) } });
-  world.useLogic({ lx: {}, getCurrentPages: () => [] });
+  world.useLogic({ lx: {}, __lxPageStack: () => [] });
   installFakeHost(world);
   const seen = {};
   lxTest("type errors", { forensics: false }, async (t) => {
     // In Logic a TypeError is a programming mistake: no retry.
     let logicReads = 0;
-    seen.waitFor = await t.reject(() => t.waitFor(() => { logicReads += 1; return t.app.logic.eval(({ getCurrentPages }) => getCurrentPages()[0].data); },
+    seen.waitFor = await t.reject(() => t.waitFor(() => { logicReads += 1; return t.app.logic.eval(({ pageStack }) => pageStack()[0].data); },
       { timeout: 500, interval: 5 }));
     seen.waitForReads = logicReads;
     logicReads = 0;
-    seen.poll = await t.reject(() => expect.poll(() => { logicReads += 1; return t.app.logic.eval(({ getCurrentPages }) => getCurrentPages()[0].data); },
+    seen.poll = await t.reject(() => expect.poll(() => { logicReads += 1; return t.app.logic.eval(({ pageStack }) => pageStack()[0].data); },
       { timeout: 500, interval: 5 }).toBe(1));
     seen.pollReads = logicReads;
     // In the page a null read can throw until rendering catches up.

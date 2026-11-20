@@ -361,7 +361,7 @@ type CheckedResult<R> = [Awaited<R>] extends [Jsonable<Awaited<R>>] ? unknown : 
 };
 type JsonArgs<A extends unknown[]> = A & { [K in keyof A]: JsonMember<A[K]> };
 
-/** A page instance as app Logic sees it (`getCurrentPages()` entries). */
+/** A page on the stack, as `pageStack()` returns it. */
 export interface LogicPage<TData = Record<string, unknown>> {
   readonly route: string;
   readonly data: TData;
@@ -378,20 +378,22 @@ export type AnyLogicPage<TData = Record<string, unknown>> = LogicPage<TData> & {
   readonly [member: string]: unknown;
 };
 
-/** The app instance as app Logic sees it (`getApp()`). */
+/** The object `App({...})` registered, as `appInstance()` returns it. */
 export interface LogicApp {
   readonly [member: string]: unknown;
 }
 
 /**
  * What a function passed to `t.app.logic.eval(fn)` receives. It runs inside
- * the app's Logic runtime, so these are the app's own `lx`, `getApp` and
- * `getCurrentPages` — not globals of the test context.
+ * the app's Logic runtime, so `lx` is the app's own. `appInstance` and
+ * `pageStack` reach runtime state app code has no global for.
  */
 export interface LogicScope {
   readonly lx: Lx & { automation(): Automation };
-  getApp<T extends LogicApp = LogicApp>(): T | null;
-  getCurrentPages<T extends LogicPage<any> = AnyLogicPage>(): T[];
+  /** The object `App({...})` registered; `null` before it ran. */
+  appInstance<T extends LogicApp = LogicApp>(): T | null;
+  /** The page stack, bottom first. */
+  pageStack<T extends LogicPage<any> = AnyLogicPage>(): T[];
   /** A live page by instance id, surface pages included; `undefined` once it is gone. */
   getPage<T extends LogicPage<any> = AnyLogicPage>(instanceId: string): T | undefined;
   /** The object the top page's `setup` received: `navigationBar`, `refresh`, `video`. */

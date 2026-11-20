@@ -1,4 +1,4 @@
-import { showcaseApp } from "../../shared/lib/app";
+import { appState, watchIpAddr } from "../../shared/lib/app";
 import {
   resolveDisplayLanguage,
   resolveDisplayLanguagePreference,
@@ -9,13 +9,11 @@ import type { HomeActions, HomePageData, GreetingRequest, AppearanceRequest, Dis
 import { definePage } from '@lingxia/types/page';
 
 
-const app = showcaseApp();
 
-const globalData = app.globalData;
 const initialData: HomePageData = {
-  greeting: globalData.greeting,
+  greeting: appState.greeting,
   imageUrl: 'https://cn.bing.com/th?id=OHR.BulgariaRocks_EN-US3184562282_UHD.jpg',
-  ipAddr: globalData.ipAddr,
+  ipAddr: appState.ipAddr,
   greetCount: 0,
   appVersion: '',
   appearance: { preference: 'auto', resolved: 'light' },
@@ -25,7 +23,7 @@ const initialData: HomePageData = {
 export default definePage({
   data: initialData,
   setup(page) {
-    let ipReadyCallback = null as ((ip: string) => void) | null;
+    let stopWatchingIp = null as (() => void) | null;
     let stopWatchingAppearance = null as (() => void) | null;
     let stopWatchingLanguage = null as (() => void) | null;
     let stopWatchingLanguagePreference = null as (() => void) | null;
@@ -120,17 +118,11 @@ export default definePage({
     return {
       onReady() {
         console.log("[Home] Page ready");
-        const callback = (ip: string) => {
-          if (ipReadyCallback !== callback) return;
-          console.log("IP received in Page:", ip);
+        stopWatchingIp?.();
+        stopWatchingIp = watchIpAddr((ip) => {
           page.update(d => { d.ipAddr = ip; });
-        };
-        ipReadyCallback = callback;
-        app.ipReadyCallback = callback;
-
-        if (app.globalData.ipAddr) {
-          page.update(d => { d.ipAddr = app.globalData.ipAddr; });
-        }
+        });
+        page.update(d => { d.ipAddr = appState.ipAddr; });
       },
       onUnload() {
         console.log("[Home] Page unloaded");
@@ -140,10 +132,8 @@ export default definePage({
         stopWatchingLanguage = null;
         stopWatchingLanguagePreference?.();
         stopWatchingLanguagePreference = null;
-        if (app.ipReadyCallback === ipReadyCallback) {
-          app.ipReadyCallback = undefined;
-        }
-        ipReadyCallback = null;
+        stopWatchingIp?.();
+        stopWatchingIp = null;
       },
       async onLoad() {
         // Keep the exported View surface checked against registered Logic actions.
@@ -183,7 +173,7 @@ export default definePage({
       },
       onShow() {
         console.log("[Home] Page shown");
-        console.log("[Home] App data:", app.globalData);
+        console.log("[Home] App data:", appState);
         helpers.syncAppearance();
         helpers.syncLanguage();
       },

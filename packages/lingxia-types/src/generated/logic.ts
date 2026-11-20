@@ -530,7 +530,6 @@ export type AppCacheApi = {
 };
 
 export type AppConfig = {
-    globalData?: Record<string, unknown>;
     onLaunch?: (options?: AppLaunchOptions) => void | Promise<void>;
     onShow?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
     onHide?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
@@ -585,9 +584,7 @@ export type AppDownloadResult = {
     sizeBytes: number;
 };
 
-export type AppInstance = AppConfig & {
-    globalData: Record<string, unknown>;
-};
+export type AppInstance = AppConfig;
 
 export type AppLaunchOptions = {
     path?: string;

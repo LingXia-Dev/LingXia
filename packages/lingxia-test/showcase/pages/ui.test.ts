@@ -26,8 +26,8 @@ test("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
     describe: 'UI navigateBack to pop the page instance',
   });
 
-  const readCurrentUiLifecycle = () => app.logic.eval(({ getCurrentPages }) => {
-    const data = getCurrentPages<LogicPage<{ instanceTag?: string; events?: string[] }>>()
+  const readCurrentUiLifecycle = () => app.logic.eval(({ pageStack }) => {
+    const data = pageStack<LogicPage<{ instanceTag?: string; events?: string[] }>>()
       .find((page) => page.route.includes('/ui/'))?.data;
     return {
       instanceTag: data?.instanceTag ?? '',
@@ -39,8 +39,8 @@ test("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
     ({ onLoadCount }) => onLoadCount > 0,
     { describe: 'current UI page onLoad count before redirect' },
   );
-  await app.logic.eval(({ getCurrentPages }) => {
-    const page = getCurrentPages<LogicPage<{ events?: string[] }>>()
+  await app.logic.eval(({ pageStack }) => {
+    const page = pageStack<LogicPage<{ events?: string[] }>>()
       .find((candidate) => candidate.route.includes('/ui/'));
     if (!page) throw new Error('current UI PageInstance is missing');
     page.data.events = [];

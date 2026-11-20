@@ -17,7 +17,4 @@ App({
       console.warn("Update failed:", info?.error);
     });
   },
-  globalData: {
-    greeting: 'Hello from App global data'
-  }
 });

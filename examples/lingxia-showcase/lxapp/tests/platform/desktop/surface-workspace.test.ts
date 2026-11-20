@@ -3934,11 +3934,11 @@ function windowContainsRect(
 }
 
 async function lifecycleCounts(app: TestApp): Promise<ShowcaseLifecycleCounts> {
-  return app.logic.eval(({ getApp }) => {
-    const instance = getApp() as unknown as {
-      globalData: { lifecycle: ShowcaseLifecycleCounts };
+  return app.logic.eval(({ appInstance }) => {
+    const instance = appInstance() as unknown as {
+      state: { lifecycle: ShowcaseLifecycleCounts };
     } | null;
-    const lifecycle = instance?.globalData.lifecycle;
+    const lifecycle = instance?.state.lifecycle;
     return {
       shows: lifecycle?.shows ?? 0,
       hides: lifecycle?.hides ?? 0,
@@ -4440,7 +4440,7 @@ interface OpenAppMoveOptions {
 
 interface MovedHandleState {
   same: boolean;
-  /** `getApp` and `getDeclared` of the declared Chat return that same object. */
+  /** `appInstance` and `getDeclared` of the declared Chat return that same object. */
   lookedUp: boolean;
   realized: string;
   visible: boolean;
@@ -4452,11 +4452,11 @@ interface MovedHandleState {
 async function chatLastShow(
   t: Fixture,
 ): Promise<{ reason?: string; path?: string; query?: Record<string, string> } | null> {
-  return t.automation.lxapp('lingxia-chat').logic.eval(({ getApp }) => {
-    const instance = getApp() as unknown as {
-      globalData?: { lastShow?: { reason?: string; path?: string; query?: Record<string, string> } };
+  return t.automation.lxapp('lingxia-chat').logic.eval(({ appInstance }) => {
+    const instance = appInstance() as unknown as {
+      state?: { lastShow?: { reason?: string; path?: string; query?: Record<string, string> } };
     } | null;
-    return instance?.globalData?.lastShow ?? null;
+    return instance?.state?.lastShow ?? null;
   });
 }
 
@@ -4507,13 +4507,13 @@ test('moves a live lxapp between aside and main through lx.surface.openApp', {
       if (!probe) throw new Error('openApp move probe is not installed');
       const declared = await lx.surface.openDeclared('lingxia-chat');
       return {
-        getApp: lx.shell.getApp('lingxia-chat') === probe.handle,
+        appInstance: lx.shell.getApp('lingxia-chat') === probe.handle,
         getDeclared: lx.shell.getDeclared('lingxia-chat') === probe.handle,
         openDeclared: declared === probe.handle,
         kind: declared.kind,
       };
     });
-    expect(identity).toEqual({ getApp: true, getDeclared: true, openDeclared: true, kind: 'app' });
+    expect(identity).toEqual({ appInstance: true, getDeclared: true, openDeclared: true, kind: 'app' });
 
     // A page Chat does not configure is refused before anything moves.
     const refused = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
