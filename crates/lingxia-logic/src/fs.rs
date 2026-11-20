@@ -390,8 +390,8 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
     )))
 }
 
-/// `lx.pick.file`: one file. Resolves `{ status: 'canceled' }` only when the
-/// user dismisses the picker, otherwise `{ status: 'ok', files: [file] }`.
+/// Picks one file. Resolves `{ status: 'canceled' }` only when the user
+/// dismisses the picker, otherwise `{ status: 'ok', files: [file] }`.
 async fn pick_file(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSResult<JSObject> {
     match run_file_picker(&ctx, options.0.unwrap_or_default(), false).await? {
         Some(files) => crate::pick::files_result(&ctx, &files),
@@ -399,7 +399,8 @@ async fn pick_file(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSRe
     }
 }
 
-/// `lx.pick.files`: one or more files, `{ status: 'ok', files }`.
+/// Picks one or more files. Resolves `{ status: 'canceled' }` only when the
+/// user dismisses the picker, otherwise `{ status: 'ok', files }`.
 async fn pick_files(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSResult<JSObject> {
     match run_file_picker(&ctx, options.0.unwrap_or_default(), true).await? {
         Some(files) => crate::pick::files_result(&ctx, &files),
@@ -484,9 +485,7 @@ async fn run_file_picker(
         .map(Some)
 }
 
-/// `lx.pick.directory`.
-///
-/// Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
+/// Picks a folder. Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
 /// completed selection resolves `{ status: 'ok', directory: { path, name } }`. Rejects when the
 /// picker fails or returns an invalid payload, and with `E_NOT_SUPPORTED` when
 /// the host has no readable system folder picker (Android, HarmonyOS phones and

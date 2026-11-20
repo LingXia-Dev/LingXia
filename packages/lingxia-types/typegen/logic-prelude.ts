@@ -290,11 +290,11 @@ export type PageHandle<R = JsonValue, M = never> = {
     /** Settles once, after the page's `onUnload`. */
     readonly result: Promise<{ status: 'ok'; value: R } | Extract<PageResult, { status: 'canceled' }>>;
     /**
-     * Delivers \`message\` to the page's \`page.opener.onMessage\` handlers, at
+     * Delivers `message` to the page's `page.opener.onMessage` handlers, at
      * once and uncopied. Until the page first subscribes, messages wait for it.
      */
     send(message: MessageIn<M>): void;
-    /** Receives what the page sends with \`page.opener.send\`. Returns a function that removes the handler. */
+    /** Receives what the page sends with `page.opener.send`. Returns a function that removes the handler. */
     onMessage(handler: (message: MessageOut<M>) => void): () => void;
     /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
     close(): void;
@@ -344,8 +344,8 @@ declare global {
   }
 
   // HostAppApi/FileSystemApi members are emitted from the Rust js_api
-  // metadata; these merges only add what Rong cannot express — the cfg-gated
-  // autostart member and doc comments (js_api consts cannot carry docs).
+  // metadata; these merges only add what Rong cannot express — the
+  // capability members' docs and doc comments (js_api consts cannot carry docs).
   // host.env, fs.userData and fs.userCache re-declare the generated members
   // doc-only; tsc rejects the merge if the types drift.
   interface HostAppApi {

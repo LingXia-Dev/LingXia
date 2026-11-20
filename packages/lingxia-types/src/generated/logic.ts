@@ -293,11 +293,11 @@ export type PageHandle<R = JsonValue, M = never> = {
     /** Settles once, after the page's `onUnload`. */
     readonly result: Promise<{ status: 'ok'; value: R } | Extract<PageResult, { status: 'canceled' }>>;
     /**
-     * Delivers \`message\` to the page's \`page.opener.onMessage\` handlers, at
+     * Delivers `message` to the page's `page.opener.onMessage` handlers, at
      * once and uncopied. Until the page first subscribes, messages wait for it.
      */
     send(message: MessageIn<M>): void;
-    /** Receives what the page sends with \`page.opener.send\`. Returns a function that removes the handler. */
+    /** Receives what the page sends with `page.opener.send`. Returns a function that removes the handler. */
     onMessage(handler: (message: MessageOut<M>) => void): () => void;
     /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
     close(): void;
@@ -347,8 +347,8 @@ declare global {
   }
 
   // HostAppApi/FileSystemApi members are emitted from the Rust js_api
-  // metadata; these merges only add what Rong cannot express — the cfg-gated
-  // autostart member and doc comments (js_api consts cannot carry docs).
+  // metadata; these merges only add what Rong cannot express — the
+  // capability members' docs and doc comments (js_api consts cannot carry docs).
   // host.env, fs.userData and fs.userCache re-declare the generated members
   // doc-only; tsc rejects the merge if the types drift.
   interface HostAppApi {
@@ -701,16 +701,15 @@ export type AppearancePreference = 'auto' | 'light' | 'dark';
 
 /**
  * Launch-at-startup control for the host app.
- * Absent (`undefined`) wherever the host cannot register a startup item.
- * `lx.supports('app.autostart')` and the member's presence always
- * agree, so either gate works:
+ * Wherever the host cannot register a startup item every call fails
+ * `E_NOT_SUPPORTED`; ask first:
  * ```ts
  * if (lx.supports('app.autostart')) {
  * // render the "Launch at startup" toggle
  * }
  * ```
- * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
- * member is absent on all platforms. Declaring the capability never enables
+ * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it
+ * `lx.supports` says no on all platforms. Declaring the capability never enables
  * autostart by itself — the SDK registers the app only when `setEnabled(true)`
  * is called, so the decision stays with the user (typically a settings-page
  * toggle, default off).
@@ -737,8 +736,8 @@ export type AutostartApi = {
 
 /**
  * Product-drawn desktop banner, top-right. Not an OS notification and
- * not bound to App Link. Present on desktop, in every lxapp; presence
- * and `lx.supports('app.banner')` always agree.
+ * not bound to App Link. Desktop only, in every lxapp: elsewhere every
+ * call fails `E_NOT_SUPPORTED`, so ask `lx.supports('app.banner')` first.
  * A guest lxapp's banner carries its name and icon, so
  * it cannot pass as the product's. Its ids are its own, it may have
  * three banners showing or waiting, each closes after 60s at most
@@ -3341,15 +3340,17 @@ declare global {
 declare global {
   interface PickApi {
     /**
-     * `lx.pick.file`: one file. Resolves `{ status: 'canceled' }` only when the
-     * user dismisses the picker, otherwise `{ status: 'ok', files: [file] }`.
+     * Picks one file. Resolves `{ status: 'canceled' }` only when the user
+     * dismisses the picker, otherwise `{ status: 'ok', files: [file] }`.
      */
     file(options?: PickFileOptions): Promise<PickFileResult>;
-    /** `lx.pick.files`: one or more files, `{ status: 'ok', files }`. */
+    /**
+     * Picks one or more files. Resolves `{ status: 'canceled' }` only when the
+     * user dismisses the picker, otherwise `{ status: 'ok', files }`.
+     */
     files(options?: PickFileOptions): Promise<PickFilesResult>;
     /**
-     * `lx.pick.directory`.
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
+     * Picks a folder. Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
      * completed selection resolves `{ status: 'ok', directory: { path, name } }`. Rejects when the
      * picker fails or returns an invalid payload, and with `E_NOT_SUPPORTED` when
      * the host has no readable system folder picker (Android, HarmonyOS phones and

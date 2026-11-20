@@ -255,8 +255,8 @@ rong::js_api! {
 }"###;
 
         /// Product-drawn desktop banner, top-right. Not an OS notification and
-        /// not bound to App Link. Present on desktop, in every lxapp; presence
-        /// and `lx.supports('app.banner')` always agree.
+        /// not bound to App Link. Desktop only, in every lxapp: elsewhere every
+        /// call fails `E_NOT_SUPPORTED`, so ask `lx.supports('app.banner')` first.
         ///
         /// A guest lxapp's banner carries its name and icon, so
         /// it cannot pass as the product's. Its ids are its own, it may have
@@ -297,9 +297,8 @@ rong::js_api! {
 
         /// Launch-at-startup control for the host app.
         ///
-        /// Absent (`undefined`) wherever the host cannot register a startup item.
-        /// `lx.supports('app.autostart')` and the member's presence always
-        /// agree, so either gate works:
+        /// Wherever the host cannot register a startup item every call fails
+        /// `E_NOT_SUPPORTED`; ask first:
         ///
         /// ```ts
         /// if (lx.supports('app.autostart')) {
@@ -307,8 +306,8 @@ rong::js_api! {
         /// }
         /// ```
         ///
-        /// Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
-        /// member is absent on all platforms. Declaring the capability never enables
+        /// Requires `capabilities.autostart: true` in `lingxia.yaml`; without it
+        /// `lx.supports` says no on all platforms. Declaring the capability never enables
         /// autostart by itself — the SDK registers the app only when `setEnabled(true)`
         /// is called, so the decision stays with the user (typically a settings-page
         /// toggle, default off).
