@@ -16,6 +16,8 @@ test('a text field after a numeric one still takes typed letters', {
     .reduce((a, b) => ((b.bounds[2] - b.bounds[0]) * (b.bounds[3] - b.bounds[1]) > (a.bounds[2] - a.bounds[0]) * (a.bounds[3] - a.bounds[1]) ? b : a));
   const scale = (surface.bounds[2] - surface.bounds[0]) / (await view.viewport()).width;
   const { width, height } = await view.viewport();
+  // The layout dump clips the surface under the status bar; the page draws from its bottom edge up.
+  const top = surface.bounds[3] - height * scale;
   const tap = async (testId: string) => {
     const target = view.testId(testId);
     // Swipe the field to the upper half, clear of where the keyboard rises.
@@ -26,7 +28,7 @@ test('a text field after a numeric one still takes typed letters', {
       box = await target.boundingBox();
     }
     await device.click(Math.round(surface.bounds[0] + (box.x + box.width / 2) * scale),
-      Math.round(surface.bounds[1] + (box.y + box.height / 2) * scale));
+      Math.round(top + (box.y + box.height / 2) * scale));
     await expect(target).toBeFocused();
   };
   const name = view.testId('lab-input-name');
