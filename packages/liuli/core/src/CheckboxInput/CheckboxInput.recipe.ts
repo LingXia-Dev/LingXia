@@ -71,7 +71,7 @@ export const checkboxInputRecipe = {
     hidden: 'sr-only',
   },
   description: {
-    base: 'text-footnote text-muted',
+    base: 'w-0 min-w-full text-footnote text-muted',
   },
   /** The status message starts under the label: the box's width in the label's type, plus the row gap. */
   status: {

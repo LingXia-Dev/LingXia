@@ -1,5 +1,5 @@
 import { cardRecipe } from '@liulidesign/core/Card/recipe';
-import { cx, useView, type Child } from '@lingxia/view';
+import { createContext, cx, useBox, useContext, useLocal, useView, type Child } from '@lingxia/view';
 
 // The gallery's one page skeleton: every page takes its rhythm from these, never its own classes.
 
@@ -39,23 +39,59 @@ export function PageSection({ title, note, children }: { title: string; note?: s
   );
 }
 
+/** In a `StageGrid`: tells the grid that a stage's content does not fit its stage. */
+const StageFit = createContext<((isOver: boolean) => void) | null>(null);
+
 /**
  * The quiet surface a specimen sits on, one step off the page, under a caption that says what it shows.
  * The caption comes first, so a specimen is read as an example before it is seen.
  * `bare` drops the surface for containers (cards, lists) that would otherwise sit in a second frame.
  */
 export function Stage({ caption, bare = false, children }: { caption?: string; bare?: boolean; children: Child }) {
+  const report = useContext(StageFit);
+  // In a grid the specimen is laid no narrower than its widest line, so a line that would wrap shows as overflow.
+  const room = useLocal('room', 0);
+  const need = useLocal('need', 0);
+  const body = report === null ? children : (
+    <view onLayout={box => { need.set(box.width); if (room.value > 0) report(box.width > room.value + 0.5); }} className="min-w-max gap-3">{children}</view>
+  );
   return (
     <view className="gap-2">
       {caption !== undefined && <text className="text-footnote text-text">{caption}</text>}
-      <view className={bare ? 'grow gap-3' : 'grow gap-3 overflow-hidden rounded-container border border-text/12 bg-surface p-5'}>{children}</view>
+      <view
+        onLayout={report === null ? undefined : box => { room.set(box.width); if (need.value > 0) report(need.value > box.width + 0.5); }}
+        className={bare ? 'grow gap-3' : 'grow gap-3 overflow-hidden rounded-container border border-text/12 bg-surface p-5'}
+      >
+        {body}
+      </view>
     </view>
   );
 }
 
-/** Stages side by side, two to a row; used for a component's states. */
+/**
+ * Stages side by side, two to a row; used for a component's states. A grid whose stages cannot each
+ * hold their widest line (a label, placeholder, value or message) beside another holds one to a row.
+ */
 export function StageGrid({ children, stack = false }: { children: Child; stack?: boolean }) {
-  return <view className={stack ? 'grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-6' : 'grid grid-cols-2 gap-x-3 gap-y-6'}>{children}</view>;
+  const grid = useBox('stage-grid');
+  const em = useBox('stage-em');
+  // The grid's width and the body type's size: a change of either lays the grid two-up again and measures.
+  // The stages remount on a change, so each report carries the key it was measured under; the text size
+  // reaches script only through the probe's box, after the stages' own layout.
+  const key = `${grid.value?.width ?? 0}:${em.value?.width ?? 0}`;
+  const oneUpAt = useLocal<string | null>('one-up-at', null);
+  const isOneUp = oneUpAt.value === key;
+  const report = (isOver: boolean) => { if (isOver && !isOneUp && grid.value && em.value) oneUpAt.set(key); };
+  return (
+    <view>
+      <view aria-hidden className="h-0 overflow-hidden">
+        <text box={em} className="self-start text-body">M</text>
+      </view>
+      <StageFit.Provider value={report}>
+        <view key={key} box={grid} className={isOneUp ? 'grid grid-cols-1 gap-y-6' : stack ? 'grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-6' : 'grid grid-cols-2 gap-x-3 gap-y-6'}>{children}</view>
+      </StageFit.Provider>
+    </view>
+  );
 }
 
 /** A component page's opening: when to use it, then the hero specimen. */

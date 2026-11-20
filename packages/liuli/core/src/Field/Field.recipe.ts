@@ -44,12 +44,14 @@ export const fieldRecipe = {
     base: 'pb-0.5 text-muted',
     size: { sm: 'text-caption', md: 'text-footnote', lg: 'text-footnote' } satisfies Record<FieldSize, string>,
   },
+  /** A sentence: it wraps at the field's width and never widens the field (`w-0 min-w-full`), so a field is as wide as its label and control. */
   description: {
-    base: 'text-footnote text-muted',
+    base: 'w-0 min-w-full text-footnote text-muted',
   },
   status: {
     empty: 'sr-only',
-    shown: 'flex-row items-start gap-1.5',
+    /** Like the description, a message never widens the field. */
+    shown: 'w-0 min-w-full flex-row items-start gap-1.5',
   },
   /** The message's first line box, holding the icon centred on it at any text size. */
   statusLine: {

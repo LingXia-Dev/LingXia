@@ -71,6 +71,6 @@ export const radioGroupRecipe = {
     size: { sm: 'text-footnote', md: 'text-body', lg: 'text-callout' } satisfies Record<FieldSize, string>,
   },
   description: {
-    base: 'text-footnote text-muted',
+    base: 'w-0 min-w-full text-footnote text-muted',
   },
 } as const;

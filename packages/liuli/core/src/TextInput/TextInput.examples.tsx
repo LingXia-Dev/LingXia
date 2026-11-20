@@ -76,7 +76,7 @@ export function StateFilled() {
 }
 
 export function StateInvalid() {
-  return <Held value="ana@">{(email, set) => <TextInput value={email} onChange={set} label="Work email" status={/@./.test(email) ? undefined : { type: 'error', message: 'Add the part after @.' }} />}</Held>;
+  return <Held value="ana@">{(email, set) => <TextInput value={email} onChange={set} label="Work email" status={/@./.test(email) ? undefined : { type: 'error', message: 'Add the domain.' }} />}</Held>;
 }
 
 export function StateDisabled() {
