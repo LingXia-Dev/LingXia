@@ -1,6 +1,7 @@
 import { useLocal } from '@lingxia/view';
 import { Said, unused } from '../example';
 import { Button } from '../Button/Button';
+import { LayerContext } from '../internal/layer';
 import { TextArea } from '../TextArea/TextArea';
 import { TextInput } from '../TextInput/TextInput';
 import { Dialog } from './Dialog';
@@ -93,17 +94,19 @@ export function Specimen() {
   return (
     <view className="p-2.5 gap-2 rounded-container border border-text/12 bg-surface-overlay shadow-[0_2px_4px_rgb(0_0_0/0.10),0_6px_14px_rgb(0_0_0/0.18)]">
       <text className="text-footnote font-semibold text-text">Delete note?</text>
-      <view className="flex-row justify-end gap-1.5">
-        <Button label="Keep" size="sm" onClick={unused} />
-        <Button label="Delete" variant="destructive" size="sm" onClick={unused} />
-      </view>
+      <LayerContext.Provider value="overlay">
+        <view className="flex-row justify-end gap-1.5">
+          <Button label="Keep" size="sm" onClick={unused} />
+          <Button label="Delete" variant="destructive" size="sm" onClick={unused} />
+        </view>
+      </LayerContext.Provider>
     </view>
   );
 }
 
 /**
  * The panel drawn at rest on a scrim, for the gallery's parts stage: Dialog's own part classes,
- * without the overlay, so it sits in the page.
+ * without the overlay, so it sits in the page; its actions sit on the overlay's layer as in a dialog.
  */
 export function Parts() {
   return (
@@ -115,10 +118,12 @@ export function Parts() {
               <text className={dialogRecipe.title.base}>Delete this note?</text>
             </view>
             <text className={dialogRecipe.description.base}>It leaves every device you are signed in on.</text>
-            <view className={dialogRecipe.footer.base}>
-              <Button label="Cancel" onClick={() => say('Kept the note')} />
-              <Button label="Delete" variant="destructive" onClick={() => say('Deleted the note')} />
-            </view>
+            <LayerContext.Provider value="overlay">
+              <view className={dialogRecipe.footer.base}>
+                <Button label="Cancel" onClick={() => say('Kept the note')} />
+                <Button label="Delete" variant="destructive" onClick={() => say('Deleted the note')} />
+              </view>
+            </LayerContext.Provider>
           </view>
         </view>
       )}

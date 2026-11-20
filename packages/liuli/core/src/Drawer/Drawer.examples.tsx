@@ -56,11 +56,11 @@ export function Navigation() {
   );
 }
 
-/** The home tile. */
+/** The home tile: the panel drawn at rest, in the drawer's own surface. */
 export function Specimen() {
   return (
     <view className="w-28 h-16 flex-row justify-end overflow-hidden rounded-control bg-surface-sunken">
-      <view className="w-12 h-full rounded-s-control border-s border-text/12 bg-surface" />
+      <view className="w-12 h-full rounded-s-control border-s border-text/12 bg-surface-overlay" />
     </view>
   );
 }

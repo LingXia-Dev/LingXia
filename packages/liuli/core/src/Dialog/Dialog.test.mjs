@@ -67,3 +67,11 @@ test('Hero: the picture is drawn only, and the close button over it still closes
   screen.press(close);
   assert.equal(screen.queryAll(node => node.props.testId === 'hero-dialog').length, 0);
 });
+
+test('Parts and the tile: the drawn panel\'s secondary action takes the overlay\'s surface, as in a dialog', async () => {
+  for (const [name, label] of [['Parts', 'Cancel'], ['Specimen', 'Keep']]) {
+    const screen = await renderExample('Dialog/Dialog', name);
+    const button = screen.queryAll(node => node.tag === 'button' && textOf(node) === label)[0];
+    assert.equal(button.props.background, 'surface-overlay', name);
+  }
+});
