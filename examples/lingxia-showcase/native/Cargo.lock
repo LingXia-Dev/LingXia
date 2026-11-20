@@ -1843,8 +1843,6 @@ dependencies = [
 [[package]]
 name = "glifo"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f1218dedd5348c1b166ec3b8b3cbca49d2f527bd43b3fa072ea5123c523ed3f"
 dependencies = [
  "bytemuck",
  "foldhash",
@@ -7135,8 +7133,6 @@ dependencies = [
 [[package]]
 name = "vello_gpu"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0e01b02c55094a3bcfbf80d736221a74bc3f8914b566298b4ad3c9f05e7ac08"
 dependencies = [
  "bytemuck",
  "glifo",
