@@ -664,8 +664,8 @@ Declaration model (owned by the single runtime writer, §7.2):
   authored.
 - Hosts do not infer target metadata, open lxapps, toggle providers, or render
   fallback glyphs. A callback explicitly opens a declared Surface with
-  `lx.shell.openDeclared(id, options?)`, a dynamic business app with
-  `lx.shell.openApp(appId, options?)`, or performs app navigation with
+  `lx.surface.openDeclared(id, options?)`, a dynamic business app with
+  `lx.surface.openApp(appId, options?)`, or performs app navigation with
   `lx.nav.go({ app: ... })`.
 - The declaration is a **full-generation atomic replace**: the shell validates
   the complete generation before touching handlers or chrome — a
@@ -1093,7 +1093,7 @@ semantics every language surface MUST share.
   kinds such as YAML `lxapp` and `native` are not JS selectors. Composition —
   choosing `as`, or opening another lxapp — lives on `lx.shell`; an lxapp's own
   presentations live on `lx.surface`.
-- `lx.shell.openDeclared(id, { key?, as? })` opens a YAML declaration. Without
+- `lx.surface.openDeclared(id, { key?, as? })` opens a YAML declaration. Without
   `key` it addresses the declaration's default instance. A non-empty `key`
   selects or creates an additional instance only when that declaration admits
   multiple instances; currently this is supported by instantiable native
@@ -1109,7 +1109,7 @@ semantics every language surface MUST share.
   'aside' }` opens/reuses a distinct workspace in the native aside slot. The
   same keyed workspace may later migrate to main without losing PTYs, cwd, or
   running processes.
-- `lx.shell.openApp(appId, { as?, page?, query?, channel?, targetVersion?,
+- `lx.surface.openApp(appId, { as?, page?, params?, channel?, targetVersion?,
   edge? }?)` ensures a dynamic business-app Surface: it creates, focuses or
   migrates one and does not require a YAML declaration. `as` is `main` or
   `aside`; omitted, a live app keeps its role and a closed one opens in main.
@@ -1171,8 +1171,8 @@ semantics every language surface MUST share.
 | Operation | Changes | Main switcher item | Back behavior | Result |
 |---|---|---|---|---|
 | `lx.nav.go({ app, ... })` | Pushes an app onto the current lxapp Surface's app-navigation stack | Reuses the current item | `lx.nav.leaveApp()` pops to the previous app | `Promise<void>` |
-| `lx.shell.openApp(appId, { as: 'main', ... })` | Creates/focuses a dynamic app-owned Surface | Own independent item | Closing destroys that Surface and its app stack | `AppSurface` |
-| `lx.shell.openDeclared(id, { as: 'main' })` where the declaration contains an lxapp | Creates/focuses that host-declared Surface | Own declaration-backed item | Closing destroys the live Surface; reopening uses declaration defaults | the app's `AppSurface` |
+| `lx.surface.openApp(appId, { as: 'main', ... })` | Creates/focuses a dynamic app-owned Surface | Own independent item | Closing destroys that Surface and its app stack | `AppSurface` |
+| `lx.surface.openDeclared(id, { as: 'main' })` where the declaration contains an lxapp | Creates/focuses that host-declared Surface | Own declaration-backed item | Closing destroys the live Surface; reopening uses declaration defaults | the app's `AppSurface` |
 
 Therefore a declared lxapp Surface opened as main is still different from
 `lx.nav.go({ app })`: the former is a parallel shell workspace with its own runtime
@@ -1194,7 +1194,7 @@ Surface, navigation fails with
   `realized` placement, visibility, and liveness, with show/hide/close and
   lifecycle events per §2.1 (`onShow`/`onHide` carry `source`, `onClose`
   `reason`). The runtime id is not exposed: `lx.shell.getApp(appId)`,
-  `lx.shell.getDeclared(id, key?)` and `lx.surface.getByKey(key)` (the caller's
+  `lx.shell.getDeclared(id, key?)` and `lx.surface.get(key)` (the caller's
   own pages and URLs) return the same handle object again. Automation reads
   each runtime id's owner from `surfaceLayout().identities`. URL mains return
   no handle. A medium/expanded URL aside uses

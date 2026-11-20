@@ -63,14 +63,14 @@ test('inject the owning surface into a page opened as a float', {
   const { app, namespace, defer } = bindFixture(t, 'PAGE-GLOBALS-002');
   defer(async () => {
     await app.logic.eval(async ({ lx }, key) => {
-      const surface = lx.surface.getByKey(key);
+      const surface = lx.surface.get(key);
       if (surface?.kind === 'page') await surface.close();
     }, namespace);
     await app.nav.reset({ page: 'home' });
   });
   await app.nav.reset({ page: 'home' });
   const opened = await app.logic.eval(async ({ lx }, key) => {
-    const surface = await lx.surface.openPage('surface', { as: 'float', key, query: { fixture: key } });
+    const surface = await lx.surface.openPage('surface', { as: 'float', key, params: { fixture: key } });
     return { key: surface.key ?? null };
   }, namespace);
   const page = await app.page({ name: 'surface' });
@@ -87,6 +87,6 @@ test('inject the owning surface into a page opened as a float', {
     if (!surface) throw new Error('Page surface missing');
     await surface.close();
   }, page.instanceId);
-  await expect.poll(() => app.logic.eval(({ lx }, key) => lx.surface.getByKey(key) == null, namespace)).toBe(true);
+  await expect.poll(() => app.logic.eval(({ lx }, key) => lx.surface.get(key) == null, namespace)).toBe(true);
   await expect((await app.page({ name: 'home' })).view.testId('home-page')).toBeVisible();
 });

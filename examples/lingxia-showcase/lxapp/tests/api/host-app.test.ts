@@ -872,14 +872,14 @@ test('set and restore the name and icon the host shows for this app', {
 
 test('refuse to move the root main out of main', {
   id: 'HOSTAPP-SHELL-OPENAPP-ROOT-001',
-  covers: ['lx.shell.openApp'],
+  covers: ['lx.surface.openApp'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-SHELL-OPENAPP-ROOT-001');
 
   const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
     try {
-      await lx.shell.openApp(lx.app.info.appId, { as: 'aside' });
+      await lx.surface.openApp(lx.app.info.appId, { as: 'aside' });
       return { ok: true };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };

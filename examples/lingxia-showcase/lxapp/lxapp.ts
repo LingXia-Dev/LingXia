@@ -72,7 +72,7 @@ async function applyHostChrome(os: string, tag: string) {
       icon: "public/sidebar-terminal-settings.svg",
       label: t("sidebarTerminalSettings"),
       onActivate: () => {
-        void lx.shell
+        void lx.surface
           .openApp("app.lingxia.terminal-settings", { as: "aside", edge: "right" })
           .catch((error) => console.warn("terminal settings action failed", error));
       },

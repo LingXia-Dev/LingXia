@@ -173,7 +173,7 @@ export default function NavigatorPage() {
 
               <LxNavigator
                 url="https://www.deepseek.com"
-                as="tab"
+                as="main"
                 onSuccess={() => addLog('✓ Opening DeepSeek in-app')}
                 onFail={onFailWithMessage('Failed to open in-app browser')}
               >

@@ -3857,7 +3857,7 @@ fn reconcile_lxapp_main_from_layout(plan: &LayoutPresentationPlan) {
         log::warn!("failed to reconcile Windows lxapp main from layout: {app_id}");
         return;
     }
-    // `lx.shell.openApp` has no sidebar click to activate the host or repaint
+    // `lx.surface.openApp` has no sidebar click to activate the host or repaint
     // the switcher. A matching physical webtag used to return before either.
     if explicitly_requested {
         if let Some(owner_appid) = shell_owner_appid() {
@@ -4614,7 +4614,7 @@ pub(crate) fn demote_lxapp_main(appid: &str) -> bool {
     demote_lxapp_main_at(appid, "")
 }
 
-/// `lx.shell.openApp` asking a live app to change role: the same moves as a
+/// `lx.surface.openApp` asking a live app to change role: the same moves as a
 /// sidebar drag.
 fn move_lxapp_region_for_api(appid: &str, to_main: bool, edge: &str) -> bool {
     if to_main {

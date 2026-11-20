@@ -56,13 +56,13 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 | Host app went to background / came back | `onHide` / `onShow` | `host` | `background` / `foreground` |
 | Screenshot, where the platform reports it | `onUserCaptureScreen` | — | — |
 
-- **An aside does not hide the main.** `lx.shell.openApp(id, { as: 'aside' })`
+- **An aside does not hide the main.** `lx.surface.openApp(id, { as: 'aside' })`
   opens beside the main, which gets no `onHide`. Collapsing a docked aside is
   a page event, not an App event: the aside lxapp's App hooks stay quiet (see
   Navigation below). Reopening it while docked brings it back in place; route
   from the `page` / `query` in App `onShow`.
 - **Moving between aside and main does not restart.** Dragging an aside's tab
-  onto the sidebar, clicking its Pin, or `lx.shell.openApp(id, { as })` naming
+  onto the sidebar, clicking its Pin, or `lx.surface.openApp(id, { as })` naming
   the other role moves the live lxapp: no `onLaunch`, page stack and state
   kept; the previous main gets `onHide` (`switch_away`). Desktop only: mobile
   hosts reject with `E_NOT_SUPPORTED`, the root main with `E_SURFACE_ROLE_LOCKED`.

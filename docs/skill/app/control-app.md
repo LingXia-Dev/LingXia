@@ -42,8 +42,10 @@ These act on the product, not on the calling lxapp:
 - `lx.host.displayLanguage` / `.appearance` `getPreference`, `setPreference`,
   `watchPreference`
   ([Product settings](../lxapp/lx-api.md#product-settings))
-- `lx.shell.*`: sidebar actions, `setAppDisplay`, opening or moving apps and
-  declared surfaces, and `getApp` / `getDeclared` to find a live one
+- `lx.shell.*`: sidebar actions, `setAppDisplay`, and `getApp` /
+  `getDeclared` to find a live app or declared surface
+- `lx.surface.openApp`, and `lx.surface.openDeclared` with `key`, `as` or
+  `edge`: other lxapps are refused at run time
 
 Reading the resolved settings (`lx.host.displayLanguage.get()`,
 `lx.host.appearance.get()`) is open to every lxapp.

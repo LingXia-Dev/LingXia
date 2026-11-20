@@ -369,7 +369,7 @@ sync when dispatch changes. The runtime side:
   `Opened`/`Opening`.
 - **Restart is not a user activation.** `restart()` and
   `cold_restart_app_service()` must never raise the host window over other
-  apps; only an explicit `lx.shell.openApp` may.
+  apps; only an explicit `lx.surface.openApp` may.
 
 ## Core Objects and Ownership
 

@@ -49,8 +49,8 @@ assert.deepEqual(result.calls, [
   ["logic", "surface.openUrl", { url: "https://example.com", options: { as: "aside", edge: "left", size: { width: "40%" } } }],
 ]);
 
-result = await tap({ url: "https://example.com", as: "tab" });
-assert.deepEqual(result.calls, [["logic", "surface.openUrl", { url: "https://example.com", options: { as: "tab" } }]]);
+result = await tap({ url: "https://example.com", as: "main" });
+assert.deepEqual(result.calls, [["logic", "surface.openUrl", { url: "https://example.com", options: { as: "main" } }]]);
 
 result = await tap({
   page: "detail",
@@ -81,7 +81,7 @@ assert.equal(result.outcome.type, "fail");
 // Mismatched placements fail before reaching the bridge.
 result = await tap({ url: "https://example.com", as: "float" });
 assert.equal(result.calls.length, 0);
-assert.match(result.outcome.detail.errMsg, /external, tab, or aside/);
+assert.match(result.outcome.detail.errMsg, /external, main, or aside/);
 result = await tap({ page: "detail", as: "aside" });
 assert.equal(result.calls.length, 0);
 assert.match(result.outcome.detail.errMsg, /float or window/);

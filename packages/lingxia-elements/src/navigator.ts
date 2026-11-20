@@ -15,7 +15,7 @@ export type NavigatorTarget = 'page' | 'lxapp' | 'url';
 
 // Where to open it; mirrors `as` of lx.surface.openUrl / openPage.
 // A url defaults to `external`; a page without `as` follows open-type.
-export type NavigatorUrlPlacement = 'external' | 'tab' | 'aside';
+export type NavigatorUrlPlacement = 'external' | 'main' | 'aside';
 export type NavigatorPagePlacement = 'float' | 'window';
 export type NavigatorPlacement = NavigatorUrlPlacement | NavigatorPagePlacement;
 export type NavigatorEdge = 'left' | 'right' | 'top' | 'bottom';
@@ -456,8 +456,8 @@ export class LxNavigatorElement extends HTMLElement {
           await this.callHost('device.openUrl', { url, target: 'external' });
           return;
         }
-        if (placement !== 'tab' && placement !== 'aside') {
-          throw new Error(`a url opens as external, tab, or aside; got ${placement}`);
+        if (placement !== 'main' && placement !== 'aside') {
+          throw new Error(`a url opens as external, main, or aside; got ${placement}`);
         }
         const surfaceOptions: Record<string, unknown> = { as: placement };
         if (options.edge) surfaceOptions.edge = options.edge;

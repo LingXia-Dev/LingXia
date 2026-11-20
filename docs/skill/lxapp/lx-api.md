@@ -39,7 +39,7 @@ library, and the root `tsconfig.json` references both.
   [grant](../native/permissions.md).
 - Navigation takes a configured **page name**, never a path. A name computed
   at runtime needs `page as ConfiguredPageName`; another lxapp's page
-  (`lx.nav.go({ app })`, `lx.shell.openApp`) is a plain string.
+  (`lx.nav.go({ app })`, `lx.surface.openApp`) is a plain string.
 - Calls live in namespaces by subject: `lx.nav`, `lx.ui`, `lx.app`, `lx.host`,
   `lx.device`, `lx.media`, `lx.network`, `lx.pick`, `lx.fs`, `lx.surface`, `lx.shell`.
 

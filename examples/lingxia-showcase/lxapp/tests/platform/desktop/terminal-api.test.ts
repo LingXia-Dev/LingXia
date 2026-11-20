@@ -55,7 +55,7 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
     'lx.host.terminal.colorSchemes.import',
     'lx.host.terminal.colorSchemes.createPreview',
     'lx.host.terminal.windows',
-    'lx.shell.openApp',
+    'lx.surface.openApp',
     'LxAppManager.close',
   ],
   app: SHOWCASE_APP_ID,
@@ -77,7 +77,7 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
   const surfaceKey = `${stateKey}_surface`;
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }, key, appId) => {
     (globalThis as unknown as Record<string, AppSurface | undefined>)[key] =
-      await lx.shell.openApp(appId, { as: 'main' });
+      await lx.surface.openApp(appId, { as: 'main' });
   }, surfaceKey, TERMINAL_APP_ID);
   await eventually(currentApp, (appid) => appid === TERMINAL_APP_ID, {
     describe: 'terminal settings to become the current lxapp',

@@ -110,7 +110,7 @@ fn should_navigate_to_app(
 fn ensure_ordinary_app_target(appid: &str) -> Result<(), LxAppError> {
     if appid == lingxia_terminal_config::SETTINGS_APP_ID {
         return Err(LxAppError::UnsupportedOperation(
-            "the host Terminal Settings control session is reserved; use lx.shell.openApp"
+            "the host Terminal Settings control session is reserved; use lx.surface.openApp"
                 .to_string(),
         ));
     }
@@ -195,7 +195,7 @@ fn register_host_terminal_settings_bundle(
     let Some(invocation) = control_invocation else {
         return Err(js_error_from_lxapp_error(
             &LxAppError::UnsupportedOperation(
-                "the host Terminal Settings control session is reserved; use lx.shell.openApp"
+                "the host Terminal Settings control session is reserved; use lx.surface.openApp"
                     .to_string(),
             ),
         ));
@@ -325,7 +325,7 @@ mod tests {
     fn ordinary_navigation_cannot_promote_a_settings_app_id() {
         let error = ensure_ordinary_app_target(lingxia_terminal_config::SETTINGS_APP_ID)
             .expect_err("the fixed shell route is the only control entry");
-        assert!(error.to_string().contains("lx.shell.openApp"));
+        assert!(error.to_string().contains("lx.surface.openApp"));
         assert!(ensure_ordinary_app_target("same.app").is_ok());
     }
 }

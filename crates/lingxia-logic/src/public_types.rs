@@ -1563,7 +1563,7 @@ true
         /// What the host actually produced. Reported by `realized`, which is
         /// how a caller reads the outcome of an ordered placement preference.
         ///
-        type SurfacePlacement = r###"'main' | 'aside' | 'float' | 'window' | 'tab'"###;
+        type SurfacePlacement = r###"'main' | 'aside' | 'float' | 'window'"###;
 
         /// Window decoration. `system` is the standard title bar. `full`
         /// extends the page to the window edge while keeping the system
@@ -1716,13 +1716,13 @@ true
         ///
         type TabSurface = r###"(SurfaceBase & {
     readonly kind: 'tab';
-    readonly realized: 'tab' | 'aside';
+    readonly realized: 'main' | 'aside';
     readonly scope: 'tab';
     /** Brings this tab to the front. Rejects with \`closed\` once the tab is gone. */
     activate(): Promise<void>;
 }) | (Omit<SurfaceBase, 'close' | 'onClose'> & {
     readonly kind: 'tab';
-    readonly realized: 'tab' | 'aside';
+    readonly realized: 'main' | 'aside';
     readonly scope: 'group';
 })"###;
 
@@ -1738,8 +1738,9 @@ true
      */
     size?: OverlaySurfaceSize;
     interaction?: SurfaceInteraction;
-    query?: PageQuery;
-    /** Caller-owned identity, for `lx.surface.getByKey(key)` later. */
+    /** The page's params, as `lx.nav.go` takes them. */
+    params?: PageQuery;
+    /** Caller-owned identity, for `lx.surface.get(key)` later. */
     key?: string;
 }"###;
 
@@ -1772,25 +1773,22 @@ true
 
         type OpenUrlOptions = r###"{
     /**
-     * `tab` opens a browser tab; `aside` docks the browser beside the main.
-     * Defaults to `'tab'`.
+     * `main` opens a browser tab in the main area; `aside` docks the browser
+     * beside the main. Defaults to `'main'`.
      */
-    as?: 'tab' | 'aside' | readonly ('tab' | 'aside')[];
+    as?: 'main' | 'aside' | readonly ('main' | 'aside')[];
     /** Preferred docking side when the realized placement is an aside. */
     edge?: SurfaceEdge;
     size?: OverlaySurfaceSize;
-    /** Stable identity for `lx.surface.getByKey(key)`. */
+    /** Stable identity for `lx.surface.get(key)`. */
     key?: string;
 }"###;
 
-        /// The declared-surface options only the native-assigned Control app may use.
+        /// Options of `lx.surface.openDeclared`. Each one changes shared shell
+        /// composition, so only the Control app may pass any; other lxapps call
+        /// it without options and get the declaration as the host authored it.
         ///
-        /// Creating an extra instance and overriding a placement both mutate
-        /// shared shell composition, so they live here and not on
-        /// `lx.surface.openDeclared` — which consumes a declaration exactly as
-        /// the host authored it, and therefore takes no options at all.
-        ///
-        type ShellOpenDeclaredOptions = r###"{
+        type OpenDeclaredOptions = r###"{
     /**
      * Which instance of the declaration: a declaration can be opened more than
      * once, and a new key creates one. Find it again with
@@ -1822,7 +1820,8 @@ true
     icon?: string | null;
 }"###;
 
-        type ShellOpenAppOptions = r###"{
+        /// Options of `lx.surface.openApp`. Control app only.
+        type OpenAppOptions = r###"{
     /**
      * `main` occupies the primary content area; `aside` a companion region.
      * Omitted, a live app keeps its role and a closed one opens in main. A live
@@ -1837,12 +1836,12 @@ true
      */
     page?: ExternalPageName;
     /**
-     * Startup query. When the lxapp is already open, the surface is focused
-     * (and moved, if `as` names the other role), not reopened: `page` and
-     * `query` reach its Logic as App `onShow` with `reason: 'switch_back'`,
-     * `path` and `query`, and its page stack is kept.
+     * The page's params. When the lxapp is already open, the surface is
+     * focused (and moved, if `as` names the other role), not reopened: `page`
+     * and `params` reach its Logic as App `onShow` with
+     * `reason: 'switch_back'`, `path` and `query`, and its page stack is kept.
      */
-    query?: PageQuery;
+    params?: PageQuery;
     /**
      * Lxapp publish channel. Defaults to `release` in every service environment.
      */
@@ -1850,8 +1849,9 @@ true
     targetVersion?: string;
 }"###;
 
-        /// Content-keyed surface composition, callable by any lxapp. Privileged
-        /// composition lives on `lx.shell`, so the namespace is the privilege.
+        /// Surfaces beside or above the page stack, each with a handle.
+        /// `openApp` and the options of `openDeclared` are the Control app's;
+        /// other lxapps get a typed refusal.
         ///
         type SurfaceApi = r###"{
     /** Open one of this lxapp's own pages as a float or a window. */
@@ -1859,18 +1859,24 @@ true
     /** Open external content in the in-app browser. */
     openUrl(url: string, options?: OpenUrlOptions): Promise<TabSurface>;
     /**
-     * Open a surface the host declared in `lingxia.yaml`, with the placement
-     * the declaration chose. Instance keys and placement overrides are shell
-     * composition; they live on `lx.shell.openDeclared`. A declaration that
-     * shows an lxapp resolves to that app's `AppSurface`.
+     * Open another lxapp in main or a companion slot, focus it if it is open,
+     * or move it to the role `as` names. Control app only.
      */
-    openDeclared(id: string): Promise<DeclaredSurface | AppSurface>;
+    openApp(appId: string, options?: OpenAppOptions): Promise<AppSurface>;
+    /**
+     * Open a surface the host declared in `lingxia.yaml`, with the placement
+     * the declaration chose. `key`, `as` and `edge` (Control app only) open a
+     * keyed instance or override the placement; `as` and `edge` also move a
+     * live instance. A declaration that shows an lxapp resolves to that app's
+     * `AppSurface`.
+     */
+    openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
     /**
      * Find one of this lxapp's own live pages or browser tabs by the key passed
      * to `openPage` / `openUrl`. Declared surfaces and other lxapps are found
      * with `lx.shell.getDeclared` and `lx.shell.getApp`.
      */
-    getByKey(key: string): PageSurface | TabSurface | undefined;
+    get(key: string): PageSurface | TabSurface | undefined;
     /**
      * Observe this presentation's adaptive context. Invoked immediately with
      * the current context, then again only when `sizeClass` or `canDock`
@@ -2265,15 +2271,11 @@ true
      */
     sidebarActions: ShellSidebarActionsApi;
     /**
-     * Open another lxapp in main or a companion slot, focus it if it is open,
-     * or move it to the role `as` names.
-     */
-    openApp(appId: string, options?: ShellOpenAppOptions): Promise<AppSurface>;
-    /**
      * The handle of an lxapp live as a surface of its own, declared or not;
-     * `undefined` when it is not. A live lxapp has one handle: `openApp`,
-     * `getApp`, and `openDeclared` / `getDeclared` of the declaration that
-     * shows it all return the same `AppSurface`.
+     * `undefined` when it is not. A live lxapp has one handle:
+     * `lx.surface.openApp`, `getApp`, and `lx.surface.openDeclared` /
+     * `getDeclared` of the declaration that shows it all return the same
+     * `AppSurface`.
      */
     getApp(appId: string): AppSurface | undefined;
     /**
@@ -2291,13 +2293,6 @@ true
      * is cheap. `lx.app.info.name` keeps the `lxapp.json` name.
      */
     setAppDisplay(patch: AppDisplayPatch): Promise<void>;
-    /**
-     * Open a declared surface with shell privileges — the same declaration
-     * `lx.surface.openDeclared` opens, plus the keyed multi-instance form and
-     * placement overrides; `as` and `edge` also move a live instance. A
-     * declaration that shows an lxapp resolves to that app's `AppSurface`.
-     */
-    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
 }"###;
 
         /// Where an action lives in the desktop sidebar.

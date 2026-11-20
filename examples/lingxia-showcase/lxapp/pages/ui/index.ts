@@ -181,7 +181,7 @@ export default definePage({
       // reusing a key without closing first leaves the old one on screen with
       // nothing pointing at it.
       async releaseDemoSurfaceKey(key: string) {
-        const existing = lx.surface.getByKey(key);
+        const existing = lx.surface.get(key);
         if (!existing || !("close" in existing)) return;
         try {
           await existing.close();
@@ -197,7 +197,7 @@ export default definePage({
         if (verb === "lxapp") {
           // Compose another lxapp into the aside slot — home-lxapp privilege, so
           // it lives on lx.shell rather than lx.surface. A live app is reused.
-          return lx.shell.openApp("lingxia-chat", {
+          return lx.surface.openApp("lingxia-chat", {
             as: "aside",
             edge: cfg.edge ?? "right",
           });
@@ -460,8 +460,8 @@ export default definePage({
         }
       },
       async showActiveSurface() {
-        // `lx.surface.getByKey(key)` finds the live surface, so no handle is cached.
-        const surface = lx.surface.getByKey(DEMO_PAGE_SURFACE_KEY);
+        // `lx.surface.get(key)` finds the live surface, so no handle is cached.
+        const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
         // The demo only ever opens its own page as a surface.
         if (surface?.kind !== "page") {
           return;
@@ -481,7 +481,7 @@ export default definePage({
         }
       },
       async hideActiveSurface() {
-        const surface = lx.surface.getByKey(DEMO_PAGE_SURFACE_KEY);
+        const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
         if (surface?.kind !== "page") {
           return;
         }
@@ -500,7 +500,7 @@ export default definePage({
         }
       },
       async closeActiveSurface() {
-        const surface = lx.surface.getByKey(DEMO_PAGE_SURFACE_KEY);
+        const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
         if (!surface || !("close" in surface)) {
           return;
         }
