@@ -26,8 +26,11 @@ final class GpuRecovery {
     private TextView message;
     private Button action, back;
     private final android.graphics.Rect insets = new android.graphics.Rect();
-    /** The page's canvas, text and accent colours, once the core has resolved its palette. */
-    private Integer canvas, text, accent;
+    /** The system bars' overlap with the page's bottom edge (navigation bar, gesture strip). */
+    private int systemBottom;
+    /** The page's canvas, bar, bar line, text and accent colours, once the core has resolved its palette. */
+    private Integer canvas, bar, barLine, text, accent;
+    private View line;
 
     GpuRecovery(FrameLayout host) { this.host = host; }
 
@@ -43,6 +46,13 @@ final class GpuRecovery {
         banner = retained;
         current.setClickable(true);
         current.setTag(GpuView.RECOVERY_TAG);
+        line = null;
+        if (retained) {
+            // A banner over the kept page is a plate of its own, set off by the bars' hairline.
+            line = new View(context);
+            current.addView(line, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                Math.max(1, Math.round(density / 2))));
+        }
         TextView label = new TextView(context);
         message = label;
         label.setTextSize(17);
@@ -117,8 +127,10 @@ final class GpuRecovery {
     }
 
     /** The page's palette: the panel sits on its canvas, as the page would. */
-    void setColors(int canvas, int text, int accent) {
+    void setColors(int canvas, int bar, int barLine, int text, int accent) {
         this.canvas = canvas;
+        this.bar = bar;
+        this.barLine = barLine;
         this.text = text;
         this.accent = accent;
         paint();
@@ -128,7 +140,9 @@ final class GpuRecovery {
         if (panel == null) return;
         boolean dark = (host.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
-        panel.setBackgroundColor(canvas != null ? canvas : dark ? Color.rgb(32, 34, 38) : Color.WHITE);
+        Integer plate = banner && bar != null ? bar : canvas;
+        panel.setBackgroundColor(plate != null ? plate : dark ? Color.rgb(32, 34, 38) : Color.WHITE);
+        if (line != null) line.setBackgroundColor(barLine != null ? barLine : dark ? Color.rgb(60, 62, 68) : Color.rgb(220, 222, 226));
         message.setTextColor(text != null ? text : dark ? Color.WHITE : Color.rgb(32, 34, 38));
         int tint = accent != null ? accent : Color.rgb(0, 122, 255);
         for (Button button : new Button[] {back, action}) if (button != null) button.setTextColor(tint);
@@ -143,11 +157,27 @@ final class GpuRecovery {
         place();
     }
 
-    /** A banner's plate runs to the bottom edge, its buttons above the bottom inset. */
+    void setSystemBottom(int value) {
+        if (systemBottom == value) return;
+        systemBottom = value;
+        place();
+    }
+
+    /** A banner's plate runs to the bottom edge, its buttons above the bars and system inset. */
     private void place() {
         if (panel == null) return;
         int padding = Math.round(16 * host.getResources().getDisplayMetrics().density);
-        panel.setPadding(padding, padding, padding, padding + (banner ? insets.bottom : 0));
+        int bottom = Math.max(insets.bottom, systemBottom);
+        panel.setPadding(padding, banner ? 0 : padding, padding, padding + (banner ? bottom : 0));
+        if (banner && panel.getChildCount() > 1) {
+            LinearLayout.LayoutParams first = (LinearLayout.LayoutParams)panel.getChildAt(1).getLayoutParams();
+            first.topMargin = padding;
+            panel.getChildAt(1).setLayoutParams(first);
+            // The hairline spans the plate, past its side padding.
+            LinearLayout.LayoutParams edge = (LinearLayout.LayoutParams)line.getLayoutParams();
+            edge.leftMargin = edge.rightMargin = -padding;
+            line.setLayoutParams(edge);
+        }
         FrameLayout.LayoutParams layout = (FrameLayout.LayoutParams)panel.getLayoutParams();
         layout.setMargins(insets.left, insets.top, insets.right, banner ? 0 : insets.bottom);
         panel.setLayoutParams(layout);

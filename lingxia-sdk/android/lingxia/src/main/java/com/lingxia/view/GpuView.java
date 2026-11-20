@@ -779,6 +779,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             }
             int trailingX = getRootView().getWidth() - x - surface.getWidth();
             int trailingY = getRootView().getHeight() - y - surface.getHeight();
+            recovery.setSystemBottom(Math.max(0, bottom - trailingY));
             android.content.res.Configuration configuration = hostConfiguration;
             java.util.Locale locale = android.os.Build.VERSION.SDK_INT >= 24
                 ? configuration.getLocales().get(0) : configuration.locale;
@@ -1014,7 +1015,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void hostChrome(int canvas, int bar, int barLine, int content, int contentMuted, int accent, boolean dark) { onMain(() -> {
             if (destroyed) return;
             chrome = new Chrome(canvas, bar, barLine, content, contentMuted, accent, dark);
-            recovery.setColors(canvas, content, accent);
+            recovery.setColors(canvas, bar, barLine, content, accent);
             if (listener != null) listener.onChrome(chrome);
         }); }
     }

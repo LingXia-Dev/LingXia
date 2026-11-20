@@ -9,6 +9,7 @@ extension GpuPageView {
     private static let messages = ["update_required", "session_failed", "update_failed", "display_failed", "slow_load"]
     private static let actions = ["retry", "reload", "keep_waiting"]
     private static let keepWaiting = 2
+    private static let hairline = "lx-recovery-line"
 
     func showRecovery(message: Int32, action: Int32, covers: Bool, back: Bool) {
         recoveryPanel?.removeFromSuperview()
@@ -57,6 +58,15 @@ extension GpuPageView {
         }
         panel.addSubview(stack)
         addSubview(panel)
+        var line: UIView?
+        if !covers {
+            // A banner over the kept page is a plate of its own, set off by the bars' hairline.
+            let hairline = UIView()
+            hairline.translatesAutoresizingMaskIntoConstraints = false
+            hairline.accessibilityIdentifier = Self.hairline
+            panel.addSubview(hairline)
+            line = hairline
+        }
         let guide = safeAreaLayoutGuide
         // The page's content area: below the bars that cover the top edge.
         let content = UILayoutGuide()
@@ -77,6 +87,14 @@ extension GpuPageView {
                stack.centerYAnchor.constraint(equalTo: content.centerYAnchor)]
             : [stack.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -16),
                panel.topAnchor.constraint(equalTo: stack.topAnchor, constant: -16)]
+        if let line {
+            constraints += [
+                line.topAnchor.constraint(equalTo: panel.topAnchor),
+                line.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
+                line.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
+                line.heightAnchor.constraint(equalToConstant: 1 / max(traitCollection.displayScale, 1)),
+            ]
+        }
         NSLayoutConstraint.activate(constraints)
         recoveryPanel = panel
         recoveryCovers = covers
@@ -97,10 +115,15 @@ extension GpuPageView {
         ])
     }
 
-    /// The panel sits on the page's own canvas, in its text and accent colours.
+    /// The panel sits on the page's own canvas, a banner on the bars' plate; text and accent
+    /// colours are the page's.
     func recolorRecovery() {
         guard let panel = recoveryPanel else { return }
-        panel.backgroundColor = hostChrome?.canvas ?? .systemBackground
+        panel.backgroundColor = recoveryCovers
+            ? hostChrome?.canvas ?? .systemBackground
+            : hostChrome?.bar ?? .secondarySystemBackground
+        panel.subviews.first { $0.accessibilityIdentifier == Self.hairline }?.backgroundColor =
+            hostChrome?.barLine ?? .separator
         panel.tintColor = hostChrome?.accent
         func walk(_ view: UIView) {
             if let label = view as? UILabel { label.textColor = hostChrome?.content ?? .label }

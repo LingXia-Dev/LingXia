@@ -264,6 +264,8 @@ export struct GpuPage {
   /** The failure whose action was pressed: its button waits for the next report. */
   @State retried: GpuRecovery | null = null;
   @State backed: GpuRecovery | null = null;
+  /** The system's overlap with the page's bottom edge (navigation indicator), in px. */
+  @State systemBottom: number = 0;
   @State menuWidth: number = 0;
   /** The page's size, vp, for keeping the menu on screen. */
   @State pageWidth: number = 0;
@@ -422,6 +424,7 @@ export struct GpuPage {
     const facts = sampleFacts(context, this.win, this.rect, this.chromeInsets, getDisplayLanguage(), this.config,
       this.keyboardTop);
     facts.dark = this.appearanceDark;
+    this.systemBottom = facts.system_insets[2];
     gpuPageMeasured(this.page.token, JSON.stringify(facts), this.rect.x, this.rect.y);
   }
 
@@ -472,6 +475,11 @@ export struct GpuPage {
     return this.page.chrome ? this.page.chrome.canvas : Color.White;
   }
 
+  /** A banner over the kept page is a plate of its own, set off by the bars' hairline. */
+  private recoveryPlate(recovery: GpuRecovery): ResourceColor {
+    return recovery.retained && this.page.chrome ? this.page.chrome.bar : this.recoveryCanvas();
+  }
+
   private recoveryText(): ResourceColor {
     return this.page.chrome ? this.page.chrome.content : '#202226';
   }
@@ -502,6 +510,11 @@ export struct GpuPage {
     // Host-owned: page content cannot replace its action. A failure over a kept frame sits at
     // the bottom; one with nothing worth showing covers the page, its message centred.
     Column() {
+      if (recovery.retained) {
+        Divider()
+          .strokeWidth(px2vp(1))
+          .color(this.page.chrome ? this.page.chrome.barLine : '#DCDEE2')
+      }
       Column({ space: 4 }) {
         Text(this.appText(this.messages[recovery.message] ?? this.messages[3]))
           .fontSize(17)
@@ -526,11 +539,12 @@ export struct GpuPage {
         }
       }
       .width('100%')
-      // A banner's plate runs to the screen's edge, its buttons above the bottom inset.
+      // A banner's plate runs to the screen's edge, its buttons above the bars and the
+      // navigation indicator.
       .padding({ left: 16, right: 16, top: 16,
-        bottom: 16 + (recovery.retained ? px2vp(this.chromeInsets[2]) : 0) })
+        bottom: 16 + (recovery.retained ? px2vp(Math.max(this.chromeInsets[2], this.systemBottom)) : 0) })
       .alignItems(HorizontalAlign.Center)
-      .backgroundColor(this.recoveryCanvas())
+      .backgroundColor(this.recoveryPlate(recovery))
     }
     .width('100%')
     .height('100%')
