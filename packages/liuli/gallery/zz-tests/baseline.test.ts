@@ -33,6 +33,20 @@ async function settled(view: { settled(): Promise<void>; screenshot(): Promise<{
   return shot;
 }
 
+// A dialog, viewer, menu, sheet or tooltip open over a page at rest was opened by something the
+// capture did not do; its picture would be recorded as the page's. Named, so the refusal says which.
+const overlayRoles = ['dialog', 'alertdialog', 'menu', 'tooltip'] as const;
+async function openOverlay(view: { getByRole(role: (typeof overlayRoles)[number]): { count(): Promise<number>; nth(index: number): { isVisible(): Promise<boolean>; getAttribute(name: string): Promise<string | null> } } }) {
+  for (const role of overlayRoles) {
+    const all = view.getByRole(role);
+    for (let index = 0, count = await all.count(); index < count; index += 1) {
+      const one = all.nth(index);
+      if (await one.isVisible().catch(() => false)) return `${role} "${(await one.getAttribute('aria-label').catch(() => null)) ?? ''}"`;
+    }
+  }
+  return null;
+}
+
 for (const page of pages) {
   test(`baseline: ${page}`, { start: { page }, timeout: 90_000 }, async (t) => {
     const view = t.app.view;
@@ -57,7 +71,10 @@ for (const page of pages) {
         if (!shown) throw Error(`${page} has not come to rest at its end: its last row is not on screen`);
       }
       await pause(400);
-      await t.attach(`${page}-${theme}.png`, (await settled(view)) as Awaited<ReturnType<typeof view.screenshot>>);
+      const shot = await settled(view);
+      const open = await openOverlay(view);
+      if (open) throw Error(`${page} (${theme}): a ${open} is open over the page; the capture opens nothing, so this picture is refused`);
+      await t.attach(`${page}-${theme}.png`, shot as Awaited<ReturnType<typeof view.screenshot>>);
     }
   });
 }
