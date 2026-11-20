@@ -259,7 +259,9 @@ export interface CancelableTask<TResult, TProgress> extends Task<TResult, TProgr
 
 export interface DownloadTask<TResult extends DownloadResult = DownloadResult>
   extends CancelableTask<TResult, DownloadProgressEvent<TResult>> {
+  /** Pauses a running download; does nothing in any other state. Rejects when the platform cannot pause. */
   pause(): Promise<void>;
+  /** Resumes a paused download from where it stopped; does nothing in any other state. */
   resume(): Promise<void>;
 }
 
@@ -283,7 +285,12 @@ export type PageHandle<R = JsonValue> = {
     readonly opened: Promise<void>;
     /** Settles once, after the page's `onUnload`. */
     readonly result: Promise<{ status: 'ok'; value: R } | Extract<PageResult, { status: 'canceled' }>>;
+    /**
+     * Delivers \`message\` to the page's \`page.opener.onMessage\` handlers, at
+     * once and uncopied. Dropped while the page has none: send after \`opened\`.
+     */
     send(message: unknown): void;
+    /** Receives what the page sends with \`page.opener.send\`. Returns a function that removes the handler. */
     onMessage(handler: (message: unknown) => void): () => void;
     /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
     close(): void;
@@ -310,11 +317,19 @@ declare global {
     /**
      * Push a page. The handle is returned at once: `opened` settles when the
      * page is on screen, `result` when it leaves.
+     *
+     * Throws `E_INVALID_ARG` for a malformed target (an unknown key, params
+     * over 8 KB as JSON) or when ten pages are already stacked
+     * (`data.reason: 'stack_full'`), and `E_NOT_FOUND` for a page the app does
+     * not declare. `opened` rejects only when the platform fails to show it.
      */
     go<N extends ConfiguredPageName>(target: PageTarget<N>): PageHandle<NavResult<N>>;
     /** Replace the current page; the new page inherits its opener and pending result. */
     go<N extends ConfiguredPageName>(target: PageTarget<N>, options: { replace: true }): Promise<void>;
-    /** Switch tabs, open another lxapp, or open a URL in the in-app browser. */
+    /**
+     * Switch tabs, open another lxapp, or open a URL in the in-app browser.
+     * A `{ tab }` takes no params. Rejects `E_NOT_FOUND` for an undeclared tab.
+     */
     go(target: TabTarget | AppTarget | UrlTarget): Promise<void>;
     /** Pop `n` pages (default 1), stopping at the root. Resolves once the revealed page is ready. */
     back(n?: number): Promise<void>;

@@ -722,9 +722,19 @@ rong::js_api! {
      * enforce it (desktop), files beyond it are dropped from the result.
      */
     count?: number;
+    /**
+     * Default both. The camera captures one kind, so with `sourceType` camera
+     * name a single entry (macOS excepted).
+     */
     mediaType?: ('image' | 'video')[];
+    /**
+     * Default `['album']`. With both, the user chooses first. Windows has no
+     * camera: it drops `camera` from a pair and rejects a camera-only request.
+     */
     sourceType?: ('album' | 'camera')[];
+    /** Camera facing. Default `back`. */
     camera?: 'back' | 'front';
+    /** Longest video the camera records, in seconds. */
     maxDurationSeconds?: number;
 }"###;
 
@@ -1200,7 +1210,13 @@ rong::js_api! {
 
         /// A pushed page's line to the page that opened it (`page.opener`).
         type PageMessagePort = r###"{
+    /**
+     * Delivers \`message\` to the other side's \`onMessage\` handlers, at once and
+     * as the same value (both sides share this Logic context; nothing is
+     * copied). A message sent while the other side has no handler is dropped.
+     */
     send(message: unknown): void;
+    /** Receives what the other side sends. Returns a function that removes the handler. */
     onMessage(handler: (message: unknown) => void): () => void;
 }"###;
 
@@ -1234,6 +1250,7 @@ rong::js_api! {
         type PreviewMediaHandle = r###"{
     readonly presented: Promise<{ status: 'presented' } | { status: 'notPresented'; reason: 'canceled' | 'failed' | 'closed' }>;
     readonly current: PreviewMediaChange;
+    /** Fires when the shown item changes; \`current\` holds the latest. Returns a function that removes the listener. */
     onChange(listener: (change: PreviewMediaChange) => void): () => void;
     readonly completed: Promise<PreviewMediaResult>;
 }"###;
@@ -1375,7 +1392,9 @@ rong::js_api! {
 }"###;
 
         type PickCodeOptions = r###"{
+    /** Default true. False also lets the user pick a picture to read the code from. */
     onlyFromCamera?: boolean;
+    /** Symbologies to read. Default all. */
     formats?: ('barCode' | 'qrCode' | 'datamatrix' | 'pdf417')[];
 }"###;
 
@@ -1650,6 +1669,7 @@ true
      * calls after a successful close are idempotent.
      */
     close(): Promise<void>;
+    /** Fires once when the surface closes, whoever closed it. Returns a function that removes the handler. */
     onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
 }"###;
 
@@ -1676,10 +1696,12 @@ true
         ///
         type SurfaceMessaging = r###"{
     /**
-     * Send to the other side. For the opener this targets the opened page;
-     * for the opened page it targets the opener.
+     * Sends to the other side: from the opener to the opened page, from the
+     * page (\`page.surface\`) to its opener. Delivered at once and uncopied to
+     * the other side's \`onMessage\` handlers; dropped when it has none.
      */
     send(message: unknown): void;
+    /** Receives what the other side sends. Returns a function that removes the handler. */
     onMessage(handler: (message: unknown) => void): () => void;
 }"###;
 
@@ -1724,6 +1746,7 @@ true
     readonly kind: 'tab';
     readonly realized: 'tab' | 'aside';
     readonly scope: 'tab';
+    /** Brings this tab to the front. Rejects with \`closed\` once the tab is gone. */
     activate(): Promise<void>;
 }) | (Omit<SurfaceBase, 'close' | 'onClose'> & {
     readonly kind: 'tab';

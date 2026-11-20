@@ -269,7 +269,9 @@ export interface CancelableTask<TResult, TProgress> extends Task<TResult, TProgr
 
 export interface DownloadTask<TResult extends DownloadResult = DownloadResult>
   extends CancelableTask<TResult, DownloadProgressEvent<TResult>> {
+  /** Pauses a running download; does nothing in any other state. Rejects when the platform cannot pause. */
   pause(): Promise<void>;
+  /** Resumes a paused download from where it stopped; does nothing in any other state. */
   resume(): Promise<void>;
 }
 
@@ -293,7 +295,12 @@ export type PageHandle<R = JsonValue> = {
     readonly opened: Promise<void>;
     /** Settles once, after the page's `onUnload`. */
     readonly result: Promise<{ status: 'ok'; value: R } | Extract<PageResult, { status: 'canceled' }>>;
+    /**
+     * Delivers \`message\` to the page's \`page.opener.onMessage\` handlers, at
+     * once and uncopied. Dropped while the page has none: send after \`opened\`.
+     */
     send(message: unknown): void;
+    /** Receives what the page sends with \`page.opener.send\`. Returns a function that removes the handler. */
     onMessage(handler: (message: unknown) => void): () => void;
     /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
     close(): void;
@@ -320,11 +327,19 @@ declare global {
     /**
      * Push a page. The handle is returned at once: `opened` settles when the
      * page is on screen, `result` when it leaves.
+     *
+     * Throws `E_INVALID_ARG` for a malformed target (an unknown key, params
+     * over 8 KB as JSON) or when ten pages are already stacked
+     * (`data.reason: 'stack_full'`), and `E_NOT_FOUND` for a page the app does
+     * not declare. `opened` rejects only when the platform fails to show it.
      */
     go<N extends ConfiguredPageName>(target: PageTarget<N>): PageHandle<NavResult<N>>;
     /** Replace the current page; the new page inherits its opener and pending result. */
     go<N extends ConfiguredPageName>(target: PageTarget<N>, options: { replace: true }): Promise<void>;
-    /** Switch tabs, open another lxapp, or open a URL in the in-app browser. */
+    /**
+     * Switch tabs, open another lxapp, or open a URL in the in-app browser.
+     * A `{ tab }` takes no params. Rejects `E_NOT_FOUND` for an undeclared tab.
+     */
     go(target: TabTarget | AppTarget | UrlTarget): Promise<void>;
     /** Pop `n` pages (default 1), stopping at the root. Resolves once the revealed page is ready. */
     back(n?: number): Promise<void>;
@@ -1530,7 +1545,13 @@ export type PageLoadOptions = {
 
 /** A pushed page's line to the page that opened it (`page.opener`). */
 export type PageMessagePort = {
+    /**
+     * Delivers \`message\` to the other side's \`onMessage\` handlers, at once and
+     * as the same value (both sides share this Logic context; nothing is
+     * copied). A message sent while the other side has no handler is dropped.
+     */
     send(message: unknown): void;
+    /** Receives what the other side sends. Returns a function that removes the handler. */
     onMessage(handler: (message: unknown) => void): () => void;
 };
 
@@ -1567,7 +1588,9 @@ export type PageSurface = SurfaceBase & SurfaceShowable & SurfaceMessaging & {
 export type PickApi = globalThis.PickApi;
 
 export type PickCodeOptions = {
+    /** Default true. False also lets the user pick a picture to read the code from. */
     onlyFromCamera?: boolean;
+    /** Symbologies to read. Default all. */
     formats?: ('barCode' | 'qrCode' | 'datamatrix' | 'pdf417')[];
 };
 
@@ -1611,10 +1634,21 @@ export type PickFileResult = { status: 'ok'; files: [PickedFile] } | CanceledRes
 export type PickFilesResult = { status: 'ok'; files: [PickedFile, ...PickedFile[]] } | CanceledResult;
 
 export type PickMediaOptions = {
+    /** Most items the library picker lets the user select. Default 9. */
     count?: number;
+    /**
+     * Default both. The camera captures one kind, so with `sourceType` camera
+     * name a single entry (macOS excepted).
+     */
     mediaType?: ('image' | 'video')[];
+    /**
+     * Default `['album']`. With both, the user chooses first. Windows has no
+     * camera: it drops `camera` from a pair and rejects a camera-only request.
+     */
     sourceType?: ('album' | 'camera')[];
+    /** Camera facing. Default `back`. */
     camera?: 'back' | 'front';
+    /** Longest video the camera records, in seconds. */
     maxDurationSeconds?: number;
 };
 
@@ -1652,6 +1686,7 @@ export type PreviewMediaCloseReason = 'manual' | 'completed' | 'interrupted' | '
 export type PreviewMediaHandle = {
     readonly presented: Promise<{ status: 'presented' } | { status: 'notPresented'; reason: 'canceled' | 'failed' | 'closed' }>;
     readonly current: PreviewMediaChange;
+    /** Fires when the shown item changes; \`current\` holds the latest. Returns a function that removes the listener. */
     onChange(listener: (change: PreviewMediaChange) => void): () => void;
     readonly completed: Promise<PreviewMediaResult>;
 };
@@ -2189,6 +2224,7 @@ export type SurfaceBase = {
      * calls after a successful close are idempotent.
      */
     close(): Promise<void>;
+    /** Fires once when the surface closes, whoever closed it. Returns a function that removes the handler. */
     onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
 };
 
@@ -2297,10 +2333,12 @@ export type SurfaceKind = 'page' | 'declared' | 'app' | 'tab' | 'builtin';
 /** Two-way messaging, available when both sides are lxapp pages. */
 export type SurfaceMessaging = {
     /**
-     * Send to the other side. For the opener this targets the opened page;
-     * for the opened page it targets the opener.
+     * Sends to the other side: from the opener to the opened page, from the
+     * page (\`page.surface\`) to its opener. Delivered at once and uncopied to
+     * the other side's \`onMessage\` handlers; dropped when it has none.
      */
     send(message: unknown): void;
+    /** Receives what the other side sends. Returns a function that removes the handler. */
     onMessage(handler: (message: unknown) => void): () => void;
 };
 
@@ -2390,6 +2428,7 @@ export type TabSurface = (SurfaceBase & {
     readonly kind: 'tab';
     readonly realized: 'tab' | 'aside';
     readonly scope: 'tab';
+    /** Brings this tab to the front. Rejects with \`closed\` once the tab is gone. */
     activate(): Promise<void>;
 }) | (Omit<SurfaceBase, 'close' | 'onClose'> & {
     readonly kind: 'tab';
@@ -3322,17 +3361,21 @@ declare global {
      * only when the user dismisses it.
      */
     file(options?: PickFileOptions): Promise<PickFileResult>;
-    /** Opens the system file picker for one or more files. */
+    /**
+     * Opens the system file picker for one or more files. Resolves
+     * `{ status: 'canceled' }` only when the user dismisses it.
+     */
     files(options?: PickFileOptions): Promise<PickFilesResult>;
     /**
      * Opens a directory picker.
      * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', path }`. Rejects when the
-     * picker fails or returns an invalid payload.
+     * completed selection resolves `{ status: 'ok', directory: { path, name } }`.
+     * Rejects when the picker fails or returns an invalid payload.
      */
     directory(options?: PickDirectoryOptions): Promise<PickDirectoryResult>;
     /**
-     * `lx.pick.media`: the media picker or camera.
+     * Picks pictures and videos from the library, or captures one with the camera.
+     * Library items are copied to temp on mobile; desktop returns the user's file.
      * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
      * completed selection resolves `{ status: 'ok', files }` with at least one
      * file. Rejects when capture or selection fails, or the host returns an invalid
@@ -3340,10 +3383,11 @@ declare global {
      */
     media(options?: PickMediaOptions): Promise<PickFilesResult>;
     /**
-     * `lx.pick.code`: the code scanner.
+     * Scans a barcode or QR code with the camera.
      * Resolves `{ status: 'canceled' }` only when the user dismisses the scanner. A
-     * completed scan resolves `{ status: 'ok', value, format }`. Rejects
-     * when scanning fails or the host returns an invalid payload.
+     * completed scan resolves `{ status: 'ok', value, format }`. A value that is an
+     * `/lxapp/` app link also opens that lxapp; other URLs are only returned.
+     * Rejects when scanning fails or the host returns an invalid payload.
      */
     code(options?: PickCodeOptions): Promise<PickCodeResult>;
   }

@@ -28,11 +28,12 @@ rong::js_api! {
     }
 }
 
-/// `lx.pick.code`: the code scanner.
+/// Scans a barcode or QR code with the camera.
 ///
 /// Resolves `{ status: 'canceled' }` only when the user dismisses the scanner. A
-/// completed scan resolves `{ status: 'ok', value, format }`. Rejects
-/// when scanning fails or the host returns an invalid payload.
+/// completed scan resolves `{ status: 'ok', value, format }`. A value that is an
+/// `/lxapp/` app link also opens that lxapp; other URLs are only returned.
+/// Rejects when scanning fails or the host returns an invalid payload.
 async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();

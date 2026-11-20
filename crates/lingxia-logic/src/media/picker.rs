@@ -36,7 +36,8 @@ rong::js_api! {
     }
 }
 
-/// `lx.pick.media`: the media picker or camera.
+/// Picks pictures and videos from the library, or captures one with the camera.
+/// Library items are copied to temp on mobile; desktop returns the user's file.
 ///
 /// Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
 /// completed selection resolves `{ status: 'ok', files }` with at least one
