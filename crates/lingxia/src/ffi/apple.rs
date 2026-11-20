@@ -2438,7 +2438,7 @@ pub fn dispose_page_instance(page_instance_id: &str, reason: &str) -> bool {
 
 pub fn on_surface_closed(appid: &str, id: &str, reason: &str) -> bool {
     if let Some(lxapp) = lxapp::try_get(appid) {
-        let _ = lxapp.forget_surface(id);
+        let _ = lxapp.forget_surface_with_reason(id, reason);
     }
     #[cfg(feature = "standard")]
     {

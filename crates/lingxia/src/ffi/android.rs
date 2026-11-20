@@ -713,7 +713,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_onSurfaceClosed(
         let id: String = id.try_to_string(env)?;
         let reason: String = reason.try_to_string(env)?;
         if let Some(lxapp) = lxapp::try_get(&appid) {
-            let _ = lxapp.forget_surface(&id);
+            let _ = lxapp.forget_surface_with_reason(&id, &reason);
         }
         #[cfg(feature = "standard")]
         {

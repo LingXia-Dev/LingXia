@@ -1303,7 +1303,7 @@ pub(super) fn install() {
     lingxia_platform::set_windows_surface_closed_handler(Arc::new(|id, reason| {
         let (appid, _, _) = lxapp::get_current_lxapp();
         if let Some(app) = lxapp::try_get(&appid) {
-            let _ = app.forget_surface(id);
+            let _ = app.forget_surface_with_reason(id, reason);
         }
         lingxia_logic::notify_surface_closed(id, reason);
     }));
