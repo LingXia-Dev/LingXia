@@ -11,6 +11,7 @@ use std::collections::HashMap;
 pub(crate) enum ControlValue {
     Checked(bool),
     Number(f64),
+    Text(String),
 }
 
 impl ControlValue {
@@ -19,6 +20,7 @@ impl ControlValue {
         match self {
             Self::Checked(on) => on.to_string(),
             Self::Number(value) => serde_json::Value::from(*value).to_string(),
+            Self::Text(text) => serde_json::Value::from(text.as_str()).to_string(),
         }
     }
 
@@ -26,6 +28,7 @@ impl ControlValue {
         match self {
             Self::Checked(on) => serde_json::Value::from(u8::from(*on)),
             Self::Number(value) => serde_json::Value::from(*value),
+            Self::Text(text) => serde_json::Value::from(text.as_str()),
         }
     }
 }
@@ -35,8 +38,17 @@ impl ControlValue {
 struct Unbound {
     /// Its change callback in these records; a change dispatches it with the new value.
     handle: Option<u64>,
-    /// A slider's range, which snaps a proposed value as the slider draws it.
-    range: Option<SliderSnapshot>,
+    kind: Kind,
+}
+
+#[derive(Clone, Debug)]
+enum Kind {
+    /// A checkbox or switch.
+    Toggle,
+    /// A slider, with the range that snaps a proposed value as the slider draws it.
+    Range(SliderSnapshot),
+    /// A select's options as (value, label).
+    Choice(Vec<(String, String)>),
 }
 
 /// What a proposed value did to an unbound control.
@@ -61,6 +73,7 @@ fn fields(tag: usize) -> Option<(usize, usize)> {
     match tag {
         tag::CHECKBOX | tag::SWITCH => Some((field::CHECKED, field::ON_CHECKED_CHANGE)),
         tag::SLIDER => Some((field::SLIDER_VALUE, field::ON_SLIDER_CHANGE)),
+        tag::SELECT => Some((field::INPUT_VALUE, field::ON_SELECT)),
         _ => None,
     }
 }
@@ -84,10 +97,15 @@ impl Uncontrolled {
                 .find(|(field, _)| *field == callback)
                 .and_then(|(_, handle)| handle.as_u64())
                 .filter(|handle| *handle != 0);
-            let range = (record.tag == tag::SLIDER)
-                .then(|| SliderSnapshot::from_record(record).ok())
-                .flatten();
-            self.unbound.insert(id, Unbound { handle, range });
+            let kind = match record.tag {
+                tag::SLIDER => match SliderSnapshot::from_record(record) {
+                    Ok(range) => Kind::Range(range),
+                    Err(_) => continue,
+                },
+                tag::SELECT => Kind::Choice(options(record)),
+                _ => Kind::Toggle,
+            };
+            self.unbound.insert(id, Unbound { handle, kind });
         }
         self.values.retain(|id, _| self.unbound.contains_key(id));
     }
@@ -102,8 +120,15 @@ impl Uncontrolled {
             let (Some(value), Some((field, _))) = (self.values.get(&id), fields(record.tag)) else {
                 continue;
             };
-            if self.unbound.contains_key(&id) {
-                record.fields.push((field, value.field()));
+            let Some(unbound) = self.unbound.get(&id) else {
+                continue;
+            };
+            record.fields.push((field, value.field()));
+            // A select shows its chosen option's label in place of the placeholder.
+            if let (Kind::Choice(options), ControlValue::Text(chosen)) = (&unbound.kind, value)
+                && let Some((_, label)) = options.iter().find(|(value, _)| value == chosen)
+            {
+                record.text = label.clone();
             }
         }
     }
@@ -111,10 +136,9 @@ impl Uncontrolled {
     /// A press ran `handle`: when it is an unbound checkbox's or switch's, that control takes
     /// its next value and the encoded value its callback receives is returned.
     pub(crate) fn press(&mut self, handle: u64) -> Option<String> {
-        let (id, _) = self
-            .unbound
-            .iter()
-            .find(|(_, unbound)| unbound.handle == Some(handle) && unbound.range.is_none())?;
+        let (id, _) = self.unbound.iter().find(|(_, unbound)| {
+            unbound.handle == Some(handle) && matches!(unbound.kind, Kind::Toggle)
+        })?;
         // Unchecked until pressed; a mixed box checks on its first press, as in the DOM.
         let next = match self.values.get(id) {
             Some(ControlValue::Checked(on)) => ControlValue::Checked(!on),
@@ -128,12 +152,14 @@ impl Uncontrolled {
     /// A drag proposed `value` through `handle`: an unbound slider snaps it to its range and
     /// takes it.
     pub(crate) fn propose(&mut self, handle: u64, value: f64) -> Proposal {
-        let Some((id, range)) = self.unbound.iter().find_map(|(id, unbound)| {
-            (unbound.handle == Some(handle))
-                .then_some(unbound.range.as_ref())
-                .flatten()
-                .map(|range| (id, range))
-        }) else {
+        let Some((id, range)) = self
+            .unbound
+            .iter()
+            .find_map(|(id, unbound)| match &unbound.kind {
+                Kind::Range(range) if unbound.handle == Some(handle) => Some((id, range)),
+                _ => None,
+            })
+        else {
             return Proposal::Bound;
         };
         let next = range.normalize(value);
@@ -149,6 +175,46 @@ impl Uncontrolled {
         self.values.insert(id.clone(), next);
         Proposal::Changed(json)
     }
+
+    /// A choice of `value` reached `handle`: an unbound select takes it when it is one of its
+    /// options.
+    pub(crate) fn choose(&mut self, handle: u64, value: &str) -> Proposal {
+        let Some((id, options)) =
+            self.unbound
+                .iter()
+                .find_map(|(id, unbound)| match &unbound.kind {
+                    Kind::Choice(options) if unbound.handle == Some(handle) => Some((id, options)),
+                    _ => None,
+                })
+        else {
+            return Proposal::Bound;
+        };
+        let current = match self.values.get(id) {
+            Some(ControlValue::Text(current)) => Some(current.as_str()),
+            _ => None,
+        };
+        if current == Some(value) || !options.iter().any(|(option, _)| option == value) {
+            return Proposal::Unchanged;
+        }
+        let next = ControlValue::Text(value.to_owned());
+        let json = next.json();
+        self.values.insert(id.clone(), next);
+        Proposal::Changed(json)
+    }
+}
+
+/// A select's options as its record lists them.
+fn options(record: &Record) -> Vec<(String, String)> {
+    record
+        .string(field::SELECT_OPTIONS)
+        .and_then(|text| serde_json::from_str::<Vec<serde_json::Value>>(text).ok())
+        .unwrap_or_default()
+        .iter()
+        .map(|option| {
+            let text = |key: &str| option[key].as_str().unwrap_or("").to_owned();
+            (text("value"), text("label"))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -306,5 +372,46 @@ mod tests {
         state.reconcile(&records);
         assert_eq!(proposed(&mut state, 7, 6.0).as_deref(), Some("bound"));
         assert_eq!(slider_value(&records, &state), Some(4.0));
+    }
+
+    #[test]
+    fn an_unbound_select_shows_and_keeps_its_choice() {
+        let select = |handle: u64| {
+            let mut select = record(
+                tag::SELECT,
+                Some(0),
+                vec![
+                    (
+                        field::SELECT_OPTIONS,
+                        json!(r#"[{"value":"a","label":"Apple"},{"value":"b","label":"Banana"}]"#),
+                    ),
+                    (field::ON_SELECT, json!(handle)),
+                ],
+            );
+            select.text = "Pick one".into();
+            select
+        };
+        let records = page(vec![select(3)]);
+        let mut state = Uncontrolled::default();
+        state.reconcile(&records);
+        let shown = |records: &[Record], state: &Uncontrolled| {
+            let mut painted = records.to_vec();
+            state.apply(&mut painted);
+            (
+                painted[1].string(field::INPUT_VALUE).map(str::to_owned),
+                painted[1].text.clone(),
+            )
+        };
+        assert_eq!(shown(&records, &state), (None, "Pick one".into()));
+        assert!(matches!(state.choose(3, "z"), Proposal::Unchanged));
+        assert!(matches!(state.choose(3, "b"), Proposal::Changed(json) if json == "\"b\""));
+        assert!(matches!(state.choose(3, "b"), Proposal::Unchanged));
+        let rerender = page(vec![select(8)]);
+        state.reconcile(&rerender);
+        assert_eq!(
+            shown(&rerender, &state),
+            (Some("b".into()), "Banana".into())
+        );
+        assert!(matches!(state.choose(3, "a"), Proposal::Bound));
     }
 }

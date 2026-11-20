@@ -205,6 +205,15 @@ impl ViewSession {
         if text.len() > crate::text::input::MAX_TEXT_BYTES {
             return Err("UI_INPUT: text too long".into());
         }
+        // An unbound select takes the choice itself; its callback hears only a change.
+        let took = match self.uncontrolled.choose(handle, text) {
+            uncontrolled::Proposal::Unchanged => return Ok(false),
+            uncontrolled::Proposal::Changed(_) => {
+                self.input_dirty = true;
+                true
+            }
+            uncontrolled::Proposal::Bound => false,
+        };
         let encoded = serde_json::to_string(text).map_err(|e| e.to_string())?;
         self.execute(|| {
             self.context
@@ -213,6 +222,7 @@ impl ViewSession {
                 ))
                 .map_err(|e| crate::engine::js_error(&self.context, e))
         })
+        .map(|ran: bool| ran || took)
     }
 
     /// Collects the `onLayout` elements whose content size differs from the one last reported.
